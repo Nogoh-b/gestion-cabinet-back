@@ -1,38 +1,38 @@
+// create-user.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEmail, MinLength, IsInt } from 'class-validator';
+import { IsInt, IsString, IsOptional, IsEmail } from 'class-validator';
 
 export class CreateUserDto {
-    @ApiProperty()
+
+
+  @ApiProperty({ required: true, example: 'nogoh@exemple.com' })
+  @IsString()
+  username: string;
+
+  @ApiProperty({ required: true, example: 'john.doe@exemple.com' })
+  @IsString()
   @IsEmail()
   email: string;
-  
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  username?: string;
 
-  @ApiProperty()
+  @ApiProperty({ required: true, example: 'brice' })
   @IsString()
-  @MinLength(8)
   password: string;
 
-  @ApiProperty({ required: false })
-  @IsOptional()
+  /*@ApiProperty({ required: false })
   @IsString()
-  codeOtp?: string;
-
-  @ApiProperty({ required: false })
   @IsOptional()
-  @IsString()
-  status?: string;
+  codeOtp?: string;*/
 
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  type?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
+  @ApiProperty()
   @IsInt()
-  customer_id?: number;
+  status: number;
+
+  /*@ApiProperty({ enum: ['caisse', 'comptable', 'DG', 'DAF', 'PCA'] })
+  @IsEnum(['caisse', 'comptable', 'DG', 'DAF', 'PCA'])
+  type: string;*/
+
+  @ApiProperty({ required: false })
+  @IsInt()
+  @IsOptional()
+  customerId?: number;
 }

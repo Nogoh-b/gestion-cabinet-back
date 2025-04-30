@@ -1,34 +1,40 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { PermissionService } from './permission.service';
+// permissions.controller.ts
+import { Controller, Post, Body, Get, Param, Delete, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Permission } from './entities/permission.entity';
+import { PermissionsService } from './permission.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
-import { UpdatePermissionDto } from './dto/update-permission.dto';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 
-@Controller('permission')
-export class PermissionController {
-  constructor(private readonly permissionService: PermissionService) {}
+@ApiTags('Gestion des Permissions')
+@ApiBearerAuth('JWT-auth') 
+@Controller('permissions')
+export class PermissionsController {
+  constructor(private readonly service: PermissionsService) {}
 
   @Post()
-  create(@Body() createPermissionDto: CreatePermissionDto) {
-    return this.permissionService.create(createPermissionDto);
+  @ApiOperation({ summary: 'Créer une nouvelle permission' })
+  @ApiResponse({ status: 201, description: 'Permission créée', type: Permission })
+  create(@Body() dto: CreatePermissionDto): Promise<Permission> {
+    return this.service.create(dto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get()
-  findAll() {
-    return this.permissionService.findAll();
+  @ApiOperation({ summary: 'Lister toutes les permissions' })
+  findAll(): Promise<Permission[]> {
+    return this.service.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.permissionService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updatePermissionDto: UpdatePermissionDto) {
-    return this.permissionService.update(+id, updatePermissionDto);
+  @ApiOperation({ summary: 'Obtenir une permission par ID' })
+  findOne(@Param('id') id: number): Promise<Permission> {
+    return this.service.findOne(id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    // return this.permissionService.remove(+id);
+  @ApiOperation({ summary: 'Supprimer une permission' })
+  remove(@Param('id') id: number): Promise<void> {
+    return this.service.remove(id);
   }
 }

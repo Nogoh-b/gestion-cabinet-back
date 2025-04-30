@@ -1,12 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsIn } from 'class-validator';
+import { PartialType } from '@nestjs/swagger';
+import { CreateRolePermissionDto } from './create-role-permission.dto';
 
-export class UpdateRolePermissionDto {
-  @ApiProperty({ 
-    description: 'Statut (0 = Inactif, 1 = Actif)',
-    enum: [0, 1],
-  })
-  @IsInt()
-  @IsIn([0, 1])
-  status: number;
-}
+export class UpdateRolePermissionDto extends PartialType(CreateRolePermissionDto) {}

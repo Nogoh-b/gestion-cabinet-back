@@ -3,7 +3,6 @@ import { AppModule } from './app.module';
 import { SwaggerModule } from '@nestjs/swagger';
 import { swaggerConfig } from './core/config/swagger.config';
 import { RolesGuard } from './core/auth/guards/roles.guard';
-import { ValidationError, ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -13,17 +12,24 @@ async function bootstrap() {
   SwaggerModule.setup('api-docs', app, document, {
   swaggerOptions: {
     persistAuthorization: true,
+    defaultModelsExpandDepth: -1
+
   },
 });
+
+
   app.enableCors({
-  origin: '*', // ou 'http://localhost:4200' par exemple
-  methods: 'GET,POST,PUT,DELETE',
+    origin: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Authorization'],
+    credentials: true,
   });
   const reflector = app.get(Reflector);
   app.useGlobalGuards(new RolesGuard(reflector));
 
   
-  app.useGlobalPipes(new ValidationPipe({
+  /*app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // enlève les champs inconnus
     forbidNonWhitelisted: true, // bloque les champs non listés
     transform: true, // transforme automatiquement l'objet en DTO
@@ -36,7 +42,7 @@ async function bootstrap() {
       }));
       return new Error(JSON.stringify(detailedErrors, null, 2));
     }
-  }));
+  }));*/
   
 
   await app.listen(process.env.PORT ?? 3000);

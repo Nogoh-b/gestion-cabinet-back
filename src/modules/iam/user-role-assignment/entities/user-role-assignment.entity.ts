@@ -1,35 +1,46 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { User } from '../../user/entities/user.entity';
+// user-role-assignment.entity.ts
+import {
+  Entity,
+  ManyToOne,
+  JoinColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  PrimaryColumn,
+} from 'typeorm';
 import { UserRole } from '../../user-role/entities/user-role.entity';
+import { User } from '../../user/entities/user.entity';
 
-@Entity({ name: 'user_role_assignment', schema: 'core_banking' })
+@Entity('user_role_assignment')
 export class UserRoleAssignment {
-  @PrimaryColumn({ name: 'user_id', type: 'int' })
-  userId: number;
 
-  @PrimaryColumn({ name: 'role_id', type: 'tinyint', unsigned: true })
-  roleId: number;
+  
+  @PrimaryColumn({ type: 'int' })
+  user_id: number;
 
-  @Column({ name: 'assigned_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  assignedAt: Date;
+  @PrimaryColumn({ unsigned: true, type: 'tinyint' })
+  role_id: number;
 
-  @Column({ name: 'assigned_by', type: 'int', nullable: true, comment: 'User qui a attribué le rôle' })
-  assignedBy?: number;
-
-  @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updated_at: Date;
-
-  @Column({ type: 'tinyint', nullable: true })
-  status?: number;
-
-  @ManyToOne(() => User, (user) => user.roleAssignments, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @ManyToOne(() => UserRole, (role) => role.assignments, { onDelete: 'CASCADE' })
+  @ManyToOne(() => UserRole, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'role_id' })
   role: UserRole;
+
+  @Column({ name: 'assigned_at', default: () => 'CURRENT_TIMESTAMP' })
+  assigned_at: Date;
+
+  @Column({ name: 'assigned_by', nullable: true })
+  assigned_by: number;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
+
+  @Column({ type: 'tinyint', nullable: true })
+  status: number;
 }

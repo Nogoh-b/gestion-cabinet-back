@@ -1,33 +1,38 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
-import { UserRoleService } from './user-role.service';
+// user-roles.controller.ts
+import { Controller, Post, Body, Get, Param, Delete } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CreateUserRoleDto } from './dto/create-user-role.dto';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UserRole } from './entities/user-role.entity';
+import { UserRolesService } from './user-role.service';
+import { RoleResponseDto } from './dto/role-response.dto';
 
-@ApiTags('IAM - Roles')
-@Controller('iam/roles')
-export class UserRoleController {
-  constructor(private readonly userRoleService: UserRoleService) {}
+@ApiTags('User Roles')
+@Controller('user-roles')
+export class UserRolesController {
+  constructor(private readonly service: UserRolesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'creation d\'un role ' })
-  async create(@Body() createUserRoleDto: CreateUserRoleDto) {
-    return this.userRoleService.create(createUserRoleDto);
+  @ApiOperation({ summary: 'Create new user role' })
+  @ApiResponse({ status: 201, description: 'Role created', type: UserRole })
+  create(@Body() dto: CreateUserRoleDto): Promise<UserRole> {
+    return this.service.create(dto);
   }
 
-  @Get()
-  @ApiOperation({ summary: 'Mettre à jour le statut d\'une assignation' })
-  async findAll() {
-    return this.userRoleService.findAll();
-  }
+@Get()
+@ApiOperation({ summary: 'Get all roles with permissions' })
+async findAll(): Promise<RoleResponseDto[]> {
+  return this.service.findAllWithPermissions();
+}
 
-  @ApiOperation({ summary: 'Mettre à jour le statut d\'une assignation' })
-  async update(id: number, updateUserRoleDto: UpdateUserRoleDto): Promise<UserRole> {
-    return this.userRoleService.update(id, updateUserRoleDto);
-  }
+@Get(':id')
+@ApiOperation({ summary: 'Get role by ID with permissions' })
+async findOne(@Param('id') id: number): Promise<any> {
+  return this.service.findOneWithPermissions(id);
+}
 
-  async remove(id: number): Promise<void> {
-    // await this.userRoleRepository.delete(id);
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete role' })
+  remove(@Param('id') id: number): Promise<void> {
+    return this.service.remove(id);
   }
 }

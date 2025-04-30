@@ -1,0 +1,41 @@
+// type-customers.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { CreateTypeCustomerDto } from './dto/create-type_customer.dto';
+import { TypeCustomer } from './entities/type_customer.entity';
+import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
+
+@Injectable()
+export class TypeCustomersService {
+  constructor(
+    @InjectRepository(TypeCustomer)
+    private repository: Repository<TypeCustomer>
+  ) {}
+
+  create(dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
+    return this.repository.save(dto);
+  }
+
+  findAll(): Promise<TypeCustomer[]> {
+    return this.repository.find();
+  }
+
+  async findOne(id: number): Promise<TypeCustomer> {
+    const typeCustomer = await this.repository.findOneBy({ id });
+    
+    if (!typeCustomer) {
+      throw new NotFoundException(`TypeCustomer with ID ${id} not found`);
+    }
+    
+    return typeCustomer;
+  }
+
+  update(id: number, dto: UpdateTypeCustomerDto): Promise<TypeCustomer> {
+    return this.repository.save({ id, ...dto });
+  }
+
+  /*remove(id: number): Promise<void> {
+    return this.repository.delete(id);
+  }*/
+}

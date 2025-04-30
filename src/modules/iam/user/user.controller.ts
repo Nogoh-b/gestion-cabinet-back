@@ -1,45 +1,38 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { UserService } from './user.service';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { ApiTags } from '@nestjs/swagger';
+// users.controller.ts
+import { Controller, Post, Body, Get, Param, Delete } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UsersService } from './user.service';
+import { User } from './entities/user.entity';
+import { UserResponseDto } from './dto/user-response.dto';
 
-@ApiTags('IAM - Users')
-@Controller('iam/users')
-export class UserController {
-  constructor(private readonly userService: UserService) {}
+@ApiTags('Users')
+@Controller('users')
+export class UsersController {
+  constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    console.log('Received DTO:', createUserDto);
-    return this.userService.create(createUserDto);
-  }
-
-  @Post(':id/status')
-  async updateStatus(
-    @Param('id') userId: number,
-    @Body() updateUserStatusDto: UpdateUserDto,
-  ) {
-      return this.userService.updateStatus(userId, updateUserStatusDto.status!);
+  @ApiOperation({ summary: 'Create a new user' })
+  @ApiResponse({ status: 201, description: 'User created', type: User })
+  create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
+    return this.usersService.create(createUserDto);
   }
 
   @Get()
-  findAll() {
-    return this.userService.findAll();
+  @ApiOperation({ summary: 'Get all users' })
+  findAll(): Promise<UserResponseDto[]> {
+    return this.usersService.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.userService.findOne(+id);
-  }
-
-  /*@Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.userService.update(+id, updateUserDto);
+  @ApiOperation({ summary: 'Get user by ID' })
+  findOne(@Param('id') id: string): Promise<UserResponseDto> {
+    return this.usersService.findOne(+id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.userService.remove(+id);
-  }*/
+  @ApiOperation({ summary: 'Delete user' })
+  remove(@Param('id') id: string): Promise<void> {
+    return this.usersService.remove(+id);
+  }
 }
