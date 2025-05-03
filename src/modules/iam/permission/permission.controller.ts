@@ -7,7 +7,7 @@ import { CreatePermissionDto } from './dto/create-permission.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 
 @ApiTags('Gestion des Permissions')
-@ApiBearerAuth('JWT-auth') 
+@ApiBearerAuth() 
 @Controller('permissions')
 export class PermissionsController {
   constructor(private readonly service: PermissionsService) {}

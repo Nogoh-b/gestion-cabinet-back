@@ -1,10 +1,11 @@
-import { Controller, Post, Body, UseGuards, HttpCode, Req, HttpStatus } from '@nestjs/common';
+import { Controller, Post, UseGuards, HttpCode, Req, HttpStatus, Request } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger'; // Ajouter
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { Public } from '../decorators/public.decorator';
+import { LocalAuthGuard } from './guards/local-auth.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -23,9 +24,15 @@ export class AuthController {
     description: 'Connexion réussie',
     type: LoginResponseDto
   })
-  @ApiResponse({ status: 401, description: 'Non autorisé' })
+  /*@ApiResponse({ status: 401, description: 'Non autorisé' })
   async login(@Body() loginUserDto: LoginUserDto) {
     return this.authService.login(loginUserDto);
+  }*/
+
+  @UseGuards(LocalAuthGuard)
+  @Post('login')
+  async login(@Request() req) {
+    return this.authService.login(req.user);
   }
 
   @Public()

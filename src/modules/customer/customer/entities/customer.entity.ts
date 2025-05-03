@@ -1,10 +1,10 @@
-import { District } from 'src/modules/geography/district/entities/district.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
+import { BaseEntity } from 'src/core/entities/base.entity';
 
 @Entity('customer')
-export class Customer {
+export class Customer extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -12,42 +12,42 @@ export class Customer {
   name: string;
 
   @Column({ name: 'first_name', length: 45, nullable: true })
-  firstName: string;
+  first_name: string;
 
   @Column({ name: 'public_key', length: 45, nullable: true })
-  publicKey: string;
+  public_key: string;
 
   @Column({ name: 'private_key', length: 45, nullable: true })
-  privateKey: string;
+  private_key: string;
 
   @Column({ name: 'number_phone_1', length: 45, nullable: true })
-  numberPhone1: string;
+  number_phone_1: string;
 
   @Column({ name: 'number_phone_2', length: 45, nullable: true })
-  numberPhone2: string;
+  number_phone_2: string;
 
   @Column({ length: 45, nullable: true, unique: true })
   email: string;
 
-  @ManyToOne(() => District, { nullable: false })
+  /*@ManyToOne(() => District, { nullable: false })
   @JoinColumn({ name: 'districts_id' })
-  district: District;
+  district: District;*/
 
- @ManyToOne(() => TypeCustomer)
+  @ManyToOne(() => TypeCustomer)
   @JoinColumn({ name: 'type_customer_id' })
-  typeCustomer: TypeCustomer;
+  type_customer: TypeCustomer;
 
   @ManyToOne(() => LocationCity)
   @JoinColumn({ name: 'location_city_id' })
-  locationCity: LocationCity;
+  location_city: LocationCity;
 
   // Ajoutez ces propriétés pour accéder directement aux IDs
   get typeCustomerId(): number {
-    return this.typeCustomer?.id;
+    return this.type_customer?.id;
   }
 
   get locationCityId(): number {
-    return this.locationCity?.id;
+    return this.location_city?.id;
   }
 
   @Column({ length: 45, nullable: true, unique: true })
@@ -59,12 +59,6 @@ export class Customer {
   @Column({ nullable: true })
   birthday: Date;
 
-  @Column({ nullable: true })
+  @Column({ nullable: true, default: 1 })
   status: number;
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }

@@ -36,9 +36,23 @@ export class UserResponseDto {
   )
   roles: UserRole[];
 
+  @Expose()
+  @ApiProperty()
+  @Transform(({ obj }) =>
+    obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.code || null
+  )
+  role: string;
+
+  @Expose()
+  @ApiProperty()
+  @Transform(({ obj }) =>
+    obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.description || null
+  )
+  roleDescription: string;
+
   @Expose({ name: 'created_at' })
   @ApiProperty()
-  createdAt: Date;
+  create_at: Date;
 
   @Exclude()
   roleAssignments: any; 
@@ -48,5 +62,5 @@ export class UserResponseDto {
 
   @Expose({ name: 'updated_at' })
   @ApiProperty()
-  updatedAt: Date;
+  update_at: Date;
 }

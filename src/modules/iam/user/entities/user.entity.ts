@@ -34,8 +34,8 @@ export class User {
   customer: Customer;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  create_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  update_at: Date;
 }

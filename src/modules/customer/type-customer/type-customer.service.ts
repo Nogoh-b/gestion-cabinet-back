@@ -5,12 +5,18 @@ import { Repository } from 'typeorm';
 import { CreateTypeCustomerDto } from './dto/create-type_customer.dto';
 import { TypeCustomer } from './entities/type_customer.entity';
 import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { AssignDocumentsToTypeDto } from 'src/modules/documents/shared/assign-documents-to-type.dto';
 
 @Injectable()
 export class TypeCustomersService {
   constructor(
     @InjectRepository(TypeCustomer)
-    private repository: Repository<TypeCustomer>
+    private repository: Repository<TypeCustomer>,
+    @InjectRepository(TypeCustomer)
+    private typeCustomerRepository: Repository<TypeCustomer>,
+    @InjectRepository(DocumentType)
+    private documentTypeRepository: Repository<DocumentType>
   ) {}
 
   create(dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
@@ -18,11 +24,11 @@ export class TypeCustomersService {
   }
 
   findAll(): Promise<TypeCustomer[]> {
-    return this.repository.find();
+    return this.repository.find({relations: ['requiredDocuments']});
   }
 
   async findOne(id: number): Promise<TypeCustomer> {
-    const typeCustomer = await this.repository.findOneBy({ id });
+    const typeCustomer = await this.repository.findOne({where:{ id }, relations: ['requiredDocuments']});
     
     if (!typeCustomer) {
       throw new NotFoundException(`TypeCustomer with ID ${id} not found`);
@@ -35,7 +41,28 @@ export class TypeCustomersService {
     return this.repository.save({ id, ...dto });
   }
 
-  /*remove(id: number): Promise<void> {
-    return this.repository.delete(id);
-  }*/
+
+
+  async assignDocuments(typeCustomerId: number, dto: AssignDocumentsToTypeDto)   {
+    const typeCustomer = await this.typeCustomerRepository.findOne({
+      where: { id: typeCustomerId },
+      relations: ['requiredDocuments']
+    });
+
+    if (!typeCustomer) {
+      throw new NotFoundException(`TypeCustomer with ID ${typeCustomerId} not found`);
+    }
+
+    const documents = await this.documentTypeRepository.findByIds(dto.documentTypeIds);
+    typeCustomer.requiredDocuments = documents;
+
+    return this.typeCustomerRepository.save(typeCustomer);
+  }
+
+  async findOneWithDocuments(id: number) {
+    return this.typeCustomerRepository.findOne({
+      where: { id },
+      relations: ['requiredDocuments']
+    });
+  }
 }

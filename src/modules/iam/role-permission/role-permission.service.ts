@@ -66,7 +66,6 @@ export class RolePermissionService {
     });
   }
 
-// role-permission.service.ts
 async getPermissionsByRole(role_id: number): Promise<Permission[]> {
   return this.rolePermissionRepository
     .createQueryBuilder('rp')
@@ -77,8 +76,8 @@ async getPermissionsByRole(role_id: number): Promise<Permission[]> {
       'permission.code', 
       'permission.description',
       'permission.status',
-      'permission.createdAt',
-      'permission.updatedAt'
+      'permission.create_at',
+      'permission.update_at'
     ])
     .getMany()
     .then(results => results.map(r => r.permission));
@@ -89,5 +88,13 @@ async getPermissionsByRole(role_id: number): Promise<Permission[]> {
       where: { permission_id },
       relations: ['role','permission']
     });
+  }
+
+  async getRolePermissions(role_id: number): Promise<Permission[]> {
+  const permissions = await this.rolePermissionRepository.find({
+    where: { role_id },
+    relations: ['permission'],
+  });
+  return permissions.map(p => p.permission);
   }
 }

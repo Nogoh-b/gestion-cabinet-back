@@ -1,38 +1,51 @@
 // customer-response.dto.ts
-import { Expose, Transform } from 'class-transformer';
+import { Expose } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CustomerResponseDto {
   @Expose()
+  @ApiProperty()
   id: number;
 
   @Expose()
+  @ApiProperty()
   name: string;
 
   @Expose({ name: 'first_name' })
-  firstName: string;
+  @ApiProperty()
+  first_name: string;
 
   @Expose({ name: 'public_key' })
-  publicKey: string;
+  @ApiProperty()
+  public_key: string;
 
   @Expose({ name: 'private_key' })
-  privateKey: string;
+  @ApiProperty()
+  private_key: string;
 
   @Expose({ name: 'number_phone_1' })
-  numberPhone1: string;
+  @ApiProperty()
+  number_phone_1: string;
 
   @Expose({ name: 'number_phone_2' })
-  numberPhone2: string;
+  @ApiProperty()
+  number_phone_2: string;
 
   @Expose()
+  @ApiProperty()
   email: string;
 
-  @Expose({ name: 'type_customer_id' })
+ /* @Expose({ name: 'type_customer_id' })
   @Transform(({ obj }) => obj.typeCustomer?.id)
-  typeCustomerId: number;
+  typeCustomerId: number;*/
+
+  /*@Expose({ name: 'type_customer_id' })
+  @Transform(({ obj }) => obj.typeCustomer)
+  type_customer: TypeCustomer;
 
   @Expose({ name: 'location_city_id' })
-  @Transform(({ obj }) => obj.locationCity?.id)
-  locationCityId: number;
+  @Transform(({ obj }) => obj.locationCity)
+  location_city: LocationCity;*/
 
   @Expose()
   nui: string;
@@ -44,10 +57,10 @@ export class CustomerResponseDto {
   birthday: Date;
 
   @Expose({ name: 'created_at' })
-  createdAt: Date;
+  create_at: Date;
 
   @Expose({ name: 'updated_at' })
-  updatedAt: Date;
+  update_at: Date;
 
   @Expose()
   status: number;

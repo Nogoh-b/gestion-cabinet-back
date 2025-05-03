@@ -1,10 +1,9 @@
 // create-customer.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
+import { Exclude } from 'class-transformer';
 import { IsInt, IsString, MaxLength, IsOptional, IsEmail, IsDate } from 'class-validator';
 
 export class CreateCustomerDto {
-  @IsInt()
-  id: number;
 
   @IsString()
   @MaxLength(45)
@@ -18,7 +17,7 @@ export class CreateCustomerDto {
   @IsOptional()
   first_name?: string;
 
-  @IsString()
+  /*@IsString()
   @ApiProperty()
   @MaxLength(45)
   @IsOptional()
@@ -28,7 +27,7 @@ export class CreateCustomerDto {
   @ApiProperty()
   @MaxLength(45)
   @IsOptional()
-  private_key?: string;
+  private_key?: string;*/
 
   @IsString()
   @ApiProperty()
@@ -43,18 +42,14 @@ export class CreateCustomerDto {
   number_phone_2?: string;
 
   @IsEmail()
-  @ApiProperty()
+  @ApiProperty({required: true})
   @MaxLength(45)
-  @IsOptional()
   email?: string;
 
-  @ApiProperty()
-  @IsInt()
-  districts_id: number;
 
   @ApiProperty()
   @IsInt()
-  typeCustomer_id: number;
+  type_customer_id: number;
 
   @IsString()
   @ApiProperty()
@@ -75,10 +70,27 @@ export class CreateCustomerDto {
 
   @ApiProperty()
   @IsInt()
-  locationCity_id: number;
+  location_city_id: number;
 
+  @ApiProperty()
+  @Exclude()
+  created_at: Date;
+
+  @ApiProperty()
+  @Exclude()
+  updated_at: Date;
+
+  /*@ApiProperty()
+  @Exclude()
+  public_key: string;
+
+  @ApiProperty()
+  @Exclude()
+  private_key: string;
+
+  @Exclude()
   @IsInt()
   @ApiProperty()
   @IsOptional()
-  status?: number;
+  status?: number;*/
 }

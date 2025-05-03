@@ -35,5 +35,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     CountriesService,
   
   ],
+  exports: [
+    RegionsService,
+    DivisionsService,
+    DistrictsService,
+    LocationCitiesService,
+    CountriesService,
+  
+  ],
 })
 export class GeographyModule {}

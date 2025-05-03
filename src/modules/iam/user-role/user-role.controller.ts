@@ -18,17 +18,20 @@ export class UserRolesController {
     return this.service.create(dto);
   }
 
-@Get()
-@ApiOperation({ summary: 'Get all roles with permissions' })
-async findAll(): Promise<RoleResponseDto[]> {
-  return this.service.findAllWithPermissions();
-}
+  @Get()
+  @ApiOperation({ summary: 'Get all roles with permissions' })
+  async findAll(): Promise<RoleResponseDto[]> {
+    return this.service.findAllWithPermissions();
+  }
 
-@Get(':id')
-@ApiOperation({ summary: 'Get role by ID with permissions' })
-async findOne(@Param('id') id: number): Promise<any> {
-  return this.service.findOneWithPermissions(id);
-}
+  @Get(':id')
+  @ApiOperation({ summary: 'Get role by ID with permissions' })
+  async findOne(@Param('id') id: number): Promise<any> {
+    return this.service.findOneWithPermissions(id);
+  }
+
+
+
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete role' })

@@ -1,5 +1,14 @@
 // type-customer.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToMany,
+  JoinTable,
+} from 'typeorm';
 
 @Entity('type_customer')
 export class TypeCustomer {
@@ -12,11 +21,20 @@ export class TypeCustomer {
   @Column({ length: 45, nullable: true })
   code: string;
 
+ @ManyToMany(() => DocumentType)
+  @JoinTable({
+    name: 'type_customer_document_type', // Nom de la table de jointure
+    joinColumn: { name: 'type_customer_id' },
+    inverseJoinColumn: { name: 'document_type_id' }
+  })
+  requiredDocuments: DocumentType[];
+  
+
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  create_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  update_at: Date;
 
   @Column({ type: 'tinyint', nullable: true })
   status: number;

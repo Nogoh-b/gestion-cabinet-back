@@ -45,8 +45,8 @@ async findOneWithPermissions(id: number): Promise<any> {
       'permission.code',
       'permission.description',
       'permission.status',
-      'permission.createdAt',
-      'permission.updatedAt'
+      'permission.create_at',
+      'permission.update_at'
     ])
     .getRawMany()
     .then(results => 
@@ -55,8 +55,8 @@ async findOneWithPermissions(id: number): Promise<any> {
         code: r.permission_code,
         description: r.permission_description,
         status: r.permission_status,
-        createdAt: r.permission_createdAt,
-        updatedAt: r.permission_updatedAt
+        create_at: r.permission_create_at,
+        update_at: r.permission_update_at
       }))
     );
     let data: any = role
@@ -77,8 +77,8 @@ async findAllWithPermissions(): Promise<any[]> {
       'permission.code AS permission_code',
       'permission.description AS permission_description',
       'permission.status AS permission_status',
-      'permission.createdAt AS permission_createdAt',
-      'permission.updatedAt AS permission_updatedAt'
+      'permission.create_at AS permission_create_at',
+      'permission.update_at AS permission_update_at'
     ])
     .getRawMany();
 
@@ -95,8 +95,8 @@ async findAllWithPermissions(): Promise<any[]> {
       code: row.permission_code,
       description: row.permission_description,
       status: row.permission_status,
-      createdAt: row.permission_createdAt,
-      updatedAt: row.permission_updatedAt
+      create_at: row.permission_create_at,
+      update_at: row.permission_update_at
     };
 
     const roleEntry = roleMap.get(row.role_id);

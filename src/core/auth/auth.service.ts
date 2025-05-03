@@ -3,6 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { UsersService } from 'src/modules/iam/user/user.service';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 
 @Injectable()
 export class AuthService {
@@ -28,12 +30,17 @@ export class AuthService {
     return result;
     }
 
-  async login(user: any) {
-    user = await this.usersService.findByUsername(user.username);
-    
+  async login(data: any) {
+    const user : User | null  = await this.usersService.findByUsername(data.username);
+    if (!user) {
+        throw new UnauthorizedException('Utilisateur inexistant');
+    }
+    const role : UserRole |  null = new UserRole() //await this.usersService.getCurrentUserRolenameRole(data.id)
+
     const payload: JwtPayload = { 
       sub: user.id,
       username: user.username,
+      role : role?.code
     };
     
     return {
@@ -41,6 +48,7 @@ export class AuthService {
       user: {
         id: user.id,
         username: user.username,
+        role : role
       }
     };
   }

@@ -11,10 +11,9 @@ import { AuthService } from './auth/auth.service';
 import { AuthController } from './auth/auth.controller';
 import { IamModule } from 'src/modules/iam/iam.module';
 import { PassportModule } from '@nestjs/passport';
-import { RolesGuard } from './auth/guards/roles.guard';
 import { LocalStrategy } from './auth/strategies/local.strategy';
-import { jwtConstants } from './auth/config/jwt.config';
 // import { swaggerConfig } from './config/swagger.config';
+import { InitService } from './init/init.service';
 
 @Global()
 
@@ -25,36 +24,31 @@ import { jwtConstants } from './auth/config/jwt.config';
       isGlobal: true,
       load: [databaseConfig],
     }),
+    JwtModule.register({
+      secret: process.env.JWT_SECRET || 'secretKey',  // à stocker en variable d’environnement
+      signOptions: { expiresIn: '1h' },
+    }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => config.get('database')!,
       inject: [ConfigService],
-    }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (config: ConfigService) => ({
-        secret: jwtConstants.secret,
-        signOptions: { expiresIn: jwtConstants.expiresIn }
-      }),
-      inject: [ConfigService]
     }),
     PassportModule,
 
   ],
   controllers: [AuthController],
   providers: [
-    JwtStrategy,
     AuthService,
     LocalStrategy,
     JwtStrategy,
-    RolesGuard,
+    // RolesGuard,
     JwtAuthGuard,
     // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
-    { provide: 'APP_GUARD', useClass: RolesGuard },
+    // { provide: 'APP_GUARD', useClass: RolesGuard },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
+    InitService,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
-    AuthService
   ],
   exports: [
     ConfigModule,
@@ -63,7 +57,7 @@ import { jwtConstants } from './auth/config/jwt.config';
     JwtModule,
     PassportModule,
     AuthService,
-    RolesGuard,
+    // RolesGuard,
     JwtAuthGuard
   ],
 })

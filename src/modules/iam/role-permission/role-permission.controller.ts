@@ -26,6 +26,15 @@ export class RolePermissionController {
     return this.service.remove(roleId, permissionId);
   }
 
+  @Get(':id/permissions')
+  @ApiOperation({ summary: "Récupérer les permissions d'un rôle" })
+  @ApiResponse({ status: 200, description: 'Permissions récupérées avec succès' })
+  @ApiResponse({ status: 404, description: 'Rôle non trouvé' })
+  async getRolePermissions(@Param('id') roleId: number) {
+    return this.service.getRolePermissions(roleId);
+  }
+
+
   @Get('role/:roleId')
   @ApiOperation({ summary: 'Lister les permissions d\'un rôle' })
   findByRole(@Param('roleId') roleId: number) {

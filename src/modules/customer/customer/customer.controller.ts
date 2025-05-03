@@ -17,6 +17,13 @@ export class CustomerController {
     return await this.customerService.create(createCustomerDto);
   }
 
+  @Post()
+  @ApiOperation({ summary: 'Create a new customer' })
+  @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
+  async createUserFromeCoti(@Body() createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
+    return await this.customerService.create(createCustomerDto);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Get all customers' })
   @ApiResponse({ status: 200, description: 'List of customers', type: [CustomerResponseDto] })

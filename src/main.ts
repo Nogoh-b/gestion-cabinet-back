@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { SwaggerModule } from '@nestjs/swagger';
 import { swaggerConfig } from './core/config/swagger.config';
 import { RolesGuard } from './core/auth/guards/roles.guard';
+import { UPLOAD_PATH } from './core/common/constants/constants';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -27,7 +28,26 @@ async function bootstrap() {
   });
   const reflector = app.get(Reflector);
   app.useGlobalGuards(new RolesGuard(reflector));
+  
 
+  console.log('App is running on: http://localhost:3000 ', UPLOAD_PATH);
+  
+
+
+/*app.useGlobalInterceptors(
+  FileInterceptor('file', {  // Pas besoin de 'new'
+    limits: {
+      fileSize: 1024 * 1024 * 5, // 5MB
+    },
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype.match(/\/(jpg|jpeg|png|pdf)$/)) {
+        cb(null, true);  // Accepte le fichier
+      } else {
+        cb(new Error('File type not allowed'), false);  // Rejette le fichier
+      }
+    },
+  })
+);*/
   
   /*app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // enlève les champs inconnus

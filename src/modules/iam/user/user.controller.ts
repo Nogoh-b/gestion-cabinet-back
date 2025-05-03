@@ -19,13 +19,13 @@ export class UsersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all users' })
+  @ApiOperation({ summary: 'Récuperer les utilisateurs avec leurs roles' })
   findAll(): Promise<UserResponseDto[]> {
     return this.usersService.findAll();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get user by ID' })
+  @ApiOperation({ summary: 'Récupérer un utilisateur avec son role' })
   findOne(@Param('id') id: string): Promise<UserResponseDto> {
     return this.usersService.findOne(+id);
   }

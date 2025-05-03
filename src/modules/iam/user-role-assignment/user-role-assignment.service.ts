@@ -66,6 +66,13 @@ export class UserRoleAssignmentService {
     });
   }
 
+  async findCurrentRoleByUser(user_id: number): Promise<UserRoleAssignment[]> {
+    return this.userRoleAssignmentRepository.find({
+      where: { user_id, status :1 },
+      relations: ['role']
+    });
+  }
+
   async findByRole(role_id: number): Promise<UserRoleAssignment[]> {
     return this.userRoleAssignmentRepository.find({
       where: { role_id },

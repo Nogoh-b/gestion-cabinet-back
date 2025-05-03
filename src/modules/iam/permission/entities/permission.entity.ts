@@ -14,13 +14,13 @@ export class Permission {
   description: string;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  create_at: Date;
 
   @OneToMany(() => RolePermission, (rp) => rp.permission)
   roles: RolePermission[];
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  update_at: Date;
 
   @Column({ type: 'tinyint', nullable: true })
   status: number;

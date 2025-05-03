@@ -33,7 +33,12 @@ import { ActivitiesUserController } from './activities-user/activities-user.cont
      ],
      providers:[UsersService, ActivitiesUserService, RolePermissionService, UserRolesService, UserRoleAssignmentService, PermissionsService],
      exports:[
-      UsersService
+      UsersService,
+      UserRoleAssignmentService,
+      RolePermissionService,
+      UserRolesService,
+      PermissionsService,
+      ActivitiesUserService,
      ]
 })
 export class IamModule {}
