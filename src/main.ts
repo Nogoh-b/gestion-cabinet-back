@@ -1,8 +1,7 @@
-import { NestFactory, Reflector } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule } from '@nestjs/swagger';
 import { swaggerConfig } from './core/config/swagger.config';
-import { RolesGuard } from './core/auth/guards/roles.guard';
 import { Transport } from '@nestjs/microservices';
 import * as fs from 'fs';
 import * as dotenv from 'dotenv';
@@ -27,19 +26,6 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
   const core = await NestFactory.createMicroservice(AppModule, {
-  const app = await NestFactory.create(AppModule);
-
-    // Configuration Swagger
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api-docs', app, document, {
-  swaggerOptions: {
-    persistAuthorization: true,
-    defaultModelsExpandDepth: -1
-
-  },
-});
-
-  app.connectMicroservice({
     transport: Transport.TCP,
     options: {
       port: 3002,
@@ -52,6 +38,17 @@ async function bootstrap() {
       } as tls.TlsOptions,
     },
   });
+    // Configuration Swagger
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api-docs', app, document, {
+  swaggerOptions: {
+    persistAuthorization: true,
+    defaultModelsExpandDepth: -1
+
+  },
+});
+
+
   await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()])
     .then(() => {
       console.log('Microservices are listening (http) 3004 => (TPC) 3002');
