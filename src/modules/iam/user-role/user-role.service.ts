@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { CreateUserRoleDto } from './dto/create-user-role.dto';
 import { UserRole } from './entities/user-role.entity';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { RolePermissionService } from '../role-permission/role-permission.service';
 import { CreateRolePermissionDto } from '../role-permission/dto/create-role-permission.dto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class UserRolesService {
   constructor(
     @InjectRepository(UserRole)
     private repository: Repository<UserRole>,
+    private rolePermissionService: RolePermissionService
   ) {}
 
   async create(dto: CreateUserRoleDto): Promise<any> {
@@ -24,6 +26,7 @@ export class UserRolesService {
     const rolePermissionDto = new CreateRolePermissionDto()
     rolePermissionDto.role_id = userRole.id
     rolePermissionDto.permission_ids = dto.permissions_ids
+    this.rolePermissionService.createRoles(rolePermissionDto)
   }
 
   findAll(): Promise<UserRole[]> {
