@@ -15,7 +15,7 @@ export class PermissionsService {
   async create(dto: CreatePermissionDto): Promise<Permission> {
     const exists = await this.repository.findOne({ where: { code: dto.code } });
     if (exists) throw new ConflictException('Permission code already exists');
-    return this.repository.save(dto);
+    return this.repository.save({ ...dto, status: 1 });
   }
 
   findAll(): Promise<Permission[]> {
@@ -24,11 +24,14 @@ export class PermissionsService {
 
   async findOne(id: number): Promise<Permission> {
     const permission = await this.repository.findOne({ where: { id } });
-    if (!permission) throw new NotFoundException('Permission not found');
+    if (!permission) throw new NotFoundException(`Permission ${id} not found`);
     return permission;
   }
 
   async remove(id: number): Promise<void> {
     await this.repository.delete(id);
+  }
+  async descativePermission(id: number): Promise<void> {
+    await this.repository.update(id, { status: 0 });
   }
 }

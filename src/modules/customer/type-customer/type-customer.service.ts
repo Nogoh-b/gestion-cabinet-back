@@ -16,7 +16,7 @@ export class TypeCustomersService {
     @InjectRepository(TypeCustomer)
     private typeCustomerRepository: Repository<TypeCustomer>,
     @InjectRepository(DocumentType)
-    private documentTypeRepository: Repository<DocumentType>
+    private document_typeRepository: Repository<DocumentType>
   ) {}
 
   create(dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
@@ -32,6 +32,16 @@ export class TypeCustomersService {
     
     if (!typeCustomer) {
       throw new NotFoundException(`TypeCustomer with ID ${id} not found`);
+    }
+    
+    return typeCustomer;
+  }
+
+  async findOneByCode(code: string): Promise<TypeCustomer> {
+    const typeCustomer = await this.repository.findOne({where:{ code }, relations: ['requiredDocuments']});
+    
+    if (!typeCustomer) {
+      throw new NotFoundException(`TypeCustomer with CODE ${code} not found`);
     }
     
     return typeCustomer;
@@ -53,7 +63,7 @@ export class TypeCustomersService {
       throw new NotFoundException(`TypeCustomer with ID ${typeCustomerId} not found`);
     }
 
-    const documents = await this.documentTypeRepository.findByIds(dto.documentTypeIds);
+    const documents = await this.document_typeRepository.findByIds(dto.document_type_ids);
     typeCustomer.requiredDocuments = documents;
 
     return this.typeCustomerRepository.save(typeCustomer);

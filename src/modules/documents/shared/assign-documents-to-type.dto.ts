@@ -6,5 +6,5 @@ export class AssignDocumentsToTypeDto {
   @ApiProperty({ type: [Number], example: [1, 2, 3] })
   @IsArray()
   @IsInt({ each: true })
-  documentTypeIds: number[];
+  document_type_ids: number[];
 }

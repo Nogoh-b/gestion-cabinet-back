@@ -1,5 +1,5 @@
 // permissions.controller.ts
-import { Controller, Post, Body, Get, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Permission } from './entities/permission.entity';
 import { PermissionsService } from './permission.service';
@@ -32,9 +32,9 @@ export class PermissionsController {
     return this.service.findOne(id);
   }
 
-  @Delete(':id')
+  @Post(':id')
   @ApiOperation({ summary: 'Supprimer une permission' })
   remove(@Param('id') id: number): Promise<void> {
-    return this.service.remove(id);
+    return this.service.descativePermission(id);
   }
 }

@@ -14,6 +14,7 @@ import { PassportModule } from '@nestjs/passport';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 // import { swaggerConfig } from './config/swagger.config';
 import { InitService } from './init/init.service';
+import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 
 @Global()
 
@@ -48,6 +49,7 @@ import { InitService } from './init/init.service';
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
+    KeyGeneratorService,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
   exports: [
@@ -58,7 +60,8 @@ import { InitService } from './init/init.service';
     PassportModule,
     AuthService,
     // RolesGuard,
-    JwtAuthGuard
+    JwtAuthGuard,
+    KeyGeneratorService
   ],
 })
 export class CoreModule {}

@@ -21,7 +21,7 @@ export class RolePermissionService {
     private readonly permissionsService: PermissionsService,
   ) {}
 
-  async create(createDto: CreateRolePermissionDto): Promise<RolePermission> {
+  /*async create(createDto: CreateRolePermissionDto): Promise<RolePermission> {
     // Vérifier l'existence du rôle et de la permission
     await this.userRolesService.findOne(createDto.role_id);
     await this.permissionsService.findOne(createDto.permission_id);
@@ -30,7 +30,8 @@ export class RolePermissionService {
     const exists = await this.rolePermissionRepository.findOne({
       where: {
         role_id: createDto.role_id,
-        permission_id: createDto.permission_id
+        permission_id: createDto.permission_id,
+        status: 1
       }
     });
 
@@ -42,10 +43,52 @@ export class RolePermissionService {
     const rolePermission = this.rolePermissionRepository.create({
       role_id: createDto.role_id,
       permission_id: createDto.permission_id,
-      status: createDto.status ?? 1
+      status:  1
     });
 
     return this.rolePermissionRepository.save(rolePermission);
+  }*/
+  async createRoles(createDto: CreateRolePermissionDto): Promise<RolePermission[]> {
+    // Vérifier l'existence du rôle et de la permission
+    const role = await this.userRolesService.findOne(createDto.role_id);
+
+    const role_permissions: RolePermission[] = []
+
+    for (const element of createDto.permission_ids) {
+      const permission = await this.permissionsService.findOne(element);
+      // Vérifier si l'association existe déjà
+      const exists = await this.rolePermissionRepository.findOne({
+        where: {
+          role_id: createDto.role_id,
+          permission_id: element,
+          status: 1
+        }
+      });
+
+      if (exists) {
+        throw new ConflictException(
+          `La permission ${element} est déjà assignée au rôle ${createDto.role_id}`,
+        );
+      }
+
+      // Créer la nouvelle association
+      const rolePermission = this.rolePermissionRepository.create({
+        role_id: createDto.role_id,
+        permission_id: element,
+        status:  1
+      });
+
+      role_permissions.push(
+        await this.rolePermissionRepository.save({
+          ...rolePermission,
+          role,
+          permission,
+        }),
+      );
+      
+    }
+    return role_permissions
+
   }
 
   async remove(role_id: number, permission_id: number): Promise<void> {
@@ -96,5 +139,9 @@ async getPermissionsByRole(role_id: number): Promise<Permission[]> {
     relations: ['permission'],
   });
   return permissions.map(p => p.permission);
+  }
+
+  async descativeRolePermission(id: number): Promise<void> {
+    await this.rolePermissionRepository.update(id, { status: 0 });
   }
 }

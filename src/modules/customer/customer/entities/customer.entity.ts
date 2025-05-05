@@ -1,7 +1,8 @@
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
 import { BaseEntity } from 'src/core/entities/base.entity';
+import { randomBytes } from 'crypto';
 
 @Entity('customer')
 export class Customer extends BaseEntity {
@@ -61,4 +62,14 @@ export class Customer extends BaseEntity {
 
   @Column({ nullable: true, default: 1 })
   status: number;
+
+
+  @BeforeInsert()
+  generateKeys() {
+    this.public_key = randomBytes(16).toString('hex');
+    
+    this.private_key = randomBytes(32).toString('hex');
+  }
+
+  
 }

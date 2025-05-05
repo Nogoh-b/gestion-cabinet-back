@@ -1,9 +1,21 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { CustomersService } from './customer.service';
+import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('customer')
 @Controller('customer')
@@ -11,17 +23,25 @@ export class CustomerController {
   constructor(private readonly customerService: CustomersService) {}
 
   @Post()
+
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
   async create(@Body() createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
     return await this.customerService.create(createCustomerDto);
   }
 
-  @Post()
+  @Post('/create-from-coti')
   @ApiOperation({ summary: 'Create a new customer' })
+  @UseInterceptors(AnyFilesInterceptor())
+  @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
-  async createUserFromeCoti(@Body() createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
-    return await this.customerService.create(createCustomerDto);
+  async createUserFromeCoti(
+    @Body() createCustomerDto: CreateCustomerFromCotiDto,
+    @UploadedFiles() files: Express.Multer.File[]
+    ): Promise<any> {
+    console.log(createCustomerDto.documents)
+    
+     return await this.customerService.createFromCoti(createCustomerDto, files);
   }
 
   @Get()

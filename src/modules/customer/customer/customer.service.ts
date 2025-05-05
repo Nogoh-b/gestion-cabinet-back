@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -8,6 +8,10 @@ import { TypeCustomersService } from '../type-customer/type-customer.service';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { plainToInstance } from 'class-transformer';
 import { CustomerResponseDto } from './dto/customer-response.dto';
+import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
+import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
 
 @Injectable()
 export class CustomersService {
@@ -16,13 +20,14 @@ export class CustomersService {
     private customerRepository: Repository<Customer>,
     private typeCustomerService: TypeCustomersService,
     private locationcityService: LocationCitiesService ,
+    private documentCustomerService: DocumentCustomerService ,
   ) {}
 
   async create(createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
     const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
     const type_customer = await this.typeCustomerService.findOne( createCustomerDto.type_customer_id);
     const location_city = await this.locationcityService.findOne(createCustomerDto.location_city_id);
-    if (existing) throw new ConflictException('Le client existe deja');
+    if (existing) throw new ConflictException('Numero deja attribué à un compte');
     if (!type_customer || !location_city) throw new NotFoundException('Le type de client ou la location invalide');
 
     if (createCustomerDto.email) {
@@ -35,14 +40,48 @@ export class CustomersService {
       type_customer,
       location_city,
     });
-    customer.private_key = 'kjkjlkjlkjlkjkl'
-    customer.public_key = '522054sds_d_sd_sdsd'
     customer.status = 0
+
+    const errors = await validateDto(CreateCustomerDto,createCustomerDto);
+
 
     return plainToInstance(
       CustomerResponseDto,
       await this.customerRepository.save(customer),
     );
+
+  }
+
+  async createFromCoti(createCustomerDto: CreateCustomerFromCotiDto, files: Express.Multer.File[]): Promise<any> {
+
+    let documents= createCustomerDto.documents;
+    if (documents.length !== files.length) {
+      throw new BadRequestException('Mismatch between files and documents metadata.');
+    }
+    const documentsWithFiles  = documents.map((doc, index) => ({
+      ...doc,
+      file: files[index]
+    }));
+
+  
+    const customerDto = plainToInstance(CreateCustomerDto, {
+      ...createCustomerDto
+    });
+
+  
+    
+    const customer = await this.create(customerDto)
+    
+    const docs : CreateDocumentCustomerDto[]  = []
+    for (const document of documentsWithFiles) {
+      document.customer_id = customer.id
+      docs.push(await validateDto(CreateDocumentCustomerDto, document))
+    }
+    return  {customer ,documents: await this.documentCustomerService.createMany(documentsWithFiles)}
+    return (documentsWithFiles);
+
+
+
 
   }
 

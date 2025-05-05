@@ -1,5 +1,5 @@
 // users.controller.ts
-import { Controller, Post, Body, Get, Param, Delete } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UsersService } from './user.service';
@@ -30,9 +30,9 @@ export class UsersController {
     return this.usersService.findOne(+id);
   }
 
-  @Delete(':id')
+  @Post(':id')
   @ApiOperation({ summary: 'Delete user' })
   remove(@Param('id') id: string): Promise<void> {
-    return this.usersService.remove(+id);
+    return this.usersService.descativeUser(+id);
   }
 }

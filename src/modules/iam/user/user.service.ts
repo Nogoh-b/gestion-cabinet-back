@@ -19,9 +19,14 @@ export class UsersService {
     const existingUser = await this.userRepository.findOne({
       where: { email: createUserDto.email },
     });
-
+    const existingUserName = await this.userRepository.findOne({
+      where: { username: createUserDto.username },
+    });
     if (existingUser) {
       throw new ConflictException('Email already exists');
+    }
+    if (existingUserName) {
+      throw new ConflictException('Username already exists');
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
@@ -37,29 +42,14 @@ export class UsersService {
   }
 
   async findAll(): Promise<UserResponseDto[]> {
-      const users = await this.userRepository.find({
-      relations: [
-        'customer',
-        'roleAssignments',
-        'roleAssignments.role'
-      ]
+    const users = await this.userRepository.find({
+      where: { status: 1 },
+      relations: ['customer', 'roleAssignments', 'roleAssignments.role'],
     });
-    return users.map(user => plainToInstance(UserResponseDto, user));
+    return users.map((user) => plainToInstance(UserResponseDto, user));
   }
 
-  async findOne1(id: number): Promise<UserResponseDto> {
-    const user = await this.userRepository.findOne({
-      where: { id },
-      relations: [
-        'customer',
-        'roleAssignments.role'
-      ]
-    });
-    
-    if (!user) throw new NotFoundException('User not found');
-    
-    return plainToInstance(UserResponseDto, user);
-  }
+
   async findOne(id: number): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
       where: { id },
@@ -69,14 +59,13 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     const activeRoleAssignment = user.roleAssignments.find(
-      (assignment) => assignment.role.status === 1
+      (assignment) => assignment.role.status === 1,
     );
 
     user.roleAssignments = activeRoleAssignment ? [activeRoleAssignment] : [];
 
     return plainToInstance(UserResponseDto, user);
   }
-
 
   async findByUsername(username: string): Promise<any | null> {
     const user = await this.userRepository.findOne({
@@ -87,23 +76,22 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     const activeRoleAssignment = user.roleAssignments.find(
-      (assignment) => assignment.role.status === 1
+      (assignment) => assignment.role.status === 1,
     );
 
     user.roleAssignments = activeRoleAssignment ? [activeRoleAssignment] : [];
-    return  user;
-
+    return user;
   }
-  
-  /*async getCurrentUserRolenameRole(id: number): Promise<UserRole | null> {
-    return this.userRoleAssaignmentService.findCurrentRoleByUser(id)
-  }*/
 
 
-  async updateRefreshToken(userId: number, refreshToken: string | undefined): Promise<void> {
+
+  async updateRefreshToken(
+    userId: number,
+    refreshToken: string | undefined,
+  ): Promise<void> {
     // Assuming you are using TypeORM or similar ORM
     await this.userRepository.update(userId, {
-      refreshToken: refreshToken, 
+      refreshToken: refreshToken,
     });
   }
 
@@ -117,7 +105,6 @@ export class UsersService {
     return this.userRepository.findOne({ where: { refreshToken } });
   }
 
-
   async getUserRoles(userId: number): Promise<UserRole[]> {
     return this.userRepository
       .createQueryBuilder('user')
@@ -130,5 +117,9 @@ export class UsersService {
 
   async remove(id: number): Promise<void> {
     await this.userRepository.delete(id);
+  }
+
+  async descativeUser(id: number): Promise<void> {
+    await this.userRepository.update(id, { status: 0 });
   }
 }

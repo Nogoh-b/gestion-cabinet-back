@@ -29,16 +29,24 @@ import { ActivitiesUserController } from './activities-user/activities-user.cont
       UserRoleAssignment,
       User,
       ActivitiesUser,
-    ]),
+    ])
+  ],
+     providers:[
+     PermissionsService,
+     UserRolesService, 
+     RolePermissionService, 
+      UsersService, 
+     ActivitiesUserService, 
+     UserRoleAssignmentService, 
      ],
-     providers:[UsersService, ActivitiesUserService, RolePermissionService, UserRolesService, UserRoleAssignmentService, PermissionsService],
      exports:[
+      PermissionsService,
       UsersService,
       UserRoleAssignmentService,
       RolePermissionService,
       UserRolesService,
-      PermissionsService,
       ActivitiesUserService,
+      TypeOrmModule
      ]
 })
 export class IamModule {}

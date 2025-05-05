@@ -1,21 +1,20 @@
 // create-customer.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { Exclude } from 'class-transformer';
-import { IsInt, IsString, MaxLength, IsOptional, IsEmail, IsDate } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, IsString, MaxLength, IsOptional, IsEmail, IsDate, IsPhoneNumber } from 'class-validator';
 
 export class CreateCustomerDto {
+  @IsString()
+  @MaxLength(45)
+  @ApiProperty({ example: 'John', description: 'Customer Name' })
+  @IsOptional()
+  firt_name?: string;
 
   @IsString()
   @MaxLength(45)
-  @ApiProperty()
+  @ApiProperty({ example: 'Doe', description: 'Customer Last Name' })
   @IsOptional()
-  name?: string;
-
-  @IsString()
-  @MaxLength(45)
-  @ApiProperty()
-  @IsOptional()
-  first_name?: string;
+  last_name?: string;
 
   /*@IsString()
   @ApiProperty()
@@ -29,68 +28,45 @@ export class CreateCustomerDto {
   @IsOptional()
   private_key?: string;*/
 
-  @IsString()
-  @ApiProperty()
+  @IsPhoneNumber()
+  @ApiProperty({ required: true, example: '+216 55 55 55 55' })
   @MaxLength(45)
-  @IsOptional()
   number_phone_1?: string;
 
-  @IsString()
-  @ApiProperty()
+  @IsPhoneNumber()
+  @ApiProperty({ example: '+216 55 55 55 55' })
   @MaxLength(45)
   @IsOptional()
   number_phone_2?: string;
 
   @IsEmail()
-  @ApiProperty({required: true})
+  @ApiProperty({ required: true, example: 'john.doe@gmail.com' })
   @MaxLength(45)
   email?: string;
 
-
-  @ApiProperty()
-  @IsInt()
-  type_customer_id: number;
-
   @IsString()
-  @ApiProperty()
+  @ApiProperty({ example: '00000000000000000' })
   @MaxLength(45)
-  @IsOptional()
   nui?: string;
 
   @IsString()
-  @ApiProperty()
+  @ApiProperty({ example: '00000000000000000' })
   @MaxLength(45)
   @IsOptional()
   rccm?: string;
 
   @IsDate()
-  @ApiProperty()
+  @ApiProperty({ example: '2020-01-01' })
   @IsOptional()
   birthday?: Date;
 
-  @ApiProperty()
+  @Type(() => Number)
+  @ApiProperty({ example: 1 })
   @IsInt()
   location_city_id: number;
 
-  @ApiProperty()
-  @Exclude()
-  created_at: Date;
-
-  @ApiProperty()
-  @Exclude()
-  updated_at: Date;
-
-  /*@ApiProperty()
-  @Exclude()
-  public_key: string;
-
-  @ApiProperty()
-  @Exclude()
-  private_key: string;
-
-  @Exclude()
+  @Type(() => Number)
   @IsInt()
-  @ApiProperty()
-  @IsOptional()
-  status?: number;*/
+  @ApiProperty({ example: 1 })
+  type_customer_id: number;
 }

@@ -10,12 +10,20 @@ import { RolePermission } from './entities/role-permission.entity';
 export class RolePermissionController {
   constructor(private readonly service: RolePermissionService) {}
 
-  @Post()
+  /*@Post('assign-role')
   @ApiOperation({ summary: 'Assigner une permission à un rôle' })
   @ApiResponse({ status: 201, description: 'Permission assignée', type: RolePermission })
   create(@Body() dto: CreateRolePermissionDto) {
     return this.service.create(dto);
+  }*/
+  
+  @Post('assign-roles')
+  @ApiOperation({ summary: 'Assigner une ou des  permissions à un rôle' })
+  @ApiResponse({ status: 201, description: 'Permission assignée', type: RolePermission })
+  createRoles(@Body() dto: CreateRolePermissionDto) {
+    return this.service.createRoles(dto);
   }
+
 
   @Delete(':roleId/:permissionId')
   @ApiOperation({ summary: 'Retirer une permission d\'un rôle' })
@@ -35,9 +43,5 @@ export class RolePermissionController {
   }
 
 
-  @Get('role/:roleId')
-  @ApiOperation({ summary: 'Lister les permissions d\'un rôle' })
-  findByRole(@Param('roleId') roleId: number) {
-    return this.service.findByRole(roleId);
-  }
+  
 }

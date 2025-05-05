@@ -4,6 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateUserRoleDto } from './dto/create-user-role.dto';
 import { UserRole } from './entities/user-role.entity';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { CreateRolePermissionDto } from '../role-permission/dto/create-role-permission.dto';
 
 @Injectable()
 export class UserRolesService {
@@ -12,11 +14,16 @@ export class UserRolesService {
     private repository: Repository<UserRole>,
   ) {}
 
-  async create(dto: CreateUserRoleDto): Promise<UserRole> {
+  async create(dto: CreateUserRoleDto): Promise<any> {
     const exists = await this.repository.findOne({ where: { code: dto.code } });
     if (exists) throw new ConflictException('Role code already exists');
     
-    return this.repository.save(dto);
+    validateDto(CreateUserRoleDto, dto)
+    
+    const userRole = await  this.repository.save(dto);
+    const rolePermissionDto = new CreateRolePermissionDto()
+    rolePermissionDto.role_id = userRole.id
+    rolePermissionDto.permission_ids = dto.permissions_ids
   }
 
   findAll(): Promise<UserRole[]> {

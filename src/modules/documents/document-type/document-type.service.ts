@@ -14,27 +14,20 @@ export class DocumentTypeService {
   ) {}
 
   async create(createDto: CreateDocumentTypeDto): Promise<DocumentType> {
-    /*const type_customer = await this.TypeCutomerService.findOne(createDto.type_customer_id! );
-    if (!type_customer) {
-      throw new NotFoundException(`Le type de client n'existe pas`);
-    }
-    const documentType = this.repository.create({
-      ...createDto,
-      type_customer
-      });*/
     return this.repository.save(createDto);
   }
+
 
   async findAll(): Promise<DocumentType[]> {
     return this.repository.find();
   }
 
   async findOne(id: number): Promise<DocumentType> {
-    const documentType = await this.repository.findOne({where : { id }});
-    if (!documentType) {
+    const document_type = await this.repository.findOne({where : { id }});
+    if (!document_type) {
       throw new NotFoundException(`DocumentType with ID ${id} not found`);
     }
-    return documentType;
+    return document_type;
   }
 
   async update(id: number, updateDto: UpdateDocumentTypeDto): Promise<DocumentType> {

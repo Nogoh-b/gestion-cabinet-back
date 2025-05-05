@@ -27,7 +27,7 @@ export class UserResponseDto {
   @Expose({ name: 'customer_id' })
   @ApiProperty()
   @Transform(({ obj }) => obj.customer?.id)
-  customerId: number;
+  customer_id: number;
 
   @Expose()
   @ApiProperty({ type: [UserRole] })

@@ -33,6 +33,15 @@ export class LocationCitiesService {
     return city;
   }
 
+  async findOneByCode(code: string): Promise<LocationCity> {
+    const city = await this.repository.findOne({ 
+      where: { code },
+      relations: ['district']
+    });
+    if (!city) throw new NotFoundException();
+    return city;
+  }
+
   async update(id: number, dto: UpdateLocationCityDto): Promise<LocationCity> {
     const city = await this.findOne(id);
     if (dto.districts_id) {

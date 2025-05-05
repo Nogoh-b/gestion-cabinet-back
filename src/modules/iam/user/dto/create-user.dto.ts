@@ -34,5 +34,5 @@ export class CreateUserDto {
   @ApiProperty({ required: false })
   @IsInt()
   @IsOptional()
-  customerId?: number;
+  customer_id?: number;
 }

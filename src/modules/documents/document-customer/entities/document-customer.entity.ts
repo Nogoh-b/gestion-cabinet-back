@@ -13,7 +13,7 @@ export class DocumentCustomer extends BaseEntity {
 
   @ManyToOne(() => DocumentType)
   @JoinColumn({ name: 'document_type_id' })
-  documentType: DocumentType;
+  document_type: DocumentType;
 
   @Column({ default: 0 })
   status: number;
@@ -27,11 +27,11 @@ export class DocumentCustomer extends BaseEntity {
   customer: Customer;
 
   @Column({ name: 'date_validation', nullable: true })
-  dateValidation: Date;
+  date_validation: Date;
 
   @Column({ name: 'date_ejected', nullable: true })
-  dateEjected: Date;
+  date_ejected: Date;
 
   @Column({ name: 'date_expired', nullable: true })
-  dateExpired: Date;
+  date_expired: Date;
 }
