@@ -5,7 +5,7 @@ import { IsInt, IsNotEmpty, IsString, IsDate, IsOptional, IsNumber } from 'class
 export class CreateDocumentCustomerDto {
   @IsString()
   @ApiProperty({example:'Passport'})
-  @IsNotEmpty()
+  @IsOptional()
   name: string;
 
   @IsNumber()

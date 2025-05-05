@@ -119,7 +119,12 @@ export class UsersService {
     await this.userRepository.delete(id);
   }
 
-  async descativeUser(id: number): Promise<void> {
+  async descativeUser(id: number): Promise<any> {
     await this.userRepository.update(id, { status: 0 });
+    return
+  }
+  async activateUser(id: number): Promise<any> {
+    await this.userRepository.update(id, { status: 1 });
+    return
   }
 }

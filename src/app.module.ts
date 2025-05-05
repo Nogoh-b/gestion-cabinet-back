@@ -9,6 +9,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { ConfigModule } from '@nestjs/config';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 
 @Module({
   imports: [
@@ -25,6 +26,16 @@ import { ServeStaticModule } from '@nestjs/serve-static';
       rootPath: UPLOAD_PATH,
       serveRoot: `/${UPLOAD_FOLDER_NAME}/`,
     }),
+    ClientsModule.register([
+      {
+        name: 'USER_SERVICE',
+        transport: Transport.TCP,
+        options: {
+          host: 'localhost',
+          port: 3002, // port du microservice cible
+        },
+      },
+    ]),
   ],
   controllers: [AppController],
   providers: [AppService],

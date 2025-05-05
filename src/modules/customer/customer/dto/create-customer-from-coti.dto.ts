@@ -1,4 +1,4 @@
-// create-customer.dto.ts
+import { CreateDocumentFromCotiDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude, Type } from 'class-transformer';
 import {
@@ -11,7 +11,6 @@ import {
   IsInt,
   IsPhoneNumber,
 } from 'class-validator';
-import { CreateDocumentFromCotiDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
 
 export class CreateCustomerFromCotiDto {
 
@@ -28,17 +27,7 @@ export class CreateCustomerFromCotiDto {
   @IsOptional()
   last_name?: string;
 
-  /*@IsString()
-  @ApiProperty()
-  @MaxLength(45)
-  @IsOptional()
-  public_key?: string;
 
-  @IsString()
-  @ApiProperty()
-  @MaxLength(45)
-  @IsOptional()
-  private_key?: string;*/
 
   @IsPhoneNumber()
   @ApiProperty({ required: true, example: '+216 55 55 55 55' })
@@ -82,6 +71,8 @@ export class CreateCustomerFromCotiDto {
   @IsInt()
   @ApiProperty({ example: 1 })
   type_customer_id: number;
+
+
 
   @Type(() => CreateDocumentFromCotiDto) // <- transformation correcte des éléments du tableau
   @ValidateNested({ each: true })        // <- validation pour chaque élément

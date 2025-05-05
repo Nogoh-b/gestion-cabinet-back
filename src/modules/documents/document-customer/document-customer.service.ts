@@ -72,7 +72,7 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
      return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
   }
 
-  async createMany(dto: CreateDocumentCustomerDto[]): Promise<any> {
+  async createMany(dto: CreateDocumentCustomerDto[] | any[]): Promise<any> {
     let savedDocs : DocumentCustomerResponseDto []  = [];
     for (const doc of dto) {
       savedDocs.push(await this.create(doc))

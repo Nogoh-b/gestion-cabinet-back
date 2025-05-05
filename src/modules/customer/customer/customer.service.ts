@@ -11,7 +11,6 @@ import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
 
 @Injectable()
 export class CustomersService {
@@ -53,7 +52,6 @@ export class CustomersService {
   }
 
   async createFromCoti(createCustomerDto: CreateCustomerFromCotiDto, files: Express.Multer.File[]): Promise<any> {
-
     let documents= createCustomerDto.documents;
     if (documents.length !== files.length) {
       throw new BadRequestException('Mismatch between files and documents metadata.');
@@ -70,14 +68,14 @@ export class CustomersService {
 
   
     
-    const customer = await this.create(customerDto)
+    /*const customer = await this.create(customerDto)
     
     const docs : CreateDocumentCustomerDto[]  = []
     for (const document of documentsWithFiles) {
       document.customer_id = customer.id
       docs.push(await validateDto(CreateDocumentCustomerDto, document))
-    }
-    return  {customer ,documents: await this.documentCustomerService.createMany(documentsWithFiles)}
+    }*/
+    return  {documents: await this.documentCustomerService.createMany(documentsWithFiles)}
     return (documentsWithFiles);
 
 

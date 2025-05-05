@@ -30,7 +30,7 @@ export class CustomerController {
     return await this.customerService.create(createCustomerDto);
   }
 
-  @Post('/create-from-coti')
+  @Post('/create-online')
   @ApiOperation({ summary: 'Create a new customer' })
   @UseInterceptors(AnyFilesInterceptor())
   @ApiConsumes('multipart/form-data')
@@ -39,7 +39,6 @@ export class CustomerController {
     @Body() createCustomerDto: CreateCustomerFromCotiDto,
     @UploadedFiles() files: Express.Multer.File[]
     ): Promise<any> {
-    console.log(createCustomerDto.documents)
     
      return await this.customerService.createFromCoti(createCustomerDto, files);
   }

@@ -9,8 +9,8 @@ export class Customer extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 45, nullable: true })
-  name: string;
+  @Column({ name: 'last_name', length: 45, nullable: true })
+  last_name: string;
 
   @Column({ name: 'first_name', length: 45, nullable: true })
   first_name: string;

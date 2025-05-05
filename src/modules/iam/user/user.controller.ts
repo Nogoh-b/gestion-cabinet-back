@@ -12,7 +12,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new user' })
+  @ApiOperation({ summary: 'Creation d\'un nouvel utilisateur' })
   @ApiResponse({ status: 201, description: 'User created', type: User })
   create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
     return this.usersService.create(createUserDto);
@@ -30,9 +30,15 @@ export class UsersController {
     return this.usersService.findOne(+id);
   }
 
-  @Post(':id')
-  @ApiOperation({ summary: 'Delete user' })
-  remove(@Param('id') id: string): Promise<void> {
+  @Post(':id/desable')
+  @ApiOperation({ summary: 'Supression d\'un utilisateur' })
+  remove(@Param('id') id: string): Promise<User> {
+    return this.usersService.descativeUser(+id);
+  }
+
+  @Post(':id/enable')
+  @ApiOperation({ summary: 'Supression d\'un utilisateur' })
+  add(@Param('id') id: string): Promise<User> {
     return this.usersService.descativeUser(+id);
   }
 }

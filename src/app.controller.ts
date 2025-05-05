@@ -1,14 +1,21 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { AppService } from './app.service';
-import { MessagePattern } from '@nestjs/microservices';
-
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { ClientProxy } from '@nestjs/microservices';
+import { ApiQuery } from '@nestjs/swagger';
+import { firstValueFrom } from 'rxjs';
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly appService: AppService, @Inject('USER_SERVICE') private readonly client: ClientProxy) {}
 
-  @MessagePattern({ cmd: 'hello' })
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
+  @Get('users')
+  @ApiQuery({ name: 'name', required: true })
+  async getUserViaRest(@Query('name') name: string) {
+    return firstValueFrom(this.client.send({ cmd: 'get-user' }, name));
+  }
+
+  @MessagePattern({ cmd: 'relay' })
+  async handleTcpRelay(@Payload() data: any) {
+    return firstValueFrom(this.client.send({ cmd: 'process-data' }, data));
   }
 }
