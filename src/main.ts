@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Transport } from '@nestjs/microservices';
-import { ValidationPipe } from '@nestjs/common';
 import * as fs from 'fs';
 import * as dotenv from 'dotenv';
 import * as tls from 'tls';
@@ -23,7 +22,8 @@ async function bootstrap() {
     'utf8',
   );
 
-  const app = await NestFactory.createMicroservice(AppModule, {
+  const app = await NestFactory.create(AppModule);
+  const core = await NestFactory.createMicroservice(AppModule, {
     transport: Transport.TCP,
     options: {
       port: 3002,
@@ -36,8 +36,9 @@ async function bootstrap() {
       } as tls.TlsOptions,
     },
   });
-  await app.listen().then(() => {
-    console.log('Microservices are listening redis => 3002');
-  });
+  await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()])
+    .then(() => {
+      console.log('Microservices are listening (http) 3004 => (TPC) 3002');
+    });
 }
 bootstrap();
