@@ -48,7 +48,7 @@ export class RolePermissionService {
 
     return this.rolePermissionRepository.save(rolePermission);
   }*/
-  async createRoles(createDto: CreateRolePermissionDto): Promise<RolePermission[]> {
+  async createRolesPermissions(createDto: CreateRolePermissionDto): Promise<RolePermission[]> {
     // Vérifier l'existence du rôle et de la permission
     const role = await this.userRolesService.findOne(createDto.role_id);
 

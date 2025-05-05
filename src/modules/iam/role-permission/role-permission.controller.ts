@@ -20,8 +20,8 @@ export class RolePermissionController {
   @Post('assign-roles')
   @ApiOperation({ summary: 'Assigner une ou des  permissions à un rôle' })
   @ApiResponse({ status: 201, description: 'Permission assignée', type: RolePermission })
-  createRoles(@Body() dto: CreateRolePermissionDto) {
-    return this.service.createRoles(dto);
+  createRolesPermissions(@Body() dto: CreateRolePermissionDto) {
+    return this.service.createRolesPermissions(dto);
   }
 
 
