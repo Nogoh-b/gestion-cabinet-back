@@ -1,27 +1,27 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDate, IsOptional, IsEmpty, IsEnum, IsInt } from 'class-validator';
+import { IsDate, IsOptional, IsEnum, IsInt, IsNotEmpty } from 'class-validator';
 
-export enum DocTypeCode {
+export enum DocTypeNameOnline {
   FRONT_CNI = 'front_cni',
-  BACK_CNI = 'user',
+  BACK_CNI = 'back_cni',
   SELFIE = 'selfie',
 }
 export class CreateDocumentFromCotiDto {
-
-  @IsEnum(DocTypeCode)
-  @ApiProperty({ example: 1, required: true,description: 'le code du document doit être : front_cni |  user |  selfie | ' })
-  @IsEmpty()
-  document_type_code: DocTypeCode;
+  @ApiProperty({ example: DocTypeNameOnline.FRONT_CNI, required: true })
+  @IsEnum(DocTypeNameOnline)
+  @IsNotEmpty()
+  document_type_name: DocTypeNameOnline;
 
   @IsInt()
-  @ApiProperty({ example: 1 })
-  @IsOptional()
+  @ApiProperty({ example: 1, required: true })
   customer_id: number;
 
   @IsOptional()
   @ApiProperty({ example: '05/02/2025', required: false })
   @IsDate()
   date_expired?: Date;
+
+  document_type_id? : number
 
   @ApiProperty({
     required: false,

@@ -1,11 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { DocumentCustomer } from './entities/document-customer.entity';
-import { DocumentType } from '../document-type/entities/document-type.entity';
-import { join } from 'path';
-import { createWriteStream } from 'fs';
+import { DocumentType, DocumentTypeStatus } from '../document-type/entities/document-type.entity';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
@@ -13,8 +11,7 @@ import { plainToInstance } from 'class-transformer';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
-
-@Injectable()
+import { FilesUtil } from 'src/core/shared/utils/file.util';
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
@@ -30,7 +27,6 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   }
 
   async create(dto: CreateDocumentCustomerDto, customer_id = null): Promise<DocumentCustomerResponseDto> {
-    //  validateDto(CreateDocumentCustomerDto, dto)
     const file = dto.file!
     const docType = await this.docTypeRepository.findOneBy({ id: dto.document_type_id });
     if (!docType) {
@@ -57,19 +53,39 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       ],
     });
     if (getSimilarDocs.length > 0) {
-      throw new NotFoundException(`Document : ${getSimilarDocs[0].name} deja soumis`);
+      throw new ConflictException(`Document : ${getSimilarDocs[0].name} deja soumis`);
     } 
 
+    if (!file) {
+      throw new BadRequestException('Aucun fichier uploadé');
+    }
+
+    if (!file.mimetype.startsWith(docType.mimetype)) {
+      throw new BadRequestException(`le fichier doit être de type : ${docType.mimetype}`);
+    }
+
+    if (file.size > 1024 * 1024 * 3) { 
+      throw new BadRequestException('Le fichier est trop volumineux (max 1MB)');
+    }
     
-    const fileName = await this.uploadFile(file, UPLOAD_DOCS_PATH);
+    const uploadedFile = await FilesUtil.uploadFile(
+      file,
+      UPLOAD_DOCS_PATH,
+      docType.mimetype,
+      {
+      maxSizeKB: 1024*1024*2, 
+      width: 1024, 
+    }
+    );
 
     const document = this.docRepository.create({
       ...dto,
       document_type: docType,
       customer: customer,
-      file_path: fileName,
+      file_path: uploadedFile.fileName,
+      file_size: uploadedFile.fileSize,
       name: docType.name,
-      status: 1
+      status: DocumentTypeStatus.PENDING,
     });
      return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
   }
@@ -83,31 +99,9 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     return savedDocs
 
 
-    /*const file = dto.file!
-    const docType = await this.docTypeRepository.findOneBy({ id: dto.document_type_id });
-    if (!docType) {
-      throw new NotFoundException('Document type not found');
-    }
-    const fileName = await this.uploadFile(file, UPLOAD_DOCS_PATH);
-    const document = this.docRepository.create({
-      ...dto,
-      document_type: docType,
-      file_path: fileName,
-    });
-     return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));*/
   }
 
-  async uploadFile(file, FILE_PATH){
-    const fileName = `${Date.now()}-${file.originalname}`;
-    const file_path = join(FILE_PATH, fileName);
-    await new Promise<void>((resolve, reject) => {
-      const stream = createWriteStream(file_path);
-      stream.on('finish', () => resolve());
-      stream.on('error', (err) => reject(err));
-      stream.end(file.buffer); 
-    });
-    return fileName;
-  }
+
 
   async findByCustomer(customerId: number): Promise<DocumentCustomer[]> {
     return this.docRepository.find({

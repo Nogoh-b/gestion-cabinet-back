@@ -11,12 +11,21 @@ import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
+import { CreateDocumentFromCotiDto, DocTypeNameOnline } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 
 @Injectable()
 export class CustomersService {
   constructor(
     @InjectRepository(Customer)
-    private customerRepository: Repository<Customer>,
+    private customerRepository: Repository<Customer>,    
+    
+    @InjectRepository(DocumentType)
+    private docTypeRepository: Repository<DocumentType>,   
+    @InjectRepository(TypeCustomer)
+    private typeCustomerRepository: Repository<TypeCustomer>,
     private typeCustomerService: TypeCustomersService,
     private locationcityService: LocationCitiesService ,
     private documentCustomerService: DocumentCustomerService ,
@@ -52,7 +61,7 @@ export class CustomersService {
   }
 
   async createFromCoti(createCustomerDto: CreateCustomerFromCotiDto, files: Express.Multer.File[]): Promise<any> {
-    let documents= createCustomerDto.documents;
+    let documents : CreateDocumentFromCotiDto[]= createCustomerDto.documents;
     if (documents.length !== files.length) {
       throw new BadRequestException('Mismatch between files and documents metadata.');
     }
@@ -61,21 +70,32 @@ export class CustomersService {
       file: files[index]
     }));
 
+    if(documents.length < 3)
+      throw new BadRequestException('Document(s) manquants');
+
   
     const customerDto = plainToInstance(CreateCustomerDto, {
       ...createCustomerDto
     });
-
-  
-    
-    /*const customer = await this.create(customerDto)
-    
     const docs : CreateDocumentCustomerDto[]  = []
     for (const document of documentsWithFiles) {
+      if(!Object.values(DocTypeNameOnline).includes(document.document_type_name as DocTypeNameOnline))
+        throw new BadRequestException(`${document.document_type_name} manquant`);
+        const doc_type = await this.docTypeRepository.findOne({
+          where: { name: document.document_type_name },
+          select: ['id'],
+        });
+        document.document_type_id = doc_type!.id
+        docs.push(await validateDto(CreateDocumentCustomerDto, document))
+    }
+
+    
+    const customer = await this.create(customerDto)
+    for (const document of documentsWithFiles) {
       document.customer_id = customer.id
-      docs.push(await validateDto(CreateDocumentCustomerDto, document))
-    }*/
-    return  {documents: await this.documentCustomerService.createMany(documentsWithFiles)}
+    }
+    
+    return  {customer,documents: await this.documentCustomerService.createMany(documentsWithFiles)}
     return (documentsWithFiles);
 
 

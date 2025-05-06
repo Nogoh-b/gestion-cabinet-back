@@ -23,7 +23,7 @@ export class TypeCustomer {
 
  @ManyToMany(() => DocumentType)
   @JoinTable({
-    name: 'type_customer_document_type', // Nom de la table de jointure
+    name: 'type_customer_document_type', 
     joinColumn: { name: 'type_customer_id' },
     inverseJoinColumn: { name: 'document_type_id' }
   })

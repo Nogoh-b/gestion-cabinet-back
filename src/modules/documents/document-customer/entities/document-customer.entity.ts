@@ -21,6 +21,8 @@ export class DocumentCustomer extends BaseEntity {
   @Column({ name: 'file_path', nullable: true })
   file_path: string;
 
+  @Column({ name: 'file_size', nullable: true })
+  file_size: number;
 
   @ManyToOne(() => Customer)
   @JoinColumn({ name: 'customer_id' })

@@ -34,7 +34,7 @@ export class DocumentCustomerResponseDto {
   status: number;
 
   @Expose()
-  @Transform(({ obj }) => `http://${process.env.API_HOST || 'localhost:3000'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${obj.file_path}`)
+  @Transform(({ obj }) => `http://${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${obj.file_path}`)
   @ApiProperty({
     example: 'http://localhost:3000/uploads/abc123-passeport.pdf',
     description: 'URL complète de téléchargement'

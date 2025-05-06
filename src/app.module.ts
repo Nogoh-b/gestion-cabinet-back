@@ -10,6 +10,7 @@ import { ConfigModule } from '@nestjs/config';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { AgenciesModule } from './modules/agencies/agencies.module';
 import * as dotenv from 'dotenv';
 dotenv.config();
 
@@ -38,6 +39,7 @@ dotenv.config();
         },
       },
     ]),
+    AgenciesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

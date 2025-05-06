@@ -1,14 +1,19 @@
 // src/core/document/entities/document-type.entity.ts
+import { BaseEntity } from 'src/core/entities/base.entity';
 import { TypeCustomer } from 'src/modules/customer/type-customer/entities/type_customer.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable } from 'typeorm';
 
+export enum DocumentTypeStatus {
+  PENDING = 0,
+  ACCEPTED = 1,
+  REFUSED = 2,
+}
 @Entity('document_type')
-export class DocumentType {
+export class DocumentType extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  /*@Column({ length: 45, unique: false })
-  code: string;*/
+
 
   @Column({ length: 100 })
   name: string;
@@ -19,20 +24,24 @@ export class DocumentType {
   @Column({ name: 'validity_duration', nullable: true })
   validityDuration: number;
 
-  @ManyToMany(() => TypeCustomer, typeCustomer => typeCustomer.requiredDocuments)
+  @Column({ name: 'mimetype', nullable: true, default: 'image/' })
+  mimetype: string;
+
+  @Column({ name: 'max_size', nullable: true, default: 1024*1024*3 })
+  max_size: string;
+
+  @ManyToMany(() => TypeCustomer)
+  @JoinTable({
+    name: 'type_customer_document_type', 
+    joinColumn: { name: 'document_type_id' },
+    inverseJoinColumn: { name: 'type_customer_id' }
+  })
   customerTypes: TypeCustomer[];
 
   @Column({ name: 'is_required', default: false })
   isRequired: boolean;
 
-  @Column({ name: 'created_at', default: () => 'CURRENT_TIMESTAMP' })
-  create_at: Date;
-
-  @Column({ name: 'updated_at', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
-  update_at: Date;
-
-  
   @Column({ nullable: true })
-  status: number;
+  status: DocumentTypeStatus;
   
 }
