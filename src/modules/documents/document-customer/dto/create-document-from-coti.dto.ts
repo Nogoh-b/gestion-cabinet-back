@@ -9,7 +9,7 @@ export enum DocTypeCode {
 export class CreateDocumentFromCotiDto {
 
   @IsEnum(DocTypeCode)
-  @ApiProperty({ example: 1, required: true })
+  @ApiProperty({ example: 1, required: true,description: 'le code du document doit être : front_cni |  user |  selfie | ' })
   @IsEmpty()
   document_type_code: DocTypeCode;
 

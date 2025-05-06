@@ -11,6 +11,8 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { plainToInstance } from 'class-transformer';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
 
 @Injectable()
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
@@ -75,6 +77,7 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   async createMany(dto: CreateDocumentCustomerDto[] | any[]): Promise<any> {
     let savedDocs : DocumentCustomerResponseDto []  = [];
     for (const doc of dto) {
+      await validateDto(CreateDocumentFromCotiDto, doc)
       savedDocs.push(await this.create(doc))
     }
     return savedDocs
