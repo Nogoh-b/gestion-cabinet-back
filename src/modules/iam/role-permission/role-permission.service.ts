@@ -1,9 +1,5 @@
 // role-permission.service.ts
-import {
-  Injectable,
-  ConflictException,
-  NotFoundException
-} from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateRolePermissionDto } from './dto/create-role-permission.dto';
@@ -11,50 +7,28 @@ import { RolePermission } from './entities/role-permission.entity';
 import { UserRolesService } from '../user-role/user-role.service';
 import { PermissionsService } from '../permission/permission.service';
 import { Permission } from '../permission/entities/permission.entity';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
 
 @Injectable()
 export class RolePermissionService {
   constructor(
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
+    @Inject(forwardRef(() => UserRolesService))
     private readonly userRolesService: UserRolesService,
     private readonly permissionsService: PermissionsService,
-  ) {}
+  ) {
+    console.log(forwardRef)
+  }
 
-  /*async create(createDto: CreateRolePermissionDto): Promise<RolePermission> {
-    // Vérifier l'existence du rôle et de la permission
-    await this.userRolesService.findOne(createDto.role_id);
-    await this.permissionsService.findOne(createDto.permission_id);
 
-    // Vérifier si l'association existe déjà
-    const exists = await this.rolePermissionRepository.findOne({
-      where: {
-        role_id: createDto.role_id,
-        permission_id: createDto.permission_id,
-        status: 1
-      }
-    });
-
-    if (exists) {
-      throw new ConflictException('Cette permission est déjà assignée au rôle');
-    }
-
-    // Créer la nouvelle association
-    const rolePermission = this.rolePermissionRepository.create({
-      role_id: createDto.role_id,
-      permission_id: createDto.permission_id,
-      status:  1
-    });
-
-    return this.rolePermissionRepository.save(rolePermission);
-  }*/
-  async createRolesPermissions(createDto: CreateRolePermissionDto): Promise<RolePermission[]> {
+  async createRolesPermissions(createDto: CreateRolePermissionDto): Promise<any> {
     // Vérifier l'existence du rôle et de la permission
     const role = await this.userRolesService.findOne(createDto.role_id);
-
     const role_permissions: RolePermission[] = []
+    await validateDto(CreateRolePermissionDto, createDto)
 
-    for (const element of createDto.permission_ids) {
+    for (const element of createDto.permissions_ids) {
       const permission = await this.permissionsService.findOne(element);
       // Vérifier si l'association existe déjà
       const exists = await this.rolePermissionRepository.findOne({
@@ -87,7 +61,7 @@ export class RolePermissionService {
       );
       
     }
-    return role_permissions
+    return this.userRolesService.findOne(createDto.role_id);
 
   }
 

@@ -9,10 +9,12 @@ import { Customer } from './customer/entities/customer.entity';
 import { DocumentType } from '../documents/document-type/entities/document-type.entity';
 import { GeographyModule } from '../geography/geography.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { AgenciesModule } from '../agencies/agencies.module';
 
 @Module({
   imports: [
     GeographyModule,
+    AgenciesModule,
     forwardRef(() => DocumentsModule),
     TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType]),
   ],

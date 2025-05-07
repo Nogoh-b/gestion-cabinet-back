@@ -1,15 +1,12 @@
 // user-role-assignment.service.ts
-import {
-  Injectable,
-  ConflictException,
-  NotFoundException
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateUserRoleAssignmentDto } from './dto/create-user-role-assignment.dto';
 import { UserRoleAssignment } from './entities/user-role-assignment.entity';
 import { UserRolesService } from '../user-role/user-role.service';
 import { UsersService } from '../user/user.service';
+import { UserRole } from '../user-role/entities/user-role.entity';
 
 @Injectable()
 export class UserRoleAssignmentService {
@@ -26,23 +23,20 @@ export class UserRoleAssignmentService {
     await this.userRolesService.findOne(createDto.role_id);
 
     // Vérifier si l'association existe déjà
-    const exists = await this.userRoleAssignmentRepository.findOne({
-      where: {
+    await this.userRoleAssignmentRepository.update(
+      {
         user_id: createDto.user_id,
-        role_id: createDto.role_id
-      }
-    });
-
-    if (exists) {
-      throw new ConflictException('Ce rôle est déjà assigné à l\'utilisateur');
-    }
+        role_id: createDto.role_id,
+      },
+      { status: 0 }
+    );
 
     // Créer la nouvelle association
     const assignment = this.userRoleAssignmentRepository.create({
       user_id: createDto.user_id,
       role_id: createDto.role_id,
-      // assignedBy: createDto.assignedBy,
-      status: createDto.status ?? 1
+      // assigned_by: createDto.assigned_by,
+      status:  1
     });
 
     return this.userRoleAssignmentRepository.save(assignment);
@@ -59,18 +53,28 @@ export class UserRoleAssignmentService {
     }
   }
 
-  async findByUser(user_id: number): Promise<UserRoleAssignment[]> {
-    return this.userRoleAssignmentRepository.find({
-      where: { user_id },
-      relations: ['role']
-    });
-  }
-
-  async findCurrentRoleByUser(user_id: number): Promise<UserRoleAssignment[]> {
-    return this.userRoleAssignmentRepository.find({
+  async findByUser(user_id: number): Promise<any[]> {
+    const roles_Ass = await this.userRoleAssignmentRepository.find({
       where: { user_id, status :1 },
       relations: ['role']
     });
+    let roles : UserRole[] = []
+    for (const role_as of roles_Ass) {
+      roles.push(role_as.role)
+    }
+    return roles
+  }
+
+  async findCurrentRoleByUser(user_id: number): Promise<any[]> {
+    const roles_Ass = await this.userRoleAssignmentRepository.find({
+      where: { user_id, status :1 },
+      relations: ['role']
+    });
+    let roles : UserRole[] = []
+    for (const role_as of roles_Ass) {
+      roles.push(role_as.role)
+    }
+    return []
   }
 
   async findByRole(role_id: number): Promise<UserRoleAssignment[]> {

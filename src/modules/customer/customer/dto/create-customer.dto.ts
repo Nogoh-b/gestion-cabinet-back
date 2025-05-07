@@ -1,7 +1,7 @@
 // create-customer.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsString, MaxLength, IsOptional, IsEmail, IsDate, IsPhoneNumber } from 'class-validator';
+import { IsInt, IsString, MaxLength, IsOptional, IsEmail, IsDate, IsPhoneNumber, IsNotEmpty, IsNumber } from 'class-validator';
 
 export class CreateCustomerDto {
   @IsString()
@@ -16,17 +16,12 @@ export class CreateCustomerDto {
   @IsOptional()
   last_name?: string;
 
-  /*@IsString()
-  @ApiProperty()
-  @MaxLength(45)
-  @IsOptional()
-  public_key?: string;
+  @IsNumber()
+  @ApiProperty({ example: 1 , description: 'identifiant de la branche' })
+  @IsNotEmpty()
+  branch_id: number;
 
-  @IsString()
-  @ApiProperty()
-  @MaxLength(45)
-  @IsOptional()
-  private_key?: string;*/
+  customer_code: string
 
   @IsPhoneNumber()
   @ApiProperty({ required: true, example: '+216 55 55 55 55' })

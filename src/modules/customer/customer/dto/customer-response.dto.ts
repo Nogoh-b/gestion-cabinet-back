@@ -11,6 +11,10 @@ export class CustomerResponseDto {
   @ApiProperty()
   name: string;
 
+  @Expose()
+  @ApiProperty()
+  customer_code: string;
+
   @Expose({ name: 'first_name' })
   @ApiProperty()
   first_name: string;

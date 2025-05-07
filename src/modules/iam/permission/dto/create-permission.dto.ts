@@ -13,7 +13,5 @@ export class CreatePermissionDto {
   @IsOptional()
   description?: string;
 
-  @ApiProperty({ required: false })
-  @IsOptional()
   status?: number;
 }

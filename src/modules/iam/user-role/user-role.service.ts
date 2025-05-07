@@ -1,37 +1,53 @@
 // user-roles.service.ts
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateUserRoleDto } from './dto/create-user-role.dto';
 import { UserRole } from './entities/user-role.entity';
+import { RolePermissionService } from '../role-permission/role-permission.service';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { CreateRolePermissionDto } from '../role-permission/dto/create-role-permission.dto';
+import { RoleResponseDto } from './dto/role-response.dto';
+import { plainToInstance } from 'class-transformer';
 
 @Injectable()
 export class UserRolesService {
   constructor(
     @InjectRepository(UserRole)
     private repository: Repository<UserRole>,
-  ) {}
+    @Inject(forwardRef(() => RolePermissionService))
+    private readonly rolepermissionService: RolePermissionService,
+  ) {
+    console.log(forwardRef)
+    
+  }
 
-  async create(dto: CreateUserRoleDto): Promise<any> {
+  async create(dto: CreateUserRoleDto): Promise<RoleResponseDto> {
     const exists = await this.repository.findOne({ where: { code: dto.code } });
-    if (exists) throw new ConflictException('Role code already exists');
-    
+    if (exists) throw new ConflictException('Le role existe deja');
     validateDto(CreateUserRoleDto, dto)
-    
+    dto.status = 1
     const userRole = await  this.repository.save(dto);
     const rolePermissionDto = new CreateRolePermissionDto()
-    rolePermissionDto.role_id = userRole.id
-    rolePermissionDto.permission_ids = dto.permissions_ids
+    const permission_ids = dto.permissions_ids
+    if(permission_ids){
+      rolePermissionDto.role_id = userRole.id
+      rolePermissionDto.permissions_ids = dto.permissions_ids
+      userRole.permissions = await this.rolepermissionService.createRolesPermissions(rolePermissionDto);
+    }
+
+    return plainToInstance(RoleResponseDto,this.findOne(userRole.id)) ;
   }
 
   findAll(): Promise<UserRole[]> {
-    return this.repository.find();
+    return this.repository.find({ relations: ['permissions'] });
   }
 
   async findOne(id: number): Promise<UserRole> {
-    const role = await this.repository.findOne({ where: { id } });
+    const role = await this.repository.findOne({
+      where: { id },
+      relations: ['permissions'],
+    });
     if (!role) throw new NotFoundException('Role not found');
     return role;
   }

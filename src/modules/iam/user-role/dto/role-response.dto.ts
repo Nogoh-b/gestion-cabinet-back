@@ -1,6 +1,7 @@
 // role-response.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { Expose } from 'class-transformer';
+import { Expose, Transform } from 'class-transformer';
+import { Permission } from '../../permission/entities/permission.entity';
 
 export class RoleResponseDto {
   @Expose()
@@ -23,6 +24,10 @@ export class RoleResponseDto {
   @ApiProperty()
   isSystemRole: boolean;
 
+  @ApiProperty({ type: [Permission] })
+  @Transform(({ value }) => value.map((item: any) => item.permission))
+  permissions: Permission[];
+  
 /*@Expose()
 @ApiProperty({ type: [Permission] })
 @Transform(({ value }) => 

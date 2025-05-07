@@ -1,11 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsInt, IsDateString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsInt, IsISO8601, IsOptional } from 'class-validator';
 
 export class CreateBranchDto {
-  @ApiProperty()
-  @IsString()
-  code: string;
 
+  code : string 
+  
   @ApiProperty()
   @IsString()
   name: string;
@@ -14,11 +13,19 @@ export class CreateBranchDto {
   @IsInt()
   location_city_id: number;
 
-  @ApiProperty()
-  @IsDateString()
-  opening_date: Date;
+  @ApiPropertyOptional({ example: '2025-05-07T12:07:39.970Z' })
+  @IsISO8601()
+  @IsOptional()
+  creation_date: string;
 
-  @ApiProperty()
   @IsInt()
+  @ApiProperty()
+  opening_hour: number;
+  
+  @IsInt()
+  @ApiProperty()
+  closing_hour: number;
+
+ 
   status: number;
 }

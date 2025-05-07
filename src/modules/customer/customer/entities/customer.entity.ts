@@ -3,6 +3,7 @@ import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedCo
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { randomBytes } from 'crypto';
+import { District } from 'src/modules/geography/district/entities/district.entity';
 
 @Entity('customer')
 export class Customer extends BaseEntity {
@@ -30,9 +31,12 @@ export class Customer extends BaseEntity {
   @Column({ length: 45, nullable: true, unique: true })
   email: string;
 
-  /*@ManyToOne(() => District, { nullable: false })
+  @Column({name: 'customer_code' , length: 45, nullable: false, unique: true })
+  customer_code: string; 
+
+  @ManyToOne(() => District, { nullable: false })
   @JoinColumn({ name: 'districts_id' })
-  district: District;*/
+  district: District;
 
   @ManyToOne(() => TypeCustomer)
   @JoinColumn({ name: 'type_customer_id' })

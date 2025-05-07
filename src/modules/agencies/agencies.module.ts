@@ -19,6 +19,10 @@ import { EmployeeService } from './employee/employee.service';
   providers : [
     BranchService,
     EmployeeService
+  ],
+  exports:[
+    BranchService,
+    EmployeeService
   ]
 })
 export class AgenciesModule {}

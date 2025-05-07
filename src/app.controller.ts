@@ -8,7 +8,7 @@ import { firstValueFrom } from 'rxjs';
 export class AppController {
   constructor(private readonly appService: AppService, @Inject('USER_SERVICE') private readonly client: ClientProxy) {}
 
-  @Get('users')
+  @Get('users_')
   @ApiQuery({ name: 'name', required: true })
   async getUserViaRest(@Query('name') name: string) {
     return firstValueFrom(this.client.send({ cmd: 'get-user' }, name));

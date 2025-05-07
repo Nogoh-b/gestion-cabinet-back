@@ -4,7 +4,6 @@ import { AppService } from './app.service';
 import { CoreModule } from './core/core.module';
 import { IamModule } from './modules/iam/iam.module';
 import { CustomerModule } from './modules/customer/customer.module';
-import { GeographyModule } from './modules/geography/geography.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ConfigModule } from '@nestjs/config';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
@@ -18,9 +17,9 @@ dotenv.config();
   imports: [
     CoreModule,
     IamModule,
+    AgenciesModule,
     DocumentsModule,
     CustomerModule,
-    GeographyModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env'],
@@ -39,7 +38,6 @@ dotenv.config();
         },
       },
     ]),
-    AgenciesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

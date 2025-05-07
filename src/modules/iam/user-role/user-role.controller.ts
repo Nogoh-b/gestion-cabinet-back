@@ -14,7 +14,7 @@ export class UserRolesController {
   @Post()
   @ApiOperation({ summary: 'Create new user role' })
   @ApiResponse({ status: 201, description: 'Role created', type: UserRole })
-  create(@Body() dto: CreateUserRoleDto): Promise<UserRole> {
+  create(@Body() dto: CreateUserRoleDto) {
     return this.service.create(dto);
   }
 

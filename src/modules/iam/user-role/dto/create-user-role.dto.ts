@@ -20,10 +20,13 @@ export class CreateUserRoleDto {
   description?: string;
 
   @Expose()
-  @ApiProperty({ type: [Number] })
-
+  @ApiProperty({
+    type: [Number],
+    example: [1, 3],
+    description: 'Liste des permissions',
+  })
   permissions_ids: number[];
-  
+
   @ApiProperty({ required: false, default: false })
   @IsBoolean()
   @IsOptional()

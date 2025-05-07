@@ -1,15 +1,14 @@
-import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity } from 'typeorm';
+import { Column, ManyToOne, JoinColumn, Entity, OneToOne, PrimaryColumn } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Branch } from '../../branch/entities/branch.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 @Entity('employee')
 export class Employee {
-  @ApiProperty()
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryColumn()
+  id: number; // sera égal à user.id
 
-  @ManyToOne(() => User)
-  @JoinColumn({ name: 'user_id' })
+  @OneToOne(() => User, user => user.employee)
+  @JoinColumn({ name: 'id' }) // Clé étrangère et clé primaire en même temps
   user: User;
 
   @ManyToOne(() => Branch)

@@ -7,15 +7,24 @@ import { User } from './entities/user.entity';
 import { plainToInstance } from 'class-transformer';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UserRole } from '../user-role/entities/user-role.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
-    private userRepository: Repository<User>,
+    private userRepository: Repository<User>,    
+    @InjectRepository(Customer)
+    private customerRepository: Repository<Customer>,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
+    await validateDto(CreateUserDto, createUserDto)
+    const customer = await this.customerRepository.findOneBy({id:createUserDto.customer_id})
+    if (!customer) {
+      throw new NotFoundException('Le compte client est inexistant');
+    }
     const existingUser = await this.userRepository.findOne({
       where: { email: createUserDto.email },
     });
@@ -34,6 +43,7 @@ export class UsersService {
     const user = this.userRepository.create({
       ...createUserDto,
       password: hashedPassword,
+      status : 1
     });
 
     const savedUser = await this.userRepository.save(user);
@@ -41,11 +51,14 @@ export class UsersService {
     return plainToInstance(UserResponseDto, savedUser);
   }
 
-  async findAll(): Promise<UserResponseDto[]> {
-    const users = await this.userRepository.find({
-      where: { status: 1 },
-      relations: ['customer', 'roleAssignments', 'roleAssignments.role'],
-    });
+  async findAll() {
+    const users = await this.userRepository
+    .createQueryBuilder('user')
+    .leftJoinAndSelect('user.customer', 'customer')
+    .leftJoinAndSelect('user.roleAssignments', 'roleAssignment', 'roleAssignment.status = 1')
+    .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
+    .where('user.status = 1')
+    .getMany();
     return users.map((user) => plainToInstance(UserResponseDto, user));
   }
 

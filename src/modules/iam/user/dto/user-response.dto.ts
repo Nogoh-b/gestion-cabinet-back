@@ -1,7 +1,6 @@
 // 
 import { ApiProperty } from '@nestjs/swagger';
 import { Exclude, Expose, Transform } from 'class-transformer';
-import { UserRole } from '../../user-role/entities/user-role.entity';
 
 export class UserResponseDto {
   @Expose()
@@ -29,12 +28,12 @@ export class UserResponseDto {
   @Transform(({ obj }) => obj.customer?.id)
   customer_id: number;
 
-  @Expose()
+  /*@Expose()
   @ApiProperty({ type: [UserRole] })
   @Transform(({ obj }) => 
     obj.roleAssignments?.map(assignment => assignment.role) || []
   )
-  roles: UserRole[];
+  roles: UserRole[];*/
 
   @Expose()
   @ApiProperty()

@@ -1,9 +1,10 @@
 import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
+import { BaseEntity } from 'src/core/entities/base.entity';
 
 @Entity('branch')
-export class Branch {
+export class Branch extends BaseEntity {
   @ApiProperty()
   @PrimaryGeneratedColumn()
   id: number;
@@ -21,16 +22,26 @@ export class Branch {
   location_city: LocationCity;
 
   @ApiProperty({ example: '2023-01-01' })
-  @Column({ type: 'date', name: 'opening_date' })
-  openingDate: Date;
+  @Column({
+    type: 'timestamp',
+    name: 'creation_date',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  creation_date: Date;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
+  @ApiProperty({ example: 8 })
+  @Column({ type: 'int', name: 'opening_hour' })
+  opening_hour: number;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
-  updatedAt: Date;
+  @ApiProperty({ example: 17 })
+  @Column({ type: 'int', name: 'closing_hour' })
+  closing_hour: number;
+
+  // @OneToMany(() => Customer, (customer) => customer.branch)
+  // customers: Customer[];
+
 
   @ApiProperty({ example: 1 })
-  @Column({ type: 'tinyint' })
+  @Column({ type: 'tinyint', default: 1 })
   status: number;
 }

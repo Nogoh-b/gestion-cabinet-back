@@ -18,9 +18,10 @@ import { UsersController } from './user/user.controller';
 import { UsersService } from './user/user.service';
 import { ActivitiesUserService } from './activities-user/activities-user.service';
 import { ActivitiesUserController } from './activities-user/activities-user.controller';
+import { Customer } from '../customer/customer/entities/customer.entity';
 
 @Module({
-  controllers: [ UsersController, ActivitiesUserController, PermissionsController, RolePermissionController, UserRolesController,  UserRoleAssignmentController],
+  controllers: [ UsersController, ActivitiesUserController, PermissionsController, UserRolesController, RolePermissionController,  UserRoleAssignmentController],
   imports: [
     TypeOrmModule.forFeature([
       UserRole,
@@ -29,6 +30,7 @@ import { ActivitiesUserController } from './activities-user/activities-user.cont
       UserRoleAssignment,
       User,
       ActivitiesUser,
+      Customer
     ])
   ],
      providers:[
