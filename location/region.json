@@ -1,0 +1,42 @@
+[
+  {
+    "nom": "Adamaoua",
+    "capitale": "Ngaoundéré"
+  },
+  {
+    "nom": "Centre",
+    "capitale": "Yaoundé"
+  },
+  {
+    "nom": "Est",
+    "capitale": "Bertoua"
+  },
+  {
+    "nom": "Extrême-Nord",
+    "capitale": "Maroua"
+  },
+  {
+    "nom": "Littoral",
+    "capitale": "Douala"
+  },
+  {
+    "nom": "Nord",
+    "capitale": "Garoua"
+  },
+  {
+    "nom": "Nord-Ouest",
+    "capitale": "Bamenda"
+  },
+  {
+    "nom": "Ouest",
+    "capitale": "Bafoussam"
+  },
+  {
+    "nom": "Sud",
+    "capitale": "Ebolowa"
+  },
+  {
+    "nom": "Sud-Ouest",
+    "capitale": "Buéa"
+  }
+]

@@ -28,6 +28,32 @@ export class DocumentCustomerController {
     return this.service.create({ ...dto, customer_id, file} );
   }
 
+  @Get('/validate-document')
+  @ApiBody({
+    description: 'Validate document',
+    type: CreateDocumentCustomerDto,
+  })
+
+
+  @ApiResponse({ status: 201, description: 'Document créé' })
+  async validate(
+    @Param('document_id') document_id: number,
+  ) {
+    return this.service.validate(document_id);
+  }
+
+   @Get('/refuse-document')
+  @ApiBody({
+    description: 'Refuse  document',
+    type: CreateDocumentCustomerDto,
+  })
+  @ApiResponse({ status: 201, description: 'Document créé' })
+  async refuse(
+    @Param('document_id') document_id: number,
+  ) {
+    return this.service.refuse(document_id);
+  }
+
   @Post('/add-documents')
   @UseInterceptors(AnyFilesInterceptor())
   @ApiConsumes('multipart/form-data')

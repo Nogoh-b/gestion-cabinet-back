@@ -47,6 +47,7 @@ export class CustomersService {
       const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
       if (existing) throw new ConflictException('Numero deja attribué à un compte');
       const type_customer = await this.typeCustomerService.findOne( createCustomerDto.type_customer_id);
+      // return new CustomerResponseDto()
       const location_city = await this.locationcityService.findOne(createCustomerDto.location_city_id);
       if (!type_customer || !location_city) throw new NotFoundException('Le type de client ou la location invalide');
 

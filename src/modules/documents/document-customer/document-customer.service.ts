@@ -110,6 +110,28 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     });
   }
 
+  async validate(document_id: number): Promise<DocumentCustomer | any> {
+    const doc = await this.docRepository.findOneBy({ id: document_id })
+    if(!doc)
+      throw new  NotFoundException("Document non trouvé");
+    
+    doc.status =  DocumentTypeStatus.ACCEPTED
+    doc.date_validation = new Date() 
+
+    this.docRepository.update(document_id, { status: DocumentTypeStatus.ACCEPTED, date_validation: new Date() } as any)
+    const customer  = await this.customerRepository.findOne({ where: { id: doc.id }, relations: ['type_customer'] });
+    return customer
+    /*for (const element of customer.re) {
+      
+    }*/
+    return await this.docRepository.findOneBy({ id: document_id });
+  }
+
+  async refuse(document_id: number): Promise<DocumentCustomer | null> {
+    this.docRepository.update(document_id, { status: DocumentTypeStatus.REFUSED, date_ejected: new Date() } as any)
+    return await this.docRepository.findOneBy({ id: document_id });
+  }
+
   getRepository(): Repository<DocumentCustomer> {
     return this.docRepository;
   }
