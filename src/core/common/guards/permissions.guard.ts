@@ -1,24 +1,30 @@
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { PERMISSIONS_KEY } from 'src/core/decorators/permissions.decorator';
+import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { PERMISSIONS_KEY } from "src/core/decorators/permissions.decorator";
+import { UsersService } from "src/modules/iam/user/user.service";
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(
+    private reflector: Reflector,
+    private userService: UsersService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
-    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
+async canActivate(context: ExecutionContext): Promise<boolean> {
+    const requiredPermissions = this.reflector.get<string[]>(
+      PERMISSIONS_KEY,
       context.getHandler(),
-      context.getClass(),
-    ]);
-    if (!requiredPermissions) {
-      return true; // aucune permission requise
-    }
+    );
+
+    if (!requiredPermissions) return true;
 
     const { user } = context.switchToHttp().getRequest();
-
-    // 👇 vérifier si l'utilisateur possède l'une des permissions requises
-    const userPermissions = user.permissions || [];
-    return requiredPermissions.some(permission => userPermissions.includes(permission));
-  }
+    const userPermissions = await this.userService.getUserPermissions(user.userId);
+    
+    // Extraire les codes de permission de chaque objet Permission
+    const userPermissionCodes = userPermissions.map(perm => perm.code);
+      console.log(user);
+    // Vérifier que toutes les permissions requises sont présentes
+    return requiredPermissions.every((perm) => userPermissionCodes.includes(perm)) || userPermissionCodes.includes('SUPER_ADMIN');
+}
 }

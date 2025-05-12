@@ -43,6 +43,12 @@ export class UserRolesService {
     return this.repository.find({ relations: ['permissions'] });
   }
 
+  async getPermissionsByCode(code:string){
+    const role = await this.repository.findOneBy({ code });
+    return await this.rolepermissionService.getRolePermissions(role!.id);
+  }
+    
+
   async findOne(id: number): Promise<UserRole> {
     const role = await this.repository.findOne({
       where: { id },

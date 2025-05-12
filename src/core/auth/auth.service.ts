@@ -4,7 +4,6 @@ import * as bcrypt from 'bcrypt';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { UsersService } from 'src/modules/iam/user/user.service';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 
 @Injectable()
 export class AuthService {
@@ -14,20 +13,20 @@ export class AuthService {
   ) {}
 
     async validateUser(username: string, pass: string): Promise<any> {
-    const user = await this.usersService.findByUsername(username);
-    
-    if (!user || !user.password) {
-        throw new UnauthorizedException('Utilisateur inexistant');
-    }
+      const user = await this.usersService.findByUsername(username);
+      
+      if (!user || !user.password) {
+          throw new UnauthorizedException('Utilisateur inexistant');
+      }
 
-    const isPasswordValid = await bcrypt.compare(pass, user.password);
-    
-    if (!isPasswordValid) {
-        throw new UnauthorizedException('Mot de passe incorrect');
-    }
+      const isPasswordValid = await bcrypt.compare(pass, user.password);
+      
+      if (!isPasswordValid) {
+          throw new UnauthorizedException('Mot de passe incorrect');
+      }
 
-    const { password, ...result } = user;
-    return result;
+      const { password, ...result } = user;
+      return result;
     }
 
   async login(data: any) {
@@ -35,12 +34,12 @@ export class AuthService {
     if (!user) {
         throw new UnauthorizedException('Utilisateur inexistant');
     }
-    const role : UserRole |  null = new UserRole() //await this.usersService.getCurrentUserRolenameRole(data.id)
+    const role : string |  null = (await this.usersService.findOne(data.id))?.role
 
     const payload: JwtPayload = { 
       sub: user.id,
       username: user.username,
-      role : role?.code
+      role : role
     };
     
     return {

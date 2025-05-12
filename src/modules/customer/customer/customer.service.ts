@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { Customer } from './entities/customer.entity';
+import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { plainToInstance } from 'class-transformer';
@@ -17,9 +17,11 @@ import { DocumentType } from 'src/modules/documents/document-type/entities/docum
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { GenCOde } from 'src/core/shared/utils/generation.util';
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
+import { BaseService } from 'src/core/shared/services/search/base.service';
+import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
 
 @Injectable()
-export class CustomersService {
+export class CustomersService extends BaseService<Customer> {
   constructor(
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,    
@@ -34,7 +36,8 @@ export class CustomersService {
     private branchService: BranchService ,
     private readonly dataSource: DataSource,
 
-  ) {}
+    
+  ) {super();}
 
   async create(createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
     return await this.dataSource.transaction(async manager => {
@@ -64,7 +67,7 @@ export class CustomersService {
         type_customer,
         location_city,
       });
-      customer.status = 0
+      customer.status = CustomerStatus.INACTIVE
 
       const savedClient = await manager.save(customer)
       let code: string;
@@ -97,7 +100,8 @@ export class CustomersService {
       file: files[index]
     }));
 
-    if(documents.length < 3)
+    const numberOfRequiredDocs = Object.values(DocTypeNameOnline).length;
+    if(documents.length < numberOfRequiredDocs)
       throw new BadRequestException('Document(s) manquants');
 
   
@@ -106,8 +110,12 @@ export class CustomersService {
     });
     const docs : CreateDocumentCustomerDto[]  = []
     for (const document of documentsWithFiles) {
-      if(!Object.values(DocTypeNameOnline).includes(document.document_type_name as DocTypeNameOnline))
-        throw new BadRequestException(`${document.document_type_name} manquant`);
+        if (!Object.values(DocTypeNameOnline).includes(document.document_type_name as DocTypeNameOnline)) {
+          const expectedValues = Object.values(DocTypeNameOnline).join(', ');
+          throw new BadRequestException(
+            `${document.document_type_name} non attendu. Valeurs attendues : ${expectedValues}`
+          );
+        }
         const doc_type = await this.docTypeRepository.findOne({
           where: { name: document.document_type_name },
           select: ['id'],
@@ -115,7 +123,7 @@ export class CustomersService {
         document.document_type_id = doc_type!.id
         docs.push(await validateDto(CreateDocumentCustomerDto, document))
     }
-
+    customerDto.created_from = CustomerCreatedFrom.ONLINE
     
     const customer = await this.create(customerDto)
     for (const document of documentsWithFiles) {
@@ -128,6 +136,10 @@ export class CustomersService {
 
 
 
+  }
+
+  async search(params: AdvancedSearchOptionsDto){
+    return this.enhancedSearch(params)
   }
 
   async findAll(): Promise<CustomerResponseDto[]> {
@@ -162,4 +174,8 @@ export class CustomersService {
     const existing = await this.customerRepository.findOne({ where: { customer_code: code } });
     return !existing;
   }
+
+    getRepository(): Repository<Customer> {
+      return this.customerRepository;
+    }
 }

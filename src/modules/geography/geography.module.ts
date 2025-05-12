@@ -15,10 +15,15 @@ import { District } from './district/entities/district.entity';
 import { Division } from './divivion/entities/divivion.entity';
 import { Country } from './country/entities/country.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CoreModule } from 'src/core/core.module';
+import { UsersService } from '../iam/user/user.service';
+import { IamModule } from '../iam/iam.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Region,LocationCity,District,Division,Country])
+    TypeOrmModule.forFeature([Region,LocationCity,District,Division,Country]),
+    CoreModule,
+    IamModule
   ],
   controllers: [
     RegionController,
@@ -33,6 +38,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     DistrictsService,
     LocationCitiesService,
     CountriesService,
+    UsersService
   
   ],
   exports: [

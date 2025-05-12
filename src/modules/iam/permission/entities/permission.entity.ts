@@ -13,6 +13,9 @@ export class Permission {
   @Column('text', { nullable: true })
   description: string;
 
+  @Column({ type: 'tinyint', nullable: true, default: 1 })
+  canChange: number;
+
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;
 

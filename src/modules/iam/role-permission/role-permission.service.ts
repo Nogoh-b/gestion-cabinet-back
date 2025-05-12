@@ -108,11 +108,11 @@ async getPermissionsByRole(role_id: number): Promise<Permission[]> {
   }
 
   async getRolePermissions(role_id: number): Promise<Permission[]> {
-  const permissions = await this.rolePermissionRepository.find({
-    where: { role_id },
-    relations: ['permission'],
-  });
-  return permissions.map(p => p.permission);
+    const permissions = await this.rolePermissionRepository.find({
+      where: { role_id },
+      relations: ['permission'],
+    });
+    return permissions.map(p => p.permission);
   }
 
   async descativeRolePermission(id: number): Promise<void> {

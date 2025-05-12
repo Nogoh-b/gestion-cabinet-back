@@ -1,12 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsString, IsDate, IsOptional, IsNumber } from 'class-validator';
+import { IsNotEmpty, IsDate, IsOptional, IsNumber } from 'class-validator';
 
 export class CreateDocumentCustomerDto {
-  @IsString()
+ /* @IsString()
   @ApiProperty({example:'Passport'})
   @IsOptional()
-  name: string;
+  name: string;*/
 
   @IsNumber()
   @Type(() => Number)
@@ -14,13 +14,10 @@ export class CreateDocumentCustomerDto {
   @IsNotEmpty()
   document_type_id: number;
 
-  @IsInt()
-  @ApiProperty({example: 1})
-  @IsNotEmpty()
-  @IsOptional()
+
   customer_id: number;
 
-  @IsOptional()
+  /*@IsOptional()
   @ApiProperty({example: '05/02/2025'})
   @IsDate()
   date_validation?: Date;
@@ -28,7 +25,7 @@ export class CreateDocumentCustomerDto {
   @IsOptional()
   @ApiProperty({example: '05/02/2025'})
   @IsDate()
-  date_ejected?: Date;
+  date_ejected?: Date;*/
 
   @IsOptional()
   @ApiProperty({example:'05/02/2025'})

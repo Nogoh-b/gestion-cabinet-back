@@ -2,8 +2,21 @@ import { LocationCity } from 'src/modules/geography/location_city/entities/locat
 import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
 import { BaseEntity } from 'src/core/entities/base.entity';
-import { randomBytes } from 'crypto';
+import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
+import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+export enum CustomerStatus{
+  ACTIVE = 1,
+  INACTIVE = 0,
+  DELETED = -1,
+  BLOCKED = -2,
+  SUSPENDED = -3,
+  LOCKED = -4,
 
+}
+export enum CustomerCreatedFrom{
+  ONLINE = 1,
+  AGENCY = 0,
+}
 @Entity('customer')
 export class Customer extends BaseEntity {
   @PrimaryGeneratedColumn()
@@ -30,12 +43,12 @@ export class Customer extends BaseEntity {
   @Column({ length: 45, nullable: true, unique: true })
   email: string;
 
-  @Column({name: 'customer_code' , length: 45, nullable: false, unique: true })
-  customer_code: string; 
+  @Column({ name: 'customer_code', length: 45, nullable: false, unique: true })
+  customer_code: string;
 
-  /*@ManyToOne(() => District, { nullable: false })
-  @JoinColumn({ name: 'districts_id' })
-  district: District;*/
+  @ManyToOne(() => Branch)
+  @JoinColumn({ name: 'branch_id' })
+  branch: Branch;
 
   @ManyToOne(() => TypeCustomer)
   @JoinColumn({ name: 'type_customer_id' })
@@ -44,6 +57,9 @@ export class Customer extends BaseEntity {
   @ManyToOne(() => LocationCity)
   @JoinColumn({ name: 'location_city_id' })
   location_city: LocationCity;
+
+  @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY  })
+  created_from: CustomerCreatedFrom;
 
   // Ajoutez ces propriétés pour accéder directement aux IDs
   get typeCustomerId(): number {
@@ -64,15 +80,13 @@ export class Customer extends BaseEntity {
   birthday: Date;
 
   @Column({ nullable: true, default: 1 })
-  status: number;
-
+  status: CustomerStatus;
 
   @BeforeInsert()
   generateKeys() {
-    this.public_key = randomBytes(16).toString('hex');
-    
-    this.private_key = randomBytes(32).toString('hex');
+    const { publicKey, privateKey } = GenKeys.generateKeyPair();
+    const encryptedPrivateKey = GenKeys.encryptPrivateKey(privateKey);
+    this.public_key = publicKey;
+    this.private_key = encryptedPrivateKey;
   }
-
-  
 }

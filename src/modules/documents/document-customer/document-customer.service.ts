@@ -1,17 +1,17 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotAcceptableException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
-import { DocumentCustomer } from './entities/document-customer.entity';
-import { DocumentType, DocumentTypeStatus } from '../document-type/entities/document-type.entity';
+import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+import { DocumentType } from '../document-type/entities/document-type.entity';
 import { BaseService } from 'src/core/shared/services/search/base.service';
-import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
-import { plainToInstance } from 'class-transformer';
+import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { plainToInstance } from 'class-transformer';
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
@@ -26,19 +26,42 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     super();
   }
 
-  async create(dto: CreateDocumentCustomerDto, customer_id = null): Promise<DocumentCustomerResponseDto> {
+  async create(dto: CreateDocumentCustomerDto, customer_id = null): Promise<any> {
     const file = dto.file!
     const docType = await this.docTypeRepository.findOneBy({ id: dto.document_type_id });
     if (!docType) {
       throw new NotFoundException('Type document non trouvé');
     }    
-    const customer = await this.customerRepository.findOneBy({ id: dto.customer_id });
+    const customer  = await this.customerRepository.findOne({ where: { id: dto.customer_id }, relations: ['type_customer', 'type_customer.requiredDocuments'] });
+
     if (!customer) {
       throw new NotFoundException(`client ${dto.customer_id} non trouvé`);
     }
+    const requiredDocument = customer?.type_customer?.requiredDocuments.find(
+      (doc) => String(doc.id) === String(dto.document_type_id)
+    );
+    console.log('Comparaison des IDs :');
+    customer?.type_customer?.requiredDocuments.forEach(doc => {
+      console.log('doc.id:', doc.id, 'vs', 'dto:', dto.document_type_id);
+    });
+    if(!requiredDocument){
+      throw new NotAcceptableException(`vous ne pouvez pas soumettre ce type de document : ${requiredDocument!.name}`);
+    }
     const getSimilarDocs : DocumentCustomer[] = await this.searchWithJoinsAdvanced({
       alias: 'doc',
-      conditions: { status: 1 },
+      // conditions: { status: 1 },
+      orConditions: [
+        // Groupe OR 1: status = 1
+        {
+          andConditions: [{ field: 'status', value: DocumentCustomerStatus.ACCEPTED }],
+        },
+        // Groupe OR 2: (status = 0 ET nom = 'brice')
+        {
+          andConditions: [
+            { field: 'status', value: DocumentCustomerStatus.PENDING },
+          ],
+        },  
+      ],
       joins: [
         {
           relation: 'document_type',
@@ -53,7 +76,7 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       ],
     });
     if (getSimilarDocs.length > 0) {
-      throw new ConflictException(`Document : ${getSimilarDocs[0].name} deja soumis`);
+      throw new ConflictException(`Document : ${getSimilarDocs[0].name} deja soumis ou validé`);
     } 
 
     if (!file) {
@@ -85,10 +108,11 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       file_path: uploadedFile.fileName,
       file_size: uploadedFile.fileSize,
       name: docType.name,
-      status: DocumentTypeStatus.PENDING,
+      status: DocumentCustomerStatus.PENDING,
     });
-     return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
+    return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
   }
+
 
   async createMany(dto: CreateDocumentCustomerDto[] | any[]): Promise<any> {
     let savedDocs : DocumentCustomerResponseDto []  = [];
@@ -102,33 +126,46 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   }
 
 
-
-  async findByCustomer(customerId: number): Promise<DocumentCustomer[]> {
+  async findByCustomer(customerId: number, accepted = false): Promise<any[]> {
+    let where = accepted
+      ? {
+          customer: { id: customerId },
+          status: DocumentCustomerStatus.ACCEPTED,
+        }
+      : { customer: { id: customerId } };
     return this.docRepository.find({
-      where: { customer: { id: customerId } },
+      where,
       relations: ['document_type'],
     });
   }
 
+
   async validate(document_id: number): Promise<DocumentCustomer | any> {
-    const doc = await this.docRepository.findOneBy({ id: document_id })
+    const doc = await this.docRepository.findOne({
+      where :{ id: document_id },
+      relations: ['customer'] },
+    );
     if(!doc)
       throw new  NotFoundException("Document non trouvé");
-    
-    doc.status =  DocumentTypeStatus.ACCEPTED
-    doc.date_validation = new Date() 
+    if(doc.status !== DocumentCustomerStatus.PENDING)
+      throw new  NotFoundException("Document déja traité");
 
-    this.docRepository.update(document_id, { status: DocumentTypeStatus.ACCEPTED, date_validation: new Date() } as any)
-    const customer  = await this.customerRepository.findOne({ where: { id: doc.id }, relations: ['type_customer'] });
-    return customer
-    /*for (const element of customer.re) {
-      
-    }*/
+    this.docRepository.update(document_id, { status: DocumentCustomerStatus.ACCEPTED, date_validation: new Date() } as any)
+    const customer  = await this.customerRepository.findOne({ where: { id: doc.customer.id }, relations: ['type_customer', 'type_customer.requiredDocuments'] });
+    const validateDocs = await this.findByCustomer(customer!.id, true);
+    
+    if (validateDocs.length === customer?.type_customer.requiredDocuments.length) {
+        await this.customerRepository.update(customer.id, {
+          status: CustomerStatus.ACTIVE,
+        })
+    }
+  
     return await this.docRepository.findOneBy({ id: document_id });
   }
 
+
   async refuse(document_id: number): Promise<DocumentCustomer | null> {
-    this.docRepository.update(document_id, { status: DocumentTypeStatus.REFUSED, date_ejected: new Date() } as any)
+    this.docRepository.update(document_id, { status: DocumentCustomerStatus.REFUSED, date_ejected: new Date() } as any)
     return await this.docRepository.findOneBy({ id: document_id });
   }
 

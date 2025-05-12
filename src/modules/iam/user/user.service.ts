@@ -9,6 +9,7 @@ import { UserResponseDto } from './dto/user-response.dto';
 import { UserRole } from '../user-role/entities/user-role.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { UserRolesService } from '../user-role/user-role.service';
 
 @Injectable()
 export class UsersService {
@@ -17,6 +18,8 @@ export class UsersService {
     private userRepository: Repository<User>,    
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
+    private roleService : UserRolesService
+    
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
@@ -96,6 +99,13 @@ export class UsersService {
     return user;
   }
 
+  async getUserPermissions(
+    userId: number
+  ): Promise<any> {
+    const role = (await this.findOne(userId))?.role;
+    return this.roleService.getPermissionsByCode(role)
+
+  }
 
 
   async updateRefreshToken(

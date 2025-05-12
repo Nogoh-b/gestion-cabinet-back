@@ -5,6 +5,7 @@ export enum DocTypeNameOnline {
   FRONT_CNI = 'front_cni',
   BACK_CNI = 'back_cni',
   SELFIE = 'selfie',
+  HALF_PHOTO_CARD = 'half_photo_card',
 }
 export class CreateDocumentFromCotiDto {
   @ApiProperty({ example: DocTypeNameOnline.FRONT_CNI, required: true })

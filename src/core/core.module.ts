@@ -15,6 +15,9 @@ import { LocalStrategy } from './auth/strategies/local.strategy';
 // import { swaggerConfig } from './config/swagger.config';
 import { InitService } from './init/init.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
+import { PermissionSeeder } from './auth/seeders/permission.seeder';
+import { PermissionsGuard } from './common/guards/permissions.guard';
+import { SeedersModule } from './database/seeders/seeders.module';
 
 @Global()
 
@@ -35,14 +38,17 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
       inject: [ConfigService],
     }),
     PassportModule,
+    SeedersModule,
 
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     LocalStrategy,
+    PermissionSeeder,
     JwtStrategy,
     // RolesGuard,
+    PermissionsGuard,
     JwtAuthGuard,
     // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
     // { provide: 'APP_GUARD', useClass: RolesGuard },
@@ -59,6 +65,8 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
     JwtModule,
     PassportModule,
     AuthService,
+    PermissionSeeder, 
+    PermissionsGuard,
     // RolesGuard,
     JwtAuthGuard,
     KeyGeneratorService

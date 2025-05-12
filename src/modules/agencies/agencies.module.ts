@@ -8,10 +8,12 @@ import { EmployeeController } from './employee/employee.controller';
 import { BranchController } from './branch/branch.controller';
 import { BranchService } from './branch/branch.service';
 import { EmployeeService } from './employee/employee.service';
+import { CoreModule } from 'src/core/core.module';
 
 @Module({
   imports: [
     IamModule,
+    CoreModule,
     GeographyModule,
     TypeOrmModule.forFeature([Branch, Employee]),
   ],

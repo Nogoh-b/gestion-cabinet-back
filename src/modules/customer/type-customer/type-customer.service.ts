@@ -53,21 +53,30 @@ export class TypeCustomersService {
 
 
 
-  async assignDocuments(typeCustomerId: number, dto: AssignDocumentsToTypeDto)   {
+  async assignDocuments(typeCustomerId: number, dto: AssignDocumentsToTypeDto) {
     const typeCustomer = await this.typeCustomerRepository.findOne({
       where: { id: typeCustomerId },
-      relations: ['requiredDocuments']
+      relations: ['requiredDocuments'],
     });
 
     if (!typeCustomer) {
       throw new NotFoundException(`TypeCustomer with ID ${typeCustomerId} not found`);
     }
 
-    const documents = await this.document_typeRepository.findByIds(dto.document_type_ids);
-    typeCustomer.requiredDocuments = documents;
+    const newDocuments = await this.document_typeRepository.findByIds(dto.document_type_ids);
+
+    // Fusionner sans doublons
+    const existingDocIds = new Set(typeCustomer.requiredDocuments.map(doc => doc.id));
+    const combinedDocuments = [
+      ...typeCustomer.requiredDocuments,
+      ...newDocuments.filter(doc => !existingDocIds.has(doc.id)),
+    ];
+
+    typeCustomer.requiredDocuments = combinedDocuments;
 
     return this.typeCustomerRepository.save(typeCustomer);
   }
+
 
   async findOneWithDocuments(id: number) {
     return this.typeCustomerRepository.findOne({

@@ -5,7 +5,7 @@ import { IsInt, IsString, IsEmail, IsNotEmpty } from 'class-validator';
 export class CreateUserDto {
 
 
-  @ApiProperty({ required: true, example: 'nogoh@exemple.com' })
+  @ApiProperty({ required: true, example: 'superadmin' })
   @IsString()
   username: string;
 
@@ -14,7 +14,7 @@ export class CreateUserDto {
   @IsEmail()
   email: string;
 
-  @ApiProperty({ required: true, example: 'brice' })
+  @ApiProperty({ required: true, example: 'Admin@1234' })
   @IsString()
   password: string;
 

@@ -5,6 +5,8 @@ import { swaggerConfig } from './core/config/swagger.config';
 import { Transport } from '@nestjs/microservices';
 import * as dotenv from 'dotenv';
 import * as tls from 'tls';
+import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
+import { SuperAdminSeeder } from './core/database/seeders/super-admin.seeder';
 dotenv.config();
 
 async function bootstrap() {
@@ -37,6 +39,10 @@ async function bootstrap() {
       } as tls.TlsOptions,
     },
   });
+    const seeder = app.get(PermissionSeeder);
+    const seederAdmin = app.get(SuperAdminSeeder);
+    await seeder.seed();
+    await seederAdmin.seed();
     // Configuration Swagger
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api-docs', app, document, {
@@ -47,6 +53,10 @@ async function bootstrap() {
   },
 });
 
+  app.enableCors({
+    origin: '*',
+    credentials: true, // important si tu envoies Authorization header ou cookies
+  });
 
   await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()])
     .then(() => {

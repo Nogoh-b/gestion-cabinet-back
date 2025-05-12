@@ -3,6 +3,12 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 't
 import { DocumentType } from '../../document-type/entities/document-type.entity';
 import { BaseEntity } from 'src/core/entities/base.entity';
 
+export enum DocumentCustomerStatus{
+  PENDING = 0,
+  ACCEPTED = 1,
+  REFUSED = 2,
+}
+
 @Entity('document_customer')
 export class DocumentCustomer extends BaseEntity {
   @PrimaryGeneratedColumn()

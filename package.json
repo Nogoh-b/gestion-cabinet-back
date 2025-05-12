@@ -22,6 +22,7 @@
     "migration:generate": "npm run typeorm migration:generate -- -n",
     "migration:run": "npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run --dataSource src/data-source.ts",
     "migration:drop": "npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js schema:drop --dataSource src/data-source.ts",
+    "seed:super-admin": "ts-node scripts/seed-super-admin.ts",
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert --dataSource src/data-source.ts"
   },
   "dependencies": {
@@ -46,6 +47,7 @@
     "dotenv": "^16.5.0",
     "ioredis": "^5.6.1",
     "mysql2": "^3.14.0",
+    "nestjs-console": "^10.0.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",

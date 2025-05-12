@@ -42,6 +42,6 @@ export class DocumentType extends BaseEntity {
   isRequired: boolean;
 
   @Column({ nullable: true })
-  status: DocumentTypeStatus;
+  status: number;
   
 }

@@ -34,8 +34,8 @@ export class CreateDocumentTypeDto {
     example: 1,
     description: 'Ty pe de client',
   })
-  @IsOptional()
-  type_customer_id?: number;
+  // @IsOptional()
+  // type_customer_id?: number;
 
   @IsNumber()
   @ApiProperty({

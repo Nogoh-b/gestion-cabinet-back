@@ -8,12 +8,15 @@ import { DocumentCustomer } from './document-customer/entities/document-customer
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomerModule } from '../customer/customer.module';
 import { CoreModule } from 'src/core/core.module';
+import { IamModule } from '../iam/iam.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocumentType, DocumentCustomer]),
     forwardRef(() => CustomerModule),
-    CoreModule
+    
+    forwardRef(() => CoreModule),
+    IamModule
 
   ],
   controllers: [DocumentTypeController, DocumentCustomerController],
