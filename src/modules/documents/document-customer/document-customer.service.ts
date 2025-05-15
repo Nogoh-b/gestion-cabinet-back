@@ -41,11 +41,12 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       (doc) => String(doc.id) === String(dto.document_type_id)
     );
     console.log('Comparaison des IDs :');
+    // return customer?.type_customer?.requiredDocuments
     customer?.type_customer?.requiredDocuments.forEach(doc => {
       console.log('doc.id:', doc.id, 'vs', 'dto:', dto.document_type_id);
     });
     if(!requiredDocument){
-      throw new NotAcceptableException(`vous ne pouvez pas soumettre ce type de document : ${requiredDocument!.name}`);
+      throw new NotAcceptableException(`vous ne pouvez pas soumettre ce type de document `);
     }
     const getSimilarDocs : DocumentCustomer[] = await this.searchWithJoinsAdvanced({
       alias: 'doc',
@@ -165,7 +166,18 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
 
 
   async refuse(document_id: number): Promise<DocumentCustomer | null> {
-    this.docRepository.update(document_id, { status: DocumentCustomerStatus.REFUSED, date_ejected: new Date() } as any)
+    const doc = await this.docRepository.findOne({
+      where :{ id: document_id },
+      relations: ['customer'] },
+    );
+    if(!doc)
+      throw new  NotFoundException("Document non trouvé");
+    if(doc.status !== DocumentCustomerStatus.PENDING)
+      throw new  NotFoundException("Document déja traité");
+    doc.status = DocumentCustomerStatus.REFUSED
+    doc.date_ejected = new Date()
+
+    // this.docRepository.update(document_id, { status: DocumentCustomerStatus.REFUSED, date_ejected: new Date() } as any)
     return await this.docRepository.findOneBy({ id: document_id });
   }
 

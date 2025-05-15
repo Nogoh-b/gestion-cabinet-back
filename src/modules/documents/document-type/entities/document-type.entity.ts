@@ -16,6 +16,9 @@ export class DocumentType extends BaseEntity {
 
 
   @Column({ length: 100 })
+  code: string;
+
+  @Column({ length: 100 })
   name: string;
 
   @Column({ type: 'text', nullable: true })

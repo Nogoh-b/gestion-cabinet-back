@@ -117,7 +117,7 @@ export class CustomersService extends BaseService<Customer> {
           );
         }
         const doc_type = await this.docTypeRepository.findOne({
-          where: { name: document.document_type_name },
+          where: { code: document.document_type_name },
           select: ['id'],
         });
         document.document_type_id = doc_type!.id

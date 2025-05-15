@@ -11,6 +11,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import * as dotenv from 'dotenv';
+import { MailerModule } from '@nestjs-modules/mailer';
 dotenv.config();
 
 @Module({
@@ -28,6 +29,20 @@ dotenv.config();
       rootPath: UPLOAD_PATH,
       serveRoot: `/${UPLOAD_FOLDER_NAME}/`,
     }),
+    MailerModule.forRoot({
+      transport: {
+        host: 'vshp3.clo.xelgrp.com',
+        port: 587,
+        secure: false, // true pour le port 465
+        auth: {
+          user: 'no-reply-cotimendo.cm',
+          pass: 'Iz03ik33?',
+        },
+      },
+      defaults: {
+        from: '"No Reply" <noreply@mendo-finance.com>',
+      },
+    }),
     ClientsModule.register([
       {
         name: 'USER_SERVICE',
@@ -41,6 +56,7 @@ dotenv.config();
   ],
   controllers: [AppController],
   providers: [AppService],
+  exports:[MailerModule]
 })
 export class AppModule {
   /*configure(consumer: MiddlewareConsumer) {

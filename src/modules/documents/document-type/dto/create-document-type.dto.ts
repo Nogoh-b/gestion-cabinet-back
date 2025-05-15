@@ -5,7 +5,7 @@ import { IsNotEmpty, IsString, IsNumber, IsOptional } from 'class-validator';
 export class CreateDocumentTypeDto {
   @IsString()
   @ApiProperty({
-    example: '0001',
+    example: 'front_cni',
     description: 'Code de type de document',
     required: true,
   })

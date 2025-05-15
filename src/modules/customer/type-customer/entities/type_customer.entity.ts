@@ -21,14 +21,13 @@ export class TypeCustomer {
   @Column({ length: 45, nullable: true })
   code: string;
 
- @ManyToMany(() => DocumentType)
+  @ManyToMany(() => DocumentType)
   @JoinTable({
-    name: 'type_customer_document_type', 
+    name: 'type_customer_document_type',
     joinColumn: { name: 'type_customer_id' },
-    inverseJoinColumn: { name: 'document_type_id' }
+    inverseJoinColumn: { name: 'document_type_id' },
   })
   requiredDocuments: DocumentType[];
-  
 
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;
@@ -36,6 +35,6 @@ export class TypeCustomer {
   @UpdateDateColumn({ name: 'updated_at' })
   update_at: Date;
 
-  @Column({ type: 'tinyint', nullable: true })
+  @Column({ type: 'tinyint', nullable: true, default: 1 })
   status: number;
 }

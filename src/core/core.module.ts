@@ -18,6 +18,7 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { SeedersModule } from './database/seeders/seeders.module';
+import { EmailService } from './shared/services/email/email.service';
 
 @Global()
 
@@ -56,10 +57,12 @@ import { SeedersModule } from './database/seeders/seeders.module';
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
     KeyGeneratorService,
+    EmailService,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
   exports: [
     ConfigModule,
+    EmailService,
     JwtModule,
     TypeOrmModule,
     JwtModule,

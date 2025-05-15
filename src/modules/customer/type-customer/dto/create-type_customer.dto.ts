@@ -1,6 +1,6 @@
 // create-type-customer.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsInt, IsOptional } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
 
 export class CreateTypeCustomerDto {
   @IsString()
@@ -27,11 +27,11 @@ export class CreateTypeCustomerDto {
   @IsOptional()
   document_typeId?: number;*/
 
-  @IsInt()
+  /*@IsInt()
   @ApiProperty({
     description: 'Status',
     example: 1,
   })
   @IsOptional()
-  status?: number;
+  status?: number;*/
 }

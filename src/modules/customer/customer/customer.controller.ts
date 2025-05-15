@@ -21,6 +21,7 @@ import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
+import { EmailService } from 'src/core/shared/services/email/email.service';
 
 @ApiTags('customer')
 @Controller('customer')
@@ -28,7 +29,10 @@ import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dt
 @ApiBearerAuth() 
 
 export class CustomerController {
-  constructor(private readonly customerService: CustomersService) {}
+  constructor(
+    private readonly customerService: CustomersService,
+    private readonly emailService: EmailService,
+  ) {}
 
   @Post()
 
@@ -102,4 +106,17 @@ export class CustomerController {
   async remove(@Param('id') id: string): Promise<void> {
     return await this.customerService.remove(+id);
   }
+
+  @Post('contact')
+async contactForm(@Body() contactDto: any) {
+  return await this.emailService.sendMail({
+    to: 'nogohbrice@gmail.com',
+    subject: 'Nouveau message de contact',
+    template: 'contact-form',
+    context: {
+      name: 'contactDto.name',
+      message: 'contactDto.message'
+    }
+  });
+}
 }

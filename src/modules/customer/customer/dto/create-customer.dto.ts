@@ -9,7 +9,7 @@ import {
   IsEmail,
   IsDate,
   IsPhoneNumber,
-  IsEmpty,
+  IsNotEmpty,
 } from 'class-validator';
 import { CustomerCreatedFrom } from '../entities/customer.entity';
 
@@ -28,7 +28,7 @@ export class CreateCustomerDto {
 
   @IsOptional()
   @ApiProperty({ example: 1 , description: 'identifiant de la branche' })
-  @IsEmpty()
+  @IsNotEmpty()
   branch_id: number;
 
   customer_code: string

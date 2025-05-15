@@ -94,7 +94,7 @@ export class DocumentCustomerController {
       return docs;
     }
 
-  @Get()
+  @Get('/get-documents')
   @ApiOperation({ summary: "Lister les documents d'un client" })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async findAll(@Param('customer_id') customer_id: number) {
