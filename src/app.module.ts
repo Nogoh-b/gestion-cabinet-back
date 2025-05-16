@@ -12,6 +12,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import * as dotenv from 'dotenv';
 import { MailerModule } from '@nestjs-modules/mailer';
+import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 dotenv.config();
 
 @Module({
@@ -53,6 +54,7 @@ dotenv.config();
         },
       },
     ]),
+    SavingsAccountModule,
   ],
   controllers: [AppController],
   providers: [AppService],
