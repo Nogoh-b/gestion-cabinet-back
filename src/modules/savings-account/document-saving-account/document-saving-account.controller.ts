@@ -1,34 +1,50 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { DocumentSavingAccountService } from './document-saving-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { UpdateDocumentSavingAccountDto } from './dto/update-document-saving-account.dto';
 
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { DocumentSavingAccountResponseDto } from './dto/response-document-saving-account.dto copy';
+
+@ApiTags('Document Saving Accounts')
 @Controller('document-saving-account')
 export class DocumentSavingAccountController {
-  constructor(private readonly documentSavingAccountService: DocumentSavingAccountService) {}
-
-  @Post()
-  create(@Body() createDocumentSavingAccountDto: CreateDocumentSavingAccountDto) {
-    return this.documentSavingAccountService.create(createDocumentSavingAccountDto);
-  }
-
   @Get()
-  findAll() {
-    return this.documentSavingAccountService.findAll();
+  @ApiOperation({ summary: 'Récupère tous les documents de compte épargne' })
+  @ApiResponse({ status: 200, type: [DocumentSavingAccountResponseDto] })
+  findAll(): DocumentSavingAccountResponseDto[] {
+    // return service.findAll();
+    return [];
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.documentSavingAccountService.findOne(+id);
+  @ApiOperation({ summary: 'Récupère un document par ID' })
+  @ApiResponse({ status: 200, type: DocumentSavingAccountResponseDto })
+  findOne(@Param('id') id: number): DocumentSavingAccountResponseDto {
+    // return service.findOne(id);
+    return new DocumentSavingAccountResponseDto();
+ ;
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Crée un nouveau document de compte épargne' })
+  @ApiResponse({ status: 201, type: DocumentSavingAccountResponseDto })
+  create(@Body() dto: CreateDocumentSavingAccountDto): DocumentSavingAccountResponseDto {
+    // return service.create(dto);
+    return new DocumentSavingAccountResponseDto();
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateDocumentSavingAccountDto: UpdateDocumentSavingAccountDto) {
-    return this.documentSavingAccountService.update(+id, updateDocumentSavingAccountDto);
+  @ApiOperation({ summary: 'Met à jour partiellement un document' })
+  @ApiResponse({ status: 200, type: DocumentSavingAccountResponseDto })
+  update(@Param('id') id: number, @Body() dto: UpdateDocumentSavingAccountDto): DocumentSavingAccountResponseDto {
+    // return service.update(id, dto);
+    return new DocumentSavingAccountResponseDto();
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.documentSavingAccountService.remove(+id);
+  @ApiOperation({ summary: 'Supprime un document' })
+  @ApiResponse({ status: 204 })
+  remove(@Param('id') id: number): void {
+    // return service.remove(id);
   }
 }

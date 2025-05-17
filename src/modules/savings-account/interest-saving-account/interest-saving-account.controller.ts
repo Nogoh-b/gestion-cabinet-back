@@ -1,34 +1,34 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
-import { InterestSavingAccountService } from './interest-saving-account.service';
 import { CreateInterestSavingAccountDto } from './dto/create-interest-saving-account.dto';
 import { UpdateInterestSavingAccountDto } from './dto/update-interest-saving-account.dto';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { InterestSavingAccountResponseDto } from './dto/response-interest-saving-account.dto';
 
+@ApiTags('Interest Saving Accounts')
 @Controller('interest-saving-account')
 export class InterestSavingAccountController {
-  constructor(private readonly interestSavingAccountService: InterestSavingAccountService) {}
-
-  @Post()
-  create(@Body() createInterestSavingAccountDto: CreateInterestSavingAccountDto) {
-    return this.interestSavingAccountService.create(createInterestSavingAccountDto);
-  }
-
   @Get()
-  findAll() {
-    return this.interestSavingAccountService.findAll();
-  }
+  @ApiOperation({ summary: 'Liste tous les taux d’intérêt' })
+  @ApiResponse({ status: 200, type: [InterestSavingAccountResponseDto] })
+  findAll(): InterestSavingAccountResponseDto[] { return []; }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.interestSavingAccountService.findOne(+id);
-  }
+  @ApiOperation({ summary: 'Détail d’un taux d’intérêt' })
+  @ApiResponse({ status: 200, type: InterestSavingAccountResponseDto })
+  findOne(@Param('id') id: number): InterestSavingAccountResponseDto { return new InterestSavingAccountResponseDto; }
+
+  @Post()
+  @ApiOperation({ summary: 'Crée un taux d’intérêt' })
+  @ApiResponse({ status: 201, type: InterestSavingAccountResponseDto })
+  create(@Body() dto: CreateInterestSavingAccountDto): InterestSavingAccountResponseDto { return new InterestSavingAccountResponseDto; }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateInterestSavingAccountDto: UpdateInterestSavingAccountDto) {
-    return this.interestSavingAccountService.update(+id, updateInterestSavingAccountDto);
-  }
+  @ApiOperation({ summary: 'Met à jour un taux d’intérêt' })
+  @ApiResponse({ status: 200, type: InterestSavingAccountResponseDto })
+  update(@Param('id') id: number, @Body() dto: UpdateInterestSavingAccountDto): InterestSavingAccountResponseDto { return new InterestSavingAccountResponseDto; }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.interestSavingAccountService.remove(+id);
-  }
+  @ApiOperation({ summary: 'Supprime un taux d’intérêt' })
+  @ApiResponse({ status: 204 })
+  remove(@Param('id') id: number): void {}
 }

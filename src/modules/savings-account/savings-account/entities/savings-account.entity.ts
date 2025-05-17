@@ -1,3 +1,4 @@
+
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { Entity, Column, ManyToOne, JoinColumn, PrimaryColumn, OneToMany } from 'typeorm';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
@@ -11,8 +12,8 @@ export class SavingsAccount extends BaseEntity {
   @PrimaryColumn()
   id: number;
 
-  @PrimaryColumn({ name: 'branch_id' })
-  branchId: number;
+  @Column({ name: 'branch_id' })
+  branch_id: number;
 
   @Column({ name: 'number_savings_account', length: 45, unique: true })
   number: string;

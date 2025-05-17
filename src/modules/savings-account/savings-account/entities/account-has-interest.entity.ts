@@ -19,6 +19,8 @@ export class SavingsAccountHasInterest {
   @Column({ nullable: true })
   status: number;
 
+  
+
   @ManyToOne(
     () => SavingsAccount,
     (account) => account.interestRelations,

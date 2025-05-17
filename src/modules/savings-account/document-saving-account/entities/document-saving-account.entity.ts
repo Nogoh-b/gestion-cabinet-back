@@ -1,31 +1,47 @@
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from 'src/core/entities/base.entity';
-import { Entity, Column, ManyToOne, Index } from 'typeorm';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
 
+export enum DocumentCustomerStatus{
+  PENDING = 0,
+  ACCEPTED = 1,
+  REFUSED = 2,
+}
+
 @Entity('document_saving_account')
-@Index('unique', ['type'], { unique: true })
 export class DocumentSavingAccount extends BaseEntity {
-  @Column({ primary: true, generated: true })
+  @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 45 })
+  @Column()
   name: string;
 
-  @Column({ length: 45 })
-  type: string;
+  @ManyToOne(() => DocumentType)
+  @JoinColumn({ name: 'document_type_id' })
+  document_type: DocumentType;
 
   @Column({ default: 0 })
   status: number;
 
-  @Column({ type: 'timestamp', nullable: true })
-  date_validation: Date;
+  @Column({ name: 'file_path', nullable: true })
+  file_path: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  date_ejected: Date;
+  @Column({ name: 'file_path', nullable: true })
+  file_name: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  date_expired: Date;
+  @Column({ name: 'file_size', nullable: true })
+  file_size: number;
 
   @ManyToOne(() => SavingsAccount, { cascade: true })
   savings_account: SavingsAccount;
+
+  @Column({ name: 'date_validation', nullable: true })
+  date_validation: Date;
+
+  @Column({ name: 'date_ejected', nullable: true })
+  date_ejected: Date;
+
+  @Column({ name: 'date_expired', nullable: true })
+  date_expired: Date;
 }

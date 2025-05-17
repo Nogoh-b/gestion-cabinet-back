@@ -46,5 +46,7 @@ export class DocumentType extends BaseEntity {
 
   @Column({ nullable: true })
   status: number;
-  
+  // @ManyToMany(() => TypeSavingsAccount, type => type.documentTypes)
+  // typeAccounts: TypeSavingsAccount[];
+
 }

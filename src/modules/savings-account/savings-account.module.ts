@@ -17,9 +17,11 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
 import { CommissionService } from './commission/commission.service';
 import { InterestSavingAccountService } from './interest-saving-account/interest-saving-account.service';
 import { SavingsAccountService } from './savings-account/savings-account.service';
+import { DocumentsModule } from '../documents/documents.module';
 
 @Module({
   imports: [
+    DocumentsModule,
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,

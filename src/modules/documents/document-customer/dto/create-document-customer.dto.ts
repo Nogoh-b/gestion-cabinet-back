@@ -3,10 +3,7 @@ import { Type } from 'class-transformer';
 import { IsNotEmpty, IsDate, IsOptional, IsNumber } from 'class-validator';
 
 export class CreateDocumentCustomerDto {
- /* @IsString()
-  @ApiProperty({example:'Passport'})
-  @IsOptional()
-  name: string;*/
+
 
   @IsNumber()
   @Type(() => Number)
@@ -17,15 +14,7 @@ export class CreateDocumentCustomerDto {
 
   customer_id: number;
 
-  /*@IsOptional()
-  @ApiProperty({example: '05/02/2025'})
-  @IsDate()
-  date_validation?: Date;
-
-  @IsOptional()
-  @ApiProperty({example: '05/02/2025'})
-  @IsDate()
-  date_ejected?: Date;*/
+ 
 
   @IsOptional()
   @ApiProperty({example:'05/02/2025'})
