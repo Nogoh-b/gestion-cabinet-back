@@ -1,17 +1,17 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
-import { Entity, Column } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+import { CommissionValueType } from '../dto/create-commission.dto';
 
 @Entity('commission')
-export class Commission extends BaseEntity {
-  @Column({ primary: true, generated: true })
+export class Commission {
+  @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 100 })
+  @Column({ type: 'varchar', length: 100 })
   description: string;
 
-  @Column({ type: 'enum', enum: ['Fixé', 'Variable'] })
-  type_valeur: string;
+  @Column({ type: 'enum', enum: CommissionValueType, name: 'value_type' })
+  value_type: CommissionValueType;
 
-  @Column({ nullable: true })
-  montant: number;
+  @Column({ type: 'int', nullable: true, name: 'amount' })
+  amount: number | null;
 }

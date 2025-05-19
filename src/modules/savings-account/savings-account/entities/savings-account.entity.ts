@@ -12,47 +12,59 @@ export class SavingsAccount extends BaseEntity {
   @PrimaryColumn()
   id: number;
 
-  @Column({ name: 'branch_id' })
+  @Column({ name: 'branch_id', type: 'int' })
   branch_id: number;
 
-  @Column({ name: 'number_savings_account', length: 45, unique: true })
-  number: string;
+  @Column({ name: 'number_savings_account', type: 'varchar', length: 45, unique: true })
+  number_savings_account: string;
 
-  @Column({ name: 'fee_savings', type: 'decimal', precision: 15, scale: 2 })
-  fee: number;
+  @Column({ name: 'fee_savings', type: 'decimal' })
+  fee_savings: number;
 
-  @Column({ name: 'amount_created', type: 'decimal', precision: 15, scale: 2 })
-  initialAmount: number;
+  @Column({ name: 'amount_created', type: 'decimal' })
+  amount_created: number;
 
-  @Column({ name: 'balance_init_savings_account', type: 'decimal', precision: 15, scale: 2 })
-  initialBalance: number;
+  @Column({ name: 'balance_init_savings_account', type: 'decimal' }) 
+  balance_init_savings_account: number;
 
-  @Column({ name: 'IBAN', length: 45, unique: true })
+  // @ManyToOne(() => Customer, customer => customer.savings_accounts)
+  // @JoinColumn({ name: 'customer_id' })
+  // customer: Customer;
+
+  @ManyToOne(() => TypeSavingsAccount, type => type.savings_accounts)
+  @JoinColumn({ name: 'type_savings_account_id' })
+  type_savings_account: TypeSavingsAccount;
+
+  @Column({ name: 'status', type: 'tinyint' })
+  status: number;
+
+  @Column({ name: 'iban', type: 'varchar', length: 14, unique: true })
   iban: string;
 
-  @Column({ name: 'code_product', length: 45 })
-  productCode: string;
+  @Column({ name: 'code_product', type: 'varchar', length: 45 })
+  code_product: string;
 
-  @Column({ name: 'wallet_link', length: 45, nullable: true })
-  walletLink: string;
+  @Column({ name: 'wallet_link', type: 'varchar', length: 45, nullable: true })
+  wallet_link?: string;
 
-  @Column({ name: 'interest_year_savings_account', type: 'decimal', precision: 5, scale: 2, nullable: true })
-  annualInterestRate: number;
+  @Column({ name: 'interest_year_savings_account', type: 'decimal', nullable: true })
+  interest_year_savings_account?: number;
 
-  @Column({ name: 'account_number', length: 45, nullable: true })
-  accountNumber: string;
+  @Column({ name: 'account_number', type: 'varchar', length: 45, nullable: true })
+  account_number?: string;
 
-  @Column()
-  status: number;
+  // Relation unique active interest history
+  // @OneToOne(() => SavingsAccountHasInterest, rel => rel.savings_asavings_accountccount)
+  // active_interest?: SavingsAccountHasInterest;
+  
+
 
   // Relations
   @ManyToOne(() => Customer)
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
-  @ManyToOne(() => TypeSavingsAccount)
-  @JoinColumn({ name: 'type_savings_account_id' })
-  accountType: TypeSavingsAccount;
+
 
   @ManyToOne(() => Branch)
   @JoinColumn({ name: 'branch_id' })

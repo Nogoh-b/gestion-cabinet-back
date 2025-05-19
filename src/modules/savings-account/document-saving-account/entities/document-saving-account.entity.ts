@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
 
 export enum DocumentCustomerStatus{
@@ -11,37 +12,40 @@ export enum DocumentCustomerStatus{
 
 @Entity('document_saving_account')
 export class DocumentSavingAccount extends BaseEntity {
-  @PrimaryGeneratedColumn()
-  id: number;
+    @PrimaryGeneratedColumn()
+    id: number;
+    @Column({ length: 100 })
+    name: string;
 
-  @Column()
-  name: string;
+    @ManyToOne(() => DocumentType)
+    @JoinColumn({ name: 'document_type_id' })
+    document_type: DocumentType;
 
-  @ManyToOne(() => DocumentType)
-  @JoinColumn({ name: 'document_type_id' })
-  document_type: DocumentType;
+    @Column({ type: 'tinyint', default: 0 })
+    status: number;
 
-  @Column({ default: 0 })
-  status: number;
+    @Column({ name: 'file_path', length: 255 })
+    file_path: string;
 
-  @Column({ name: 'file_path', nullable: true })
-  file_path: string;
+    @Column({ name: 'file_size', type: 'int' })
+    file_size: number;
 
-  @Column({ name: 'file_path', nullable: true })
-  file_name: string;
+    @ManyToOne(() => Customer)
+    @JoinColumn({ name: 'customer_id' })
+    customer: Customer;
 
-  @Column({ name: 'file_size', nullable: true })
-  file_size: number;
+    @Column({ name: 'date_validation', type: 'timestamp', nullable: true })
+    date_validation: Date | null;
 
-  @ManyToOne(() => SavingsAccount, { cascade: true })
+    @Column({ name: 'date_ejected', type: 'timestamp', nullable: true })
+    date_ejected: Date | null;
+
+    @Column({ name: 'date_expired', type: 'timestamp', nullable: true })
+    date_expired: Date | null;
+
+    @ManyToOne(() => SavingsAccount)
+    @JoinColumn([
+    { name: 'savings_account_id', referencedColumnName: 'id' },
+  ])
   savings_account: SavingsAccount;
-
-  @Column({ name: 'date_validation', nullable: true })
-  date_validation: Date;
-
-  @Column({ name: 'date_ejected', nullable: true })
-  date_ejected: Date;
-
-  @Column({ name: 'date_expired', nullable: true })
-  date_expired: Date;
-}
+  }

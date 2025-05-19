@@ -1,97 +1,125 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { DocumentSavingAccount } from './entities/document-saving-account.entity';
-import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
-import { SavingsAccount } from '../savings-account/entities/savings-account.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-
+import { DocumentSavingAccount } from 'src/modules/savings-account/document-saving-account/entities/document-saving-account.entity';
+import { In, Repository } from 'typeorm';
+import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+export enum DocumentSavingAccountStatus {
+  PENDING = 0,
+  ACCEPTED = 1,
+  REFUSED = 2,
+}
 @Injectable()
 export class DocumentSavingAccountService {
   constructor(
     @InjectRepository(DocumentSavingAccount)
-    private readonly docRepo: Repository<DocumentSavingAccount>,
+    private readonly repo: Repository<DocumentSavingAccount>,
+    @InjectRepository(Customer)
+    private readonly customerRepo: Repository<Customer>,
     @InjectRepository(DocumentType)
-    private readonly typeRepo: Repository<DocumentType>,
-    @InjectRepository(SavingsAccount)
-    private readonly accountRepo: Repository<SavingsAccount>,
+    private readonly docTypeRepo: Repository<DocumentType>,
   ) {}
-
-  /**
-   * Soumettre un document pour vérification
-   */
-  async submit(
-    dto: CreateDocumentSavingAccountDto,
-  ): Promise<DocumentSavingAccount> {
-    // Récupérer le compte épargne du client
-    const account = await this.accountRepo.findOne({
-      where: { id: dto.customer_id },
-      relations: ['type_savings_account', 'type_savings_account.documentTypes', 'documents'],
-    });
-    if (!account) throw new NotFoundException('Compte épargne non trouvé');
-
-    // Vérifier que le type de document est requis
-    await this.ensureDocumentTypeRequired(
-      account.accountType.id,
-      dto.document_type_id,
-    );
-
-    // Vérifier qu'il n'est pas déjà soumis ou traité
-    this.ensureNotAlreadyProcessed(
-      account.documents,
-      dto.document_type_id,
-    );
-
-    // Upload et récupération du lien
-    let file: any  = '';
-    let file_name: string  = '';
-
-    const docType = await this.typeRepo.findOneBy({ id: dto.document_type_id });
-    if (file) {
-
+  /** Valide un document (status -> ACCEPTED) */
+  async validateDocument(id: number): Promise<DocumentSavingAccount> {
+    const doc = await this.findOne(id);
+    if (doc.status !== DocumentSavingAccountStatus.PENDING) {
+      throw new BadRequestException('Seul un document en attente peut être validé');
     }
+    doc.status = DocumentSavingAccountStatus.ACCEPTED;
+    doc.date_validation = new Date();
+    return this.repo.save(doc);
+  }
+
+  /** Refuse un document (status -> REFUSED) */
+  async refuseDocument(id: number): Promise<DocumentSavingAccount> {
+    const doc = await this.findOne(id);
+    if (doc.status !== DocumentSavingAccountStatus.PENDING) {
+      throw new BadRequestException('Seul un document en attente peut être refusé');
+    }
+    doc.status = DocumentSavingAccountStatus.REFUSED;
+    doc.date_ejected = new Date();
+    return this.repo.save(doc);
+  }
+
+
+  async findOne(id: number): Promise<DocumentSavingAccount> {
+    const doc = await this.repo.findOne({ where: { id } });
+    if (!doc) throw new NotFoundException(`Document ${id} introuvable`);
+    return doc;
+  }
+
+    async createSingle(
+    dto: CreateDocumentSavingAccountDto,
+    file: Express.Multer.File,
+  ): Promise<DocumentSavingAccount> {
+    // Vérification des jointures
+    const customer = await this.customerRepo.findOneBy({ id: dto.customer_id });
+    if (!customer) throw new NotFoundException(`Client ${dto.customer_id} introuvable`);
+
+    const docType = await this.docTypeRepo.findOneBy({ id: dto.document_type_id });
+    if (!docType) throw new NotFoundException(`Type de document ${dto.document_type_id} introuvable`);
+
+    // Vérifier s'il existe déjà un document en attente ou validé pour ce client et type
+    const existing = await this.repo.findOne({
+      where: {
+        customer: { id: dto.customer_id },
+        document_type: { id: dto.document_type_id },
+        status: In([
+          DocumentSavingAccountStatus.PENDING,
+          DocumentSavingAccountStatus.ACCEPTED,
+        ]),
+      },
+      relations: ['customer', 'document_type'],
+    });
+    if (existing) {
+      throw new ConflictException('Un document est déjà en attente ou validé pour ce type.');
+    }
+
     if (!file) {
       throw new BadRequestException('Aucun fichier uploadé');
     }
-    const entity = this.docRepo.create({
-      status: 0, // pending
-    });
-    return this.docRepo.save(entity);
-  }
 
-  /**
-   * Valider ou rejeter un document
-   */
-  async review(id: number, approve: boolean): Promise<DocumentSavingAccount> {
-    const doc = await this.docRepo.findOne({ where: { id } });
-    if (!doc) throw new NotFoundException('Document non trouvé');
-    if (doc.status !== 0) {
-      throw new BadRequestException('Document déjà traité');
+    if (!file.mimetype.startsWith(docType.mimetype)) {
+      throw new BadRequestException(`le fichier doit être de type : ${docType.mimetype}`);
     }
-    doc.status = approve ? 1 : 2;
-    if (approve) doc.date_validation = new Date();
-    else doc.date_ejected = new Date();
-    return this.docRepo.save(doc);
+
+    if (file.size > 1024 * 1024 * 3) { 
+      throw new BadRequestException('Le fichier est trop volumineux (max 1MB)');
+    }
+    const uploadedFile = await FilesUtil.uploadFile(
+      file,
+      UPLOAD_DOCS_PATH,
+      docType.mimetype,
+      {
+      maxSizeKB: 1024*1024*2, 
+      width: 1024, 
+    }
+    );
+    // Construction manuelle pour éviter les conflits de DeepPartial
+    const entity = new DocumentSavingAccount();
+    entity.name = dto.name;
+    entity.document_type = docType;
+    entity.status = 0;
+    entity.file_path = uploadedFile.fileName;
+    entity.file_size = uploadedFile.fileSize;
+    entity.customer = customer;
+    entity.status = DocumentSavingAccountStatus.PENDING;
+
+    return this.repo.save(entity);
   }
 
-  private async ensureDocumentTypeRequired(
-    typeAccountId: number,
-    documentTypeId: number,
-  ) {
-    const type = await this.typeRepo.findOne({
-      where: { id: typeAccountId },
-      relations: ['documentTypes'],
-    });
-    if (!type) throw new NotFoundException('Type de compte non trouvé');
 
-  }
-
-  private ensureNotAlreadyProcessed(
-    documents: DocumentSavingAccount[],
-    documentTypeId: number,
-  ) {
-
-
+  async createMultiple(
+    dtos: CreateDocumentSavingAccountDto[],
+    files: Express.Multer.File[],
+  ): Promise<DocumentSavingAccount[]> {
+    const results: DocumentSavingAccount[] = [];
+    for (let i = 0; i < dtos.length; i++) {
+      results.push(await this.createSingle(dtos[i], files[i]));
+    }
+    return results;
   }
 }
-

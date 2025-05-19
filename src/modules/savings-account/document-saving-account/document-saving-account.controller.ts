@@ -1,50 +1,110 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  UploadedFile,
+  UploadedFiles,
+  UseInterceptors,
+  ParseIntPipe,
+  BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+  ApiConsumes,
+  getSchemaPath,
+} from '@nestjs/swagger';
+import { DocumentSavingAccountService } from './document-saving-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
-import { UpdateDocumentSavingAccountDto } from './dto/update-document-saving-account.dto';
-
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { DocumentSavingAccountResponseDto } from './dto/response-document-saving-account.dto copy';
+import { DocumentSavingAccount } from './entities/document-saving-account.entity';
 
 @ApiTags('Document Saving Accounts')
-@Controller('document-saving-account')
+@Controller('documents/savings-accounts')
 export class DocumentSavingAccountController {
-  @Get()
-  @ApiOperation({ summary: 'Récupère tous les documents de compte épargne' })
-  @ApiResponse({ status: 200, type: [DocumentSavingAccountResponseDto] })
-  findAll(): DocumentSavingAccountResponseDto[] {
-    // return service.findAll();
-    return [];
-  }
+  constructor(private readonly service: DocumentSavingAccountService) {}
 
   @Get(':id')
   @ApiOperation({ summary: 'Récupère un document par ID' })
-  @ApiResponse({ status: 200, type: DocumentSavingAccountResponseDto })
-  findOne(@Param('id') id: number): DocumentSavingAccountResponseDto {
-    // return service.findOne(id);
-    return new DocumentSavingAccountResponseDto();
- ;
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, type: DocumentSavingAccount })
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findOne(id);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Crée un nouveau document de compte épargne' })
-  @ApiResponse({ status: 201, type: DocumentSavingAccountResponseDto })
-  create(@Body() dto: CreateDocumentSavingAccountDto): DocumentSavingAccountResponseDto {
-    // return service.create(dto);
-    return new DocumentSavingAccountResponseDto();
+  @ApiOperation({ summary: 'Upload et crée un document pour un compte épargne' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        document_type_id: { type: 'integer' },
+        customer_id: { type: 'integer' },
+        file: { type: 'string', format: 'binary' },
+      },
+      required: ['name', 'document_type_id', 'customer_id', 'file'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiResponse({ status: 201, type: DocumentSavingAccount })
+  createSingle(
+    @Body() dto: CreateDocumentSavingAccountDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Aucun fichier uploadé');
+    return this.service.createSingle(dto, file);
   }
 
-  @Patch(':id')
-  @ApiOperation({ summary: 'Met à jour partiellement un document' })
-  @ApiResponse({ status: 200, type: DocumentSavingAccountResponseDto })
-  update(@Param('id') id: number, @Body() dto: UpdateDocumentSavingAccountDto): DocumentSavingAccountResponseDto {
-    // return service.update(id, dto);
-    return new DocumentSavingAccountResponseDto();
+  @Post('bulk')
+  @ApiOperation({ summary: 'Upload et crée plusieurs documents' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        dtos: { type: 'array', items: { $ref: getSchemaPath(CreateDocumentSavingAccountDto) } },
+        files: { type: 'array', items: { type: 'string', format: 'binary' } },
+      },
+      required: ['dtos', 'files'],
+    },
+  })
+  @UseInterceptors(FilesInterceptor('files'))
+  @ApiResponse({ status: 201, type: [DocumentSavingAccount] })
+  createMultiple(
+    @Body() dtos: CreateDocumentSavingAccountDto[],
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length !== dtos.length) {
+      throw new BadRequestException('Le nombre de fichiers ne correspond pas aux données');
+    }
+    return this.service.createMultiple(dtos, files);
   }
 
-  @Delete(':id')
-  @ApiOperation({ summary: 'Supprime un document' })
-  @ApiResponse({ status: 204 })
-  remove(@Param('id') id: number): void {
-    // return service.remove(id);
+  @Patch(':id/validate')
+  @ApiOperation({ summary: 'Valide un document soumis' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, type: DocumentSavingAccount })
+  validate(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.validateDocument(id);
+  }
+
+  @Patch(':id/refuse')
+  @ApiOperation({ summary: 'Refuse un document soumis' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, type: DocumentSavingAccount })
+  refuse(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.refuseDocument(id);
   }
 }

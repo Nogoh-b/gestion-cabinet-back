@@ -1,12 +1,13 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-    IsOptional,
-    IsString,
-    IsNumber,
-    IsInt, IsArray,
-    ArrayNotEmpty, Length,
-    Min
+  IsOptional,
+  IsString,
+  IsNumber,
+  IsInt, IsArray,
+  ArrayNotEmpty, Length,
+  Min,
+  ArrayUnique
 } from 'class-validator';
 export class CreateTypeSavingsAccountDto {
   @ApiProperty({ description: 'Nom du type de compte' })
@@ -74,6 +75,12 @@ export class CreateTypeSavingsAccountDto {
   @ApiProperty({ description: 'ID du taux d’intérêt associé', example: 1 })
   @IsInt()
   interest_saving_account_id: number;
+    @ApiProperty({ description: 'Liste des IDs de documents requis', example: [1, 2, 3] })
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  documentTypeIds: number[];
+
 }
 
 export class AddDocumentTypesToTypeDto {

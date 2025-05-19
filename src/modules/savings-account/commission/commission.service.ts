@@ -1,26 +1,42 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateCommissionDto } from './dto/create-commission.dto';
 import { UpdateCommissionDto } from './dto/update-commission.dto';
+import { Commission } from './entities/commission.entity';
 
 @Injectable()
 export class CommissionService {
-  create(createCommissionDto: CreateCommissionDto) {
-    return 'This action adds a new commission';
+  constructor(
+    @InjectRepository(Commission)
+    private readonly repo: Repository<Commission>,
+  ) {}
+
+  findAll(): Promise<Commission[]> {
+    return this.repo.find();
   }
 
-  findAll() {
-    return `This action returns all commission`;
+  async findOne(id: number): Promise<Commission> {
+    const commission = await this.repo.findOne({ where: { id } });
+    if (!commission) throw new NotFoundException(`Commission ${id} not found`);
+    return commission;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} commission`;
+  create(dto: CreateCommissionDto): Promise<Commission> {
+    const commission = this.repo.create({
+      description: dto.description,
+      value_type: dto.valueType,
+      amount: dto.amount ?? null,
+    });
+    return this.repo.save(commission);
   }
 
-  update(id: number, updateCommissionDto: UpdateCommissionDto) {
-    return `This action updates a #${id} commission`;
+  async update(id: number, dto: UpdateCommissionDto): Promise<Commission> {
+    await this.repo.update(id, dto);
+    return this.findOne(id);
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} commission`;
+  async remove(id: number): Promise<void> {
+    await this.repo.delete(id);
   }
 }

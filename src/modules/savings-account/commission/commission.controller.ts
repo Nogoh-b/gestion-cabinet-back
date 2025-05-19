@@ -1,34 +1,83 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  ParseIntPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBody,
+} from '@nestjs/swagger';
+import { CommissionService } from './commission.service';
 import { CreateCommissionDto } from './dto/create-commission.dto';
 import { UpdateCommissionDto } from './dto/update-commission.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { CommissionResponseDto } from './dto/response-commission.dto';
+import { Commission } from './entities/commission.entity';
 
-@ApiTags('Commissions')
-@Controller('commission')
+@ApiTags('Fees / Commissions')
+@Controller('fees/commissions')
 export class CommissionController {
+  constructor(private readonly commissionService: CommissionService) {}
+
   @Get()
-  @ApiOperation({ summary: 'Liste toutes les commissions' })
-  @ApiResponse({ status: 200, type: [CommissionResponseDto] })
-  findAll(): CommissionResponseDto[] { return []; }
+  @ApiOperation({ summary: 'List all commissions' })
+  @ApiResponse({ status: 200, description: 'List of commissions', type: [Commission] })
+  findAll(): Promise<Commission[]> {
+    return this.commissionService.findAll();
+  }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Détail d’une commission' })
-  @ApiResponse({ status: 200, type: CommissionResponseDto })
-  findOne(@Param('id') id: number): CommissionResponseDto { return new CommissionResponseDto; }
+  @ApiOperation({ summary: 'Get a commission by ID' })
+  @ApiParam({ name: 'id', description: 'Commission ID', type: Number })
+  @ApiResponse({ status: 200, description: 'Commission found', type: Commission })
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<Commission> {
+    return this.commissionService.findOne(id);
+  }
 
   @Post()
-  @ApiOperation({ summary: 'Crée une commission' })
-  @ApiResponse({ status: 201, type: CommissionResponseDto })
-  create(@Body() dto: CreateCommissionDto): CommissionResponseDto { return new CommissionResponseDto; }
+  @ApiOperation({ summary: 'Create a new commission' })
+  @ApiBody({ type: CreateCommissionDto })
+  @ApiResponse({ status: 201, description: 'Commission created', type: Commission })
+  create(@Body() dto: CreateCommissionDto): Promise<Commission> {
+    return this.commissionService.create(dto);
+  }
+
+  @Put(':id')
+  @ApiOperation({ summary: 'Replace an existing commission' })
+  @ApiParam({ name: 'id', description: 'Commission ID', type: Number })
+  @ApiBody({ type: UpdateCommissionDto })
+  @ApiResponse({ status: 200, description: 'Commission updated', type: Commission })
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCommissionDto,
+  ): Promise<Commission> {
+    return this.commissionService.update(id, dto);
+  }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Met à jour une commission' })
-  @ApiResponse({ status: 200, type: CommissionResponseDto })
-  update(@Param('id') id: number, @Body() dto: UpdateCommissionDto): CommissionResponseDto { return new CommissionResponseDto; }
+  @ApiOperation({ summary: 'Partially update a commission' })
+  @ApiParam({ name: 'id', description: 'Commission ID', type: Number })
+  @ApiBody({ type: UpdateCommissionDto })
+  @ApiResponse({ status: 200, description: 'Commission partially updated', type: Commission })
+  partialUpdate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCommissionDto,
+  ): Promise<Commission> {
+    return this.commissionService.update(id, dto);
+  }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Supprime une commission' })
-  @ApiResponse({ status: 204 })
-  remove(@Param('id') id: number): void {}
+  @ApiOperation({ summary: 'Delete a commission' })
+  @ApiParam({ name: 'id', description: 'Commission ID', type: Number })
+  @ApiResponse({ status: 204, description: 'Commission deleted' })
+  remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    return this.commissionService.remove(id);
+  }
 }
