@@ -25,7 +25,7 @@ import { DocumentSavingAccountService } from './document-saving-account.service'
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { DocumentSavingAccount } from './entities/document-saving-account.entity';
 
-@ApiTags('Document Saving Accounts')
+@ApiTags('Document Saving Accounts ....')
 @Controller('documents/savings-accounts')
 export class DocumentSavingAccountController {
   constructor(private readonly service: DocumentSavingAccountService) {}
@@ -41,25 +41,18 @@ export class DocumentSavingAccountController {
   @Post()
   @ApiOperation({ summary: 'Upload et crée un document pour un compte épargne' })
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string' },
-        document_type_id: { type: 'integer' },
-        customer_id: { type: 'integer' },
-        file: { type: 'string', format: 'binary' },
-      },
-      required: ['name', 'document_type_id', 'customer_id', 'file'],
-    },
-  })
   @UseInterceptors(FileInterceptor('file'))
+  @ApiBody({
+    type: CreateDocumentSavingAccountDto,
+    description: 'Upload document',
+
+  })
   @ApiResponse({ status: 201, type: DocumentSavingAccount })
   createSingle(
     @Body() dto: CreateDocumentSavingAccountDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    if (!file) throw new BadRequestException('Aucun fichier uploadé');
+    if (!file) throw new BadRequestException('Aucun fichier uploadé 1');
     return this.service.createSingle(dto, file);
   }
 

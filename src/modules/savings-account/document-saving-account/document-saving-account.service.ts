@@ -7,6 +7,7 @@ import { In, Repository } from 'typeorm';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { SavingsAccountService } from '../savings-account/savings-account.service';
 export enum DocumentSavingAccountStatus {
   PENDING = 0,
   ACCEPTED = 1,
@@ -21,16 +22,32 @@ export class DocumentSavingAccountService {
     private readonly customerRepo: Repository<Customer>,
     @InjectRepository(DocumentType)
     private readonly docTypeRepo: Repository<DocumentType>,
+
+    private  saService: SavingsAccountService,
+
   ) {}
   /** Valide un document (status -> ACCEPTED) */
   async validateDocument(id: number): Promise<DocumentSavingAccount> {
     const doc = await this.findOne(id);
-    if (doc.status !== DocumentSavingAccountStatus.PENDING) {
-      throw new BadRequestException('Seul un document en attente peut être validé');
-    }
+    if (doc.status !== DocumentSavingAccountStatus.PENDING) throw new BadRequestException('Only pending documents can be accepted');
+
     doc.status = DocumentSavingAccountStatus.ACCEPTED;
     doc.date_validation = new Date();
-    return this.repo.save(doc);
+    await this.repo.save(doc);
+    const idSa = doc.savings_account.id;
+    const required = await this.saService.getRequiredDocuments(doc.savings_account.id);
+    const accepted = await this.repo.find({
+      where: {
+        savings_account: { id: idSa },
+        status: DocumentSavingAccountStatus.ACCEPTED,
+      },
+      relations: ['document_type'],
+    });
+    const acceptedIds = new Set(accepted.map(d => d.document_type.id));
+    if (required.every(r => acceptedIds.has(r.id))) {
+      await this.saService.validateAccount(idSa);
+    }
+    return doc;
   }
 
   /** Refuse un document (status -> REFUSED) */
@@ -46,7 +63,7 @@ export class DocumentSavingAccountService {
 
 
   async findOne(id: number): Promise<DocumentSavingAccount> {
-    const doc = await this.repo.findOne({ where: { id } });
+    const doc = await this.repo.findOne({ where: { id } , relations: ['customer', 'document_type', 'savings_account'] });
     if (!doc) throw new NotFoundException(`Document ${id} introuvable`);
     return doc;
   }
@@ -56,23 +73,26 @@ export class DocumentSavingAccountService {
     file: Express.Multer.File,
   ): Promise<DocumentSavingAccount> {
     // Vérification des jointures
-    const customer = await this.customerRepo.findOneBy({ id: dto.customer_id });
-    if (!customer) throw new NotFoundException(`Client ${dto.customer_id} introuvable`);
+    const sa = await this.saService.findOne(dto.savings_account_id);
+    if (!sa) throw new NotFoundException(`Savings account ${dto.savings_account_id} not found in branch`);
+
 
     const docType = await this.docTypeRepo.findOneBy({ id: dto.document_type_id });
     if (!docType) throw new NotFoundException(`Type de document ${dto.document_type_id} introuvable`);
 
+    const requiredDocs = await this.saService.getRequiredDocuments(sa.id);
+    const requiredIds = requiredDocs.map(d => d.id);
+    if (!requiredIds.includes(dto.document_type_id)) {
+      throw new BadRequestException('This document type is not required for this savings account');
+    }
     // Vérifier s'il existe déjà un document en attente ou validé pour ce client et type
     const existing = await this.repo.findOne({
       where: {
-        customer: { id: dto.customer_id },
+        savings_account: { id: dto.savings_account_id},
         document_type: { id: dto.document_type_id },
-        status: In([
-          DocumentSavingAccountStatus.PENDING,
-          DocumentSavingAccountStatus.ACCEPTED,
-        ]),
+        status: In([DocumentSavingAccountStatus.PENDING, DocumentSavingAccountStatus.ACCEPTED]),
       },
-      relations: ['customer', 'document_type'],
+      relations: ['savings_account', 'document_type'],
     });
     if (existing) {
       throw new ConflictException('Un document est déjà en attente ou validé pour ce type.');
@@ -105,7 +125,7 @@ export class DocumentSavingAccountService {
     entity.status = 0;
     entity.file_path = uploadedFile.fileName;
     entity.file_size = uploadedFile.fileSize;
-    entity.customer = customer;
+    entity.savings_account = sa;
     entity.status = DocumentSavingAccountStatus.PENDING;
 
     return this.repo.save(entity);

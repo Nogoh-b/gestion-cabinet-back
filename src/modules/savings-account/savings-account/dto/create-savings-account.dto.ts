@@ -1,21 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-    IsOptional,
-    IsString,
-    IsNumber,
-    IsInt, IsISO8601,
-    Length
-} from 'class-validator';
+import { IsOptional, IsString, IsInt, IsISO8601 } from 'class-validator';
 
 export class CreateSavingsAccountDto {
-  @ApiProperty({ description: 'Numéro du compte épargne' })
+  /*@ApiProperty({ description: 'Numéro du compte épargne' })
   @IsString()
   @Length(1, 45)
   number_savings_account: string;
 
   @ApiProperty({ description: 'Frais du compte' })
   @IsNumber()
-  fee_savings: number;
+  fee_savings: number; 
 
   @ApiProperty({ description: 'Montant initial' })
   @IsNumber()
@@ -23,7 +17,7 @@ export class CreateSavingsAccountDto {
 
   @ApiProperty({ description: 'Solde initial' })
   @IsNumber()
-  balance_init_savings_account: number;
+  balance_init_savings_account: number;*/
 
   @ApiProperty({ description: 'ID du client', example: 1 })
   @IsInt()
@@ -37,10 +31,10 @@ export class CreateSavingsAccountDto {
   @IsInt()
   status: number;
 
-  @ApiProperty({ description: 'IBAN du compte' })
+ /* @ApiProperty({ description: 'IBAN du compte' })
   @IsString()
   @Length(1, 45)
-  IBAN: string;
+  IBAN: string;*/
 
   @ApiProperty({ description: 'Code produit' })
   @IsString()
@@ -51,7 +45,7 @@ export class CreateSavingsAccountDto {
   @IsString()
   wallet_link?: string;
 
-  @ApiPropertyOptional({ description: 'Taux d’intérêt annuel spécifique' })
+  /*@ApiPropertyOptional({ description: 'Taux d’intérêt annuel spécifique' })
   @IsOptional()
   @IsNumber()
   interest_year_savings_account?: number;
@@ -59,7 +53,7 @@ export class CreateSavingsAccountDto {
   @ApiPropertyOptional({ description: 'Autre numéro de compte' })
   @IsOptional()
   @IsString()
-  account_number?: string;
+  account_number?: string;*/
 
   @ApiProperty({ description: 'ID de la succursale', example: 1 })
   @IsInt()
@@ -79,6 +73,12 @@ export class AddInterestRateToSavingAccountDto {
   @IsOptional()
   @IsISO8601()
   end_date?: string;
+}
+
+export class AssignInterestDto {
+  @ApiProperty({ description: 'ID du plan d\'intérêt', example: 3 })
+  @IsInt()
+  interest_saving_account_id: number;
 }
 
 

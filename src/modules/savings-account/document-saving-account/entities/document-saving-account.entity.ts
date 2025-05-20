@@ -24,6 +24,7 @@ export class DocumentSavingAccount extends BaseEntity {
     @Column({ type: 'tinyint', default: 0 })
     status: number;
 
+
     @Column({ name: 'file_path', length: 255 })
     file_path: string;
 

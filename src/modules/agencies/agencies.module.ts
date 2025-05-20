@@ -24,7 +24,8 @@ import { CoreModule } from 'src/core/core.module';
   ],
   exports:[
     BranchService,
-    EmployeeService
+    EmployeeService,
+    TypeOrmModule
   ]
 })
 export class AgenciesModule {}

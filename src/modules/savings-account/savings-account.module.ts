@@ -19,10 +19,12 @@ import { InterestSavingAccountService } from './interest-saving-account/interest
 import { SavingsAccountService } from './savings-account/savings-account.service';
 import { DocumentsModule } from '../documents/documents.module';
 import { CustomerModule } from '../customer/customer.module';
+import { AgenciesModule } from '../agencies/agencies.module';
 
 @Module({
   imports: [
     DocumentsModule,
+    AgenciesModule,
     CustomerModule,
     TypeOrmModule.forFeature([
       DocumentSavingAccount,

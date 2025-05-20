@@ -1,15 +1,20 @@
 
 import { BaseEntity } from 'src/core/entities/base.entity';
-import { Entity, Column, ManyToOne, JoinColumn, PrimaryColumn, OneToMany } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
 
+export enum SavingsAccountStatus {
+  PENDING = 0,
+  ACTIVE = 1,
+  CLOSED = 2,
+}
 @Entity('savings_account')
 export class SavingsAccount extends BaseEntity {
-  @PrimaryColumn()
+  @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ name: 'branch_id', type: 'int' })
@@ -18,7 +23,7 @@ export class SavingsAccount extends BaseEntity {
   @Column({ name: 'number_savings_account', type: 'varchar', length: 45, unique: true })
   number_savings_account: string;
 
-  @Column({ name: 'fee_savings', type: 'decimal' })
+  @Column({ name: 'fee_savings', type: 'decimal' }) 
   fee_savings: number;
 
   @Column({ name: 'amount_created', type: 'decimal' })

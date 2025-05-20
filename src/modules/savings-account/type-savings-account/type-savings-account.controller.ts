@@ -1,56 +1,56 @@
-import { AddDocumentTypesToTypeDto, CreateTypeSavingsAccountDto } from './dto/create-type-savings-account.dto';
+import { Controller, Get, Post, Put, Body, Param, ParseIntPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import { TypeSavingsAccountService } from './type-savings-account.service';
+import { CreateTypeSavingsAccountDto } from './dto/create-type-savings-account.dto';
 import { UpdateTypeSavingsAccountDto } from './dto/update-type-savings-account.dto';
-import { Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { TypeSavingsAccountResponseDto } from './dto/response-type-savings-account.dto';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { TypeSavingsAccount } from './entities/type-savings-account.entity';
 
-@ApiTags('Type Savings Accounts')
-@Controller('type-savings-account')
+@ApiTags('Savings Products')
+@Controller('savings-products')
 export class TypeSavingsAccountController {
+  constructor(private readonly service: TypeSavingsAccountService) {}
+
   @Get()
-  @ApiOperation({ summary: 'Liste tous les types de compte épargne' })
-  @ApiResponse({ status: 200, type: [TypeSavingsAccountResponseDto] })
-  findAll(): TypeSavingsAccountResponseDto[] {
-    return [];
+  @ApiOperation({ summary: 'Liste tous les produits d’épargne' })
+  @ApiResponse({ status: 200, type: [TypeSavingsAccount] })
+  findAll(): Promise<TypeSavingsAccount[]> {
+    return this.service.findAll();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Détail d\'un type de compte' })
-  @ApiResponse({ status: 200, type: TypeSavingsAccountResponseDto })
-  findOne(@Param('id') id: number): TypeSavingsAccountResponseDto {
-    return new TypeSavingsAccountResponseDto;
+  @ApiOperation({ summary: 'Récupère un produit d’épargne par ID' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiResponse({ status: 200, type: TypeSavingsAccount })
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<TypeSavingsAccount> {
+    return this.service.findOne(id);
+  }
+
+  @Get(':id/required-documents')
+  @ApiOperation({ summary: 'Liste des documents requis pour un type de compte' })
+  @ApiParam({ name: 'id', description: 'ID du type de compte', type: Number })
+  @ApiResponse({ status: 200, type: [DocumentType] })
+  getRequiredDocuments(@Param('id', ParseIntPipe) id: number): Promise<DocumentType[]> {
+    return this.service.getRequiredDocuments(id);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Crée un type de compte épargne' })
-  @ApiResponse({ status: 201, type: TypeSavingsAccountResponseDto })
-  create(@Body() dto: CreateTypeSavingsAccountDto): TypeSavingsAccountResponseDto {
-    return new TypeSavingsAccountResponseDto;
+  @ApiOperation({ summary: 'Crée un produit d’épargne avec documents requis' })
+  @ApiBody({ type: CreateTypeSavingsAccountDto })
+  @ApiResponse({ status: 201, type: TypeSavingsAccount })
+  create(@Body() dto: CreateTypeSavingsAccountDto): Promise<TypeSavingsAccount> {
+    return this.service.create(dto);
   }
 
-  @Patch(':id')
-  @ApiOperation({ summary: 'Met à jour un type de compte' })
-  @ApiResponse({ status: 200, type: TypeSavingsAccountResponseDto })
-  update(@Param('id') id: number, @Body() dto: UpdateTypeSavingsAccountDto): TypeSavingsAccountResponseDto {
-    return new TypeSavingsAccountResponseDto;
+  @Put(':id')
+  @ApiOperation({ summary: 'Met à jour un produit d’épargne et ses documents requis' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({ type: UpdateTypeSavingsAccountDto })
+  @ApiResponse({ status: 200, type: TypeSavingsAccount })
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTypeSavingsAccountDto,
+  ): Promise<TypeSavingsAccount> {
+    return this.service.update(id, dto);
   }
-
-  @Delete(':id')
-  @ApiOperation({ summary: 'Supprime un type de compte' })
-  @ApiResponse({ status: 204 })
-  remove(@Param('id') id: number): void {}
-
-  @Get(':id/document-types')
-  @ApiOperation({ summary: 'Récupère les types de documents requis pour ce type de compte' })
-  findDocumentTypes(@Param('id') id: number): any[] { return []; }
-
-  @Post(':id/document-types')
-  @ApiOperation({ summary: 'Associe des types de documents à un type de compte' })
-  @ApiResponse({ status: 200 })
-  addDocumentTypes(@Param('id') id: number, @Body() dto: AddDocumentTypesToTypeDto): void {}
-
-  @Delete(':id/document-types/:documentTypeId')
-  @ApiOperation({ summary: 'Retire un type de document d’un type de compte' })
-  @ApiResponse({ status: 204 })
-  removeDocumentType(@Param('id') id: number, @Param('documentTypeId') docId: number): void {}
 }

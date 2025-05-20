@@ -20,14 +20,14 @@ export class TypeSavingsAccountService {
 
   /** Liste tous les produits d’épargne avec leurs documents requis */
   async findAll(): Promise<TypeSavingsAccount[]> {
-    return this.repo.find({ relations: ['required_documents'] });
+    return this.repo.find({ relations: ['required_documents', 'interestRate'] });
   }
 
   /** Récupère un produit d’épargne par ID avec ses documents requis */
   async findOne(productId: number): Promise<TypeSavingsAccount> {
     const prod = await this.repo.findOne({
       where: { id: productId },
-      relations: ['required_documents'],
+      relations: ['required_documents', 'interestRate'],
     });
     if (!prod) throw new NotFoundException(`Produit ${productId} introuvable`);
     return prod;
@@ -62,5 +62,9 @@ export class TypeSavingsAccountService {
     }
 
     return this.repo.save(prod);
+  }
+  async getRequiredDocuments(typeId: number): Promise<DocumentType[]> {
+    const prod = await this.findOne(typeId);
+    return prod.required_documents;
   }
 }
