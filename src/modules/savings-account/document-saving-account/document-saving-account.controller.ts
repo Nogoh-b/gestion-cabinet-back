@@ -1,25 +1,25 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Param,
-  Body,
-  UploadedFile,
-  UploadedFiles,
-  UseInterceptors,
-  ParseIntPipe,
-  BadRequestException,
+    Controller,
+    Get,
+    Post,
+    Patch,
+    Param,
+    Body,
+    UploadedFile,
+    UploadedFiles,
+    UseInterceptors,
+    ParseIntPipe,
+    BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-  ApiBody,
-  ApiConsumes,
-  getSchemaPath,
+    ApiTags,
+    ApiOperation,
+    ApiResponse,
+    ApiParam,
+    ApiBody,
+    ApiConsumes,
+    getSchemaPath,
 } from '@nestjs/swagger';
 import { DocumentSavingAccountService } from './document-saving-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
