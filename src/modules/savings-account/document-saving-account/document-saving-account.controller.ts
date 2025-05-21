@@ -75,6 +75,7 @@ export class DocumentSavingAccountController {
     @Body() dtos: CreateDocumentSavingAccountDto[],
     @UploadedFiles() files: Express.Multer.File[],
   ) {
+    return {files, dtos}
     if (!files || files.length !== dtos.length) {
       throw new BadRequestException('Le nombre de fichiers ne correspond pas aux données');
     }

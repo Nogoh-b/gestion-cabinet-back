@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CreateSavingsAccountDto } from './dto/create-savings-account.dto';
+import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
 import { BaseService } from 'src/core/shared/services/search/base.service';
@@ -11,6 +11,8 @@ import { TypeSavingsAccount } from '../type-savings-account/entities/type-saving
 import { TypeSavingsAccountService } from '../type-savings-account/type-savings-account.service';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
+import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
+import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
@@ -23,6 +25,10 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     private readonly customerRepo: Repository<Customer>,
     @InjectRepository(TypeSavingsAccount)
     private readonly typeRepo: Repository<TypeSavingsAccount>, 
+    @InjectRepository(InterestSavingAccount)
+    private readonly planRepo: Repository<InterestSavingAccount>,     
+    @InjectRepository(SavingsAccountHasInterest)
+    private readonly interestRepo: Repository<SavingsAccountHasInterest>, 
     private typeSavingAcount : TypeSavingsAccountService
   ) { super(); }
 
@@ -103,7 +109,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return this.repo.save(account);
   }
 
-    async update(id: number,  dto: UpdateSavingsAccountDto): Promise<SavingsAccount> {
+  async update(id: number,  dto: UpdateSavingsAccountDto): Promise<SavingsAccount> {
     await this.repo.update({ id }, dto);
     return this.findOne(id);
   }
@@ -140,27 +146,54 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     }));
   } 
 
-  /*async assignInterest(
-    id: number,
-    branch_id: number,
-    dto: AssignInterestDto,
+  async assign_interest_range(
+    account_id: number,
+    dto: AssignInterestRangeDto,
   ): Promise<SavingsAccountHasInterest> {
-    const account = await this.findOne(id, branch_id);
-    await this.interestRepo.update(
-      { savings_account_id: id, status: 1 },
-      { status: 0, end_date: new Date() },
-    );
-
-    const plan = await this.planRepo.findOne({ where: { id: dto.interest_saving_account_id } });
-    if (!plan) throw new NotFoundException(`Plan ${dto.interest_saving_account_id} introuvable`);
-
+    // 1. récupérer le compte
+    const account = await this.findOne(account_id);
+  
+    // 2. calculer la durée en mois
+    const start = new Date(dto.start_date);
+    const end = new Date(dto.end_date);
+    const months =
+      (end.getFullYear() - start.getFullYear()) * 12 +
+      (end.getMonth() - start.getMonth());
+    if (months < 1) {
+      throw new BadRequestException('La période doit être d’au moins un mois');
+    }
+  
+    // 3. vérifier l'existence d'un plan identique
+    let plan = await this.planRepo.findOne({
+      where: { duration_months: months, rate: dto.rate },
+    });
+    if (!plan) {
+      plan = this.planRepo.create({ duration_months: months, rate: dto.rate });
+      await this.planRepo.save(plan);
+    }
+  
+    // 4. empêcher la recréation du lien actif si déjà existant
+    const existingLink = await this.interestRepo.findOne({
+      where: {
+        savings_account: { id: account_id},
+        interest_saving_account_id: plan.id,
+        status: 1,
+      },
+    });
+    if (existingLink) {
+      throw new BadRequestException('Ce plan d’intérêt est déjà actif pour ce compte');
+    }
+  
+    // 5. créer la nouvelle liaison sans désactiver l'ancienne
     const link = this.interestRepo.create({
-      savings_account_id: id,
-      interest_saving_account_id: dto.interest_saving_account_id,
-      begin_date: new Date(),
+      savings_account_id: account_id,
+      interest_saving_account_id: plan.id,
+      begin_date: start,
+      end_date: end,
       status: 1,
     });
     return this.interestRepo.save(link);
-  }*/
+  }
+  
 
 }

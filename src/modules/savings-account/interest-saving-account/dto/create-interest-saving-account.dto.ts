@@ -1,15 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-    IsNumber,
-    IsInt
-} from 'class-validator';
+import { IsInt, Min, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateInterestSavingAccountDto {
-  @ApiProperty({ description: 'Durée en mois', example: 6 })
+  @ApiProperty({ description: 'Duration of the plan in months', example: 12 })
+  @Type(() => Number)
   @IsInt()
-  duree_mois: number;
+  @Min(1)
+  duration_months: number;
 
-  @ApiProperty({ description: 'Taux d’intérêt', example: 1.5 })
+  @ApiProperty({ description: 'Interest rate (%)', example: 3.50 })
   @IsNumber()
-  taux: number;
+  rate: number;
 }

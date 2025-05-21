@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { SavingsAccountService } from './savings-account.service';
-import { CreateSavingsAccountDto } from './dto/create-savings-account.dto';
+import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccount } from './entities/savings-account.entity';
+import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 
 @ApiTags('Saving Accounts')
 @Controller('savings-accounts')
@@ -73,5 +74,18 @@ export class SavingsAccountController {
   remove( @Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
   }
+
+  @Post(':id/interest-range')
+  @ApiOperation({ summary: "Attribuer un taux sur une période donnée" })
+  @ApiParam({ name: 'id',        type: Number, description: 'ID du compte' })
+  @ApiBody({ type: AssignInterestRangeDto })
+  @ApiResponse({ status: 201, type: SavingsAccountHasInterest })
+  assign_interest_range(
+    @Param('id',        ParseIntPipe) id:        number,
+    @Body()              dto:       AssignInterestRangeDto,
+  ): Promise<SavingsAccountHasInterest> {
+    return this.service.assign_interest_range(id, dto);
+  }
+
 
 }

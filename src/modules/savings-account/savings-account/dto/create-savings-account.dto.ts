@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, IsISO8601 } from 'class-validator';
+import { IsOptional, IsString, IsInt, IsISO8601, IsNumber, IsDateString } from 'class-validator';
 
 export class CreateSavingsAccountDto {
   /*@ApiProperty({ description: 'Numéro du compte épargne' })
@@ -81,5 +81,19 @@ export class AssignInterestDto {
   interest_saving_account_id: number;
 }
 
+
+export class AssignInterestRangeDto {
+  @ApiProperty({ description: 'Taux d’intérêt (%)', example: 3.5 })
+  @IsNumber()
+  rate: number;
+
+  @ApiProperty({ description: 'Date de début (ISO)', example: '2025-06-01T00:00:00Z' })
+  @IsDateString()
+  start_date: string;
+
+  @ApiProperty({ description: 'Date de fin   (ISO)', example: '2026-06-01T00:00:00Z' })
+  @IsDateString()
+  end_date: string;
+}
 
 

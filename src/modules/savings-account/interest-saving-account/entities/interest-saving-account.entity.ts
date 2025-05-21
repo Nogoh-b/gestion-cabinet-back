@@ -8,8 +8,8 @@ export class InterestSavingAccount extends BaseEntity {
   @Column({ primary: true, generated: true })
   id: number;
 
-  @Column({ name: 'duree_mois' })
-  durationMonths: number;
+  @Column({ name: 'duration_months' })
+  duration_months: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2 })
   rate: number;
