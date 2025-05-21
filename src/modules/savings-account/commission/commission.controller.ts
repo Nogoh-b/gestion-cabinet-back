@@ -1,7 +1,8 @@
+import { Controller } from '@nestjs/common';
 import { CommissionService } from './commission.service';
 
 // @ApiTags('Fees / Commissions')
-// @Controller('fees/commissions')
+@Controller('fees/commissions')
 export class CommissionController {
   constructor(private readonly commissionService: CommissionService) {}
 
