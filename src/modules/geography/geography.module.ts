@@ -47,7 +47,7 @@ import { IamModule } from '../iam/iam.module';
     DistrictsService,
     LocationCitiesService,
     CountriesService,
-  
+    TypeOrmModule
   ],
 })
 export class GeographyModule {}

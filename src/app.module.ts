@@ -13,6 +13,7 @@ import { AgenciesModule } from './modules/agencies/agencies.module';
 import * as dotenv from 'dotenv';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
+import { ProviderModule } from './modules/provider/provider.module';
 dotenv.config();
 
 @Module({
@@ -55,6 +56,7 @@ dotenv.config();
       },
     ]),
     SavingsAccountModule,
+    ProviderModule,
   ],
   controllers: [AppController],
   providers: [AppService],
