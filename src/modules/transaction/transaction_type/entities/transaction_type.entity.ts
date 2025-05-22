@@ -1,0 +1,29 @@
+// Entité TransactionType - src/core-banking/entities/transaction-type.entity.ts
+// Cette entité représente un type de transaction (ex: dépôt, retrait, virement)
+import { Entity, PrimaryGeneratedColumn, Column, Unique, OneToMany } from 'typeorm';
+import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
+@Entity('transaction_type')
+@Unique(['code'])
+export class TransactionType {
+  @PrimaryGeneratedColumn()
+  id: number; // Identifiant unique
+
+  @Column({ length: 20 })
+  code: string; // Code du type (ex: DEPOT, RETRAIT)
+
+  @Column({ length: 45 })
+  name: string; // Nom complet du type (ex: "Dépôt en espèce")
+
+  @Column('text', { nullable: true })
+  description?: string; // Description détaillée
+
+  @Column({ type: 'tinyint' })
+  is_credit: number; // 1 = Crédit, 0 = Débit
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  fee_percentage: number; // Pourcentage des frais appliqués
+
+  @OneToMany(() => TransactionSavingsAccount, tx => tx.transactionType)
+  transactions?: TransactionSavingsAccount[]; // Relations avec les transactions
+}

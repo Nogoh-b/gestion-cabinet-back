@@ -1,5 +1,6 @@
 import { Country } from 'src/modules/geography/country/entities/country.entity';
-import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 
 @Entity('provider')
 export class Provider {
@@ -18,6 +19,10 @@ export class Provider {
   @ManyToOne(() => Country, { nullable: true })
   @JoinColumn({ name: 'country_id', referencedColumnName: 'id' })
   country?: Country;
+
+  @OneToMany(() => TransactionSavingsAccount, tx => tx.provider)
+  transactions?: TransactionSavingsAccount[]; // Transactions liées à ce provider
+
 
   @CreateDateColumn()
   created_at: Date;

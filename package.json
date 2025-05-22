@@ -20,6 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "node --require ts-node/register ./node_modules/typeorm/cli.js",
     "migration:generate": "npm run typeorm migration:generate -- -n",
+    "migration:create": "npm run typeorm -- migration:create",
+
     "migration:run": "npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run --dataSource src/data-source.ts",
     "migration:drop": "npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js schema:drop --dataSource src/data-source.ts",
     "seed:super-admin": "ts-node scripts/seed-super-admin.ts",

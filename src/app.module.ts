@@ -14,6 +14,8 @@ import * as dotenv from 'dotenv';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { ProviderModule } from './modules/provider/provider.module';
+import { ActivitiesModule } from './modules/activities/activities.module';
+import { TransactionModule } from './modules/transaction/transaction.module';
 dotenv.config();
 
 @Module({
@@ -57,6 +59,8 @@ dotenv.config();
     ]),
     SavingsAccountModule,
     ProviderModule,
+    TransactionModule,
+    ActivitiesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
