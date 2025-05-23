@@ -6,6 +6,7 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -88,4 +89,17 @@ export class SavingsAccount extends BaseEntity {
     (relation) => relation.savings_account
   )
   interestRelations: SavingsAccountHasInterest[];
+
+    @OneToMany(
+    () => TransactionSavingsAccount,
+    tx => tx.savingsAccount
+  )
+  transactions?: TransactionSavingsAccount[]; // Transactions liées au compte
+
+  /*@OneToMany(
+    () => ActivitiesSavingsAccount,
+    act => act.savingsAccount
+  )
+  activities?: ActivitiesSavingsAccount[]; // Activités du compte*/
+
 }

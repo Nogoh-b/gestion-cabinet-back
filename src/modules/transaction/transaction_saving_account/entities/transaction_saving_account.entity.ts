@@ -3,6 +3,7 @@
 import { Provider } from 'src/modules/provider/provider/entities/provider.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
 @Entity('transaction_savings_account')
 export class TransactionSavingsAccount {
@@ -46,9 +47,9 @@ export class TransactionSavingsAccount {
   @UpdateDateColumn()
   updated_at: Date; // Date de mise à jour
 
-  /*@ManyToOne(() => SavingsAccount, acc => acc.transactions)
+  @ManyToOne(() => SavingsAccount, acc => acc.transactions)
   @JoinColumn({ name: 'savings_account_id', referencedColumnName: 'id' })
-  savingsAccount: SavingsAccount; // Relation vers SavingsAccount*/
+  savingsAccount: SavingsAccount; // Relation vers SavingsAccount
 
   /*@ManyToOne(() => ChannelsTransaction, ch => ch.transactions)
   @JoinColumn({ name: 'channels_transaction_id', referencedColumnName: 'id' })

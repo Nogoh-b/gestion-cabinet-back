@@ -6,12 +6,17 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TransactionType } from './transaction_type/entities/transaction_type.entity';
 import { TransactionSavingsAccountService } from './transaction_saving_account/transaction_saving_account.service';
 import { TransactionSavingsAccount } from './transaction_saving_account/entities/transaction_saving_account.entity';
+import { SavingsAccountModule } from '../savings-account/savings-account.module';
+import { ProviderModule } from '../provider/provider.module';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
     TransactionSavingsAccount,
     TransactionType,
-  ])],
+  ]),
+  
+  SavingsAccountModule,
+  ProviderModule],
   controllers: [TransactionSavingAccountController, TransactionTypeController],
   providers: [TransactionSavingsAccountService,TransactionTypeService],
   exports: [TransactionSavingsAccountService,TransactionTypeService, TypeOrmModule],

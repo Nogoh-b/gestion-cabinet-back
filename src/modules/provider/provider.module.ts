@@ -14,6 +14,7 @@ import { GeographyModule } from '../geography/geography.module';
   ],
   
   controllers: [ProviderController],
-  providers:[ProviderService]
+  providers:[ProviderService],
+  exports:[ProviderService]
 })
 export class ProviderModule {}
