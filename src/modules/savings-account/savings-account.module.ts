@@ -38,9 +38,9 @@ import { AgenciesModule } from '../agencies/agencies.module';
   ],
   controllers :[
       DocumentSavingAccountController,
-      TypeSavingsAccountController,
       CommissionController,
       InterestSavingAccountController,
+      TypeSavingsAccountController,
       SavingsAccountController,
   ],
   providers: [

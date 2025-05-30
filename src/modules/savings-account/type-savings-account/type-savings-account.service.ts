@@ -39,7 +39,7 @@ export class TypeSavingsAccountService {
   async create(dto: CreateTypeSavingsAccountDto): Promise<TypeSavingsAccount> {
     // Validate document types
     const docs = await this.docRepo.findByIds(dto.documentTypeIds);
-    if (docs.length !== dto.documentTypeIds.length)
+    if (dto.documentTypeIds && docs.length !==  dto.documentTypeIds.length)
       throw new NotFoundException('Un ou plusieurs documents introuvables');
 
     // Create the product with all fields

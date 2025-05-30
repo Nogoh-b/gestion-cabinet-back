@@ -1,12 +1,16 @@
-import { Controller } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put } from '@nestjs/common';
 import { CommissionService } from './commission.service';
+import { ApiBody, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
+import { Commission } from './entities/commission.entity';
+import { CreateCommissionDto } from './dto/create-commission.dto';
+import { UpdateCommissionDto } from './dto/update-commission.dto';
 
 // @ApiTags('Fees / Commissions')
 @Controller('fees/commissions')
 export class CommissionController {
   constructor(private readonly commissionService: CommissionService) {}
 
-  /*@Get()
+  @Get()
   @ApiOperation({ summary: 'List all commissions' })
   @ApiResponse({ status: 200, description: 'List of commissions', type: [Commission] })
   findAll(): Promise<Commission[]> {
@@ -59,5 +63,5 @@ export class CommissionController {
   @ApiResponse({ status: 204, description: 'Commission deleted' })
   remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     return this.commissionService.remove(id);
-  }*/
+  }
 }

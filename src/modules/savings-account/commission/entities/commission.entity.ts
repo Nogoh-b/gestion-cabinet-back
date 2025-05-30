@@ -9,7 +9,12 @@ export class Commission {
   @Column({ type: 'varchar', length: 100 })
   description: string;
 
-  @Column({ type: 'enum', enum: CommissionValueType, name: 'value_type' })
+  @Column({
+    type: 'enum',
+    enum: CommissionValueType,
+    name: 'value_type',
+    default: CommissionValueType.FIXED,
+  })
   value_type: CommissionValueType;
 
   @Column({ type: 'int', nullable: true, name: 'amount' })

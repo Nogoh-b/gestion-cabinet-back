@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsEnum, IsOptional, IsInt } from 'class-validator';
 export enum CommissionValueType {
-  FIXED = 'Fixé',
-  VARIABLE = 'Variable',
+  FIXED = 0,
+  VARIABLE = 1,
 }
 export class CreateCommissionDto {
   @ApiProperty({ description: 'Commission description', example: 'Processing fee' })

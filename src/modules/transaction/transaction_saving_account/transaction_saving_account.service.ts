@@ -42,6 +42,7 @@ export class TransactionSavingsAccountService {
         external_savings_account_number: dto.external_savings_account_number,
       });
 
+
       txn.savingsAccount = savingsAccount;
       // txn.channelsTransaction = channelsTransaction;
       txn.provider = provider;
