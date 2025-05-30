@@ -1,18 +1,22 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
-import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
-import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { Repository } from 'typeorm';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
+import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
+import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountService } from '../type-savings-account/type-savings-account.service';
-import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
+import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
+import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
-import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
+import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
@@ -63,6 +67,21 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
+    async findOneByCode(number_savings_account: string): Promise<SavingsAccount> {
+    const account = await this.repo.findOne({
+      where: { number_savings_account },
+      relations: [
+        'customer',
+        'type_savings_account',
+        'branch',
+        'documents',
+        'interestRelations',
+      ],
+    });
+    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
+    return account;
+  }
+
   async create(
     dto: CreateSavingsAccountDto,
   ): Promise<SavingsAccount> {
@@ -107,6 +126,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
 
     return this.repo.save(account);
+  }
+
+  async save(sa_s : SavingsAccount[]): Promise<any> {
+    await this.repo.save(sa_s);
+    return sa_s;
   }
 
   async update(id: number,  dto: UpdateSavingsAccountDto): Promise<SavingsAccount> {

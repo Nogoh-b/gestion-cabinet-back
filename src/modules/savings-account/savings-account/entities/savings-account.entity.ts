@@ -1,12 +1,16 @@
 
 import { BaseEntity } from 'src/core/entities/base.entity';
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
-import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
-import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
-import { SavingsAccountHasInterest } from './account-has-interest.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+
+
+import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
+import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
+import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
+
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -32,7 +36,9 @@ export class SavingsAccount extends BaseEntity {
 
   @Column({ name: 'balance_init_savings_account', type: 'decimal' }) 
   balance_init_savings_account: number;
-
+  
+  @Column({ name: 'balance', type: 'int', default: 0 })
+  balance: number;
   // @ManyToOne(() => Customer, customer => customer.savings_accounts)
   // @JoinColumn({ name: 'customer_id' })
   // customer: Customer;
@@ -92,9 +98,15 @@ export class SavingsAccount extends BaseEntity {
 
     @OneToMany(
     () => TransactionSavingsAccount,
-    tx => tx.savingsAccount
+    tx => tx.originSavingsAccount
   )
-  transactions?: TransactionSavingsAccount[]; // Transactions liées au compte
+  originSavingsAccount?: TransactionSavingsAccount[]; // Transactions liées au compte
+
+    @OneToMany(
+    () => TransactionSavingsAccount,
+    tx => tx.targetSavingsAccount
+  )
+  targetSavingsAccount?: TransactionSavingsAccount[]; // Transactions liées au compte
 
   /*@OneToMany(
     () => ActivitiesSavingsAccount,

@@ -1,7 +1,9 @@
 // Entité TransactionType - src/core-banking/entities/transaction-type.entity.ts
 // Cette entité représente un type de transaction (ex: dépôt, retrait, virement)
 import { Entity, PrimaryGeneratedColumn, Column, Unique, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
 
 @Entity('transaction_type')
 @Unique(['code'])

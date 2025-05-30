@@ -1,8 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from 'src/core/entities/base.entity';
-import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
+
 
 export enum DocumentCustomerStatus{
   PENDING = 0,
