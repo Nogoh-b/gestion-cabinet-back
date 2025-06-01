@@ -1,8 +1,19 @@
-import { Entity, Column, ManyToOne, JoinColumn, BaseEntity, ManyToMany, JoinTable, OneToMany } from 'typeorm';
-import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
-import { Commission } from '../../commission/entities/commission.entity';
+import { BaseEntity } from 'src/core/entities/base.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { Entity, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable, OneToMany } from 'typeorm';
+
+
+
+
+
+import { Commission } from '../../commission/entities/commission.entity';
+import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
+
+
+
+
+
 
 @Entity('type_savings_account')
 export class TypeSavingsAccount extends BaseEntity {
@@ -21,11 +32,14 @@ export class TypeSavingsAccount extends BaseEntity {
   @Column({ type: 'tinyint' })
   status: number;
 
-  @Column({ length: 45, default: '0' })
-  interest_year_savings_account: string;
+  @Column({ type: 'decimal', precision: 5, scale: 2  })
+  interest_year_savings_account: number;
 
-  @Column({ length: 45, nullable: true })
-  minimum_blocking_duration: string;
+  @Column({ type: 'decimal', precision: 5, scale: 2 })
+  minimum_blocking_duration: number;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2 })
+  account_opening_fee: number;
 
   @Column({ type: 'double', nullable: true })
   initial_deposit: number;

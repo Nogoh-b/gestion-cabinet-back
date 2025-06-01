@@ -31,12 +31,12 @@ export class CreateTypeSavingsAccountDto {
   @ApiPropertyOptional({ description: 'Taux d\'intérêt annuel par défaut' })
   @IsOptional()
   @IsString()
-  interest_year_savings_account?: string;
+  interest_year_savings_account?: number;
 
   @ApiPropertyOptional({ description: 'Durée minimale de blocage' })
   @IsOptional()
   @IsString()
-  minimum_blocking_duration?: string;
+  minimum_blocking_duration?: number;
 
   @ApiPropertyOptional({ description: 'Dépôt initial minimum', example: 0 })
   @IsOptional()
@@ -49,6 +49,12 @@ export class CreateTypeSavingsAccountDto {
   @IsNumber()
   @Min(0)
   minimum_balance?: number;
+
+  @ApiPropertyOptional({ description: 'Solde d\'ouverture de compte', example: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  account_opening_fee?: number;
 
   @ApiPropertyOptional({ description: 'Commission par produit', example: 0 })
   @IsOptional()

@@ -1,21 +1,30 @@
 // Service TransactionSavingsAccount - src/core-banking/providers/transaction-savings-account.service.ts
 // Gère la logique métier des transactions épargne
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
+import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
 
 
 
@@ -77,7 +86,6 @@ export class TransactionSavingsAccountService {
     if (!provider) {
       throw new NotFoundException(`Provider invalide : ${provider_code}`);
     }
-
     // création de l'entité transaction
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
@@ -89,16 +97,22 @@ export class TransactionSavingsAccountService {
     tx.targetSavingsAccount = target;
 
     // mise à jour des soldes
-    if (txType.is_credit) {
-      target.balance += dto.amount;
-    } else {
-      origin.balance -= dto.amount;
-    }
+      await this.repo.manager.transaction(async (entityManager) => {
+      await this.validateTransaction(origin, target, dto.amount); // Lancer une exception si échec
 
-    // sauvegarde des deux comptes puis de la transaction
-    await this.savingsAccountService.save([origin]);
-    await this.savingsAccountService.save([target]);
-    return this.repo.save(tx);
+      // Débit du compte source
+      origin.balance -= dto.amount;
+      await entityManager.save(origin);
+
+      // Crédit du compte cible
+      target.balance += dto.amount;
+      await entityManager.save(target);
+
+      // Sauvegarde de la transaction
+      await entityManager.save(tx);
+    });
+    return tx
+
   }
 
   deposit_cash(dto: CreateTransactionSavingsAccountDto) {
@@ -146,6 +160,48 @@ export class TransactionSavingsAccountService {
     });
     if (!entity) throw new NotFoundException(`Transaction ${id} non trouvé`);
     return entity;
+  }
+
+  async validateTransaction(account: SavingsAccount, target: SavingsAccount, amount: number) {
+    // const account = await this.savingsAccountService.findOne(accountId);
+    if (account.balance < amount) {
+      throw new BadRequestException('Solde insuffisant');
+    }
+
+    // 2. Durée de blocage (ex: 6 mois)
+    if (this.getAccountAgeMonths(account.created_at) < account.type_savings_account.minimum_blocking_duration) {
+      throw new BadRequestException('Durée de blocage non atteinte');
+    }
+
+    // 3. Valide que les comptes sont différents
+    if (account.id === target.id) {
+      throw new BadRequestException('Transfert vers le même compte interdit');
+    }
+    // 1. Vérifier si le compte est actif
+    if (account.status === 0) {
+      throw new Error('Ce compte est inactif.');
+    }
+
+    // 2. Vérifier le solde minimum (pour les retraits)
+    if (account.balance - amount < account.type_savings_account.minimum_balance) {
+      throw new Error(`Solde insuffisant. Minimum requis: ${account.type_savings_account.minimum_balance}`);
+    }
+
+    // 3. Vérifier la durée de blocage (ex: 6 mois)
+    const accountAgeMonths = this.getAccountAgeMonths(account.type_savings_account.created_at);
+    if (accountAgeMonths < account.type_savings_account.minimum_blocking_duration) {
+      throw new Error(`Durée de blocage non atteinte (${account.type_savings_account.minimum_blocking_duration} mois requis)`);
+    }
+
+    // 4. Calculer les frais (ex: commission_per_product devenu account_opening_fee)
+    const totalFees = account.type_savings_account.account_opening_fee; // + autres frais si besoin
+    return { isValid: true, fees: totalFees };
+  }
+
+  private getAccountAgeMonths(createdAt: Date): number {
+    const today = new Date();
+    const months = (today.getFullYear() - createdAt.getFullYear()) * 12;
+    return months + today.getMonth() - createdAt.getMonth();
   }
 
   // Met à jour une transaction existante
