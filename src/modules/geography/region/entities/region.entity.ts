@@ -13,7 +13,7 @@ export class Region {
   @Column({ length: 45, nullable: true })
   code: string;
 
-  @ManyToOne(() => Country, { nullable: false })
+  @ManyToOne(() => Country, { nullable: false, eager: true  })
   @JoinColumn({ name: 'country_id' })
   country: Country;
 

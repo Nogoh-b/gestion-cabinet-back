@@ -1,13 +1,25 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { DocumentSavingAccount } from 'src/modules/savings-account/document-saving-account/entities/document-saving-account.entity';
 import { In, Repository } from 'typeorm';
-import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
 import { SavingsAccountService } from '../savings-account/savings-account.service';
+import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
+
+
+
+
+
+
 export enum DocumentSavingAccountStatus {
   PENDING = 0,
   ACCEPTED = 1,
@@ -71,7 +83,7 @@ export class DocumentSavingAccountService {
     async createSingle(
     dto: CreateDocumentSavingAccountDto,
     file: Express.Multer.File,
-  ): Promise<DocumentSavingAccount> {
+  ): Promise<DocumentSavingAccount | any> {
     // Vérification des jointures
     const sa = await this.saService.findOne(dto.savings_account_id);
     if (!sa) throw new NotFoundException(`Savings account ${dto.savings_account_id} not found in branch`);
@@ -82,7 +94,7 @@ export class DocumentSavingAccountService {
 
     const requiredDocs = await this.saService.getRequiredDocuments(sa.id);
     const requiredIds = requiredDocs.map(d => d.id);
-    if (!requiredIds.includes(dto.document_type_id)) {
+    if (!requiredIds.includes(Number(dto.document_type_id))) {
       throw new BadRequestException('This document type is not required for this savings account');
     }
     // Vérifier s'il existe déjà un document en attente ou validé pour ce client et type

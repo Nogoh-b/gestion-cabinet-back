@@ -1,42 +1,54 @@
 // location-cities.service.ts
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { LocationCity } from './entities/location_city.entity';
+
+
+import { DistrictsService } from '../district/district.service';
 import { CreateLocationCityDto } from './dto/create-location_city.dto';
 import { UpdateLocationCityDto } from './dto/update-location_city.dto';
-import { DistrictsService } from '../district/district.service';
+import { LocationCity } from './entities/location_city.entity';
+import { BaseService } from 'src/core/shared/services/search/base.service';
+
+
 
 @Injectable()
-export class LocationCitiesService {
+export class LocationCitiesService extends BaseService<LocationCity> {
   constructor(
     @InjectRepository(LocationCity)
     private repository: Repository<LocationCity>,
-    private districtsService: DistrictsService
-  ) {}
-
+    private districtsService: DistrictsService,
+  ) {super()}
+  getRepository(): Repository<LocationCity> {
+    return this.repository;
+  }
   async create(dto: CreateLocationCityDto): Promise<LocationCity> {
     const district = await this.districtsService.findOne(dto.districts_id);
     return this.repository.save({ ...dto, district });
   }
 
   findAll(): Promise<LocationCity[]> {
-    return this.repository.find({ relations: ['district'] });
+    return this.repository.find();
   }
 
   async findOne(id: number): Promise<LocationCity> {
-    const city = await this.repository.findOne({ 
+    const city = await this.repository.findOne({
       where: { id },
-      relations: ['district']
+      relations: [
+        'district',
+        'district.division',
+        'district.division.region',
+        'district.division.region.country',
+      ],
     });
-    if (!city) throw new NotFoundException();
+    if (!city) throw new NotFoundException('Location city not found');
     return city;
   }
 
   async findOneByCode(code: string): Promise<LocationCity> {
-    const city = await this.repository.findOne({ 
+    const city = await this.repository.findOne({
       where: { code },
-      relations: ['district']
+      relations: ['district'],
     });
     if (!city) throw new NotFoundException();
     return city;

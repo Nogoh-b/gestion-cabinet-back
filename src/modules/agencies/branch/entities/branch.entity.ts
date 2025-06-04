@@ -1,7 +1,10 @@
-import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
-import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import { BaseEntity } from 'src/core/entities/base.entity';
+import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
+import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity, OneToMany } from 'typeorm';
+import { ApiProperty } from '@nestjs/swagger';
+
+import { Employee } from '../../employee/entities/employee.entity';
+
 
 @Entity('branch')
 export class Branch extends BaseEntity {
@@ -37,8 +40,8 @@ export class Branch extends BaseEntity {
   @Column({ type: 'int', name: 'closing_hour' })
   closing_hour: number;
 
-  // @OneToMany(() => Customer, (customer) => customer.branch)
-  // customers: Customer[];
+  @OneToMany(() => Employee, (employee) => employee.branch)
+  employees: Employee[];
 
 
   @ApiProperty({ example: 1 })

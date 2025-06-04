@@ -1,14 +1,25 @@
-import { Column, ManyToOne, JoinColumn, Entity, OneToOne, PrimaryColumn } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
-import { Branch } from '../../branch/entities/branch.entity';
+import { BaseEntity } from 'src/core/entities/base.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import {
+  Column,
+  ManyToOne,
+  JoinColumn,
+  Entity,
+  OneToOne,
+  BeforeInsert,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+import { ApiProperty } from '@nestjs/swagger';
+
+import { Branch } from '../../branch/entities/branch.entity';
+
 @Entity('employee')
-export class Employee {
-  @PrimaryColumn()
+export class Employee extends BaseEntity {
+  @PrimaryGeneratedColumn()
   id: number; // sera égal à user.id
 
   @OneToOne(() => User, user => user.employee)
-  @JoinColumn({ name: 'id' }) // Clé étrangère et clé primaire en même temps
+  @JoinColumn({ name: 'user_id' }) // Clé étrangère et clé primaire en même temps
   user: User;
 
   @ManyToOne(() => Branch)
@@ -23,13 +34,20 @@ export class Employee {
   @Column({ type: 'date', name: 'hire_date' })
   hireDate: Date;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
-  updatedAt: Date;
 
   @ApiProperty({ example: 1 })
   @Column({ type: 'tinyint' })
   status: number;
+
+
+  @BeforeInsert()
+  setDefaultHireDate() {
+    console.log(
+      'Aucune date de naissance spécifiée, utilisation de la date actuelle',
+    );
+    if (!this.hireDate) {
+      this.hireDate = new Date(); // Valeur par défaut
+    }
+  }
 }

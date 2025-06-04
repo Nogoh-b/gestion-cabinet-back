@@ -31,7 +31,7 @@ import { EmailService } from './shared/services/email/email.service';
     }),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'secretKey',  // à stocker en variable d’environnement
-      signOptions: { expiresIn: '1h' },
+      signOptions: { expiresIn: '30d' },
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

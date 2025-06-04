@@ -1,23 +1,37 @@
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { GenCOde } from 'src/core/shared/utils/generation.util';
+import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+import { Employee } from '../employee/entities/employee.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Branch } from './entities/branch.entity';
-import { Employee } from '../employee/entities/employee.entity';
-import { Repository } from 'typeorm';
-import { GenCOde } from 'src/core/shared/utils/generation.util';
-import { validateDto } from 'src/core/shared/pipes/validate-dto';
+
+
+
 
 @Injectable()
 export class BranchService {
-    constructor(
+  constructor(
     @InjectRepository(Branch)
     private branchRepository: Repository<Branch>,
     @InjectRepository(Employee)
     private employeeRepository: Repository<Employee>,
+    private locationCityService: LocationCitiesService,
   ) {}
   // Branches
   async createBranch(dto: CreateBranchDto): Promise<Branch> {
+    // Vérification de l'existence de la ville
+    const city = await this.locationCityService.findOne(dto.location_city_id);
+
+    if (!city) {
+      throw new NotFoundException('Ville non trouvée');
+    }
     let code: string;
     let attempts = 0;
     do {
@@ -28,17 +42,48 @@ export class BranchService {
     if (attempts >= 5) {
       throw new Error('Échec de génération d’un code de la branche');
     }
-    dto.code = code
-    await validateDto(CreateBranchDto, dto)
-    return await this.branchRepository.save(dto);
+    dto.code = code;
+    await validateDto(CreateBranchDto, dto);
+    const branch = this.branchRepository.create({
+      ...dto,
+      code,
+      location_city: city, // Assignation de l'entité complète
+    });
+    return await this.branchRepository.save(branch);
   }
 
-  async findAllBranches(): Promise<Branch[]> {
-    return this.branchRepository.find({ relations: ['location_city'] });
+  async findAllBranches(status = 1): Promise<Branch[]> {
+    return this.branchRepository.find({
+      relations: ['location_city'],
+      where: { status },
+    });
   }
-  async updateBranch(id: number, dto: UpdateBranchDto): Promise<Branch | any> {
-    await this.branchRepository.update(id, dto);
-    return this.branchRepository.findOneBy({ id });
+
+  async updateBranch(id: number, dto: UpdateBranchDto): Promise<Branch> {
+    // 1. Vérifier l'existence de la branche
+    const existingBranch = await this.branchRepository.findOneBy({ id });
+    if (!existingBranch) {
+      throw new NotFoundException(`Branch with ID ${id} not found`);
+    }
+
+    // 2. Si location_city_id est fourni dans le DTO
+    if (dto.location_city_id) {
+      const city = await this.locationCityService.findOne(dto.location_city_id);
+
+      if (!city) {
+        throw new NotFoundException(
+          `City with ID ${dto.location_city_id} not found`,
+        );
+      }
+      existingBranch.location_city = city;
+      delete dto.location_city_id; // Pour éviter de l'envoyer deux fois
+    }
+
+    // 3. Fusionner les modifications
+    this.branchRepository.merge(existingBranch, dto);
+
+    // 4. Sauvegarder et retourner l'entité complète
+    return await this.branchRepository.save(existingBranch);
   }
 
   async deleteBranch(id: number): Promise<void> {
@@ -49,13 +94,39 @@ export class BranchService {
     return !existing;
   }
 
-  
   async findOne(id: number): Promise<Branch> {
-    const branch = await this.branchRepository.findOne({ 
-      where: { id },
-     
+    const branch = await this.branchRepository.findOne({
+      where: { id, status: 1 },
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
+    return branch;
+  }
+
+  async findEmployeesByBranchId(id: number): Promise<Employee[]> {
+    const branch = await this.branchRepository.findOne({
+      where: { id, status: 1 },
+      relations: ['employees'],
+    });
+    if (!branch) throw new NotFoundException('Branch inexistante');
+    return branch.employees;
+  }
+
+  async activate(id: number): Promise<Branch> {
+    const branch = await this.branchRepository.findOne({
+      where: { id, status: 0 },
+    });
+    if (!branch) throw new NotFoundException('Branch inexistante');
+    branch!.status = 1;
+    branch?.save();
+    return branch;
+  }
+  async deactivate(id: number): Promise<Branch> {
+    const branch = await this.branchRepository.findOne({
+      where: { id, status: 1 },
+    });
+    if (!branch) throw new NotFoundException('Branch inexistante');
+    branch!.status = 0;
+    branch?.save();
     return branch;
   }
 }

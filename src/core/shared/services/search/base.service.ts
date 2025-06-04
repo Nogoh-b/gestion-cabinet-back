@@ -1,7 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
 import { Repository, ObjectLiteral, Brackets, EntityMetadata, SelectQueryBuilder } from 'typeorm';
-import { validateDto } from '../../pipes/validate-dto';
+import { ColumnMetadata } from 'typeorm/metadata/ColumnMetadata';
+import { RelationMetadata } from 'typeorm/metadata/RelationMetadata';
+import { BadRequestException, Injectable } from '@nestjs/common';
+
 import { AdvancedSearchOptionsDto } from '../../dto/advanced-search.dto';
+import { validateDto } from '../../pipes/validate-dto';
+
 
 interface JoinConfig {
   relation: string;
@@ -46,6 +50,171 @@ export interface AdvancedSearchOptions {
 @Injectable()
 export abstract class BaseService<T extends ObjectLiteral> {
   abstract getRepository(): Repository<T>;
+
+/**
+   * Recherche un terme dans toutes les entités sous-jacentes à l’entité T :
+   * - Les colonnes texte (varchar, text, char, etc.) de l’entité racine
+   * - Toutes les colonnes texte des entités liées (ManyToOne, OneToOne, etc.), récursivement
+   *
+   * @param term Chaîne à rechercher (insensible à la casse)
+   */
+ async searchAllEntities(term: string): Promise<any> {
+    const repo = this.getRepository();
+    const metadata = repo.metadata;
+    const rootAlias = metadata.tableName;
+    const qb: SelectQueryBuilder<T> = repo.createQueryBuilder(rootAlias);
+    // 1. Construire la liste des chemins de relations
+    const relationPaths = this.collectRelationPaths(metadata);
+
+    // 2. Ajouter les LEFT JOIN … pour chaque relation
+    relationPaths.forEach((path) => {
+      const relationAlias = path.replace(/\./g, '_');
+      qb.leftJoinAndSelect(`${rootAlias}.${path}`, relationAlias);
+    });
+
+    // 3. Préparer les conditions WHERE pour tous les champs texte
+    const lowerTerm = `%${term.toLowerCase()}%`;
+    const whereClauses: string[] = [];
+
+    // 3.1. Colonnes texte de l’entité racine
+    metadata.columns.forEach((col) => {
+      if (this.isTextColumn(col)) {
+        whereClauses.push(`LOWER(${rootAlias}.${col.propertyName}) LIKE :term`);
+      }
+    });
+
+    // 3.2. Colonnes texte des entités liées
+    relationPaths.forEach((path) => {
+      const relationAlias = path.replace(/\./g, '_');
+      const relMeta = this.getRelationMetadataByPath(metadata, path);
+      if (!relMeta) return;
+
+      const targetMeta = relMeta.inverseEntityMetadata;
+      targetMeta.columns.forEach((col) => {
+        if (this.isTextColumn(col)) {
+          whereClauses.push(`LOWER(${relationAlias}.${col.propertyName}) LIKE :term`);
+        }
+      });
+    });
+
+    // 4. Appliquer les conditions WHERE/OR WHERE de façon sûre
+    if (whereClauses.length > 0) {
+      // On récupère le premier élément sans risquer undefined
+      const [firstClause, ...otherClauses] = whereClauses;
+      qb.where(firstClause, { term: lowerTerm });
+      otherClauses.forEach((clause) => {
+        qb.orWhere(clause, { term: lowerTerm });
+      });
+    }
+
+    // 5. Exécuter
+    return qb.getMany();
+  }
+
+
+  /**
+   * Détermine si une colonne est de type texte (varchar, text, char, etc.).
+   * On peut ajuster cette liste selon les types utilisés dans vos entités.
+   */
+  private isTextColumn(col: ColumnMetadata): boolean {
+    // column.type peut être une fonction, un string ou un Object (selon la config TypeORM).
+    const type = col.type;
+    // On convertit en string pour faciliter la comparaison
+    const typeStr = typeof type === 'string' ? type.toLowerCase() : '';
+
+    return (
+      typeStr.includes('char') ||
+      typeStr.includes('text') ||
+      typeStr === 'varchar' ||
+      typeStr === 'nvarchar' ||
+      typeStr === 'uuid'
+    );
+  }
+
+  /**
+   * Récupère les métadonnées de la relation correspondant à un chemin (path) donné.
+   * Par exemple, si path = "district.division.region", on boucle récursivement.
+   */
+  private getRelationMetadataByPath(
+    rootMeta: EntityMetadata,
+    path: string,
+  ): RelationMetadata | null {
+    const segments = path.split('.'); // e.g. ['district','division','region']
+    let currentMeta: EntityMetadata | undefined = rootMeta;
+    let relMeta: RelationMetadata | undefined;
+
+    for (const segment of segments) {
+      relMeta = currentMeta.relations.find(
+        (r) => r.propertyName === segment,
+      );
+      if (!relMeta) {
+        return null;
+      }
+      currentMeta = relMeta.inverseEntityMetadata;
+    }
+    return relMeta || null;
+  }
+
+  /**
+   * Construit récursivement la liste de tous les chemins de relations à partir d’un metadata d’entité.
+   * Limite la profondeur pour éviter les boucles infinies (self-relation).
+   *
+   * Par défaut, on descend jusqu’à 3 niveaux de profondeur (configurable).
+   */
+  private collectRelationPaths(
+    meta: EntityMetadata,
+    prefix = '',
+    depth = 0,
+    maxDepth = 5,
+  ): string[] {
+    if (depth >= maxDepth) return [];
+
+    const paths: string[] = [];
+
+    meta.relations.forEach((rel) => {
+      const prop = rel.propertyName; // e.g. "district"
+      const newPath = prefix ? `${prefix}.${prop}` : prop; // e.g. "district" ou "district.division"
+
+      paths.push(newPath);
+      // Descendre dans la relation pour récupérer d’autres sous-relations
+      const subPaths = this.collectRelationPaths(
+        rel.inverseEntityMetadata,
+        newPath,
+        depth + 1,
+        maxDepth,
+      );
+      subPaths.forEach((sp) => paths.push(sp));
+    });
+
+    return paths;
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   /**
    * Recherche avec LIKE sur chaque champ.

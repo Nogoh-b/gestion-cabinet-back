@@ -1,13 +1,19 @@
 // location-cities.controller.ts
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
-import { LocationCitiesService } from './location_city.service';
-import { LocationCity } from './entities/location_city.entity';
-import { CreateLocationCityDto } from './dto/create-location_city.dto';
-import { UpdateLocationCityDto } from './dto/update-location_city.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-import { ApiBearerAuth } from '@nestjs/swagger';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import { ApiBearerAuth } from '@nestjs/swagger';
+
+
+
+import { CreateLocationCityDto } from './dto/create-location_city.dto';
+import { UpdateLocationCityDto } from './dto/update-location_city.dto';
+import { LocationCity } from './entities/location_city.entity';
+import { LocationCitiesService } from './location_city.service';
+
+
+
 
 @Controller('location-cities')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -43,5 +49,13 @@ export class LocationCitiesController {
   @RequirePermissions('MANAGE_LOCATION')
   remove(@Param('id') id: number): Promise<void> {
     return this.service.remove(id);
+  }
+
+  @Get('search-all')
+  async searchAll(@Query('term') term: string): Promise<LocationCity[]> {
+    if (!term) {
+      return [];
+    }
+    return this.service.searchAllEntities(term);
   }
 }

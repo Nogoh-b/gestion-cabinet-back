@@ -16,7 +16,4 @@ export class CreateEmployeeDto {
   @IsDateString()
   hire_date: Date;
 
-  @ApiProperty()
-  @IsInt()
-  status: number;
 }
