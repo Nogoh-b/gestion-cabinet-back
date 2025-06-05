@@ -15,8 +15,6 @@ export class Commission {
 
   @Column({
     type: 'tinyint',
-    enum: CommissionValueType,
-    name: 'value_type',
     default: CommissionValueType.FIXED,
   })
   value_type: CommissionValueType;
