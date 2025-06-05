@@ -7,6 +7,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -15,6 +21,12 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
 
 
 
@@ -138,9 +150,57 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return this.findOne(id);
   }
 
-  async remove(id: number): Promise<void> {
-    await this.repo.delete({ id });
+
+
+
+  async remove(id: number): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { id },
+    });
+    account!.status = SavingsAccountStatus.DEACTIVATE;
+    return await account?.save();
   }
+
+
+
+
+  async activate(id: number): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { id },
+    });
+    account!.status = SavingsAccountStatus.ACTIVE;
+    return await account?.save();
+  }
+
+
+
+
+  async lock(id: number): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { id },
+    });
+    account!.status = SavingsAccountStatus.BLOCKED;
+    return await account?.save();
+  }
+
+
+
+
+  async unlock(id: number): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { id },
+    });
+    account!.status = SavingsAccountStatus.ACTIVE;
+    return await account?.save();
+  }
+
+
+
+
+
+
+
+
   async getRequiredDocuments(id: number): Promise<DocumentType[]> {
     const sa = await this.findOne(id);
     return await this.typeSavingAcount.getRequiredDocuments(sa.type_savings_account.id);
@@ -173,7 +233,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   async assign_interest_range(
     account_id: number,
     dto: AssignInterestRangeDto,
-  ): Promise<SavingsAccountHasInterest> {
+  ): Promise<any> {
     // 1. récupérer le compte
     const account = await this.findOne(account_id);
   
@@ -200,7 +260,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     const existingLink = await this.interestRepo.findOne({
       where: {
         savings_account: { id: account_id},
-        interest_saving_account_id: plan.id,
+        interest_saving_account: {id: plan.id},
         status: 1,
       },
     });
@@ -216,6 +276,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       end_date: end,
       status: 1,
     });
+    return [account_id, plan, existingLink]
+
     return this.interestRepo.save(link);
   }
   

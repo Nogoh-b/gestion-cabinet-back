@@ -1,5 +1,9 @@
 import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+
+
 import { CommissionValueType } from '../dto/create-commission.dto';
+
+
 
 @Entity('commission')
 export class Commission {
@@ -10,7 +14,7 @@ export class Commission {
   description: string;
 
   @Column({
-    type: 'enum',
+    type: 'tinyint',
     enum: CommissionValueType,
     name: 'value_type',
     default: CommissionValueType.FIXED,

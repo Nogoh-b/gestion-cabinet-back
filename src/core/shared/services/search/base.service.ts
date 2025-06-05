@@ -3,8 +3,32 @@ import { ColumnMetadata } from 'typeorm/metadata/ColumnMetadata';
 import { RelationMetadata } from 'typeorm/metadata/RelationMetadata';
 import { BadRequestException, Injectable } from '@nestjs/common';
 
+
+
+
+
+
+
+
+
+
+
+
+
 import { AdvancedSearchOptionsDto } from '../../dto/advanced-search.dto';
 import { validateDto } from '../../pipes/validate-dto';
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 interface JoinConfig {
@@ -37,7 +61,7 @@ interface SearchOptions {
 
 export interface AdvancedSearchOptions {
   alias: string;
-  searchFields: string[];
+  searchFields?: string[]; // ⬅️ rendre ce champ optionnel
   searchTerm: string;
   exactMatch?: boolean;
   skip?: number;
@@ -270,7 +294,7 @@ async enhancedSearch_1({
   const metadata = this.getRepository().metadata;
 
   // Traitement automatique des jointures pour les champs de recherche
-  searchFields.forEach(field => {
+  searchFields!.forEach(field => {
     const parts = field.split('.');
     if (parts.length > 1) {
       const relationPath = parts.slice(0, -1).join('.');
@@ -285,7 +309,7 @@ async enhancedSearch_1({
   // Construction des conditions de recherche
   qb.andWhere(
     new Brackets((where) => {
-      searchFields.forEach(field => {
+      searchFields!.forEach(field => {
         const paramName = field.replace(/\./g, '_');
         const condition = exactMatch 
           ? `${field} = :${paramName}` 
@@ -397,108 +421,288 @@ private getDatabaseColumnName_1(
 
 
 
+async enhancedSearchv0({
+  alias,
+  searchFields,
+  searchTerm,
+  exactMatch = false,
+  skip,
+  take,
+  orderBy,
+}: AdvancedSearchOptions): Promise<T[]> {
+  const repo = this.getRepository();
+  const qb = repo.createQueryBuilder(alias);
+  const metadata = repo.metadata as EntityMetadata;
+  const joined = new Set<string>();
+  const aliasMap = new Map<string, string>();
 
+  // Fonction récursive pour récupérer tous les champs scalaires accessibles
+  const extractSearchableFields = (
+    meta: EntityMetadata,
+    prefix = '',
+    depth = 5
+  ): string[] => {
+    if (depth <= 0) return [];
 
+    const fields: string[] = [];
 
-
-
-  async enhancedSearch({
-    alias,
-    searchFields,
-    searchTerm,
-    exactMatch = false,
-    skip,
-    take,
-    orderBy,
-  }: AdvancedSearchOptions): Promise<T[]> {
-    const repo = this.getRepository();
-    const qb = repo.createQueryBuilder(alias);
-    const metadata = repo.metadata as EntityMetadata;
-    const joined = new Set<string>();
-    const aliasMap = new Map<string, string>();
-
-    // Recursive join for nested relations
-    const joinRecursive = (path: string) => {
-      const parts = path.split('.');
-      let parentAlias = alias;
-      let accumulated = '';
-
-      for (let i = 0; i < parts.length - 1; i++) {
-        accumulated = accumulated ? `${accumulated}.${parts[i]}` : parts[i];
-
-        if (joined.has(accumulated)) {
-          parentAlias = aliasMap.get(accumulated)!;
-          continue;
-        }
-
-        // Ensure relation exists in metadata
-        const relation = metadata.relations.find(r => r.propertyName === parts[i]);
-        if (!relation) {
-          throw new BadRequestException(`Invalid relation: ${accumulated}`);
-        }
-
-        const joinAlias = parts[i];
-        qb.leftJoinAndSelect(`${parentAlias}.${parts[i]}`, joinAlias);
-        joined.add(accumulated);
-        aliasMap.set(accumulated, joinAlias);
-        parentAlias = joinAlias;
+    for (const col of meta.columns) {
+      if (!col.relationMetadata) {
+        fields.push(prefix ? `${prefix}.${col.propertyName}` : col.propertyName);
       }
-    };
+    }
 
-    // Apply joins based on searchFields
-    searchFields.forEach(field => joinRecursive(field));
+    for (const rel of meta.relations) {
+      const nestedPrefix = prefix ? `${prefix}.${rel.propertyName}` : rel.propertyName;
+      const nestedMeta = rel.inverseEntityMetadata;
+      const nestedFields = extractSearchableFields(nestedMeta, nestedPrefix, depth - 1);
+      fields.push(...nestedFields);
+    }
 
-    // Build WHERE clause
-    const termValue = exactMatch ? searchTerm : `%${searchTerm}%`;
-    qb.andWhere(new Brackets(br => {
-      searchFields.forEach((field, idx) => {
-        const parts = field.split('.');
-        const column = parts.pop()!;
-        const relPath = parts.join('.');
-        const targetAlias = relPath ? aliasMap.get(relPath)! : alias;
+    return fields;
+  };
 
-        const operator = exactMatch ? '=' : 'LIKE';
-        const condition = `${targetAlias}.${column} ${operator} :term`;
+  // Générer dynamiquement les searchFields si non fournis
+  if (!searchFields || searchFields.length === 0) {
+    searchFields = extractSearchableFields(metadata, '', 6); // Profondeur max = 5
+  }
 
-        idx === 0 ? br.where(condition, { term: termValue }) : br.orWhere(condition, { term: termValue });
-      });
-    }));
+  // Jointures automatiques
+  const joinRecursive = (path: string) => {
+    const parts = path.split('.');
+    let parentAlias = alias;
+    let accumulated = '';
+    let currentMeta = metadata;
 
-    // Pagination
-    if (skip !== undefined) qb.skip(skip);
-    if (take !== undefined) qb.take(take);
+    for (let i = 0; i < parts.length - 1; i++) {
+      accumulated = accumulated ? `${accumulated}.${parts[i]}` : parts[i];
 
-    // Ordering
-    if (orderBy) {
-      const parts = orderBy.field.split('.');
+      if (joined.has(accumulated)) {
+        parentAlias = aliasMap.get(accumulated)!;
+        currentMeta = currentMeta.relations.find(r => r.propertyName === parts[i])!.inverseEntityMetadata;
+        continue;
+      }
+
+      const relation = currentMeta.relations.find(r => r.propertyName === parts[i]);
+      if (!relation) {
+        throw new BadRequestException(`Invalid relation: ${accumulated}`);
+      }
+
+      const joinAlias = accumulated.replace(/\./g, '_');
+      qb.leftJoinAndSelect(`${parentAlias}.${parts[i]}`, joinAlias);
+      joined.add(accumulated);
+      aliasMap.set(accumulated, joinAlias);
+
+      parentAlias = joinAlias;
+      currentMeta = relation.inverseEntityMetadata;
+    }
+  };
+
+
+  // Appliquer les jointures
+  searchFields.forEach(field => joinRecursive(field));
+
+  // Construction du WHERE
+  const termValue = exactMatch ? searchTerm : `%${searchTerm}%`;
+  qb.andWhere(new Brackets(br => {
+    searchFields.forEach((field, idx) => {
+      const parts = field.split('.');
       const column = parts.pop()!;
       const relPath = parts.join('.');
+      const targetAlias = relPath ? aliasMap.get(relPath)! : alias;
+
+      const operator = exactMatch ? '=' : 'LIKE';
+      const condition = `${targetAlias}.${column} ${operator} :term`;
+
+      idx === 0
+        ? br.where(condition, { term: termValue })
+        : br.orWhere(condition, { term: termValue });
+    });
+  }));
+
+  // Pagination
+  if (skip !== undefined) qb.skip(skip);
+  if (take !== undefined) qb.take(take);
+
+  // Tri
+  if (orderBy) {
+    const parts = orderBy.field.split('.');
+    const column = parts.pop()!;
+    const relPath = parts.join('.');
+    if (relPath && !joined.has(relPath)) {
+      joinRecursive(`${relPath}.${column}`);
+    }
+    const orderAlias = relPath ? aliasMap.get(relPath)! : alias;
+
+    const relationMeta = relPath
+      ? metadata.findRelationWithPropertyPath(relPath)
+      : null;
+    let dbName: string;
+    if (!relationMeta) {
+      const colMeta = metadata.columns.find(c => c.propertyName === column);
+      if (!colMeta) throw new BadRequestException(`Invalid sort field: ${orderBy.field}`);
+      dbName = colMeta.databaseName;
+    } else {
+      const targetMeta = relationMeta.inverseEntityMetadata;
+      const colMeta = targetMeta.columns.find(c => c.propertyName === column);
+      if (!colMeta) throw new BadRequestException(`Invalid sort field: ${orderBy.field}`);
+      dbName = colMeta.databaseName;
+    }
+
+    qb.orderBy(`${orderAlias}.${dbName}`, orderBy.direction || 'ASC');
+  }
+
+  return qb.getMany();
+}
+
+
+async enhancedSearch({
+  alias,
+  searchFields,
+  searchTerm,
+  exactMatch = false,
+  skip,
+  take,
+  orderBy,
+}: AdvancedSearchOptions): Promise<T[]> {
+  const repo = this.getRepository();
+  const qb = repo.createQueryBuilder(alias);
+  const metadata = repo.metadata as EntityMetadata;
+  const joined = new Set<string>();
+  const aliasMap = new Map<string, string>();
+
+  // Fonction récursive pour extraire tous les champs scalaires (y compris dans les relations)
+  const extractSearchableFields = (
+    meta: EntityMetadata,
+    prefix = '',
+    depth = 3
+  ): string[] => {
+    if (depth <= 0) return [];
+
+    const fields: string[] = [];
+
+    for (const col of meta.columns) {
+      if (!col.relationMetadata) {
+        fields.push(prefix ? `${prefix}.${col.propertyName}` : col.propertyName);
+      }
+    }
+
+    for (const rel of meta.relations) {
+      const nestedPrefix = prefix ? `${prefix}.${rel.propertyName}` : rel.propertyName;
+      const nestedMeta = rel.inverseEntityMetadata;
+      const nestedFields = extractSearchableFields(nestedMeta, nestedPrefix, depth - 1);
+      fields.push(...nestedFields);
+    }
+
+    return fields;
+  };
+
+  // Remplir automatiquement les champs à chercher si non fournis
+  if (!searchFields || searchFields.length === 0) {
+    searchFields = extractSearchableFields(metadata, '', 3); // Profondeur personnalisable
+  }
+
+  // Fonction pour faire les jointures récursives
+  const joinRecursive = (path: string) => {
+    const parts = path.split('.');
+    let parentAlias = alias;
+    let accumulated = '';
+    let currentMeta = metadata;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      accumulated = accumulated ? `${accumulated}.${parts[i]}` : parts[i];
+
+      if (joined.has(accumulated)) {
+        parentAlias = aliasMap.get(accumulated)!;
+        currentMeta = currentMeta.relations.find(r => r.propertyName === parts[i])!.inverseEntityMetadata;
+        continue;
+      }
+
+      const relation = currentMeta.relations.find(r => r.propertyName === parts[i]);
+      if (!relation) {
+        throw new BadRequestException(`Invalid relation: ${accumulated}`);
+      }
+
+      const joinAlias = `${accumulated.replace(/\./g, '_')}_rel`;
+      qb.leftJoinAndSelect(`${parentAlias}.${parts[i]}`, joinAlias);
+      joined.add(accumulated);
+      aliasMap.set(accumulated, joinAlias);
+
+      parentAlias = joinAlias;
+      currentMeta = relation.inverseEntityMetadata;
+    }
+  };
+
+  // Appliquer les jointures nécessaires
+  searchFields.forEach(field => joinRecursive(field));
+
+  // Construction du WHERE
+  const termValue = exactMatch ? searchTerm : `%${searchTerm}%`;
+  qb.andWhere(new Brackets(br => {
+    searchFields.forEach((field, idx) => {
+      const parts = field.split('.');
+      const column = parts.pop()!;
+      const relPath = parts.join('.');
+      const targetAlias = relPath ? aliasMap.get(relPath)! : alias;
+
+      const operator = exactMatch ? '=' : 'LIKE';
+      const condition = `${targetAlias}.${column} ${operator} :term`;
+
+      idx === 0
+        ? br.where(condition, { term: termValue })
+        : br.orWhere(condition, { term: termValue });
+    });
+  }));
+
+  // Pagination
+  if (skip !== undefined) qb.skip(skip);
+  if (take !== undefined) qb.take(take);
+
+ /* // Tri sécurisé
+  if (orderBy) {
+    const parts = orderBy.field.split('.');
+    const column = parts.pop()!;
+    const relPath = parts.join('.');
+
+    try {
+      // Join au besoin
       if (relPath && !joined.has(relPath)) {
         joinRecursive(`${relPath}.${column}`);
       }
-      const orderAlias = relPath ? aliasMap.get(relPath)! : alias;
 
-      // Resolve column to database name
-      const relationMeta = relPath
-        ? metadata.findRelationWithPropertyPath(relPath)
-        : null;
-      let dbName: string;
-      if (!relationMeta) {
-        const colMeta = metadata.columns.find(c => c.propertyName === column);
-        if (!colMeta) throw new BadRequestException(`Invalid sort field: ${orderBy.field}`);
-        dbName = colMeta.databaseName;
-      } else {
-        const targetMeta = relationMeta.inverseEntityMetadata;
-        const colMeta = targetMeta.columns.find(c => c.propertyName === column);
-        if (!colMeta) throw new BadRequestException(`Invalid sort field: ${orderBy.field}`);
-        dbName = colMeta.databaseName;
+      const orderAlias = relPath ? aliasMap.get(relPath) : alias;
+      if (!orderAlias) {
+        throw new BadRequestException(`Invalid alias for order field: ${orderBy.field}`);
       }
 
-      qb.orderBy(`${orderAlias}.${dbName}`, orderBy.direction || 'ASC');
-    }
+      // Résolution de l'entité cible
+      let currentMeta = metadata;
+      for (const part of parts) {
+        const relation = currentMeta.relations.find(r => r.propertyName === part);
+        if (!relation) {
+          throw new BadRequestException(`Invalid relation "${part}" in orderBy: ${orderBy.field}`);
+        }
+        currentMeta = relation.inverseEntityMetadata;
+      }
 
-    return qb.getMany();
-  }
+      const colMeta = currentMeta.columns.find(c => c.propertyName === column);
+      if (!colMeta) {
+        console.error('🛑 Colonne non trouvée pour tri :', column);
+        console.error('📋 Colonnes disponibles :', currentMeta.columns.map(c => c.propertyName));
+        throw new BadRequestException(`Invalid sort column "${column}" in: ${orderBy.field}`);
+      }
+
+      const dbName = colMeta.databaseName;
+      qb.orderBy(`${orderAlias}.${dbName}`, orderBy.direction || 'ASC');
+    } catch (err) {
+      console.error('💥 Erreur dans la clause ORDER BY:', err.message);
+      throw err;
+    }
+  }*/
+
+
+  return qb.getMany();
+}
 
 
 

@@ -1,19 +1,22 @@
 // advanced-search.dto.ts
 
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
-    IsString,
-    IsArray,
-    IsBoolean,
-    IsOptional,
-    IsInt,
-    Min,
-    ArrayNotEmpty,
-    ValidateNested,
-    IsEnum,
-    IsNotEmpty
+  IsString,
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  IsInt,
+  Min,
+  ArrayNotEmpty,
+  ValidateNested,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsIn
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 
 class OrderByDto {
   @ApiProperty({
@@ -96,4 +99,34 @@ export class AdvancedSearchOptionsDto {
   @Type(() => OrderByDto)
   @IsOptional()
   orderBy?: OrderByDto;
+}
+
+
+export class SearchQueryDto {
+  @IsString()
+  term: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === 'true') // transforme string en bool
+  @IsString()
+  exact: string = 'false';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  skip: number = 0;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  take: number = 10;
+
+  @IsOptional()
+  @IsString()
+  orderField: string = 'create_at';
+
+  @IsOptional()
+  @IsIn(['ASC', 'DESC'])
+  @Transform(({ value }) => (value || 'ASC').toUpperCase())
+  orderDir: 'ASC' | 'DESC' = 'ASC';
 }

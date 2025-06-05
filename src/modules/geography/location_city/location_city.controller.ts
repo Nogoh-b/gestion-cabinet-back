@@ -2,8 +2,21 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
 import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+
+
+
+
+
+
+
+
+
+
+
+
+import { ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 
 
 
@@ -14,12 +27,32 @@ import { LocationCitiesService } from './location_city.service';
 
 
 
-
 @Controller('location-cities')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class LocationCitiesController {
   constructor(private readonly service: LocationCitiesService) {}
+
+  @Get('search')
+  @ApiQuery({ name: 'term', required: true, type: String })
+  @ApiQuery({ name: 'exact', required: false, type: Boolean, example: false })
+  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, example: 10 })
+  @ApiQuery({ name: 'orderField', required: false, type: String, example: 'create_at' })
+  @ApiQuery({ name: 'orderDir', required: false, enum: ['ASC', 'DESC'], example: 'ASC' })
+  async searchUsers(@Query() query: SearchQueryDto) {
+    return await this.service.enhancedSearch({
+      alias: 'location_city',
+      searchTerm: query.term,
+      exactMatch: query.exact == 'true',
+      skip: Number(query.skip),
+      take: Number(query.take),
+      orderBy: {
+        field: query.orderField,
+        direction: query.orderDir,
+      },
+    });
+  }
 
   @Post()
   @RequirePermissions('MANAGE_LOCATION')
@@ -39,6 +72,13 @@ export class LocationCitiesController {
     return this.service.findOne(id);
   }
 
+  @Get(':id/all')
+  @RequirePermissions('')
+  findAllS(@Param('id') id: number): Promise<any> {
+    return this.service.search()
+  }
+
+
   @Put(':id')
   @RequirePermissions('MANAGE_LOCATION')
   update(@Param('id') id: number, @Body() dto: UpdateLocationCityDto): Promise<LocationCity> {
@@ -51,11 +91,5 @@ export class LocationCitiesController {
     return this.service.remove(id);
   }
 
-  @Get('search-all')
-  async searchAll(@Query('term') term: string): Promise<LocationCity[]> {
-    if (!term) {
-      return [];
-    }
-    return this.service.searchAllEntities(term);
-  }
+
 }

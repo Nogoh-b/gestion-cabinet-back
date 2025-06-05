@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { SavingsAccountService } from './savings-account.service';
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
@@ -70,11 +70,27 @@ export class SavingsAccountController {
     return this.service.update(id, dto);
   }
 
-  @Delete(':id')
+  @Get(':id/deactivate')
   remove( @Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
   }
 
+  
+  @Get(':id/activate')
+  activate( @Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
+  }
+
+  
+  @Get(':id/lock')
+  lock( @Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
+  }
+
+  @Get(':id/unlock')
+  unlock( @Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
+  }
   @Post(':id/interest-range')
   @ApiOperation({ summary: "Attribuer un taux sur une période donnée" })
   @ApiParam({ name: 'id',        type: Number, description: 'ID du compte' })

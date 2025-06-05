@@ -1,14 +1,32 @@
 // location-cities.service.ts
-import { Repository } from 'typeorm';
+import { BaseService } from 'src/core/shared/services/search/base.service';
+import { DataSource, Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
+
+
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
 
 
 import { DistrictsService } from '../district/district.service';
 import { CreateLocationCityDto } from './dto/create-location_city.dto';
 import { UpdateLocationCityDto } from './dto/update-location_city.dto';
 import { LocationCity } from './entities/location_city.entity';
-import { BaseService } from 'src/core/shared/services/search/base.service';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18,6 +36,7 @@ export class LocationCitiesService extends BaseService<LocationCity> {
     @InjectRepository(LocationCity)
     private repository: Repository<LocationCity>,
     private districtsService: DistrictsService,
+    dataSource: DataSource,
   ) {super()}
   getRepository(): Repository<LocationCity> {
     return this.repository;
@@ -28,6 +47,7 @@ export class LocationCitiesService extends BaseService<LocationCity> {
   }
 
   findAll(): Promise<LocationCity[]> {
+    
     return this.repository.find();
   }
 
@@ -64,5 +84,22 @@ export class LocationCitiesService extends BaseService<LocationCity> {
 
   async remove(id: number): Promise<void> {
     await this.repository.delete(id);
+  }
+
+  async search(){
+
+    const results = await this.enhancedSearch({
+      alias: 'location_city',
+      searchTerm: 'm',
+      exactMatch: false,
+      skip: 0,
+      take: 20,
+      orderBy: {
+        field: 'create_at',
+        direction: 'ASC',
+      },
+    });
+
+    return results; 
   }
 } 
