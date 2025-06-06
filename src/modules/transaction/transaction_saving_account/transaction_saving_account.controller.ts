@@ -70,10 +70,8 @@ export class TransactionSavingAccountController {
     return this.transactionSavingAccountService.findOne(+id);
   }
 
-
-
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.transactionSavingAccountService.remove(+id);
+  validate(@Param('id') id: string) {
+    return this.transactionSavingAccountService.validate(+id);
   }
 }

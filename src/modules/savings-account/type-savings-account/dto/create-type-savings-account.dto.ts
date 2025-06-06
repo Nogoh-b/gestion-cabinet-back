@@ -78,6 +78,10 @@ export class CreateTypeSavingsAccountDto {
   @IsInt()
   commission_id: number;
 
+  @ApiProperty({ description: 'creation en ligne ou pas', example: 0 })
+  @IsInt()
+  canCreateOnline: number;
+
   @ApiProperty({ description: 'ID du taux d’intérêt associé', example: 1 })
   @IsInt()
   interest_saving_account_id: number;

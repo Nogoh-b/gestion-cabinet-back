@@ -1,15 +1,32 @@
-import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
-import { SavingsAccountService } from './savings-account.service';
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
-import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
+import { SavingsAccount } from './entities/savings-account.entity';
+import { SavingsAccountService } from './savings-account.service';
+import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
+
 
 @ApiTags('Saving Accounts')
 @Controller('savings-accounts')
 export class SavingsAccountController {
   constructor(private readonly service: SavingsAccountService) {}
+
+  async searchUsers(@Query() query: SearchQueryDto) {
+    return await this.service.enhancedSearch({
+      alias: 'location_city',
+      searchTerm: query.term,
+      exactMatch: query.exact == 'true',
+      skip: Number(query.skip),
+      take: Number(query.take),
+      orderBy: {
+        field: query.orderField,
+        direction: query.orderDir,
+      },
+    });
+  }
 
   @Get()
   @ApiOperation({ summary: 'Liste tous les comptes en épargne pour une agence' })
@@ -78,19 +95,20 @@ export class SavingsAccountController {
   
   @Get(':id/activate')
   activate( @Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id);
+    return this.service.activate(id);
   }
 
   
   @Get(':id/lock')
   lock( @Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id);
+    return this.service.lock(id);
   }
 
   @Get(':id/unlock')
   unlock( @Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id);
+    return this.service.unlock(id);
   }
+
   @Post(':id/interest-range')
   @ApiOperation({ summary: "Attribuer un taux sur une période donnée" })
   @ApiParam({ name: 'id',        type: Number, description: 'ID du compte' })

@@ -32,7 +32,7 @@ export class TypeSavingsAccount extends BaseEntity {
   @Column({ type: 'tinyint' })
   status: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2  })
+  @Column({ type: 'decimal', precision: 5, scale: 2 })
   interest_year_savings_account: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2 })
@@ -62,7 +62,10 @@ export class TypeSavingsAccount extends BaseEntity {
   @Column({ type: 'int' })
   interest_saving_account_id: number;
 
- @ManyToMany(() => DocumentType)
+  @Column({ type: 'tinyint', default : 0 })
+  canCreateOnline: number;
+
+  @ManyToMany(() => DocumentType)
   @JoinTable({
     name: 'type_savings_account_has_documenttype',
     joinColumn: { name: 'type_savings_account_id', referencedColumnName: 'id' },
@@ -77,12 +80,12 @@ export class TypeSavingsAccount extends BaseEntity {
   commission: Commission;
 
   @ManyToOne(() => InterestSavingAccount)
-  @JoinColumn({ name: 'interest_saving_account_id' }) 
+  @JoinColumn({ name: 'interest_saving_account_id' })
   interestRate: InterestSavingAccount;
 
-  @OneToMany(() => SavingsAccount, sa => sa.type_savings_account) 
+  @OneToMany(() => SavingsAccount, (sa) => sa.type_savings_account)
   savings_accounts: SavingsAccount[];
-    /*@ManyToMany(() => DocumentType, documentType => documentType.typeAccounts)
+  /*@ManyToMany(() => DocumentType, documentType => documentType.typeAccounts)
   @JoinTable({
     name: 'type_savings_account_has_documenttype',
     joinColumn: { name: 'type_savings_account_id', referencedColumnName: 'id' },

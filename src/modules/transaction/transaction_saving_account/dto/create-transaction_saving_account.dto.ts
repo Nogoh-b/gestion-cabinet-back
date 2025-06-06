@@ -24,7 +24,7 @@ export class CreateTransactionSavingsAccountDto {
 
                              // montant de la transaction
 
-
+  is_locked: boolean;                           // true si la transaction est bloquée, false sinon
   /*@ApiPropertyOptional({ example: 'MOMO', description: 'Code d\'origine' })
   @IsOptional()
   @IsString()*/

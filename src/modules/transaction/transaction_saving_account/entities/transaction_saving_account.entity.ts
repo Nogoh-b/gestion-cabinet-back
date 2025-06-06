@@ -20,7 +20,7 @@ export class TransactionSavingsAccount {
   @Column({ type: 'int'})
   amount: number; // Montant de la transaction
 
-  @Column({ type: 'tinyint' })
+  @Column({ type: 'tinyint', default : 0 })
   status: number; // Statut : 0=En attente,1=Confirmée,2=Échouée
 
   // @Column({ length: 45, nullable: true, default: 'code : mobile money' })
@@ -29,8 +29,8 @@ export class TransactionSavingsAccount {
   @Column({ length: 45, nullable: true })
   external_activities_id: string; // ID de l'activité externe
 
-  // @Column({ length: 45, nullable: true })
-  // external_savings_account_number: string; // Numéro de compte externe
+  @Column({ default:false })
+  is_locked: boolean; // Numéro de compte externe
 
   @Index()
   @Column()
@@ -39,6 +39,14 @@ export class TransactionSavingsAccount {
   @Index()
   @Column({ length: 45 })
   provider_code: string; // Code du provider
+
+  @Index()
+  @Column({ length: 100 })
+  payment_code: string; // Code du provider
+
+  @Index()
+  @Column({ length: 100 })
+  reference: string; // Code du provider
 
   @Index()
   @Column()

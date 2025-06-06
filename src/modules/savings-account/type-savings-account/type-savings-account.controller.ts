@@ -1,10 +1,12 @@
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { Controller, Get, Post, Put, Body, Param, ParseIntPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
-import { TypeSavingsAccountService } from './type-savings-account.service';
+
 import { CreateTypeSavingsAccountDto } from './dto/create-type-savings-account.dto';
 import { UpdateTypeSavingsAccountDto } from './dto/update-type-savings-account.dto';
-import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { TypeSavingsAccount } from './entities/type-savings-account.entity';
+import { TypeSavingsAccountService } from './type-savings-account.service';
+
 
 @ApiTags('Savings Products')
 @Controller('savings-products')
@@ -16,6 +18,13 @@ export class TypeSavingsAccountController {
   @ApiResponse({ status: 200, type: [TypeSavingsAccount] })
   findAll(): Promise<TypeSavingsAccount[]> {
     return this.service.findAll();
+  }
+
+  @Get('online')
+  @ApiOperation({ summary: 'Liste tous les produits d’épargne En ligne' })
+  @ApiResponse({ status: 200, type: [TypeSavingsAccount] })
+  findAllOnline(): Promise<TypeSavingsAccount[]> {
+    return this.service.findAllOnline();
   }
 
   @Get(':id')
@@ -53,4 +62,17 @@ export class TypeSavingsAccountController {
   ): Promise<TypeSavingsAccount> {
     return this.service.update(id, dto);
   }
+
+  @Get(':id/deactivate')
+  remove( @Param('id', ParseIntPipe) id: number) {
+    return this.service.remove(id);
+  }
+
+  
+  @Get(':id/activate')
+  activate( @Param('id', ParseIntPipe) id: number) {
+    return this.service.activate(id);
+  }
+
+
 }

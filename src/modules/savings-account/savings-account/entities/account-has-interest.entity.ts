@@ -1,7 +1,11 @@
-import { Entity, PrimaryColumn, ManyToOne, Column } from 'typeorm';
+import { Entity, ManyToOne, Column, JoinColumn, PrimaryColumn } from 'typeorm';
+
+
 
 import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from './savings-account.entity';
+
+
 
 
 @Entity('savings_account_has_interest_saving_account')
@@ -22,13 +26,12 @@ export class SavingsAccountHasInterest {
   status: number;
 
   
-
   @ManyToOne(
     () => SavingsAccount,
     (account) => account.interestRelations,
     { onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }
   )
-  // @JoinColumn({ name: 'document_type_id' })
+  @JoinColumn({ name: 'savings_account_id' })
   
   savings_account: SavingsAccount;
 
@@ -37,5 +40,7 @@ export class SavingsAccountHasInterest {
     (interest) => interest.accountRelations,
     { onDelete: 'NO ACTION', onUpdate: 'NO ACTION' }
   )
+  @JoinColumn({ name: 'interest_saving_account_id' })
   interest_saving_account: InterestSavingAccount;
+  
 }

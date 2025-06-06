@@ -20,13 +20,23 @@ export class TypeSavingsAccountService {
 
   /** Liste tous les produits d’épargne avec leurs documents requis */
   async findAll(): Promise<TypeSavingsAccount[]> {
-    return this.repo.find({ relations: ['required_documents', 'interestRate'] });
+    return this.repo.find({
+      where: { status: 1 },
+      relations: ['required_documents', 'interestRate'],
+    });
+  }
+
+  async findAllOnline(): Promise<TypeSavingsAccount[]> {
+    return this.repo.find({
+      where: { status: 1, canCreateOnline : 1 },
+      relations: ['required_documents', 'interestRate'],
+    });
   }
 
   /** Récupère un produit d’épargne par ID avec ses documents requis */
   async findOne(productId: number): Promise<TypeSavingsAccount> {
     const prod = await this.repo.findOne({
-      where: { id: productId },
+      where: { id: productId, status: 1 },
       relations: ['required_documents', 'interestRate'],
     });
     if (!prod) throw new NotFoundException(`Produit ${productId} introuvable`);
@@ -35,11 +45,10 @@ export class TypeSavingsAccountService {
 
   /** Liste des documents requis pour un produit */
 
-
   async create(dto: CreateTypeSavingsAccountDto): Promise<TypeSavingsAccount> {
     // Validate document types
     const docs = await this.docRepo.findByIds(dto.documentTypeIds);
-    if (dto.documentTypeIds && docs.length !==  dto.documentTypeIds.length)
+    if (dto.documentTypeIds && docs.length !== dto.documentTypeIds.length)
       throw new NotFoundException('Un ou plusieurs documents introuvables');
 
     // Create the product with all fields
@@ -50,12 +59,17 @@ export class TypeSavingsAccountService {
     return this.repo.save(prod);
   }
 
-  async update(id: number, dto: UpdateTypeSavingsAccountDto): Promise<TypeSavingsAccount> {
+  async update(
+    id: number,
+    dto: UpdateTypeSavingsAccountDto,
+  ): Promise<TypeSavingsAccount> {
     const prod = await this.repo.preload({ id, ...dto });
     if (!prod) throw new NotFoundException(`Produit ${id} introuvable`);
 
     if (dto.documentTypeIds) {
-      const docs = await this.docRepo.find({ where: { id: In(dto.documentTypeIds) } });
+      const docs = await this.docRepo.find({
+        where: { id: In(dto.documentTypeIds) },
+      });
       if (docs.length !== dto.documentTypeIds.length)
         throw new NotFoundException('Un ou plusieurs documents introuvables');
       prod.required_documents = docs;
@@ -66,5 +80,21 @@ export class TypeSavingsAccountService {
   async getRequiredDocuments(typeId: number): Promise<DocumentType[]> {
     const prod = await this.findOne(typeId);
     return prod.required_documents;
+  }
+
+  async remove(id: number): Promise<any> {
+    const type_account = await this.repo.findOne({
+      where: { id },
+    });
+    type_account!.status = 0;
+    return await type_account?.save();
+  }
+
+  async activate(id: number): Promise<any> {
+    const type_account = await this.repo.findOne({
+      where: { id },
+    });
+    type_account!.status = 1;
+    return await type_account?.save();
   }
 }

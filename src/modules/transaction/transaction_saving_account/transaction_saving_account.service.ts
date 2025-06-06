@@ -1,26 +1,25 @@
 // Service TransactionSavingsAccount - src/core-banking/providers/transaction-savings-account.service.ts
 // Gère la logique métier des transactions épargne
+import * as crypto from 'crypto';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
+
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
+
 
 
 
@@ -86,16 +85,20 @@ export class TransactionSavingsAccountService {
     if (!provider) {
       throw new NotFoundException(`Provider invalide : ${provider_code}`);
     }
+    const paymentCode = await this.generateUniquePaymentCode();
+    const reference = this.formatTransactionReference(txType.code);
     // création de l'entité transaction
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
-    tx.status = 1;
+    tx.is_locked = dto.is_locked
+    tx.status = 0;
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.transactionType = txType;
     tx.originSavingsAccount = origin;
     tx.targetSavingsAccount = target;
-
+    tx.payment_code = paymentCode;
+    tx.reference = reference;
     // mise à jour des soldes
       await this.repo.manager.transaction(async (entityManager) => {
       await this.validateTransaction(origin, target, dto.amount); // Lancer une exception si échec
@@ -116,6 +119,15 @@ export class TransactionSavingsAccountService {
   }
 
   deposit_cash(dto: CreateTransactionSavingsAccountDto) {
+    return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
+  }
+
+  deposit_cash_online(dto: CreateTransactionSavingsAccountDto) {
+    return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
+  }
+
+  deposit_cash_online_blocking(dto: CreateTransactionSavingsAccountDto) {
+    dto.is_locked = true
     return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
   }
 
@@ -168,18 +180,20 @@ export class TransactionSavingsAccountService {
       throw new BadRequestException('Solde insuffisant');
     }
 
-    // 2. Durée de blocage (ex: 6 mois)
-    if (this.getAccountAgeMonths(account.created_at) < account.type_savings_account.minimum_blocking_duration) {
-      throw new BadRequestException('Durée de blocage non atteinte');
-    }
+    // On suppose que `account.activeInterest` a déjà été calculé via @AfterLoad()
+    const active = account.activeInterest;
 
+    // 1. Si aucune relation d’intérêt active n’est trouvée, on rejette
+    if (active) {
+      throw new BadRequestException('Durée de blocage non atteinte vous ne pouvez rien retiré');
+    }
     // 3. Valide que les comptes sont différents
     if (account.id === target.id) {
       throw new BadRequestException('Transfert vers le même compte interdit');
     }
     // 1. Vérifier si le compte est actif
     if (account.status === 0) {
-      throw new Error('Ce compte est inactif.');
+      throw new BadRequestException('Ce compte est inactif.');
     }
 
     // 2. Vérifier le solde minimum (pour les retraits)
@@ -204,38 +218,89 @@ export class TransactionSavingsAccountService {
     return months + today.getMonth() - createdAt.getMonth();
   }
 
-  // Met à jour une transaction existante
- /*async update(id: number, dto: UpdateTransactionSavingsAccountDto): Promise<TransactionSavingsAccount> {
-    const txn = await this.findOne(id);
-    Object.assign(txn, dto);
+  async validate(id: number,): Promise<TransactionSavingsAccount> {
+    const entity = await this.findOne(id);
+    entity.status = 1;
+    return this.repo.save(entity);
+  }
 
-    if (dto.savings_account_id !== undefined) {
-      const savingsAccount = await this.savingsAccountService.findOne( dto.savings_account_id);
-      if (!savingsAccount) throw new NotFoundException(`SavingsAccount ${dto.savings_account_id} non trouvé`);
-      txn.savingsAccount = savingsAccount;
-    }
-    // if (dto.channels_transaction_id !== undefined) {
-    //   const channelsTransaction = await this.channelsTransactionRepo.findOne( dto.channels_transaction_id);
-    //   if (!channelsTransaction) throw new NotFoundException(`ChannelsTransaction ${dto.channels_transaction_id} non trouvé`);
-    //   txn.channelsTransaction = channelsTransaction;
-    // }
-    if (dto.provider_code !== undefined) {
-      const provider = await this.providerService.findOne(dto.provider_code);
-      if (!provider) throw new NotFoundException(`Provider ${dto.provider_code} non trouvé`);
-      txn.provider = provider;
-    }
-    if (dto.transaction_type_id !== undefined) {
-      const transactionType = await this.transactionTypeService.findOne( dto.transaction_type_id);
-      if (!transactionType) throw new NotFoundException(`TransactionType ${dto.transaction_type_id} non trouvé`);
-      txn.transactionType = transactionType;
-    }
-
-    return this.repo.save(txn);
-  }*/
 
   // Supprime une transaction
   async remove(id: number): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
     return this.repo.remove(entity);
   }
+
+  private getMonthsBetween(start: Date, end: Date): number {
+    const startYear  = start.getFullYear();
+    const endYear    = end.getFullYear();
+    const startMonth = start.getMonth();
+    const endMonth   = end.getMonth();
+
+    return (endYear - startYear) * 12 + (endMonth - startMonth);
+  }
+
+  // Méthode pour générer un payment_code unique
+private async generateUniquePaymentCode(): Promise<string> {
+  let isUnique = false;
+  let paymentCode: string;
+  let attempts = 0;
+
+  do {
+    paymentCode = crypto.randomBytes(8).toString('hex').toUpperCase();
+    const exists = await this.repo.findOne({ where: { payment_code: paymentCode } });
+    isUnique = !exists;
+    attempts++;
+
+    if (attempts > 5) {
+      throw new Error('Impossible de générer un code de paiement unique');
+    }
+  } while (!isUnique);
+
+  return paymentCode;
+}
+
+// Méthode pour formater la référence
+private formatTransactionReference(typeCode: string): string {
+  const now = new Date();
+  const prefix = typeCode.substring(0, 2).toUpperCase();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = String(now.getFullYear()).substring(2);
+  
+  // Génération du suffixe numérique unique
+  const suffix = this.generateDailySequence(); // Implémentez cette méthode
+  
+  return `${prefix}${day}${month}${year}${suffix}`;
+}
+
+  private async generateDailySequence(): Promise<string> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  await this.repo.manager.transaction(async (entityManager) => {
+    await entityManager
+      .createQueryBuilder()
+      .insert()
+      .into(Sequence)
+      .values({ date: today, value: 1 })
+      .orUpdate(['value'], ['date'])
+      .execute();
+
+    await entityManager
+      .createQueryBuilder()
+      .update(Sequence)
+      .set({ value: () => 'value + 1' })
+      .where('date = :today', { today })
+      .execute();
+  });
+
+  const sequence = await this.repo.manager.findOne(Sequence, {
+    where: { date: today }
+  });
+
+  return String(sequence!.value).padStart(5, '0');
+}
+
+
 }

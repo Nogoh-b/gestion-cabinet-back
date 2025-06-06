@@ -28,41 +28,41 @@ export class EmployeeService {
     private employeeRepository: Repository<Employee>,
     private userService: UsersService,
   ) {}
-async createEmployee(dto: CreateEmployeeDto): Promise<Employee> {
-  const existingEmployee = await this.employeeRepository.findOne({
-    where: {
-      user: { id: dto.user_id, status: 1 }, // Assurez-vous que le statut de l'utilisateur est 1 (actif)
-    },
-    relations: ['user', 'branch'],
-  });
+  async createEmployee(dto: CreateEmployeeDto): Promise<Employee> {
+    const existingEmployee = await this.employeeRepository.findOne({
+      where: {
+        user: { id: dto.user_id, status: 1 }, // Assurez-vous que le statut de l'utilisateur est 1 (actif)
+      },
+      relations: ['user', 'branch'],
+    });
 
-  if (existingEmployee) {
-    throw new ConflictException('Cet utilisateur est déjà employé dans une agence');
+    if (existingEmployee) {
+      throw new ConflictException('Cet utilisateur est déjà employé dans une agence');
+    }
+
+    const user = await this.userService.findOne(dto.user_id);
+    if (!user || user.status !== 1) {
+      throw new NotFoundException('Utilisateur non trouvé ou inactif');
+    }
+
+    // 3. Vérifier que la branche existe et est active
+    const branch = await this.branchRepository.findOne({
+      where: { id: dto.branch_id, status: 1 },
+    });
+    if (!branch || branch.status !== 1) {
+      throw new NotFoundException('Branche non trouvée ou inactive');
+    }
+
+    return this.employeeRepository.save(
+      this.employeeRepository.create({
+        hireDate: dto.hire_date || new Date(), // Date actuelle par défaut
+        status: 1, // Statut actif par défaut
+        user,
+        branch,
+        // ... autres champs du DTO
+      })
+    );
   }
-
-  const user = await this.userService.findOne(dto.user_id);
-  if (!user || user.status !== 1) {
-    throw new NotFoundException('Utilisateur non trouvé ou inactif');
-  }
-
-  // 3. Vérifier que la branche existe et est active
-  const branch = await this.branchRepository.findOne({
-    where: { id: dto.branch_id, status: 1 },
-  });
-  if (!branch || branch.status !== 1) {
-    throw new NotFoundException('Branche non trouvée ou inactive');
-  }
-
-  return this.employeeRepository.save(
-    this.employeeRepository.create({
-      hireDate: dto.hire_date || new Date(), // Date actuelle par défaut
-      status: 1, // Statut actif par défaut
-      user,
-      branch,
-      // ... autres champs du DTO
-    })
-  );
-}
 
   async findAllEmployees(): Promise<Employee[]> {
     return this.employeeRepository.find({ relations: ['user', 'branch'] });

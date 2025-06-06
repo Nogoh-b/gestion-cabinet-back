@@ -3,12 +3,14 @@ import { BaseEntity } from 'src/core/entities/base.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn, AfterLoad } from 'typeorm';
+
 
 
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
 
 
 
@@ -110,6 +112,20 @@ export class SavingsAccount extends BaseEntity {
   )
   targetSavingsAccount?: TransactionSavingsAccount[]; // Transactions liées au compte
 
+  @AfterLoad()
+  setActiveInterest() {
+    const now = new Date();
+
+    this.activeInterest = this.interestRelations?.find(rel =>
+      rel.status === 1 &&
+      rel.begin_date instanceof Date &&
+      rel.end_date instanceof Date &&
+      now >= rel.begin_date &&
+      now <= rel.end_date
+    );
+  }
+
+  activeInterest?: SavingsAccountHasInterest;
   /*@OneToMany(
     () => ActivitiesSavingsAccount,
     act => act.savingsAccount

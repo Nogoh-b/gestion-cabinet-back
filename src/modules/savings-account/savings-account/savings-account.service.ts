@@ -150,9 +150,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return this.findOne(id);
   }
 
-
-
-
   async remove(id: number): Promise<any> {
     const account = await this.repo.findOne({
       where: { id },
@@ -160,9 +157,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     account!.status = SavingsAccountStatus.DEACTIVATE;
     return await account?.save();
   }
-
-
-
 
   async activate(id: number): Promise<any> {
     const account = await this.repo.findOne({
@@ -172,9 +166,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return await account?.save();
   }
 
-
-
-
   async lock(id: number): Promise<any> {
     const account = await this.repo.findOne({
       where: { id },
@@ -182,9 +173,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     account!.status = SavingsAccountStatus.BLOCKED;
     return await account?.save();
   }
-
-
-
 
   async unlock(id: number): Promise<any> {
     const account = await this.repo.findOne({
@@ -235,7 +223,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     dto: AssignInterestRangeDto,
   ): Promise<any> {
     // 1. récupérer le compte
-    const account = await this.findOne(account_id);
+    const savings_account = await this.findOne(account_id);
   
     // 2. calculer la durée en mois
     const start = new Date(dto.start_date);
@@ -270,8 +258,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   
     // 5. créer la nouvelle liaison sans désactiver l'ancienne
     const link = this.interestRepo.create({
-      savings_account_id: account_id,
-      interest_saving_account_id: plan.id,
+      savings_account,
+      interest_saving_account : plan,
       begin_date: start,
       end_date: end,
       status: 1,
