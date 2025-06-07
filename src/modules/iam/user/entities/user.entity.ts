@@ -21,7 +21,7 @@ export class User {
   @Column({ length: 45, nullable: true })
   email: string;
 
-  @Column({ length: 200 })
+  @Column({ length: 200, nullable: true })
   refreshToken: string;
 
   @Exclude()

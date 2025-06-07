@@ -1,5 +1,5 @@
+/* eslint-disable prettier/prettier */
 // src/core/config/database.config.ts
-
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
@@ -12,5 +12,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     database: process.env.DB_NAME, 
     synchronize: true,
     autoLoadEntities: true,
+    logging: ['error', 'warn', 'query'], // Active les logs
+
   },
 });

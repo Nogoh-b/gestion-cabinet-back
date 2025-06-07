@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity, OneToMany } from 'typeorm';
@@ -33,7 +34,7 @@ export class Branch extends BaseEntity {
   creation_date: Date;
 
   @ApiProperty({ example: 8 })
-  @Column({ type: 'int', name: 'opening_hour' })
+  @Column({ type: 'int', name: 'opening_hour' }) 
   opening_hour: number;
 
   @ApiProperty({ example: 17 })
