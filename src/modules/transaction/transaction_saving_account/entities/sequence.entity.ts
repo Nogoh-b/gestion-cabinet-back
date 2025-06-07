@@ -2,8 +2,9 @@ import { Column, Entity, PrimaryColumn } from "typeorm";
 
 
 
+
 // Entité Sequence
-@Entity()
+@Entity('sequence')
 export class Sequence {
   @PrimaryColumn({ type: 'date' })
   date: Date;

@@ -42,7 +42,11 @@ export class TransactionSavingsAccount {
 
   @Index()
   @Column({ length: 100 })
-  payment_code: string; // Code du provider
+  payment_code: string; 
+
+  @Index()
+  @Column({ length: 100 })
+  payment_token_provider: string; 
 
   @Index()
   @Column({ length: 100 })
