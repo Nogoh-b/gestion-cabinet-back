@@ -1,12 +1,16 @@
+import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
+
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+
 
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
-import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
+
+
 
 
 @ApiTags('Saving Accounts')
@@ -29,10 +33,16 @@ export class SavingsAccountController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Liste tous les comptes en épargne pour une agence' })
+  @ApiOperation({ summary: 'Liste tous les comptes en épargne' })
   @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
   findAll() {
     return this.service.findAll();
+  }
+  @Get('deactivate-accounts')
+  @ApiOperation({ summary: 'Liste tous les comptes en épargne  qui sont desactivé' })
+  @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
+  findAllDeactivate() {
+    return this.service.findAll(true);
   }
 
 
@@ -42,6 +52,14 @@ export class SavingsAccountController {
   @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
   getDocumentStatuses(@Param('id', ParseIntPipe) id: number) {
     return this.service.getDocumentStatuses(id);
+  }
+
+  @Get(':id/transactions')
+  @ApiOperation({ summary: 'Get all transactions savings account' })
+  @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })
+  // @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
+  getTransaction(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getTransactions(id);
   }
 
   @Get(':id')
@@ -104,9 +122,21 @@ export class SavingsAccountController {
     return this.service.lock(id);
   }
 
+  
   @Get(':id/unlock')
   unlock( @Param('id', ParseIntPipe) id: number) {
-    return this.service.unlock(id);
+    return this.service.activate(id);
+  }
+
+  
+  @Get(':id/balance')
+  avalaibleBalance( @Param('id', ParseIntPipe) id: number) {
+    return this.service.balance(id);
+  }
+
+  @Get(':id/avalaible-balance')
+  balance( @Param('id', ParseIntPipe) id: number) {
+    return this.service.avalaibleBalance(id);
   }
 
   @Post(':id/interest-range')

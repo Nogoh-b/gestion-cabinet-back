@@ -2,6 +2,8 @@
 // src/core/config/database.config.ts
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
+
+
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
     type: 'mysql',

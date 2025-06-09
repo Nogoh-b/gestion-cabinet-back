@@ -1,9 +1,11 @@
-import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
+import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+
+import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
+
 export enum CustomerStatus{
   ACTIVE = 1,
   INACTIVE = 0,
@@ -86,7 +88,7 @@ export class Customer extends BaseEntity {
   generateKeys() {
     const { publicKey, privateKey } = GenKeys.generateKeyPair();
     const encryptedPrivateKey = GenKeys.encryptPrivateKey(privateKey);
-    this.public_key = publicKey;
-    this.private_key = encryptedPrivateKey;
+    this.public_key = 'publicKey';
+    this.private_key = 'encryptedPrivateKey';
   }
 }

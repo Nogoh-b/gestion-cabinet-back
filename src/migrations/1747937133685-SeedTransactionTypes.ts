@@ -30,7 +30,7 @@ export class SeedTransactionTypes20250522123000 implements MigrationInterface {
         ('LATE_PAYMENT_PENALTY',        'Pénalité de retard',                'Frais pour paiement en retard',                            0, 0.00,1),
         ('FX_BUY',                      'Achat de devises',                  'Achat de devises étrangères',                              0, 0.00,1),
         ('FX_SELL',                     'Vente de devises',                  'Vente de devises étrangères',                              1, 0.00,1),
-        ('E_WALLET_DEPOSIT',            'Dépôt Mobile Money',                'Versement dans portefeuille mobile',                       1, 0.00,0),
+        ('E_WALLET_DEPOSIT',            'Dépôt Mobile Money',                'Versement dans portefeuille mobile',                       1, 0.00,1),
         ('E_WALLET_WITHDRAWAL',         'Retrait Wallet Money',              'Retrait depuis portefeuille Wallet',                       0, 0.00,1),
         ('INTERNET_BANKING_PAYMENT',    'Paiement en ligne',                 'Paiement via Internet Banking/API',                        0, 0.00,1),
         ('TRANSACTION_REVERSAL',        'Annulation / Reversal',             'Contre-passation d''une transaction précédente',            1, 0.00,1),

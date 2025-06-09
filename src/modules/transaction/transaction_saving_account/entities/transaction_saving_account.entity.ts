@@ -6,10 +6,20 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 
+
+
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
 
 
+
+
+export enum TransactionSavingsAccountStatus {
+  PENDING = 0,
+  VALIDATE = 1,
+  FAILED = 2,
+}
 
 
 @Entity('transaction_savings_account')
@@ -46,7 +56,25 @@ export class TransactionSavingsAccount {
 
   @Index()
   @Column({ length: 100 })
-  payment_token_provider: string; 
+  payment_token_provider: string;
+  
+  @Index()
+  @Column({ length: 100 })
+  origin: string; 
+
+  @Index()
+  @Column({ length: 100 })
+  target: string;
+
+  
+  /*@Index()
+  @Column({ length: 100 })
+  originType: string;
+
+  @Index()
+  @Column({ length: 100 })
+  targetType: string;*/
+
 
   @Index()
   @Column({ length: 100 })
@@ -64,13 +92,13 @@ export class TransactionSavingsAccount {
 
   @ManyToOne(() => SavingsAccount, acc => acc.originSavingsAccount)
   @JoinColumn({ name: 'origin_savings_account_id', referencedColumnName: 'id' })
-  originSavingsAccount: SavingsAccount; // Relation vers SavingsAccount
+  originSavingsAccount?: SavingsAccount | null;; // Relation vers SavingsAccount
 
   @ManyToOne(() => SavingsAccount, acc => acc.targetSavingsAccount)
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
-  targetSavingsAccount: SavingsAccount; // Relation vers SavingsAccount
+  targetSavingsAccount: SavingsAccount | null;; // Relation vers SavingsAccount
 
-  @ManyToOne(() => ChannelTransaction, ch => ch.transactions)
+  @ManyToOne(() => ChannelTransaction, ch => ch.transactions, {eager: true})
   @JoinColumn({ name: 'channels_transaction_id', referencedColumnName: 'id' })
   channelTransaction: ChannelTransaction; // Relation vers ChannelsTransaction
 
@@ -78,7 +106,7 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'provider_code', referencedColumnName: 'code' })
   provider: Provider; // Relation vers Provider
 
-  @ManyToOne(() => TransactionType, tt => tt.transactions)
+  @ManyToOne(() => TransactionType, tt => tt.transactions, {eager: true})
   @JoinColumn({ name: 'transaction_type_id', referencedColumnName: 'id' })
   transactionType: TransactionType; // Relation vers TransactionType
 }

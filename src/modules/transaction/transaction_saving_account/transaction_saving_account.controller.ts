@@ -1,9 +1,17 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 
 
 
-import { CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+
+
+
+
+import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
+
+
+
 
 
 
@@ -15,32 +23,42 @@ export class TransactionSavingAccountController {
   ) {}
 
   @Post('deposit_cash')
-  deposit_cash(@Body() dto: CreateTransactionSavingsAccountDto) {
+  deposit_cash(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.deposit_cash(dto);
   }
 
   @Post('withdraw_cash')
-  withdraw_cash(@Body() dto: CreateTransactionSavingsAccountDto) {
+  withdraw_cash(@Body() dto: CreateDebitTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.withdraw_cash(dto);
   }
 
   @Post('deposit_cheque')
-  deposit_cheque(@Body() dto: CreateTransactionSavingsAccountDto) {
+  deposit_cheque(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.deposit_cheque(dto);
   }
 
+  @Post('momo_deposit')
+  momo_deposit(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.momo_deposit(dto);
+  }
+
+  @Post('om_deposit')
+  om_deposit(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.om_deposit(dto);
+  }
+
   @Post('credit_interest')
-  credit_interest(@Body() dto: CreateTransactionSavingsAccountDto) {
+  credit_interest(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.credit_interest(dto);
   }
 
   @Post('e_wallet_deposit')
-  e_wallet_deposit(@Body() dto: CreateTransactionSavingsAccountDto) {
+  e_wallet_deposit(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.e_wallet_deposit(dto);
   }
 
   @Post('e_wallet_withdrawal')
-  e_wallet_withdrawal(@Body() dto: CreateTransactionSavingsAccountDto) {
+  e_wallet_withdrawal(@Body() dto: CreateDebitTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.e_wallet_withdrawal(dto);
   }
 
@@ -59,16 +77,12 @@ export class TransactionSavingAccountController {
     return this.transactionSavingAccountService.findOne(+id);
   }
 
-  @Get(':id/validate')
+  @Post(':id/validate')
   validate(
-    @Param('id') id: string,
-    @Query('payment_code') paymentCode?: string,
-    @Query('payment_token_provider') paymentTokenPrvider?: string,
+    @Param('id') id: string, @Body() dto: ValidateTransactionSavingsAccountDto
   ) {
     return this.transactionSavingAccountService.validate(
-      +id,
-      paymentCode,
-      paymentTokenPrvider,
+      +id,dto
     );
   }
 

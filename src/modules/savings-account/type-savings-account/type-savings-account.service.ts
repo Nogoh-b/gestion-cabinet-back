@@ -1,13 +1,17 @@
 
 
 // src/savings-products/type-savings-account.service.ts
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { In, Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+
+
 import { CreateTypeSavingsAccountDto } from './dto/create-type-savings-account.dto';
 import { UpdateTypeSavingsAccountDto } from './dto/update-type-savings-account.dto';
 import { TypeSavingsAccount } from './entities/type-savings-account.entity';
-import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+
+
 
 @Injectable()
 export class TypeSavingsAccountService {
@@ -54,6 +58,7 @@ export class TypeSavingsAccountService {
     // Create the product with all fields
     const prod = this.repo.create({
       ...dto,
+      initial_deposit : this.calculerSoldeMinimumDepot(dto),
       required_documents: docs,
     });
     return this.repo.save(prod);
@@ -96,5 +101,27 @@ export class TypeSavingsAccountService {
     });
     type_account!.status = 1;
     return await type_account?.save();
+  }
+
+  calculerSoldeMinimumDepot(produit) {
+    // 1. Calcul du montant bloqué (si durée de blocage > 0)
+    const montantBloque = (produit.minimum_blocking_duration > 0) 
+        ?  0.0
+        : 0.0;
+
+    // 2. Calcul des frais récurrents (minimum balance + frais mensuels)
+    const fraisRecurrents = (parseFloat(produit.minimum_balance) || 0.0) + 
+                           (parseFloat(produit.monthly_maintenance_costs) || 0.0);
+
+    // 3. Ajout des frais uniques (frais d'ouverture)
+    const fraisUniques = parseFloat(produit.account_opening_fee) || 0.0;
+
+    // 4. Calcul du total avec précision décimale
+    const total = parseFloat(
+        (montantBloque + fraisRecurrents + fraisUniques).toFixed(2)
+    );
+
+    // 5. Retourne le montant arrondi (toujours >= 0)
+    return Math.max(total, 0.0);
   }
 }

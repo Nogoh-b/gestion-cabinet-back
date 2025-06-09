@@ -17,9 +17,8 @@ import { SavingsAccountHasInterest } from './account-has-interest.entity';
 export enum SavingsAccountStatus {
   PENDING = 0,
   ACTIVE = 1,
-  CLOSED = 2,
+  DEACTIVATE = 2,
   BLOCKED = 3,
-  DEACTIVATE = 4
 }
 @Entity('savings_account')
 export class SavingsAccount extends BaseEntity {

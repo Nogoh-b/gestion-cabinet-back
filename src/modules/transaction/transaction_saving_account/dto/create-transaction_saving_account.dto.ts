@@ -1,7 +1,11 @@
 // DTO de création - src/core-banking/dto/create-transaction-savings-account.dto.ts
 // Format des données pour créer une transaction épargne
-import { IsNumber, IsString, Min } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+
+
+
 
 
 
@@ -53,4 +57,63 @@ export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 3, description: 'ID du type de transaction' })
   @IsInt()
   transaction_type_id: number;*/
+}
+
+export class CreateCreditTransactionSavingsAccountDto {
+  @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
+  @IsNumber()
+  @Min(0)
+  amount: number;
+  @ApiPropertyOptional({ example: '8629891', description: 'Code de destination' })
+  @IsString()
+  target_savings_account_code?: string;         // code du compte épargne cible (pour INTERNAL_TRANSFER)
+
+  @ApiPropertyOptional({ example: false, description: 'Si la transaction est bloquée ou pas' })
+  @IsBoolean()
+  is_locked: boolean;                           // true si la transaction est bloquée, false sinon
+
+
+}
+
+export class CreateDebitTransactionSavingsAccountDto {
+  @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
+  @IsNumber()
+  @Min(0)
+  amount: number;
+
+
+  @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
+  @IsString()
+  origin_savings_account_code: string;          // code du compte épargne source
+
+  is_locked: boolean;                           // true si la transaction est bloquée, false sinon
+  /*@ApiPropertyOptional({ example: 'MOMO', description: 'Code d\'origine' })
+  @IsOptional()
+  @IsString()*/
+  origin_code_transaction?: string;
+
+}
+export class ValidateTransactionSavingsAccountDto {
+  @ApiProperty({ example: '999e9a89-49a7-48e5-9f77-1b24aded1861', description: 'paymentCode(unique)' ,required: false})
+  @IsString()
+  @IsOptional()
+  paymentCode?: string;
+
+
+  @ApiPropertyOptional({ example: '3d48b310-7e22-48ab-80af-a53989009de8', description: 'paymentToenProvide(unique)' ,required: false})
+  @IsString()
+  @IsOptional()
+  paymentTokenPrvider?: string;
+
+  @ApiPropertyOptional({ example: 'W_829224562256', description: 'Code d\'origine',required: false })
+  @IsString()
+  @IsOptional()
+  origin?: string;
+
+  @ApiPropertyOptional({ example: 'W_525615454544', description: 'Code cible',required: false })
+  @IsString()
+  @IsOptional()
+  target?: string;
+
+
 }

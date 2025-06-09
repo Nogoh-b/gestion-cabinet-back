@@ -20,28 +20,28 @@ export class CreateTypeSavingsAccountDto {
   @Length(1, 45)
   code: string;
 
-  @ApiProperty({ description: 'Période de rémunération' })
-  @IsString()
+  /*@ApiProperty({ description: 'Période de rémunération' })
+  @IsString()*/
   periode: string;
 
   @ApiProperty({ description: 'Statut (actif/inactif)', example: 1 })
   @IsInt()
   status: number;
 
-  @ApiPropertyOptional({ description: 'Taux d\'intérêt annuel par défaut' })
+  /*@ApiPropertyOptional({ description: 'Taux d\'intérêt annuel par défaut' })
   @IsOptional()
-  @IsString()
+  @IsString()*/
   interest_year_savings_account?: number;
 
-  @ApiPropertyOptional({ description: 'Durée minimale de blocage' })
+  /*@ApiPropertyOptional({ description: 'Durée minimale de blocage' })
   @IsOptional()
-  @IsString()
+  @IsString()*/
   minimum_blocking_duration?: number;
 
-  @ApiPropertyOptional({ description: 'Dépôt initial minimum', example: 0 })
+  /*@ApiPropertyOptional({ description: 'Dépôt initial minimum', example: 0 })
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(0)*/
   initial_deposit?: number;
 
   @ApiPropertyOptional({ description: 'Solde minimum', example: 0 })

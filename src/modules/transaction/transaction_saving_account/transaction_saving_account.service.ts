@@ -1,52 +1,16 @@
-// Service TransactionSavingsAccount - src/core-banking/providers/transaction-savings-account.service.ts
-// Gère la logique métier des transactions épargne
-import * as crypto from 'crypto';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
-import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
-import { CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -65,31 +29,38 @@ export class TransactionSavingsAccountService {
   ) {}
 
   private async perform_transaction(
-    dto: CreateTransactionSavingsAccountDto,
+    dto:  CreateCreditTransactionSavingsAccountDto | CreateTransactionSavingsAccountDto ,
     type_code: string,
     channel_code: string,
     provider_code: string,
   ): Promise<TransactionSavingsAccount> {
+
+    if ((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code === dto.target_savings_account_code) {
+      throw new BadRequestException(`Transfert vers le même compte interdit `);
+    }
     // récupération du compte origine
-    const origin = await this.savingsAccountService.findOneByCode(
-      dto.origin_savings_account_code,
-    );
-    if (!origin) {
+    let origin : SavingsAccount | null = null;
+    if((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code)
+      origin = await this.savingsAccountService.findOneByCode(
+        (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code,
+      );
+    if (!origin && (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code) {
       throw new NotFoundException(
-        `Compte épargne introuvable pour code : ${dto.origin_savings_account_code}`,
+        `Compte épargne introuvable pour code : ${(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code}`,
       );
     }
 
     // récupération du compte cible
-    const target = await this.savingsAccountService.findOneByCode(
-      dto.target_savings_account_code ?? '0',
-    );
-    if (!target) {
+    let target: SavingsAccount | null = null; // Initialisation explicite à null
+    if((dto).target_savings_account_code)
+      target  = await this.savingsAccountService.findOneByCode(
+        dto.target_savings_account_code ?? '0',
+      );
+    if (!target && dto.target_savings_account_code) {
       throw new NotFoundException(
         `Compte cible introuvable pour code : ${dto.target_savings_account_code}`,
       );
     }
-
     // récupération du type, du canal et du provider
     const txType = await this.transactionTypeService.findOneByCode(type_code);
     if (!txType) {
@@ -108,6 +79,7 @@ export class TransactionSavingsAccountService {
       throw new NotFoundException(`Provider invalide : ${provider_code}`);
     }
     const paymentCode = await this.generateUniquePaymentCode();
+    const payment_token_provider = await this.generateUniquePaymentTokenProvider();
     const reference = this.formatTransactionReference(txType.code);
     // création de l'entité transaction
     const tx = new TransactionSavingsAccount();
@@ -117,21 +89,24 @@ export class TransactionSavingsAccountService {
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.transactionType = txType;
-    tx.originSavingsAccount = origin;
-    tx.targetSavingsAccount = target;
+    tx.originSavingsAccount = (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
+    tx.targetSavingsAccount =  (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
     tx.payment_code = paymentCode;
+    tx.payment_token_provider = payment_token_provider;
     tx.reference = await reference;
+
+    // si c\'est la première transaction dans un compte 
+    if(target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccount || target && target.targetSavingsAccount.length === 0)){
+      const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
+      if( initial_deposit >= dto.amount)
+        throw new BadRequestException(`Pour votre premier dépôt vous devez avoir au minimum ${initial_deposit} pour ce type de compte : ${target.type_savings_account.name} `);
+    }
+
     // mise à jour des soldes
     await this.repo.manager.transaction(async (entityManager) => {
-      await this.validateTransaction(origin, target, dto.amount); // Lancer une exception si échec
+      await this.validateTransaction(origin, target, dto.amount,!!txType.is_credit); // Lancer une exception si échec
 
-      // Débit du compte source
-      origin.balance -= dto.amount;
-      await entityManager.save(origin);
 
-      // Crédit du compte cible
-      target.balance += dto.amount;
-      await entityManager.save(target);
 
       // Sauvegarde de la transaction
       await entityManager.save(tx);
@@ -139,41 +114,40 @@ export class TransactionSavingsAccountService {
     return tx;
   }
 
-  deposit_cash(dto: CreateTransactionSavingsAccountDto) {
+  deposit_cash(dto: CreateCreditTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
   }
 
-  deposit_cash_online(dto: CreateTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
-  }
-
-  deposit_cash_online_blocking(dto: CreateTransactionSavingsAccountDto) {
-    dto.is_locked = true;
-    return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
-  }
-
-  withdraw_cash(dto: CreateTransactionSavingsAccountDto) {
+  withdraw_cash(dto: CreateDebitTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'CASH_WITHDRAWAL', 'ATM', 'CASH');
   }
 
-  deposit_cheque(dto: CreateTransactionSavingsAccountDto) {
+  deposit_cheque(dto: CreateCreditTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'CHEQUE_DEPOSIT', 'BRANCH', 'CHEQUE');
   }
 
-  credit_interest(dto: CreateTransactionSavingsAccountDto) {
+  credit_interest(dto: CreateCreditTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'INTEREST_CREDIT', 'API', 'SYSTEM');
   }
 
-  e_wallet_deposit(dto: CreateTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'API', 'E_WALLET');
+  e_wallet_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'API', 'WALLET');
   }
 
-  e_wallet_withdrawal(dto: CreateTransactionSavingsAccountDto) {
+  momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.perform_transaction(dto, 'MOMO_DEPOSIT', 'MOBILE', 'WALLET');
+  }  
+
+  om_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.perform_transaction(dto, 'OM_DEPOSIT', 'MOBILE', 'WALLET');
+  }
+
+  e_wallet_withdrawal(dto: CreateDebitTransactionSavingsAccountDto) {
     return this.perform_transaction(
       dto,
       'E_WALLET_WITHDRAWAL',
       'API',
-      'E_WALLET',
+      'WALLET',
     );
   }
 
@@ -188,10 +162,11 @@ export class TransactionSavingsAccountService {
   findAll(): Promise<TransactionSavingsAccount[]> {
     return this.repo.find({
       relations: [
-        'savingsAccount',
-        'channelsTransaction',
+        'channelTransaction',
         'provider',
         'transactionType',
+        'originSavingsAccount',
+        'targetSavingsAccount'
       ],
     });
   }
@@ -201,28 +176,54 @@ export class TransactionSavingsAccountService {
     const entity = await this.repo.findOne({
       where: { id },
       relations: [
-        'savingsAccount',
-        'channelsTransaction',
+        'channelTransaction',
         'provider',
         'transactionType',
+        'originSavingsAccount',
+        'targetSavingsAccount'
       ],
     });
     if (!entity) throw new NotFoundException(`Transaction ${id} non trouvé`);
     return entity;
   }
 
+
+
   async validateTransaction(
-    account: SavingsAccount,
-    target: SavingsAccount,
+    account: SavingsAccount | null,
+    target: SavingsAccount | null,
     amount: number,
+    is_credit: boolean
   ) {
-    // const account = await this.savingsAccountService.findOne(accountId);
-    if (account.balance < amount) {
+
+    // si le compte cible est desactivé et qu'il veut crédité on refuse
+    if(target && target.status === SavingsAccountStatus.DEACTIVATE && is_credit){
+      throw new BadRequestException('Compte cible Désactivé');
+    }
+
+    // si c\'est la première transaction dans un compte 
+    /*if(target && target.status === SavingsAccountStatus.PENDING && is_credit && (!target.targetSavingsAccount || target && target.targetSavingsAccount.length === 0)){
+      console.log('-----------' ,target!.type_savings_account , ' ',target!.status, '===', SavingsAccountStatus.PENDING ,'&&', is_credit)
+      const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
+      if( initial_deposit >= amount)
+        throw new BadRequestException(`Pour votre premier dépôt vous devez avoir au minimum ${initial_deposit} pour ce type de compte : ${target.type_savings_account.name} `);
+    }*/
+
+    if(!account)
+      return true
+
+    if(account && (account.status === SavingsAccountStatus.DEACTIVATE || account.status === SavingsAccountStatus.BLOCKED )){
+      throw new BadRequestException('Compte d\'origine désactive');
+    }
+
+    const avalaible_balance = account ? await this.savingsAccountService.avalaibleBalance(account.id) : 0
+
+    if (!is_credit && avalaible_balance < amount) {
       throw new BadRequestException('Solde insuffisant');
     }
 
     // On suppose que `account.activeInterest` a déjà été calculé via @AfterLoad()
-    const active = account.activeInterest;
+    const active = account?.activeInterest;
 
     // 1. Si aucune relation d’intérêt active n’est trouvée, on rejette
     if (active) {
@@ -230,39 +231,37 @@ export class TransactionSavingsAccountService {
         'Durée de blocage non atteinte vous ne pouvez rien retiré',
       );
     }
-    // 3. Valide que les comptes sont différents
-    if (account.id === target.id) {
-      throw new BadRequestException('Transfert vers le même compte interdit');
-    }
+
     // 1. Vérifier si le compte est actif
-    if (account.status === 0) {
-      throw new BadRequestException('Ce compte est inactif.');
+    if (account?.status === SavingsAccountStatus.DEACTIVATE || (account?.status === SavingsAccountStatus.BLOCKED && !is_credit)) {
+      throw new BadRequestException('Ce compte est inactif ou bloqué.');
     }
 
     // 2. Vérifier le solde minimum (pour les retraits)
     if (
-      account.balance - amount <
-      account.type_savings_account.minimum_balance
+      avalaible_balance - amount <
+      account!.type_savings_account.minimum_balance &&
+      !is_credit
     ) {
       throw new BadRequestException(
-        `Solde insuffisant. Minimum requis: ${account.type_savings_account.minimum_balance}`,
+        `Solde insuffisant. Minimum requis: ${account?.type_savings_account.minimum_balance}`,
       );
     }
 
     // 3. Vérifier la durée de blocage (ex: 6 mois)
     const accountAgeMonths = this.getAccountAgeMonths(
-      account.type_savings_account.created_at,
+      account!.type_savings_account.created_at,
     );
     if (
-      accountAgeMonths < account.type_savings_account.minimum_blocking_duration
+      accountAgeMonths < account!.type_savings_account.minimum_blocking_duration
     ) {
       throw new BadRequestException(
-        `Durée de blocage non atteinte (${account.type_savings_account.minimum_blocking_duration} mois requis)`,
+        `Durée de blocage non atteinte (${account!.type_savings_account.minimum_blocking_duration} mois requis)`,
       );
     }
 
     // 4. Calculer les frais (ex: commission_per_product devenu account_opening_fee)
-    const totalFees = account.type_savings_account.account_opening_fee; // + autres frais si besoin
+    const totalFees = account!.type_savings_account.account_opening_fee; // + autres frais si besoin
     return { isValid: true, fees: totalFees };
   }
 
@@ -273,14 +272,29 @@ export class TransactionSavingsAccountService {
   }
 
   async validate(
-    id: number,
-    paymentCode: string = '',
-    paymentTokenPrvider: string = '',
+    id: number,dto ?: ValidateTransactionSavingsAccountDto
   ): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
-    entity.status = 1;
-    entity.payment_code = paymentCode;
-    entity.payment_token_provider = paymentTokenPrvider;
+    if(entity.status == 0){
+      entity.status = 1;
+      if(dto){
+        const existsPaymenCode = await this.repo.findOne({
+          where: { payment_code: dto.paymentCode },
+        });
+        if(dto.paymentCode && existsPaymenCode)
+          throw new BadRequestException('Le paymentCode n\'est pas unique')      
+        const existspaymentTokenProvider = await this.repo.findOne({
+          where: { payment_code: dto.paymentCode },
+        });
+        if(dto.paymentTokenPrvider && existspaymentTokenProvider)
+          throw new BadRequestException('Impossible de générer un paymentTokenProvider unique')
+          
+        entity.payment_code = dto.paymentCode ?? entity.payment_code ;
+        entity.payment_token_provider = dto.paymentTokenPrvider ?? entity.payment_token_provider;
+        entity.origin = dto.origin ??  entity.origin;
+        entity.target = dto.target ??  entity.target;
+      }
+    }
     return this.repo.save(entity);
   }
 
@@ -314,20 +328,50 @@ export class TransactionSavingsAccountService {
     let attempts = 0;
 
     do {
-      paymentCode = crypto.randomBytes(8).toString('hex').toUpperCase();
-      const exists = await this.repo.findOne({
-        where: { payment_code: paymentCode },
-      });
-      isUnique = !exists;
-      attempts++;
+        // Génère un UUID v4 (format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
+        paymentCode = uuidv4();
+        
+        // Vérifie l'unicité dans la base de données
+        const exists = await this.repo.findOne({
+          where: { payment_code: paymentCode },
+        });
+        
+        isUnique = !exists;
+        attempts++;
 
-      if (attempts > 5) {
-        throw new Error('Impossible de générer un code de paiement unique');
-      }
+        if (attempts > 15) {
+            throw new BadRequestException('Impossible de générer un paymentCode unique');
+        }
     } while (!isUnique);
 
     return paymentCode;
+
   }
+
+private async generateUniquePaymentTokenProvider(): Promise<string> {
+    let isUnique = false;
+    let paymentTokenProvider: string;
+    let attempts = 0;
+
+    do {
+        // Génère un UUID v4 (format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx)
+        paymentTokenProvider = uuidv4();
+        
+        // Vérifie l'unicité dans la base de données
+        const exists = await this.repo.findOne({
+            where: { payment_token_provider: paymentTokenProvider },
+        });
+        
+        isUnique = !exists;
+        attempts++;
+
+        if (attempts > 15) {
+            throw new BadRequestException('Impossible de générer un paymentTokenProvider unique');
+        }
+    } while (!isUnique);
+
+    return paymentTokenProvider;
+}
 
   // Méthode pour formater la référence
   async formatTransactionReference(typeCode: string): Promise<string> {

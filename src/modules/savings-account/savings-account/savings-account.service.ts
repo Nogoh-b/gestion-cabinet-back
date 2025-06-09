@@ -2,9 +2,22 @@ import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-import { Repository } from 'typeorm';
+import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { Not, Repository } from 'typeorm';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
 
 
 
@@ -21,11 +34,6 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
 
 
 
@@ -52,8 +60,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return this.repo;
   }
 
-  async findAll(): Promise<SavingsAccount[]> {
-    return this.repo.find({
+  async findAll(isDeactivate : boolean = false): Promise<SavingsAccount[]> {
+    return this.repo.find({ where : {status: isDeactivate ? SavingsAccountStatus.DEACTIVATE : Not(SavingsAccountStatus.DEACTIVATE) },
       relations: [
         'customer',
         'type_savings_account',
@@ -66,7 +74,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
   async findOne(id: number): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
-      where: { id },
+      where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations: [
         'customer',
         'type_savings_account',
@@ -81,13 +89,15 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
     async findOneByCode(number_savings_account: string): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
-      where: { number_savings_account },
+      where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
       relations: [
         'customer',
         'type_savings_account',
         'branch',
         'documents',
         'interestRelations',
+        'originSavingsAccount',
+        'targetSavingsAccount'
       ],
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
@@ -166,6 +176,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return await account?.save();
   }
 
+  async getInitialDeposit(typeTx: any): Promise<any> {
+
+    return this.typeSavingAcount.calculerSoldeMinimumDepot(typeTx);
+  }
+
   async lock(id: number): Promise<any> {
     const account = await this.repo.findOne({
       where: { id },
@@ -182,6 +197,26 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return await account?.save();
   }
 
+  async balance(id: number): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { id },
+      relations: ['type_savings_account'],
+    });
+    if (!account) throw new NotFoundException(`Account ${id} not found`);
+
+    const tx = await this.getTransactions(id)
+    return this.calculateTotalBalance(tx) - (account.type_savings_account.account_opening_fee + (account.type_savings_account.minimum_balance));
+  }
+
+  async avalaibleBalance(id: number): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { id },
+      relations: ['type_savings_account'],
+    });
+    if (!account) throw new NotFoundException(`Account ${id} not found`);
+    const tx = await this.getTransactions(id)
+    return this.calculateAvailableBalance(tx) - (account.type_savings_account.account_opening_fee + (account.type_savings_account.minimum_balance));
+  }
 
 
 
@@ -216,6 +251,20 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       name: doc.name,
       status: doc.status,
     }));
+  } 
+
+  async getTransactions(id: number,): Promise<TransactionSavingsAccount[]> {
+    // load account with its documents
+    const account = await this.repo.findOne({
+      where: { id },
+      relations: ['originSavingsAccount' , 'targetSavingsAccount'],
+    });
+    if (!account) throw new NotFoundException(`Account ${id} not found`);
+    const combinedTransactions = [
+      ...(account.originSavingsAccount ?? []),
+      ...(account.targetSavingsAccount ?? [])
+    ];
+    return combinedTransactions;
   } 
 
   async assign_interest_range(
@@ -269,5 +318,60 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return this.interestRepo.save(link);
   }
   
+  /**
+  * Calcule le solde total du compte en fonction des transactions (crédits et débits)
+  * @param transactions Tableau de transactions avec is_credit (1=crédit, 0=débit)
+  * @returns Solde total arrondi à 2 décimales
+  */
+  calculateTotalBalance(transactions: TransactionSavingsAccount[]): number {
+      if (!transactions?.length) return 0;
+      
+      const total = transactions.reduce((sum, transaction) => {
+          // Ignorer les transactions échouées
+          if (transaction.status === TransactionSavingsAccountStatus.FAILED) {
+              return sum;
+          }
 
+          if (transaction.transactionType.is_credit === 1) {
+              // CRÉDIT : seulement les transactions VALIDÉES comptent
+              if (transaction.status === TransactionSavingsAccountStatus.VALIDATE) {
+                  return sum + transaction.amount;
+              }
+              return sum;
+          } else {
+              // DÉBIT : toutes les transactions non-échouées comptent (PENDING ou VALIDATE)
+              return sum - transaction.amount;
+          }
+      }, 0);
+
+      return parseFloat(total.toFixed(2));
+  }
+    /**
+  * Calcule le solde disponible (exclut les transactions bloquées)
+  * @param transactions Tableau de transactions avec is_credit et is_locked
+  * @returns Solde disponible arrondi à 2 décimales
+  */
+  calculateAvailableBalance(transactions: TransactionSavingsAccount[]): number {
+      if (!transactions?.length) return 0;
+      
+      const available = transactions.reduce((sum, transaction) => {
+          // Ignorer les transactions verrouillées ou échouées
+          if (transaction.is_locked || transaction.status === TransactionSavingsAccountStatus.FAILED) {
+              return sum;
+          }
+
+          if (transaction.transactionType.is_credit === 1) {
+              // CRÉDIT : seulement les transactions VALIDÉES comptent
+              if (transaction.status === TransactionSavingsAccountStatus.VALIDATE) {
+                  return sum + transaction.amount;
+              }
+              return sum;
+          } else {
+              // DÉBIT : toutes les transactions non-échouées comptent (PENDING ou VALIDATE)
+              return sum - transaction.amount;
+          }
+      }, 0);
+
+      return parseFloat(available.toFixed(2));
+  }
 }
