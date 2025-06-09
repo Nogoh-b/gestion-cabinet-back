@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -21,7 +22,6 @@ import { SeedersModule } from './database/seeders/seeders.module';
 import { EmailService } from './shared/services/email/email.service';
 
 @Global()
-
 @Module({
   imports: [
     IamModule,
@@ -30,7 +30,7 @@ import { EmailService } from './shared/services/email/email.service';
       load: [databaseConfig],
     }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secretKey',  // à stocker en variable d’environnement
+      secret: process.env.JWT_SECRET || 'secretKey', // à stocker en variable d’environnement
       signOptions: { expiresIn: '30d' },
     }),
     TypeOrmModule.forRootAsync({
@@ -40,7 +40,6 @@ import { EmailService } from './shared/services/email/email.service';
     }),
     PassportModule,
     SeedersModule,
-
   ],
   controllers: [AuthController],
   providers: [
@@ -68,11 +67,11 @@ import { EmailService } from './shared/services/email/email.service';
     JwtModule,
     PassportModule,
     AuthService,
-    PermissionSeeder, 
+    PermissionSeeder,
     PermissionsGuard,
     // RolesGuard,
     JwtAuthGuard,
-    KeyGeneratorService
+    KeyGeneratorService,
   ],
 })
 export class CoreModule {}
