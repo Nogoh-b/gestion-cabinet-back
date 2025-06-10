@@ -6,23 +6,7 @@ import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/
 import { Not, Repository } from 'typeorm';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
 
 
 
@@ -34,7 +18,6 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
 
 
 
@@ -205,7 +188,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (!account) throw new NotFoundException(`Account ${id} not found`);
 
     const tx = await this.getTransactions(id)
-    return this.calculateTotalBalance(tx) - (account.type_savings_account.account_opening_fee + (account.type_savings_account.minimum_balance));
+    return this.calculateTotalBalance(tx);
   }
 
   async avalaibleBalance(id: number): Promise<any> {
@@ -215,7 +198,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
     const tx = await this.getTransactions(id)
-    return this.calculateAvailableBalance(tx) - (account.type_savings_account.account_opening_fee + (account.type_savings_account.minimum_balance));
+    return this.calculateAvailableBalance(tx) ;
   }
 
 
@@ -344,7 +327,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
           }
       }, 0);
 
-      return parseFloat(total.toFixed(2));
+      return parseFloat(Math.max(0, total).toFixed(2));
   }
     /**
   * Calcule le solde disponible (exclut les transactions bloquées)
@@ -372,6 +355,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
           }
       }, 0);
 
-      return parseFloat(available.toFixed(2));
+      return parseFloat(Math.max(0, available).toFixed(2));
   }
 }

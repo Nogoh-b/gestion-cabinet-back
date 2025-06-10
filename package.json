@@ -24,6 +24,7 @@
     "migration:run": "npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run --dataSource src/data-source.ts",
     "migration:drop": "npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js schema:drop --dataSource src/data-source.ts",
     "seed:super-admin": "ts-node scripts/seed-super-admin.ts",
+    "watch:migrations": "ts-node watcher.ts",
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert --dataSource src/data-source.ts"
   },
   "dependencies": {
@@ -75,6 +76,7 @@
     "@types/nodemailer": "^6.4.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^6.0.2",
+    "chokidar": "^4.0.3",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",

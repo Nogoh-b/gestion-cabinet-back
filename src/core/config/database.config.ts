@@ -4,6 +4,7 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 
 
+
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
     type: 'mysql',
@@ -12,7 +13,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     username: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME, 
-    synchronize: true,
+    synchronize: false,
     autoLoadEntities: true,
     logging: ['error', 'warn', 'query'], // Active les logs
 

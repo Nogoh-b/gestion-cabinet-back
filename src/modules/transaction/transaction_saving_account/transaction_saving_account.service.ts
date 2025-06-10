@@ -1,16 +1,29 @@
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
+import { UpdateSavingsAccountDto } from 'src/modules/savings-account/savings-account/dto/update-savings-account.dto';
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
+
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
 
 
 
@@ -95,21 +108,56 @@ export class TransactionSavingsAccountService {
     tx.payment_token_provider = payment_token_provider;
     tx.reference = await reference;
 
+    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccount || target && target.targetSavingsAccount.length === 0)
     // si c\'est la première transaction dans un compte 
-    if(target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccount || target && target.targetSavingsAccount.length === 0)){
+    if(isFirstTx && target){
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
       if( initial_deposit >= dto.amount)
         throw new BadRequestException(`Pour votre premier dépôt vous devez avoir au minimum ${initial_deposit} pour ce type de compte : ${target.type_savings_account.name} `);
+      tx.amount = dto.amount - target!.type_savings_account.minimum_balance;
     }
 
     // mise à jour des soldes
     await this.repo.manager.transaction(async (entityManager) => {
-      await this.validateTransaction(origin, target, dto.amount,!!txType.is_credit); // Lancer une exception si échec
+      await this.validateTransaction(origin, target, dto.amount, !!txType.is_credit);
 
-
-
-      // Sauvegarde de la transaction
+      // 1. Sauvegarde de la transaction initiale
       await entityManager.save(tx);
+
+      if (isFirstTx && target) {
+        // Créer un clone sans l'ID
+        const { id, ...txData } = tx;
+        const secondTx = entityManager.create(TransactionSavingsAccount, {
+          ...txData,
+          amount: target.type_savings_account.minimum_balance,
+          is_locked: true
+        });
+        
+        await entityManager.save(secondTx);
+
+
+        const txTypeOpenProduct = await this.transactionTypeService.findOneByCode('MANUAL_ADJUSTMENT');
+        const providerOpenProduct = await this.providerService.findOne('SYSTEM');
+        const chanelOpenProduct = await this.channelRepo.findOne({
+          where: { code: 'API' },
+        });
+
+        const thirdTx = new TransactionSavingsAccount();
+        Object.assign(thirdTx, txData);
+        // delete thirdTx.id;
+
+        thirdTx.amount = target!.type_savings_account.account_opening_fee;
+        thirdTx.transactionType = txTypeOpenProduct;
+        thirdTx.provider = providerOpenProduct;
+        thirdTx.is_locked = false;
+
+        if (chanelOpenProduct !== null) {
+          thirdTx.channelTransaction = chanelOpenProduct;
+        }
+
+        
+        await entityManager.save(thirdTx);
+      }
     });
     return tx;
   }
@@ -295,7 +343,20 @@ export class TransactionSavingsAccountService {
         entity.target = dto.target ??  entity.target;
       }
     }
-    return this.repo.save(entity);
+    const tx = await this.repo.save(entity);
+    if(entity.targetSavingsAccount){
+      let dto = new UpdateSavingsAccountDto()
+      dto.balance = await this.savingsAccountService.balance(entity.targetSavingsAccount.id)
+      dto.avalaible_balance = await this.savingsAccountService.avalaibleBalance(entity.targetSavingsAccount.id)
+      this.savingsAccountService.update(entity.targetSavingsAccount.id, dto)
+    }
+    if(entity.originSavingsAccount){
+      let dto = new UpdateSavingsAccountDto()
+      dto.balance = await this.savingsAccountService.balance(entity.originSavingsAccount.id)
+      dto.avalaible_balance = await this.savingsAccountService.avalaibleBalance(entity.originSavingsAccount.id)
+      this.savingsAccountService.update(entity.originSavingsAccount.id, dto)
+    }
+    return tx
   }
 
   async unlockTransaction(

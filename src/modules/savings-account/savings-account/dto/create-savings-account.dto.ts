@@ -16,8 +16,9 @@ export class CreateSavingsAccountDto {
   amount_created: number;
 
   @ApiProperty({ description: 'Solde initial' })
-  @IsNumber()
-  balance_init_savings_account: number;*/
+  @IsNumber()*/
+  balance: number;
+  avalaible_balance: number;
 
   @ApiProperty({ description: 'ID du client', example: 1 })
   @IsInt()
