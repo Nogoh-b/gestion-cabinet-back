@@ -9,9 +9,13 @@ import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColum
 
 
 
+
+
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
+
 
 
 
@@ -44,6 +48,9 @@ export class SavingsAccount extends BaseEntity {
   @Column({ name: 'avalaible_balance', type: 'decimal' }) 
   avalaible_balance: number;
   
+  @Column({ name: 'balance_init_savings_account', type: 'decimal' }) 
+  balance_init_savings_account: number;  
+
   @Column({ name: 'balance', type: 'int', default: 0 })
   balance: number;
   // @ManyToOne(() => Customer, customer => customer.savings_accounts)
