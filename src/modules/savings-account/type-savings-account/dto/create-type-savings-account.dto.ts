@@ -10,6 +10,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+
 export class CreateTypeSavingsAccountDto {
   @ApiProperty({ description: 'Nom du type de compte' })
   @IsString()
