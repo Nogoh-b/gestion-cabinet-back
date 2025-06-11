@@ -1,5 +1,4 @@
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsOptional,
   IsString,
@@ -9,6 +8,8 @@ import {
   Min,
   ArrayUnique
 } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 export class CreateTypeSavingsAccountDto {
   @ApiProperty({ description: 'Nom du type de compte' })
   @IsString()
@@ -31,12 +32,12 @@ export class CreateTypeSavingsAccountDto {
   /*@ApiPropertyOptional({ description: 'Taux d\'intérêt annuel par défaut' })
   @IsOptional()
   @IsString()*/
-  interest_year_savings_account?: number;
+  interest_year_savings_account?: number = 0.0;
 
   /*@ApiPropertyOptional({ description: 'Durée minimale de blocage' })
   @IsOptional()
   @IsString()*/
-  minimum_blocking_duration?: number;
+  minimum_blocking_duration?: number = 0.0;
 
   /*@ApiPropertyOptional({ description: 'Dépôt initial minimum', example: 0 })
   @IsOptional()
