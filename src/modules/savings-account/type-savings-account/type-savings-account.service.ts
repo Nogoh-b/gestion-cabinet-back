@@ -13,9 +13,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { CreateTypeSavingsAccountDto } from './dto/create-type-savings-account.dto';
 import { UpdateTypeSavingsAccountDto } from './dto/update-type-savings-account.dto';
 import { TypeSavingsAccount } from './entities/type-savings-account.entity';
+
 
 
 
@@ -68,7 +70,7 @@ export class TypeSavingsAccountService {
       throw new NotFoundException('Un ou plusieurs documents introuvables');
     dto.periode = '0'
     dto.minimum_blocking_duration = 0 
-    if (dto.interest_year_savings_account === undefined) {
+    if (dto.interest_year_savings_account === undefined) { 
       dto.interest_year_savings_account = 0.00; // Valeur par défaut
     }
     // Create the product with all fields
