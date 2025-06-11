@@ -3,6 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class CreateSavingsAccountDto {
   /*@ApiProperty({ description: 'Numéro du compte épargne' })
   @IsString()
@@ -30,8 +31,8 @@ export class CreateSavingsAccountDto {
   @IsInt()
   type_savings_account_id: number;
 
-  @ApiProperty({ description: 'Statut du compte', example: 1 })
-  @IsInt()
+  /*@ApiProperty({ description: 'Statut du compte', example: 1 })
+  @IsInt()*/
   status: number;
 
  /* @ApiProperty({ description: 'IBAN du compte' })
