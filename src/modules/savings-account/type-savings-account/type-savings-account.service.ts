@@ -7,9 +7,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
 import { CreateTypeSavingsAccountDto } from './dto/create-type-savings-account.dto';
 import { UpdateTypeSavingsAccountDto } from './dto/update-type-savings-account.dto';
 import { TypeSavingsAccount } from './entities/type-savings-account.entity';
+
 
 
 
@@ -54,7 +56,7 @@ export class TypeSavingsAccountService {
     const docs = await this.docRepo.findByIds(dto.documentTypeIds);
     if (dto.documentTypeIds && docs.length !== dto.documentTypeIds.length)
       throw new NotFoundException('Un ou plusieurs documents introuvables');
-
+    dto.periode = '0'
     // Create the product with all fields
     const prod = this.repo.create({
       ...dto,

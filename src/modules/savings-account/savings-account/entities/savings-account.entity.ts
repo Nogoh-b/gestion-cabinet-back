@@ -5,24 +5,9 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn, AfterLoad } from 'typeorm';
 
-
-
-
-
-
-
-
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
-
-
-
-
-
-
-
-
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -97,8 +82,6 @@ export class SavingsAccount extends BaseEntity {
   @ManyToOne(() => Branch)
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
-
-  
 
   @OneToMany(
     () => DocumentSavingAccount,
