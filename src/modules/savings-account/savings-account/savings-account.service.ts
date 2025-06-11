@@ -13,6 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -21,6 +22,7 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 
@@ -125,7 +127,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       number_savings_account,
       fee_savings: 0.0,
       amount_created: 0,
-      // balance_init_savings_account: dto.balance_init_savings_account,
+      avalaible_balance: 0,
       status: SavingsAccountStatus.PENDING,
       code_product: dto.code_product,
       wallet_link: dto.wallet_link,
