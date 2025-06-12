@@ -12,8 +12,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { SavingsAccountService } from '../savings-account/savings-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
+
 
 
 
@@ -107,6 +109,7 @@ export class DocumentSavingAccountService {
       relations: ['savings_account', 'document_type'],
     });
     if (existing) {
+      console.log(existing)
       throw new ConflictException('Un document est déjà en attente ou validé pour ce type.');
     }
 

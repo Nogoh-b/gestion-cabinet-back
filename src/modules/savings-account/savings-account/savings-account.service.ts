@@ -14,6 +14,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -22,6 +23,7 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 
@@ -146,10 +148,27 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return sa_s;
   }
 
-  async update(id: number,  dto: UpdateSavingsAccountDto): Promise<SavingsAccount> {
-    await this.repo.update({ id }, dto);
-    return this.findOne(id);
+  async update(id: number, dto: UpdateSavingsAccountDto): Promise<SavingsAccount> {
+    // 1. Charge l’entité existante
+    const account = await this.repo.findOne({ where: { id }, relations: ['type_savings_account'] });
+    if (!account) {
+      throw new NotFoundException(`Compte épargne #${id} introuvable`);
+    }
+
+    // 2. Si on veut changer le type, on affecte explicitement la relation
+    if (dto.type_savings_account_id !== undefined) {
+      account.type_savings_account = 
+        { id: dto.type_savings_account_id } as TypeSavingsAccount;
+      delete dto.type_savings_account_id;
+    }
+
+    // 3. On copie le reste des propriétés simples
+    Object.assign(account, dto);
+
+    // 4. On enregistre avec save() pour que TypeORM gère les relations
+    return this.repo.save(account);
   }
+
 
   async remove(id: number): Promise<any> {
     const account = await this.repo.findOne({

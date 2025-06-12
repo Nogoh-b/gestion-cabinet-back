@@ -5,38 +5,13 @@ import { SavingsAccountService } from 'src/modules/savings-account/savings-accou
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Injectable()

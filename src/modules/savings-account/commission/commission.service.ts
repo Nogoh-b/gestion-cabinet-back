@@ -1,9 +1,13 @@
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+
+
 import { CreateCommissionDto } from './dto/create-commission.dto';
 import { UpdateCommissionDto } from './dto/update-commission.dto';
 import { Commission } from './entities/commission.entity';
+
+
 
 @Injectable()
 export class CommissionService {
@@ -32,8 +36,14 @@ export class CommissionService {
   }
 
   async update(id: number, dto: UpdateCommissionDto): Promise<Commission> {
-    await this.repo.update(id, dto);
-    return this.findOne(id);
+    const commission = await this.repo.findOneBy({ id });
+    if (!commission) {
+      throw new NotFoundException(`Commission avec l'ID ${id} non trouvée`);
+    }
+    if (dto.valueType !== undefined) {
+      commission.value_type = dto.valueType;  // Mapping manuel
+    }
+    return this.repo.save(commission);
   }
 
   async remove(id: number): Promise<void> {

@@ -19,6 +19,7 @@ export enum TransactionSavingsAccountStatus {
   PENDING = 0,
   VALIDATE = 1,
   FAILED = 2,
+  LOCKED = 3,
 }
 
 
