@@ -1,25 +1,29 @@
 /* eslint-disable prettier/prettier */
+import { IamModule } from 'src/modules/iam/iam.module';
 import { Global, Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { databaseConfig } from './config/database.config';
+
+import { AuthController } from './auth/auth.controller';
+import { AuthService } from './auth/auth.service';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { PermissionSeeder } from './auth/seeders/permission.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
+import { LocalStrategy } from './auth/strategies/local.strategy';
+import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
+// import { swaggerConfig } from './config/swagger.config';
+import { PermissionsGuard } from './common/guards/permissions.guard';
+import { databaseConfig } from './config/database.config';
+import { SeedersModule } from './database/seeders/seeders.module';
+import { InitService } from './init/init.service';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { AuthService } from './auth/auth.service';
-import { AuthController } from './auth/auth.controller';
-import { IamModule } from 'src/modules/iam/iam.module';
-import { PassportModule } from '@nestjs/passport';
-import { LocalStrategy } from './auth/strategies/local.strategy';
-// import { swaggerConfig } from './config/swagger.config';
-import { InitService } from './init/init.service';
-import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
-import { PermissionSeeder } from './auth/seeders/permission.seeder';
-import { PermissionsGuard } from './common/guards/permissions.guard';
-import { SeedersModule } from './database/seeders/seeders.module';
 import { EmailService } from './shared/services/email/email.service';
+import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
+
 
 @Global()
 @Module({
@@ -51,7 +55,7 @@ import { EmailService } from './shared/services/email/email.service';
     PermissionsGuard,
     JwtAuthGuard,
     // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
-    // { provide: 'APP_GUARD', useClass: RolesGuard },
+    { provide: APP_FILTER,     useClass: TypeOrmExceptionFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
