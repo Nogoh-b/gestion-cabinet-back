@@ -11,6 +11,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -66,7 +67,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   amount: number;
   @ApiPropertyOptional({ example: '8629891', description: 'Code de destination' })
   @IsString()
-  target_savings_account_code: string;         // code du compte épargne cible (pour INTERNAL_TRANSFER)
+  target_savings_account_code?: string;         // code du compte épargne cible (pour INTERNAL_TRANSFER)
 
   @ApiPropertyOptional({ example: false, description: 'Si la transaction est bloquée ou pas' })
   @IsBoolean()
