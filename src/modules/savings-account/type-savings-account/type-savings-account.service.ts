@@ -129,7 +129,8 @@ export class TypeSavingsAccountService {
 
     // 2. Calcul des frais récurrents (minimum balance + frais mensuels)
     const fraisRecurrents = (parseFloat(produit.minimum_balance) || 0.0) + 
-                           (parseFloat(produit.monthly_maintenance_costs) || 0.0);
+                           (0 || 0.0);
+                          //  (parseFloat(produit.monthly_maintenance_costs) || 0.0);
 
     // 3. Ajout des frais uniques (frais d'ouverture)
     const fraisUniques = parseFloat(produit.account_opening_fee) || 0.0;

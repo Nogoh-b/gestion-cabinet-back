@@ -9,8 +9,10 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -91,11 +93,11 @@ export class TransactionSavingsAccount {
   @UpdateDateColumn()
   updated_at: Date; // Date de mise à jour
 
-  @ManyToOne(() => SavingsAccount, acc => acc.originSavingsAccount)
+  @ManyToOne(() => SavingsAccount, acc => acc.originSavingsAccount, {eager: true  })
   @JoinColumn({ name: 'origin_savings_account_id', referencedColumnName: 'id' })
   originSavingsAccount?: SavingsAccount | null;; // Relation vers SavingsAccount
 
-  @ManyToOne(() => SavingsAccount, acc => acc.targetSavingsAccount)
+  @ManyToOne(() => SavingsAccount, acc => acc.targetSavingsAccount, {eager: true  })
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
   targetSavingsAccount: SavingsAccount | null;; // Relation vers SavingsAccount
 

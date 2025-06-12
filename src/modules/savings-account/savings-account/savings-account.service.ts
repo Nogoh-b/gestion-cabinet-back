@@ -15,6 +15,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -23,6 +28,11 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
 
 
 
@@ -215,7 +225,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (!account) throw new NotFoundException(`Account ${id} not found`);
 
     const tx = await this.getTransactions(id)
-    return this.calculateTotalBalance(tx);
+    return this.calculateTotalBalance(account,tx);
   }
 
   async avalaibleBalance(id: number): Promise<any> {
@@ -225,7 +235,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
     const tx = await this.getTransactions(id)
-    return this.calculateAvailableBalance(tx) ;
+    return this.calculateAvailableBalance(account,tx) ;
   }
 
 
@@ -333,55 +343,114 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   * @param transactions Tableau de transactions avec is_credit (1=crédit, 0=débit)
   * @returns Solde total arrondi à 2 décimales
   */
-  calculateTotalBalance(transactions: TransactionSavingsAccount[]): number {
-      if (!transactions?.length) return 0;
-      
-      const total = transactions.reduce((sum, transaction) => {
-          // Ignorer les transactions échouées
-          if (transaction.status === TransactionSavingsAccountStatus.FAILED) {
-              return sum;
-          }
+  calculateTotalBalance(
+    account: SavingsAccount,
+    transactions: TransactionSavingsAccount[],
+  ): number {
+    if (!transactions?.length) return 0;
 
-          if (transaction.transactionType.is_credit === 1) {
-              // CRÉDIT : seulement les transactions VALIDÉES comptent
-              if (transaction.status === TransactionSavingsAccountStatus.VALIDATE) {
-                  return sum + transaction.amount;
-              }
-              return sum;
-          } else {
-              // DÉBIT : toutes les transactions non-échouées comptent (PENDING ou VALIDATE)
-              return sum - transaction.amount;
-          }
-      }, 0);
+    const acctNum = account.number_savings_account;
+    const total = transactions.reduce((sum, tx) => {
+      // 1. Ignorer les transactions échouées
+      if (tx.status === TransactionSavingsAccountStatus.FAILED) {
+        return sum;
+      }
 
-      return parseFloat(Math.max(0, total).toFixed(2));
+      // 2. Cas transfert interne complet
+      if (tx.originSavingsAccount && tx.targetSavingsAccount) {
+        const originNum = tx.originSavingsAccount.number_savings_account;
+        const targetNum = tx.targetSavingsAccount.number_savings_account;
+
+        if (targetNum === acctNum) {
+          // réception / crédit
+          return sum + tx.amount;
+        }
+        if (originNum === acctNum) {
+          // envoi / débit
+          return sum - tx.amount;
+        }
+        // transaction sans lien avec ce compte
+        return sum;
+      }
+
+      // 3. Fallback sur la logique historique
+      if (tx.transactionType.is_credit === 1) {
+        // crédit standard : on ne compte que si VALIDATE
+        if (tx.status === TransactionSavingsAccountStatus.VALIDATE) {
+          return sum + tx.amount;
+        }
+        return sum;
+      } else {
+        // débit standard
+        // on ignore les dépôts initiaux marqués 'MIN_BALANCE'
+        if (
+          tx.transactionType.is_credit === 0 &&
+          tx.transactionType.code === 'MIN_BALANCE'
+        ) {
+          return sum;
+        }
+        return sum - tx.amount;
+      }
+    }, 0);
+
+    return total; // ou Math.max(0, total) si vous voulez forcer ≥ 0
   }
+
     /**
   * Calcule le solde disponible (exclut les transactions bloquées)
   * @param transactions Tableau de transactions avec is_credit et is_locked
   * @returns Solde disponible arrondi à 2 décimales
   */
-  calculateAvailableBalance(transactions: TransactionSavingsAccount[]): number {
-      if (!transactions?.length) return 0;
-      
-      const available = transactions.reduce((sum, transaction) => {
-          // Ignorer les transactions verrouillées ou échouées
-          if (transaction.is_locked || transaction.status === TransactionSavingsAccountStatus.FAILED) {
-              return sum;
-          }
+  calculateAvailableBalance(
+    account: SavingsAccount,
+    transactions: TransactionSavingsAccount[],
+  ): number {
+    if (!transactions?.length) {
+      return 0;
+    }
 
-          if (transaction.transactionType.is_credit === 1) {
-              // CRÉDIT : seulement les transactions VALIDÉES comptent
-              if (transaction.status === TransactionSavingsAccountStatus.VALIDATE) {
-                  return sum + transaction.amount;
-              }
-              return sum;
-          } else {
-              // DÉBIT : toutes les transactions non-échouées comptent (PENDING ou VALIDATE)
-              return sum - transaction.amount;
-          }
-      }, 0);
+    const now = new Date();
+    const available = transactions.reduce((sum, tx) => {
+      // 1. Ignorer transactions verrouillées ou échouées
+      if (tx.is_locked || tx.status === TransactionSavingsAccountStatus.FAILED) {
+        return sum;
+      }
 
-      return parseFloat(Math.max(0, available).toFixed(2));
+      // 2. Cas transfert complet (origin & target présents)
+      if (tx.originSavingsAccount && tx.targetSavingsAccount) {
+        const originNum = tx.originSavingsAccount.number_savings_account;
+        const targetNum = tx.targetSavingsAccount.number_savings_account;
+        const acctNum = account.number_savings_account;
+
+        if (targetNum === acctNum) {
+          // réception / crédit
+          return sum + tx.amount;
+        }
+        if (originNum === acctNum) {
+          // envoi / débit
+          return sum - tx.amount;
+        }
+        // si la transaction n'implique pas ce compte, on l'ignore
+        return sum;
+      }
+
+      // 3. Fallback sur la logique existante
+      if (tx.transactionType.is_credit === 1) {
+        // crédit simple
+        if (tx.status === TransactionSavingsAccountStatus.VALIDATE) {
+          return sum + tx.amount;
+        }
+        return sum;
+      } else {
+        // débit simple
+        return sum - tx.amount;
+      }
+    }, 0);
+
+    // optionnel : ne jamais retourner un solde négatif  
+    // return parseFloat(Math.max(0, available).toFixed(2));
+    return available;
   }
+
+
 }

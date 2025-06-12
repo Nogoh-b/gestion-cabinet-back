@@ -57,11 +57,11 @@ export class DocumentSavingAccountService {
       },
       relations: ['document_type'],
     });
+    return doc;
     const acceptedIds = new Set(accepted.map(d => d.document_type.id));
     if (required.every(r => acceptedIds.has(r.id))) {
       await this.saService.validateAccount(idSa);
     }
-    return doc;
   }
 
   /** Refuse un document (status -> REFUSED) */
