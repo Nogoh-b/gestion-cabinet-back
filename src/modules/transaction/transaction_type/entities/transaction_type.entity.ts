@@ -2,7 +2,9 @@
 // Cette entité représente un type de transaction (ex: dépôt, retrait, virement)
 import { Entity, PrimaryGeneratedColumn, Column, Unique, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 
+
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
 
 
 @Entity('transaction_type')
@@ -11,7 +13,7 @@ export class TransactionType {
   @PrimaryGeneratedColumn()
   id: number; // Identifiant unique
 
-  @Column({ length: 20 })
+  @Column({ length: 50 })
   code: string; // Code du type (ex: DEPOT, RETRAIT)
 
   @Column({ length: 45 })

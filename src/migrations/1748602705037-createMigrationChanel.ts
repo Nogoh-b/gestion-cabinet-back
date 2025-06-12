@@ -9,7 +9,7 @@ export class CreateMigrationChanel1748602705037 implements MigrationInterface {
         ('Guichet', 'BRANCH'),
         ('Mobile Banking', 'MOBILE'),
         ('Distributeur Automatique de Billets', 'ATM'),
-        ('API Integration', 'API')
+        ('API Integration', 'API');
     `);
   }
 
