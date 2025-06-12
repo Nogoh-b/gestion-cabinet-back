@@ -1,13 +1,50 @@
-import { Controller, Post, Body, Get, Param, UseInterceptors, UploadedFile, BadRequestException, UploadedFiles, UseGuards } from '@nestjs/common';
-import { DocumentCustomerService } from './document-customer.service';
-import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
-import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  UploadedFiles,
+  UseGuards,
+} from '@nestjs/common';
+import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
+
+
+
+
+
+
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+
+
+
+
+
+
+
+import { DocumentCustomerService } from './document-customer.service';
+import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
+import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @ApiTags('Customer Documents')
 @ApiConsumes('multipart/form-data')
@@ -49,11 +86,8 @@ export class DocumentCustomerController {
     return this.service.validate(document_id);
   }
 
-   @Get('/refuse-document')
-  @ApiBody({
-    description: 'Refuse  document',
-    type: CreateDocumentCustomerDto,
-  })
+
+   @Get('/refuse-document/:document_id')
   @ApiResponse({ status: 201, description: 'Document créé' })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async refuse(

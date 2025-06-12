@@ -1,17 +1,31 @@
+import { plainToInstance } from 'class-transformer';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { BaseService } from 'src/core/shared/services/search/base.service';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
+import { Repository } from 'typeorm';
 import { BadRequestException, ConflictException, NotAcceptableException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
-import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
+
+
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
-import { BaseService } from 'src/core/shared/services/search/base.service';
-import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
-import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
-import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
-import { plainToInstance } from 'class-transformer';
+import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
+import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
+
+
+
+
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
@@ -172,11 +186,13 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     );
     if(!doc)
       throw new  NotFoundException("Document non trouvé");
-    if(doc.status !== DocumentCustomerStatus.PENDING)
+    console.log('doc------- ',doc)
+    if(doc.status != DocumentCustomerStatus.PENDING)
       throw new  NotFoundException("Document déja traité");
     doc.status = DocumentCustomerStatus.REFUSED
     doc.date_ejected = new Date()
 
+    await this.docRepository.save(doc)
     // this.docRepository.update(document_id, { status: DocumentCustomerStatus.REFUSED, date_ejected: new Date() } as any)
     return await this.docRepository.findOneBy({ id: document_id });
   }
