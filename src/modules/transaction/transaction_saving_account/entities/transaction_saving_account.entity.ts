@@ -13,17 +13,12 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
 
-
-
-
-
 export enum TransactionSavingsAccountStatus {
   PENDING = 0,
   VALIDATE = 1,
   FAILED = 2,
   LOCKED = 3,
 }
-
 
 @Entity('transaction_savings_account')
 export class TransactionSavingsAccount {

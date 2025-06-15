@@ -1,19 +1,18 @@
+import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
+import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
 import { Not, Repository } from 'typeorm';
+
+
+
+
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
 
 
 
@@ -35,12 +34,6 @@ import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account
 
 
 
-
-
-
-
-
-
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
   constructor(
@@ -53,26 +46,49 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @InjectRepository(TypeSavingsAccount)
     private readonly typeRepo: Repository<TypeSavingsAccount>, 
     @InjectRepository(InterestSavingAccount)
-    private readonly planRepo: Repository<InterestSavingAccount>,     
+    private readonly planRepo: Repository<InterestSavingAccount>,       
+    @InjectRepository(TransactionSavingsAccount)
+    private readonly txRepo: Repository<TransactionSavingsAccount>,     
     @InjectRepository(SavingsAccountHasInterest)
     private readonly interestRepo: Repository<SavingsAccountHasInterest>, 
-    private typeSavingAcount : TypeSavingsAccountService
+    private typeSavingAcount : TypeSavingsAccountService,
+    private paginationService: PaginationService,
   ) { super(); }
 
   getRepository(): Repository<SavingsAccount> {
     return this.repo;
   }
 
-  async findAll(isDeactivate : boolean = false): Promise<SavingsAccount[]> {
-    return this.repo.find({ where : {status: isDeactivate ? SavingsAccountStatus.DEACTIVATE : Not(SavingsAccountStatus.DEACTIVATE) },
-      relations: [
-        'customer',
-        'type_savings_account',
-        'branch',
-        'documents',
-        'interestRelations',
-      ],
-    });
+  async findAll(isDeactivate : boolean = false,    page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string,): Promise<PaginatedResult<SavingsAccount>> {
+      const qb = this.repo.createQueryBuilder('sa')
+    .leftJoinAndSelect('sa.customer', 'customer')
+    .leftJoinAndSelect('sa.type_savings_account', 'typeSavings')
+    .leftJoinAndSelect('sa.branch', 'branch')
+    .leftJoinAndSelect('sa.documents', 'documents')
+    .leftJoinAndSelect('sa.interestRelations', 'interestRelations');
+
+    // 2. Application du filtre sur le status
+    qb.where(
+      isDeactivate
+        ? 'sa.status = :status'
+        : 'sa.status != :status',
+      { status: SavingsAccountStatus.DEACTIVATE }
+    );
+
+    const options: PaginationOptions & { search?: SearchOptions; 
+    dateRange?: DateRange } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+    console.log('------options11---- ', options)
+
+    return this.paginationService.paginate(qb, options);
+
   }
 
   async findOne(id: number): Promise<SavingsAccount> {
@@ -238,12 +254,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return this.calculateAvailableBalance(account,tx) ;
   }
 
-
-
-
-
-
-
   async getRequiredDocuments(id: number): Promise<DocumentType[]> {
     const sa = await this.findOne(id);
     return await this.typeSavingAcount.getRequiredDocuments(sa.type_savings_account.id);
@@ -285,6 +295,38 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       ...(account.targetSavingsAccount ?? [])
     ];
     return combinedTransactions;
+  } 
+
+  async getTransactionsPaginate(id: number, page = 1, limit = 10): Promise<PaginatedResult<TransactionSavingsAccount>> {
+    
+      if (!this.txRepo) {
+        throw new Error('Transaction repository is not available');
+      }
+
+      // Verify the metadata exists
+      const metadata = this.txRepo.metadata;
+      console.log('Entity metadata:', metadata);
+    
+    // 2️⃣ Construction du QueryBuilder sur les transactions
+    const qb = this.txRepo
+      .createQueryBuilder('tx')
+      // Jointures avec les comptes d'épargne
+      .leftJoinAndSelect('tx.originSavingsAccount', 'originAccount')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'targetAccount')
+      // Jointures supplémentaires si nécessaires (optionnel)
+      .leftJoinAndSelect('tx.channelTransaction', 'channel')
+      .leftJoinAndSelect('tx.transactionType', 'type')
+      // Filtre sur l'ID du compte (origine ou destination)
+      .where('originAccount.id = :id OR targetAccount.id = :id', { id })
+      // Tri par date de création
+      .orderBy('tx.created_at', 'DESC');
+
+    // 3️⃣ Pagination via notre service
+      const result: PaginatedResult<TransactionSavingsAccount> =
+       await this.paginationService.paginate(qb, { page, limit });
+
+    // 4️⃣ Retour dans le même format pour account + transactions paginées
+    return result;
   } 
 
   async assign_interest_range(

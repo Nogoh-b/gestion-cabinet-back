@@ -1,26 +1,15 @@
+import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
+import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { UpdateSavingsAccountDto } from 'src/modules/savings-account/savings-account/dto/update-savings-account.dto';
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
+
+
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
@@ -28,21 +17,6 @@ import { TransactionTypeService } from '../transaction_type/transaction_type.ser
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -56,9 +30,11 @@ export class TransactionSavingsAccountService {
     private readonly savingsAccountService: SavingsAccountService,
     private readonly providerService: ProviderService,
     private readonly transactionTypeService: TransactionTypeService,
+        private paginationService: PaginationService,
+    
   ) {}
 
-  private async perform_transaction(
+   async perform_transaction(
     dto:  CreateCreditTransactionSavingsAccountDto | CreateTransactionSavingsAccountDto ,
     type_code: string,
     channel_code: string,
@@ -193,16 +169,30 @@ export class TransactionSavingsAccountService {
   }
 
   // Liste toutes les transactions épargne
-  findAll(): Promise<TransactionSavingsAccount[]> {
-    return this.repo.find({
-      relations: [
-        'channelTransaction',
-        'provider',
-        'transactionType',
-        'originSavingsAccount',
-        'targetSavingsAccount'
-      ],
-    });
+  findAll(
+    page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string
+  ): 
+  Promise<PaginatedResult<TransactionSavingsAccount>> {
+    const qb = this.repo
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.channelTransaction', 'channelTransaction')
+      .leftJoinAndSelect('tx.provider', 'provider')
+      .leftJoinAndSelect('tx.transactionType', 'transactionType')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'originSavingsAccount')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
+      .orderBy('tx.created_at', 'DESC');
+    const options: PaginationOptions & { search?: SearchOptions; 
+    dateRange?: DateRange } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+    console.log('------options---- ', options)
+    return this.paginationService.paginate(qb, options);
   }
 
   // Récupère une transaction par son ID
@@ -402,7 +392,7 @@ export class TransactionSavingsAccountService {
     id: number,
   ): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
-    entity.is_locked = true;
+    entity.is_locked = false;
     return this.repo.save(entity);
   }
 

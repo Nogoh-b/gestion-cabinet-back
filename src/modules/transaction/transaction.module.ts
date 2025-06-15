@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ProviderModule } from '../provider/provider.module';
@@ -11,19 +11,21 @@ import { TransactionSavingsAccountService } from './transaction_saving_account/t
 import { TransactionType } from './transaction_type/entities/transaction_type.entity';
 import { TransactionTypeController } from './transaction_type/transaction_type.controller';
 import { TransactionTypeService } from './transaction_type/transaction_type.service';
+import { CoreModule } from 'src/core/core.module';
+import { MaintenanceFeeService } from './transaction_saving_account/maintenance-fee.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([
     TransactionSavingsAccount,
     TransactionType,
     ChannelTransaction,
+    CoreModule,
     Sequence
   ]),
-  
-  SavingsAccountModule,
+  forwardRef(() => SavingsAccountModule),
   ProviderModule],
   controllers: [TransactionSavingAccountController, TransactionTypeController],
-  providers: [TransactionSavingsAccountService,TransactionTypeService],
+  providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceFeeService],
   exports: [TransactionSavingsAccountService,TransactionTypeService, TypeOrmModule],
   
 })

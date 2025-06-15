@@ -1,7 +1,17 @@
 import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
+import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
+
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 
+
+
+
+
+
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+
+
+
 
 
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
@@ -9,6 +19,15 @@ import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -35,9 +54,23 @@ export class SavingsAccountController {
   @Get()
   @ApiOperation({ summary: 'Liste tous les comptes en épargne' })
   @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
-  findAll() {
-    return this.service.findAll();
+  findAll(  
+    @Query() query: PaginationQueryDto
+  ) {
+    const { page, limit, term, fields, exact, from, to } = query;
+    const fieldList = fields ? fields.split(',') : undefined;
+    const isExact = exact ;
+    return this.service.findAll(
+      false,
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+      term,
+      fieldList,
+      isExact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined);
   }
+  
   @Get('deactivate-accounts')
   @ApiOperation({ summary: 'Liste tous les comptes en épargne  qui sont desactivé' })
   @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
@@ -58,8 +91,16 @@ export class SavingsAccountController {
   @ApiOperation({ summary: 'Get all transactions savings account' })
   @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })
   // @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
-  getTransaction(@Param('id', ParseIntPipe) id: number) {
-    return this.service.getTransactions(id);
+  getTransactionsPaginate(@Param('id', ParseIntPipe) id: number,@Query('page') page: string,  @Query('limit') limit: string,) {
+    return this.service.getTransactionsPaginate(id,+page, +limit);
+  }
+
+  @Get(':id/required-documents')
+  @ApiOperation({ summary: 'Recupérér les document requis' })
+  @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })
+  // @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
+  getRequiredDocuments(@Param('id', ParseIntPipe) id: number) {
+    return this.service.getRequiredDocuments(id);
   }
 
   @Get(':id')

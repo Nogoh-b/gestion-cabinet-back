@@ -7,6 +7,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -23,6 +24,8 @@ import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 import { EmailService } from './shared/services/email/email.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
+import { PaginationService } from './shared/services/pagination/pagination.service';
+
 
 
 @Global()
@@ -60,6 +63,7 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
     KeyGeneratorService,
+    PaginationService,
     EmailService,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
@@ -73,7 +77,7 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
     AuthService,
     PermissionSeeder,
     PermissionsGuard,
-    // RolesGuard,
+    PaginationService,
     JwtAuthGuard,
     KeyGeneratorService,
   ],

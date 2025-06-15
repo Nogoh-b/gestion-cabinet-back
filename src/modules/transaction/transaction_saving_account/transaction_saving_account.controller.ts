@@ -1,18 +1,9 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 
-
-
-
-
-
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
-
-
-
-
-
 
 
 
@@ -68,8 +59,18 @@ export class TransactionSavingAccountController {
   }
 
   @Get()
-  findAll() {
-    return this.transactionSavingAccountService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    const { page, limit, term, fields, exact, from, to } = query;
+    const fieldList = fields ? fields.split(',') : undefined;
+    const isExact = exact ;
+    return this.transactionSavingAccountService.findAll(      
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+      term,
+      fieldList,
+      isExact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined);
   }
 
   @Get(':id')

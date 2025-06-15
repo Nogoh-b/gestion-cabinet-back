@@ -16,7 +16,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     database: process.env.DB_NAME, 
     synchronize: false,
     autoLoadEntities: true,
-    logging: ['error', 'warn', 'query'], // Active les logs
+    // logging: ['error', 'warn', 'query'], // Active les logs
 
   },
 });
