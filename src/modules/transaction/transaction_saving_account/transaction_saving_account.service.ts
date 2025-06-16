@@ -16,11 +16,21 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
+
 
 
 
@@ -48,16 +58,20 @@ export class TransactionSavingsAccountService {
     channel_code: string,
     provider_code: string,
   ): Promise<TransactionSavingsAccount> {
-
+    const adminAcc =  await this.savingsAccountService.findOneAdmin()
     if ((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code === dto.target_savings_account_code) {
       throw new BadRequestException(`Transfert vers le même compte interdit `);
     }
     // récupération du compte origine
     let origin : SavingsAccount | null = null;
-    if((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code)
+    if((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code){
       origin = await this.savingsAccountService.findOneByCode(
         (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code,
       );
+    }
+    else{
+      // origin = adminAcc
+    }
     if (!origin && (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code) {
       throw new NotFoundException(
         `Compte épargne introuvable pour code : ${(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code}`,
@@ -66,10 +80,14 @@ export class TransactionSavingsAccountService {
 
     // récupération du compte cible
     let target: SavingsAccount | null = null; // Initialisation explicite à null
-    if((dto).target_savings_account_code)
+    if((dto).target_savings_account_code){
       target  = await this.savingsAccountService.findOneByCode(
         dto.target_savings_account_code ?? '0',
       );
+    }
+    else{
+      // target = adminAcc
+    }
     if (!target && dto.target_savings_account_code) {
       throw new NotFoundException(
         `Compte cible introuvable pour code : ${dto.target_savings_account_code}`,
@@ -110,7 +128,7 @@ export class TransactionSavingsAccountService {
     tx.payment_code = paymentCode;
     tx.payment_token_provider = payment_token_provider;
     tx.reference = await reference;
-    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccount || target && target.targetSavingsAccount.length === 0)
+    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 0)
     
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
@@ -149,7 +167,7 @@ export class TransactionSavingsAccountService {
   }
 
   e_wallet_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'API', 'WALLET');
+    return this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'MOBILE', 'WALLET');
   }
 
   momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
@@ -164,7 +182,7 @@ export class TransactionSavingsAccountService {
     return this.perform_transaction(
       dto,
       'E_WALLET_WITHDRAWAL',
-      'API',
+      'MOBILE',
       'WALLET',
     );
   }
@@ -182,7 +200,7 @@ export class TransactionSavingsAccountService {
     dto: CreateTransactionSavingsAccountDto,
   ): Promise<TransactionSavingsAccount> {
     // maniere speciale pour virement interne
-    return this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'API', 'SYSTEM');
+    return this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'MOBILE', 'SYSTEM');
   }
 
   // Liste toutes les transactions épargne
@@ -335,7 +353,7 @@ export class TransactionSavingsAccountService {
       target  = await this.savingsAccountService.findOneByCode(
         tx.targetSavingsAccount.number_savings_account,
     );
-    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccount || target && target.targetSavingsAccount.length === 1)
+    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
 
     await this.repo.manager.transaction(async (entityManager) => {
       if (isFirstTx && target) {
@@ -372,6 +390,8 @@ export class TransactionSavingsAccountService {
         await entityManager.save(thirdTx);
 
         const dayOfMonth = new Date().getDate(); // 1..31
+
+        this.savingsAccountService.validateAccount(target.id)
 
         // programer les deduction de frais d'entretien de compte
         // à la fin du mois

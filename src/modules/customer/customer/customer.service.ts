@@ -11,7 +11,15 @@ import { DocumentType } from 'src/modules/documents/document-type/entities/docum
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { DataSource, Repository } from 'typeorm';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
+
+
 
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
@@ -21,6 +29,14 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
+
+
+
+
+
+
+
+
 
 
 
@@ -43,7 +59,7 @@ export class CustomersService extends BaseService<Customer> {
     
   ) {super();}
 
-  async create(createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
+  async create(createCustomerDto: CreateCustomerDto): Promise<any> {
     return await this.dataSource.transaction(async manager => {
 
       // const customerRes = new CustomerResponseDto()
@@ -68,6 +84,7 @@ export class CustomersService extends BaseService<Customer> {
 
       const customer = this.customerRepository.create({
         ...createCustomerDto,
+        first_name : createCustomerDto.firt_name,
         type_customer,
         location_city,
       });
@@ -85,7 +102,6 @@ export class CustomersService extends BaseService<Customer> {
         throw new Error('Échec de génération d’un code client unique');
       }
       savedClient.customer_code = code;
-
       return plainToInstance(
         CustomerResponseDto,
         await manager.save(customer),

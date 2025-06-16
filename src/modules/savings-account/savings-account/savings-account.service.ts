@@ -19,6 +19,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -27,6 +32,11 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
 
 
 
@@ -106,6 +116,21 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
+  async findOneAdmin(): Promise<SavingsAccount> {
+    const account = await this.repo.findOne({
+      where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE)  },
+      relations: [
+        'customer',
+        'type_savings_account',
+        'branch',
+        'documents',
+        'interestRelations',
+      ],
+    });
+    if (!account) throw new NotFoundException(`Compte Admin introuvable`);
+    return account;
+  }
+
     async findOneByCode(number_savings_account: string): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
@@ -115,8 +140,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'branch',
         'documents',
         'interestRelations',
-        'originSavingsAccount',
-        'targetSavingsAccount'
+        'originSavingsAccountTx',
+        'targetSavingsAccountTx'
       ],
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
@@ -125,7 +150,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
   async create(
     dto: CreateSavingsAccountDto,
+    is_admin = false
   ): Promise<SavingsAccount> {
+    if(is_admin){
+      const acc = await this.repo.findOne({ where: { is_admin } });
+      if (acc) throw new NotFoundException(`Compte dmin déjà existant`);
+    }
     const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
     if (!branch) throw new NotFoundException(`Agence ${dto.branch_id} introuvable`);
 
@@ -159,11 +189,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       status: SavingsAccountStatus.PENDING,
       code_product: dto.code_product,
       wallet_link: dto.wallet_link,
+      is_admin,
       // interest_year_savings_account: dto.interest_year_savings_account,
       iban,
       account_number: number_savings_account,
       customer: { id: dto.customer_id } as Customer,
-      type_savings_account: { id: dto.type_savings_account_id } as TypeSavingsAccount,
+      type_savings_account: {
+        id: dto.type_savings_account_id,
+      } as TypeSavingsAccount,
     });
 
     return this.repo.save(account);
@@ -287,12 +320,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // load account with its documents
     const account = await this.repo.findOne({
       where: { id },
-      relations: ['originSavingsAccount' , 'targetSavingsAccount'],
+      relations: ['originSavingsAccountTx' , 'targetSavingsAccountTx'],
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
     const combinedTransactions = [
-      ...(account.originSavingsAccount ?? []),
-      ...(account.targetSavingsAccount ?? [])
+      ...(account.originSavingsAccountTx ?? []),
+      ...(account.targetSavingsAccountTx ?? [])
     ];
     return combinedTransactions;
   } 
@@ -311,8 +344,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     const qb = this.txRepo
       .createQueryBuilder('tx')
       // Jointures avec les comptes d'épargne
-      .leftJoinAndSelect('tx.originSavingsAccount', 'originAccount')
-      .leftJoinAndSelect('tx.targetSavingsAccount', 'targetAccount')
+      .leftJoinAndSelect('tx.originSavingsAccountTx', 'originAccount')
+      .leftJoinAndSelect('tx.targetSavingsAccountTx', 'targetAccount')
       // Jointures supplémentaires si nécessaires (optionnel)
       .leftJoinAndSelect('tx.channelTransaction', 'channel')
       .leftJoinAndSelect('tx.transactionType', 'type')
@@ -493,6 +526,10 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // return parseFloat(Math.max(0, available).toFixed(2));
     return available;
   }
+
+
+
+  
 
 
 }

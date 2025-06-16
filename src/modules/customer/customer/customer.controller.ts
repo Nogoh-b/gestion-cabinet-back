@@ -1,3 +1,8 @@
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
+import { EmailService } from 'src/core/shared/services/email/email.service';
 import {
   Controller,
   Get,
@@ -10,18 +15,17 @@ import {
   UploadedFiles,
   UseGuards,
 } from '@nestjs/common';
-import { CreateCustomerDto } from './dto/create-customer.dto';
-import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { CustomerResponseDto } from './dto/customer-response.dto';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
+
+
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
-import { AnyFilesInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
-import { EmailService } from 'src/core/shared/services/email/email.service';
+import { CreateCustomerDto } from './dto/create-customer.dto';
+import { CustomerResponseDto } from './dto/customer-response.dto';
+import { UpdateCustomerDto } from './dto/update-customer.dto';
+
+
 
 @ApiTags('customer')
 @Controller('customer')
@@ -39,7 +43,7 @@ export class CustomerController {
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
   @RequirePermissions('CREATE_CUSTOMER')
-  async create(@Body() createCustomerDto: CreateCustomerDto): Promise<CustomerResponseDto> {
+  async create(@Body() createCustomerDto: CreateCustomerDto): Promise<any> {
     return await this.customerService.create(createCustomerDto);
   }
 

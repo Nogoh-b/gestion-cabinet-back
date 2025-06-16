@@ -3,9 +3,12 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { Country } from './entities/country.entity';
+import { Region } from '../region/entities/region.entity';
+
 
 
 
@@ -30,7 +33,7 @@ export class CountriesService {
     return country;
   }
 
-  async findOneRegions(id: number): Promise<any> {
+  async findOneRegions(id: number): Promise<Region[]> {
     const country = await this.repository.findOne({where :{ id}, relations: ['regions'] });
     if (!country) throw new NotFoundException('Pays non existant');
     return country.regions;

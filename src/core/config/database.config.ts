@@ -6,14 +6,15 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 
 
+
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
     type: 'mysql',
     host: process.env.DB_HOST,
     port: parseInt(process.env.DB_PORT || '3306', 10),
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME, 
+    username: process.env.DB_USER ?? 'mendo',
+    password: process.env.DB_PASSWORD ?? 'mendo',
+    database: process.env.DB_NAME ??  'core_banking', 
     synchronize: false,
     autoLoadEntities: true,
     // logging: ['error', 'warn', 'query'], // Active les logs

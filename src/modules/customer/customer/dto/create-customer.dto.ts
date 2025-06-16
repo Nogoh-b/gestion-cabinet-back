@@ -18,7 +18,7 @@ export class CreateCustomerDto {
   @MaxLength(45)
   @ApiProperty({ example: 'John', description: 'Customer Name' })
   @IsOptional()
-  firt_name?: string;
+  firt_name: string;
 
   @IsString()
   @MaxLength(45)

@@ -8,6 +8,7 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { Region } from '../region/entities/region.entity';
 
 @Controller('countries')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -35,7 +36,7 @@ export class CountriesController {
 
   @Get(':id/regions')
   @RequirePermissions('')
-  findOneRegions(@Param('id') id: number): Promise<Country> {
+  findOneRegions(@Param('id') id: number): Promise<Region[]> {
     return this.service.findOneRegions(id);
   }
 

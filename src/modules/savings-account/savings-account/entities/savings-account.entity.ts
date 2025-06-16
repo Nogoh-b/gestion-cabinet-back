@@ -66,9 +66,13 @@ export class SavingsAccount extends BaseEntity {
   @Column({ name: 'account_number', type: 'varchar', length: 45, nullable: true })
   account_number?: string;
 
-  // Relation unique active interest history
-  // @OneToOne(() => SavingsAccountHasInterest, rel => rel.savings_asavings_accountccount)
-  // active_interest?: SavingsAccountHasInterest;
+  @Column({
+    name: 'is_admin',
+    type: 'boolean',
+    default: false,
+    nullable: true,
+  })
+  is_admin?: boolean;
   
 
 
@@ -99,13 +103,13 @@ export class SavingsAccount extends BaseEntity {
     () => TransactionSavingsAccount,
     tx => tx.originSavingsAccount
   )
-  originSavingsAccount?: TransactionSavingsAccount[]; // Transactions liées au compte
+  originSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
 
     @OneToMany(
     () => TransactionSavingsAccount,
     tx => tx.targetSavingsAccount
   )
-  targetSavingsAccount?: TransactionSavingsAccount[]; // Transactions liées au compte
+  targetSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
 
   @AfterLoad()
   setActiveInterest() {

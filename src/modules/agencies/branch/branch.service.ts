@@ -1,16 +1,58 @@
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { GenCOde } from 'src/core/shared/utils/generation.util';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
+import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { TransactionChannel } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 import { Repository } from 'typeorm';
+
+
+
+
+
+
+
+
+
 import { Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
 
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -128,5 +170,76 @@ export class BranchService {
     branch!.status = 0;
     branch?.save();
     return branch;
+  }
+
+  async stats(id: number): Promise<any> {
+    console.log('stats');
+    const branch1 = await this.branchRepository.findOne({
+      where: { id, status: 1 },
+      relations: [
+        'employees', 
+        'savingsAccounts',
+        'savingsAccounts.originSavingsAccountTx', // Transactions sortantes
+        'savingsAccounts.targetSavingsAccountTx', // Transactions entrantes
+      ],
+    });
+const branch = await this.branchRepository
+  .createQueryBuilder('branch')
+  // Jointure UNIQUE pour savingsAccounts
+  .leftJoinAndSelect('branch.savingsAccounts', 'savingsAccount', 'savingsAccount.branch.id = :branchId', { branchId: id })
+  // Jointure pour employees (si nécessaire)
+  .leftJoinAndSelect('branch.employees', 'employee') // Alias différent de 'savingsAccount'
+  // Jointures pour les transactions sortantes (outgoingTx)
+  .leftJoinAndSelect('savingsAccount.originSavingsAccountTx', 'outgoingTx')
+  .leftJoinAndSelect('outgoingTx.originSavingsAccount', 'originAccount')
+  .leftJoinAndSelect('outgoingTx.targetSavingsAccount', 'targetAccount')
+  .leftJoinAndSelect('outgoingTx.channelTransaction', 'channel')
+  .leftJoinAndSelect('outgoingTx.provider', 'provider')
+  .leftJoinAndSelect('outgoingTx.transactionType', 'transactionType')
+  // Jointures pour les transactions entrantes (incomingTx)
+  .leftJoinAndSelect('savingsAccount.targetSavingsAccountTx', 'incomingTx')
+  .leftJoinAndSelect('incomingTx.originSavingsAccount', 'originAccount1')
+  .leftJoinAndSelect('incomingTx.targetSavingsAccount', 'targetAccount1')
+  .leftJoinAndSelect('incomingTx.channelTransaction', 'channel1')
+  .leftJoinAndSelect('incomingTx.provider', 'provide1r')
+  .leftJoinAndSelect('incomingTx.transactionType', 'transactionType1')
+  // (Optionnel) Ajoutez les mêmes relations pour incomingTx si besoin :
+  .leftJoinAndSelect('incomingTx.originSavingsAccount', 'incomingOriginAccount')
+  .leftJoinAndSelect('incomingTx.targetSavingsAccount', 'incomingTargetAccount')
+  .where('branch.id = :id AND branch.status = 1', { id })
+  .getOne();
+  let  sa = branch?.savingsAccounts
+  let outgoingTransactions : TransactionSavingsAccount[] = [] 
+  let incomingTransactions : TransactionSavingsAccount[] = [] 
+  sa?.forEach((account) => {
+    if (account.originSavingsAccountTx) {
+        account.originSavingsAccountTx?.forEach((tx) => {
+          if(tx.targetSavingsAccount && tx.targetSavingsAccount.branch_id == branch?.id ){
+          }
+          if(!tx.targetSavingsAccount && tx.channelTransaction.code != TransactionChannel.API){
+            outgoingTransactions.push(tx);
+          }
+
+        });
+    }
+    if (account.targetSavingsAccountTx) {
+        account.targetSavingsAccountTx?.forEach((tx) => {
+          if(tx.originSavingsAccount && tx.originSavingsAccount.branch_id == branch?.id ){
+          }
+          if(!tx.originSavingsAccount && tx.channelTransaction.code != TransactionChannel.API){
+            incomingTransactions.push(tx);
+          }
+
+        });
+    }
+  });
+
+    return {
+      employeeCount: branch?.employees.length,
+      savingsAccountCount: branch?.savingsAccounts.length,
+      incomingTransactions: incomingTransactions,
+      outgoingTransactions: outgoingTransactions,
+    };
+
   }
 }

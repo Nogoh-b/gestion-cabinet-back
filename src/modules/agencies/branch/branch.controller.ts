@@ -7,9 +7,13 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 
 
 
+
+
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+
+
 
 
 
@@ -85,5 +89,12 @@ export class BranchController {
   @RequirePermissions('VIEW_BRANCH')
   activateBranch(@Param('id') id: number) {
     return this.branchService.activate(id);
+  }
+
+  @Get(':id/stats')
+  @ApiOperation({ summary: 'Get stats Branch' })
+  @RequirePermissions('VIEW_BRANCH_STATS')
+  stats(@Param('id') id: number) {
+    return this.branchService.stats(id);
   }
 }

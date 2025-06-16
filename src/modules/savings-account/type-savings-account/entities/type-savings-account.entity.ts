@@ -12,13 +12,6 @@ import { Commission } from '../../commission/entities/commission.entity';
 import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
 
-
-
-
-
-
-
-
 @Entity('type_savings_account')
 export class TypeSavingsAccount extends BaseEntity {
   @Column({ primary: true, generated: true })
