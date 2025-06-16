@@ -135,7 +135,7 @@ export class DocumentSavingAccountService {
     );
     // Construction manuelle pour éviter les conflits de DeepPartial
     const entity = new DocumentSavingAccount();
-    entity.name = dto.name;
+    entity.name = docType.name;
     entity.document_type = docType;
     entity.status = 0;
     entity.file_path = uploadedFile.fileName;

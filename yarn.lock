@@ -313,6 +313,35 @@
   resolved "https://registry.npmjs.org/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz"
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
+"@bull-board/api@^6.10.1", "@bull-board/api@6.10.1":
+  version "6.10.1"
+  resolved "https://registry.npmjs.org/@bull-board/api/-/api-6.10.1.tgz"
+  integrity sha512-VPkZa2XZI2Wk2MqK1XyiiS+tOhNan54mnm2fpv2KA0fdZ92mQqNjhKkOpsykhQv9XUEc8cCRlZqGxf67YCMJbQ==
+  dependencies:
+    redis-info "^3.1.0"
+
+"@bull-board/express@^6.10.1":
+  version "6.10.1"
+  resolved "https://registry.npmjs.org/@bull-board/express/-/express-6.10.1.tgz"
+  integrity sha512-IZl+t6B8bGCHqd/8Mbvit9RXqndXBe2Kx7pYHq7PZRrEKjK9b643Uizlc+OVqmWpLSjpQMP96K1SO5/Nq24o+A==
+  dependencies:
+    "@bull-board/api" "6.10.1"
+    "@bull-board/ui" "6.10.1"
+    ejs "^3.1.10"
+    express "^4.21.1 || ^5.0.0"
+
+"@bull-board/nestjs@^6.10.1":
+  version "6.10.1"
+  resolved "https://registry.npmjs.org/@bull-board/nestjs/-/nestjs-6.10.1.tgz"
+  integrity sha512-BGs8A5yIaLhdXgyeKVrCzGVejtxp1i6KMIq6FzVhLrtrYt51kZAxjCLIPviVjiZy1t8ofEzHSsHr0wsiaVa1gg==
+
+"@bull-board/ui@6.10.1":
+  version "6.10.1"
+  resolved "https://registry.npmjs.org/@bull-board/ui/-/ui-6.10.1.tgz"
+  integrity sha512-b6z6MBid/0DEShAMFPjPVZoPSoWqRBHCvTknyaxr/m8gL2/C+QP7jlCXut+L7uTFbCj9qs+CreAP0x/VdLI/Ig==
+  dependencies:
+    "@bull-board/api" "6.10.1"
+
 "@colors/colors@1.5.0":
   version "1.5.0"
   resolved "https://registry.npmjs.org/@colors/colors/-/colors-1.5.0.tgz"
@@ -948,7 +977,7 @@
     preview-email "^3.0.19"
     pug "^3.0.2"
 
-"@nestjs/bull-shared@^11.0.2":
+"@nestjs/bull-shared@^10.0.0 || ^11.0.0", "@nestjs/bull-shared@^11.0.2":
   version "11.0.2"
   resolved "https://registry.npmjs.org/@nestjs/bull-shared/-/bull-shared-11.0.2.tgz"
   integrity sha512-dFlttJvBqIFD6M8JVFbkrR4Feb39OTAJPJpFVILU50NOJCM4qziRw3dSNG84Q3v+7/M6xUGMFdZRRGvBBKxoSA==
@@ -3588,7 +3617,7 @@ expect@^29.0.0, expect@^29.7.0:
     jest-message-util "^29.7.0"
     jest-util "^29.7.0"
 
-express@^5.0.1, express@5.1.0:
+"express@^4.21.1 || ^5.0.0", express@^5.0.1, express@5.1.0:
   version "5.1.0"
   resolved "https://registry.npmjs.org/express/-/express-5.1.0.tgz"
   integrity sha512-DT9ck5YIRU+8GYzzU5kT3eHGA5iL+1Zd0EutOmTE9Dtk+Tvuzd23VBU+ec7HPNSTxXYO55gPV/hq4pSBJDjFpA==
@@ -5339,7 +5368,7 @@ lodash.once@^4.0.0:
   resolved "https://registry.npmjs.org/lodash.once/-/lodash.once-4.1.1.tgz"
   integrity sha512-Sb487aTOCr9drQVL8pIxOzVhafOjZN9UU54hiN8PU3uAiSV7lx1yYNpbNmex2PK6dSJoNTSJUUswT651yww3Mg==
 
-lodash@^4.17.15, lodash@^4.17.21, lodash@4.17.21:
+lodash@^4.17.11, lodash@^4.17.15, lodash@^4.17.21, lodash@4.17.21:
   version "4.17.21"
   resolved "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
   integrity sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==
@@ -6867,6 +6896,13 @@ redis-errors@^1.0.0, redis-errors@^1.2.0:
   version "1.2.0"
   resolved "https://registry.npmjs.org/redis-errors/-/redis-errors-1.2.0.tgz"
   integrity sha512-1qny3OExCf0UvUV/5wpYKf2YwPcOqXzkwKKSmKHiE6ZMQs5heeE/c8eXK+PNllPvmjgAbfnsbpkGZWy8cBpn9w==
+
+redis-info@^3.1.0:
+  version "3.1.0"
+  resolved "https://registry.npmjs.org/redis-info/-/redis-info-3.1.0.tgz"
+  integrity sha512-ER4L9Sh/vm63DkIE0bkSjxluQlioBiBgf5w1UuldaW/3vPcecdljVDisZhmnCMvsxHNiARTTDDHGg9cGwTfrKg==
+  dependencies:
+    lodash "^4.17.11"
 
 redis-parser@^3.0.0:
   version "3.0.0"

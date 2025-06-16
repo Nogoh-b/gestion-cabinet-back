@@ -28,6 +28,9 @@
     "migration:revert": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert --dataSource src/data-source.ts"
   },
   "dependencies": {
+    "@bull-board/api": "^6.10.1",
+    "@bull-board/express": "^6.10.1",
+    "@bull-board/nestjs": "^6.10.1",
     "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/bull": "^11.0.2",
     "@nestjs/cache-manager": "^3.0.1",

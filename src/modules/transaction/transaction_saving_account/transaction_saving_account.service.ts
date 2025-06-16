@@ -1,3 +1,4 @@
+import { Queue } from 'bull';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
@@ -5,7 +6,10 @@ import { UpdateSavingsAccountDto } from 'src/modules/savings-account/savings-acc
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
+
+
 import { v4 as uuidv4 } from 'uuid';
+import { InjectQueue } from '@nestjs/bull';
 
 
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
@@ -20,6 +24,8 @@ import { TransactionSavingsAccount } from './entities/transaction_saving_account
 
 
 
+
+
 @Injectable()
 export class TransactionSavingsAccountService {
   constructor(
@@ -30,7 +36,9 @@ export class TransactionSavingsAccountService {
     private readonly savingsAccountService: SavingsAccountService,
     private readonly providerService: ProviderService,
     private readonly transactionTypeService: TransactionTypeService,
-        private paginationService: PaginationService,
+    private paginationService: PaginationService,
+    @InjectQueue('maintenance')
+    private readonly maintenanceQueue: Queue,
     
   ) {}
 
@@ -158,6 +166,15 @@ export class TransactionSavingsAccountService {
       'E_WALLET_WITHDRAWAL',
       'API',
       'WALLET',
+    );
+  }
+
+  fee_maintenance(dto: CreateDebitTransactionSavingsAccountDto) {
+    return this.perform_transaction(
+      dto,
+      'ACCOUNT_MAINTENANCE_FEE',
+      'API',
+      'SYSTEM',
     );
   }
 
@@ -330,43 +347,46 @@ export class TransactionSavingsAccountService {
         const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
         const providerMinBalance = await this.providerService.findOne('SYSTEM');
         const secondTx = new TransactionSavingsAccount();
-
         Object.assign(secondTx, txData);
-
         secondTx.amount = target!.type_savings_account.minimum_balance;
         secondTx.transactionType = txTypeMinBalance;
         secondTx.provider = providerMinBalance;
         secondTx.is_locked = false;
-
         if (chanelOpenProduct !== null) {
           secondTx.channelTransaction = chanelOpenProduct;
-        }
-
-        
+        }   
         await entityManager.save(secondTx);
-
-
 
 
         const txTypeOpenProduct = await this.transactionTypeService.findOneByCode('MANUAL_ADJUSTMENT');
         const providerOpenProduct = await this.providerService.findOne('SYSTEM');
-
-
         const thirdTx = new TransactionSavingsAccount();
         Object.assign(thirdTx, txData);
-        // delete thirdTx.id;
-
         thirdTx.amount = target!.type_savings_account.account_opening_fee;
         thirdTx.transactionType = txTypeOpenProduct;
         thirdTx.provider = providerOpenProduct;
         thirdTx.is_locked = false;
-
         if (chanelOpenProduct !== null) {
           thirdTx.channelTransaction = chanelOpenProduct;
         }
-
-        
         await entityManager.save(thirdTx);
+
+        const dayOfMonth = new Date().getDate(); // 1..31
+
+        // programer les deduction de frais d'entretien de compte
+        // à la fin du mois
+        await this.maintenanceQueue.add(
+          'deduct-fee',
+          { accountId: target.id },
+          {
+            repeat: {
+              // minute heure jour mois jourDeLaSemaine
+              cron: `0 0 ${dayOfMonth} * *`,
+              tz: 'Africa/Douala',
+            },
+            jobId: `deduct-fee:${target.id}`, // un job par compte
+          },
+        );
       }
     });
 

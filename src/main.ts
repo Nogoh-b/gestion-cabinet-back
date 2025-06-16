@@ -1,12 +1,21 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { SwaggerModule } from '@nestjs/swagger';
-import { swaggerConfig } from './core/config/swagger.config';
-import { Transport } from '@nestjs/microservices';
+import { Queue } from 'bull';
 import * as dotenv from 'dotenv';
 import * as tls from 'tls';
+import { createBullBoard } from '@bull-board/api';
+import { BullAdapter } from '@bull-board/api/bullAdapter';
+import { ExpressAdapter } from '@bull-board/express';
+
+import { getQueueToken } from '@nestjs/bull';
+import { NestFactory } from '@nestjs/core';
+import { Transport } from '@nestjs/microservices';
+import { SwaggerModule } from '@nestjs/swagger';
+
+import { AppModule } from './app.module';
 import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
+import { swaggerConfig } from './core/config/swagger.config';
 import { SuperAdminSeeder } from './core/database/seeders/super-admin.seeder';
+
+
 dotenv.config();
 
 async function bootstrap() {
@@ -57,7 +66,14 @@ async function bootstrap() {
     origin: '*',
     credentials: true, // important si tu envoies Authorization header ou cookies
   });
-
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath('/admin/queues');
+  const taskQueue = app.get<Queue>(getQueueToken('task-queue'));
+  createBullBoard({
+    queues: [new BullAdapter(taskQueue)],
+    serverAdapter,
+  });
+  app.use('/admin/queues', serverAdapter.getRouter());
   await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()])
     .then(() => {
       console.log('Microservices are listening (http) 3004 => (TPC) 3002');

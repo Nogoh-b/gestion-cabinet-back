@@ -1,11 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsInt, IsNotEmpty } from 'class-validator';
+import { IsInt } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateDocumentSavingAccountDto {
-  @ApiProperty({ description: 'Nom du document', example: 'CNI recto' })
+  /*@ApiProperty({ description: 'Nom du document', example: 'CNI recto' })
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty()*/
   name: string;
 
   @ApiProperty({ description: 'ID du type de document', example: 1 })

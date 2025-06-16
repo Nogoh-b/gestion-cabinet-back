@@ -8,6 +8,8 @@ import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
+
+
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -25,6 +27,8 @@ import { TransformInterceptor } from './shared/interceptors/transform.intercepto
 import { EmailService } from './shared/services/email/email.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { PaginationService } from './shared/services/pagination/pagination.service';
+
+
 
 
 

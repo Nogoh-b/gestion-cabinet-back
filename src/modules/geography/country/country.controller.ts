@@ -33,6 +33,13 @@ export class CountriesController {
     return this.service.findOne(id);
   }
 
+  @Get(':id/regions')
+  @RequirePermissions('')
+  findOneRegions(@Param('id') id: number): Promise<Country> {
+    return this.service.findOneRegions(id);
+  }
+
+
   @Put(':id')
   @RequirePermissions('MANAGE_LOCATION')
   update(@Param('id') id: number, @Body() dto: UpdateCountryDto): Promise<Country> {

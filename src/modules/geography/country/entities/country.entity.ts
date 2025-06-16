@@ -1,5 +1,8 @@
 // country.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+
+import { Region } from '../../region/entities/region.entity';
+
 
 @Entity('country')
 export class Country {
@@ -14,6 +17,14 @@ export class Country {
 
   @Column({ type: 'varchar', length: 45, nullable: true })
   population: string;
+
+
+
+  @OneToMany(
+    () => Region,
+    region => region.country
+  )
+  regions: Region[];
 
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;

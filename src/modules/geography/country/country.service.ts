@@ -1,10 +1,13 @@
-// countries.service.ts
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Country } from './entities/country.entity';
+
+
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
+import { Country } from './entities/country.entity';
+
+
 
 @Injectable()
 export class CountriesService {
@@ -25,6 +28,12 @@ export class CountriesService {
     const country = await this.repository.findOneBy({ id });
     if (!country) throw new NotFoundException();
     return country;
+  }
+
+  async findOneRegions(id: number): Promise<any> {
+    const country = await this.repository.findOne({where :{ id}, relations: ['regions'] });
+    if (!country) throw new NotFoundException('Pays non existant');
+    return country.regions;
   }
 
   async update(id: number, dto: UpdateCountryDto): Promise<Country> {

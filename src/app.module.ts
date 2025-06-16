@@ -1,21 +1,35 @@
+import * as dotenv from 'dotenv';
+import { ExpressAdapter } from '@bull-board/express';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { MailerModule } from '@nestjs-modules/mailer';
+import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+
+
+
+import { ClientsModule, Transport } from '@nestjs/microservices';
+import { ServeStaticModule } from '@nestjs/serve-static';
+
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
-import { IamModule } from './modules/iam/iam.module';
+import { ActivitiesModule } from './modules/activities/activities.module';
+import { AgenciesModule } from './modules/agencies/agencies.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
-import { ConfigModule } from '@nestjs/config';
-import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { ClientsModule, Transport } from '@nestjs/microservices';
-import { AgenciesModule } from './modules/agencies/agencies.module';
-import * as dotenv from 'dotenv';
-import { MailerModule } from '@nestjs-modules/mailer';
-import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
+import { IamModule } from './modules/iam/iam.module';
 import { ProviderModule } from './modules/provider/provider.module';
-import { ActivitiesModule } from './modules/activities/activities.module';
+import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+import { QueueModule } from './modules/queue/queue.module';
+
+
+
+
+
 dotenv.config();
 
 @Module({
@@ -57,10 +71,25 @@ dotenv.config();
         },
       },
     ]),
+
+    BullModule.forRoot({
+          redis: {
+            host: 'localhost',
+            port: 6379,
+          },
+    }),
+    BullModule.registerQueue({
+        name: 'maintenance',
+    }),
+    BullBoardModule.forRoot({
+      route: '/admin/queues',
+      adapter: ExpressAdapter,
+    }),
     SavingsAccountModule,
     ProviderModule,
     TransactionModule,
     ActivitiesModule,
+    QueueModule
   ],
   controllers: [AppController],
   providers: [AppService],
