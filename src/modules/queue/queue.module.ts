@@ -1,16 +1,28 @@
 import { Queue } from 'bull';
+import { CoreModule } from 'src/core/core.module';
 import { BullModule, InjectQueue } from '@nestjs/bull';
+
 import { Module, OnModuleInit } from '@nestjs/common';
 
+
+
+import { SavingsAccountModule } from '../savings-account/savings-account.module';
+import { TransactionModule } from '../transaction/transaction.module';
 import { QueueController } from './queue.controller';
 import { QueueProcessor } from './queue.processor';
 import { QueueService } from './queue.service';
+
+
+
 
 
 @Module({
   imports: [
     // Enregistrement de la queue dans ce module
     BullModule.registerQueue({ name: 'task-queue' }),
+    TransactionModule,
+    SavingsAccountModule,
+    CoreModule,
   ],
   controllers: [QueueController],
   providers: [QueueService, QueueProcessor],

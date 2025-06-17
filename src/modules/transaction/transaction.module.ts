@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
 import { ProviderModule } from '../provider/provider.module';
 import { SavingsAccountModule } from '../savings-account/savings-account.module';
 import { ChannelTransaction } from './chanel-transaction/entities/channel-transaction.entity';
@@ -18,6 +19,7 @@ import { TransactionSavingsAccountService } from './transaction_saving_account/t
 import { TransactionType } from './transaction_type/entities/transaction_type.entity';
 import { TransactionTypeController } from './transaction_type/transaction_type.controller';
 import { TransactionTypeService } from './transaction_type/transaction_type.service';
+
 
 
 
@@ -39,7 +41,7 @@ import { TransactionTypeService } from './transaction_type/transaction_type.serv
   ProviderModule],
   controllers: [TransactionSavingAccountController, TransactionTypeController],
   providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor    ],
-  exports: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor , TypeOrmModule],
+  exports: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor , TypeOrmModule, BullModule],
   
 })
 export class TransactionModule {}

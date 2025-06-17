@@ -8,6 +8,7 @@ import { Processor, Process } from '@nestjs/bull';
 
 
 
+
 @Processor('maintenance')
 export class MaintenanceProcessor {
   constructor(
@@ -36,7 +37,7 @@ export class MaintenanceProcessor {
     const dto = new CreateDebitTransactionSavingsAccountDto()   
     dto.origin_savings_account_code = account.number_savings_account
     // 2) Déduire la maintenance
-    await this.txService.fee_maintenance(dto);
+    // await this.txService.fee_maintenance(dto);
 
 
   }

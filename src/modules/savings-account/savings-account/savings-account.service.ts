@@ -24,6 +24,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -32,6 +33,7 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 
@@ -344,8 +346,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     const qb = this.txRepo
       .createQueryBuilder('tx')
       // Jointures avec les comptes d'épargne
-      .leftJoinAndSelect('tx.originSavingsAccountTx', 'originAccount')
-      .leftJoinAndSelect('tx.targetSavingsAccountTx', 'targetAccount')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'originAccount')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'targetAccount')
       // Jointures supplémentaires si nécessaires (optionnel)
       .leftJoinAndSelect('tx.channelTransaction', 'channel')
       .leftJoinAndSelect('tx.transactionType', 'type')
