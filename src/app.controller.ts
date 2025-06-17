@@ -23,8 +23,10 @@ import { ApiBody } from '@nestjs/swagger';
 
 
 
+
 import { AppService } from './app.service';
 import { QueueService } from './modules/queue/queue.service';
+
 
 
 
@@ -74,13 +76,11 @@ export class AppController {
       attempts: 3,
       backoff: { type: 'fixed', delay: 5000 },
     };
-    if (data.recurring) {
       // Planifie le job chaque mois à minuit à la date du jour
       const now = new Date();
       const day = now.getDate();
       // opts.repeat = { cron: `0 0 ${day} * *` };
       opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
-    }
     const job = await this.queueService.addTaskBuyInterest(2, opts);
     return { jobId: job.id };
   }

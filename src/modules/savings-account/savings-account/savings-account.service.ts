@@ -118,9 +118,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
-  async findOneAdmin(): Promise<SavingsAccount> {
+  async findOneAdmin(branch_id: number = 1): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
-      where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE)  },
+      where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE) , branch_id },
       relations: [
         'customer',
         'type_savings_account',

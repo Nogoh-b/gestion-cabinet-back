@@ -1,29 +1,32 @@
-import { Module } from '@nestjs/common';
-import { RegionController } from './region/region.controller';
-import { DivisionsController } from './divivion/divivion.controller';
-import { DistrictsController } from './district/district.controller';
-import { LocationCitiesController } from './location_city/location_city.controller';
+import { CoreModule } from 'src/core/core.module';
+import { forwardRef, Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { AgenciesModule } from '../agencies/agencies.module';
+import { IamModule } from '../iam/iam.module';
 import { CountriesController } from './country/country.controller';
-import { RegionsService } from './region/region.service';
-import { DivisionsService } from './divivion/divivion.service';
-import { DistrictsService } from './district/district.service';
 import { CountriesService } from './country/country.service';
+import { Country } from './country/entities/country.entity';
+import { DistrictsController } from './district/district.controller';
+import { DistrictsService } from './district/district.service';
+import { District } from './district/entities/district.entity';
+import { DivisionsController } from './divivion/divivion.controller';
+import { DivisionsService } from './divivion/divivion.service';
+import { Division } from './divivion/entities/divivion.entity';
+import { LocationCity } from './location_city/entities/location_city.entity';
+import { LocationCitiesController } from './location_city/location_city.controller';
 import { LocationCitiesService } from './location_city/location_city.service';
 import { Region } from './region/entities/region.entity';
-import { LocationCity } from './location_city/entities/location_city.entity';
-import { District } from './district/entities/district.entity';
-import { Division } from './divivion/entities/divivion.entity';
-import { Country } from './country/entities/country.entity';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { CoreModule } from 'src/core/core.module';
-import { UsersService } from '../iam/user/user.service';
-import { IamModule } from '../iam/iam.module';
+import { RegionController } from './region/region.controller';
+import { RegionsService } from './region/region.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Region,LocationCity,District,Division,Country]),
-    CoreModule,
-    IamModule
+    forwardRef(() => CoreModule),        
+    IamModule,
+    forwardRef(() => AgenciesModule), 
+
   ],
   controllers: [
     RegionController,
@@ -38,7 +41,6 @@ import { IamModule } from '../iam/iam.module';
     DistrictsService,
     LocationCitiesService,
     CountriesService,
-    UsersService
   
   ],
   exports: [

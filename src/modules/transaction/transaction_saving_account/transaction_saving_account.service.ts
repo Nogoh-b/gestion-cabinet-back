@@ -17,28 +17,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
-
-
-
-
-
-
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -63,8 +46,10 @@ export class TransactionSavingsAccountService {
     type_code: string,
     channel_code: string,
     provider_code: string,
+    to_agency = false
   ): Promise<TransactionSavingsAccount> {
-    const adminAcc =  await this.savingsAccountService.findOneAdmin()
+    let adminAcc = new SavingsAccount();
+  
     if ((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code === dto.target_savings_account_code) {
       throw new BadRequestException(`Transfert vers le même compte interdit `);
     }
@@ -75,8 +60,8 @@ export class TransactionSavingsAccountService {
         (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code,
       );
     }
-    else{
-      // origin = adminAcc
+    else if(!(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code && to_agency){
+      origin = await this.savingsAccountService.findOneAdmin(dto.branch_id)
     }
     if (!origin && (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code) {
       throw new NotFoundException(
@@ -91,9 +76,10 @@ export class TransactionSavingsAccountService {
         dto.target_savings_account_code ?? '0',
       );
     }
-    else{
-      // target = adminAcc
+    else if(!(dto).target_savings_account_code && to_agency){
+      target = await this.savingsAccountService.findOneAdmin(dto.branch_id)
     }
+
     if (!target && dto.target_savings_account_code) {
       throw new NotFoundException(
         `Compte cible introuvable pour code : ${dto.target_savings_account_code}`,
@@ -127,10 +113,10 @@ export class TransactionSavingsAccountService {
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.transactionType = txType;
-    tx.origin = (dto as CreateTransactionSavingsAccountDto).origin_savings_account_code ? (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code : "SYTEM";
-    tx.target = (dto as CreateCreditTransactionSavingsAccountDto).target_savings_account_code ?? "SYSTEM";    
-    tx.originSavingsAccount = (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
-    tx.targetSavingsAccount =  (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
+    tx.origin = origin?.number_savings_account ? origin?.number_savings_account : "SYTEM";
+    tx.target = target?.number_savings_account ?? "SYSTEM";    
+    tx.originSavingsAccount = origin //(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
+    tx.targetSavingsAccount = target // (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
     tx.payment_code = paymentCode;
     tx.payment_token_provider = payment_token_provider;
     tx.reference = await reference;
@@ -169,7 +155,7 @@ export class TransactionSavingsAccountService {
   }
 
   credit_interest(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'INTEREST_CREDIT', 'API', 'SYSTEM');
+    return this.perform_transaction(dto, 'INTEREST_CREDIT', 'API', 'SYSTEM', true);
   }
 
   e_wallet_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
@@ -199,6 +185,7 @@ export class TransactionSavingsAccountService {
       'ACCOUNT_MAINTENANCE_',
       'API',
       'SYSTEM',
+      true
     );
   }
 

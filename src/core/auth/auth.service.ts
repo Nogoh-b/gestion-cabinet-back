@@ -1,14 +1,24 @@
+import * as bcrypt from 'bcrypt';
+import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
+import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
+import { UsersService } from 'src/modules/iam/user/user.service';
+
 import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
+
+
+
 import { JwtPayload } from './interfaces/jwt-payload.interface';
-import { UsersService } from 'src/modules/iam/user/user.service';
-import { User } from 'src/modules/iam/user/entities/user.entity';
+
+
+
+
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
+    private employeeService: EmployeeService,
     private jwtService: JwtService,
   ) {}
 
@@ -30,7 +40,8 @@ export class AuthService {
     }
 
   async login(data: any) {
-    const user : User | null  = await this.usersService.findByUsername(data.username);
+    // console.log('data ', data)
+    const user : EmployeeResponseDto | null  = await this.employeeService.findOneByUsername(data.username);
     if (!user) {
         throw new UnauthorizedException('Utilisateur inexistant');
     }
@@ -44,11 +55,7 @@ export class AuthService {
     
     return {
       access_token: this.jwtService.sign(payload),
-      user: {
-        id: user.id,
-        username: user.username,
-        role : role
-      }
+      user
     };
   }
 

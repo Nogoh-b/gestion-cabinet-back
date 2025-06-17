@@ -1,15 +1,26 @@
 import * as bcrypt from 'bcrypt';
+import { plainToInstance } from 'class-transformer';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { CreateEmployeeDto } from 'src/modules/agencies/employee/dto/create-employee.dto';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { Repository } from 'typeorm';
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { CreateUserDto } from './dto/create-user.dto';
-import { User } from './entities/user.entity';
-import { plainToInstance } from 'class-transformer';
-import { UserResponseDto } from './dto/user-response.dto';
+
+
+
+
+
 import { UserRole } from '../user-role/entities/user-role.entity';
-import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { UserRolesService } from '../user-role/user-role.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UserResponseDto } from './dto/user-response.dto';
+import { User } from './entities/user.entity';
+
+
+
+
+
 
 @Injectable()
 export class UsersService {
@@ -18,9 +29,14 @@ export class UsersService {
     private userRepository: Repository<User>,    
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
-    private roleService : UserRolesService
+    private roleService : UserRolesService,
+
+    // @Inject(forwardRef(() => UserRolesService))
+    // private employeeService : EmployeeService
     
-  ) {}
+  ) {
+        // console.log(forwardRef)
+  }
 
   async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
     await validateDto(CreateUserDto, createUserDto)
@@ -45,11 +61,15 @@ export class UsersService {
 
     const user = this.userRepository.create({
       ...createUserDto,
+      customer,
       password: hashedPassword,
       status : 1
     });
 
     const savedUser = await this.userRepository.save(user);
+    let dtoE = new CreateEmployeeDto
+    const {hire_date, branch_id} = createUserDto
+    // await this.employeeService.createEmployee({hire_date, branch_id, user_id : savedUser.id})
 
     return plainToInstance(UserResponseDto, savedUser);
   }
@@ -58,6 +78,8 @@ export class UsersService {
     const users = await this.userRepository
     .createQueryBuilder('user')
     .leftJoinAndSelect('user.customer', 'customer')
+    .leftJoinAndSelect('user.employee', 'employee')
+    .leftJoinAndSelect('employee.branch', 'branch')
     .leftJoinAndSelect('user.roleAssignments', 'roleAssignment', 'roleAssignment.status = 1')
     .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
     .where('user.status = 1')

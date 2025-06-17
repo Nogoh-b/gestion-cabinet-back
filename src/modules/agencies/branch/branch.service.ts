@@ -2,15 +2,30 @@ import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { GenCOde } from 'src/core/shared/utils/generation.util';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
 import { TransactionChannel } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { Repository } from 'typeorm';
-
-
-
-
-
-
-
 
 
 import { Injectable, NotFoundException } from '@nestjs/common';
@@ -18,21 +33,26 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 
 
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
 
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -209,27 +229,40 @@ const branch = await this.branchRepository
   .where('branch.id = :id AND branch.status = 1', { id })
   .getOne();
   let  sa = branch?.savingsAccounts
-  let outgoingTransactions : TransactionSavingsAccount[] = [] 
-  let incomingTransactions : TransactionSavingsAccount[] = [] 
+  let outgoingTransactionsCustomer: TransactionSavingsAccount[] = []; 
+  let incomingTransactionsCustomer : TransactionSavingsAccount[] = [] 
+  let outgoingTransactionsBranch: TransactionSavingsAccount[] = []; 
+  let incomingTransactionsBranch : TransactionSavingsAccount[] = [] 
+  let inComingAmountCustomer = 0
+  let inComingAmountBranch = 0
+  let outgoingAmountCustomer = 0
+  let outgoingAmountBranch = 0
   sa?.forEach((account) => {
     if (account.originSavingsAccountTx) {
         account.originSavingsAccountTx?.forEach((tx) => {
-          if(tx.targetSavingsAccount && tx.targetSavingsAccount.branch_id == branch?.id ){
+          if(account?.is_admin){
+            outgoingTransactionsBranch.push(tx) 
+            outgoingAmountBranch += tx.amount; 
           }
-          if(!tx.targetSavingsAccount && tx.channelTransaction.code != TransactionChannel.API){
-            outgoingTransactions.push(tx);
-          }
+          else{
+            if(tx.channelTransaction.code != TransactionChannel.API)
+              outgoingTransactionsCustomer.push(tx)  
+              outgoingAmountCustomer += tx.amount; 
 
+          }
         });
     }
     if (account.targetSavingsAccountTx) {
-        account.targetSavingsAccountTx?.forEach((tx) => {
-          if(tx.originSavingsAccount && tx.originSavingsAccount.branch_id == branch?.id ){
+       account.targetSavingsAccountTx?.forEach((tx) => {
+          if(account?.is_admin){
+            incomingTransactionsBranch.push(tx)  
+            inComingAmountBranch += tx.amount; 
           }
-          if(!tx.originSavingsAccount && tx.channelTransaction.code != TransactionChannel.API){
-            incomingTransactions.push(tx);
+          else{
+            if(tx.channelTransaction.code != TransactionChannel.API)
+              incomingTransactionsCustomer.push(tx)  
+              inComingAmountCustomer += tx.amount; 
           }
-
         });
     }
   });
@@ -237,8 +270,14 @@ const branch = await this.branchRepository
     return {
       employeeCount: branch?.employees.length,
       savingsAccountCount: branch?.savingsAccounts.length,
-      incomingTransactions: incomingTransactions,
-      outgoingTransactions: outgoingTransactions,
+      incomingTransactionsCustomer: incomingTransactionsCustomer.length,
+      outgoingTransactionsCustomer: outgoingTransactionsCustomer.length,
+      incomingTransactionsBranch: incomingTransactionsBranch.length,
+      outgoingTransactionsBranch: outgoingTransactionsBranch.length,
+      inComingAmountCustomer,
+      outgoingAmountCustomer,
+      inComingAmountBranch,
+      outgoingAmountBranch,
     };
 
   }

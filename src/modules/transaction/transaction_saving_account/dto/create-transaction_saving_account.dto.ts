@@ -18,6 +18,9 @@ export class CreateTransactionSavingsAccountDto {
   @Min(0)
   amount: number;
 
+  @ApiProperty({ example: 1, description: '' })
+  @IsNumber()
+  branch_id: number;
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
   @IsString()
@@ -73,6 +76,9 @@ export class CreateCreditTransactionSavingsAccountDto {
   @IsBoolean()
   is_locked: boolean;                           // true si la transaction est bloquée, false sinon
 
+  @ApiProperty({ example: 1, description: '' })
+  @IsNumber()
+  branch_id: number;
 
 }
 
@@ -82,6 +88,10 @@ export class CreateDebitTransactionSavingsAccountDto {
   @Min(0)
   amount: number;
 
+
+  @ApiProperty({ example: 1, description: '' })
+  @IsNumber()
+  branch_id: number;
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
   @IsString()

@@ -1,31 +1,39 @@
-import { Module } from '@nestjs/common';
+import { CoreModule } from 'src/core/core.module';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Branch } from './branch/entities/branch.entity';
-import { Employee } from './employee/entities/employee.entity';
-import { IamModule } from '../iam/iam.module';
+
+
+
+
+
+
+
 import { GeographyModule } from '../geography/geography.module';
-import { EmployeeController } from './employee/employee.controller';
+import { IamModule } from '../iam/iam.module';
 import { BranchController } from './branch/branch.controller';
 import { BranchService } from './branch/branch.service';
+import { Branch } from './branch/entities/branch.entity';
+import { EmployeeController } from './employee/employee.controller';
 import { EmployeeService } from './employee/employee.service';
-import { CoreModule } from 'src/core/core.module';
+import { Employee } from './employee/entities/employee.entity';
+
+
+
+
+
+
+
 
 @Module({
   imports: [
+    forwardRef(() => CoreModule),
+    forwardRef(() => GeographyModule),
     IamModule,
-    CoreModule,
-    GeographyModule,
     TypeOrmModule.forFeature([Branch, Employee]),
+
   ],
-  controllers:[BranchController, EmployeeController],
-  providers : [
-    BranchService,
-    EmployeeService
-  ],
-  exports:[
-    BranchService,
-    EmployeeService,
-    TypeOrmModule
-  ]
+  controllers: [BranchController, EmployeeController],
+  providers: [BranchService, EmployeeService],
+  exports: [BranchService, EmployeeService, TypeOrmModule],
 })
 export class AgenciesModule {}

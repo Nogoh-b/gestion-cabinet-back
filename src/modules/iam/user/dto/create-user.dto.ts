@@ -1,6 +1,8 @@
 // create-user.dto.ts
+import { IsInt, IsString, IsEmail, IsNotEmpty, IsDateString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsString, IsEmail, IsNotEmpty } from 'class-validator';
+
+
 
 export class CreateUserDto {
 
@@ -27,9 +29,15 @@ export class CreateUserDto {
   @IsInt()
   status: number;
 
-  /*@ApiProperty({ enum: ['caisse', 'comptable', 'DG', 'DAF', 'PCA'] })
-  @IsEnum(['caisse', 'comptable', 'DG', 'DAF', 'PCA'])
-  type: string;*/
+  @ApiProperty()
+  @IsInt()
+  branch_id: number;
+
+ 
+
+  @ApiProperty()
+  @IsDateString()
+  hire_date: string;
 
   @ApiProperty({ required: true })
   @IsInt()

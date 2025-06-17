@@ -1,13 +1,17 @@
 /* eslint-disable prettier/prettier */
+import { AgenciesModule } from 'src/modules/agencies/agencies.module';
 import { IamModule } from 'src/modules/iam/iam.module';
-import { Global, Module } from '@nestjs/common';
+import { forwardRef, Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+
+
+
+
+
 import { TypeOrmModule } from '@nestjs/typeorm';
-
-
 
 
 import { AuthController } from './auth/auth.controller';
@@ -16,8 +20,8 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
-import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 // import { swaggerConfig } from './config/swagger.config';
+import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
 import { SeedersModule } from './database/seeders/seeders.module';
@@ -32,10 +36,14 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
 
 
 
+
+
+
 @Global()
 @Module({
   imports: [
-    IamModule,
+    forwardRef(() => IamModule),
+    forwardRef(() => AgenciesModule),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],

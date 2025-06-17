@@ -5,14 +5,43 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { ApiProperty } from '@nestjs/swagger';
 
 
-export class UserResponseDto {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export class EmployeeResponseDto {
   @Expose()
   @ApiProperty()
+  @Transform(({ obj }) => obj.user?.id)
   id: number;
 
   @Expose()
   @ApiProperty()
+  @Transform(({ obj }) => obj.id)
+  employee_id: number;
+
+  @Exclude() 
+  user: any; 
+
+  @Expose()
+  @ApiProperty()
+  @Transform(({ obj }) => obj.user?.username)
   username: string;
+
+  @Expose()
+  @ApiProperty()
+  @Transform(({ obj }) => obj.user?.email)
+  email: string;
 
   @Expose()
   @ApiProperty()
@@ -23,50 +52,34 @@ export class UserResponseDto {
   refreshToken: string;
 
   @Expose()
-  @ApiProperty({ enum: ['caisse', 'comptable', 'DG', 'DAF', 'PCA'] })
-  type: string;
-
-  @Expose({ name: 'customer_id' })
   @ApiProperty()
-  @Transform(({ obj }) => obj.customer?.id)
-  customer_id: number;
-
-  @Expose({ name: 'branch' })
-  @ApiProperty()
-  @Transform(({ obj }) => obj.employee?.branch)
-  branch: Branch;
-
-  @Expose({ name: 'branch' })
-  @ApiProperty()
-  customer: Customer;
-
-  /*@Expose()
-  @ApiProperty({ type: [UserRole] })
-  @Transform(({ obj }) => 
-    obj.roleAssignments?.map(assignment => assignment.role) || []
-  )
-  roles: UserRole[];*/
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) =>
-    obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.code || null
-  )
+  @Transform(({ obj }) => obj.user?.roleAssignments?.[0]?.role?.code ?? null)
   role: string;
 
+
+  @Expose({ name: 'branch' })
+  @ApiProperty()
+  branch: Branch;
+
+  @Expose({ name: 'customer' })
+  @ApiProperty()
+  @Transform(({ obj }) => obj.user?.customer ?? null)
+
+  customer: Customer;
+
   @Expose()
   @ApiProperty()
-  @Transform(({ obj }) =>
-    obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.description || null
-  )
+
+  @Transform(({ obj }) => obj.user?.roleAssignments?.[0]?.role?.description ?? null)
+
   roleDescription: string;
 
   @Expose({ name: 'created_at' })
   @ApiProperty()
   create_at: Date;
 
-  @Exclude()
-  roleAssignments: any; 
+  /*@Exclude()
+  roleAssignments: any; */
 
   @Exclude()
   password: string; 
