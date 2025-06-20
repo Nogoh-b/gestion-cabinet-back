@@ -14,11 +14,17 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/s
 
 
 
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
-import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
-import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
+import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
+import { SavingsAccountHasInterest } from './entities/account-has';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+import { SavingsAccountService } from './savings-account.service-interest.entity';
+
+
+
 
 
 
@@ -153,6 +159,18 @@ export class SavingsAccountController {
     @Body() dto: UpdateSavingsAccountDto,
   ) {
     return this.service.update(id, dto);
+  }
+
+  @Put(':id')
+  @ApiOperation({ summary: 'Remplace entièrement un compte existant' })
+  @ApiParam({ name: 'id', description: "ID du compte", type: Number })
+  @ApiBody({ type: UpdateCodeCahOfSavingAccountDto })
+  @ApiResponse({ status: 200, description: 'Compte mis à jour', type: SavingsAccount })
+  updateCodeCash(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateCodeCahOfSavingAccountDto,
+  ) {
+    return this.service.updateCodeCash(id, dto);
   }
 
   @Patch(':id')

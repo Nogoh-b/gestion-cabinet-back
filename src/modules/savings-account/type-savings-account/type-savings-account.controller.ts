@@ -20,6 +20,7 @@ export class TypeSavingsAccountController {
     return this.service.findAll();
   }
 
+
   @Get('online')
   @ApiOperation({ summary: 'Liste tous les produits d’épargne En ligne' })
   @ApiResponse({ status: 200, type: [TypeSavingsAccount] })

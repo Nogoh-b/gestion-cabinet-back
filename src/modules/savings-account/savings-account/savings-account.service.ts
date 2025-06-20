@@ -36,7 +36,7 @@ import { InterestSavingAccount } from '../interest-saving-account/entities/inter
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountService } from '../type-savings-account/type-savings-account.service';
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
-import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
+import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
 
@@ -260,7 +260,17 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // 4. On enregistre avec save() pour que TypeORM gère les relations
     return this.repo.save(account);
   }
-
+  async updateCodeCash(id: number, dto: UpdateCodeCahOfSavingAccountDto): Promise<SavingsAccount> {
+    // 1. Charge l’entité existante
+    const account = await this.repo.findOne({ where: { id }, relations: ['type_savings_account'] });
+    if (!account) {
+      throw new NotFoundException(`Compte épargne #${id} introuvable`);
+    }
+    // 3. On copie le reste des propriétés simples
+    Object.assign(account, dto);
+    // 4. On enregistre avec save() pour que TypeORM gère les relations
+    return this.repo.save(account);
+  }
 
   async remove(id: number): Promise<any> {
     const account = await this.repo.findOne({

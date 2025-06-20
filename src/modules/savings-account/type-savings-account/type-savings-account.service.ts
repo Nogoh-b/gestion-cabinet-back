@@ -44,6 +44,7 @@ export class TypeSavingsAccountService {
     });
   }
 
+
   async findAllOnline(): Promise<TypeSavingsAccount[]> {
     return this.repo.find({
       where: { status: 1, canCreateOnline : 1 },
