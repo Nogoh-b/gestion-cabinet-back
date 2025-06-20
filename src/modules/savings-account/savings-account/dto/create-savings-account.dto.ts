@@ -1,5 +1,6 @@
-import { IsOptional, IsString, IsInt, IsISO8601, IsNumber, IsDateString } from 'class-validator';
+import { IsOptional, IsInt, IsISO8601, IsNumber, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 
 
 
@@ -23,6 +24,7 @@ export class CreateSavingsAccountDto {
   @IsNumber()*/
   balance: number;
   avalaible_balance: number;
+  customer_code: string;
 
   @ApiProperty({ description: 'ID du client', example: 1 })
   @IsInt()
@@ -41,13 +43,13 @@ export class CreateSavingsAccountDto {
   @Length(1, 45)
   IBAN: string;*/
 
-  @ApiProperty({ description: 'Code produit' })
-  @IsString()
+  /*@ApiProperty({ description: 'Code produit' })
+  @IsString()*/
   code_product: string;
 
-  @ApiPropertyOptional({ description: 'Lien vers le wallet' })
+  /*@ApiPropertyOptional({ description: 'Lien vers le wallet' })
   @IsOptional()
-  @IsString()
+  @IsString()*/
   wallet_link?: string;
 
   /*@ApiPropertyOptional({ description: 'Taux d’intérêt annuel spécifique' })

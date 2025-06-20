@@ -19,6 +19,7 @@ import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
 
 
+
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -29,7 +30,6 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 @ApiTags('customer')
 @Controller('customer')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth() 
 
 export class CustomerController {
@@ -39,7 +39,6 @@ export class CustomerController {
   ) {}
 
   @Post()
-
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
   @RequirePermissions('CREATE_CUSTOMER')
@@ -48,6 +47,8 @@ export class CustomerController {
   }
 
   @Post('/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('VIEW_CUSTOMER')
   @ApiOperation({ summary: 'Rechercher customer' })
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
 
@@ -85,12 +86,13 @@ export class CustomerController {
   @ApiOperation({ summary: 'Get a customer by ID' })
   @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  @RequirePermissions('VIEW_CUSTOMER')
+  // @RequirePermissions('VIEW_CUSTOMER')
   async findOne(@Param('id') id: string): Promise<CustomerResponseDto> {
     return await this.customerService.findOne(+id);
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiOperation({ summary: 'Update a customer' })
   @ApiResponse({ status: 200, description: 'Customer updated', type: CustomerResponseDto })
   @ApiResponse({ status: 404, description: 'Customer not found' })
@@ -103,6 +105,7 @@ export class CustomerController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiOperation({ summary: 'Delete a customer' })
   @ApiResponse({ status: 204, description: 'Customer deleted' })
   @ApiResponse({ status: 404, description: 'Customer not found' })
@@ -112,15 +115,16 @@ export class CustomerController {
   }
 
   @Post('contact')
-async contactForm(@Body() contactDto: any) {
-  return await this.emailService.sendMail({
-    to: 'nogohbrice@gmail.com',
-    subject: 'Nouveau message de contact',
-    template: 'contact-form',
-    context: {
-      name: 'contactDto.name',
-      message: 'contactDto.message'
-    }
-  });
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  async contactForm(@Body() contactDto: any) {
+    return await this.emailService.sendMail({
+      to: 'nogohbrice@gmail.com',
+      subject: 'Nouveau message de contact',
+      template: 'contact-form',
+      context: {
+        name: 'contactDto.name',
+        message: 'contactDto.message'
+      }
+    });
 }
 }

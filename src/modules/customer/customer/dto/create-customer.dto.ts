@@ -1,5 +1,4 @@
 // create-customer.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsInt,
@@ -11,7 +10,14 @@ import {
   IsPhoneNumber,
   IsNotEmpty,
 } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+
+
 import { CustomerCreatedFrom } from '../entities/customer.entity';
+
+
+
 
 export class CreateCustomerDto {
   @IsString()
@@ -49,16 +55,26 @@ export class CreateCustomerDto {
   @MaxLength(45)
   email?: string;
 
-  @IsString()
-  @ApiProperty({ example: '00000000000000000' })
-  @MaxLength(45)
-  nui?: string;
 
   @IsString()
-  @ApiProperty({ example: '00000000000000000' })
   @MaxLength(45)
-  @IsOptional()
-  rccm?: string;
+  @IsOptional() 
+  @ApiProperty({ 
+    example: '00000000000000000',
+    required: false, 
+    nullable: true 
+  })
+  nui?: string | undefined ; 
+
+  @IsString()
+  @MaxLength(45)
+  @IsOptional() 
+  @ApiProperty({ 
+    example: '00000000000000000',
+    required: false,
+    nullable: true
+  })
+  rccm?: string | undefined 
 
   @IsDate()
   @ApiProperty({ example: '2020-01-01' })

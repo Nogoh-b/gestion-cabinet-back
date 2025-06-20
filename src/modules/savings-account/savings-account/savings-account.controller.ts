@@ -123,6 +123,16 @@ export class SavingsAccountController {
     return this.service.create(dto);
   }
 
+  @Post('online')
+  @ApiOperation({ summary: 'Crée un nouveau compte d’épargne' })
+  @ApiBody({ type: CreateSavingsAccountDto })
+  @ApiResponse({ status: 201, description: 'Compte créé', type: SavingsAccount })
+  createOnline(
+    @Body() dto: CreateSavingsAccountDto,
+  ) {
+    return this.service.createOnline(dto);
+  }
+
   @Post('admin')
   @ApiOperation({ summary: 'Crée un nouveau compte d’épargne Admin' })
   @ApiBody({ type: CreateSavingsAccountDto })

@@ -25,6 +25,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -33,6 +39,12 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
 
 
 
@@ -155,7 +167,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     is_admin = false
   ): Promise<SavingsAccount> {
     if(is_admin){
-      const acc = await this.repo.findOne({ where: { is_admin } });
+      const acc = await this.repo.findOne({ where: { is_admin, branch_id: dto.branch_id  } });
       if (acc) throw new NotFoundException(`Compte dmin déjà existant`);
     }
     const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
@@ -202,6 +214,25 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
 
     return this.repo.save(account);
+  }
+  async createOnline(
+    dto: CreateSavingsAccountDto,
+  ): Promise<SavingsAccount> {
+
+
+    const customer = await this.customerRepo.findOne({ where: { customer_code: dto.customer_code } , relations :['branch'] });
+    if (!customer) throw new NotFoundException(`Client ${dto.customer_id} introuvable`);
+    const branch = await this.branchRepo.findOne({
+      where: {},
+      order: { created_at: 'ASC' } // Si vous avez un timestamp de création
+    });
+    if (!branch) throw new NotFoundException('Aucune agence trouvée');
+    dto.customer_id = customer.id;
+    console.log(customer)
+    dto.branch_id = branch.id
+
+    return this.create(dto)
+
   }
 
   async save(sa_s : SavingsAccount[]): Promise<any> {

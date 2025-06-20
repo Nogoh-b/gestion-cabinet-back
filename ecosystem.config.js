@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'core-server', // Nom du service Gateway
-      script: './dist/main.js',
+      script: './dist/src/main.js',
       autorestart: true,
       exec_mode: 'cluster',
       max_restarts: 10,
