@@ -16,35 +16,11 @@ import {
 } from '@nestjs/common';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
-
-
-
-
-
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
-
-
-
-
-
-
 
 import { DocumentCustomerService } from './document-customer.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @ApiTags('Customer Documents')
 @ApiConsumes('multipart/form-data')

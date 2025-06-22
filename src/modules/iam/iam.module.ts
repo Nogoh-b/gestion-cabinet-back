@@ -5,6 +5,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { ActivitiesUserController } from './activities-user/activities-user.controller';
 import { ActivitiesUserService } from './activities-user/activities-user.service';
@@ -22,7 +24,6 @@ import { UserRole } from './user-role/entities/user-role.entity';
 import { UserRolesController } from './user-role/user-role.controller';
 import { UserRolesService } from './user-role/user-role.service';
 import { User } from './user/entities/user.entity';
-import { UsersController } from './user/user.controller';
 import { UsersService } from './user/user.service';
 
 
@@ -30,8 +31,12 @@ import { UsersService } from './user/user.service';
 
 
 
+
+
 @Module({
-  controllers: [ UsersController, ActivitiesUserController, PermissionsController, UserRolesController, RolePermissionController,  UserRoleAssignmentController],
+  controllers: [ 
+    // UsersController, 
+  ActivitiesUserController, PermissionsController, UserRolesController, RolePermissionController,  UserRoleAssignmentController],
   imports: [
     TypeOrmModule.forFeature([
       UserRole,
@@ -47,7 +52,7 @@ import { UsersService } from './user/user.service';
      PermissionsService,
      UserRolesService, 
      RolePermissionService, 
-    UsersService, 
+     UsersService, 
      ActivitiesUserService, 
      UserRoleAssignmentService, 
      ],

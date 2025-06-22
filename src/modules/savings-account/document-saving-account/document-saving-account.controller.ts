@@ -52,6 +52,7 @@ export class DocumentSavingAccountController {
     @Body() dto: CreateDocumentSavingAccountDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    console.log(file , ' ',dto)
     if (!file) throw new BadRequestException('Aucun fichier uploadé 1');
     return this.service.createSingle(dto, file);
   }

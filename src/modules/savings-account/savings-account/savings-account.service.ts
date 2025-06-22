@@ -2,32 +2,36 @@ import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'sr
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
+
+
+
 import { Not, Repository } from 'typeorm';
-
-
-
-
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -39,6 +43,9 @@ import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-sa
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
 
 
 
@@ -77,6 +84,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     private readonly interestRepo: Repository<SavingsAccountHasInterest>, 
     private typeSavingAcount : TypeSavingsAccountService,
     private paginationService: PaginationService,
+    private customerService: CustomersService,
   ) { super(); }
 
   getRepository(): Repository<SavingsAccount> {
@@ -121,6 +129,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations: [
         'customer',
         'type_savings_account',
+        'type_savings_account.required_documents',
         'branch',
         'documents',
         'interestRelations',
@@ -151,6 +160,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations: [
         'customer',
         'type_savings_account',
+        'type_savings_account.required_documents',
         'branch',
         'documents',
         'interestRelations',
@@ -201,7 +211,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       amount_created: 0,
       avalaible_balance: 0,
       status: SavingsAccountStatus.PENDING,
-      code_product: dto.code_product,
+      // code_product: dto.code_product,
       wallet_link: dto.wallet_link,
       is_admin,
       // interest_year_savings_account: dto.interest_year_savings_account,
@@ -211,7 +221,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       type_savings_account: {
         id: dto.type_savings_account_id,
       } as TypeSavingsAccount,
+
     });
+
+    if(dto.location_city_id){
+      this.customerService.update(customer.id, {
+        location_city_id: dto.location_city_id,
+      });
+    }
 
     return this.repo.save(account);
   }

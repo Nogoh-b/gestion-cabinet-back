@@ -39,10 +39,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
+
 
 
 
@@ -129,7 +131,7 @@ export class BranchService {
     }
 
     // 2. Si location_city_id est fourni dans le DTO
-    if (dto.location_city_id) {
+    /*if (dto.location_city_id) {
       const city = await this.locationCityService.findOne(dto.location_city_id);
 
       if (!city) {
@@ -139,7 +141,7 @@ export class BranchService {
       }
       existingBranch.location_city = city;
       delete dto.location_city_id; // Pour éviter de l'envoyer deux fois
-    }
+    }*/
 
     // 3. Fusionner les modifications
     this.branchRepository.merge(existingBranch, dto);

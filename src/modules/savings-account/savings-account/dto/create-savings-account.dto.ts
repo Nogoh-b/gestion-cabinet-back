@@ -45,7 +45,7 @@ export class CreateSavingsAccountDto {
 
   /*@ApiProperty({ description: 'Code produit' })
   @IsString()*/
-  code_product: string;
+  location_city_id?: number;
 
   /*@ApiPropertyOptional({ description: 'Lien vers le wallet' })
   @IsOptional()

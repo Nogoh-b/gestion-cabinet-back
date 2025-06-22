@@ -1,6 +1,7 @@
 // division.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { Region } from '../../region/entities/region.entity';
+import { District } from '../../district/entities/district.entity';
 
 @Entity('division')
 export class Division {
@@ -16,6 +17,12 @@ export class Division {
   @ManyToOne(() => Region, { nullable: false, eager: true  })
   @JoinColumn({ name: 'region_id' })
   region: Region;
+
+    @OneToMany(
+        () => District,
+        district => district.division
+      )
+      districts: District[];
 
   @Column({ type: 'varchar', length: 45, nullable: true })
   population: string;

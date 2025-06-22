@@ -1,8 +1,10 @@
 // location-cities.service.ts
+import { plainToInstance } from 'class-transformer';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { DataSource, Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
 
+
+import { Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -13,14 +15,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
 import { DistrictsService } from '../district/district.service';
 import { CreateLocationCityDto } from './dto/create-location_city.dto';
+import { ResponseLocationCityDto } from './dto/response-location_city.dto';
 import { UpdateLocationCityDto } from './dto/update-location_city.dto';
 import { LocationCity } from './entities/location_city.entity';
-
-
-
 
 
 
@@ -46,12 +45,36 @@ export class LocationCitiesService extends BaseService<LocationCity> {
     return this.repository.save({ ...dto, district });
   }
 
-  findAll(): Promise<LocationCity[]> {
-    
-    return this.repository.find();
+async findAll(): Promise<ResponseLocationCityDto[]> {
+  const location_cities = await this.repository.find({
+    relations: [
+      'district',
+      'district.division',
+      'district.division.region',
+      'district.division.region.country'
+    ]
+  });
+  
+  return location_cities.map(location_city => 
+    plainToInstance(ResponseLocationCityDto, location_city)
+  );
+}
+
+  async findOne(id: number): Promise<ResponseLocationCityDto> {
+    const city = await this.repository.findOne({
+      where: { id },
+      relations: [
+        'district',
+        'district.division',
+        'district.division.region',
+        'district.division.region.country',
+      ],
+    });
+    if (!city) throw new NotFoundException('Location city not found');
+    return plainToInstance(ResponseLocationCityDto,city);
   }
 
-  async findOne(id: number): Promise<LocationCity> {
+  async findOneSimple(id: number): Promise<LocationCity> {
     const city = await this.repository.findOne({
       where: { id },
       relations: [
@@ -75,11 +98,12 @@ export class LocationCitiesService extends BaseService<LocationCity> {
   }
 
   async update(id: number, dto: UpdateLocationCityDto): Promise<LocationCity> {
-    const city = await this.findOne(id);
+    return new LocationCity
+    /*const city = await this.findOne(id);
     if (dto.districts_id) {
       city.district = await this.districtsService.findOne(dto.districts_id);
     }
-    return this.repository.save({ ...city, ...dto });
+    return this.repository.save({ ...city, ...dto });*/
   }
 
   async remove(id: number): Promise<void> {
@@ -99,7 +123,7 @@ export class LocationCitiesService extends BaseService<LocationCity> {
         direction: 'ASC',
       },
     });
+    return plainToInstance(ResponseLocationCityDto,results);
 
-    return results; 
   }
 } 

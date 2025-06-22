@@ -1,11 +1,22 @@
 // regions.service.ts
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Region } from './entities/region.entity';
-import { CreateRegionDto } from './dto/create-region.dto';
+
+
+
+
+
 import { CountriesService } from '../country/country.service';
+import { Division } from '../divivion/entities/divivion.entity';
+import { CreateRegionDto } from './dto/create-region.dto';
 import { UpdateRegionDto } from './dto/update-region.dto';
+import { Region } from './entities/region.entity';
+
+
+
+
+
 
 @Injectable()
 export class RegionsService {
@@ -22,6 +33,12 @@ export class RegionsService {
 
   findAll(): Promise<Region[]> {
     return this.repository.find({ relations: ['country'] });
+  }
+
+  async findOneDivision(id: number): Promise<Division[]> {
+    const region = await this.repository.findOne({where :{ id}, relations: ['divisions'] });
+    if (!region) throw new NotFoundException('Pays non existant');
+    return region.divisions;
   }
 
   async findOne(id: number): Promise<Region> {

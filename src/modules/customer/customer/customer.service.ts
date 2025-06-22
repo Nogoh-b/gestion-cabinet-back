@@ -182,6 +182,11 @@ export class CustomersService extends BaseService<Customer> {
     }
 
     Object.assign(customer, dto);
+    if(dto.location_city_id){
+      customer.location_city = await this.locationcityService.findOneSimple(
+        dto.location_city_id,
+      );
+    }
     return plainToInstance(CustomerResponseDto , this.customerRepository.save(customer));
   }
 

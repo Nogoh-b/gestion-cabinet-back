@@ -1,25 +1,40 @@
 // create-location-city.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsInt, IsOptional, IsNotEmpty } from 'class-validator';
+import { Exclude, Expose, Transform } from 'class-transformer';
+import { IsString, IsOptional } from 'class-validator';
+import { CreateCustomerDto } from 'src/modules/customer/customer/dto/create-customer.dto';
+import { ApiProperty, PartialType } from '@nestjs/swagger';
 
-export class CreateLocationCityDto {
+
+import { District } from '../../district/entities/district.entity';
+
+
+
+
+
+
+
+
+
+export class ResponseLocationCityDto  extends PartialType(CreateCustomerDto) {
+  @Expose()
   @IsString()
   @ApiProperty()
   @IsOptional()
   name?: string;
 
-  @IsString()
-  @ApiProperty()
-  @IsOptional()
-  code?: string;
+  @Exclude()
+  district?: District;
 
-  @IsString()
+  @Expose()
+  @Transform(({ obj }) => {
+    return [
+      obj.name,
+      obj.district?.name,
+      obj.district?.division?.name,
+      obj.district?.division?.region?.name,
+      obj.district?.division?.region?.country?.name
+    ].filter(Boolean).join(', ');
+  })
   @ApiProperty()
-  @IsOptional()
-  population?: string;
-
-  @IsInt()
-  @ApiProperty()
-  @IsNotEmpty()
-  districts_id: number;
+  fullAddress: string;
 }

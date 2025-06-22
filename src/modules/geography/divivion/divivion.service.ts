@@ -1,11 +1,16 @@
 // divisions.service.ts
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { UpdateDivisionDto } from './dto/update-divivion.dto';
-import { Division } from './entities/divivion.entity';
+
+
+import { District } from '../district/entities/district.entity';
 import { RegionsService } from '../region/region.service';
 import { CreateDivisionDto } from './dto/create-divivion.dto';
+import { UpdateDivisionDto } from './dto/update-divivion.dto';
+import { Division } from './entities/divivion.entity';
+
+
 
 @Injectable()
 export class DivisionsService {
@@ -38,6 +43,15 @@ export class DivisionsService {
     });
     if (!division) throw new NotFoundException('Division not found');
     return division;
+  }
+
+  async findOneDistrict(id: number): Promise<District[]> {
+    const division = await this.repository.findOne({ 
+      where: { id },
+      relations: ['districts']
+    });
+    if (!division) throw new NotFoundException('Division not found');
+    return division.districts;
   }
 
   async update(id: number, dto: UpdateDivisionDto): Promise<Division> {

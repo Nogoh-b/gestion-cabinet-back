@@ -2,13 +2,8 @@ import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
-
-
-
-
-
-
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+
 
 
 
@@ -18,18 +13,9 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/s
 
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
-import { SavingsAccountHasInterest } from './entities/account-has';
+import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
-import { SavingsAccountService } from './savings-account.service-interest.entity';
-
-
-
-
-
-
-
-
 
 
 
@@ -117,6 +103,16 @@ export class SavingsAccountController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.service.findOne(id);
+  }
+
+  @Get('by-code/:number_savings_account')
+  @ApiOperation({ summary: 'Récupère un compte d’épargne par CODE et agence' })
+  @ApiParam({ name: 'number_savings_account', description: "CODE du compte", type: String })
+  @ApiResponse({ status: 200, description: 'Compte trouvé', type: SavingsAccount })
+  findOneByCode(
+    @Param('number_savings_account') number_savings_account: string,
+  ) {
+    return this.service.findOneByCode(number_savings_account);
   }
 
   @Post()

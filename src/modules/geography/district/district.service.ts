@@ -6,6 +6,7 @@ import { CreateDistrictDto } from './dto/create-district.dto';
 import { District } from './entities/district.entity';
 import { DivisionsService } from '../divivion/divivion.service';
 import { UpdateDistrictDto } from './dto/update-district.dto';
+import { LocationCity } from '../location_city/entities/location_city.entity';
 
 @Injectable()
 export class DistrictsService {
@@ -22,6 +23,12 @@ export class DistrictsService {
 
   findAll(): Promise<District[]> {
     return this.repository.find({ relations: ['division'] });
+  }
+
+  async findOneLocationCities(id: number): Promise<LocationCity[]> {
+    const region = await this.repository.findOne({where :{ id}, relations: ['location_cities'] });
+    if (!region) throw new NotFoundException('Pays non existant');
+    return region.location_cities;
   }
 
   async findOne(id: number): Promise<District> {
