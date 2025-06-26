@@ -17,11 +17,25 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
 
 
 
@@ -196,6 +210,10 @@ export class TransactionSavingsAccountService {
     return this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'MOBILE', 'SYSTEM');
   }
 
+
+
+
+
   // Liste toutes les transactions épargne
   findAll(
     page?: number,
@@ -215,6 +233,36 @@ export class TransactionSavingsAccountService {
       .leftJoinAndSelect('tx.originSavingsAccount', 'originSavingsAccount')
       .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
       .orderBy('tx.created_at', 'DESC');
+    const options: PaginationOptions & { search?: SearchOptions; 
+    dateRange?: DateRange } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+    console.log('------options---- ', options)
+    return this.paginationService.paginate(qb, options);
+  }
+
+
+
+
+  findAllByType(
+    page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string,
+    txTypeCode?: string
+  ): 
+  Promise<PaginatedResult<TransactionSavingsAccount>> {
+    const qb = this.repo
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.channelTransaction', 'channelTransaction')
+      .leftJoinAndSelect('tx.provider', 'provider')
+      .leftJoinAndSelect('tx.transactionType', 'transactionType', 'transactionType.code = :txTypeCode' , { txTypeCode })
+      .leftJoinAndSelect('tx.originSavingsAccount', 'originSavingsAccount')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
+      .orderBy('tx.created_at', 'DESC').andWhere('transactionType.id IS NOT NULL');
     const options: PaginationOptions & { search?: SearchOptions; 
     dateRange?: DateRange } = { page, limit };
     if (term) options.search = { term, fields, exact };

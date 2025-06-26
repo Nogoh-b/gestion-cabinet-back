@@ -1,20 +1,39 @@
+import { plainToInstance } from 'class-transformer';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { PaginatedResult } from 'src/core/shared/interfaces/pagination.interface';
+import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { DocumentSavingAccount } from 'src/modules/savings-account/document-saving-account/entities/document-saving-account.entity';
+
+
+
+
+
+
+
+
+
 import { In, Repository } from 'typeorm';
+
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
-
-
-
-
+import { SavingsAccountResponseDto } from '../savings-account/dto/response-savings-account.dto';
 import { SavingsAccountService } from '../savings-account/savings-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
+import { DocumentSavingAccountResponseDto } from './dto/response-document-saving-account.dto';
+
+
+
+
+
+
+
 
 
 
@@ -36,12 +55,13 @@ export class DocumentSavingAccountService {
     private readonly customerRepo: Repository<Customer>,
     @InjectRepository(DocumentType)
     private readonly docTypeRepo: Repository<DocumentType>,
+    private paginationService: PaginationService,
 
     private  saService: SavingsAccountService,
 
   ) {}
   /** Valide un document (status -> ACCEPTED) */
-  async validateDocument(id: number): Promise<DocumentSavingAccount> {
+  async validateDocument(id: number): Promise<DocumentSavingAccountResponseDto> {
     const doc = await this.findOne(id);
     if (doc.status !== DocumentSavingAccountStatus.PENDING) throw new BadRequestException('Only pending documents can be accepted');
 
@@ -57,12 +77,29 @@ export class DocumentSavingAccountService {
       },
       relations: ['document_type'],
     });
-    return doc;
+    return plainToInstance(DocumentSavingAccountResponseDto, doc);
     const acceptedIds = new Set(accepted.map(d => d.document_type.id));
     if (required.every(r => acceptedIds.has(r.id))) {
       await this.saService.validateAccount(idSa);
     }
   }
+
+    async findAllPendingDocBySavingAcounts(page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+      return await this.saService.findAllPendingDocs(
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+      term,
+      fields,
+      exact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined)
+    }
 
   /** Refuse un document (status -> REFUSED) */
   async refuseDocument(id: number): Promise<DocumentSavingAccount> {
@@ -76,16 +113,18 @@ export class DocumentSavingAccountService {
   }
 
 
-  async findOne(id: number): Promise<DocumentSavingAccount> {
+  async findOne(id: number): Promise<DocumentSavingAccountResponseDto> {
     const doc = await this.repo.findOne({ where: { id } , relations: ['customer', 'document_type', 'savings_account'] });
     if (!doc) throw new NotFoundException(`Document ${id} introuvable`);
-    return doc;
+    return (plainToInstance(DocumentSavingAccountResponseDto, doc) );
   }
 
-    async createSingle(
+  async createSingle(
     dto: CreateDocumentSavingAccountDto,
     file: Express.Multer.File,
   ): Promise<DocumentSavingAccount | any> {
+    console.log('---dto---- ',dto)
+
     // Vérification des jointures
     const sa = await this.saService.findOne(dto.savings_account_id);
     if (!sa) throw new NotFoundException(`Savings account ${dto.savings_account_id} not found in branch`);
@@ -109,7 +148,6 @@ export class DocumentSavingAccountService {
       relations: ['savings_account', 'document_type'],
     });
     if (existing) {
-      console.log(existing)
       throw new ConflictException('Un document est déjà en attente ou validé pour ce type.');
     }
 
@@ -156,5 +194,79 @@ export class DocumentSavingAccountService {
       results.push(await this.createSingle(dtos[i], files[i]));
     }
     return results;
+  }
+
+  async findDocumentsByAccount(
+    accountId: number,
+    status?: number,
+    page?: number,
+    limit?: number
+  ): Promise<PaginatedResult<DocumentSavingAccountResponseDto>> {
+    // Vérifier que le compte existe
+    const accountExists = await this.repo.manager.getRepository('savings_account').count({ where: { id: accountId } });
+    if (!accountExists) {
+      throw new NotFoundException(`Savings account with ID ${accountId} not found`);
+    }
+
+    const qb = this.repo.createQueryBuilder('doc')
+      .leftJoinAndSelect('doc.document_type', 'document_type')
+      .leftJoinAndSelect('doc.customer', 'customer')
+      .where('doc.savings_account_id = :accountId', { accountId });
+
+    // Filtrer par statut si fourni
+    if (status !== undefined) {
+      qb.andWhere('doc.status = :status', { status });
+    }
+
+    // Options de pagination
+    const options = { page, limit };
+
+    // Exécuter la pagination
+    const paginatedResult = await this.paginationService.paginate<DocumentSavingAccount>(qb, options);
+
+    // Transformer les résultats en DTO
+    const data = paginatedResult.data.map(doc => 
+      plainToInstance(DocumentSavingAccountResponseDto, doc, {
+        excludeExtraneousValues: true,
+      })
+    );
+
+    return {
+      ...paginatedResult,
+      data,
+    };
+  }
+
+    async getDocumentStatusCounts(accountId: number): Promise<{
+    pending: number;
+    approved: number;
+    rejected: number;
+    total: number;
+  }> {
+    const counts = await this.repo
+      .createQueryBuilder('doc')
+      .select('doc.status', 'status')
+      .addSelect('COUNT(doc.id)', 'count')
+      .where('doc.savings_account_id = :accountId', { accountId })
+      .groupBy('doc.status')
+      .getRawMany();
+
+    const result = {
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      total: 0
+    };
+
+    counts.forEach(item => {
+      result.total += parseInt(item.count);
+      switch (item.status) {
+        case 0: result.pending = parseInt(item.count); break;
+        case 1: result.approved = parseInt(item.count); break;
+        case 2: result.rejected = parseInt(item.count); break;
+      }
+    });
+
+    return result;
   }
 }

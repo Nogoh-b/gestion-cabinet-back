@@ -1,37 +1,42 @@
+import { plainToInstance } from 'class-transformer';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 
+
+
+
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-
-
-
-
 import { Not, Repository } from 'typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
+
 
 
 
@@ -40,9 +45,14 @@ import { InterestSavingAccount } from '../interest-saving-account/entities/inter
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountService } from '../type-savings-account/type-savings-account.service';
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
+import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
 
 
 
@@ -97,7 +107,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string,): Promise<PaginatedResult<SavingsAccount>> {
+    to?: string,): Promise<PaginatedResult<SavingsAccountResponseDto>> {
       const qb = this.repo.createQueryBuilder('sa')
     .leftJoinAndSelect('sa.customer', 'customer')
     .leftJoinAndSelect('sa.type_savings_account', 'typeSavings')
@@ -118,11 +128,52 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (term) options.search = { term, fields, exact };
     if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
     console.log('------options11---- ', options)
+    const paginatedResult = await this.paginationService.paginate<SavingsAccount>(qb, options);
+    const data = paginatedResult.data.map(account => 
+      plainToInstance(SavingsAccountResponseDto, account)
+    );
 
-    return this.paginationService.paginate(qb, options);
-
+    return {
+    ...paginatedResult,
+    data,
+  };
   }
 
+
+  async findAllPendingDocs(page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string,): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+      const qb = this.repo.createQueryBuilder('sa')
+    .leftJoinAndSelect('sa.customer', 'customer')
+    .leftJoinAndSelect('sa.type_savings_account', 'typeSavings')
+    .leftJoinAndSelect('sa.branch', 'branch')
+    .leftJoinAndSelect('sa.documents', 'documents', 'documents.status = :docStatus', { docStatus: 0 })
+    .leftJoinAndSelect('sa.interestRelations', 'interestRelations');
+
+    // 2. Application du filtre sur le status
+    qb.where(
+        'sa.status != :status',
+      { status: SavingsAccountStatus.DEACTIVATE }
+    ).andWhere('documents.id IS NOT NULL');
+
+    const options: PaginationOptions & { search?: SearchOptions; 
+    dateRange?: DateRange } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+    const paginatedResult = await this.paginationService.paginate<SavingsAccount>(qb, options);
+    const data = paginatedResult.data.map(account => 
+      plainToInstance(SavingsAccountResponseDto, account)
+    );
+
+    return {
+    ...paginatedResult,
+    data,
+  };
+  }
   async findOne(id: number): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
@@ -232,6 +283,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
     return this.repo.save(account);
   }
+
   async createOnline(
     dto: CreateSavingsAccountDto,
   ): Promise<SavingsAccount> {
@@ -277,6 +329,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // 4. On enregistre avec save() pour que TypeORM gère les relations
     return this.repo.save(account);
   }
+
+  
   async updateCodeCash(id: number, dto: UpdateCodeCahOfSavingAccountDto): Promise<SavingsAccount> {
     // 1. Charge l’entité existante
     const account = await this.repo.findOne({ where: { id }, relations: ['type_savings_account'] });

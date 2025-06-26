@@ -2,8 +2,17 @@ import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 
+
+
+
+
+import { TransactionCode } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
+
+
+
 
 
 
@@ -72,6 +81,43 @@ export class TransactionSavingAccountController {
       from ? new Date(from).toISOString() : undefined,
       to ? new Date(to).toISOString() : undefined);
   }
+
+  @Get('momo')
+  findAllMomo(@Query() query: PaginationQueryDto) {
+    return this.findByTypeParent(query, TransactionCode.MOMO_DEPOSIT)
+  }
+
+  @Get('om')
+  findAllOM(@Query() query: PaginationQueryDto) {
+    return this.findByTypeParent(query, TransactionCode.OM_DEPOSIT)
+  }
+
+  @Get('wallet_deposit')
+  findAllWallet(@Query() query: PaginationQueryDto) {
+    return this.findByTypeParent(query, TransactionCode.E_WALLET_DEPOSIT)
+  }
+
+  @Get('wallet_withdrawl')
+  findAllWalletWin(@Query() query: PaginationQueryDto) {
+    return this.findByTypeParent(query, TransactionCode.E_WALLET_WITHDRAWAL)
+  }
+
+  findByTypeParent(query,
+    txTypeCode: string){
+      const { page, limit, term, fields, exact, from, to } = query;
+      const fieldList = fields ? fields.split(',') : undefined;
+      const isExact = exact ;
+      return this.transactionSavingAccountService.findAllByType(      
+        page ? +page : undefined,
+        limit ? +limit : undefined,
+        term,
+        fieldList,
+        isExact,
+        from ? new Date(from).toISOString() : undefined,
+        to ? new Date(to).toISOString() : undefined,
+        txTypeCode);
+  }
+
 
   @Get(':id')
   findOne(@Param('id') id: string) {

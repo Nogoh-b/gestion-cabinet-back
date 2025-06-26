@@ -1,7 +1,9 @@
 // document-customer-response.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
 import { Expose, Transform, Type } from 'class-transformer';
 import { UPLOAD_DOCS_FOLDER_NAME, UPLOAD_FOLDER_NAME } from 'src/core/common/constants/constants';
+import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+import { ApiProperty } from '@nestjs/swagger';
+
 
 export class DocumentCustomerResponseDto {
   @Expose()
@@ -40,6 +42,13 @@ export class DocumentCustomerResponseDto {
     description: 'URL complète de téléchargement'
   })
   file_url: string;
+
+  @Expose()
+  @ApiProperty({
+    example: 'http://localhost:3000/uploads/abc123-passeport.pdf',
+    description: 'URL complète de téléchargement'
+  })
+  file_path: string;
 
   @Expose()
   @Type(() => Date)
@@ -87,4 +96,6 @@ export class DocumentCustomerResponseDto {
     description: 'ID du client associé'
   })
   customer_id: number;
+
+  savings_account : SavingsAccount;
 }

@@ -1,11 +1,15 @@
 // Entité TransactionType - src/core-banking/entities/transaction-type.entity.ts
 // Cette entité représente un type de transaction (ex: dépôt, retrait, virement)
-import { Entity, PrimaryGeneratedColumn, Column, Unique, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+
+
 
 
 
 
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
+
 
 
 
@@ -43,7 +47,9 @@ export enum TransactionCode {
   AGENCY_COMMISSION = 'AGENCY_COMMISSION',
   LOYALTY_POINTS_TRANSFER = 'LOYALTY_POINTS_TRANSFER',
   PRODUCT_OPEN = 'PRODUCT_OPEN',
-  PRODUCT_CLOSE = 'PRODUCT_CLOSE'
+  PRODUCT_CLOSE = 'PRODUCT_CLOSE',
+  MOMO_DEPOSIT = 'MOMO_DEPOSIT',
+  OM_DEPOSIT = 'OM_DEPOSIT'
 }
 export enum TransactionChannel {
   BRANCH = 'BRANCH',
@@ -53,7 +59,7 @@ export enum TransactionChannel {
 }
 
 @Entity('transaction_type')
-@Unique(['code'])
+// @Unique(['code'])
 export class TransactionType {
   @PrimaryGeneratedColumn()
   id: number; // Identifiant unique
