@@ -2,7 +2,6 @@ import { plainToInstance } from 'class-transformer';
 import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { BaseService } from 'src/core/shared/services/search/base.service';
-import { GenCOde } from 'src/core/shared/utils/generation.util';
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
@@ -22,6 +21,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
@@ -29,6 +30,8 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
+
+
 
 
 
@@ -93,10 +96,10 @@ export class CustomersService extends BaseService<Customer> {
       const savedClient = await manager.save(customer)
       let code: string;
       let attempts = 0;
-      do {
-        code = GenCOde.generateCode(savedClient.id, attempts);
+      code = await this.generateNextCustomerCode();
+      /*do {
         attempts++;
-      } while (!(await this.isClientCodeUnique(code)) && attempts < 5);
+      } while (!(await this.isClientCodeUnique(code)) && attempts < 5);*/
 
       if (attempts >= 5) {
         throw new Error('Échec de génération d’un code client unique');
@@ -203,4 +206,29 @@ export class CustomersService extends BaseService<Customer> {
     getRepository(): Repository<Customer> {
       return this.customerRepository;
     }
+
+
+    async generateNextCustomerCode(): Promise<string> {
+  // 1) Récupère la plus grande valeur numérique de `code`
+  const raw = await this.customerRepository
+    .createQueryBuilder('c')
+    .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max')
+    .getRawOne<{ max: string }>();
+
+  // 2) Parse ou démarre à 0
+  const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
+
+  // 3) Calcule le prochain
+  const next = maxValue + 1;
+
+  // 4) Sécurité overflow
+  if (next > 9_999_999) {
+    throw new Error('Plus de codes clients disponibles (limite 7 chiffres atteinte)');
+  }
+
+  // 5) Retourne formatté sur 7 chiffres
+  return next.toString().padStart(7, '0');
+}
+
+
 }

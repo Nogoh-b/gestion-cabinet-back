@@ -1,42 +1,13 @@
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { GenCOde } from 'src/core/shared/utils/generation.util';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 
-
-
-
-
-
-
-
 import { TransactionChannel } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 
-
-
-
-
-
-
-
-
-
-
-
-
 import { Repository } from 'typeorm';
-
-
 import { Injectable, NotFoundException } from '@nestjs/common';
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
 
 
 
@@ -44,39 +15,6 @@ import { Employee } from '../employee/entities/employee.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Injectable()
@@ -96,17 +34,17 @@ export class BranchService {
     if (!city) {
       throw new NotFoundException('Ville non trouvée');
     }
-    let code: string;
-    let attempts = 0;
+    let code: string = await this.generateNextBranchCode() ;
+    /*let attempts = 0;
     do {
-      code = GenCOde.randomDigits(2);
+      code = GenCOde.randomDigits(3);
       attempts++;
     } while (!(await this.isBranchCodeUnique(code)) && attempts < 10);
 
     if (attempts >= 5) {
       throw new Error('Échec de génération d’un code de la branche');
-    }
-    dto.code = code;
+    }*/
+    dto.code = await this.generateNextBranchCode();
     await validateDto(CreateBranchDto, dto);
     const branch = this.branchRepository.create({
       ...dto,
@@ -283,4 +221,27 @@ const branch = await this.branchRepository
     };
 
   }
+
+  /**
+ * Génère le prochain code de branche incrémental sur 3 chiffres (000 à 999).
+ */
+async generateNextBranchCode(): Promise<string> {
+  // 1) Récupère la valeur max des 3 derniers caractères de `code`
+  const raw = await this.branchRepository
+    .createQueryBuilder('b')
+    .select('MAX(CAST(RIGHT(b.code, 3) AS UNSIGNED))', 'max')
+    .getRawOne<{ max: string }>();
+
+  // 2) Convertit en number (ou 0 si table vide)
+  const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
+
+  // 3) Incrémente, et vérifie qu’on reste sous 1000
+  const next = maxValue + 1;
+  if (next > 999) {
+    throw new Error('Impossible de générer un nouveau code : seuil maximal (999) atteint');
+  }
+
+  // 4) Formate sur 3 chiffres
+  return next.toString().padStart(3, '0');
+}
 }

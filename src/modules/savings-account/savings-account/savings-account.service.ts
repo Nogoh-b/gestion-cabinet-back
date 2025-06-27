@@ -22,6 +22,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -31,6 +33,8 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 
 @Injectable()
@@ -202,12 +206,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     );
 
     let number_savings_account: string;
-    do {
+    /*do {
       const rand = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
       number_savings_account = `${branch.code}${rand}`;
-    } while (await this.repo.findOne({ where: { number_savings_account } }));
+    } while (await this.repo.findOne({ where: { number_savings_account } }));*/
+    number_savings_account = await this.generateNextAccountNumber(branch);
 
-    let iban = `${customer.customer_code}${number_savings_account}`;
+
+    let iban = `${number_savings_account}${customer.customer_code}`;
     while (await this.repo.findOne({ where: { iban } })) {
       const rand = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
       number_savings_account = `${branch.code}${rand}`;
@@ -679,6 +685,28 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   }
 
 
+
+
+async generateNextAccountNumber(branch: Branch): Promise<string> {
+  // 1) On récupère le résultat brut
+  const raw = await this.repo
+    .createQueryBuilder('acc')
+    .select('MAX(CAST(RIGHT(acc.number_savings_account, 5) AS UNSIGNED))', 'max')
+    .where('acc.number_savings_account LIKE :prefix', { prefix: `${branch.code}%` })
+    .getRawOne<{ max: string }>();  // on indique que max arrive comme string
+
+  // 2) On convertit en number et on gère undefined
+  const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
+
+  // 3) Calcul du prochain suffixe
+  const next = maxValue + 1;
+
+  // 4) Formatage sur 5 chiffres
+  const suffix = next.toString().padStart(5, '0');
+
+  // 5) Concaténation avec le code de la branche
+  return `${branch.code}${suffix}`;
+}
 
   
 

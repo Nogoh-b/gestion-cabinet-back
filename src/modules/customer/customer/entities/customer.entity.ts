@@ -4,7 +4,9 @@ import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 
+
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
+
 
 export enum CustomerStatus{
   ACTIVE = 1,
@@ -72,10 +74,10 @@ export class Customer extends BaseEntity {
     return this.location_city?.id;
   }
 
-  @Column({ length: 45, nullable: true, unique: true })
+  @Column({ length: 45, nullable: true, unique: false })
   nui: string;
 
-  @Column({ length: 45, nullable: true, unique: true })
+  @Column({ length: 45, nullable: true, unique: false })
   rccm: string;
 
   @Column({ nullable: true })
