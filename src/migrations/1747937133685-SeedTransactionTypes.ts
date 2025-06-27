@@ -2,9 +2,10 @@
 // Cette migration pré-remplit la table transaction_type avec les types standards d'un core banking
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
+
 export class SeedTransactionTypes20250522123000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
+    await queryRunner.query( 
       `
       INSERT INTO core_banking.transaction_type (code, name, description, is_credit, fee_percentage, status)
       VALUES

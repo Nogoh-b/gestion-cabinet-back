@@ -1,44 +1,26 @@
 import { plainToInstance } from 'class-transformer';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
+import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
+
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 
+
+
+
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-
-
-
-
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
+
+
 import { Not, Repository } from 'typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
 
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
@@ -49,30 +31,6 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Injectable()
@@ -95,6 +53,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     private typeSavingAcount : TypeSavingsAccountService,
     private paginationService: PaginationService,
     private customerService: CustomersService,
+     private readonly mcotiService: McotiService
   ) { super(); }
 
   getRepository(): Repository<SavingsAccount> {
@@ -413,6 +372,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       throw new BadRequestException(`Cannot validate account in status ${account.status}`);
     }
     account.status = SavingsAccountStatus.ACTIVE;
+    const code_cash = await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${8668522}/update-code-cash`);
+    account.code_cash = code_cash;
     return this.repo.save(account);
   }
 
@@ -429,6 +390,82 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       status: doc.status,
     }));
   } 
+
+  async getDocumentStatus(id?: number): Promise<{
+      total: number;
+      required: number;
+      validated: number;
+      pending: number;
+      rejected: number;
+      allRequiredValidated: boolean;
+  }> {
+    // Load account with its documents and related data
+    const account = await this.repo.findOne({
+      where: { id },
+      relations: [
+        'documents',
+        'documents.document_type', // Assurez-vous que cette relation est correcte
+        'type_savings_account',
+        'type_savings_account.required_documents',
+      ],
+    });
+
+    if (!account) {
+      throw new NotFoundException(`Account ${id} not found`);
+    }
+
+    // Get IDs of required documents for this account type
+    const requiredDocumentIds = account.type_savings_account.required_documents.map(
+      (doc) => doc.id
+    );
+
+    // Initialize counters
+    let validated = 0;
+    let pending = 0;
+    let rejected = 0;
+    let required = 0;
+    let allRequiredValidated = true;
+
+    // Process each document
+    const documentStatuses = account.documents.map((doc) => {
+      // Check if document is required
+      const isRequired = requiredDocumentIds.includes(doc.document_type.id);
+       if(isRequired) {
+        required++;
+        
+        // Update status counters
+        switch (doc.status) {
+          case DocumentSavingAccountStatus.ACCEPTED:
+            validated++;
+            break;
+          case DocumentSavingAccountStatus.PENDING:
+            pending++;
+            allRequiredValidated = false;
+            break;
+          case DocumentSavingAccountStatus.REFUSED:
+            rejected++;
+            allRequiredValidated = false;
+            break;
+        }
+      }
+
+      return {
+        documentId: doc.id,
+        name: doc.name,
+        status: doc.status,
+        isRequired,
+      };
+    });
+
+    return {
+        total: account.documents.length,
+        required,
+        validated,
+        pending,
+        rejected,
+        allRequiredValidated: required > 0 && required === validated, // Si aucun doc requis, considérer comme validé
+    };
+  }
 
   async getTransactions(id: number,): Promise<TransactionSavingsAccount[]> {
     // load account with its documents

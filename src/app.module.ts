@@ -1,8 +1,5 @@
 import * as dotenv from 'dotenv';
-import { ExpressAdapter } from '@bull-board/express';
-import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
-import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -10,6 +7,13 @@ import { ConfigModule } from '@nestjs/config';
 
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ServeStaticModule } from '@nestjs/serve-static';
+
+
+
+
+
+
+
 
 
 
@@ -26,6 +30,13 @@ import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+
+
+
+
+
+
+
 
 
 
@@ -51,16 +62,16 @@ dotenv.config();
     }),
     MailerModule.forRoot({
       transport: {
-        host: 'vshp3.clo.xelgrp.com',
-        port: 587,
-        secure: false, // true pour le port 465
+        host: 'smtp.gmail.com',
+        port: 465 ,
+        secure: true, // true pour le port 465
         auth: {
-          user: 'no-reply-cotimendo.cm',
-          pass: 'Iz03ik33?',
+          user: 'somkwebrice@gmail.com',
+          pass: 'odmj vidj teir ahds',
         },
       },
       defaults: {
-        from: '"No Reply" <noreply@mendo-finance.com>',
+        from: '"No Reply" <somkwebrice@gmail.com>',
       },
     }),
     ClientsModule.register([
@@ -74,7 +85,7 @@ dotenv.config();
       },
     ]),
 
-    BullModule.forRoot({
+    /*BullModule.forRoot({
           redis: {
             host: 'localhost',
             port: 6379,
@@ -86,7 +97,7 @@ dotenv.config();
     BullBoardModule.forRoot({
       route: '/admin/queues',
       adapter: ExpressAdapter,
-    }),
+    }),*/
     SavingsAccountModule,
     ProviderModule,
     TransactionModule,

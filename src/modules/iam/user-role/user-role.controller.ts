@@ -1,13 +1,15 @@
 // user-roles.controller.ts
-import { Controller, Post, Body, Get, Param, Delete, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CreateUserRoleDto } from './dto/create-user-role.dto';
-import { UserRole } from './entities/user-role.entity';
-import { UserRolesService } from './user-role.service';
-import { RoleResponseDto } from './dto/role-response.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { Controller, Post, Body, Get, Param, Delete, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+
+import { CreateUserRoleDto } from './dto/create-user-role.dto';
+import { RoleResponseDto } from './dto/role-response.dto';
+import { UserRole } from './entities/user-role.entity';
+import { UserRolesService } from './user-role.service';
+
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiTags('User Roles')
@@ -27,7 +29,7 @@ export class UserRolesController {
 
   @Get()
   @ApiOperation({ summary: 'Get all roles with permissions' })
-  @RequirePermissions('')
+  // @RequirePermissions('')
   async findAll(): Promise<RoleResponseDto[]> {
     return this.service.findAllWithPermissions();
   }

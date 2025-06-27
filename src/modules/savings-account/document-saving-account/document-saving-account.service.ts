@@ -17,16 +17,20 @@ import { DocumentSavingAccount } from 'src/modules/savings-account/document-savi
 
 import { In, Repository } from 'typeorm';
 
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
 import { SavingsAccountResponseDto } from '../savings-account/dto/response-savings-account.dto';
 import { SavingsAccountService } from '../savings-account/savings-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { DocumentSavingAccountResponseDto } from './dto/response-document-saving-account.dto';
+
+
 
 
 
@@ -56,10 +60,11 @@ export class DocumentSavingAccountService {
     @InjectRepository(DocumentType)
     private readonly docTypeRepo: Repository<DocumentType>,
     private paginationService: PaginationService,
-
+    
+    @Inject(forwardRef(() => SavingsAccountService))
     private  saService: SavingsAccountService,
 
-  ) {}
+  ) {console.log(forwardRef)}
   /** Valide un document (status -> ACCEPTED) */
   async validateDocument(id: number): Promise<DocumentSavingAccountResponseDto> {
     const doc = await this.findOne(id);

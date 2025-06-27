@@ -1,14 +1,21 @@
 import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 
+import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
-
-
-
-
-
-
 
 
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
@@ -24,10 +31,24 @@ import { SavingsAccountService } from './savings-account.service';
 
 
 
+
+
+
+
+
+
 @ApiTags('Saving Accounts')
 @Controller('savings-accounts')
 export class SavingsAccountController {
-  constructor(private readonly service: SavingsAccountService) {}
+  constructor(private readonly service: SavingsAccountService, private readonly mcotiService: McotiService) {}
+
+  @ApiOperation({ summary: 'Get validation status of all documents for an account' })
+  @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })  
+  @Get(':id/get-code-cash')
+  async processData(@Param('id', ParseIntPipe) id: number) {
+    return this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${8668522}/update-code-cash`);
+  }
+
 
   async searchUsers(@Query() query: SearchQueryDto) {
     return await this.service.enhancedSearch({
@@ -76,7 +97,7 @@ export class SavingsAccountController {
   @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })
   @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
   getDocumentStatuses(@Param('id', ParseIntPipe) id: number) {
-    return this.service.getDocumentStatuses(id);
+    return this.service.getDocumentStatus(id);
   }
 
   @Get(':id/transactions')

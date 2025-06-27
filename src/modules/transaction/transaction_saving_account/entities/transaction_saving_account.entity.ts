@@ -11,8 +11,10 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 export enum TransactionSavingsAccountStatus {
@@ -53,6 +55,10 @@ export class TransactionSavingsAccount {
   @Index()
   @Column({ length: 100 })
   payment_code: string; 
+  
+  @Index()
+  @Column({ length: 100 })
+  token: string; 
 
   @Index()
   @Column({ length: 100 })

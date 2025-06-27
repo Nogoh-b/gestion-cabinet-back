@@ -2,8 +2,10 @@ import { Entity, ManyToOne, Column, JoinColumn, PrimaryColumn } from 'typeorm';
 
 
 
+
 import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from './savings-account.entity';
+
 
 
 
@@ -21,6 +23,9 @@ export class SavingsAccountHasInterest {
 
   @Column({ type: 'timestamp', nullable: true })
   end_date: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  code_cash: Date;
 
   @Column({ nullable: true })
   status: number;

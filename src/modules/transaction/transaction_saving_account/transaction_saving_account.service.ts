@@ -24,11 +24,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
 
 
 
@@ -104,7 +108,13 @@ export class TransactionSavingsAccountService {
     if (!txType) {
       throw new NotFoundException(`Type transaction invalide : ${type_code}`);
     }
-
+    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 0)
+    const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(target?.id)
+    if(isFirstTx && !docStatsTargetAccount.allRequiredValidated ){
+      throw new NotFoundException(
+        `Tout vos documents ne sont pas validé : ${target?.id}`,
+      );
+    }
     const channel = await this.channelRepo.findOne({
       where: { code: channel_code },
     });
@@ -134,7 +144,6 @@ export class TransactionSavingsAccountService {
     tx.payment_code = paymentCode;
     tx.payment_token_provider = payment_token_provider;
     tx.reference = await reference;
-    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 0)
     
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
@@ -401,7 +410,7 @@ export class TransactionSavingsAccountService {
         const chanelOpenProduct = await this.channelRepo.findOne({
           where: { code: 'API' },
         });
-        // Créer un clone sans l'ID
+        // Transaction pour le minimum de balance
         const { id, ...txData } = tx;
         const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
         const providerMinBalance = await this.providerService.findOne('SYSTEM');
@@ -417,6 +426,7 @@ export class TransactionSavingsAccountService {
         await entityManager.save(secondTx);
 
 
+        // Transaction pour le minimum de frais de creation de compte
         const txTypeOpenProduct = await this.transactionTypeService.findOneByCode('MANUAL_ADJUSTMENT');
         const providerOpenProduct = await this.providerService.findOne('SYSTEM');
         const thirdTx = new TransactionSavingsAccount();

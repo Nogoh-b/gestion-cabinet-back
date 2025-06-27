@@ -5,9 +5,13 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn, AfterLoad } from 'typeorm';
 
+
+
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
+
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -57,6 +61,9 @@ export class SavingsAccount extends BaseEntity {
   @Column({ name: 'code_product', type: 'varchar', length: 45 })
   code_product: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  code_cash: Date;
+  
   @Column({ name: 'wallet_link', type: 'varchar', length: 45, nullable: true })
   wallet_link?: string;
 
