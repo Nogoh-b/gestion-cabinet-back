@@ -11,6 +11,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
+
 export class CreateTypeSavingsAccountDto {
   @ApiProperty({ description: 'Nom du type de compte' })
   @IsString()
@@ -63,6 +64,19 @@ export class CreateTypeSavingsAccountDto {
   @IsNumber()
   @Min(0)
   commission_per_product?: number;
+
+
+  @ApiPropertyOptional({ description: 'Reduction à la creation de compte si code promo', example: 500 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  promo_code_reduction?: number;
+  
+  @ApiPropertyOptional({ description: 'Fraix payer à l\'influenceur', example: 1000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  promo_code_fee?: number;
 
   @ApiPropertyOptional({ description: 'Coûts de maintenance mensuels', example: 0 })
   @IsOptional()

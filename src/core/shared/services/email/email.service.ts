@@ -1,7 +1,15 @@
 // email.service.ts
-import { Injectable, Logger } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
+import { Injectable, Logger } from '@nestjs/common';
+
+
+
+
 import { SendMailOptions } from '../../interfaces/send-mail.interface';
+
+
+
+
 
 @Injectable()
 export class EmailService {
@@ -11,14 +19,20 @@ export class EmailService {
 
   async sendMail(options: SendMailOptions): Promise<boolean> {
     try {
-      await this.mailerService.sendMail({
+      /*await this.mailerService.sendMail({
         to: options.to,
         subject: options.subject,
         template: options.template,
+        html :'<br>',
         context: options.context,
         attachments: options.attachments,
+      });*/
+      await this.mailerService.sendMail({
+        to: options.to,
+        subject: options.subject,
+        attachments: options.attachments,
+        html: options.message, 
       });
-      
       this.logger.log(`Email sent to ${options.to}`);
       return true;
     } catch (error) {
@@ -31,7 +45,7 @@ export class EmailService {
     return this.sendMail({
       to,
       subject: 'Bienvenue sur notre plateforme !',
-      template: 'welcome',
+      message: '',
       context: { username },
     });
   }
@@ -40,7 +54,7 @@ export class EmailService {
     return this.sendMail({
       to,
       subject: 'Réinitialisation de votre mot de passe',
-      template: 'reset-password',
+      message: 'reset-password',
       context: { resetLink },
     });
   }

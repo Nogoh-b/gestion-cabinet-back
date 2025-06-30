@@ -20,11 +20,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '
 
 
 
+
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
 
 
 
@@ -120,7 +122,7 @@ export class CustomerController {
     return await this.emailService.sendMail({
       to: 'nogohbrice@gmail.com',
       subject: 'Nouveau message de contact',
-      template: 'contact-form',
+      message: 'contact-form',
       context: {
         name: 'contactDto.name',
         message: 'contactDto.message'

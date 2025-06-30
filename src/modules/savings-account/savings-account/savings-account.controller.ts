@@ -97,7 +97,7 @@ export class SavingsAccountController {
   @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })
   @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
   getDocumentStatuses(@Param('id', ParseIntPipe) id: number) {
-    return this.service.getDocumentStatus(id);
+    return this.service.getDocumentStatuses(id)
   }
 
   @Get(':id/transactions')

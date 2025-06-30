@@ -7,9 +7,11 @@ import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColum
 
 
 
+
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
 
 
 
@@ -88,7 +90,13 @@ export class SavingsAccount extends BaseEntity {
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
+  @Column({ nullable: true }) // Permet d'avoir des comptes non parrainés
+  enrolled_by_id: number; // Stocke l'ID du compte parrain
 
+  // Relation Many-to-One (optionnelle, pour faciliter les jointures)
+  @ManyToOne(() => SavingsAccount, { nullable: true })
+  @JoinColumn({ name: 'enrolled_by_id' })
+  enrolled_by: SavingsAccount; // Référence à l'entité parente
 
   @ManyToOne(() => Branch)
   @JoinColumn({ name: 'branch_id' })

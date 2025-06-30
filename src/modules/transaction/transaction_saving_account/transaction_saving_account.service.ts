@@ -144,7 +144,7 @@ export class TransactionSavingsAccountService {
     tx.payment_code = paymentCode;
     tx.payment_token_provider = payment_token_provider;
     tx.reference = await reference;
-    
+    tx.token = 'ok'
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)

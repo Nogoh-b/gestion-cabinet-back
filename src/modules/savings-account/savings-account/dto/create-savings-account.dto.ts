@@ -6,22 +6,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
+
+
 export class CreateSavingsAccountDto {
-  /*@ApiProperty({ description: 'Numéro du compte épargne' })
-  @IsString()
-  @Length(1, 45)
-  number_savings_account: string;
 
-  @ApiProperty({ description: 'Frais du compte' })
-  @IsNumber()
-  fee_savings: number; 
-
-  @ApiProperty({ description: 'Montant initial' })
-  @IsNumber()
-  amount_created: number;
-
-  @ApiProperty({ description: 'Solde initial' })
-  @IsNumber()*/
   balance: number;
   avalaible_balance: number;
   customer_code: string;
@@ -33,6 +22,11 @@ export class CreateSavingsAccountDto {
   @ApiProperty({ description: 'ID du type de compte', example: 1 })
   @IsInt()
   type_savings_account_id: number;
+
+  @ApiProperty({ description: 'ID du compte qui enrolle', example: 1 })
+  @IsOptional()
+  @IsNumber()
+  enrolled_by_id?: number; 
 
   /*@ApiProperty({ description: 'Statut du compte', example: 1 })
   @IsInt()*/

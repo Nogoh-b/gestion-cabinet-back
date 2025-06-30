@@ -1,7 +1,8 @@
 // customer-response.dto.ts
 import { Expose, Transform } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
+import { ApiProperty } from '@nestjs/swagger';
+
 
 export class CustomerResponseDto {
   @Expose()
@@ -49,7 +50,7 @@ export class CustomerResponseDto {
   type_customer: TypeCustomer;*/
 
   @Expose({ name: 'location_city_id' })
-  @Transform(({ obj }) => obj.locationCity)
+  @Transform(({ obj }) => obj.location_city)
   location_city: LocationCity;
 
   @Expose()

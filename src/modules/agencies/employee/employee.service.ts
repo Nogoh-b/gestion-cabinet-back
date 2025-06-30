@@ -13,20 +13,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
-
-
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee } from './entities/employee.entity';
-
-
-
-
-
-
-
-
-
 
 
 
@@ -68,18 +57,17 @@ export class EmployeeService {
     return plainToInstance(EmployeeResponseDto, employee);
   }
 
-  async findAllEmployees(): Promise<EmployeeResponseDto[]> {
+  async findAllEmployees(branch_id: number  = 0): Promise<EmployeeResponseDto[]> {
     const employees = await this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('user.customer', 'customer')
       .leftJoinAndSelect('user.roleAssignments', 'roleAssignment', 'roleAssignment.status = 1')
       .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
-      .leftJoinAndSelect('employee.branch', 'branch')
+      .innerJoinAndSelect('employee.branch', 'branch', branch_id != 0 ? 'branch.id = :branch_id' : '', { branch_id })
       .where('user.status = 1')
       .getMany();
     return plainToInstance(EmployeeResponseDto, employees);
-
   }
 
 

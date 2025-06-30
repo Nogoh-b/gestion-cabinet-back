@@ -24,6 +24,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -33,6 +39,12 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
 
 
 
@@ -70,11 +82,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string,): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+    to?: string,branch_id = 0): Promise<PaginatedResult<SavingsAccountResponseDto>> {
       const qb = this.repo.createQueryBuilder('sa')
     .leftJoinAndSelect('sa.customer', 'customer')
     .leftJoinAndSelect('sa.type_savings_account', 'typeSavings')
-    .leftJoinAndSelect('sa.branch', 'branch')
+    .leftJoinAndSelect('sa.branch', 'branch', branch_id != 0 ? 'branch.id = :branch_id' : '', { branch_id })
+    .leftJoinAndSelect('sa.enrolled_by', 'enrolled_by')
     .leftJoinAndSelect('sa.documents', 'documents')
     .leftJoinAndSelect('sa.interestRelations', 'interestRelations');
 
@@ -82,7 +95,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     qb.where(
       isDeactivate
         ? 'sa.status = :status'
-        : 'sa.status != :status',
+        : '',
       { status: SavingsAccountStatus.DEACTIVATE }
     );
 
@@ -145,6 +158,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'type_savings_account',
         'type_savings_account.required_documents',
         'branch',
+        'enrolled_by',
         'documents',
         'interestRelations',
       ],
@@ -161,6 +175,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'type_savings_account',
         'branch',
         'documents',
+        'enrolled_by',
         'interestRelations',
       ],
     });
@@ -177,6 +192,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'type_savings_account.required_documents',
         'branch',
         'documents',
+        'enrolled_by',
         'interestRelations',
         'originSavingsAccountTx',
         'targetSavingsAccountTx'
@@ -205,6 +221,13 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       `Type d'épargne ${dto.type_savings_account_id} introuvable`,
     );
 
+    if (dto.enrolled_by_id) {
+      const parrain = await this.findOne(dto.enrolled_by_id);
+      if (!parrain) {
+        throw new NotFoundException('Compte parrain introuvable');
+      }
+    }
+
     let number_savings_account: string;
     /*do {
       const rand = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
@@ -232,6 +255,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       is_admin,
       // interest_year_savings_account: dto.interest_year_savings_account,
       iban,
+      enrolled_by: { id: dto.enrolled_by_id } as SavingsAccount,
       account_number: number_savings_account,
       customer: { id: dto.customer_id } as Customer,
       type_savings_account: {

@@ -9,7 +9,7 @@ import { CreateDocumentFromCotiDto, DocTypeNameOnline } from 'src/modules/docume
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { DataSource, Repository } from 'typeorm';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 
 
@@ -17,6 +17,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 
 
 import { InjectRepository } from '@nestjs/typeorm';
+
+
 
 
 
@@ -43,6 +45,8 @@ import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/custom
 
 
 
+
+
 @Injectable()
 export class CustomersService extends BaseService<Customer> {
   constructor(
@@ -56,11 +60,14 @@ export class CustomersService extends BaseService<Customer> {
     private typeCustomerService: TypeCustomersService,
     private locationcityService: LocationCitiesService ,
     private documentCustomerService: DocumentCustomerService ,
+    @Inject(forwardRef(() => BranchService))
     private branchService: BranchService ,
     private readonly dataSource: DataSource,
 
     
-  ) {super();}
+  ) {
+    console.log(forwardRef)
+    super();}
 
   async create(createCustomerDto: CreateCustomerDto): Promise<any> {
     return await this.dataSource.transaction(async manager => {

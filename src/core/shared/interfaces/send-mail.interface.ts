@@ -2,7 +2,7 @@
 export interface SendMailOptions {
   to: string;
   subject: string;
-  template: string;
+  message: string;
   context?: Record<string, any>;
   attachments?: Array<{
     filename: string;

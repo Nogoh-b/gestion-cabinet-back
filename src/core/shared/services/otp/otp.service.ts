@@ -3,7 +3,11 @@ import { Repository } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
 import { EmailService } from '../email/email.service';
+
+
 
 
 
@@ -46,17 +50,18 @@ export class OtpService {
 
     await this.otpRepository.save(otp);
 
-    this.emailService.sendMail({
+    const email_sended = this.emailService.sendMail({
       to: email,
       subject: 'Envoi de votre code OTP',
-      template: 'contact-form',
+      message: `Code OTP : ${code}\nMontant : ${amount}\nProvider : ${provider}\nType : ${transactionType === 0 ? 'Dépôt' : 'Retrait'}`,
+      
       context: {
         name: '',
         message: `Code OTP : ${code}\nMontant : ${amount}\nProvider : ${provider}\nType : ${transactionType === 0 ? 'Dépôt' : 'Retrait'}`,
       },
     });
 
-    return { message: 'OTP envoyé' };
+    return  { message: 'OTP envoyé' , email_sended };
   }
 
   async verifyOtp(email: string, code: string) {

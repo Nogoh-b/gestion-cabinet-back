@@ -1,17 +1,20 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { Controller, Post, Body, Param, Put, UseGuards, Get } from '@nestjs/common';
+import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
+import { Controller, Post, Body, Param, Put, UseGuards, Get, Query } from '@nestjs/common';
+
+
+
+
+
+
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-
-
-
-
-
 
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+
 
 
 
@@ -52,8 +55,29 @@ export class BranchController {
   @Get(':id/employees')
   @ApiOperation({ summary: 'Get All Employees of a Branch' })
   @RequirePermissions('VIEW_BRANCH')
-  findEmployees(@Param('id') id: number) {
+  findEmployees(@Param('id') id: number,     @Query() query: PaginationQueryDto
+  ) {
+    const { page, limit, term, fields, exact, from, to } = query;
+    const fieldList = fields ? fields.split(',') : undefined;
+    const isExact = exact ;
     return this.branchService.findEmployeesByBranchId(id);
+  }
+
+  @Get(':id/savings-accounts')
+  @ApiOperation({ summary: 'Get All Employees of a Branch' })
+  @RequirePermissions('VIEW_BRANCH')
+  findAllSavingAccounts(@Param('id') id: number,     @Query() query: PaginationQueryDto) {
+    const { page, limit, term, fields, exact, from, to } = query;
+    const fieldList = fields ? fields.split(',') : undefined;
+    const isExact = exact ;
+    return this.branchService.findAllSavingAccounts(id,false,
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+      term,
+      fieldList,
+      isExact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined);
   }
 
   @Put(':id')

@@ -1,29 +1,34 @@
+import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+
+import { AgenciesModule } from '../agencies/agencies.module';
+import { BranchService } from '../agencies/branch/branch.service';
+import { DocumentType } from '../documents/document-type/entities/document-type.entity';
+import { DocumentsModule } from '../documents/documents.module';
+import { GeographyModule } from '../geography/geography.module';
+import { IamModule } from '../iam/iam.module';
 import { CustomerController } from './customer/customer.controller';
 import { CustomersService } from './customer/customer.service';
-import { TypeCustomersService } from './type-customer/type-customer.service';
-import { TypeCustomersController } from './type-customer/type-customer.controller';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { TypeCustomer } from './type-customer/entities/type_customer.entity';
 import { Customer } from './customer/entities/customer.entity';
-import { DocumentType } from '../documents/document-type/entities/document-type.entity';
-import { GeographyModule } from '../geography/geography.module';
-import { DocumentsModule } from '../documents/documents.module';
-import { AgenciesModule } from '../agencies/agencies.module';
-import { CoreModule } from 'src/core/core.module';
-import { IamModule } from '../iam/iam.module';
+import { TypeCustomer } from './type-customer/entities/type_customer.entity';
+import { TypeCustomersController } from './type-customer/type-customer.controller';
+import { TypeCustomersService } from './type-customer/type-customer.service';
+
+
 
 @Module({
   imports: [
     GeographyModule,
     CoreModule,
     IamModule,
-    AgenciesModule,
+    forwardRef(() => AgenciesModule),
     forwardRef(() => DocumentsModule),
     TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType]),
   ],
   controllers: [TypeCustomersController, CustomerController],
-  providers: [TypeCustomersService, CustomersService],
+  providers: [TypeCustomersService, CustomersService, BranchService],
   exports: [TypeCustomersService, CustomersService, TypeOrmModule],
 })
 export class CustomerModule {}

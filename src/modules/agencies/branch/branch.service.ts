@@ -1,20 +1,31 @@
+import { PaginatedResult } from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
+
+
+import { SavingsAccountResponseDto } from 'src/modules/savings-account/savings-account/dto/response-savings-account.dto';
+
+import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 
-import { TransactionChannel } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 
+
+
+import { TransactionChannel } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
+import { EmployeeResponseDto } from '../employee/dto/response-employee.dto';
+import { EmployeeService } from '../employee/employee.service';
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
+
+
+
 
 
 @Injectable()
@@ -23,8 +34,9 @@ export class BranchService {
     @InjectRepository(Branch)
     private branchRepository: Repository<Branch>,
     @InjectRepository(Employee)
-    private employeeRepository: Repository<Employee>,
+    private savingsAccountService: SavingsAccountService,
     private locationCityService: LocationCitiesService,
+    private employeeService: EmployeeService,
   ) {}
   // Branches
   async createBranch(dto: CreateBranchDto): Promise<Branch> {
@@ -104,13 +116,14 @@ export class BranchService {
     return branch;
   }
 
-  async findEmployeesByBranchId(id: number): Promise<Employee[]> {
+  async findEmployeesByBranchId(id: number): Promise<EmployeeResponseDto[]> {
     const branch = await this.branchRepository.findOne({
       where: { id, status: 1 },
-      relations: ['employees'],
+      relations: ['employees','employees'],
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
-    return branch.employees;
+    this.employeeService.findAllEmployees(branch.id)
+    return await this.employeeService.findAllEmployees(branch.id);
   }
 
   async activate(id: number): Promise<Branch> {
@@ -132,6 +145,25 @@ export class BranchService {
     return branch;
   }
 
+  
+  async findAllSavingAccounts(branch_id: number  = 0, isDeactivate : boolean = false,    page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+    
+    return await this.savingsAccountService.findAll(false,
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+      term,
+      fields,
+      exact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined);
+  }
+
   async stats(id: number): Promise<any> {
     console.log('stats');
     const branch1 = await this.branchRepository.findOne({
@@ -143,69 +175,69 @@ export class BranchService {
         'savingsAccounts.targetSavingsAccountTx', // Transactions entrantes
       ],
     });
-const branch = await this.branchRepository
-  .createQueryBuilder('branch')
-  // Jointure UNIQUE pour savingsAccounts
-  .leftJoinAndSelect('branch.savingsAccounts', 'savingsAccount', 'savingsAccount.branch.id = :branchId', { branchId: id })
-  // Jointure pour employees (si nécessaire)
-  .leftJoinAndSelect('branch.employees', 'employee') // Alias différent de 'savingsAccount'
-  // Jointures pour les transactions sortantes (outgoingTx)
-  .leftJoinAndSelect('savingsAccount.originSavingsAccountTx', 'outgoingTx')
-  .leftJoinAndSelect('outgoingTx.originSavingsAccount', 'originAccount')
-  .leftJoinAndSelect('outgoingTx.targetSavingsAccount', 'targetAccount')
-  .leftJoinAndSelect('outgoingTx.channelTransaction', 'channel')
-  .leftJoinAndSelect('outgoingTx.provider', 'provider')
-  .leftJoinAndSelect('outgoingTx.transactionType', 'transactionType')
-  // Jointures pour les transactions entrantes (incomingTx)
-  .leftJoinAndSelect('savingsAccount.targetSavingsAccountTx', 'incomingTx')
-  .leftJoinAndSelect('incomingTx.originSavingsAccount', 'originAccount1')
-  .leftJoinAndSelect('incomingTx.targetSavingsAccount', 'targetAccount1')
-  .leftJoinAndSelect('incomingTx.channelTransaction', 'channel1')
-  .leftJoinAndSelect('incomingTx.provider', 'provide1r')
-  .leftJoinAndSelect('incomingTx.transactionType', 'transactionType1')
-  // (Optionnel) Ajoutez les mêmes relations pour incomingTx si besoin :
-  .leftJoinAndSelect('incomingTx.originSavingsAccount', 'incomingOriginAccount')
-  .leftJoinAndSelect('incomingTx.targetSavingsAccount', 'incomingTargetAccount')
-  .where('branch.id = :id AND branch.status = 1', { id })
-  .getOne();
-  let  sa = branch?.savingsAccounts
-  let outgoingTransactionsCustomer: TransactionSavingsAccount[] = []; 
-  let incomingTransactionsCustomer : TransactionSavingsAccount[] = [] 
-  let outgoingTransactionsBranch: TransactionSavingsAccount[] = []; 
-  let incomingTransactionsBranch : TransactionSavingsAccount[] = [] 
-  let inComingAmountCustomer = 0
-  let inComingAmountBranch = 0
-  let outgoingAmountCustomer = 0
-  let outgoingAmountBranch = 0
-  sa?.forEach((account) => {
-    if (account.originSavingsAccountTx) {
-        account.originSavingsAccountTx?.forEach((tx) => {
-          if(account?.is_admin){
-            outgoingTransactionsBranch.push(tx) 
-            outgoingAmountBranch += tx.amount; 
-          }
-          else{
-            if(tx.channelTransaction.code != TransactionChannel.API)
-              outgoingTransactionsCustomer.push(tx)  
-              outgoingAmountCustomer += tx.amount; 
+    const branch = await this.branchRepository
+    .createQueryBuilder('branch')
+    // Jointure UNIQUE pour savingsAccounts
+    .leftJoinAndSelect('branch.savingsAccounts', 'savingsAccount', 'savingsAccount.branch.id = :branchId', { branchId: id })
+    // Jointure pour employees (si nécessaire)
+    .leftJoinAndSelect('branch.employees', 'employee') // Alias différent de 'savingsAccount'
+    // Jointures pour les transactions sortantes (outgoingTx)
+    .leftJoinAndSelect('savingsAccount.originSavingsAccountTx', 'outgoingTx')
+    .leftJoinAndSelect('outgoingTx.originSavingsAccount', 'originAccount')
+    .leftJoinAndSelect('outgoingTx.targetSavingsAccount', 'targetAccount')
+    .leftJoinAndSelect('outgoingTx.channelTransaction', 'channel')
+    .leftJoinAndSelect('outgoingTx.provider', 'provider')
+    .leftJoinAndSelect('outgoingTx.transactionType', 'transactionType')
+    // Jointures pour les transactions entrantes (incomingTx)
+    .leftJoinAndSelect('savingsAccount.targetSavingsAccountTx', 'incomingTx')
+    .leftJoinAndSelect('incomingTx.originSavingsAccount', 'originAccount1')
+    .leftJoinAndSelect('incomingTx.targetSavingsAccount', 'targetAccount1')
+    .leftJoinAndSelect('incomingTx.channelTransaction', 'channel1')
+    .leftJoinAndSelect('incomingTx.provider', 'provide1r')
+    .leftJoinAndSelect('incomingTx.transactionType', 'transactionType1')
+    // (Optionnel) Ajoutez les mêmes relations pour incomingTx si besoin :
+    .leftJoinAndSelect('incomingTx.originSavingsAccount', 'incomingOriginAccount')
+    .leftJoinAndSelect('incomingTx.targetSavingsAccount', 'incomingTargetAccount')
+    .where('branch.id = :id AND branch.status = 1', { id })
+    .getOne();
+    let  sa = branch?.savingsAccounts
+    let outgoingTransactionsCustomer: TransactionSavingsAccount[] = []; 
+    let incomingTransactionsCustomer : TransactionSavingsAccount[] = [] 
+    let outgoingTransactionsBranch: TransactionSavingsAccount[] = []; 
+    let incomingTransactionsBranch : TransactionSavingsAccount[] = [] 
+    let inComingAmountCustomer = 0
+    let inComingAmountBranch = 0
+    let outgoingAmountCustomer = 0
+    let outgoingAmountBranch = 0
+    sa?.forEach((account) => {
+      if (account.originSavingsAccountTx) {
+          account.originSavingsAccountTx?.forEach((tx) => {
+            if(account?.is_admin){
+              outgoingTransactionsBranch.push(tx) 
+              outgoingAmountBranch += tx.amount; 
+            }
+            else{
+              if(tx.channelTransaction.code != TransactionChannel.API)
+                outgoingTransactionsCustomer.push(tx)  
+                outgoingAmountCustomer += tx.amount; 
 
-          }
-        });
-    }
-    if (account.targetSavingsAccountTx) {
-       account.targetSavingsAccountTx?.forEach((tx) => {
-          if(account?.is_admin){
-            incomingTransactionsBranch.push(tx)  
-            inComingAmountBranch += tx.amount; 
-          }
-          else{
-            if(tx.channelTransaction.code != TransactionChannel.API)
-              incomingTransactionsCustomer.push(tx)  
-              inComingAmountCustomer += tx.amount; 
-          }
-        });
-    }
-  });
+            }
+          });
+      }
+      if (account.targetSavingsAccountTx) {
+        account.targetSavingsAccountTx?.forEach((tx) => {
+            if(account?.is_admin){
+              incomingTransactionsBranch.push(tx)  
+              inComingAmountBranch += tx.amount; 
+            }
+            else{
+              if(tx.channelTransaction.code != TransactionChannel.API)
+                incomingTransactionsCustomer.push(tx)  
+                inComingAmountCustomer += tx.amount; 
+            }
+          });
+      }
+    });
 
     return {
       employeeCount: branch?.employees.length,

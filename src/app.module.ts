@@ -30,6 +30,9 @@ import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { ExpressAdapter } from '@bull-board/express';
+import { BullModule } from '@nestjs/bull';
 
 
 
@@ -85,7 +88,7 @@ dotenv.config();
       },
     ]),
 
-    /*BullModule.forRoot({
+    BullModule.forRoot({
           redis: {
             host: 'localhost',
             port: 6379,
@@ -97,7 +100,7 @@ dotenv.config();
     BullBoardModule.forRoot({
       route: '/admin/queues',
       adapter: ExpressAdapter,
-    }),*/
+    }),
     SavingsAccountModule,
     ProviderModule,
     TransactionModule,
