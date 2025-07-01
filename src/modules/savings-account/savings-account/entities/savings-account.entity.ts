@@ -8,9 +8,11 @@ import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColum
 
 
 
+
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
 
 
 
@@ -60,8 +62,8 @@ export class SavingsAccount extends BaseEntity {
   @Column({ name: 'iban', type: 'varchar', length: 14, unique: true })
   iban: string;
 
-  @Column({ name: 'code_product', type: 'varchar', length: 45 })
-  code_product: string;
+  /*@Column({ name: 'code_product', type: 'varchar', length: 45 })
+  code_product: string;*/
 
   @Column({ type: 'varchar', nullable: true })
   code_cash: Date;

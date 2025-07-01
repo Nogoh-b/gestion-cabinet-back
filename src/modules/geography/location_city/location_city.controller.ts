@@ -33,13 +33,6 @@ import { LocationCity } from './entities/location_city.entity';
 import { LocationCitiesService } from './location_city.service';
 
 
-
-
-
-
-
-
-
 @Controller('location-cities')
 @ApiBearerAuth()
 export class LocationCitiesController {

@@ -14,9 +14,6 @@ import {
   Query,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-
-
-
 import {
   ApiTags,
   ApiOperation,
@@ -29,46 +26,10 @@ import {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { SavingsAccount } from '../savings-account/entities/savings-account.entity';
 import { DocumentSavingAccountService } from './document-saving-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { DocumentSavingAccount } from './entities/document-saving-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -198,6 +159,19 @@ export class DocumentSavingAccountController {
   @Get(':accountId/approved')
   @ApiOperation({ summary: 'Get approved documents for a savings account' })
   async getApprovedDocuments(
+    @Param('accountId') accountId: string, // D'abord capturer comme string
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10'
+  ) {
+        const parsedAccountId = this.parseId(accountId);
+    const parsedPage = parseInt(page, 10) || 1;
+    const parsedLimit = parseInt(limit, 10) || 10;
+    return this.service.findDocumentsByAccount(parsedAccountId, 1, parsedPage, parsedLimit);
+  }
+
+  @Get(':accountId')
+  @ApiOperation({ summary: 'Get approved documents for a savings account' })
+  async getDocuments(
     @Param('accountId') accountId: string, // D'abord capturer comme string
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10'

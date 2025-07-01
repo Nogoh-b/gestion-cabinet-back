@@ -7,7 +7,9 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColum
 
 
 
+
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
 
 
 
@@ -56,6 +58,12 @@ export enum TransactionChannel {
   MOBILE = 'MOBILE',
   ATM = 'ATM',
   API = 'API'
+}
+
+export enum TransactionProvider {
+  MOMO = 'MOMO',
+  OM = 'OM',
+  WALLET = 'WALLET',
 }
 
 @Entity('transaction_type')

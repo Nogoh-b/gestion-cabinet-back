@@ -4,6 +4,7 @@ import { LocationCity } from 'src/modules/geography/location_city/entities/locat
 import { ApiProperty } from '@nestjs/swagger';
 
 
+
 export class CustomerResponseDto {
   @Expose()
   @ApiProperty()

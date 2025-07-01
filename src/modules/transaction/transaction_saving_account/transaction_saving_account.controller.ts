@@ -6,7 +6,7 @@ import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 
 
 
-import { TransactionCode } from '../transaction_type/entities/transaction_type.entity';
+import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
 
@@ -84,22 +84,22 @@ export class TransactionSavingAccountController {
 
   @Get('momo')
   findAllMomo(@Query() query: PaginationQueryDto) {
-    return this.findByTypeParent(query, TransactionCode.MOMO_DEPOSIT)
+    return this.findByTypeParent(query, TransactionProvider.MOMO)
   }
 
   @Get('om')
   findAllOM(@Query() query: PaginationQueryDto) {
-    return this.findByTypeParent(query, TransactionCode.OM_DEPOSIT)
+    return this.findByTypeParent(query, TransactionProvider.OM)
   }
 
   @Get('wallet_deposit')
   findAllWallet(@Query() query: PaginationQueryDto) {
-    return this.findByTypeParent(query, TransactionCode.E_WALLET_DEPOSIT)
+    return this.findByTypeParent(query, TransactionProvider.WALLET)
   }
 
   @Get('wallet_withdrawl')
   findAllWalletWin(@Query() query: PaginationQueryDto) {
-    return this.findByTypeParent(query, TransactionCode.E_WALLET_WITHDRAWAL)
+    return this.findByTypeParent(query, TransactionProvider.WALLET)
   }
 
   findByTypeParent(query,

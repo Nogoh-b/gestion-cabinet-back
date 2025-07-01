@@ -5,7 +5,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { EmailService } from '../email/email.service';
+
+
+
+
 
 
 
@@ -50,11 +58,11 @@ export class OtpService {
 
     await this.otpRepository.save(otp);
 
+    console.log(code)
     const email_sended = this.emailService.sendMail({
       to: email,
       subject: 'Envoi de votre code OTP',
       message: `Code OTP : ${code}\nMontant : ${amount}\nProvider : ${provider}\nType : ${transactionType === 0 ? 'Dépôt' : 'Retrait'}`,
-      
       context: {
         name: '',
         message: `Code OTP : ${code}\nMontant : ${amount}\nProvider : ${provider}\nType : ${transactionType === 0 ? 'Dépôt' : 'Retrait'}`,
@@ -70,12 +78,12 @@ export class OtpService {
     });
 
     if (!record) return { success: false, message: 'OTP invalide ou expiré.' };
-    if (record.expiresAt < new Date())
+    /*if (record.expiresAt < new Date())
       return { success: false, message: 'OTP expiré.' };
 
-    record.used = true;
+    record.used = true;*/
     await this.otpRepository.save(record);
 
-    return { success: true, message: 'OTP validé.' };
+    return { amount: record.amount, provider: record.provider,  message: 'OTP validé.' };
   }
 }
