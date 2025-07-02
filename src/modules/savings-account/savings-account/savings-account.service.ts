@@ -30,15 +30,33 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountService } from '../type-savings-account/type-savings-account.service';
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
-import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
+import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -194,8 +212,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'documents',
         'enrolled_by',
         'interestRelations',
-        'originSavingsAccountTx',
-        'targetSavingsAccountTx'
+        // 'originSavingsAccountTx',
+        // 'targetSavingsAccountTx'
       ],
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
@@ -320,16 +338,22 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   }
 
   
-  async updateCodeCash(id: number, dto: UpdateCodeCahOfSavingAccountDto): Promise<SavingsAccount> {
+  async updateCodeCash(id: number): Promise<any> {
     // 1. Charge l’entité existante
     const account = await this.repo.findOne({ where: { id }, relations: ['type_savings_account'] });
     if (!account) {
       throw new NotFoundException(`Compte épargne #${id} introuvable`);
     }
-    // 3. On copie le reste des propriétés simples
-    Object.assign(account, dto);
-    // 4. On enregistre avec save() pour que TypeORM gère les relations
-    return this.repo.save(account);
+    try {
+      const code_cash = await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/update-code-cash`);
+      if(code_cash){
+        account.code_cash = code_cash
+        return account
+      }
+    } catch (error) {
+      console.log(error);
+      return null;    // ou undefined
+    }
   }
 
   async remove(id: number): Promise<any> {
@@ -387,6 +411,27 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
     const tx = await this.getTransactions(id)
+    return this.calculateAvailableBalance(account,tx) ;
+  }
+
+  async balanceByCode(number_savings_account: string): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { number_savings_account },
+      relations: ['type_savings_account'],
+    });
+    if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
+
+    const tx = await this.getTransactions(account.id)
+    return this.calculateTotalBalance(account,tx);
+  }
+
+  async avalaibleBalanceByCode(number_savings_account: string): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { number_savings_account },
+      relations: ['type_savings_account'],
+    });
+    if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
+    const tx = await this.getTransactions(account.id)
     return this.calculateAvailableBalance(account,tx) ;
   }
 
@@ -630,7 +675,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       }
 
       // 3. Fallback sur la logique historique
-      if (tx.transactionType.is_credit === 1) {
+      if ( tx.transactionType && tx.transactionType.is_credit === 1) {
         // crédit standard : on ne compte que si VALIDATE
         if (tx.status === TransactionSavingsAccountStatus.VALIDATE) {
           return sum + tx.amount;
@@ -691,7 +736,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       }
 
       // 3. Fallback sur la logique existante
-      if (tx.transactionType.is_credit === 1) {
+      if (tx.transactionType && tx.transactionType.is_credit === 1) {
         // crédit simple
         if (tx.status === TransactionSavingsAccountStatus.VALIDATE) {
           return sum + tx.amount;

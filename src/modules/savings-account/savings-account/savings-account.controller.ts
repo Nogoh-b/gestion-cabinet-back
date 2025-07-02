@@ -1,7 +1,6 @@
 import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 
-import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 
 
@@ -18,8 +17,13 @@ import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } f
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 
 
+
+
+
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
-import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
+import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
@@ -37,16 +41,21 @@ import { SavingsAccountService } from './savings-account.service';
 
 
 
+
+
+
+
+
 @ApiTags('Saving Accounts')
 @Controller('savings-accounts')
 export class SavingsAccountController {
-  constructor(private readonly service: SavingsAccountService, private readonly mcotiService: McotiService) {}
+  constructor(private readonly service: SavingsAccountService) {}
 
   @ApiOperation({ summary: 'Get validation status of all documents for an account' })
   @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })  
   @Get(':id/get-code-cash')
   async processData(@Param('id', ParseIntPipe) id: number) {
-    return this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${8668522}/update-code-cash`);
+    return this.service.updateCodeCash(id);
   }
 
 
@@ -178,7 +187,7 @@ export class SavingsAccountController {
     return this.service.update(id, dto);
   }
 
-  @Put(':id')
+  /*@Put(':id')
   @ApiOperation({ summary: 'Remplace entièrement un compte existant' })
   @ApiParam({ name: 'id', description: "ID du compte", type: Number })
   @ApiBody({ type: UpdateCodeCahOfSavingAccountDto })
@@ -188,7 +197,7 @@ export class SavingsAccountController {
     @Body() dto: UpdateCodeCahOfSavingAccountDto,
   ) {
     return this.service.updateCodeCash(id, dto);
-  }
+  }*/
 
   @Patch(':id')
   @ApiOperation({ summary: 'Met à jour partiellement un compte' })
@@ -233,6 +242,17 @@ export class SavingsAccountController {
   @Get(':id/avalaible-balance')
   balance( @Param('id', ParseIntPipe) id: number) {
     return this.service.avalaibleBalance(id);
+  }
+
+  
+  @Get('by-code/:code/balance')
+  avalaibleBalanceByCode( @Param('code', ParseIntPipe) code: string) {
+    return this.service.balanceByCode(code);
+  }
+
+  @Get('by-code/:code/avalaible-balance')
+  balanceByCode( @Param('code', ParseIntPipe) code: string) {
+    return this.service.avalaibleBalanceByCode(code);
   }
 
   @Post(':id/interest-range')

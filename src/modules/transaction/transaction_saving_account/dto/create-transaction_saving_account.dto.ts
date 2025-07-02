@@ -12,6 +12,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -21,6 +22,7 @@ export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
   branch_id: number;
+  token?: string;
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
   @IsString()
@@ -75,6 +77,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   @ApiPropertyOptional({ example: false, description: 'Si la transaction est bloquée ou pas' })
   @IsBoolean()
   is_locked: boolean;                           // true si la transaction est bloquée, false sinon
+  token?: string;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
@@ -87,6 +90,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   @IsNumber()
   @Min(0)
   amount: number;
+  token?: string;
 
 
   @ApiProperty({ example: 1, description: '' })

@@ -9,7 +9,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { EmailService } from '../email/email.service';
+
 
 
 
@@ -78,10 +80,10 @@ export class OtpService {
     });
 
     if (!record) return { success: false, message: 'OTP invalide ou expiré.' };
-    /*if (record.expiresAt < new Date())
+    if (record.expiresAt < new Date())
       return { success: false, message: 'OTP expiré.' };
 
-    record.used = true;*/
+    record.used = true;
     await this.otpRepository.save(record);
 
     return { amount: record.amount, provider: record.provider,  message: 'OTP validé.' };

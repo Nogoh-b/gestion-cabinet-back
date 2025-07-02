@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { ProviderController } from './provider/provider.controller';
-import { ProviderService } from './provider/provider.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Provider } from './provider/entities/provider.entity';
+
 import { GeographyModule } from '../geography/geography.module';
+import { Provider } from './provider/entities/provider.entity';
+import { ProviderController } from './provider/provider.controller';
+import { ProviderSeeder } from './provider/provider.seeder';
+import { ProviderService } from './provider/provider.service';
+
 
 @Module({
   imports:[
@@ -14,7 +17,7 @@ import { GeographyModule } from '../geography/geography.module';
   ],
   
   controllers: [ProviderController],
-  providers:[ProviderService],
-  exports:[ProviderService]
+  providers:[ProviderService, ProviderSeeder],
+  exports:[ProviderService, ProviderSeeder]
 })
 export class ProviderModule {}

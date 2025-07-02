@@ -1,18 +1,34 @@
 import { Queue } from 'bull';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
+import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { UpdateSavingsAccountDto } from 'src/modules/savings-account/savings-account/dto/update-savings-account.dto';
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+
+
 import { Repository } from 'typeorm';
-
-
 import { v4 as uuidv4 } from 'uuid';
+
+
 import { InjectQueue } from '@nestjs/bull';
-
-
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
 
 
@@ -25,13 +41,25 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
-
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
+import { TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -56,6 +84,7 @@ export class TransactionSavingsAccountService {
     private readonly providerService: ProviderService,
     private readonly transactionTypeService: TransactionTypeService,
     private paginationService: PaginationService,
+    private mcotiService: McotiService,
     @InjectQueue('maintenance')
     private readonly maintenanceQueue: Queue,
     
@@ -146,7 +175,7 @@ export class TransactionSavingsAccountService {
     tx.payment_code = paymentCode;
     tx.payment_token_provider = payment_token_provider;
     tx.reference = await reference;
-    tx.token = 'ok'
+    tx.token = dto.token ?? '92454e4e-c6d4-412c-82e8-f99284b114f0'
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
@@ -188,11 +217,19 @@ export class TransactionSavingsAccountService {
   }
 
   momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'MOMO_DEPOSIT', 'MOBILE', 'WALLET');
+    return this.perform_transaction(dto, 'MOMO_DEPOSIT', 'MOBILE', TransactionProvider.MOMO);
+  }  
+
+  om_withdraw(dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.perform_transaction(dto, 'OM_WITHDRAW', 'MOBILE', TransactionProvider.OM);
+  }
+
+  momo_withdraw(dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.perform_transaction(dto, 'MOMO_WITHDRAW', 'MOBILE', TransactionProvider.MOMO);
   }  
 
   om_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'OM_DEPOSIT', 'MOBILE', 'WALLET');
+    return this.perform_transaction(dto, 'OM_DEPOSIT', 'MOBILE', TransactionProvider.OM);
   }
 
   e_wallet_withdrawal(dto: CreateDebitTransactionSavingsAccountDto) {
@@ -222,7 +259,18 @@ export class TransactionSavingsAccountService {
   }
 
 
-
+  async checkStatusPayment(
+    id: number,
+  ): Promise<TransactionSavingsAccount> {
+    const tx = await this.findOne(id)
+    console.log(tx.token)
+    
+    const payment = tx.transactionType.is_credit === 1 ?  
+      await this.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
+      :
+      await this.mcotiService.checkStatusPaymentWithDraw(tx.token) ;
+    return payment
+  }
 
 
   // Liste toutes les transactions épargne

@@ -6,9 +6,19 @@ import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 
 
 
-import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
+
+
+
+
+
+import { TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
+
+
+
+
 
 
 
@@ -42,6 +52,16 @@ export class TransactionSavingAccountController {
     return this.transactionSavingAccountService.momo_deposit(dto);
   }
 
+  @Post('momo_withdrawal')
+  momo_withdraw(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.momo_withdraw(dto);
+  }
+
+  @Post('om_withdrawal')
+  om_withdraw(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.om_withdraw(dto);
+  }
+
   @Post('om_deposit')
   om_deposit(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.om_deposit(dto);
@@ -57,16 +77,16 @@ export class TransactionSavingAccountController {
     return this.transactionSavingAccountService.e_wallet_deposit(dto);
   }
 
-  @Post('e_wallet_withdrawal')
-  e_wallet_withdrawal(@Body() dto: CreateDebitTransactionSavingsAccountDto) {
-    return this.transactionSavingAccountService.e_wallet_withdrawal(dto);
-  }
+
 
   @Post('internal_transfer')
   internal_transfer(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.internal_transfer(dto);
   }
-
+  @Get(':id/check_payment')
+  checkStatusPayment(@Param('id') id: number) {
+    return this.transactionSavingAccountService.checkStatusPayment(id);
+  }
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     const { page, limit, term, fields, exact, from, to } = query;
