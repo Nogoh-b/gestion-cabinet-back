@@ -164,7 +164,7 @@ export class TransactionSavingsAccountService {
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
     tx.is_locked = dto.is_locked ?? false;
-    tx.status = 0;
+    tx.status = 1;
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.transactionType = txType;

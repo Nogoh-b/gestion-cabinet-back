@@ -44,7 +44,11 @@ export class CreateSavingsAccountDto {
   /*@ApiPropertyOptional({ description: 'Lien vers le wallet' })
   @IsOptional()
   @IsString()*/
-  wallet_link?: string;
+  wallet_link?: string;  
+  
+  @ApiPropertyOptional({ description: 'Lien vers le wallet' })
+  @IsOptional()
+  created_online?: number;
 
   /*@ApiPropertyOptional({ description: 'Taux d’intérêt annuel spécifique' })
   @IsOptional()

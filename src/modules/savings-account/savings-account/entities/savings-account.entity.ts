@@ -69,7 +69,9 @@ export class SavingsAccount extends BaseEntity {
   code_cash: Date;
   
   @Column({ name: 'wallet_link', type: 'varchar', length: 45, nullable: true })
-  wallet_link?: string;
+  wallet_link?: string;  
+  @Column({ length: 45, nullable: true })
+  created_online?: number;
 
   @Column({ name: 'interest_year_savings_account', type: 'decimal', nullable: true })
   interest_year_savings_account?: number;
