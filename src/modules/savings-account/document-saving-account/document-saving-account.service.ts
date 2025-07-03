@@ -28,10 +28,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { SavingsAccountResponseDto } from '../savings-account/dto/response-savings-account.dto';
 import { SavingsAccountService } from '../savings-account/savings-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { DocumentSavingAccountResponseDto } from './dto/response-document-saving-account.dto';
+
+
 
 
 
@@ -84,7 +88,7 @@ export class DocumentSavingAccountService {
     const accepted = await this.repo.find({
       where: {
         savings_account: { id: idSa },
-        status: DocumentSavingAccountStatus.ACCEPTED,
+        status: DocumentSavingAccountStatus.ACCEPTED, 
       },
       relations: ['document_type'],
     });
