@@ -3,43 +3,24 @@ import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'sr
 import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
+import { QueueService } from 'src/modules/queue/queue.service';
 import { UpdateSavingsAccountDto } from 'src/modules/savings-account/savings-account/dto/update-savings-account.dto';
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+
+
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-
-
 import { Repository } from 'typeorm';
+
+
 import { v4 as uuidv4 } from 'uuid';
-
-
 import { InjectQueue } from '@nestjs/bull';
+
+
+
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
@@ -47,29 +28,6 @@ import { TransactionTypeService } from '../transaction_type/transaction_type.ser
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -84,9 +42,10 @@ export class TransactionSavingsAccountService {
     private readonly providerService: ProviderService,
     private readonly transactionTypeService: TransactionTypeService,
     private paginationService: PaginationService,
-    private mcotiService: McotiService,
+    public mcotiService: McotiService,
     @InjectQueue('maintenance')
     private readonly maintenanceQueue: Queue,
+    private readonly queueService: QueueService,
     
   ) {}
 
@@ -193,8 +152,13 @@ export class TransactionSavingsAccountService {
     });
     if(type_code === 'INTERNAL_TRANSFER' )
       this.validate(tx.id)
+    if(channel_code === 'MOBILE'){
+      const job = await this.queueService.addTaskCheckPayment(tx.id);
+    }
     return tx;
   }
+
+  
 
   deposit_cash(dto: CreateCreditTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
@@ -261,15 +225,9 @@ export class TransactionSavingsAccountService {
 
   async checkStatusPayment(
     id: number,
-  ): Promise<TransactionSavingsAccount> {
-    const tx = await this.findOne(id)
-    console.log(tx.token)
-    
-    const payment = tx.transactionType.is_credit === 1 ?  
-      await this.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
-      :
-      await this.mcotiService.checkStatusPaymentWithDraw(tx.token) ;
-    return payment
+  ): Promise<void> {
+
+      const job = await this.queueService.addTaskBuyInterest(id);
   }
 
 
@@ -358,68 +316,69 @@ export class TransactionSavingsAccountService {
     target: SavingsAccount | null,
     amount: number,
     is_credit: boolean
-  ) {
+  ) 
+  {
 
-    // si le compte cible est desactivé et qu'il veut crédité on refuse
-    if(target && target.status === SavingsAccountStatus.DEACTIVATE && is_credit){
-      throw new BadRequestException('Compte cible Désactivé');
-    }
+      // si le compte cible est desactivé et qu'il veut crédité on refuse
+      if(target && target.status === SavingsAccountStatus.DEACTIVATE && is_credit){
+        throw new BadRequestException('Compte cible Désactivé');
+      }
 
-    if(!account)
-      return true
+      if(!account)
+        return true
 
-    if(account && (account.status === SavingsAccountStatus.DEACTIVATE || account.status === SavingsAccountStatus.BLOCKED )){
-      throw new BadRequestException('Compte d\'origine désactive');
-    }
+      if(account && (account.status === SavingsAccountStatus.DEACTIVATE || account.status === SavingsAccountStatus.BLOCKED )){
+        throw new BadRequestException('Compte d\'origine désactive');
+      }
 
-    const avalaible_balance = account ? await this.savingsAccountService.avalaibleBalance(account.id) : 0
+      const avalaible_balance = account ? await this.savingsAccountService.avalaibleBalance(account.id) : 0
 
-    if (!is_credit && avalaible_balance < amount) {
-      throw new BadRequestException(`Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
-);
-    }
+      if (!is_credit && avalaible_balance < amount) {
+        throw new BadRequestException(`Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
+  );
+      }
 
-    // On suppose que `account.activeInterest` a déjà été calculé via @AfterLoad()
-    const active = account?.activeInterest;
+      // On suppose que `account.activeInterest` a déjà été calculé via @AfterLoad()
+      const active = account?.activeInterest;
 
-    // 1. Si aucune relation d’intérêt active n’est trouvée, on rejette
-    if (active) {
-      throw new BadRequestException(
-        'Durée de blocage non atteinte vous ne pouvez rien retiré',
+      // 1. Si aucune relation d’intérêt active n’est trouvée, on rejette
+      if (active) {
+        throw new BadRequestException(
+          'Durée de blocage non atteinte vous ne pouvez rien retiré',
+        );
+      }
+
+      // 1. Vérifier si le compte est actif
+      if (account?.status === SavingsAccountStatus.DEACTIVATE || (account?.status === SavingsAccountStatus.BLOCKED && !is_credit)) {
+        throw new BadRequestException('Ce compte est inactif ou bloqué.');
+      }
+
+      // 2. Vérifier le solde minimum (pour les retraits)
+      /*if (
+        avalaible_balance - amount <
+        account!.type_savings_account.minimum_balance &&
+        !is_credit
+      ) {
+        throw new BadRequestException(
+          `Solde insuffisant. Minimum requis: ${account?.type_savings_account.minimum_balance}`,
+        );
+      }*/
+
+      // 3. Vérifier la durée de blocage (ex: 6 mois)
+      const accountAgeMonths = this.getAccountAgeMonths(
+        account!.type_savings_account.created_at,
       );
-    }
+      if (
+        accountAgeMonths < account!.type_savings_account.minimum_blocking_duration
+      ) {
+        throw new BadRequestException(
+          `Durée de blocage non atteinte (${account!.type_savings_account.minimum_blocking_duration} mois requis)`,
+        );
+      }
 
-    // 1. Vérifier si le compte est actif
-    if (account?.status === SavingsAccountStatus.DEACTIVATE || (account?.status === SavingsAccountStatus.BLOCKED && !is_credit)) {
-      throw new BadRequestException('Ce compte est inactif ou bloqué.');
-    }
-
-    // 2. Vérifier le solde minimum (pour les retraits)
-    /*if (
-      avalaible_balance - amount <
-      account!.type_savings_account.minimum_balance &&
-      !is_credit
-    ) {
-      throw new BadRequestException(
-        `Solde insuffisant. Minimum requis: ${account?.type_savings_account.minimum_balance}`,
-      );
-    }*/
-
-    // 3. Vérifier la durée de blocage (ex: 6 mois)
-    const accountAgeMonths = this.getAccountAgeMonths(
-      account!.type_savings_account.created_at,
-    );
-    if (
-      accountAgeMonths < account!.type_savings_account.minimum_blocking_duration
-    ) {
-      throw new BadRequestException(
-        `Durée de blocage non atteinte (${account!.type_savings_account.minimum_blocking_duration} mois requis)`,
-      );
-    }
-
-    // 4. Calculer les frais (ex: commission_per_product devenu account_opening_fee)
-    const totalFees = account!.type_savings_account.account_opening_fee; // + autres frais si besoin
-    return { isValid: true, fees: totalFees };
+      // 4. Calculer les frais (ex: commission_per_product devenu account_opening_fee)
+      const totalFees = account!.type_savings_account.account_opening_fee; // + autres frais si besoin
+      return { isValid: true, fees: totalFees };
   }
 
   private getAccountAgeMonths(createdAt: Date): number {

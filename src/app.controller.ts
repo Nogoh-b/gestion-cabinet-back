@@ -24,8 +24,12 @@ import { ApiBody } from '@nestjs/swagger';
 
 
 
+
+
 import { AppService } from './app.service';
 import { QueueService } from './modules/queue/queue.service';
+
+
 
 
 
@@ -71,17 +75,9 @@ export class AppController {
   @Post('test_cron_maintenance')
   @ApiBody({ type: AddJobDto })
   async addJob(@Body() data: AddJobDto) {
-    // Options Bull de base
-    const opts: JobOptions = {
-      attempts: 3,
-      backoff: { type: 'fixed', delay: 5000 },
-    };
-      // Planifie le job chaque mois à minuit à la date du jour
-      const now = new Date();
-      const day = now.getDate();
-      // opts.repeat = { cron: `0 0 ${day} * *` };
-      opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
-    const job = await this.queueService.addTaskBuyInterest(2, opts);
+
+
+    const job = await this.queueService.addTaskBuyInterest(2);
     return { jobId: job.id };
   }
   @Post('test_cron_maintenance1')

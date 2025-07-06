@@ -9,7 +9,9 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColum
 
 
 
+
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
 
 
 
@@ -35,7 +37,7 @@ export enum TransactionCode {
   LOAN_INTEREST_PAYMENT = 'LOAN_INTEREST_PAYMENT',
   INTEREST_CREDIT = 'INTEREST_CREDIT',
   INTEREST_DEBIT = 'INTEREST_DEBIT',
-  ACCOUNT_MAINTENANCE_FEE = 'ACCOUNT_MAINTENANCE_',
+  ACCOUNT_MAINTENANCE_FEE = 'ACCOUNT_MAINTENANCE_FEE',
   OVERDRAFT_FEE = 'OVERDRAFT_FEE',
   LATE_PAYMENT_PENALTY = 'LATE_PAYMENT_PENALTY',
   FX_BUY = 'FX_BUY',

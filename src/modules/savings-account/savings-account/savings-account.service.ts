@@ -39,6 +39,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -48,6 +52,10 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
 
 
 
@@ -269,7 +277,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       avalaible_balance: 0,
       status: SavingsAccountStatus.PENDING,
       // code_product: dto.code_product,
-      wallet_link: dto.wallet_link,
+      created_online: dto.created_online,
       is_admin,
       // interest_year_savings_account: dto.interest_year_savings_account,
       iban,
@@ -344,10 +352,13 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (!account) {
       throw new NotFoundException(`Compte épargne #${id} introuvable`);
     }
+    if(!account.created_online || account.code_cash)
+      return
     try {
       const code_cash = await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/update-code-cash`);
       if(code_cash){
         account.code_cash = code_cash
+        this.repo.save(account)
         return account
       }
     } catch (error) {
@@ -447,8 +458,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       throw new BadRequestException(`Cannot validate account in status ${account.status}`);
     }
     account.status = SavingsAccountStatus.ACTIVE;
-    const code_cash = await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${8668522}/update-code-cash`);
-    account.code_cash = code_cash;
+    await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${8668522}/validate`);
     return this.repo.save(account);
   }
 
