@@ -27,6 +27,8 @@ import { ConfigService } from '@nestjs/config';
 
 
 
+
+
 @Injectable()
 export class McotiService {
   constructor(
@@ -112,10 +114,11 @@ async callMcotiEndpoint(
 
     try {
       const fullUrl = `${urlCashPayerStatus}/${codePaymentCash}`;
+      console.log('response', fullUrl);
+
       const response = await firstValueFrom(
         this.httpService.get(fullUrl)
       );
-
       const requestStatusPayment = response.data;
 
       if (requestStatusPayment != null && requestStatusPayment.data?.payToken) {

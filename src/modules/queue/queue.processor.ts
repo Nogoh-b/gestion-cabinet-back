@@ -14,26 +14,21 @@ import { Processor, Process } from '@nestjs/bull';
 
 
 
+
+
+
+
+
+
+
+
+
+
 import { SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 @Processor('task-queue')
 export class QueueProcessor {
@@ -51,15 +46,28 @@ export class QueueProcessor {
   @Process('check-payment')
   async handleCheckPayment(job: Job) {
     console.log('handleCheckPayment :', job.id);
-    const { accountId  } = job.data;
+    const { txId  } = job.data;
 
-    const tx = await this.txService.findOne(accountId)
-    console.log(tx.token)
+    const tx = await this.txService.findOne(txId)
+    console.log('token ',tx.provider.code)
     
-    const payment = tx.transactionType.is_credit === 1 ?  
-      await this.txService.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
-      :
-      await this.txService.mcotiService.checkStatusPaymentWithDraw(tx.token) ;
+    const payment : Payment =/* tx.transactionType.is_credit === 1 ?  */
+    await this.txService.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
+    if (payment.paymentStatus != PaymentStatusProvider.PENDING ){
+      const repeatOpts = job.opts.repeat;
+      tx.status_provider = payment.paymentStatus
+      tx.status = PaymentStatus.PENDING
+      this.txService.update(tx)
+      if (repeatOpts) {
+        await job.queue.removeRepeatable('deduct-fee', repeatOpts);
+        // vous pouvez logger pour vérif :
+        console.log(`Repeatable job removed for account ${job.data.txId}`);
+      }
+      return; // ignore si inactif
+    }
+      /*:
+      await this.txService.mcotiService.checkStatusPaymentWithDraw(tx.token) ;*/
+      console.log(payment);
     return payment
   }
 

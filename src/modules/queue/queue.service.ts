@@ -6,6 +6,10 @@ import { Injectable } from '@nestjs/common';
 
 
 
+
+
+
+
 @Injectable()
 export class QueueService {
   constructor(
@@ -38,9 +42,15 @@ export class QueueService {
     const now = new Date();
     const day = now.getDate();
     // opts.repeat = { cron: `0 0 ${day} * *` };
-    opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
+    // opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
+      // cron: '0 */3 * * * *', // à 0s de chaque minute divisible par 3
+
+    opts.repeat = {
+      cron: '*/5 * * * * *', // à 0s de chaque minute divisible par 3
+      limit: 3,              // stop après 3 runs :contentReference[oaicite:0]{index=0}
+    };
     const jobOptions = { ...defaultOpts, ...opts };
-    return this.queue.add('check-payment', { accountId: data }, jobOptions);
+    return this.queue.add('check-payment', { txId: data }, jobOptions);
   }
   
 

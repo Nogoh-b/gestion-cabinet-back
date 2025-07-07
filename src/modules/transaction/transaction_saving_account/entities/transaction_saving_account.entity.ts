@@ -23,6 +23,59 @@ export enum TransactionSavingsAccountStatus {
   FAILED = 2,
   LOCKED = 3,
 }
+export enum PaymentStatusProvider {
+  PENDING      = 'PENDING',  // transaction initiée, en attente de PIN/OTP
+  SUCCESSFULL  = 'SUCCESSFULL',  // paiement confirmé et exécuté
+  EXPIRED      = 'EXPIRED',  // délai d’OTP dépassé
+  FAILED       = 'FAILED',  // échec de paiement (intégrateurs tiers)
+  CANCELED     = 'CANCELED',  // utilisateur a annulé/rejeté
+  REJECTED     = 'REJECTED',  // paiement rejeté par le système
+  UNKNOWN      = 'UNKNOWN'   // cas imprévu ou non documenté
+}
+export enum PaymentStatus {
+  PENDING      = 0,  // transaction initiée, en attente de PIN/OTP
+  SUCCESSFULL  = 1,  // paiement confirmé et exécuté
+  EXPIRED      = 2,  // délai d’OTP dépassé
+  FAILED       = 3,  // échec de paiement (intégrateurs tiers)
+  CANCELED     = 4,  // utilisateur a annulé/rejeté
+  REJECTED     = 5,  // paiement rejeté par le système
+  UNKNOWN      = 6   // cas imprévu ou non documenté
+}
+
+export class PaymentsType {
+  id: string;
+  name: string;
+  code: string;
+
+  constructor(init: Partial<PaymentsType>) {
+    Object.assign(this, init);
+  }
+}
+
+
+export class Payment {
+  id: string;
+  amount: string;
+  paymentStatus: PaymentStatusProvider;
+  description: string;
+  payToken: string;
+  rate: string;
+  amountHT: string;
+  type: string;
+  paymentType: string | null;
+  ref: string;
+  externalId: string;
+  created_at: string;
+  updated_at: string;
+  paymentsType: PaymentsType;
+
+  constructor(init: Partial<Payment>) {
+    Object.assign(this, init);
+    if (init.paymentsType) {
+      this.paymentsType = new PaymentsType(init.paymentsType);
+    }
+  }
+}
 
 @Entity('transaction_savings_account')
 export class TransactionSavingsAccount {
@@ -73,6 +126,8 @@ export class TransactionSavingsAccount {
   target: string;
 
   
+  @Column({ name: 'status_provide' })
+  status_provider?: string;
   /*@Index()
   @Column({ length: 100 })
   originType: string;

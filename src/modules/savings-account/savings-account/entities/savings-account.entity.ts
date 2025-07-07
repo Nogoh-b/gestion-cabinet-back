@@ -59,6 +59,7 @@ export class SavingsAccount extends BaseEntity {
   @Column({ name: 'status', type: 'tinyint' })
   status: number;
 
+
   @Column({ name: 'iban', type: 'varchar', length: 14, unique: true })
   iban: string;
 

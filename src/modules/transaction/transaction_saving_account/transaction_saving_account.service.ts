@@ -22,12 +22,16 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
-import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+import { PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
 
 
 
@@ -153,7 +157,17 @@ export class TransactionSavingsAccountService {
     if(type_code === 'INTERNAL_TRANSFER' )
       this.validate(tx.id)
     if(channel_code === 'MOBILE'){
-      const job = await this.queueService.addTaskCheckPayment(tx.id);
+      const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
+      setTimeout(() => {
+        this.mcotiService
+          .checkStatusPaymentDeposit(tx.token, tx.provider.code)
+          .then(resolve)
+          .catch(reject);
+      }, 5000);
+      });
+      console.log('paymentResult', paymentResult);
+      if (paymentResult.paymentStatus != PaymentStatusProvider.PENDING )
+         await this.queueService.addTaskCheckPayment(tx.id);
     }
     return tx;
   }
@@ -499,6 +513,10 @@ export class TransactionSavingsAccountService {
     const entity = await this.findOne(id);
     entity.is_locked = false;
     return this.repo.save(entity);
+  }
+
+  async update(tx: TransactionSavingsAccount): Promise<TransactionSavingsAccount> {
+    return this.repo.save(tx);
   }
 
   // Supprime une transaction

@@ -26,8 +26,21 @@ import { ApiBody } from '@nestjs/swagger';
 
 
 
+
+
+
+
+
+
 import { AppService } from './app.service';
 import { QueueService } from './modules/queue/queue.service';
+import { TransactionSavingsAccountService } from './modules/transaction/transaction_saving_account/transaction_saving_account.service';
+
+
+
+
+
+
 
 
 
@@ -48,6 +61,7 @@ import { QueueService } from './modules/queue/queue.service';
 
 class AddJobDto {
   foo: string;
+  accountId:any;
   /**
    * Mettre à true pour exécuter le job chaque mois à la même date
    */
@@ -60,6 +74,7 @@ export class AppController {
     private readonly dataSource: DataSource,
     private readonly appService: AppService,
     private readonly queueService: QueueService,
+    private readonly txService: TransactionSavingsAccountService,
     @InjectQueue('maintenance')
     private readonly maintenanceQueue: Queue,
     @Inject('USER_SERVICE') private readonly client: ClientProxy,
@@ -83,6 +98,11 @@ export class AppController {
   @Post('test_cron_maintenance1')
   @ApiBody({ type: AddJobDto })
   async addJobTask(@Body() data: AddJobDto) {
+
+   /* return await this.txService.mcotiService.checkStatusPaymentDeposit(data.accountId, "MOMO")
+    return {
+"accountId" : "620489772"
+}*/
     // Options Bull de base
     const opts: JobOptions = {
       attempts: 3,
@@ -93,7 +113,7 @@ export class AppController {
       const day = now.getDate();
       // opts.repeat = { cron: `0 0 ${day} * *` };
       opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
-    const job = await this.queueService.addTask(2, opts);
+    const job = await this.queueService.addTaskCheckPayment(data.accountId);
     return { jobId: job.id };
   }
   /*@Get('typeorm-error')
