@@ -10,8 +10,8 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     port: parseInt(process.env.DB_PORT || '3306', 10),
     username: process.env.DB_USER ?? 'mendo',
     password: process.env.DB_PASSWORD ?? 'mendo',
-    database: process.env.DB_NAME ??  'core_banking', 
-    synchronize: false,
+    database: process.env.DB_NAME ??  'core_banking',  
+    synchronize: false, 
     autoLoadEntities: true,
     // logging: ["query", "error", "schema"],
     // logger: "advanced-console"

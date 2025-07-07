@@ -2,61 +2,13 @@ import { JobOptions, Queue } from 'bull';
 import { firstValueFrom } from 'rxjs';
 import { DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
-
 import { Body, Controller, Inject, Post } from '@nestjs/common';
-
-
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiBody } from '@nestjs/swagger';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { AppService } from './app.service';
 import { QueueService } from './modules/queue/queue.service';
 import { TransactionSavingsAccountService } from './modules/transaction/transaction_saving_account/transaction_saving_account.service';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class AddJobDto {

@@ -1,6 +1,5 @@
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
-import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { CreateEmployeeDto } from 'src/modules/agencies/employee/dto/create-employee.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Repository } from 'typeorm';
@@ -38,10 +37,10 @@ export class UsersService {
         // console.log(forwardRef)
   }
 
-  async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
-    await validateDto(CreateUserDto, createUserDto)
+  async create(createUserDto: CreateUserDto , is_strict = true): Promise<UserResponseDto> {
+    //await validateDto(CreateUserDto, createUserDto)
     const customer = await this.customerRepository.findOneBy({id:createUserDto.customer_id})
-    if (!customer) {
+    if (!customer &&  is_strict) {
       throw new NotFoundException('Le compte client est inexistant');
     }
     const existingUser = await this.userRepository.findOne({
@@ -56,13 +55,13 @@ export class UsersService {
     if (existingUserName) {
       throw new ConflictException('Username already exists');
     }
-
+ 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
     const user = this.userRepository.create({
       ...createUserDto,
-      customer,
-      password: hashedPassword,
+      customer : customer ?? new Customer(),
+      password: hashedPassword, 
       status : 1
     });
 
