@@ -15,12 +15,12 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { InjectQueue } from '@nestjs/bull';
 
-
-
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
-
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
 
 
 
@@ -29,7 +29,8 @@ import { TransactionProvider } from '../transaction_type/entities/transaction_ty
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
-import { PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -127,7 +128,7 @@ export class TransactionSavingsAccountService {
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
     tx.is_locked = dto.is_locked ?? false;
-    tx.status = 1;
+    tx.status = 0;
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.transactionType = txType;
@@ -136,9 +137,9 @@ export class TransactionSavingsAccountService {
     tx.originSavingsAccount = origin //(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
     tx.targetSavingsAccount = target // (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
     tx.payment_code = paymentCode;
-    tx.payment_token_provider = payment_token_provider;
+    tx.payment_token_provider = payment_token_provider; 
     tx.reference = await reference;
-    tx.token = dto.token ?? '92454e4e-c6d4-412c-82e8-f99284b114f0'
+    tx.token = dto.token ?? '638290507'
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
@@ -154,10 +155,13 @@ export class TransactionSavingsAccountService {
       await entityManager.save(tx);
 
     });
-    if(type_code === 'INTERNAL_TRANSFER' )
+    if(type_code === 'INTERNAL_TRANSFER' || !Boolean(txType.is_credit) )
       this.validate(tx.id)
-    if(channel_code === 'MOBILE'){
+
+      //check de payment si c'est par OM ou MOMO
+    if(channel_code === 'MOBILE' && !Boolean(txType.is_credit)){
       const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
+      console.log(tx.token,'  ' , tx.provider.code)
       setTimeout(() => {
         this.mcotiService
           .checkStatusPaymentDeposit(tx.token, tx.provider.code)
@@ -166,7 +170,25 @@ export class TransactionSavingsAccountService {
       }, 5000);
       });
       console.log('paymentResult', paymentResult);
-      if (paymentResult.paymentStatus != PaymentStatusProvider.PENDING )
+      if(paymentResult && paymentResult.data){
+        const dataPayment : Payment = paymentResult.data;
+        tx.payment_code = dataPayment.id;
+        tx.payment_token_provider = dataPayment.payToken
+        tx.status_provider = dataPayment.paymentStatus;
+        tx.status = PaymentStatus[dataPayment.paymentStatus];
+
+        if(!!txType.is_credit){
+          tx.origin = dataPayment.ref;
+        }
+        else{
+          tx.target = dataPayment.ref;
+        }
+        console.log('is_credit ', dataPayment.ref)
+
+        this.repo.save(tx);
+      }
+      // Si le paiment est a pending e=on lance un job
+      if (paymentResult.paymentStatus === PaymentStatusProvider.PENDING )
          await this.queueService.addTaskCheckPayment(tx.id);
     }
     return tx;
@@ -407,7 +429,7 @@ export class TransactionSavingsAccountService {
     const entity = await this.findOne(id);
     if(entity.status == 0){
       entity.status = 1;
-      if(dto){
+      /*if(dto){
         const existsPaymenCode = await this.repo.findOne({
           where: { payment_code: dto.paymentCode },
         });
@@ -423,7 +445,7 @@ export class TransactionSavingsAccountService {
         entity.payment_token_provider = dto.paymentTokenPrvider ?? entity.payment_token_provider;
         entity.origin = dto.origin ??  entity.origin;
         entity.target = dto.target ??  entity.target;
-      }
+      }*/
     }
     let target: SavingsAccount | null = null; // Initialisation explicite à null
     const tx = await this.repo.save(entity);
@@ -472,24 +494,8 @@ export class TransactionSavingsAccountService {
 
         this.savingsAccountService.validateAccount(target.id)
 
-        // programer les deduction de frais d'entretien de compte
-        // à la fin du mois
-        await this.maintenanceQueue.add(
-          'deduct-fee',
-          { accountId: target.id },
-          {
-            repeat: {
-              // minute heure jour mois jourDeLaSemaine
-              cron: `0 0 ${dayOfMonth} * *`,
-              tz: 'Africa/Douala',
-            },
-            jobId: `deduct-fee:${target.id}`, // un job par compte
-          },
-        );
       }
     });
-
-
 
 
     if(entity.targetSavingsAccount){

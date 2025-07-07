@@ -29,6 +29,12 @@ import { ConfigService } from '@nestjs/config';
 
 
 
+
+
+
+
+
+
 @Injectable()
 export class McotiService {
   constructor(
@@ -114,49 +120,13 @@ async callMcotiEndpoint(
 
     try {
       const fullUrl = `${urlCashPayerStatus}/${codePaymentCash}`;
-      console.log('response', fullUrl);
 
       const response = await firstValueFrom(
         this.httpService.get(fullUrl)
       );
       const requestStatusPayment = response.data;
 
-      if (requestStatusPayment != null && requestStatusPayment.data?.payToken) {
-        // Mettre à jour les propriétés comme dans le PHP
-        // this.payTokenProvider = requestStatusPayment.data.payToken;
-        // this.paymentCode = requestStatusPayment.data.id;
-
-        if (requestStatusPayment.data.paymentStatus === this.PAYMENT_STATUS_SUCCESS || 
-            requestStatusPayment.data.paymentStatus === 'SUCCESSFUL') {
-          // Le paiement est réussi
-          return requestStatusPayment;
-        } else {
-          return requestStatusPayment;
-          /*          this.status = requestStatusPayment.data.paymentStatus;
-          const saveResult = await this.save(false);
-          return saveResult ? this.status : this.errors; */
-        }
-      } else {
-        // Gestion des erreurs
-        /*if (requestStatusPayment?.data?.code) {
-          this.status = requestStatusPayment.data.code;
-          this.reference = requestStatusPayment.data.message;
-        } else if (requestStatusPayment?.data) {
-          this.status = 'Error corrupted';
-          this.reference = requestStatusPayment.message;
-        }
-
-        await this.save(false);
-        
-        // Log des erreurs dans un fichier
-        this.logger.error('Payment status check failed', {
-          response: requestStatusPayment,
-          timestamp: new Date().toISOString(),
-          codePaymentCash
-        });*/
-
-        return requestStatusPayment;
-      }
+      return response.data
     } catch (error) {
       /*this.logger.error('Error checking payment status', {
         error: error.response?.data || error.message,

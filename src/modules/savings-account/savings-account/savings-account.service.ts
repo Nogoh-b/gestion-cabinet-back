@@ -43,6 +43,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -52,6 +54,8 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 
 
@@ -566,7 +570,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return combinedTransactions;
   } 
 
-  async getTransactionsPaginate(id: number, page = 1, limit = 10): Promise<PaginatedResult<TransactionSavingsAccount>> {
+  async getTransactionsPaginate(id: number, page = 1, limit = 10,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string,branch_id = 0): Promise<PaginatedResult<TransactionSavingsAccount>> {
     
       if (!this.txRepo) {
         throw new Error('Transaction repository is not available');
@@ -590,9 +599,23 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       // Tri par date de création
       .orderBy('tx.created_at', 'DESC');
 
+
+
+    const options: PaginationOptions & { search?: SearchOptions; 
+    dateRange?: DateRange } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+    /*console.log('------options11---- ', options)
+    const paginatedResult = await this.paginationService.paginate<SavingsAccount>(qb, options);
+    const data = paginatedResult.data.map(account => 
+      plainToInstance(SavingsAccountResponseDto, account)
+    );*/
+
+
+
     // 3️⃣ Pagination via notre service
       const result: PaginatedResult<TransactionSavingsAccount> =
-       await this.paginationService.paginate(qb, { page, limit });
+       await this.paginationService.paginate(qb, options);
 
     // 4️⃣ Retour dans le même format pour account + transactions paginées
     return result;

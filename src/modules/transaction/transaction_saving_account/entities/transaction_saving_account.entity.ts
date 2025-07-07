@@ -12,11 +12,19 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 
+
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
 
 
 
+
+
+export enum TransactionTypeEnum {
+  DEBIT = 0,
+  CREDIT = 1,
+}
 export enum TransactionSavingsAccountStatus {
   PENDING = 0,
   VALIDATE = 1,
@@ -26,12 +34,14 @@ export enum TransactionSavingsAccountStatus {
 export enum PaymentStatusProvider {
   PENDING      = 'PENDING',  // transaction initiée, en attente de PIN/OTP
   SUCCESSFULL  = 'SUCCESSFULL',  // paiement confirmé et exécuté
+  SUCCESSFUL  = 'SUCCESSFULL',  // paiement confirmé et exécuté
   EXPIRED      = 'EXPIRED',  // délai d’OTP dépassé
   FAILED       = 'FAILED',  // échec de paiement (intégrateurs tiers)
   CANCELED     = 'CANCELED',  // utilisateur a annulé/rejeté
   REJECTED     = 'REJECTED',  // paiement rejeté par le système
   UNKNOWN      = 'UNKNOWN'   // cas imprévu ou non documenté
 }
+
 export enum PaymentStatus {
   PENDING      = 0,  // transaction initiée, en attente de PIN/OTP
   SUCCESSFULL  = 1,  // paiement confirmé et exécuté
