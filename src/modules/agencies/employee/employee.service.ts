@@ -28,15 +28,15 @@ export class EmployeeService {
     private employeeRepository: Repository<Employee>,
     private userService: UsersService,
   ) {}
-  async createEmployee(dto: CreateUserDto): Promise<EmployeeResponseDto> {
+  async createEmployee(dto: CreateUserDto, is_strict = true): Promise<EmployeeResponseDto> {
 
     const branch = await this.branchRepository.findOne({
       where: { id: dto.branch_id, status: 1 },
     });
-    if (!branch || branch.status !== 1) {
+    if ((!branch || branch.status !== 1) && dto.branch_id)  {
       throw new NotFoundException('Branche non trouvée ou inactive');
     }
-    const user = await this.userService.create(dto)
+    const user = await this.userService.create(dto,is_strict)
 
     /*const user = await this.userService.findOne(id);
     if (!user || user.status !== 1) {
@@ -50,8 +50,7 @@ export class EmployeeService {
         hireDate: dto.hire_date || new Date(), // Date actuelle par défaut
         status: 1, // Statut actif par défaut
         user,
-        branch,
-        // ... autres champs du DTO
+        branch : branch ?? new Branch(), 
       }),
     );
     return plainToInstance(EmployeeResponseDto, employee);
@@ -71,7 +70,7 @@ export class EmployeeService {
   }
 
 
-  async findOneByUsername(username: string): Promise<EmployeeResponseDto> {
+  async findOneByUsername(username: string , is_strict = true): Promise<EmployeeResponseDto> {
     const employee = await this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
@@ -83,7 +82,7 @@ export class EmployeeService {
       .andWhere('user.status = 1')
       .getOne();
 
-    if (!employee) {
+    if (!employee && is_strict) {
       throw new NotFoundException(`Employee with username ${username} not found`);
     }
 

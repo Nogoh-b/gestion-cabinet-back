@@ -37,7 +37,7 @@ export class CreateUserDto {
 
   @ApiProperty()
   @IsDateString()
-  hire_date: string;
+  hire_date: string | Date;
 
   @ApiProperty({ required: true })
   @IsInt()

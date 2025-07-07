@@ -4,22 +4,7 @@ import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 
 
-
-
-
-
-
-
-
-
-
-
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
-
-
-
-
-
 
 
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
@@ -27,24 +12,6 @@ import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @ApiTags('Saving Accounts')
 @Controller('savings-accounts')

@@ -13,36 +13,9 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-
-
-
 import { Not, Repository } from 'typeorm';
-
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -52,28 +25,6 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
@@ -234,7 +185,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   ): Promise<SavingsAccount> {
     if(is_admin){
       const acc = await this.repo.findOne({ where: { is_admin, branch_id: dto.branch_id  } });
-      if (acc) throw new NotFoundException(`Compte dmin déjà existant`);
+      if (acc) throw new NotFoundException(`Compte Admin déjà existant`);
     }
     const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
     if (!branch) throw new NotFoundException(`Agence ${dto.branch_id} introuvable`);

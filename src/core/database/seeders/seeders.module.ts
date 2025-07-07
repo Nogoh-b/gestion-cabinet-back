@@ -8,6 +8,7 @@ import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entitie
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { SuperAdminSeeder } from './super-admin.seeder';
+import { AgenciesModule } from 'src/modules/agencies/agencies.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { SuperAdminSeeder } from './super-admin.seeder';
       UserRoleAssignment,
       RolePermission,
     ]),
+    AgenciesModule,
   ],
   providers: [SuperAdminSeeder],
   exports: [SuperAdminSeeder],

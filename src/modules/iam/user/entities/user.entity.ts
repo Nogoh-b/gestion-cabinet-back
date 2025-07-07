@@ -40,7 +40,7 @@ export class User {
 
   @ManyToOne(() => Customer)
   @JoinColumn({ name: 'customer_id' })
-  customer: Customer;
+  customer ?: Customer;
 
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;

@@ -23,8 +23,8 @@ export class Employee extends BaseEntity {
   user: User;
 
   @ManyToOne(() => Branch)
-  @JoinColumn({ name: 'branch_id' })
-  branch: Branch;
+  @JoinColumn({ name: 'branch_id'})
+  branch?: Branch;
 
   /*@ApiProperty({ enum: EmployeePosition })
   @Column({ type: 'enum', enum: EmployeePosition })

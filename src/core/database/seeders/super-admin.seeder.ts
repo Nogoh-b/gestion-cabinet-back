@@ -9,6 +9,8 @@ import { RolePermission } from 'src/modules/iam/role-permission/entities/role-pe
 import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
+import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
 
 @Injectable()
 export class SuperAdminSeeder {
@@ -16,7 +18,8 @@ export class SuperAdminSeeder {
 
   constructor(
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    private readonly userRepository: Repository<User>,    
+    private readonly employeeService: EmployeeService,
     @InjectRepository(UserRole)
     private readonly roleRepository: Repository<UserRole>,
     @InjectRepository(Permission)
@@ -83,22 +86,21 @@ export class SuperAdminSeeder {
 
     // Check if SUPER_ADMIN user already exists
     const superAdminUsername = 'superadmin';
-    let superAdminUser = await this.userRepository.findOne({
+    let superAdminUser = await  this.employeeService.findOneByUsername(superAdminUsername, false) /*await this.userRepository.findOne({
       where: { username: superAdminUsername },
-    });
+    });*/
+
 
     if (!superAdminUser) {
       // Create SUPER_ADMIN user
       const hashedPassword = await bcrypt.hash('Admin@1234', 10); // Use a strong default password
-      
-      superAdminUser = this.userRepository.create({
-        username: superAdminUsername,
-        password: hashedPassword,
-        status: 1,
-        create_at: new Date(),
-        update_at: new Date(),
-      });
-      await this.userRepository.save(superAdminUser);
+      let dto = new CreateUserDto();
+      dto.email = 'admin@gmail.com'
+      dto.username = superAdminUsername
+      dto.password = 'Admin@1234'
+      //dto.branch_id = -1
+      dto.hire_date = new Date()
+      superAdminUser = await this.employeeService.createEmployee(dto, false)
       this.logger.log('Created SUPER_ADMIN user');
     }
 
