@@ -59,12 +59,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -172,11 +174,12 @@ export class TransactionSavingsAccountService {
     if (!txType) {
       throw new NotFoundException(`Type transaction invalide : ${type_code}`);
     }
-    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!txType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 0)
+    const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
+    console.log('isFirstTx111', isFirstTx)
     const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(target?.id)
-    if(isFirstTx && !docStatsTargetAccount.allRequiredValidated ){
+    if(!Boolean(txType.is_credit) && !docStatsTargetAccount.allRequiredValidated ){
       throw new NotFoundException(
-        `Tout vos documents ne sont pas validé : ${target?.id}`,  
+        `Tout vos documents ne sont pas validé  : ${target?.id}`,  
       );
     }
     const channel = await this.channelRepo.findOne({
@@ -549,6 +552,20 @@ export class TransactionSavingsAccountService {
     const months = (today.getFullYear() - createdAt.getFullYear()) * 12;
     return months + today.getMonth() - createdAt.getMonth();
   }
+  isFirstTransaction(target?:SavingsAccount | null){
+    if(target && !target.targetSavingsAccountTx)
+      return true
+    let hasFirstDeposit = true
+    if(target){
+      target.targetSavingsAccountTx?.forEach((tx) => {
+        if (tx.transactionType.is_credit && tx.status === PaymentStatus.SUCCESSFULL) {
+          hasFirstDeposit = false
+        }
+      });
+    }
+    return hasFirstDeposit
+    // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
+  }
 
   async validate(
     id: number,dto ?: ValidateTransactionSavingsAccountDto
@@ -580,7 +597,7 @@ export class TransactionSavingsAccountService {
       target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(
         tx.targetSavingsAccount.number_savings_account,
     ));
-    const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
+    const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     console.log('isFirstTx', isFirstTx)
     await this.repo.manager.transaction(async (entityManager) => {
       if (isFirstTx && target) {
