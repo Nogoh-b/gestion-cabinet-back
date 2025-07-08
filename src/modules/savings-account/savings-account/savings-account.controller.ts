@@ -1,5 +1,5 @@
 import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
-import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
+import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 
@@ -7,36 +7,11 @@ import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } f
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 
 
-
-
-
-
-
-
-
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -107,15 +82,15 @@ export class SavingsAccountController {
   @ApiOperation({ summary: 'Get all transactions savings account' })
   @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })
   // @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
-  getTransactionsPaginate(@Param('id', ParseIntPipe) id: number, @Query() query: PaginationQueryDto) {
-    const { page, limit, term, fields, exact, from, to } = query;
+  getTransactionsPaginate(@Param('id', ParseIntPipe) id: number, @Query() query: PaginationQueryTxDto) {
+    const { page, limit, term, fields, exact, from, to, type,txType } = query;
     const fieldList = fields ? fields.split(',') : undefined;
     const isExact = exact ;
     return this.service.getTransactionsPaginate(id,+page, +limit,       term,
       fieldList,
       isExact,
       from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined);
+      to ? new Date(to).toISOString() : undefined,txType,type);
   }
 
   @Get(':id/required-documents')

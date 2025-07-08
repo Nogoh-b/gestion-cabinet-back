@@ -10,7 +10,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { EmailService } from '../email/email.service';
+
 
 
 
@@ -40,7 +42,7 @@ export class OtpService {
     let existing: OtpCode | null;
 
     do {
-      code = Math.floor(100000 + Math.random() * 900000).toString();
+      code = Math.floor(10000 + Math.random() * 90000).toString();
       existing = await this.otpRepository.findOne({
         where: { email, code, used: false },
       });

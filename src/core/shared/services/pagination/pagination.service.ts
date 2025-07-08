@@ -4,66 +4,8 @@ import { Injectable } from '@nestjs/common';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from '../../interfaces/pagination.interface';
 import { Func } from '../../utils/func.util';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Injectable()

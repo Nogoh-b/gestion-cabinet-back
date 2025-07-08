@@ -1,4 +1,4 @@
-import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
+import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 
@@ -11,9 +11,21 @@ import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 
 
 
-import { TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
+
+
+
+
+
+
+import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
+
+
+
+
+
 
 
 
@@ -83,47 +95,53 @@ export class TransactionSavingAccountController {
   internal_transfer(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.internal_transfer(dto);
   }
-  @Get(':id/check_payment')
-  checkStatusPayment(@Param('id') id: number) {
-    return this.transactionSavingAccountService.checkStatusPayment(id);
+
+
+  @Post('get/internal-transfer')
+  get_internal_transfer(@Query() query: PaginationQueryTxDto) {
+    return this.findByTypeParent(query, TransactionCode.INTERNAL_TRANSFER);
+  }
+  @Get('check-payment/:reference')
+  checkStatusPayment(@Param('reference') reference: string) {
+    return this.transactionSavingAccountService.checkStatusPayment(reference);
   }
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
-    const { page, limit, term, fields, exact, from, to } = query;
+  findAll(@Query() query: PaginationQueryTxDto) {
+    const { page, limit, term, fields, exact, from, to, type, txType } = query;
     const fieldList = fields ? fields.split(',') : undefined;
     const isExact = exact ;
-    return this.transactionSavingAccountService.findAll(      
+    return this.transactionSavingAccountService.findAllByType(      
       page ? +page : undefined,
       limit ? +limit : undefined,
       term,
       fieldList,
       isExact,
       from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined);
+      to ? new Date(to).toISOString() : undefined,txType,type);
   }
 
   @Get('momo')
-  findAllMomo(@Query() query: PaginationQueryDto) {
+  findAllMomo(@Query() query: PaginationQueryTxDto) {
     return this.findByTypeParent(query, TransactionProvider.MOMO)
   }
 
   @Get('om')
-  findAllOM(@Query() query: PaginationQueryDto) {
+  findAllOM(@Query() query: PaginationQueryTxDto) {
     return this.findByTypeParent(query, TransactionProvider.OM)
   }
 
   @Get('wallet_deposit')
-  findAllWallet(@Query() query: PaginationQueryDto) {
+  findAllWallet(@Query() query: PaginationQueryTxDto) {
     return this.findByTypeParent(query, TransactionProvider.WALLET)
   }
 
   @Get('wallet_withdrawl')
-  findAllWalletWin(@Query() query: PaginationQueryDto) {
+  findAllWalletWin(@Query() query: PaginationQueryTxDto) {
     return this.findByTypeParent(query, TransactionProvider.WALLET)
   }
 
   findByTypeParent(query,
-    txTypeCode: string){
+    txTypeCode: string ,type: string = ''){
       const { page, limit, term, fields, exact, from, to } = query;
       const fieldList = fields ? fields.split(',') : undefined;
       const isExact = exact ;
@@ -135,7 +153,7 @@ export class TransactionSavingAccountController {
         isExact,
         from ? new Date(from).toISOString() : undefined,
         to ? new Date(to).toISOString() : undefined,
-        txTypeCode);
+        txTypeCode, type);
   }
 
 

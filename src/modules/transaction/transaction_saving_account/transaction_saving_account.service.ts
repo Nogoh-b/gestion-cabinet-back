@@ -1,35 +1,82 @@
 import { Queue } from 'bull';
+import { plainToInstance } from 'class-transformer';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
 import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { QueueService } from 'src/modules/queue/queue.service';
 import { UpdateSavingsAccountDto } from 'src/modules/savings-account/savings-account/dto/update-savings-account.dto';
+
+
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
-
-
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+
+
 import { Repository } from 'typeorm';
-
-
 import { v4 as uuidv4 } from 'uuid';
+
 import { InjectQueue } from '@nestjs/bull';
 
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
-
-
-
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
-import { TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
+import { TransactionChannel, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -69,9 +116,9 @@ export class TransactionSavingsAccountService {
     // récupération du compte origine
     let origin : SavingsAccount | null = null;
     if((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code){
-      origin = await this.savingsAccountService.findOneByCode(
+      origin = plainToInstance(SavingsAccount,await this.savingsAccountService.findOneByCode(
         (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code,
-      );
+      ));
     }
     else if(!(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code && to_agency){
       origin = await this.savingsAccountService.findOneAdmin(dto.branch_id)
@@ -85,9 +132,9 @@ export class TransactionSavingsAccountService {
     // récupération du compte cible
     let target: SavingsAccount | null = null; // Initialisation explicite à null
     if((dto).target_savings_account_code){
-      target  = await this.savingsAccountService.findOneByCode(
+      target  = plainToInstance(SavingsAccount,await this.savingsAccountService.findOneByCode(
         dto.target_savings_account_code ?? '0',
-      );
+      ));
     }
     else if(!(dto).target_savings_account_code && to_agency){
       target = await this.savingsAccountService.findOneAdmin(dto.branch_id)
@@ -123,7 +170,7 @@ export class TransactionSavingsAccountService {
     }
     const paymentCode = await this.generateUniquePaymentCode();
     const payment_token_provider = await this.generateUniquePaymentTokenProvider();
-    const reference = this.formatTransactionReference(txType.code);
+    const reference = this.formatTransactionReference(txType,provider.code);
     // création de l'entité transaction
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
@@ -155,7 +202,7 @@ export class TransactionSavingsAccountService {
       await entityManager.save(tx);
 
     });
-    if(type_code === 'INTERNAL_TRANSFER' || !Boolean(txType.is_credit) )
+    if(!Boolean(txType.is_credit) || channel_code != TransactionChannel.MOBILE  )
       this.validate(tx.id)
 
       //check de payment si c'est par OM ou MOMO
@@ -201,7 +248,7 @@ export class TransactionSavingsAccountService {
   }
 
   withdraw_cash(dto: CreateDebitTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'CASH_WITHDRAWAL', 'ATM', 'CASH');
+    return this.perform_transaction(dto, 'CASH_WITHDRAWAL', 'BRANCH', 'CASH');
   }
 
   deposit_cheque(dto: CreateCreditTransactionSavingsAccountDto) {
@@ -260,10 +307,41 @@ export class TransactionSavingsAccountService {
 
 
   async checkStatusPayment(
-    id: number,
-  ): Promise<void> {
+    reference: string,
+  ): Promise<any> {
+    const tx  = await this.repo.findOne({
+      where: { reference },
+      relations: [
+        'channelTransaction',
+        'provider',
+        'transactionType',
+        'originSavingsAccount',
+        'targetSavingsAccount'
+      ],
+    });
+    console.log(reference)
+    if (!tx) throw new NotFoundException(`Transaction ${reference} non trouvé`);
 
-      const job = await this.queueService.addTaskBuyInterest(id);
+    const payment = await this.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
+    if (payment.paymentStatus != PaymentStatusProvider.PENDING && payment.data && tx.channelTransaction.code === TransactionChannel.MOBILE) {
+      console.log('payment', payment)
+      tx.status_provider = payment.paymentStatus
+      tx.status = PaymentStatus.PENDING
+      const dataPayment : Payment = payment.data;
+      tx.payment_code = dataPayment.id;
+      tx.payment_token_provider = dataPayment.payToken
+      tx.status_provider = dataPayment.paymentStatus;
+      tx.status = PaymentStatus[dataPayment.paymentStatus];
+      if(!!tx.transactionType.is_credit){
+        tx.origin = dataPayment.ref;
+      }
+      else{
+        tx.target = dataPayment.ref;
+      }
+      this.update(tx)
+
+    }
+    return tx; // ignore si inactif
   }
 
 
@@ -305,7 +383,8 @@ export class TransactionSavingsAccountService {
     exact?: boolean,
     from?: string,
     to?: string,
-    txTypeCode?: string
+    txTypeCode?: string,
+    type?: string, id?: number
   ): 
   Promise<PaginatedResult<TransactionSavingsAccount>> {
     const qb = this.repo
@@ -314,13 +393,35 @@ export class TransactionSavingsAccountService {
       .leftJoinAndSelect('tx.provider', 'provider')
       .leftJoinAndSelect(
         'tx.transactionType',
-        'transactionType',
-        'transactionType.code LIKE :txTypeCode',
-        { txTypeCode: `${txTypeCode}%` }  // Recherche les codes commençant par...
+        'transactionType'
       )
       .leftJoinAndSelect('tx.originSavingsAccount', 'originSavingsAccount')
       .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
-      .orderBy('tx.created_at', 'DESC').andWhere('transactionType.id IS NOT NULL');
+      if (id !== undefined) { // Ou une autre condition selon votre DTO
+        if (type !== undefined) { 
+          type === '1' ? qb.andWhere('targetSavingsAccount.id = :id', { id }) : qb.andWhere('originSavingsAccount.id = :id', { id })
+        }else
+        qb.andWhere('originSavingsAccount.id = :id OR targetSavingsAccount.id = :id', { id })
+      }
+
+      qb.orderBy('tx.created_at', 'DESC')
+
+      if (txTypeCode !== undefined) {
+        qb.andWhere('transactionType.code LIKE :txTypeCode', { 
+          txTypeCode: `${txTypeCode}%` 
+        });
+      }
+      // Filtre conditionnel pour IS_CREDIT (seulement si isCredit est fourni)
+      console.log(type)
+      if (type !== undefined) { // Ou une autre condition selon votre DTO
+        qb.andWhere('transactionType.is_credit = :isCredit', { 
+          isCredit: type === '1' ? 1 : 0 // Adaptez selon le type en base (boolean/entier)
+        });
+      }
+
+      qb.andWhere('transactionType.id IS NOT NULL');
+
+       
     const options: PaginationOptions & { search?: SearchOptions; 
     dateRange?: DateRange } = { page, limit };
     if (term) options.search = { term, fields, exact };
@@ -450,9 +551,9 @@ export class TransactionSavingsAccountService {
     let target: SavingsAccount | null = null; // Initialisation explicite à null
     const tx = await this.repo.save(entity);
     if(tx.targetSavingsAccount)
-      target  = await this.savingsAccountService.findOneByCode(
+      target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(
         tx.targetSavingsAccount.number_savings_account,
-    );
+    ));
     const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
 
     await this.repo.manager.transaction(async (entityManager) => {
@@ -593,9 +694,11 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
 }
 
   // Méthode pour formater la référence
-  async formatTransactionReference(typeCode: string): Promise<string> {
+  async formatTransactionReference(txType: TransactionType,provider = ''): Promise<string> {
+    const typeCode = txType.code;
     const now = new Date();
-    const prefix = typeCode.substring(0, 2).toUpperCase();
+    provider = provider === 'MOMO' || provider === 'OM' ? provider : ''; // Limite à 3 caractères
+    const prefix = Boolean(txType.is_credit) ? 'DEP' : 'RET'  //typeCode.substring(0, 2).toUpperCase();
     const day = String(now.getDate()).padStart(2, '0');
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const year = String(now.getFullYear()).substring(2);
@@ -603,7 +706,7 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
     // Génération du suffixe numérique unique
     const suffix = await this.generateDailySequence(); // Implémentez cette méthode
 
-    return `${prefix}${day}${month}${year}${suffix}`;
+    return `${prefix}${provider}${day}${month}${year}${suffix}`;
   }
 
   async generateDailySequence(): Promise<string> {

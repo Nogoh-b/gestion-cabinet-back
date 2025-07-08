@@ -1,8 +1,12 @@
 // savings-account-response.dto.ts
-import { Expose, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+
+
+
 
 
 
@@ -12,6 +16,10 @@ import { DocumentSavingAccountResponseDto } from '../../document-saving-account/
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from '../entities/account-has-interest.entity';
 import { SavingsAccount } from '../entities/savings-account.entity';
+
+
+
+
 
 
 
@@ -73,7 +81,21 @@ export class SavingsAccountResponseDto {
 
   @Expose()
   @Type(() => SavingsAccount)
-  enrolled_by: SavingsAccount;
+  enrolled_by: SavingsAccount
+
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.targetSavingsAccountTx || obj.targetSavingsAccountTx.length === 0) {
+      return false;
+    }
+    const sortedTransactions = [...obj.targetSavingsAccountTx].sort((a, b) => {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+    const oldestTransaction = sortedTransactions[0];
+    return oldestTransaction.status === 1;
+  })
+  @Type(() => Boolean)
+  has_init_transaction: boolean;
 
   @Expose()
   @Type(() => TypeSavingsAccount)

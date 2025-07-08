@@ -14,11 +14,23 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
+
+
+
 
 
 
@@ -160,22 +172,28 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       where :{ id: document_id },
       relations: ['customer'] },
     );
+    console.log('findByCustomer', await this.findByCustomer(49, true))
+    
     if(!doc)
       throw new  NotFoundException("Document non trouvé");
     if(doc.status !== DocumentCustomerStatus.PENDING)
       throw new  NotFoundException("Document déja traité");
 
     this.docRepository.update(document_id, { status: DocumentCustomerStatus.ACCEPTED, date_validation: new Date() } as any)
+    doc.status = DocumentCustomerStatus.ACCEPTED;
+    doc.date_validation = new Date();
+    await this.docRepository.save(doc)
     const customer  = await this.customerRepository.findOne({ where: { id: doc.customer.id }, relations: ['type_customer', 'type_customer.requiredDocuments'] });
     const validateDocs = await this.findByCustomer(customer!.id, true);
-    
+    console.log('validateDocs.length', validateDocs.length)
+    console.log('customer?.type_customer.requiredDocuments.length', customer?.type_customer.requiredDocuments.length)
     if (validateDocs.length === customer?.type_customer.requiredDocuments.length) {
         await this.customerRepository.update(customer.id, {
           status: CustomerStatus.ACTIVE,
         })
     }
   
-    return await this.docRepository.findOneBy({ id: document_id });
+    return doc;
   }
 
 

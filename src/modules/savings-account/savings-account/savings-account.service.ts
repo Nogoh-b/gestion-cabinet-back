@@ -8,31 +8,13 @@ import { CustomersService } from 'src/modules/customer/customer/customer.service
 
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 
-
-
-
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 import { Not, Repository } from 'typeorm';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -50,22 +32,6 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -94,10 +60,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @InjectRepository(SavingsAccountHasInterest)
     private readonly interestRepo: Repository<SavingsAccountHasInterest>, 
     private typeSavingAcount : TypeSavingsAccountService,
+    @Inject(forwardRef(() => TransactionSavingsAccountService))
+    private transactionSavingsAccountService : TransactionSavingsAccountService,
     private paginationService: PaginationService,
     private customerService: CustomersService,
      private readonly mcotiService: McotiService
-  ) { super(); }
+  ) { super(); console.log(forwardRef) }
 
   getRepository(): Repository<SavingsAccount> {
     return this.repo;
@@ -177,7 +145,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     data,
   };
   }
-  async findOne(id: number): Promise<SavingsAccount> {
+  async findOne(id: number): Promise<SavingsAccountResponseDto> {
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations: [
@@ -188,10 +156,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'enrolled_by',
         'documents',
         'interestRelations',
+        // 'originSavingsAccountTx',
+        'targetSavingsAccountTx'
       ],
     });
     if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
-    return account;
+    return plainToInstance(SavingsAccountResponseDto, account);
   }
 
   async findOneAdmin(branch_id: number = 1): Promise<SavingsAccount> {
@@ -210,7 +180,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
-    async findOneByCode(number_savings_account: string): Promise<SavingsAccount> {
+    async findOneByCode(number_savings_account: string): Promise<SavingsAccountResponseDto> {
     const account = await this.repo.findOne({
       where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
       relations: [
@@ -221,12 +191,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'documents',
         'enrolled_by',
         'interestRelations',
-        // 'originSavingsAccountTx',
-        // 'targetSavingsAccountTx'
+        'originSavingsAccountTx',
+        'targetSavingsAccountTx'
       ],
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
-    return account;
+    return plainToInstance(SavingsAccountResponseDto, account);
   }
 
   async create(
@@ -572,8 +542,16 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string,branch_id = 0): Promise<PaginatedResult<TransactionSavingsAccount>> {
-    
+    to?: string, txTypeCode?: string,
+    type?: string,branch_id = 0): Promise<PaginatedResult<TransactionSavingsAccount>> {
+      return this.transactionSavingsAccountService.findAllByType(
+                                                  page,
+                                                  limit,
+                                                  term,
+                                                  fields,
+                                                  exact,
+                                                  from,
+                                                  to,txTypeCode,type,id)
       if (!this.txRepo) {
         throw new Error('Transaction repository is not available');
       }
@@ -598,15 +576,15 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
 
 
-    const options: PaginationOptions & { search?: SearchOptions; 
+    /*const options: PaginationOptions & { search?: SearchOptions; 
     dateRange?: DateRange } = { page, limit };
     if (term) options.search = { term, fields, exact };
-    if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+    if (from || to) options.dateRange = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };*/
     /*console.log('------options11---- ', options)
     const paginatedResult = await this.paginationService.paginate<SavingsAccount>(qb, options);
     const data = paginatedResult.data.map(account => 
       plainToInstance(SavingsAccountResponseDto, account)
-    );*/
+    );
 
 
 
@@ -615,7 +593,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
        await this.paginationService.paginate(qb, options);
 
     // 4️⃣ Retour dans le même format pour account + transactions paginées
-    return result;
+    return result;*/
   } 
 
   async assign_interest_range(
