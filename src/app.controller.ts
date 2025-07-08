@@ -1,14 +1,15 @@
-import { JobOptions, Queue } from 'bull';
+import { JobOptions } from 'bull';
 import { firstValueFrom } from 'rxjs';
 import { DataSource } from 'typeorm';
-import { InjectQueue } from '@nestjs/bull';
 import { Body, Controller, Inject, Post } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiBody } from '@nestjs/swagger';
+
 import { AppService } from './app.service';
 import { QueueService } from './modules/queue/queue.service';
 import { TransactionSavingsAccountService } from './modules/transaction/transaction_saving_account/transaction_saving_account.service';
+
 
 
 class AddJobDto {
@@ -27,16 +28,10 @@ export class AppController {
     private readonly appService: AppService,
     private readonly queueService: QueueService,
     private readonly txService: TransactionSavingsAccountService,
-    @InjectQueue('maintenance')
-    private readonly maintenanceQueue: Queue,
+
     @Inject('USER_SERVICE') private readonly client: ClientProxy,
   ) {
-    this.maintenanceQueue.on('error', (err) =>
-      console.error('🔴 Queue Error', err),
-    );
-    this.maintenanceQueue.on('waiting', (jobId) =>
-      console.log('🕒 Job waiting', jobId),
-    );
+
   }
 
   @Post('test_cron_maintenance')

@@ -48,12 +48,34 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
-import { TransactionChannel, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
+import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -154,7 +176,7 @@ export class TransactionSavingsAccountService {
     const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(target?.id)
     if(isFirstTx && !docStatsTargetAccount.allRequiredValidated ){
       throw new NotFoundException(
-        `Tout vos documents ne sont pas validé : ${target?.id}`,
+        `Tout vos documents ne sont pas validé : ${target?.id}`,  
       );
     }
     const channel = await this.channelRepo.findOne({
@@ -186,7 +208,7 @@ export class TransactionSavingsAccountService {
     tx.payment_code = paymentCode;
     tx.payment_token_provider = payment_token_provider; 
     tx.reference = await reference;
-    tx.token = dto.token ?? '638290507'
+    tx.token = dto.token ?? '258380647'
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
@@ -202,11 +224,13 @@ export class TransactionSavingsAccountService {
       await entityManager.save(tx);
 
     });
-    if(!Boolean(txType.is_credit) || channel_code != TransactionChannel.MOBILE  )
+    if(!Boolean(txType.is_credit) || channel_code != TransactionChannel.MOBILE || txType.code === TransactionCode.INTERNAL_TRANSFER  ){
+      
       this.validate(tx.id)
-
-      //check de payment si c'est par OM ou MOMO
-    if(channel_code === 'MOBILE' && !Boolean(txType.is_credit)){
+      tx.status = 1
+    }
+      
+    else if(channel_code === 'MOBILE' && Boolean(txType.is_credit)){
       const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
       console.log(tx.token,'  ' , tx.provider.code)
       setTimeout(() => {
@@ -223,12 +247,14 @@ export class TransactionSavingsAccountService {
         tx.payment_token_provider = dataPayment.payToken
         tx.status_provider = dataPayment.paymentStatus;
         tx.status = PaymentStatus[dataPayment.paymentStatus];
-
         if(!!txType.is_credit){
           tx.origin = dataPayment.ref;
         }
         else{
           tx.target = dataPayment.ref;
+        }
+        if(tx.status === PaymentStatus.SUCCESSFULL){
+          this.validate(tx.id);
         }
         console.log('is_credit ', dataPayment.ref)
 
@@ -260,7 +286,7 @@ export class TransactionSavingsAccountService {
   }
 
   e_wallet_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'MOBILE', 'WALLET');
+    return this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'MOBILE', 'WALLET'); 
   }
 
   momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
@@ -555,7 +581,7 @@ export class TransactionSavingsAccountService {
         tx.targetSavingsAccount.number_savings_account,
     ));
     const isFirstTx = target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
-
+    console.log('isFirstTx', isFirstTx)
     await this.repo.manager.transaction(async (entityManager) => {
       if (isFirstTx && target) {
         const chanelOpenProduct = await this.channelRepo.findOne({
@@ -592,6 +618,7 @@ export class TransactionSavingsAccountService {
         await entityManager.save(thirdTx);
 
         const dayOfMonth = new Date().getDate(); // 1..31
+        console.log('validate', isFirstTx)
 
         this.savingsAccountService.validateAccount(target.id)
 
