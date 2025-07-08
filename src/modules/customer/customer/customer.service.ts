@@ -8,19 +8,12 @@ import { CreateDocumentCustomerDto } from 'src/modules/documents/document-custom
 import { CreateDocumentFromCotiDto, DocTypeNameOnline } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
+import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { DataSource, Repository } from 'typeorm';
+
 import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
 
 
 
@@ -38,15 +31,6 @@ import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/custom
 
 
 
-
-
-
-
-
-
-
-
-
 @Injectable()
 export class CustomersService extends BaseService<Customer> {
   constructor(
@@ -58,6 +42,8 @@ export class CustomersService extends BaseService<Customer> {
     @InjectRepository(TypeCustomer)
     private typeCustomerRepository: Repository<TypeCustomer>,
     private typeCustomerService: TypeCustomersService,
+    @Inject(forwardRef(() => SavingsAccountService))
+    private savingsAccountService: SavingsAccountService,
     private locationcityService: LocationCitiesService ,
     private documentCustomerService: DocumentCustomerService ,
     @Inject(forwardRef(() => BranchService))
@@ -236,6 +222,50 @@ export class CustomersService extends BaseService<Customer> {
   // 5) Retourne formatté sur 7 chiffres
   return next.toString().padStart(7, '0');
 }
+
+  async findOneStats(id: number): Promise<any> {
+    console.log('stats');
+
+    let customer = await this.customerRepository.findOne({where: { id }, relations: ['savings_accounts']});
+    if (!customer) throw new NotFoundException(`Compte ${id} introuvable`);
+
+    let stats = {
+      outgoingTransactionsTotal: 0,
+      incomingTransactionsTotal: 0,
+      outgoingTransactionsMOMOTotal: 0,
+      incomingTransactionsMOMOTotal: 0,
+      outgoingTransactionsOMTotal: 0,
+      incomingTransactionsOMTotal: 0,
+      inComingAmount : 0,
+      outgoingAmount : 0,
+      inComingAmountMOMO : 0,
+      outgoingAmountMOMO : 0,
+      inComingAmountOM : 0,
+      outgoingAmountOM : 0,
+      savingAccountTotal : customer.savings_accounts.length,
+    }
+
+    if (customer.savings_accounts) {
+      for (const sa of customer.savings_accounts) {
+        const stat = await this.savingsAccountService.stats(sa.id);
+        stats.outgoingTransactionsTotal += stat.outgoingTransactionsTotal;
+        stats.incomingTransactionsTotal += stat.incomingTransactionsTotal;
+        stats.outgoingTransactionsMOMOTotal += stat.outgoingTransactionsMOMOTotal;
+        stats.incomingTransactionsMOMOTotal += stat.incomingTransactionsMOMOTotal;
+        stats.outgoingTransactionsOMTotal += stat.outgoingTransactionsOMTotal;
+        stats.incomingTransactionsOMTotal += stat.incomingTransactionsOMTotal;
+        stats.inComingAmount += stat.inComingAmount;
+        stats.outgoingAmount += stat.outgoingAmount;
+        stats.inComingAmountMOMO += stat.inComingAmountMOMO;
+        stats.outgoingAmountMOMO += stat.outgoingAmountMOMO;
+        stats.inComingAmountOM += stat.inComingAmountOM;
+        stats.outgoingAmountOM += stat.outgoingAmountOM;
+      }
+    }
+
+    
+    return stats;
+  }
 
 
 }

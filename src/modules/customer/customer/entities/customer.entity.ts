@@ -2,10 +2,15 @@ import { BaseEntity } from 'src/core/entities/base.entity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+
+
+import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 
 
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
+
+
 
 
 export enum CustomerStatus{
@@ -53,6 +58,13 @@ export class Customer extends BaseEntity {
   @ManyToOne(() => Branch)
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
+
+
+  @OneToMany(
+    () => SavingsAccount,
+    (sa) => sa.customer
+  )
+  savings_accounts: SavingsAccount[]; 
 
   @ManyToOne(() => TypeCustomer)
   @JoinColumn({ name: 'type_customer_id' })

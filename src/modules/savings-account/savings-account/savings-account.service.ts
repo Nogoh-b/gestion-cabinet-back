@@ -11,14 +11,19 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
+import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 import { Not, Repository } from 'typeorm';
+
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
 
 
 
@@ -32,6 +37,10 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
 
 
 
@@ -180,7 +189,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
-    async findOneByCode(number_savings_account: string): Promise<SavingsAccountResponseDto> {
+  async findOneByCode(number_savings_account: string): Promise<SavingsAccountResponseDto> {
     const account = await this.repo.findOne({
       where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
       relations: [
@@ -785,7 +794,78 @@ async generateNextAccountNumber(branch: Branch): Promise<string> {
   return `${branch.code}${suffix}`;
 }
 
-  
+
+  async stats(id: number): Promise<any> {
+    console.log('stats');
+
+    let sa = await this.repo.findOne({where: { id }, relations: ['originSavingsAccountTx', 'targetSavingsAccountTx','originSavingsAccountTx.provider', 'targetSavingsAccountTx.provider']});
+    if (!sa) throw new NotFoundException(`Compte ${id} introuvable`);
+
+    let outgoingTransactions: TransactionSavingsAccount[] = []; 
+    let incomingTransactions : TransactionSavingsAccount[] = [] 
+    let outgoingTransactionsMOMO: TransactionSavingsAccount[] = []; 
+    let incomingTransactionsMOMO : TransactionSavingsAccount[] = [] 
+    let outgoingTransactionsOM: TransactionSavingsAccount[] = []; 
+    let incomingTransactionsOM : TransactionSavingsAccount[] = [] 
+    let inComingAmount = 0
+    let outgoingAmount = 0
+    let inComingAmountMOMO = 0
+    let outgoingAmountMOMO = 0
+    let inComingAmountOM = 0
+    let outgoingAmountOM = 0
+    if (sa.originSavingsAccountTx) {
+        sa.originSavingsAccountTx?.forEach((tx) => {
+            outgoingTransactions.push(tx);
+            outgoingAmount += tx.amount
+            if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
+            }
+            if(tx.channelTransaction.code === TransactionChannel.MOBILE  ){
+              if(tx.provider.code === TransactionProvider.MOMO){
+                outgoingTransactionsMOMO.push(tx);
+                outgoingAmountMOMO += tx.amount;
+              }
+              else if(tx.provider.code === TransactionProvider.OM){
+                outgoingTransactionsOM.push(tx);
+                outgoingAmountOM += tx.amount;
+              }
+            }
+        });
+    }
+    if (sa.targetSavingsAccountTx) {
+      sa.targetSavingsAccountTx?.forEach((tx) => {
+          incomingTransactions.push(tx);
+          inComingAmount += tx.amount
+          if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
+          }
+          if(tx.channelTransaction.code === TransactionChannel.MOBILE  ){
+            if(tx.provider.code === TransactionProvider.MOMO){
+              incomingTransactionsMOMO.push(tx);
+              inComingAmountMOMO += tx.amount;
+            }
+            else if(tx.provider.code === TransactionProvider.OM){
+              incomingTransactionsOM.push(tx);
+              inComingAmountOM += tx.amount;
+            }
+          }
+      });
+    }
+
+    return {
+      outgoingTransactionsTotal: outgoingTransactions.length,
+      incomingTransactionsTotal: incomingTransactions.length,
+      outgoingTransactionsMOMOTotal: outgoingTransactionsMOMO.length,
+      incomingTransactionsMOMOTotal: incomingTransactionsMOMO.length,
+      outgoingTransactionsOMTotal: outgoingTransactionsOM.length,
+      incomingTransactionsOMTotal: incomingTransactionsOM.length,
+      inComingAmount,
+      outgoingAmount,
+      inComingAmountMOMO,
+      outgoingAmountMOMO,
+      inComingAmountOM,
+      outgoingAmountOM,
+    };
+
+  }
 
 
 }

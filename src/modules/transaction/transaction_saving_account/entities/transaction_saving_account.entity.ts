@@ -136,7 +136,7 @@ export class TransactionSavingsAccount {
   target: string;
 
   
-  @Column({ name: 'status_provide' })
+  @Column({ name: 'status_provider', nullable: true })
   status_provider?: string;
   /*@Index()
   @Column({ length: 100 })

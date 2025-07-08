@@ -2,7 +2,9 @@ import { Queue } from 'bull';
 import { CoreModule } from 'src/core/core.module';
 import { BullModule, InjectQueue } from '@nestjs/bull';
 
-import { Module, OnModuleInit } from '@nestjs/common';
+import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
+
+
 
 
 
@@ -16,12 +18,14 @@ import { QueueService } from './queue.service';
 
 
 
+
+
 @Module({
   imports: [
     // Enregistrement de la queue dans ce module
     BullModule.registerQueue({ name: 'task-queue' }),
-    TransactionModule,
-    SavingsAccountModule,
+    forwardRef(() => TransactionModule),
+    forwardRef(() =>SavingsAccountModule),
     CoreModule,
   ],
   controllers: [QueueController],

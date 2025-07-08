@@ -1,6 +1,8 @@
-import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+
+
+
 
 
 import { AgenciesModule } from '../agencies/agencies.module';
@@ -27,13 +29,15 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
 
 
 
+
+
+
 @Module({
   imports: [
     DocumentsModule,
     AgenciesModule,
-    CoreModule,
     forwardRef(() => TransactionModule),
-    CustomerModule,
+    forwardRef(() => CustomerModule),
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,
