@@ -11,6 +11,7 @@ import { Controller, Post, Body, Param, Put, UseGuards, Get, Query } from '@nest
 
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
+
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
@@ -22,9 +23,9 @@ import { UpdateBranchDto } from './dto/update-branch.dto';
 
 
 
+
 @Controller('branch')
 @ApiTags('branch')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class BranchController {
   constructor(private readonly branchService: BranchService) {}
@@ -32,6 +33,7 @@ export class BranchController {
   @Post()
   @ApiOperation({ summary: 'Create new branch' })
   @ApiResponse({ status: 201, description: 'Branch successfully created' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('CREATE_BRANCH')
   createBranch(@Body() dto: CreateBranchDto) {
     return this.branchService.createBranch(dto);
@@ -40,6 +42,7 @@ export class BranchController {
   @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all branches' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_BRANCH')
   findAllBranches() {
     return this.branchService.findAllBranches();
@@ -47,6 +50,7 @@ export class BranchController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get Inactive Branch' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_BRANCH')
   findOne(@Param('id') id: number) {
     return this.branchService.findOne(id);
@@ -54,6 +58,7 @@ export class BranchController {
 
   @Get(':id/employees')
   @ApiOperation({ summary: 'Get All Employees of a Branch' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_BRANCH')
   findEmployees(@Param('id') id: number,     @Query() query: PaginationQueryDto
   ) {
@@ -65,6 +70,7 @@ export class BranchController {
 
   @Get(':id/savings-accounts')
   @ApiOperation({ summary: 'Get All Employees of a Branch' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_BRANCH')
   findAllSavingAccounts(@Param('id') id: number,     @Query() query: PaginationQueryDto) {
     const { page, limit, term, fields, exact, from, to } = query;
@@ -82,6 +88,7 @@ export class BranchController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Update branch' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('EDIT_BRANCH')
   updateBranch(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
     return this.branchService.updateBranch(+id, dto);
@@ -96,6 +103,7 @@ export class BranchController {
 
   @Get('inactives')
   @ApiOperation({ summary: 'Get Inactive Branch' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_BRANCH')
   findAllInactivesBranches() {
     return this.branchService.findAllBranches(0);
@@ -103,12 +111,14 @@ export class BranchController {
 
   @Get('deactivate')
   @ApiOperation({ summary: 'Get Inactive Branch' })
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_BRANCH')
   deactivateBranch(@Param('id') id: number) {
     return this.branchService.deactivate(id);
   }
 
   @Get('activate')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiOperation({ summary: 'Get Inactive Branch' })
   @RequirePermissions('VIEW_BRANCH')
   activateBranch(@Param('id') id: number) {
@@ -117,7 +127,7 @@ export class BranchController {
 
   @Get(':id/stats')
   @ApiOperation({ summary: 'Get stats Branch' })
-  @RequirePermissions('VIEW_BRANCH_STATS')
+  // @RequirePermissions('VIEW_BRANCH_STATS')
   stats(@Param('id') id: number) {
     return this.branchService.stats(id);
   }
