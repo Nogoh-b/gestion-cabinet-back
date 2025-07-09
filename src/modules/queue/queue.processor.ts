@@ -27,11 +27,27 @@ import { Processor, Process } from '@nestjs/bull';
 
 
 
+
+
+
+
+
+
+
+
 import { SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
+
+
+
+
+
+
+
+
 
 
 
@@ -55,34 +71,36 @@ export class QueueProcessor {
     const { txId  } = job.data;
 
     const tx = await this.txService.findOne(txId)
-    console.log('token ',tx.provider.code)
     
-    const payment =/* tx.transactionType.is_credit === 1 ?  */
+    const paymentResult  =/* tx.transactionType.is_credit === 1 ?  */
     await this.txService.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
-    if (payment.paymentStatus != PaymentStatusProvider.PENDING ){
+    const dataPayment : Payment = paymentResult.data
+    if (dataPayment.paymentStatus != PaymentStatusProvider.PENDING ){
+      console.log('payment ',tx.provider.code)
+
       const repeatOpts = job.opts.repeat;
-      tx.status_provider = payment.paymentStatus
-      tx.status = PaymentStatus.PENDING
-      const dataPayment : Payment = payment.data;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
       tx.status_provider = dataPayment.paymentStatus;
-      tx.status = PaymentStatus[dataPayment.paymentStatus];
+      tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
       this.txService.update(tx)
       if(tx.status === PaymentStatus.SUCCESSFULL){
         this.txService.validate(tx.id);
       }
-      if (repeatOpts) {
+      if (repeatOpts ) {
         await job.queue.removeRepeatable('check-payment', repeatOpts);
-        // vous pouvez logger pour vérif :
         console.log(`Job de check de payment terminé pour ${job.data.txId}`);
       }
       return; // ignore si inactif
+    }else if(job.opts.attempts === 3){
+      tx.status_provider = PaymentStatusProvider.ISSUE;
+      tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
+      this.txService.update(tx)
     }
       /*:
       await this.txService.mcotiService.checkStatusPaymentWithDraw(tx.token) ;*/
-      console.log(payment);
-    return payment
+    console.log(dataPayment);
+    return dataPayment
   }
 
   @Process('deduct-fee')

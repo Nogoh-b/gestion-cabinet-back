@@ -14,8 +14,10 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -39,7 +41,8 @@ export enum PaymentStatusProvider {
   FAILED       = 'FAILED',  // échec de paiement (intégrateurs tiers)
   CANCELED     = 'CANCELED',  // utilisateur a annulé/rejeté
   REJECTED     = 'REJECTED',  // paiement rejeté par le système
-  UNKNOWN      = 'UNKNOWN'   // cas imprévu ou non documenté
+  UNKNOWN      = 'UNKNOWN',   // cas imprévu ou non documenté
+  ISSUE      = 'ISSUE'   // cas imprévu ou non documenté
 }
 
 export enum PaymentStatus {
@@ -49,7 +52,8 @@ export enum PaymentStatus {
   FAILED       = 3,  // échec de paiement (intégrateurs tiers)
   CANCELED     = 4,  // utilisateur a annulé/rejeté
   REJECTED     = 5,  // paiement rejeté par le système
-  UNKNOWN      = 6   // cas imprévu ou non documenté
+  UNKNOWN      = 6,   // cas imprévu ou non documenté
+  ISSUE      =  7   // cas imprévu ou non documenté
 }
 
 export class PaymentsType {

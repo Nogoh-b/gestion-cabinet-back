@@ -10,9 +10,13 @@ import { Entity, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable, OneToMany
 
 
 
+
+
 import { Commission } from '../../commission/entities/commission.entity';
 import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
+
+
 
 
 
@@ -33,16 +37,16 @@ export class TypeSavingsAccount extends BaseEntity {
   @Column()
   promo_code_fee: number;
 
-  @Column({ length: 45 })
+  @Column({ length: 45, nullable: true })
   periode: string;
 
   @Column({ type: 'tinyint' })
   status: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2 })
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   interest_year_savings_account: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2 })
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true})
   minimum_blocking_duration: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2 })
@@ -63,10 +67,10 @@ export class TypeSavingsAccount extends BaseEntity {
   @Column({ type: 'double', nullable: true })
   account_closure_fees: number;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', nullable: true })
   commission_id: number;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int' , nullable: true})
   interest_saving_account_id: number;
 
   @Column({ type: 'tinyint', default : 0 })

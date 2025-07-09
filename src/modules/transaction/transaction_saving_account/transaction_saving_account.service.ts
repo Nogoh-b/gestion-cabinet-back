@@ -60,12 +60,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+
+
+
+
 
 
 
@@ -211,7 +219,7 @@ export class TransactionSavingsAccountService {
     tx.payment_code = paymentCode;
     tx.payment_token_provider = payment_token_provider; 
     tx.reference = await reference;
-    tx.token = dto.token ?? '258380647'
+    tx.token = dto.token ?? '986907875'
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
@@ -234,8 +242,8 @@ export class TransactionSavingsAccountService {
     }
       
     else if(channel_code === 'MOBILE' && Boolean(txType.is_credit)){
-      const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
       console.log(tx.token,'  ' , tx.provider.code)
+      const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
       setTimeout(() => {
         this.mcotiService
           .checkStatusPaymentDeposit(tx.token, tx.provider.code)
@@ -249,7 +257,7 @@ export class TransactionSavingsAccountService {
         tx.payment_code = dataPayment.id;
         tx.payment_token_provider = dataPayment.payToken
         tx.status_provider = dataPayment.paymentStatus;
-        tx.status = PaymentStatus[dataPayment.paymentStatus];
+        tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
         if(!!txType.is_credit){
           tx.origin = dataPayment.ref;
         }
@@ -262,10 +270,11 @@ export class TransactionSavingsAccountService {
         console.log('is_credit ', dataPayment.ref)
 
         this.repo.save(tx);
+        console.log(dataPayment.paymentStatus,' === ',PaymentStatusProvider.PENDING )
+        // Si le paiment est a pending e=on lance un job
+        if (dataPayment.paymentStatus === PaymentStatusProvider.PENDING )
+          await this.queueService.addTaskCheckPayment(tx.id);
       }
-      // Si le paiment est a pending e=on lance un job
-      if (paymentResult.paymentStatus === PaymentStatusProvider.PENDING )
-         await this.queueService.addTaskCheckPayment(tx.id);
     }
     return tx;
   }
@@ -360,7 +369,7 @@ export class TransactionSavingsAccountService {
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
       tx.status_provider = dataPayment.paymentStatus;
-      tx.status = PaymentStatus[dataPayment.paymentStatus];
+      tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
       if(!!tx.transactionType.is_credit){
         tx.origin = dataPayment.ref;
       }

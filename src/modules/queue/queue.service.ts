@@ -10,6 +10,9 @@ import { Injectable } from '@nestjs/common';
 
 
 
+
+
+
 @Injectable()
 export class QueueService {
   constructor(
@@ -46,10 +49,11 @@ export class QueueService {
       // cron: '0 */3 * * * *', // à 0s de chaque minute divisible par 3
 
     opts.repeat = {
-      cron: '*/5 * * * * *', // à 0s de chaque minute divisible par 3
+      cron: '0 */1 * * * *', // à 0s de chaque minute divisible par 3
       limit: 3,              // stop après 3 runs :contentReference[oaicite:0]{index=0}
     };
     const jobOptions = { ...defaultOpts, ...opts };
+    console.log('ajout.tache check payment ', data, jobOptions);
     return this.queue.add('check-payment', { txId: data }, jobOptions);
   }
   
