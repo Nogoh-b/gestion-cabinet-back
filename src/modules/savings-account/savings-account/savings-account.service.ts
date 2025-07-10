@@ -46,6 +46,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -55,6 +59,10 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
 
 
 
@@ -278,14 +286,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       const rand = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
       number_savings_account = `${branch.code}${rand}`;
     } while (await this.repo.findOne({ where: { number_savings_account } }));*/
-    number_savings_account = await this.generateNextAccountNumber(branch);
+    number_savings_account = await this.generateNextAccountNumber(typeAccount);
 
 
-    let iban = `${number_savings_account}${customer.customer_code}`;
+    let iban = `${branch.code} ${number_savings_account} ${customer.customer_code}`;
     while (await this.repo.findOne({ where: { iban } })) {
       const rand = Math.floor(Math.random() * 100000).toString().padStart(5, '0');
       number_savings_account = `${branch.code}${rand}`;
-      iban = `${customer.customer_code}${number_savings_account}`;
+      iban = `${branch.code} ${number_savings_account} ${customer.customer_code}`;
     }
 
     const account = this.repo.create({
@@ -830,12 +838,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
 
 
-async generateNextAccountNumber(branch: Branch): Promise<string> {
+async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
   // 1) On récupère le résultat brut
   const raw = await this.repo
     .createQueryBuilder('acc')
     .select('MAX(CAST(RIGHT(acc.number_savings_account, 5) AS UNSIGNED))', 'max')
-    .where('acc.number_savings_account LIKE :prefix', { prefix: `${branch.code}%` })
+    .where('acc.number_savings_account LIKE :prefix', { prefix: `${type_sa.code}%` })
     .getRawOne<{ max: string }>();  // on indique que max arrive comme string
 
   // 2) On convertit en number et on gère undefined
@@ -847,8 +855,8 @@ async generateNextAccountNumber(branch: Branch): Promise<string> {
   // 4) Formatage sur 5 chiffres
   const suffix = next.toString().padStart(5, '0');
 
-  // 5) Concaténation avec le code de la branche
-  return `${branch.code}${suffix}`;
+  // 5) Concaténation avec le code de la type_sae
+  return `${type_sa.code}${suffix}`;
 }
 
 
