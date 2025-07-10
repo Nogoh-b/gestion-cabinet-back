@@ -5,6 +5,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
 import { AgenciesModule } from '../agencies/agencies.module';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
@@ -22,10 +27,16 @@ import { SavingsAccountHasInterest } from './savings-account/entities/account-ha
 import { SavingsAccount } from './savings-account/entities/savings-account.entity';
 import { SavingsAccountController } from './savings-account/savings-account.controller';
 import { SavingsAccountService } from './savings-account/savings-account.service';
+import { SavingsAccountSubscriber } from './savings-account/savings-account.subscriber';
 import { TypeHasDocument } from './type-savings-account/entities/type-has-document.entity';
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
+
+
+
+
+
 
 
 
@@ -53,14 +64,15 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
       CommissionController,
       InterestSavingAccountController,
       TypeSavingsAccountController,
-      SavingsAccountController,
+      SavingsAccountController
   ],
   providers: [
       DocumentSavingAccountService,
       TypeSavingsAccountService,
       CommissionService,
       InterestSavingAccountService,
-      SavingsAccountService,
+      SavingsAccountService, SavingsAccountSubscriber
+      
   ],
   exports: [
       DocumentSavingAccountService,

@@ -1,6 +1,8 @@
 /* eslint-disable prettier/prettier */
 // src/core/config/database.config.ts
+import { SavingsAccountSubscriber } from 'src/modules/savings-account/savings-account/savings-account.subscriber';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+
 
 
 
@@ -14,6 +16,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     password: process.env.DB_PASSWORD ?? 'mendo',
     database: process.env.DB_NAME ??  'core_banking',  
     synchronize: false, 
+    subscribers: [SavingsAccountSubscriber],  // ← ici, **dans** forRoot
     autoLoadEntities: true,
     // logging: ["query", "error", "schema"],
     // logger: "advanced-console"

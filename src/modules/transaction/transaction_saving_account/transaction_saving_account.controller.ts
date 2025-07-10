@@ -4,9 +4,13 @@ import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 
 
 
+
+
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
+
 
 
 @Controller('transaction-saving-account')
@@ -138,7 +142,7 @@ export class TransactionSavingAccountController {
     @Param('id') id: string, @Body() dto: ValidateTransactionSavingsAccountDto
   ) {
     return this.transactionSavingAccountService.validate(
-      +id,dto
+      +id
     );
   }
 

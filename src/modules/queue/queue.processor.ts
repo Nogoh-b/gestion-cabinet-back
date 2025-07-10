@@ -35,11 +35,13 @@ import { Processor, Process } from '@nestjs/bull';
 
 
 
+
 import { SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
+
 
 
 
@@ -77,7 +79,7 @@ export class QueueProcessor {
     const dataPayment : Payment = paymentResult.data
     if (dataPayment.paymentStatus != PaymentStatusProvider.PENDING ){
       console.log('payment ',tx.provider.code)
-
+      const isFirstTx = this.txService.isFirstTransaction(tx.targetSavingsAccount)
       const repeatOpts = job.opts.repeat;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
@@ -85,7 +87,7 @@ export class QueueProcessor {
       tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
       this.txService.update(tx)
       if(tx.status === PaymentStatus.SUCCESSFULL){
-        this.txService.validate(tx.id);
+        this.txService.validate(tx.id, isFirstTx);
       }
       if (repeatOpts ) {
         await job.queue.removeRepeatable('check-payment', repeatOpts);

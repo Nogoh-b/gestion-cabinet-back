@@ -32,11 +32,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { SavingsAccountResponseDto } from '../savings-account/dto/response-savings-account.dto';
 import { SavingsAccount } from '../savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { DocumentSavingAccountResponseDto } from './dto/response-document-saving-account.dto';
+
+
 
 
 
@@ -99,7 +103,6 @@ export class DocumentSavingAccountService {
     });
     const docsStats = await this.saService.getDocumentStatus(idSa)
     if(( docsStats).allRequiredValidated){
-      this.saService.updateCodeCash(idSa)
     }
     return plainToInstance(DocumentSavingAccountResponseDto, doc);
     const acceptedIds = new Set(accepted.map(d => d.document_type.id));

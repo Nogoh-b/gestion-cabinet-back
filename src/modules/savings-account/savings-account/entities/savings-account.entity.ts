@@ -3,7 +3,19 @@ import { BaseEntity } from 'src/core/entities/base.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColumn, AfterLoad } from 'typeorm';
+import {
+  Entity,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  AfterLoad,
+} from 'typeorm';
+
+
+
+
 
 
 
@@ -12,6 +24,10 @@ import { Entity, Column, ManyToOne, JoinColumn, OneToMany, PrimaryGeneratedColum
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
+
+
+
 
 
 
@@ -60,7 +76,7 @@ export class SavingsAccount extends BaseEntity {
   status: number;
 
 
-  @Column({ name: 'iban', type: 'varchar', length: 14, unique: true })
+  @Column({ name: 'iban', type: 'varchar', length: 50, unique: true })
   iban: string;
 
   /*@Column({ name: 'code_product', type: 'varchar', length: 45 })
@@ -150,5 +166,7 @@ export class SavingsAccount extends BaseEntity {
     act => act.savingsAccount
   )
   activities?: ActivitiesSavingsAccount[]; // Activités du compte*/
+
+
 
 }

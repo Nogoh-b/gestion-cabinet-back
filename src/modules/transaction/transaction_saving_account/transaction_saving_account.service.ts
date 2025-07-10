@@ -67,7 +67,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
-import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
 
@@ -237,7 +237,7 @@ export class TransactionSavingsAccountService {
     });
     if(!Boolean(txType.is_credit) || channel_code != TransactionChannel.MOBILE || txType.code === TransactionCode.INTERNAL_TRANSFER  ){
       
-      this.validate(tx.id)
+      this.validate(tx.id, isFirstTx)
       tx.status = 1
     }
       
@@ -265,7 +265,7 @@ export class TransactionSavingsAccountService {
           tx.target = dataPayment.ref;
         }
         if(tx.status === PaymentStatus.SUCCESSFULL){
-          this.validate(tx.id);
+          this.validate(tx.id, isFirstTx);
         }
         console.log('is_credit ', dataPayment.ref)
 
@@ -577,7 +577,7 @@ export class TransactionSavingsAccountService {
   }
 
   async validate(
-    id: number,dto ?: ValidateTransactionSavingsAccountDto
+    id: number, isFirstTx = false
   ): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
     if(entity.status == 0){
@@ -606,8 +606,8 @@ export class TransactionSavingsAccountService {
       target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(
         tx.targetSavingsAccount.number_savings_account,
     ));
-    const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
-    console.log('isFirstTx', isFirstTx)
+    // const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
+    console.log('isFirstTx', isFirstTx, ' ', tx.status)
     await this.repo.manager.transaction(async (entityManager) => {
       if (isFirstTx && target) {
         const chanelOpenProduct = await this.channelRepo.findOne({

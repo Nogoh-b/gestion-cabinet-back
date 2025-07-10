@@ -30,6 +30,22 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -39,6 +55,22 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -174,6 +206,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       ],
     });
     if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
+    /*const sa = await this.updateCodeCash(account.id)
+    if(sa && sa.code_cash)
+      account.code_cash = sa.code_cash;*/
     return plainToInstance(SavingsAccountResponseDto, account);
   }
 
@@ -279,8 +314,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         location_city_id: dto.location_city_id,
       });
     }
+    account.created_online = 1
 
-    return this.repo.save(account);
+    return await this.repo.save(account);
   }
 
   async createOnline(
@@ -330,26 +366,43 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   }
 
   
-  async updateCodeCash(id: number): Promise<any> {
-    // 1. Charge l’entité existante
-    const account = await this.repo.findOne({ where: { id }, relations: ['type_savings_account'] });
+  async updateCodeCash(id: number): Promise<SavingsAccount> {
+    // 1. Load existing entity
+    const account = await this.repo.findOne({ 
+        where: { id }, 
+        relations: ['type_savings_account'] 
+    });
+    
     if (!account) {
-      throw new NotFoundException(`Compte épargne #${id} introuvable`);
+        throw new NotFoundException(`Compte épargne #${id} introuvable`);
     }
-    if(!account.created_online || account.code_cash)
-      return
+
+    // Return empty account if conditions aren't met
+    if (account.code_cash) {
+      console.warn(`Account #${!Boolean(account.created_online) }  ${account.code_cash} is not created online or already has a code_cash.`);
+      return new SavingsAccount(); 
+    }
+
     try {
-      const code_cash = await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/update-code-cash`);
-      if(code_cash){
-        account.code_cash = code_cash
-        this.repo.save(account)
-        return account
-      }
+        const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'GET',
+            `epargne/epargne-accounts/${account.number_savings_account}/update-code-cash`
+        );
+
+        if (code_cash) {
+            account.code_cash = code_cash;
+            await this.repo.save(account); // Added await here
+            return account;
+        }
+
+        // Return empty account if no code_cash was returned
+        return new SavingsAccount();
+
     } catch (error) {
-      console.log(error);
-      return null;    // ou undefined
+        console.error('Error updating code cash:', error);
+        return new SavingsAccount();
     }
-  }
+}
 
   async remove(id: number): Promise<any> {
     const account = await this.repo.findOne({
