@@ -14,12 +14,16 @@ import { NestFactory } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
 import { SwaggerModule } from '@nestjs/swagger';
 
+
+
 import { AppModule } from './app.module';
 import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
 import { SuperAdminSeeder } from './core/database/seeders/super-admin.seeder';
 import { ProviderSeeder } from './modules/provider/provider/provider.seeder';
 import { TransactionTypeSeeder } from './modules/transaction/transaction_type/transaction-type.seeder';
+
+
 
 
 
@@ -49,7 +53,7 @@ async function bootstrap() {
   const core = await NestFactory.createMicroservice(AppModule, {
     transport: Transport.TCP,
     options: {
-      port: 3002,
+      port: 3003,
       tlsOptions: {
         key: SSL_KEY_PATH,
         cert: SSL_CERTIFICATE_PATH,

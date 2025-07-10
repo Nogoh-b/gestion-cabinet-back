@@ -22,6 +22,8 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ServeStaticModule } from '@nestjs/serve-static';
 
 
+
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
@@ -35,6 +37,8 @@ import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+
+
 
 
 
@@ -87,7 +91,7 @@ dotenv.config();
         transport: Transport.TCP,
         options: {
           host: 'localhost',
-          port: 3002, // port du microservice cible
+          port: 3003, // port du microservice cible
         },
       },
     ]),

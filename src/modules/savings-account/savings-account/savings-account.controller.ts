@@ -10,11 +10,15 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/s
 
 
 
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
-import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
+import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
 
 
 
@@ -26,12 +30,12 @@ import { SavingsAccountService } from './savings-account.service';
 export class SavingsAccountController {
   constructor(private readonly service: SavingsAccountService) {}
 
-  @ApiOperation({ summary: 'Get validation status of all documents for an account' })
+  /*@ApiOperation({ summary: 'Get validation status of all documents for an account' })
   @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })  
   @Get(':id/get-code-cash')
   async processData(@Param('id', ParseIntPipe) id: number) {
     return this.service.updateCodeCash(id);
-  }
+  }*/
 
 
   async searchUsers(@Query() query: SearchQueryDto) {
@@ -170,17 +174,18 @@ export class SavingsAccountController {
     return this.service.update(id, dto);
   }
 
-  /*@Put(':id')
+  @Get(':id/upadate-code-cash/:code_cash')
   @ApiOperation({ summary: 'Remplace entièrement un compte existant' })
   @ApiParam({ name: 'id', description: "ID du compte", type: Number })
   @ApiBody({ type: UpdateCodeCahOfSavingAccountDto })
   @ApiResponse({ status: 200, description: 'Compte mis à jour', type: SavingsAccount })
   updateCodeCash(
     @Param('id', ParseIntPipe) id: number,
+    @Param('code_cash') code_cash: number,
     @Body() dto: UpdateCodeCahOfSavingAccountDto,
   ) {
-    return this.service.updateCodeCash(id, dto);
-  }*/
+    return this.service.updateCodeCash(id, code_cash);
+  }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Met à jour partiellement un compte' })

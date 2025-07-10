@@ -50,6 +50,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -59,6 +61,8 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 
 
@@ -323,7 +327,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       });
     }
     account.created_online = 1
-
+    account.customer = customer
     return await this.repo.save(account);
   }
 
@@ -374,7 +378,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   }
 
   
-  async updateCodeCash(id: number): Promise<SavingsAccount> {
+  async updateCodeCash(id: number, code_cash): Promise<SavingsAccount> {
     // 1. Load existing entity
     const account = await this.repo.findOne({ 
         where: { id }, 
@@ -384,14 +388,15 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (!account) {
         throw new NotFoundException(`Compte épargne #${id} introuvable`);
     }
-
     // Return empty account if conditions aren't met
-    if (account.code_cash) {
-      console.warn(`Account #${!Boolean(account.created_online) }  ${account.code_cash} is not created online or already has a code_cash.`);
-      return new SavingsAccount(); 
+    if (code_cash) {
+      console.log('updateCodeCash', code_cash)
+      account.code_cash = code_cash;
+      await this.repo.save(account); // Added await here
     }
+    return account; 
 
-    try {
+   /* try {
         const code_cash = await this.mcotiService.callMcotiEndpoint(
             'GET',
             `epargne/epargne-accounts/${account.number_savings_account}/update-code-cash`
@@ -409,7 +414,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     } catch (error) {
         console.error('Error updating code cash:', error);
         return new SavingsAccount();
-    }
+    }*/
 }
 
   async remove(id: number): Promise<any> {
