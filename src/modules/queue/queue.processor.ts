@@ -37,11 +37,15 @@ import { Processor, Process } from '@nestjs/bull';
 
 
 
+
+
 import { SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
+
+
 
 
 
@@ -71,7 +75,7 @@ export class QueueProcessor {
 
   @Process('check-payment')
   async handleCheckPayment(job: Job) {
-    console.log('handleCheckPayment :', job.id ,' ',job.opts.attempts);
+    console.log('handleCheckPayment :', job.id ,' ',job.attemptsMade + 1);
     const { txId  } = job.data;
 
     const tx = await this.txService.findOne(txId)
@@ -96,7 +100,12 @@ export class QueueProcessor {
         console.log(`Job de check de payment terminé pour ${job.data.txId}`);
       }
       return; // ignore si inactif
-    }else if(job.opts.attempts === 3){
+    }else if(job.attemptsMade + 1 === 3){
+      console.log('job.attemptsMade + 1 === 3')
+      const isFirstTx = this.txService.isFirstTransaction(tx.targetSavingsAccount)
+      const repeatOpts = job.opts.repeat;
+      tx.payment_code = dataPayment.id;
+      tx.payment_token_provider = dataPayment.payToken
       tx.status_provider = PaymentStatusProvider.ISSUE;
       tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
       this.txService.update(tx)

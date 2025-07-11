@@ -52,6 +52,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -61,6 +63,8 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 
 
@@ -505,7 +509,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     const account = await this.repo.findOne({ where: { id } });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
     if (account.status !== SavingsAccountStatus.PENDING) {
-      throw new BadRequestException(`Cannot validate account in status ${account.status}`);
+      return account;
+      // throw new BadRequestException(`Cannot validate account in status ${account.status}`);
     }
     account.status = SavingsAccountStatus.ACTIVE;
     // await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/validate`);
