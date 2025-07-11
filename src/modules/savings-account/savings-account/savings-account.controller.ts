@@ -12,11 +12,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/s
 
 
 
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
 
 
 
@@ -239,12 +241,12 @@ export class SavingsAccountController {
 
   
   @Get('by-code/:code/balance')
-  avalaibleBalanceByCode( @Param('code', ParseIntPipe) code: string) {
+  avalaibleBalanceByCode( @Param('code') code: string) {
     return this.service.balanceByCode(code);
   }
 
   @Get('by-code/:code/avalaible-balance')
-  balanceByCode( @Param('code', ParseIntPipe) code: string) {
+  balanceByCode( @Param('code') code: string) {
     return this.service.avalaibleBalanceByCode(code);
   }
 
