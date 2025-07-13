@@ -1,23 +1,31 @@
 // Entité TransactionSavingsAccount - src/core-banking/entities/transaction-savings-account.entity.ts
 // Représente une transaction sur un compte d'épargne
+import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
+import { Partner } from 'src/modules/partner/entities/partner.entity';
 import { Provider } from 'src/modules/provider/provider/entities/provider.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 
 
-
-
-
-
-
-
-
-
-
-
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
+
+
 
 
 
@@ -177,8 +185,23 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
   targetSavingsAccount: SavingsAccount | null;; // Relation vers SavingsAccount
 
+  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  promo_code: string | null;
+
+  @ManyToOne(() => Partner, acc => acc.transactions, {eager: true  })
+  @JoinColumn({ name: 'promo_code', referencedColumnName: 'promo_code' })
+  partner: Partner | null;; // Relation vers SavingsAccount
+
+  @ManyToOne(() => Partner, acc => acc.transactions, {eager: true  })
+  @JoinColumn({ name: 'partner_id', referencedColumnName: 'promo_code' })
+  partner1: Partner | null;; // Relation vers SavingsAccount
+
+  @ManyToOne(() => Commercial, acc => acc.transactions, {eager: true  })
+  @JoinColumn({ name: 'comercial_id', referencedColumnName: 'id' })
+  comercial: Commercial | null;; // Relation vers SavingsAccount
+
   @ManyToOne(() => ChannelTransaction, ch => ch.transactions, {eager: true})
-  @JoinColumn({ name: 'channels_transaction_id', referencedColumnName: 'id' })
+  @JoinColumn({ name: 'channels_transaction_id', referencedColumnName: 'id' }) 
   channelTransaction: ChannelTransaction; // Relation vers ChannelsTransaction
 
   @ManyToOne(() => Provider, prov => prov.transactions)

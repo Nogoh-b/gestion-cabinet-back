@@ -40,12 +40,12 @@ export class TransactionSavingAccountController {
   }
 
   @Post('momo_withdrawal')
-  momo_withdraw(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
+  momo_withdraw(@Body() dto: CreateDebitTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.momo_withdraw(dto);
   }
 
   @Post('om_withdrawal')
-  om_withdraw(@Body() dto: CreateCreditTransactionSavingsAccountDto) {
+  om_withdraw(@Body() dto: CreateDebitTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.om_withdraw(dto);
   }
 

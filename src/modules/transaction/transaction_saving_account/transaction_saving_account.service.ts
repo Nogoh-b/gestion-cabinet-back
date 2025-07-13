@@ -3,63 +3,26 @@ import { plainToInstance } from 'class-transformer';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
 import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
+import { PartnerService } from 'src/modules/partner/partner.service';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { QueueService } from 'src/modules/queue/queue.service';
+
+
 import { UpdateSavingsAccountDto } from 'src/modules/savings-account/savings-account/dto/update-savings-account.dto';
-
-
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+
+
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-
-
 import { Repository } from 'typeorm';
+
 import { v4 as uuidv4 } from 'uuid';
 
 import { InjectQueue } from '@nestjs/bull';
 
+
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -69,48 +32,7 @@ import { TransactionChannel, TransactionCode, TransactionProvider, TransactionTy
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
-import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
 
 
 
@@ -127,6 +49,7 @@ export class TransactionSavingsAccountService {
     private readonly transactionTypeService: TransactionTypeService,
     private paginationService: PaginationService,
     public mcotiService: McotiService,
+    public partnerService: PartnerService,
     @InjectQueue('maintenance')
     private readonly maintenanceQueue: Queue,
     private readonly queueService: QueueService,
@@ -184,11 +107,13 @@ export class TransactionSavingsAccountService {
     }
     const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     console.log('isFirstTx111', isFirstTx)
-    const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(target?.id)
-    if(!Boolean(txType.is_credit) && !docStatsTargetAccount.allRequiredValidated ){
-      throw new NotFoundException(
-        `Tout vos documents ne sont pas validé  : ${target?.id}`,  
-      );
+    if(origin){
+      const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(origin?.id)
+      if(!Boolean(txType.is_credit) && (!docStatsTargetAccount.allRequiredValidated || origin.status === SavingsAccountStatus.ACTIVE) ){
+        throw new NotFoundException(
+          `Tout vos documents ne sont pas validé  : ${target?.id}`,  
+        );
+      }
     }
     const channel = await this.channelRepo.findOne({
       where: { code: channel_code },
@@ -222,6 +147,7 @@ export class TransactionSavingsAccountService {
     tx.token = dto.token ?? '986907875'
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
+
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
       if( initial_deposit >= dto.amount)
         throw new BadRequestException(`Pour votre premier dépôt vous devez avoir au minimum ${initial_deposit} pour ce type de compte : ${target.type_savings_account.name} `);
@@ -305,11 +231,11 @@ export class TransactionSavingsAccountService {
     return this.perform_transaction(dto, 'MOMO_DEPOSIT', 'MOBILE', TransactionProvider.MOMO);
   }  
 
-  om_withdraw(dto: CreateCreditTransactionSavingsAccountDto) {
+  om_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'OM_WITHDRAW', 'MOBILE', TransactionProvider.OM);
   }
 
-  momo_withdraw(dto: CreateCreditTransactionSavingsAccountDto) {
+  momo_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'MOMO_WITHDRAW', 'MOBILE', TransactionProvider.MOMO);
   }  
 
@@ -329,7 +255,7 @@ export class TransactionSavingsAccountService {
   fee_maintenance(dto: CreateDebitTransactionSavingsAccountDto) {
     return this.perform_transaction(
       dto,
-      'ACCOUNT_MAINTENANCE_',
+      'ACCOUNT_MAINTENANCE_FEE',
       'API',
       'SYSTEM',
       true
@@ -391,7 +317,7 @@ export class TransactionSavingsAccountService {
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string
+    to?: string, data: any = {}
   ): 
   Promise<PaginatedResult<TransactionSavingsAccount>> {
     const qb = this.repo
@@ -401,7 +327,16 @@ export class TransactionSavingsAccountService {
       .leftJoinAndSelect('tx.transactionType', 'transactionType')
       .leftJoinAndSelect('tx.originSavingsAccount', 'originSavingsAccount')
       .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
-      .orderBy('tx.created_at', 'DESC');
+
+      if( data.promo_code){
+        // qb.leftJoinAndSelect('tx', 'partner',  'partner.promo_code = :promo_code' , { promo_code:data.promo_code })
+        qb.andWhere('tx.promo_code = :promo_code', { promo_code:data.promo_code  });
+      }
+      else{
+        // qb.leftJoinAndSelect('tx.partner', 'partner');
+      }
+
+      qb.orderBy('tx.created_at', 'DESC');
     const options: PaginationOptions & { search?: SearchOptions; 
     dateRange?: DateRange } = { page, limit };
     if (term) options.search = { term, fields, exact };
@@ -422,7 +357,9 @@ export class TransactionSavingsAccountService {
     from?: string,
     to?: string,
     txTypeCode?: string,
-    type?: string, id?: number
+    type?: string, id?: number,
+    promo_code?: string, commercial_code?: number,
+
   ): 
   Promise<PaginatedResult<TransactionSavingsAccount>> {
     const qb = this.repo
@@ -456,7 +393,16 @@ export class TransactionSavingsAccountService {
           isCredit: type === '1' ? 1 : 0 // Adaptez selon le type en base (boolean/entier)
         });
       }
-
+      if (type !== undefined) { // Ou une autre condition selon votre DTO
+        qb.andWhere('transactionType.is_credit = :isCredit', { 
+          isCredit: type === '1' ? 1 : 0 // Adaptez selon le type en base (boolean/entier)
+        });
+      }
+      if (type !== undefined) { // Ou une autre condition selon votre DTO
+        qb.andWhere('transactionType.is_credit = :isCredit', { 
+          isCredit: type === '1' ? 1 : 0 // Adaptez selon le type en base (boolean/entier)
+        });
+      }
       qb.andWhere('transactionType.id IS NOT NULL');
 
        
@@ -477,7 +423,8 @@ export class TransactionSavingsAccountService {
         'provider',
         'transactionType',
         'originSavingsAccount',
-        'targetSavingsAccount'
+        'targetSavingsAccount',
+        'targetSavingsAccount.targetSavingsAccountTx'
       ],
     });
     if (!entity) throw new NotFoundException(`Transaction ${id} non trouvé`);
@@ -562,15 +509,18 @@ export class TransactionSavingsAccountService {
     return months + today.getMonth() - createdAt.getMonth();
   }
   isFirstTransaction(target?:SavingsAccount | null){
+    // console.log('isFirstTransaction ', target && !target.targetSavingsAccountTx)
     if(target && !target.targetSavingsAccountTx)
       return true
+    
     let hasFirstDeposit = true
     if(target){
-      target.targetSavingsAccountTx?.forEach((tx) => {
-        if (tx.transactionType.is_credit && tx.status === PaymentStatus.SUCCESSFULL) {
-          hasFirstDeposit = false
+        for (const tx of target.targetSavingsAccountTx || []) {
+            if (tx.transactionType?.is_credit && tx.status === PaymentStatus.SUCCESSFULL) {
+                hasFirstDeposit = false;
+                break; // Sortie immédiate de la boucle
+            }
         }
-      });
     }
     return hasFirstDeposit
     // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
@@ -623,6 +573,8 @@ export class TransactionSavingsAccountService {
         secondTx.transactionType = txTypeMinBalance;
         secondTx.provider = providerMinBalance;
         secondTx.is_locked = false;
+        secondTx.status = TransactionSavingsAccountStatus.VALIDATE;
+        secondTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
         if (chanelOpenProduct !== null) {
           secondTx.channelTransaction = chanelOpenProduct;
         }   
@@ -630,7 +582,7 @@ export class TransactionSavingsAccountService {
 
 
         // Transaction pour le minimum de frais de creation de compte
-        const txTypeOpenProduct = await this.transactionTypeService.findOneByCode('MANUAL_ADJUSTMENT');
+        const txTypeOpenProduct = await this.transactionTypeService.findOneByCode('OPENING_FEE');
         const providerOpenProduct = await this.providerService.findOne('SYSTEM');
         const thirdTx = new TransactionSavingsAccount();
         Object.assign(thirdTx, txData);
@@ -638,13 +590,45 @@ export class TransactionSavingsAccountService {
         thirdTx.transactionType = txTypeOpenProduct;
         thirdTx.provider = providerOpenProduct;
         thirdTx.is_locked = false;
+        thirdTx.status = TransactionSavingsAccountStatus.VALIDATE;
+        thirdTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
         if (chanelOpenProduct !== null) {
           thirdTx.channelTransaction = chanelOpenProduct;
         }
         await entityManager.save(thirdTx);
 
-        const dayOfMonth = new Date().getDate(); // 1..31
-        console.log('validate', isFirstTx)
+        if(target.promo_code){
+          const partner = await this.partnerService.getByCode(target.promo_code);
+          const adminSa = await this.savingsAccountService.findOneAdmin(target.branch_id);
+          if(partner && partner.saving_account){
+            // Transaction pour le le partenaire
+            const txTypePartner = await this.transactionTypeService.findOneByCode('PARTNER_COMMISSION');
+            const providerOpenProduct = await this.providerService.findOne('SYSTEM');
+            const fourthTx = new TransactionSavingsAccount();
+            Object.assign(fourthTx, txData);
+            fourthTx.amount = (tx.amount * target!.type_savings_account.promo_code_fee);
+            fourthTx.transactionType = txTypePartner;
+            fourthTx.provider = providerOpenProduct;
+            fourthTx.is_locked = false;
+            fourthTx.targetSavingsAccount = partner?.saving_account;
+            fourthTx.originSavingsAccount = adminSa;
+            fourthTx.target = partner?.saving_account.number_savings_account;
+            fourthTx.origin = adminSa.number_savings_account;
+            fourthTx.promo_code = target.promo_code;
+            fourthTx.payment_code = await this.generateUniquePaymentCode();
+            fourthTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
+            fourthTx.reference = await this.formatTransactionReference(fourthTx.transactionType,providerOpenProduct.code);
+            fourthTx.status = TransactionSavingsAccountStatus.VALIDATE;
+            fourthTx.status = TransactionSavingsAccountStatus.VALIDATE;
+            fourthTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
+            if (chanelOpenProduct !== null) {
+              fourthTx.channelTransaction = chanelOpenProduct;
+            }
+            await entityManager.save(fourthTx);
+          }
+        }
+
+
 
         this.savingsAccountService.validateAccount(target.id)
 

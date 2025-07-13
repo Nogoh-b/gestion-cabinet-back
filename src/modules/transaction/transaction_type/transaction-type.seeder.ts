@@ -6,6 +6,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -19,6 +23,30 @@ export class TransactionTypeSeeder {
         code: 'MOMO_DEPOSIT',
         name: 'Dépôt MOMO',
         description: 'Versement dans portefeuille mobile Mobile Money',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'OPENING_FEE',
+        name: 'Frais d\'ouverture de compte',
+        description: 'Frais déduit pour l\'ouverture de compte',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'PARTNER_COMMISSION',
+        name: 'Paiment Partenaire',
+        description: 'Versement dans Compte partenaire de la comission',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMERCIAL_COMMISSION',
+        name: 'Paiment Partenaire',
+        description: 'Versement dans Compte Commercial de la comission',
         is_credit: 1,
         fee_percentage: 0.0,
         status: 1,

@@ -1,49 +1,56 @@
 import { Job } from 'bull';
+import { plainToInstance } from 'class-transformer';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { Processor, Process } from '@nestjs/bull';
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
+import { SavingsAccount, SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
+
+
+
 
 
 
@@ -79,13 +86,16 @@ export class QueueProcessor {
     const { txId  } = job.data;
 
     const tx = await this.txService.findOne(txId)
-    
+    const sa = await  this.accountService.findOneByCode(
+      tx.targetSavingsAccount?.number_savings_account ?? '',
+    );
     const paymentResult  =/* tx.transactionType.is_credit === 1 ?  */
     await this.txService.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
     const dataPayment : Payment = paymentResult.data
+    // console.log('payment ',sa)
     if (dataPayment.paymentStatus != PaymentStatusProvider.PENDING ){
-      console.log('payment ',tx.provider.code)
-      const isFirstTx = this.txService.isFirstTransaction(tx.targetSavingsAccount)
+      // console.log('payment ',tx.provider.code)
+      const isFirstTx = this.txService.isFirstTransaction(plainToInstance(SavingsAccount,sa))
       const repeatOpts = job.opts.repeat;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken

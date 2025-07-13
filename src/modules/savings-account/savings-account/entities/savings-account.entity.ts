@@ -2,7 +2,17 @@
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { Partner } from 'src/modules/partner/entities/partner.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
 import {
   Entity,
   Column,
@@ -18,12 +28,15 @@ import {
 
 
 
-
-
-
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
+
+
+
+
+
 
 
 
@@ -81,7 +94,7 @@ export class SavingsAccount extends BaseEntity {
 
   /*@Column({ name: 'code_product', type: 'varchar', length: 45 })
   code_product: string;*/
-
+ 
   @Column({ type: 'varchar', nullable: true })
   code_cash: Date;
   
@@ -103,7 +116,16 @@ export class SavingsAccount extends BaseEntity {
     nullable: true,
   })
   is_admin?: boolean;
+
+  @Column({ type: 'varchar', length: 4, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  partner_id: string | null;
   
+  @Column({ type: 'varchar', length: 4, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  promo_code: string | null;
+
+  @ManyToOne(() => Partner)
+  @JoinColumn({ name: 'promo_code' })
+  partner: Partner | null;
 
 
   // Relations

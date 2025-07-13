@@ -9,49 +9,20 @@ import { CustomersService } from 'src/modules/customer/customer/customer.service
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { Partner } from 'src/modules/partner/entities/partner.entity';
+import { PartnerService } from 'src/modules/partner/partner.service';
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
+
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
-import { Not, Repository } from 'typeorm';
+
+
+import { Between, Not, Repository } from 'typeorm';
+
+
 
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -64,46 +35,6 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
@@ -126,7 +57,10 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @Inject(forwardRef(() => TransactionSavingsAccountService))
     private transactionSavingsAccountService : TransactionSavingsAccountService,
     private paginationService: PaginationService,
+    @Inject(forwardRef(() => CustomersService))
     private customerService: CustomersService,
+    @Inject(forwardRef(() => PartnerService))
+    private partnerService: PartnerService,
      private readonly mcotiService: McotiService
   ) { super(); console.log(forwardRef) }
 
@@ -140,22 +74,30 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string,branch_id = 0): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+    to?: string,branch_id = 0, partner_id : any = undefined): Promise<PaginatedResult<SavingsAccountResponseDto>> {
       const qb = this.repo.createQueryBuilder('sa')
     .leftJoinAndSelect('sa.customer', 'customer')
     .leftJoinAndSelect('sa.type_savings_account', 'typeSavings')
     .leftJoinAndSelect('sa.branch', 'branch', branch_id != 0 ? 'branch.id = :branch_id' : '', { branch_id })
-    .leftJoinAndSelect('sa.enrolled_by', 'enrolled_by')
+   
     .leftJoinAndSelect('sa.documents', 'documents')
     .leftJoinAndSelect('sa.interestRelations', 'interestRelations');
 
+    if(partner_id != undefined)
+      qb.leftJoinAndSelect(  'sa.partner', 
+      'partner', 
+      'partner.id IS NOT NULL AND partner.id = :partner_id', 
+      { partner_id }) 
+    qb.andWhere('partner.id IS NOT NULL');
     // 2. Application du filtre sur le status
-    qb.where(
-      isDeactivate
-        ? 'sa.status = :status'
-        : '',
-      { status: SavingsAccountStatus.DEACTIVATE }
-    );
+    if( isDeactivate != undefined )
+      qb.where(
+        isDeactivate
+          ? 'sa.status = :status'
+          : '',
+        { status: SavingsAccountStatus.DEACTIVATE }
+      );
+
 
     const options: PaginationOptions & { search?: SearchOptions; 
     dateRange?: DateRange } = { page, limit };
@@ -173,6 +115,60 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   };
   }
 
+  async findAllPartnerHasCreated(
+    isDeactivate: boolean = false,
+    page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string,
+    branch_id = 0,
+    promo_code: any = undefined
+  ): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+    const qb = this.repo.createQueryBuilder('sa')
+      .leftJoinAndSelect('sa.customer', 'customer')
+      .leftJoinAndSelect('sa.type_savings_account', 'typeSavings')
+      .leftJoinAndSelect('sa.branch', 'branch', branch_id != 0 ? 'branch.id = :branch_id' : '1=1', { branch_id })
+      .leftJoinAndSelect('sa.documents', 'documents')
+      .leftJoinAndSelect('sa.interestRelations', 'interestRelations');
+
+    // Filtre partenaire
+    if (promo_code !== undefined && promo_code !== null) {
+      qb.leftJoinAndSelect('sa.partner', 'partner', 'partner.promo_code = :promo_code', { promo_code })
+        .andWhere('partner.promo_code IS NOT NULL');
+    } else {
+      qb.leftJoinAndSelect('sa.partner', 'partner');
+    }
+
+    // Filtre statut
+    if (isDeactivate !== undefined) {
+      qb.andWhere(isDeactivate 
+        ? 'sa.status = :status' 
+        : 'sa.status != :status OR sa.status IS NULL', 
+        { status: SavingsAccountStatus.DEACTIVATE }
+      );
+    }
+
+    // Options de pagination et recherche
+    const options: PaginationOptions & { search?: SearchOptions; dateRange?: DateRange } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to) options.dateRange = { 
+      from: from ? new Date(from) : undefined, 
+      to: to ? new Date(to) : undefined 
+    };
+
+    const paginatedResult = await this.paginationService.paginate<SavingsAccount>(qb, options);
+    const data = paginatedResult.data.map(account => 
+      plainToInstance(SavingsAccountResponseDto, account)
+    );
+
+    return {
+      ...paginatedResult,
+      data,
+    };
+  }
 
   async findAllPendingDocs(page?: number,
     limit?: number,
@@ -241,8 +237,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         'enrolled_by',
         'interestRelations',
       ],
-    });
-    if (!account) throw new NotFoundException(`Compte Admin introuvable`);
+    }); 
+    if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id}`);
     return account;
   }
 
@@ -265,10 +261,22 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return plainToInstance(SavingsAccountResponseDto, account);
   }
 
+  async findOneByCustomer(id: number): Promise<SavingsAccountResponseDto> {
+    const account = await this.repo.findOne({
+      where: { customer :{id} , status: Not(SavingsAccountStatus.DEACTIVATE)},
+      relations: [
+        'interestRelations',
+        'customer',
+      ],
+    });
+    if (!account) throw new NotFoundException(`Compte epargne  ${id} introuvable`);
+    return plainToInstance(SavingsAccountResponseDto, account);
+  }
+
   async create(
     dto: CreateSavingsAccountDto,
     is_admin = false
-  ): Promise<SavingsAccount> {
+  ): Promise<SavingsAccountResponseDto> {
     if(is_admin){
       const acc = await this.repo.findOne({ where: { is_admin, branch_id: dto.branch_id  } });
       if (acc) throw new NotFoundException(`Compte Admin déjà existant`);
@@ -284,10 +292,18 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       `Type d'épargne ${dto.type_savings_account_id} introuvable`,
     );
 
-    if (dto.enrolled_by_id) {
+    /*if (dto.enrolled_by_id) {
       const parrain = await this.findOne(dto.enrolled_by_id);
       if (!parrain) {
         throw new NotFoundException('Compte parrain introuvable');
+      }
+    }*/
+    let partner : Partner | null = new Partner();
+    if (dto.promo_code) {
+      console.log('dto.code_promo ' ,dto)
+      partner = await this.partnerService.getByCode(dto.promo_code);
+      if (!partner) {
+        throw new NotFoundException('Partner introuvable');
       }
     }
 
@@ -318,7 +334,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       is_admin,
       // interest_year_savings_account: dto.interest_year_savings_account,
       iban,
-      enrolled_by: { id: dto.enrolled_by_id } as SavingsAccount,
+      // enrolled_by: { id: dto.enrolled_by_id } as SavingsAccount,
       account_number: number_savings_account,
       customer: { id: dto.customer_id } as Customer,
       type_savings_account: {
@@ -326,20 +342,24 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       } as TypeSavingsAccount,
 
     });
+    if(partner && partner.promo_code)
+      account.promo_code = partner.promo_code;
 
     if(dto.location_city_id){
       this.customerService.update(customer.id, {
         location_city_id: dto.location_city_id,
       });
     }
-    account.created_online = 1
+    // account.created_online = 1
     account.customer = customer
-    return await this.repo.save(account);
+    return plainToInstance(SavingsAccountResponseDto, await this.repo.save(account));
+
+    // return await this.repo.save(account);
   }
 
   async createOnline(
     dto: CreateSavingsAccountDto,
-  ): Promise<SavingsAccount> {
+  ): Promise<SavingsAccountResponseDto> {
 
 
     const customer = await this.customerRepo.findOne({ where: { customer_code: dto.customer_code } , relations :['branch'] });
@@ -515,9 +535,13 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       return account;
       // throw new BadRequestException(`Cannot validate account in status ${account.status}`);
     }
-    account.status = SavingsAccountStatus.ACTIVE;
-    // await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/validate`);
-    return this.repo.save(account);
+    if((await this.getDocumentStatus(id)).allRequiredValidated === true && this.transactionSavingsAccountService.isFirstTransaction(account)){
+
+      account.status = SavingsAccountStatus.ACTIVE;
+      // await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/validate`);
+      return this.repo.save(account);
+    }
+    return account;
   }
 
   async getDocumentStatuses(id: number): Promise<{ documentId: number; name: string; status: DocumentSavingAccountStatus }[]> {
@@ -753,7 +777,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       }
 
       // 2. Cas transfert interne complet
-      if (tx.originSavingsAccount && tx.targetSavingsAccount) {
+      if (tx.originSavingsAccount && tx.targetSavingsAccount && tx.status === TransactionSavingsAccountStatus.VALIDATE) {
         const originNum = tx.originSavingsAccount.number_savings_account;
         const targetNum = tx.targetSavingsAccount.number_savings_account;
 
@@ -945,5 +969,19 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
 
   }
 
+
+  async findByPartnerAndDate(
+    promo_code: string,
+    start_date: Date,
+    end_date: Date,
+  ): Promise<SavingsAccount[]> {
+    return this.repo.find({
+      where: {
+        promo_code,
+        created_at: Between(start_date, end_date),
+      },
+      relations: ['partner'],
+    });
+  }
 
 }

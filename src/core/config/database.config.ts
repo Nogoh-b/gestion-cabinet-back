@@ -7,6 +7,9 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 
 
+
+
+
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
     type: 'mysql',
@@ -18,8 +21,9 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     synchronize: false, 
     subscribers: [SavingsAccountSubscriber],  // ← ici, **dans** forRoot
     autoLoadEntities: true,
+    logging: ["error",],
     // logging: ["query", "error", "schema"],
-    // logger: "advanced-console"
+    logger: "advanced-console" 
 
   },
 });

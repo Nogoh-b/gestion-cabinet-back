@@ -9,35 +9,11 @@ import { BadRequestException, ConflictException, NotAcceptableException, NotFoun
 import { InjectRepository } from '@nestjs/typeorm';
 
 
-
-
-
-
-
-
-
-
-
-
-
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)

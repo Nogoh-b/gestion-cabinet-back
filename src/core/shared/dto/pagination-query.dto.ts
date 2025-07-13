@@ -16,6 +16,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Numéro de page', example: 1 })
   @IsOptional()
@@ -67,7 +68,7 @@ export class PaginationQueryDto {
 
   @ApiPropertyOptional({
     description: 'Date de fin du filtre (inclusive)',
-    example: '2025-06-30',
+    example: '2029-06-30',
     type: String,
     format: 'date',
   })
@@ -75,6 +76,9 @@ export class PaginationQueryDto {
   @IsDateString()
   @Type(() => Date)
   to?: Date;
+
+  fieldList : string [];
+  isExact :boolean = false;
   
 }
 

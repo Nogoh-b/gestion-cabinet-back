@@ -9,6 +9,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
+
+
+
+
 export class CreateSavingsAccountDto {
 
   balance: number;
@@ -28,9 +33,21 @@ export class CreateSavingsAccountDto {
   @IsNumber()
   enrolled_by_id?: number; 
 
+
+  @ApiProperty({ description: 'ID du compte qui enrolle', example: '1' })
+  @IsOptional()
+  promo_code?: string; 
+
+  code_commercial?: string; 
+
   /*@ApiProperty({ description: 'Statut du compte', example: 1 })
   @IsInt()*/
   status: number;
+
+  @ApiProperty({ description: 'Code comertial', example: '127555' ,   type: String // Spécifier explicitement le type
+ })
+  @IsOptional()
+  code_promo?: string;
 
  /* @ApiProperty({ description: 'IBAN du compte' })
   @IsString()

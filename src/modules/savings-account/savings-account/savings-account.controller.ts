@@ -13,11 +13,15 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/s
 
 
 
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
 
 
 
@@ -139,8 +143,9 @@ export class SavingsAccountController {
   @ApiResponse({ status: 201, description: 'Compte créé', type: SavingsAccount })
   create(
     @Body() dto: CreateSavingsAccountDto,
+    @Query() code_promo?: string,
   ) {
-    
+    dto.code_promo = code_promo
     return this.service.create(dto);
   }
 
@@ -260,6 +265,19 @@ export class SavingsAccountController {
     @Body()              dto:       AssignInterestRangeDto,
   ): Promise<SavingsAccountHasInterest> {
     return this.service.assign_interest_range(id, dto);
+  }
+
+    @Get('partner/:promo_code')
+    async getByPartner(
+    @Param('promo_code') promo_code: string,
+    @Query('start_date') start_date: string,
+    @Query('end_date') end_date: string,
+  ) {
+    return this.service.findByPartnerAndDate(
+      promo_code,
+      new Date(start_date),
+      new Date(end_date),
+    );
   }
 
 

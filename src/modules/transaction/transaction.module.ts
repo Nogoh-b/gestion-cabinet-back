@@ -12,6 +12,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+import { PartnerModule } from '../partner/partner.module';
 import { ProviderModule } from '../provider/provider.module';
 import { QueueModule } from '../queue/queue.module';
 import { SavingsAccountModule } from '../savings-account/savings-account.module';
@@ -25,6 +27,7 @@ import { TransactionType } from './transaction_type/entities/transaction_type.en
 import { TransactionTypeController } from './transaction_type/transaction_type.controller';
 import { TransactionTypeService } from './transaction_type/transaction_type.service';
 import { TransactionTypeSeeder } from './transaction_type/transaction-type.seeder';
+
 
 
 
@@ -49,6 +52,7 @@ import { TransactionTypeSeeder } from './transaction_type/transaction-type.seede
   }),
   forwardRef(() => SavingsAccountModule),
   forwardRef(() => QueueModule),
+  forwardRef(() => PartnerModule),
   ProviderModule],
   controllers: [TransactionSavingAccountController, TransactionTypeController],
   providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor ,  TransactionTypeSeeder,   ],

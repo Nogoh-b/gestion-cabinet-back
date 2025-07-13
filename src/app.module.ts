@@ -24,19 +24,29 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 
 
 
+
+
+
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
+import { CommercialModule } from './modules/commercial/commercial.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { IamModule } from './modules/iam/iam.module';
+import { PartnerModule } from './modules/partner/partner.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+
+
+
+
 
 
 
@@ -113,7 +123,9 @@ dotenv.config();
     ProviderModule,
     TransactionModule,
     ActivitiesModule,
-    QueueModule
+    QueueModule,
+    PartnerModule,
+    CommercialModule
   ],
   controllers: [AppController],
   providers: [AppService],
