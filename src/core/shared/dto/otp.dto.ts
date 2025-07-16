@@ -1,5 +1,6 @@
-import { IsEmail, IsNumber, IsString, IsIn } from 'class-validator';
+import { IsEmail, IsNumber, IsString, IsIn, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+
 
 
 export class SendOtpDto {
@@ -47,6 +48,15 @@ export class SendOtpDto {
   })
   @IsString()
   savingsAccountCode: string;
+
+  @ApiProperty({
+    description: "Savings account code receiver",
+    example: "SAV12345",
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  targetSavingsAccountCode: string;
 }
 
 export class VerifyOtpDto {

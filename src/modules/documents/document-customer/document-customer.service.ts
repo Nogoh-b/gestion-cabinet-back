@@ -142,6 +142,14 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     });
   }
 
+  async findByType(typeCode: string): Promise<DocumentCustomer | null> {
+    let where = {name: typeCode }
+    return this.docRepository.findOne({
+      where,
+      relations: ['document_type'],
+    });
+  }
+
 
   async validate(document_id: number): Promise<DocumentCustomer | any> {
     const doc = await this.docRepository.findOne({

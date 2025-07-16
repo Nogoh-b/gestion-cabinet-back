@@ -168,6 +168,9 @@ export class CustomersService extends BaseService<Customer> {
     if (!customer) throw new NotFoundException();
     return plainToInstance(CustomerResponseDto, customer);
   }
+  // async findByType(typeCode: string): Promise<any> {
+  //   doc
+  // }
 
   async update(id: number, dto: UpdateCustomerDto): Promise<CustomerResponseDto> {
     const customer = await this.findOne(id);

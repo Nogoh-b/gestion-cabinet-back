@@ -12,9 +12,11 @@ import { Entity, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable, OneToMany
 
 
 
+
 import { Commission } from '../../commission/entities/commission.entity';
 import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
+
 
 
 
@@ -31,10 +33,10 @@ export class TypeSavingsAccount extends BaseEntity {
   @Column({ length: 45 })
   code: string;
 
-  @Column()
+  @Column({ type: 'double', nullable: true })
   promo_code_reduction: number;
 
-  @Column()
+  @Column({ type: 'double', nullable: true })
   promo_code_fee: number;
 
   @Column({ length: 45, nullable: true })

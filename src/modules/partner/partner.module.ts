@@ -16,6 +16,7 @@ import { Partner } from './entities/partner.entity';
 import { PartnerController } from './partner.controller';
 import { PartnerService } from './partner.service';
 import { TransactionModule } from '../transaction/transaction.module';
+import { DocumentsModule } from '../documents/documents.module';
 
 
 
@@ -35,6 +36,7 @@ import { TransactionModule } from '../transaction/transaction.module';
       CoreModule,
       forwardRef(() => SavingsAccountModule),
       forwardRef(() => TransactionModule),
+      forwardRef(() => DocumentsModule),
       
     TypeOrmModule.forFeature([
         Partner

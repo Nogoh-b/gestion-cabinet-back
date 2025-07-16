@@ -3,17 +3,19 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import {
-  Entity, Column,
+  Entity,
+  Column,
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
-  BeforeInsert,
   Index,
   BaseEntity,
   OneToMany,
-  PrimaryColumn
+  PrimaryColumn,
 } from 'typeorm';
+
+
 
 
 
@@ -22,8 +24,8 @@ import {
 
 @Entity('partner')
 export class Partner extends BaseEntity {
-  // @PrimaryGeneratedColumn()
-  // id: number;
+  /*@PrimaryGeneratedColumn()
+  id: number;*/
 
   @Column({ length: 100 })
   name: string; // Nom du partenaire
@@ -31,7 +33,7 @@ export class Partner extends BaseEntity {
 
 
   @Index({ unique: true })
-  @PrimaryColumn({ type: 'varchar', length: 4 }) // Modification ici (char → varchar)
+  @PrimaryColumn({ type: 'varchar', length: 50 }) // Modification ici (char → varchar)
   promo_code: string;
 
   @Index({ unique: true }) 
@@ -64,7 +66,7 @@ export class Partner extends BaseEntity {
   @OneToMany(() => SavingsAccount, account => account.partner)
   created_savings_accounts: SavingsAccount[];
 
-  @BeforeInsert()
+  /*@BeforeInsert()
   async generateUniqueCode(): Promise<void> {
     let isUnique = false;
     let attempts = 0;
@@ -87,5 +89,5 @@ export class Partner extends BaseEntity {
     if (!isUnique) {
       throw new Error('Impossible de générer un code unique après plusieurs tentatives');
     }
-  }
+  }*/
 }

@@ -4,25 +4,48 @@ import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { CommercialService } from 'src/modules/commercial/commercial.service';
+
+import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
+
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
-
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { Partner } from 'src/modules/partner/entities/partner.entity';
 import { PartnerService } from 'src/modules/partner/partner.service';
+
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
+
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
+
+
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
+import { Not, Repository } from 'typeorm';
 
 
-import { Between, Not, Repository } from 'typeorm';
+
+
 
 
 
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -35,6 +58,27 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
@@ -61,6 +105,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     private customerService: CustomersService,
     @Inject(forwardRef(() => PartnerService))
     private partnerService: PartnerService,
+    @Inject(forwardRef(() => CommercialService))
+    private commercialService: CommercialService,
      private readonly mcotiService: McotiService
   ) { super(); console.log(forwardRef) }
 
@@ -115,7 +161,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   };
   }
 
-  async findAllPartnerHasCreated(
+  async findAllPartnerCommisionHasCreated(
     isDeactivate: boolean = false,
     page?: number,
     limit?: number,
@@ -125,7 +171,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     from?: string,
     to?: string,
     branch_id = 0,
-    promo_code: any = undefined
+    data: any = {}
   ): Promise<PaginatedResult<SavingsAccountResponseDto>> {
     const qb = this.repo.createQueryBuilder('sa')
       .leftJoinAndSelect('sa.customer', 'customer')
@@ -135,11 +181,17 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       .leftJoinAndSelect('sa.interestRelations', 'interestRelations');
 
     // Filtre partenaire
-    if (promo_code !== undefined && promo_code !== null) {
-      qb.leftJoinAndSelect('sa.partner', 'partner', 'partner.promo_code = :promo_code', { promo_code })
+    if (data.promo_code !== undefined && data.promo_code !== null) {
+      qb.leftJoinAndSelect('sa.partner', 'partner', 'partner.promo_code = :promo_code', { promo_code : data.promo_code })
         .andWhere('partner.promo_code IS NOT NULL');
     } else {
       qb.leftJoinAndSelect('sa.partner', 'partner');
+    }
+    if (data.commercial_code !== undefined && data.commercial_code !== null) {
+      qb.leftJoinAndSelect('sa.commercial', 'commercial', 'commercial.commercial_code = :commercial_code', { commercial_code : data.commercial_code })
+        .andWhere('commercial.commercial_code IS NOT NULL');
+    } else {
+      qb.leftJoinAndSelect('sa.commercial', 'commercial');
     }
 
     // Filtre statut
@@ -160,13 +212,13 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     };
 
     const paginatedResult = await this.paginationService.paginate<SavingsAccount>(qb, options);
-    const data = paginatedResult.data.map(account => 
+    const datas = paginatedResult.data.map(account => 
       plainToInstance(SavingsAccountResponseDto, account)
     );
 
     return {
       ...paginatedResult,
-      data,
+      data: datas,
     };
   }
 
@@ -261,15 +313,32 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return plainToInstance(SavingsAccountResponseDto, account);
   }
 
-  async findOneByCustomer(id: number): Promise<SavingsAccountResponseDto> {
+  async findOneByCustomer( 
+    id: number,
+    created_online: number | null = null
+  ): Promise<SavingsAccountResponseDto> {
+    const whereClause: any = { 
+      customer: { id },
+      status: Not(SavingsAccountStatus.DEACTIVATE)
+    };
+
+    // Ajoute le filtre created_online seulement si la valeur est non-null
+    if (created_online !== null) {
+      whereClause.created_online = created_online;
+    }
+
     const account = await this.repo.findOne({
-      where: { customer :{id} , status: Not(SavingsAccountStatus.DEACTIVATE)},
+      where: whereClause,
       relations: [
         'interestRelations',
         'customer',
       ],
     });
-    if (!account) throw new NotFoundException(`Compte epargne  ${id} introuvable`);
+
+    if (!account) {
+      throw new NotFoundException(`Compte epargne pour customer ${id} introuvable ; created online ${created_online}`);
+    }
+
     return plainToInstance(SavingsAccountResponseDto, account);
   }
 
@@ -304,6 +373,15 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       partner = await this.partnerService.getByCode(dto.promo_code);
       if (!partner) {
         throw new NotFoundException('Partner introuvable');
+      }
+    }
+
+    let commercial : Commercial | null = new Commercial();
+    if (dto.commercial_code) {
+      console.log('dto.commercial_code ' ,dto)
+      commercial = await this.commercialService.getByCode(dto.commercial_code);
+      if (!commercial) {
+        throw new NotFoundException('Commercial introuvable ' + dto.commercial_code );
       }
     }
 
@@ -343,7 +421,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
     });
     if(partner && partner.promo_code)
-      account.promo_code = partner.promo_code;
+      account.partner = partner;
+    if(commercial && commercial.commercial_code)
+      account.commercial = commercial;
 
     if(dto.location_city_id){
       this.customerService.update(customer.id, {
@@ -758,6 +838,15 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return this.interestRepo.save(link);
   }
   
+  async updateBalance(id){
+    if(!id)
+      return 
+    let dto = new UpdateSavingsAccountDto()
+    dto.balance = await this.balance(id)
+    dto.avalaible_balance = await this.avalaibleBalance(id)
+    this.update(id, dto)
+  }
+  
   /**
   * Calcule le solde total du compte en fonction des transactions (crédits et débits)
   * @param transactions Tableau de transactions avec is_credit (1=crédit, 0=débit)
@@ -766,12 +855,13 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   calculateTotalBalance(
     account: SavingsAccount,
     transactions: TransactionSavingsAccount[],
-  ): number {
+  ): number | any {
     if (!transactions?.length) return 0;
 
     const acctNum = account.number_savings_account;
     const total = transactions.reduce((sum, tx) => {
       // 1. Ignorer les transactions échouées
+    console.log('originNum targetNum ', tx?.originSavingsAccount?.number_savings_account, ' ', tx?.targetSavingsAccount?.number_savings_account,' ', tx.amount, ' ',account.id);
       if (tx.status === TransactionSavingsAccountStatus.FAILED) {
         return sum;
       }
@@ -780,12 +870,13 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       if (tx.originSavingsAccount && tx.targetSavingsAccount && tx.status === TransactionSavingsAccountStatus.VALIDATE) {
         const originNum = tx.originSavingsAccount.number_savings_account;
         const targetNum = tx.targetSavingsAccount.number_savings_account;
-
         if (targetNum === acctNum) {
           // réception / crédit
           return sum + tx.amount;
         }
         if (originNum === acctNum) {
+          if(tx.transactionType.code === 'MIN_BALANCE')
+            return sum
           // envoi / débit
           return sum - tx.amount;
         }
@@ -824,7 +915,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
   calculateAvailableBalance(
     account: SavingsAccount,
     transactions: TransactionSavingsAccount[],
-  ): number {
+  ): number | any {
     if (!transactions?.length) {
       return 0;
     }
@@ -970,7 +1061,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
   }
 
 
-  async findByPartnerAndDate(
+  /*async findByPartnerAndDate(
     promo_code: string,
     start_date: Date,
     end_date: Date,
@@ -982,6 +1073,6 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       },
       relations: ['partner'],
     });
-  }
+  }*/
 
 }

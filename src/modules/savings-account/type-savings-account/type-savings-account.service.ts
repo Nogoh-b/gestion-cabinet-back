@@ -14,9 +14,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { CreateTypeSavingsAccountDto } from './dto/create-type-savings-account.dto';
 import { UpdateTypeSavingsAccountDto } from './dto/update-type-savings-account.dto';
 import { TypeSavingsAccount } from './entities/type-savings-account.entity';
+
+
+
+
+
+
 
 
 
@@ -137,11 +149,14 @@ export class TypeSavingsAccountService {
     const fraisUniques = parseFloat(produit.account_opening_fee) || 0.0;
 
     // 4. Calcul du total avec précision décimale
-    const total = parseFloat(
-        (montantBloque + fraisRecurrents + fraisUniques).toFixed(2)
+    let total = (
+        (montantBloque + fraisRecurrents + fraisUniques)
     );
+    if(produit.promo_code_reduction){
+      total -= (produit.promo_code_reduction * total) / 100;
+    } 
 
     // 5. Retourne le montant arrondi (toujours >= 0)
-    return Math.max(total, 0.0);
+    return Math.ceil(Math.max(total, 0.0));
   }
 }

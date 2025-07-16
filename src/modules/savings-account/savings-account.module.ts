@@ -37,6 +37,7 @@ import { TypeHasDocument } from './type-savings-account/entities/type-has-docume
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
+import { CommercialModule } from '../commercial/commercial.module';
 
 
 
@@ -59,6 +60,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
     forwardRef(() => TransactionModule),
     forwardRef(() => CustomerModule),
     forwardRef(() => PartnerModule),
+    forwardRef(() => CommercialModule),
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,

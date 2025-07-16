@@ -36,6 +36,9 @@ export class OtpCode {
   @Column({ type: 'varchar', length: 50, comment: 'Code du compte épargne concerné' })
   savingsAccountCode: string;
 
+  @Column({ type: 'varchar', length: 50, nullable : true, comment: 'Code du compte épargne concerné' })
+  targetSavingsAccountCode: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

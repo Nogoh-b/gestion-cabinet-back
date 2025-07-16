@@ -17,8 +17,8 @@ export class OtpController {
   @Post('send')
   @ApiBody({ type: SendOtpDto })
   send(@Body() body: SendOtpDto) {
-    const { email, transactionType, amount, provider, savingsAccountCode } = body;
-    return this.otpService.generateOtp(email, transactionType, amount, provider, savingsAccountCode);
+    const { email, transactionType, amount, provider, savingsAccountCode,targetSavingsAccountCode } = body;
+    return this.otpService.generateOtp(email, transactionType, amount, provider, savingsAccountCode, targetSavingsAccountCode);
   }
 
   @Post('verify')

@@ -4,20 +4,17 @@ import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
-
-
-
-
-
-
-
-
-
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
   @Min(0)
   amount: number;
+
+  @ApiProperty({ example: 1000, description: 'Montant de la commission' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  commission: number;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
@@ -76,7 +73,15 @@ export class CreateCreditTransactionSavingsAccountDto {
 
   @ApiPropertyOptional({ example: false, description: 'Si la transaction est bloquée ou pas' })
   @IsBoolean()
-  is_locked: boolean;                           // true si la transaction est bloquée, false sinon
+  is_locked: boolean;   
+  
+  
+  @ApiProperty({ example: 1000, description: 'Montant de la commission' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  commission: number;
+                          // true si la transaction est bloquée, false sinon
   token?: string;
 
   @ApiProperty({ example: 1, description: '' })
@@ -91,7 +96,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   @Min(0)
   amount: number;
   token?: string;
-
+  commission: number;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()

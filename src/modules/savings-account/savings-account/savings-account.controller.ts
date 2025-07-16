@@ -4,7 +4,8 @@ import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pa
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 
 
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
+
 
 
 
@@ -20,6 +21,7 @@ import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
 
 
 
@@ -141,11 +143,15 @@ export class SavingsAccountController {
   @ApiOperation({ summary: 'Crée un nouveau compte d’épargne' })
   @ApiBody({ type: CreateSavingsAccountDto })
   @ApiResponse({ status: 201, description: 'Compte créé', type: SavingsAccount })
+  @ApiQuery({ name: 'commercial_code', required: false, type: String })
+  @ApiQuery({ name: 'promo_code', required: false, type: String })
   create(
     @Body() dto: CreateSavingsAccountDto,
-    @Query() code_promo?: string,
+    @Query('commercial_code') commercial_code?: string,
+    @Query('promo_code') promo_code?: string,
   ) {
-    dto.code_promo = code_promo
+    dto.commercial_code = commercial_code
+    dto.promo_code = promo_code
     return this.service.create(dto);
   }
 
@@ -267,7 +273,7 @@ export class SavingsAccountController {
     return this.service.assign_interest_range(id, dto);
   }
 
-    @Get('partner/:promo_code')
+    /*@Get('partner/:promo_code')
     async getByPartner(
     @Param('promo_code') promo_code: string,
     @Query('start_date') start_date: string,
@@ -278,7 +284,7 @@ export class SavingsAccountController {
       new Date(start_date),
       new Date(end_date),
     );
-  }
+  }*/
 
 
 }

@@ -37,6 +37,7 @@ export class OtpService {
     amount: number,
     provider: string,
     savingsAccountCode: string,
+    targetSavingsAccountCode: string,
   ) {
     let code: string;
     let existing: OtpCode | null;
@@ -58,6 +59,7 @@ export class OtpService {
       amount,
       provider,
       savingsAccountCode,
+      targetSavingsAccountCode,
     });
 
     await this.otpRepository.save(otp);

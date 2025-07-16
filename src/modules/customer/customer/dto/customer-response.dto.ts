@@ -21,6 +21,9 @@ export class CustomerResponseDto {
   @Expose({ name: 'first_name' })
   @ApiProperty()
   first_name: string;
+  @Expose({ name: 'last_name' })
+  @ApiProperty()
+  last_name: string;
 
   @Expose({ name: 'public_key' })
   @ApiProperty()
