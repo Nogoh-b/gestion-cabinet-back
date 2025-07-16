@@ -4,35 +4,9 @@ import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'sr
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 
-
-
-
-
 import { Repository } from 'typeorm';
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -45,28 +19,6 @@ import { TransactionSavingsAccount } from '../transaction/transaction_saving_acc
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { Partner } from './entities/partner.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -100,6 +52,7 @@ export class PartnerService extends BaseService<Partner> {
     const partnerExisting = await this.getBycustomerId(customer.id)
     if(partnerExisting){
         if(partnerExisting.status === CustomerStatus.ACTIVE)
+          throw new NotFoundException(`Partenaire ${dto.promo_code} deja existant`);
           return partnerExisting;
         dto.status = CustomerStatus.ACTIVE
     }
@@ -184,8 +137,8 @@ export class PartnerService extends BaseService<Partner> {
     if (!promo_code || typeof promo_code !== 'string') {
       throw new Error('Le code doit être une chaîne de caractères non vide');
     }
-
-    return this.partnerRepository.findOne({
+    console.log(promo_code)
+    return await this.partnerRepository.findOne({
       where: { promo_code  },
       relations: ['customer', 'saving_account']
     });
@@ -217,7 +170,7 @@ export class PartnerService extends BaseService<Partner> {
       fields,
       exact,
       from,
-      to,0,promo_code
+      to,0,{promo_code}
     );
   }
 

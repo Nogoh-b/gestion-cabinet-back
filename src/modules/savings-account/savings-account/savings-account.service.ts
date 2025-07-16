@@ -49,6 +49,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -58,6 +64,12 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
 
 
 
@@ -181,15 +193,19 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       .leftJoinAndSelect('sa.interestRelations', 'interestRelations');
 
     // Filtre partenaire
-    if (data.promo_code !== undefined && data.promo_code !== null) {
-      qb.leftJoinAndSelect('sa.partner', 'partner', 'partner.promo_code = :promo_code', { promo_code : data.promo_code })
-        .andWhere('partner.promo_code IS NOT NULL');
+      console.log('----data.promo_code ', data )
+    if ( data.promo_code ) {
+      /*qb.leftJoinAndSelect('sa.partner', 'partner', 'partner.promo_code = :promo_code', { promo_code : data.promo_code })
+        .andWhere('partner.promo_code IS NOT NULL');*/
+      qb.where('sa.promo_code = :promo_code', { promo_code: data.promo_code });
     } else {
-      qb.leftJoinAndSelect('sa.partner', 'partner');
+      // qb.leftJoinAndSelect('sa.partner', 'partner');
     }
     if (data.commercial_code !== undefined && data.commercial_code !== null) {
-      qb.leftJoinAndSelect('sa.commercial', 'commercial', 'commercial.commercial_code = :commercial_code', { commercial_code : data.commercial_code })
-        .andWhere('commercial.commercial_code IS NOT NULL');
+      /*qb.leftJoinAndSelect('sa.commercial', 'commercial', 'commercial.commercial_code = :commercial_code', { commercial_code : data.commercial_code })
+        .andWhere('commercial.commercial_code IS NOT NULL');*/
+        qb.where('sa.commercial_code = :commercial_code', { commercial_code: data.commercial_code });
+
     } else {
       qb.leftJoinAndSelect('sa.commercial', 'commercial');
     }

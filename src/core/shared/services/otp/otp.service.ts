@@ -11,7 +11,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { EmailService } from '../email/email.service';
+
 
 
 
@@ -90,6 +92,6 @@ export class OtpService {
     record.used = true;
     await this.otpRepository.save(record);
 
-    return { amount: record.amount, provider: record.provider,  message: 'OTP validé.' };
+    return { amount: record.amount, provider: record.provider, targetSavingsAccountCode: record.targetSavingsAccountCode,  message: 'OTP validé.' };
   }
 }
