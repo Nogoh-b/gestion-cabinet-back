@@ -44,12 +44,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -545,9 +547,13 @@ export class TransactionSavingsAccountService {
   }
   isFirstTransaction(target?:SavingsAccount | null){
     // console.log('isFirstTransaction ', target && !target.targetSavingsAccountTx)
-    if(target && !target.targetSavingsAccountTx)
+    if(target && !target.targetSavingsAccountTx )
       return true
-    
+      
+    if(target?.is_admin){
+      return false
+    }
+
     let hasFirstDeposit = true
     if(target){
         for (const tx of target.targetSavingsAccountTx || []) {
