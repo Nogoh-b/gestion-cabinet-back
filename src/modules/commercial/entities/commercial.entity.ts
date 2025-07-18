@@ -17,6 +17,7 @@ import {
 
 
 
+
 @Entity('commercial')
 export class Commercial extends BaseEntity {
    // @PrimaryGeneratedColumn()
@@ -62,30 +63,20 @@ export class Commercial extends BaseEntity {
     created_savings_accounts: SavingsAccount[];
   
     @BeforeInsert()
-    async generateUniqueCode(): Promise<void> {
-        let isUnique = false;
-        let attempts = 0;
-        const maxAttempts = 10;
-        const digits = '0123456789'; // 10 chiffres possibles
+    async setIncrementalCode(): Promise<void> {
+        // on récupère le max ou undefined
+        const raw = await Commercial.createQueryBuilder('c')
+        .select('MAX(c.commercial_code)', 'max')
+        .getRawOne<{ max: string }>();
 
-        while (!isUnique && attempts < maxAttempts) {
-            // Génération du code avec 6 chiffres uniquement
-            this.commercial_code = Array.from({length: 6}, () => 
-            digits.charAt(Math.floor(Math.random() * digits.length))
-            ).join('');
-            
-            // Vérification de l'unicité
-            const existingPartner = await Commercial.findOne({ where: { commercial_code: this.commercial_code } });
-            
-            if (!existingPartner) {
-            isUnique = true;
-            }
-            
-            attempts++;
-        }
+        // si raw est undefined ou raw.max falsy, on part de "00000"
+        const lastCode = raw?.max ?? '00000';
 
-        if (!isUnique) {
-            throw new Error('Impossible de générer un code unique après plusieurs tentatives');
-        }
-    }
+        // incrément + pad à 5 chiffres
+        const nextNumber = (parseInt(lastCode, 10) + 1)
+        .toString()
+        .padStart(5, '0');
+
+        this.commercial_code = nextNumber;
+}
 }

@@ -43,6 +43,7 @@ import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+import { RessourceModule } from './src/modules/ressource/ressource.module';
 
 
 
@@ -125,7 +126,8 @@ dotenv.config();
     ActivitiesModule,
     QueueModule,
     PartnerModule,
-    CommercialModule
+    CommercialModule,
+    RessourceModule
   ],
   controllers: [AppController],
   providers: [AppService],
