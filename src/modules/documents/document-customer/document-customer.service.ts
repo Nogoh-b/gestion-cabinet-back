@@ -130,6 +130,7 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
 
 
   async findByCustomer(customerId: number, accepted = false): Promise<any[]> {
+
     let where = accepted
       ? {
           customer: { id: customerId },
@@ -149,6 +150,8 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       relations: ['document_type'],
     });
   }
+
+
 
 
   async validate(document_id: number): Promise<DocumentCustomer | any> {

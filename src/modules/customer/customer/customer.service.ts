@@ -168,6 +168,14 @@ export class CustomersService extends BaseService<Customer> {
     if (!customer) throw new NotFoundException();
     return plainToInstance(CustomerResponseDto, customer);
   }
+
+  
+  async findDocumentsOne(customer_code: string): Promise<any> {
+    const customer = await this.customerRepository.findOne({ where: { customer_code } , relations : ['type_customer','location_city'] });
+    if (!customer) throw new NotFoundException();
+    return await this.documentCustomerService.findByCustomer(customer.id)
+    
+  }
   // async findByType(typeCode: string): Promise<any> {
   //   doc
   // }

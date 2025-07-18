@@ -22,11 +22,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '
 
 
 
+
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
 
 
 
@@ -93,6 +95,15 @@ export class CustomerController {
   // @RequirePermissions('VIEW_CUSTOMER')
   async findOne(@Param('id') id: string): Promise<CustomerResponseDto> {
     return await this.customerService.findOne(+id);
+  }
+
+  @Get(':customer_code/documents')
+  @ApiOperation({ summary: 'Get a customer by customer_code' })
+  @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
+  @ApiResponse({ status: 404, description: 'Customer not found' })
+  // @RequirePermissions('VIEW_CUSTOMER')
+  async findOneDocs(@Param('customer_code') customer_code: string): Promise<CustomerResponseDto> {
+    return await this.customerService.findDocumentsOne(customer_code);
   }
 
   @Get(':id/stats-savings-accounts')
