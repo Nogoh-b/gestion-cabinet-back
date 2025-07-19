@@ -45,12 +45,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
 
 
 
@@ -584,10 +590,10 @@ export class TransactionSavingsAccountService {
     let partner : Partner| null = new Partner()
 
     // const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
-    console.log('isFirstTx', isFirstTx, ' ', tx.status)
     await this.repo.manager.transaction(async (entityManager) => {
       if (isFirstTx && target) {
         tx.status = 1
+        console.log('isFirstTx------ ', isFirstTx, ' ', tx.status)
         const chanelOpenProduct = await this.channelRepo.findOne({
           where: { code: 'API' },
         });
@@ -614,8 +620,9 @@ export class TransactionSavingsAccountService {
         secondTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
         if (chanelOpenProduct !== null) {
           secondTx.channelTransaction = chanelOpenProduct;
-        }   
-        await entityManager.save(secondTx);
+        }
+        console.log('sauvegarde de la transaction de la balance minimun ',await entityManager.save(secondTx))   
+        ;
 
 
         // Transaction pour le minimum de frais de creation de compte
@@ -632,7 +639,7 @@ export class TransactionSavingsAccountService {
         if (chanelOpenProduct !== null) {
           thirdTx.channelTransaction = chanelOpenProduct;
         }
-        await entityManager.save(thirdTx);
+        console.log('sauvegarde de la transaction de frais d\'ouverture de compte ',await entityManager.save(thirdTx))   
 
 
 
