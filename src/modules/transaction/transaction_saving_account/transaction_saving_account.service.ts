@@ -587,6 +587,7 @@ export class TransactionSavingsAccountService {
     console.log('isFirstTx', isFirstTx, ' ', tx.status)
     await this.repo.manager.transaction(async (entityManager) => {
       if (isFirstTx && target) {
+        tx.status = 1
         const chanelOpenProduct = await this.channelRepo.findOne({
           where: { code: 'API' },
         });
