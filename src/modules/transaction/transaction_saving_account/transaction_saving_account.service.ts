@@ -49,12 +49,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -620,7 +622,7 @@ export class TransactionSavingsAccountService {
         secondTx.provider = providerMinBalance;
         secondTx.is_locked = false;
         secondTx.status = TransactionSavingsAccountStatus.VALIDATE;
-        secondTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
+        secondTx.status_provider = 'SUCCESSFULL';
         if (chanelOpenProduct !== null) {
           secondTx.channelTransaction = chanelOpenProduct;
         }
@@ -638,7 +640,7 @@ export class TransactionSavingsAccountService {
         thirdTx.provider = providerOpenProduct;
         thirdTx.is_locked = false;
         thirdTx.status = TransactionSavingsAccountStatus.VALIDATE;
-        thirdTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
+        thirdTx.status_provider = 'SUCCESSFULL';
         if (chanelOpenProduct !== null) {
           thirdTx.channelTransaction = chanelOpenProduct;
         }

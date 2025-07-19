@@ -49,11 +49,13 @@ import { Processor, Process } from '@nestjs/bull';
 
 
 
+
 import { SavingsAccount, SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
+
 
 
 
@@ -97,7 +99,7 @@ export class QueueProcessor {
     console.log('handleCheckPayment :', job.id ,' ',job.attemptsMade + 1);
     const { txId  } = job.data;
 
-    const tx = await this.txService.findOne(txId)
+    let tx = await this.txService.findOne(txId)
     const sa = await  this.accountService.findOneByCode(
       tx.targetSavingsAccount?.number_savings_account ?? '',
     );
@@ -116,13 +118,13 @@ export class QueueProcessor {
       this.txService.update(tx)
       if(tx.status === PaymentStatus.SUCCESSFULL){
         console.log('payment suscessfulllll ', isFirstTx, '-----', tx.id , ' ', tx.status_provider)
-        this.txService.validate(tx.id, isFirstTx);
+        tx =  await this.txService.validate(tx.id, isFirstTx);
       }
       if (repeatOpts ) {
-        await job.queue.removeRepeatable('check-payment', repeatOpts);
+         await job.queue.removeRepeatable('check-payment', repeatOpts);
         console.log(`Job de check de payment terminé pour ${job.data.txId}`);
       }
-      return; // ignore si inactif
+      return {dataPayment, tx}; // ignore si inactif
     }else if(job.attemptsMade + 1 === 3){
       console.log('job.attemptsMade + 1 === 3')
       const isFirstTx = this.txService.isFirstTransaction(tx.targetSavingsAccount)
@@ -132,11 +134,12 @@ export class QueueProcessor {
       tx.status_provider = PaymentStatusProvider.ISSUE;
       tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
       this.txService.update(tx)
+      
     }
       /*:
       await this.txService.mcotiService.checkStatusPaymentWithDraw(tx.token) ;*/
     console.log(dataPayment);
-    return dataPayment
+    return {dataPayment, tx}
   }
 
   @Process('deduct-fee')
