@@ -38,6 +38,7 @@ import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -47,6 +48,7 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 
@@ -1008,20 +1010,23 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     }
     if (sa.targetSavingsAccountTx) {
       sa.targetSavingsAccountTx?.forEach((tx) => {
-          incomingTransactions.push(tx);
-          inComingAmount += tx.amount
-          if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
-          }
-          if(tx.channelTransaction.code === TransactionChannel.MOBILE  ){
-            if(tx.provider.code === TransactionProvider.MOMO){
-              incomingTransactionsMOMO.push(tx);
-              inComingAmountMOMO += tx.amount;
+          if(tx.status == 1){
+            incomingTransactions.push(tx);
+            inComingAmount += tx.amount
+            if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
             }
-            else if(tx.provider.code === TransactionProvider.OM){
-              incomingTransactionsOM.push(tx);
-              inComingAmountOM += tx.amount;
+            if(tx.channelTransaction.code === TransactionChannel.MOBILE  ){
+              if(tx.provider.code === TransactionProvider.MOMO){
+                incomingTransactionsMOMO.push(tx);
+                inComingAmountMOMO += tx.amount;
+              }
+              else if(tx.provider.code === TransactionProvider.OM){
+                incomingTransactionsOM.push(tx);
+                inComingAmountOM += tx.amount;
+              }
             }
-          }
+        }
+
       });
     }
 

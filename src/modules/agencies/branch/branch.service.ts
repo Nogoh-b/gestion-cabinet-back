@@ -6,7 +6,7 @@ import { LocationCitiesService } from 'src/modules/geography/location_city/locat
 import { SavingsAccountResponseDto } from 'src/modules/savings-account/savings-account/dto/response-savings-account.dto';
 
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { PaymentStatus, TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 
 
@@ -17,12 +17,14 @@ import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+
 import { EmployeeResponseDto } from '../employee/dto/response-employee.dto';
 import { EmployeeService } from '../employee/employee.service';
 import { Employee } from '../employee/entities/employee.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
+
 
 
 
@@ -212,31 +214,40 @@ export class BranchService {
     sa?.forEach((account) => {
       if (account.originSavingsAccountTx) {
           account.originSavingsAccountTx?.forEach((tx) => {
-            if(account?.is_admin){
-              outgoingTransactionsBranch.push(tx) 
-              outgoingAmountBranch += tx.amount; 
-            }
-            else{
-              if(tx.channelTransaction.code != TransactionChannel.API)
-                outgoingTransactionsCustomer.push(tx)  
-                outgoingAmountCustomer += tx.amount; 
 
+            if(tx.status === PaymentStatus.SUCCESSFULL){
+              if(account?.is_admin){
+                outgoingTransactionsBranch.push(tx) 
+                outgoingAmountBranch += tx.amount; 
+              }
+              else{
+                if(tx.channelTransaction.code != TransactionChannel.API)
+                  outgoingTransactionsCustomer.push(tx)  
+                  outgoingAmountCustomer += tx.amount; 
+
+              }
             }
+
+
           });
       }
       if (account.targetSavingsAccountTx) {
         account.targetSavingsAccountTx?.forEach((tx) => {
-            if(account?.is_admin){
-              incomingTransactionsBranch.push(tx)  
-              inComingAmountBranch += tx.amount; 
-            }
-            else{
-              if(tx.channelTransaction.code != TransactionChannel.API)
-                incomingTransactionsCustomer.push(tx)  
-                inComingAmountCustomer += tx.amount; 
+
+            if(tx.status === PaymentStatus.SUCCESSFULL){
+              if(account?.is_admin){
+                incomingTransactionsBranch.push(tx)  
+                inComingAmountBranch += tx.amount; 
+              }
+              else{
+                if(tx.channelTransaction.code != TransactionChannel.API)
+                  incomingTransactionsCustomer.push(tx)  
+                  inComingAmountCustomer += tx.amount; 
+              }
             }
           });
       }
+
     });
 
     return {
