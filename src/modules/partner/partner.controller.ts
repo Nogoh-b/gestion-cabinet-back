@@ -5,31 +5,12 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/
 
 
 
-
-
-
-
-
-
-
-
 import { SavingsAccount } from '../savings-account/savings-account/entities/savings-account.entity';
 import { TransactionSavingsAccount } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { UpdatePartnerStatusDto } from './dto/update-partner.dto';
 import { Partner } from './entities/partner.entity';
 import { PartnerService } from './partner.service';
-
-
-
-
-
-
-
-
-
-
-
 
 
 @ApiTags('partners')

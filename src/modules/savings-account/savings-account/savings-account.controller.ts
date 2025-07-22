@@ -21,11 +21,23 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from 
 
 
 
+
+
+
+
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
+
+
+
+
 
 
 
@@ -170,7 +182,11 @@ export class SavingsAccountController {
   @ApiResponse({ status: 201, description: 'Compte créé', type: SavingsAccount })
   createOnline(
     @Body() dto: CreateSavingsAccountDto,
+    @Query('commercial_code') commercial_code?: string,
+    @Query('promo_code') promo_code?: string,
   ) {
+    dto.commercial_code = commercial_code
+    dto.promo_code = promo_code
     return this.service.createOnline(dto);
   }
 

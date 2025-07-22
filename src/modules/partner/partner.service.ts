@@ -189,5 +189,6 @@ export class PartnerService extends BaseService<Partner> {
       from,
       to, {promo_code})
   }
+  
 
 }
