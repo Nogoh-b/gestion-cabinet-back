@@ -31,6 +31,8 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 
 
 
+
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
@@ -47,6 +49,8 @@ import { QueueModule } from './modules/queue/queue.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 import { RessourceTypeModule } from './ressource/ressource-type/ressource-type.module';
+
+
 
 
 
@@ -115,10 +119,12 @@ dotenv.config();
 
     BullModule.forRoot({
           redis: {
-            host: 'localhost',
-            port: 6379,
+            host: process.env.BULL_REDIS_HOST,
+            port: parseInt(process.env.BULL_REDIS_PORT || '6379', 10),
+            db: parseInt(process.env.BULL_REDIS_DB || '0' , 10),
           },
-    }),
+          prefix: process.env.BULL_QUEUE_PREFIX || 'core-server-dev',
+        }),
     BullModule.registerQueue({
         name: 'maintenance',
     }),
