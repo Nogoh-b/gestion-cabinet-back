@@ -43,7 +43,7 @@ export class QueueProcessor {
     // console.log('payment ',sa)
     if (dataPayment && dataPayment.paymentStatus != PaymentStatusProvider.PENDING ){
       // console.log('payment ',tx.provider.code)
-      const isFirstTx = this.txService.isFirstTransaction(plainToInstance(SavingsAccount,sa))
+      const isFirstTx = await this.txService.isFirstTransaction(plainToInstance(SavingsAccount,sa))
       const repeatOpts = job.opts.repeat;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
@@ -62,7 +62,7 @@ export class QueueProcessor {
       return {dataPayment, tx}; // ignore si inactif
     }else if(job.attemptsMade + 1 === 3){
       /*console.log('job.attemptsMade + 1 === 3')
-      const isFirstTx = this.txService.isFirstTransaction(tx.targetSavingsAccount)
+      const isFirstTx = await  this.txService.isFirstTransaction(tx.targetSavingsAccount)
       const repeatOpts = job.opts.repeat;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken

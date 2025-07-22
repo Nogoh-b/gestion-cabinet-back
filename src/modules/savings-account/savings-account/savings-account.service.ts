@@ -39,6 +39,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -48,6 +49,7 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 
@@ -599,7 +601,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       return account;
       // throw new BadRequestException(`Cannot validate account in status ${account.status}`);
     }
-    if((await this.getDocumentStatus(id)).allRequiredValidated === true && this.transactionSavingsAccountService.isFirstTransaction(account)){
+    if((await this.getDocumentStatus(id)).allRequiredValidated === true && await this.transactionSavingsAccountService.isFirstTransaction(account)){
 
       account.status = SavingsAccountStatus.ACTIVE;
       // await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/validate`);
@@ -992,6 +994,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     let outgoingAmountOM = 0
     if (sa.originSavingsAccountTx) {
         sa.originSavingsAccountTx?.forEach((tx) => {
+          if(tx.status == 1){
             outgoingTransactions.push(tx);
             outgoingAmount += tx.amount
             if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
@@ -1006,6 +1009,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
                 outgoingAmountOM += tx.amount;
               }
             }
+          }
         });
     }
     if (sa.targetSavingsAccountTx) {

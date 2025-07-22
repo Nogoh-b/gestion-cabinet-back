@@ -40,12 +40,36 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -129,7 +153,7 @@ export class TransactionSavingsAccountService {
     if (!txType) {
       throw new NotFoundException(`Type transaction invalide : ${type_code}`);
     }
-    const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
+    const isFirstTx = await this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     console.log('isFirstTx111', isFirstTx)
     if(origin){
       const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(origin?.id)
@@ -406,6 +430,38 @@ export class TransactionSavingsAccountService {
     return this.paginationService.paginate(qb, options);
   }
 
+  async findAllByTypeSimple(
+    type?: string,
+    txTypeCode?: string,
+  ): Promise<TransactionSavingsAccount[]> {
+    const qb = this.repo
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.channelTransaction', 'channelTransaction')
+      .leftJoinAndSelect('tx.provider', 'provider')
+      .leftJoinAndSelect('tx.transactionType', 'transactionType')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'originSavingsAccount')
+      .leftJoinAndSelect('originSavingsAccount.customer', 'originCustomer')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
+      .leftJoinAndSelect('targetSavingsAccount.customer', 'targetCustomer')
+      .where('transactionType.id IS NOT NULL')
+      .orderBy('tx.created_at', 'DESC');
+
+    if (type !== undefined) {
+      qb.andWhere('transactionType.is_credit = :isCredit', {
+        isCredit: type === '1' ? 1 : 0,
+      });
+    }
+
+    if (txTypeCode !== undefined) {
+      qb.andWhere('transactionType.code LIKE :txTypeCode', {
+        txTypeCode: `${txTypeCode}%`,
+      });
+    }
+
+    return qb.getMany();
+  }
+
+
   // Récupère une transaction par son ID
   async findOne(id: number): Promise<TransactionSavingsAccount> {
     const entity = await this.repo.findOne({
@@ -500,9 +556,12 @@ export class TransactionSavingsAccountService {
     const months = (today.getFullYear() - createdAt.getFullYear()) * 12;
     return months + today.getMonth() - createdAt.getMonth();
   }
-  isFirstTransaction(target?:SavingsAccount | null){
+  async isFirstTransaction(target?:SavingsAccount | null){
+    const min_blances = await this.findAllByTypeSimple('0','MIN_BALANCE')
+    console.log(min_blances) 
+    return min_blances.length === 0
     // console.log('isFirstTransaction ', target && !target.targetSavingsAccountTx)
-    if(target && !target.targetSavingsAccountTx )
+    /*if(target && !target.targetSavingsAccountTx )
       return true
       
     if(target?.is_admin){
@@ -514,11 +573,11 @@ export class TransactionSavingsAccountService {
         for (const tx of target.targetSavingsAccountTx || []) {
             if (tx.transactionType?.is_credit && tx.status === PaymentStatus.SUCCESSFULL) {
                 hasFirstDeposit = false;
-                break; // Sortie immédiate de la boucle
+                break; // Sortie immédiate de la boucle 
             }
         }
     }
-    return hasFirstDeposit
+    return hasFirstDeposit*/
     // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
   }
 
@@ -528,9 +587,12 @@ export class TransactionSavingsAccountService {
     const entity = await this.findOne(id);
     if(entity.status == 0){
       entity.status = 1;
+      entity.status_provider = 'SUCCESSFULL';
+
     }
     let target: SavingsAccount | null = null; // Initialisation explicite à null
     const tx = await this.repo.save(entity);
+
     console.log('payment suscessful----- ', isFirstTx, '-----', tx.id , ' ', tx.status_provider)
     if(tx.targetSavingsAccount)
       target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(
@@ -541,6 +603,7 @@ export class TransactionSavingsAccountService {
 
     // const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     await this.repo.manager.transaction(async (entityManager) => {
+
       if (isFirstTx && target) {
         tx.status = 1
         console.log('isFirstTx------ ', isFirstTx, ' ', tx.status)
@@ -549,13 +612,16 @@ export class TransactionSavingsAccountService {
         });
         const adminSa = await this.savingsAccountService.findOneAdmin(target.branch_id);
         // Transaction pour le minimum de balance
+
+
         const { id, commission, ...txData } = tx;
-        txData.origin = txData.target;
-        txData.originSavingsAccount = txData.targetSavingsAccount;
-        const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
-        const providerMinBalance = await this.providerService.findOne('SYSTEM');
-        txData.target = adminSa.number_savings_account;
-        txData.targetSavingsAccount = adminSa;
+          txData.origin = txData.target;
+          txData.originSavingsAccount = txData.targetSavingsAccount;
+          const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
+          const providerMinBalance = await this.providerService.findOne('SYSTEM');
+          txData.target = adminSa.number_savings_account;
+          txData.targetSavingsAccount = adminSa;
+    
 
 
 
@@ -573,7 +639,6 @@ export class TransactionSavingsAccountService {
         }
         console.log('sauvegarde de la transaction de la balance minimun ',await entityManager.save(secondTx))   
         ;
-
 
         // Transaction pour le minimum de frais de creation de compte
         const txTypeOpenProduct = await this.transactionTypeService.findOneByCode('OPENING_FEE');
@@ -658,6 +723,7 @@ export class TransactionSavingsAccountService {
             // this.savingsAccountService.updateBalance(partner.saving_account.id)
           }
         }
+      
 
         console.log('target.commercial_code) ', target.commercial_code)
         console.log('target.promo_code) ', target.promo_code)
@@ -852,7 +918,7 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
 
     const channel_code = tx.channelTransaction.code
     const txType = tx.transactionType
-    const isFirstTx = this.isFirstTransaction(tx.targetSavingsAccount)
+    const isFirstTx = await  this.isFirstTransaction(tx.targetSavingsAccount)
     if(channel_code === 'MOBILE' && Boolean(txType.is_credit)){
         console.log(tx.token,'  ' , tx.provider.code)
         const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
@@ -861,7 +927,7 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
             .checkStatusPaymentDeposit(tx.token, tx.provider.code)
             .then(resolve)
             .catch(reject);
-        }, 5000);
+        }, 10000);
         });
         // const paymentResult = await this.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
         console.log('paymentResult', paymentResult);

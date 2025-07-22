@@ -115,6 +115,11 @@ export class TransactionSavingAccountController {
     return this.findByTypeParent(query, TransactionProvider.WALLET)
   }
 
+  @Get('by-type')
+  findTransactionByType(){
+
+  }
+
   findByTypeParent(query,
     txTypeCode: string ,type: string = ''){
       const { page, limit, term, fields, exact, from, to } = query;
