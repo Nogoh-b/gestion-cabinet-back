@@ -55,12 +55,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -686,6 +688,8 @@ export class TransactionSavingsAccountService {
             fifthTx.provider = providerOpenProduct;
             fifthTx.targetSavingsAccount = comercial?.saving_account;
             fifthTx.target = comercial?.saving_account.number_savings_account;
+            fifthTx.originSavingsAccount = adminSa;
+            fifthTx.origin = adminSa.number_savings_account;
             fifthTx.commercial_code = target.commercial_code;
             fifthTx.payment_code = await this.generateUniquePaymentCode();
             fifthTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
@@ -717,6 +721,8 @@ export class TransactionSavingsAccountService {
             fourthTx.provider = providerOpenProduct;
             fourthTx.targetSavingsAccount = partner?.saving_account;
             fourthTx.target = partner?.saving_account.number_savings_account;
+            fourthTx.originSavingsAccount = adminSa;
+            fourthTx.origin = adminSa.number_savings_account;
             fourthTx.promo_code = target.promo_code;
             fourthTx.payment_code = await this.generateUniquePaymentCode();
             fourthTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
