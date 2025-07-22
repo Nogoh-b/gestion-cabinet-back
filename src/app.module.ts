@@ -33,6 +33,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 
 
 
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
@@ -49,6 +50,7 @@ import { QueueModule } from './modules/queue/queue.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
 import { RessourceTypeModule } from './ressource/ressource-type/ressource-type.module';
+
 
 
 
@@ -114,7 +116,7 @@ dotenv.config();
           host: 'localhost',
           port: 3003, // port du microservice cible
         },
-      },
+      },  
     ]),
 
     BullModule.forRoot({

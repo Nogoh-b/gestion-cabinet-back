@@ -56,12 +56,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -569,11 +571,11 @@ export class TransactionSavingsAccountService {
     return months + today.getMonth() - createdAt.getMonth();
   }
   async isFirstTransaction(target?:SavingsAccount | null){
-    const min_blances = await this.findAllByTypeSimple('0','MIN_BALANCE',target?.number_savings_account)
+   /* const min_blances = await this.findAllByTypeSimple('0','MIN_BALANCE',target?.number_savings_account)
     console.log(min_blances) 
-    return min_blances.length === 0
+    return min_blances.length === 0*/
     // console.log('isFirstTransaction ', target && !target.targetSavingsAccountTx)
-    /*if(target && !target.targetSavingsAccountTx )
+    if(target && !target.targetSavingsAccountTx )
       return true
       
     if(target?.is_admin){
@@ -589,7 +591,7 @@ export class TransactionSavingsAccountService {
             }
         }
     }
-    return hasFirstDeposit*/
+    return hasFirstDeposit
     // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
   }
 
