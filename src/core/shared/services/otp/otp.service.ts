@@ -1,7 +1,6 @@
 import { OtpCode, OtpOnlineLink } from 'src/core/entities/otp-code.entity';
-import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Injectable } from '@nestjs/common';
 
 
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,7 +8,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { EmailService } from '../email/email.service';
+
+
+
 
 
 
@@ -25,8 +30,9 @@ export class OtpService {
     @InjectRepository(OtpOnlineLink)
     private readonly otpOnlineLinkRepo: Repository<OtpOnlineLink>,
     private readonly emailService: EmailService,
-    private readonly savingsAccountService: SavingsAccountService,
-  ) {}
+   /* @Inject(forwardRef(() => SavingsAccountService))
+    private readonly savingsAccountService: SavingsAccountService*/
+  ) {console.log(forwardRef)}
 
   async generateOtp(
     email: string,
@@ -125,9 +131,9 @@ export class OtpService {
 
     otp.used = true;
     await this.otpOnlineLinkRepo.save(otp);
-    const sa = await this.savingsAccountService.findOneByCode(otp.savingsAccountCode)
+    // const sa = await this.savingsAccountService.findOneByCode(otp.savingsAccountCode)
 
-    return {number_saving_account : sa.number_savings_account, code_customer : sa.customer.customer_code};
+    return {number_saving_account : otp.savingsAccountCode};
   }
 
 }

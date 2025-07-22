@@ -1,20 +1,14 @@
+import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
+
+
+
+
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 import { AgenciesModule } from '../agencies/agencies.module';
+import { CommercialModule } from '../commercial/commercial.module';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { PartnerModule } from '../partner/partner.module';
@@ -37,19 +31,6 @@ import { TypeHasDocument } from './type-savings-account/entities/type-has-docume
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
-import { CommercialModule } from '../commercial/commercial.module';
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -61,6 +42,7 @@ import { CommercialModule } from '../commercial/commercial.module';
     forwardRef(() => CustomerModule),
     forwardRef(() => PartnerModule),
     forwardRef(() => CommercialModule),
+    forwardRef(() => CoreModule),
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,

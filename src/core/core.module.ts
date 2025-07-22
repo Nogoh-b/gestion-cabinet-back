@@ -5,12 +5,16 @@ import { HttpModule } from '@nestjs/axios';
 import { forwardRef, Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
+
 import { JwtModule } from '@nestjs/jwt';
-
 import { PassportModule } from '@nestjs/passport';
+
+
+
+
+
+
 import { TypeOrmModule } from '@nestjs/typeorm';
-
-
 
 
 
@@ -19,8 +23,8 @@ import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
-import { JwtStrategy } from './auth/strategies/jwt.strategy';
 // import { swaggerConfig } from './config/swagger.config';
+import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -36,9 +40,6 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
 import { PaginationService } from './shared/services/pagination/pagination.service';
-import { SavingsAccountModule } from 'src/modules/savings-account/savings-account.module';
-
-
 
 
 
@@ -49,7 +50,7 @@ import { SavingsAccountModule } from 'src/modules/savings-account/savings-accoun
   imports: [
     forwardRef(() => IamModule),
     forwardRef(() => AgenciesModule),
-    forwardRef(() => SavingsAccountModule),
+    // forwardRef(() => SavingsAccountModule),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
