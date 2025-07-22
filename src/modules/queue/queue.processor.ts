@@ -3,83 +3,13 @@ import { plainToInstance } from 'class-transformer';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { Processor, Process } from '@nestjs/bull';
-
-
-
-
-
-
-
-
-
 
 import { SavingsAccount, SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

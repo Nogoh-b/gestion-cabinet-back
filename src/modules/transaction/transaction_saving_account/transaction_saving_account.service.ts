@@ -17,20 +17,10 @@ import { QueueService } from 'src/modules/queue/queue.service';
 import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-
-
 import { Repository } from 'typeorm';
-
 import { v4 as uuidv4 } from 'uuid';
 
-
-
-
 import { InjectQueue } from '@nestjs/bull';
-
-
-
-
 
 
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
@@ -49,25 +39,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
-import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -117,7 +94,7 @@ export class TransactionSavingsAccountService {
     let origin : SavingsAccount | null = null;
     if((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code){
       origin = plainToInstance(SavingsAccount,await this.savingsAccountService.findOneByCode(
-        (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code,
+        (dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code, 
       ));
     }
     else if(!(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code && to_agency){
@@ -195,7 +172,7 @@ export class TransactionSavingsAccountService {
     if(isFirstTx && target){
 
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
-      if( initial_deposit >= dto.amount)
+      if( initial_deposit > dto.amount)
         throw new BadRequestException(`Pour votre premier dépôt vous devez avoir au minimum ${initial_deposit} pour ce type de compte : ${target.type_savings_account.name} `);
     }
 
@@ -213,41 +190,7 @@ export class TransactionSavingsAccountService {
       tx.status = 1
     }
       
-    else if(channel_code === 'MOBILE' && Boolean(txType.is_credit)){
-      console.log(tx.token,'  ' , tx.provider.code)
-      const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
-      setTimeout(() => {
-        this.mcotiService
-          .checkStatusPaymentDeposit(tx.token, tx.provider.code)
-          .then(resolve)
-          .catch(reject);
-      }, 5000);
-      });
-      console.log('paymentResult', paymentResult);
-      if(paymentResult && paymentResult.data){
-        const dataPayment : Payment = paymentResult.data;
-        tx.payment_code = dataPayment.id;
-        tx.payment_token_provider = dataPayment.payToken
-        tx.status_provider = dataPayment.paymentStatus;
-        tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
-        if(!!txType.is_credit){
-          tx.origin = dataPayment.ref;
-        }
-        else{
-          tx.target = dataPayment.ref;
-        }
-        if(tx.status === PaymentStatus.SUCCESSFULL){
-          this.validate(tx.id, isFirstTx);
-        }
-        console.log('is_credit ', dataPayment.ref)
 
-        this.repo.save(tx);
-        console.log(dataPayment.paymentStatus,' === ',PaymentStatusProvider.PENDING )
-        // Si le paiment est a pending e=on lance un job
-        if (dataPayment.paymentStatus === PaymentStatusProvider.PENDING )
-          await this.queueService.addTaskCheckPayment(tx.id);
-      }
-    }
     return tx;
   }
 
@@ -895,4 +838,60 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
 
     return String(sequenceValue).padStart(5, '0'); // Formatage en dehors de la transaction
   }
+
+
+  async updateProviderInfo(id: number, dto: UpdateProviderInfoDto) {
+    console.log(dto)
+    let tx = await this.findOne( id );
+    if (!tx) {
+      throw new NotFoundException(`Transaction with ID ${id} not found`);
+    }
+    tx.status = PaymentStatus[dto.status_provider ?? PaymentStatusProvider.PENDING] 
+
+    const channel_code = tx.channelTransaction.code
+    const txType = tx.transactionType
+    const isFirstTx = this.isFirstTransaction(tx.targetSavingsAccount)
+    if(channel_code === 'MOBILE' && Boolean(txType.is_credit)){
+        console.log(tx.token,'  ' , tx.provider.code)
+        const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
+        setTimeout(() => {
+          this.mcotiService
+            .checkStatusPaymentDeposit(tx.token, tx.provider.code)
+            .then(resolve)
+            .catch(reject);
+        }, 5000);
+        });
+        // const paymentResult = await this.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
+        console.log('paymentResult', paymentResult);
+        if(paymentResult && paymentResult.data){
+          const dataPayment : Payment = paymentResult.data;
+          tx.payment_code = dataPayment.id;
+          tx.payment_token_provider = dataPayment.payToken
+          tx.status_provider = dataPayment.paymentStatus;
+          tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
+          if(!!txType.is_credit){
+            tx.origin = dataPayment.ref;
+          }
+          else{
+            tx.target = dataPayment.ref;
+          }
+          if(tx.status === PaymentStatus.SUCCESSFULL){
+            tx = await this.validate(tx.id, isFirstTx);
+          }
+          console.log('is_credit ', dataPayment.ref)
+
+          // this.repo.save(tx);
+          console.log(dataPayment.paymentStatus,' === ',PaymentStatusProvider.PENDING )
+          // Si le paiment est a pending e=on lance un job
+          if (dataPayment.paymentStatus === PaymentStatusProvider.PENDING )
+            await this.queueService.addTaskCheckPayment(tx.id);
+        }
+    }
+
+
+    // Object.assign(tx, dto); // Mise à jour des champs fournis
+
+    return tx;
+  }
+
 }

@@ -1,11 +1,20 @@
 // email.service.ts
+import * as fs from 'fs';
+import * as path from 'path';
+
 import { MailerService } from '@nestjs-modules/mailer';
 import { Injectable, Logger } from '@nestjs/common';
 
 
 
 
+
+
 import { SendMailOptions } from '../../interfaces/send-mail.interface';
+
+
+
+
 
 
 
@@ -57,5 +66,23 @@ export class EmailService {
       message: 'reset-password',
       context: { resetLink },
     });
+  }
+
+    async sendMail1({ to, subject, templatePath, context }: {
+    to: string;
+    subject: string;
+    templatePath: string;
+    context: Record<string, any>;
+  }) {
+    const template = fs.readFileSync(path.join(__dirname, 'templates', templatePath), 'utf-8');
+    const message = this.renderTemplate(template, context);
+
+    // Appel à un service de mail ici (ex: nodemailer, MailerService...)
+    console.log(`✉️ Envoi à ${to}\n${message}`);
+    return { to, subject, message };
+  }
+
+  private renderTemplate(template: string, context: Record<string, any>): string {
+    return template.replace(/{{\s*(\w+)\s*}}/g, (_, key) => context[key] ?? '');
   }
 }

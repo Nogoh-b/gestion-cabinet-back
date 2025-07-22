@@ -2,39 +2,12 @@ import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
 import { Partner } from 'src/modules/partner/entities/partner.entity';
 
 
-
-
-
-
-
-
-
-
-
-
-
 import { Provider } from 'src/modules/provider/provider/entities/provider.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
-
-
-
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm';
-
-
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
-
-
-
-
-
-
-
-
-
-
-
 
 
 export enum TransactionTypeEnum {

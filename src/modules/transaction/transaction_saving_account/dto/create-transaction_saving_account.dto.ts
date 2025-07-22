@@ -137,3 +137,23 @@ export class ValidateTransactionSavingsAccountDto {
 
 
 }
+
+
+
+export class UpdateProviderInfoDto {
+  @IsOptional()
+  @IsString()
+  payment_token_provider?: string;
+
+  @IsOptional()
+  @IsString()
+  status_provider?: string;
+
+  @IsOptional()
+  @IsString()
+  payment_code?: string;
+
+  @IsOptional()
+  @IsNumber()
+  commission?: number;
+}

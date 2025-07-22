@@ -5,7 +5,6 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 
 
-
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
     type: 'mysql',
@@ -15,10 +14,10 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     password: process.env.DB_PASSWORD ?? 'mendo',
     database: process.env.DB_NAME ??  'core_banking',  
     synchronize: false,  
-    subscribers: [SavingsAccountSubscriber],  // ← ici, **dans** forRoot
-    autoLoadEntities: true,
+    subscribers: [SavingsAccountSubscriber],  
+    autoLoadEntities: true, 
     logging: ["error",],
-    // logging: ["query", "error", "schema"],
+    // logging: ["query", "error", "schema"], 
     logger: "advanced-console" 
 
   },

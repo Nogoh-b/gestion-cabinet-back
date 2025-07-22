@@ -1,0 +1,16 @@
+Objet : Code de vérification pour la liaison avec COTI
+
+Bonjour {{nom}},
+
+Vous avez demandé à lier votre compte épargne ({{savingsAccountCode}}) avec votre compte COTI ({{cotiCode}}).
+
+Pour confirmer cette opération, veuillez utiliser le code OTP suivant :
+
+🔐 Code OTP : {{otp}}
+
+Ce code expire dans 5 minutes.
+
+⚠️ Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail ou contactez notre support immédiatement.
+
+—
+Mendo Finances

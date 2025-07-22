@@ -3,8 +3,10 @@ import { Body, Controller, Post } from "@nestjs/common";
 import { ApiBody, ApiTags } from "@nestjs/swagger";
 
 
-import { SendOtpDto, VerifyOtpDto } from "../dto/otp.dto";
+
+import { GenerateCotiOtpDto, SendOtpDto, VerifyOtpDto } from "../dto/otp.dto";
 import { OtpService } from "../services/otp/otp.service";
+
 
 
 
@@ -27,4 +29,19 @@ export class OtpController {
     const { email, code } = body;
     return this.otpService.verifyOtp(email, code);
   }
+
+  @Post('generate/online-link')
+  @ApiBody({ type: GenerateCotiOtpDto })
+  generateOnlineOtp(@Body() dto: { email: string; savingsAccountCode: string; cotiCode: string }) {
+    return this.otpService.generateOtpLink(dto.email, dto.savingsAccountCode, dto.cotiCode);
+  }
+
+  @Post('validate/online-link')
+  @ApiBody({ type: VerifyOtpDto })
+  validateOnlineOtp(@Body() dto: { email: string; code: string }) {
+    return this.otpService.validateOtpLink(dto.email, dto.code);
+  }
 }
+
+
+

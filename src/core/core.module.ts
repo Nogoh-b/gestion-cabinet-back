@@ -13,6 +13,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -24,7 +26,7 @@ import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filte
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
 import { SeedersModule } from './database/seeders/seeders.module';
-import { OtpCode } from './entities/otp-code.entity';
+import { OtpCode, OtpOnlineLink } from './entities/otp-code.entity';
 import { InitService } from './init/init.service';
 import { OtpController } from './shared/controlers/otp.controller';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
@@ -34,6 +36,9 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
 import { PaginationService } from './shared/services/pagination/pagination.service';
+import { SavingsAccountModule } from 'src/modules/savings-account/savings-account.module';
+
+
 
 
 
@@ -44,6 +49,7 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
   imports: [
     forwardRef(() => IamModule),
     forwardRef(() => AgenciesModule),
+    forwardRef(() => SavingsAccountModule),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
@@ -68,6 +74,7 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
     }),
     TypeOrmModule.forFeature([
       OtpCode,
+      OtpOnlineLink,
     ]),
     PassportModule,
     SeedersModule,

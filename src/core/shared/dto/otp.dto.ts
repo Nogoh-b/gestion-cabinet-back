@@ -76,3 +76,17 @@ export class VerifyOtpDto {
   @IsString()
   code: string;
 }
+
+export class GenerateCotiOtpDto {
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: 'SA12345678', description: 'Code du compte épargne à lier' })
+  @IsString()
+  savingsAccountCode: string;
+
+  // @ApiProperty({ example: 'COTI-USER-001', description: 'Identifiant client dans le système COTI' })
+  // @IsString()
+  cotiCustomerCode: string;
+}
