@@ -3,6 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 
 
+
+
 export class SendOtpDto {
   @ApiProperty({
     description: "Email address of the user",
@@ -67,6 +69,9 @@ export class VerifyOtpDto {
   })
   @IsEmail()
   email: string;
+
+  number_saving_account: string;
+
 
   @ApiProperty({
     description: "OTP code received by the user",

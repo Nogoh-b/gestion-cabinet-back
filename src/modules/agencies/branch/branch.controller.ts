@@ -12,9 +12,11 @@ import { Controller, Post, Body, Param, Put, UseGuards, Get, Query } from '@nest
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 
+
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+
 
 
 
@@ -42,8 +44,8 @@ export class BranchController {
   @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all branches' })
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
+  // @UseGuards(JwtAuthGuard, PermissionsGuard)
+  // @RequirePermissions('VIEW_BRANCH')
   findAllBranches() {
     return this.branchService.findAllBranches();
   }

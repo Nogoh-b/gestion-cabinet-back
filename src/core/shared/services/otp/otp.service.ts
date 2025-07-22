@@ -11,7 +11,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { EmailService } from '../email/email.service';
+
+
 
 
 
@@ -97,8 +101,8 @@ export class OtpService {
   }
 
 
-  async generateOtpLink(email: string, savingsAccountCode: string, cotiCode: string) {
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  async generateOtpLink(email: string, savingsAccountCode: string, cotiCode: string = '0') {
+  const code = Math.floor(10000 + Math.random() * 90000).toString(); // de 10000 à 99999
 
   const otp = this.otpOnlineLinkRepo.create({
     email,
@@ -130,10 +134,10 @@ export class OtpService {
     if (!otp || otp.expiresAt < new Date()) return { success: false, message: 'OTP invalide ou expiré.' };
 
     otp.used = true;
-    await this.otpOnlineLinkRepo.save(otp);
+    await this.otpOnlineLinkRepo.save(otp ?? new OtpCode());
     // const sa = await this.savingsAccountService.findOneByCode(otp.savingsAccountCode)
 
-    return {number_saving_account : otp.savingsAccountCode};
+    return {number_saving_account : otp?.savingsAccountCode};
   }
 
 }

@@ -1,18 +1,23 @@
 import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
+import { VerifyOtpDto } from 'src/core/shared/dto/otp.dto';
+
 import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
+
 
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 
 
+
+
+
+
+
+
+
+
+
+
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
-
-
-
-
-
-
-
-
 
 
 
@@ -21,6 +26,10 @@ import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
+
+
 
 
 
@@ -214,6 +223,18 @@ export class SavingsAccountController {
   @Get(':id/deactivate')
   remove( @Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id);
+  }
+
+  @Get(':code/request-link')
+  requestLink( @Param('code') code: string) {
+    
+    return this.service.requestLink(code);
+  }
+
+  @Post('validate-link-account')
+  validateLinkaccount(  @Body() dto: VerifyOtpDto) {
+    console.log(dto)
+    return this.service.requestLinkAccount( dto);
   }
 
   @Get(':id/stats')

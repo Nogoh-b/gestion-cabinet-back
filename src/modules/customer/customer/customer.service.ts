@@ -18,6 +18,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
@@ -25,6 +26,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
+
 
 
 
@@ -80,7 +82,7 @@ export class CustomersService extends BaseService<Customer> {
 
       const customer = this.customerRepository.create({
         ...createCustomerDto,
-        first_name : createCustomerDto.firt_name,
+        first_name : createCustomerDto.first_name ?? createCustomerDto.firt_name,
         type_customer,
         location_city,
       });

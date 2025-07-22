@@ -6,7 +6,9 @@ import { ApiProperty } from '@nestjs/swagger';
 
 
 
+
 import { CustomerCreatedFrom } from '../entities/customer.entity';
+
 
 
 
@@ -18,6 +20,8 @@ export class CreateCustomerDto {
   @ApiProperty({ example: 'John', description: 'Customer Name' })
   @IsOptional()
   firt_name: string;
+  
+  first_name: string;
 
   @IsString()
   @MaxLength(45)

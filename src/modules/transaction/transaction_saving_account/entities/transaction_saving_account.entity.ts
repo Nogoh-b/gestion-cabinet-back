@@ -63,7 +63,7 @@ export class Payment {
   description: string;
   payToken: string;
   rate: string;
-  amountHT: string;
+  amountHT: number;
   type: string;
   paymentType: string | null;
   ref: string;

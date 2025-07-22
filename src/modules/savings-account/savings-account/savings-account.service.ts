@@ -1,24 +1,27 @@
 import { plainToInstance } from 'class-transformer';
+import { VerifyOtpDto } from 'src/core/shared/dto/otp.dto';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
-import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
+import { OtpService } from 'src/core/shared/services/otp/otp.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
+
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+
 import { CommercialService } from 'src/modules/commercial/commercial.service';
-
 import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
-
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+
 import { Partner } from 'src/modules/partner/entities/partner.entity';
+
+
 import { PartnerService } from 'src/modules/partner/partner.service';
 
+
+
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-
-
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
-
 
 
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
@@ -27,32 +30,12 @@ import { Not, Repository } from 'typeorm';
 
 
 
-
-
-
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
@@ -64,23 +47,6 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -119,7 +85,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     private partnerService: PartnerService,
     @Inject(forwardRef(() => CommercialService))
     private commercialService: CommercialService,
-     private readonly mcotiService: McotiService
+     private readonly otpService: OtpService
   ) { super(); console.log(forwardRef) }
 
   getRepository(): Repository<SavingsAccount> {
@@ -1076,6 +1042,23 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
 
   }
 
+  async requestLink(code){
+    console.log(code)
+    const sa = await this.findOneByCode(code)
+    if(sa.customer && sa.customer.email){
+      return this.otpService.generateOtpLink(sa.customer.email,sa.number_savings_account)
+    }
+    
+  }
+
+  async requestLinkAccount(dto : VerifyOtpDto){
+    // console.log(code)
+    const sa = await this.findOneByCode(dto.number_saving_account)
+    if(sa.customer && sa.customer.email){
+      return this.otpService.validateOtpLink(sa.customer.email, dto.code)
+    }
+    
+  }
 
   /*async findByPartnerAndDate(
     promo_code: string,
