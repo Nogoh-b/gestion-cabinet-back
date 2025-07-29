@@ -17,10 +17,12 @@ import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_s
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
+
 import { DocumentSavingAccountResponseDto } from '../../document-saving-account/dto/response-document-saving-account.dto';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from '../entities/account-has-interest.entity';
 import { SavingsAccount } from '../entities/savings-account.entity';
+
 
 
 
@@ -59,6 +61,9 @@ export class SavingsAccountResponseDto {
 
   @Expose()
   statusLabel: string;
+
+  @Expose()
+  created_online: number;
 
   @Expose()
   iban: string;

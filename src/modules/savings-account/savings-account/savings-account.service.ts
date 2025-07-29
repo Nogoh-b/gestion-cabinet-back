@@ -40,6 +40,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -49,6 +60,17 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -601,7 +623,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       return account;
       // throw new BadRequestException(`Cannot validate account in status ${account.status}`);
     }
-    if((await this.getDocumentStatus(id)).allRequiredValidated === true && await this.transactionSavingsAccountService.isFirstTransaction(account)){
+    if((await this.getDocumentStatus(id)).allRequiredValidated === true && (await this.transactionSavingsAccountService.isFirstTransaction(account))){
 
       account.status = SavingsAccountStatus.ACTIVE;
       // await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/validate`);
@@ -848,7 +870,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     const total = transactions.reduce((sum, tx) => {
       // 1. Ignorer les transactions échouées
     console.log('originNum targetNum ', tx?.originSavingsAccount?.number_savings_account, ' ', tx?.targetSavingsAccount?.number_savings_account,' ', tx.amount, ' ',account.id);
-      if (tx.status === TransactionSavingsAccountStatus.FAILED) {
+      if (tx.status != TransactionSavingsAccountStatus.VALIDATE) {
         return sum;
       }
 
@@ -908,23 +930,27 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
     const now = new Date();
     const available = transactions.reduce((sum, tx) => {
+      const originNum = tx?.originSavingsAccount?.number_savings_account;
+      const targetNum = tx?.targetSavingsAccount?.number_savings_account;
+      const acctNum = account.number_savings_account;
       // 1. Ignorer transactions verrouillées ou échouées
-      if (tx.is_locked || tx.status === TransactionSavingsAccountStatus.FAILED) {
+      if ((tx.is_locked && targetNum === acctNum) || tx.status != TransactionSavingsAccountStatus.VALIDATE) {
+        // console.log('txs ',transactions.length ,' ', tx.id)
         return sum;
       }
 
       // 2. Cas transfert complet (origin & target présents)
       if (tx.originSavingsAccount && tx.targetSavingsAccount) {
-        const originNum = tx.originSavingsAccount.number_savings_account;
-        const targetNum = tx.targetSavingsAccount.number_savings_account;
-        const acctNum = account.number_savings_account;
+
 
         if (targetNum === acctNum) {
+          console.log('debit ',sum ,' ', tx.amount)
           // réception / crédit
           return sum + tx.amount;
         }
         if (originNum === acctNum) {
           // envoi / débit
+          console.log('credit ',sum ,' ', tx.amount)
           return sum - tx.amount;
         }
         // si la transaction n'implique pas ce compte, on l'ignore
@@ -1060,11 +1086,16 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     
   }
 
-  async requestLinkAccount(dto : VerifyOtpDto){
+  async validateRequestLinkAccount(dto : VerifyOtpDto){ 
     // console.log(code)
     const sa = await this.findOneByCode(dto.number_saving_account)
     if(sa.customer && sa.customer.email){
-      return this.otpService.validateOtpLink(sa.customer.email, dto.code)
+      const resp = await this.otpService.validateOtpLink(sa.customer.email, dto.code)
+      if(resp?.number_saving_account){
+        sa.created_online = 1
+        this.repo.save(sa)
+      }
+      return resp
     }
     
   }

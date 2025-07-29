@@ -2,37 +2,11 @@ import * as dotenv from 'dotenv';
 import { ExpressAdapter } from '@bull-board/express';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
-
-
-
 import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
-
-
-
-
-
-
-
-
-
-
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ServeStaticModule } from '@nestjs/serve-static';
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -47,33 +21,9 @@ import { IamModule } from './modules/iam/iam.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
+import { RessourceModule } from './modules/ressource/ressource.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
-import { RessourceTypeModule } from './ressource/ressource-type/ressource-type.module';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -141,7 +91,7 @@ dotenv.config();
     QueueModule,
     PartnerModule,
     CommercialModule,
-    RessourceTypeModule
+    RessourceModule
   ],
   controllers: [AppController],
   providers: [AppService],

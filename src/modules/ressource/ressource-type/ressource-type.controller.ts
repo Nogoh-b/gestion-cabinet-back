@@ -1,34 +1,39 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+// resource_type.controller.ts
+import { Controller, Post, Body, Get, Param, Delete } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+
 import { RessourceTypeService } from './ressource-type.service';
 import { CreateRessourceTypeDto } from './dto/create-ressource-type.dto';
-import { UpdateRessourceTypeDto } from './dto/update-ressource-type.dto';
 
-@Controller('ressource-type')
+
+@ApiTags('resource-type')
+@Controller('resource-type')
 export class RessourceTypeController {
-  constructor(private readonly ressourceTypeService: RessourceTypeService) {}
+  constructor(private readonly service: RessourceTypeService) {}
 
   @Post()
-  create(@Body() createRessourceTypeDto: CreateRessourceTypeDto) {
-    return this.ressourceTypeService.create(createRessourceTypeDto);
+  @ApiOperation({ summary: 'Créer un type de ressource' })
+  @ApiResponse({ status: 201, description: 'Type créé avec succès' })
+  async create(@Body() data: CreateRessourceTypeDto) {
+    return await this.service.create(data);
   }
 
   @Get()
-  findAll() {
-    return this.ressourceTypeService.findAll();
+  @ApiOperation({ summary: 'Liste des types de ressource' })
+  async findAll() {
+    return await this.service.findAll();
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.ressourceTypeService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateRessourceTypeDto: UpdateRessourceTypeDto) {
-    return this.ressourceTypeService.update(+id, updateRessourceTypeDto);
+  @ApiOperation({ summary: 'Détail d\'un type de ressource' })
+  async findOne(@Param('id') id: string) {
+    return await this.service.findOne(+id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.ressourceTypeService.remove(+id);
+  @ApiOperation({ summary: 'Supprimer un type de ressource' })
+  async remove(@Param('id') id: string) {
+    await this.service.remove(+id);
+    return { message: 'Supprimé avec succès' };
   }
 }

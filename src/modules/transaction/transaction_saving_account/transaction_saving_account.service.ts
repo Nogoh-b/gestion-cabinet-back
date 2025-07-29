@@ -59,12 +59,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -618,6 +620,10 @@ export class TransactionSavingsAccountService {
     ));
     let comercial : Commercial| null = new Commercial();
     let partner : Partner| null = new Partner()
+    let adminSa : SavingsAccount| null = new SavingsAccount()
+    if(target){
+      adminSa = await this.savingsAccountService.findOneAdmin(target?.branch_id);
+    }
 
     // const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     await this.repo.manager.transaction(async (entityManager) => {
@@ -628,7 +634,6 @@ export class TransactionSavingsAccountService {
         const chanelOpenProduct = await this.channelRepo.findOne({
           where: { code: 'API' },
         });
-        const adminSa = await this.savingsAccountService.findOneAdmin(target.branch_id);
         // Transaction pour le minimum de balance
 
 
@@ -637,7 +642,7 @@ export class TransactionSavingsAccountService {
           txData.originSavingsAccount = txData.targetSavingsAccount;
           const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
           const providerMinBalance = await this.providerService.findOne('SYSTEM');
-          txData.target = adminSa.number_savings_account;
+          txData.target = adminSa?.number_savings_account;
           txData.targetSavingsAccount = adminSa;
     
 
@@ -695,7 +700,7 @@ export class TransactionSavingsAccountService {
             fifthTx.targetSavingsAccount = comercial?.saving_account;
             fifthTx.target = comercial?.saving_account.number_savings_account;
             fifthTx.originSavingsAccount = adminSa;
-            fifthTx.origin = adminSa.number_savings_account;
+            fifthTx.origin = adminSa?.number_savings_account;
             fifthTx.commercial_code = target.commercial_code;
             fifthTx.payment_code = await this.generateUniquePaymentCode();
             fifthTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
@@ -728,7 +733,7 @@ export class TransactionSavingsAccountService {
             fourthTx.targetSavingsAccount = partner?.saving_account;
             fourthTx.target = partner?.saving_account.number_savings_account;
             fourthTx.originSavingsAccount = adminSa;
-            fourthTx.origin = adminSa.number_savings_account;
+            fourthTx.origin = adminSa?.number_savings_account;
             fourthTx.promo_code = target.promo_code;
             fourthTx.payment_code = await this.generateUniquePaymentCode();
             fourthTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
@@ -756,6 +761,9 @@ export class TransactionSavingsAccountService {
       }
     });
 
+    if(adminSa && adminSa.id){
+      this.savingsAccountService.updateBalance(adminSa.id)
+    }
     if(comercial && comercial.saving_account){
       console.log('update solde commercial')
 

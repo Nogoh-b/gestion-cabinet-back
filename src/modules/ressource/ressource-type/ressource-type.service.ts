@@ -1,26 +1,40 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { BaseService } from 'src/core/shared/services/search/base.service';
+import { RessourceType } from './entities/ressource-type.entity';
 import { CreateRessourceTypeDto } from './dto/create-ressource-type.dto';
-import { UpdateRessourceTypeDto } from './dto/update-ressource-type.dto';
 
 @Injectable()
-export class RessourceTypeService {
-  create(createRessourceTypeDto: CreateRessourceTypeDto) {
-    return 'This action adds a new ressourceType';
+export class RessourceTypeService extends BaseService<RessourceType> {
+  constructor(
+    @InjectRepository(RessourceType)
+    private readonly repository: Repository<RessourceType>,
+  ) {
+    super();
   }
 
-  findAll() {
-    return `This action returns all ressourceType`;
+  getRepository(): Repository<RessourceType> {
+    return this.repository;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} ressourceType`;
+  async create(data: CreateRessourceTypeDto): Promise<RessourceType> {
+    const item = this.repository.create(data);
+    return await this.repository.save(item);
   }
 
-  update(id: number, updateRessourceTypeDto: UpdateRessourceTypeDto) {
-    return `This action updates a #${id} ressourceType`;
+  async findAll(): Promise<RessourceType[]> {
+    return await this.repository.find();
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} ressourceType`;
+  async findOne(id: number): Promise<RessourceType> {
+    const item = await this.repository.findOne({ where: { id } });
+    if (!item) throw new NotFoundException('resource_type non trouvé');
+    return item;
+  }
+
+  async remove(id: number): Promise<void> {
+    const item = await this.findOne(id);
+    await this.repository.remove(item);
   }
 }

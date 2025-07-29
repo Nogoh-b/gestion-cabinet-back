@@ -27,11 +27,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from 
 
 
 
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
 
 
 
@@ -250,7 +252,7 @@ export class SavingsAccountController {
   @Post('validate-link-account')
   validateLinkaccount(  @Body() dto: VerifyOtpDto) {
     console.log(dto)
-    return this.service.requestLinkAccount( dto);
+    return this.service.validateRequestLinkAccount( dto);
   }
 
   @Get(':id/stats')
