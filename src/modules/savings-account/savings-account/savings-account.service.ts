@@ -20,11 +20,16 @@ import { PartnerService } from 'src/modules/partner/partner.service';
 
 
 
+import { RessourceService } from 'src/modules/ressource/ressource/ressource.service';
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
+
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
-
-
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
+
+
+
+
 import { Not, Repository } from 'typeorm';
 
 
@@ -35,21 +40,21 @@ import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
@@ -60,6 +65,10 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
 
 
 
@@ -111,6 +120,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     private partnerService: PartnerService,
     @Inject(forwardRef(() => CommercialService))
     private commercialService: CommercialService,
+    private readonly ressourceService: RessourceService,
      private readonly otpService: OtpService
   ) { super(); console.log(forwardRef) }
 
@@ -931,7 +941,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     const now = new Date();
     const available = transactions.reduce((sum, tx) => {
       const originNum = tx?.originSavingsAccount?.number_savings_account;
-      const targetNum = tx?.targetSavingsAccount?.number_savings_account;
+      const targetNum = tx?.targetSavingsAccount?.number_savings_account; 
       const acctNum = account.number_savings_account;
       // 1. Ignorer transactions verrouillées ou échouées
       if ((tx.is_locked && targetNum === acctNum) || tx.status != TransactionSavingsAccountStatus.VALIDATE) {
@@ -1098,6 +1108,14 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       return resp
     }
     
+  }
+
+  async subscribeRessourceType( ressource_type_id ,savings_account_id){
+    await this.ressourceService.create({
+      ressource_type_id: +ressource_type_id,
+      savings_account_id: +savings_account_id,
+    });
+    // this.transactionSavingsAccountService.deposit_cash()
   }
 
   /*async findByPartnerAndDate(

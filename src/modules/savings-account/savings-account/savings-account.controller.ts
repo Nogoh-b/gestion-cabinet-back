@@ -5,24 +5,7 @@ import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pa
 
 
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
-
-
-
-
-
-
-
-
-
-
-
-
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
-
-
-
-
-
 
 
 
@@ -33,25 +16,6 @@ import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -311,7 +275,16 @@ export class SavingsAccountController {
   ): Promise<SavingsAccountHasInterest> {
     return this.service.assign_interest_range(id, dto);
   }
-
+  
+  @Post(':id/subscribe-ressource-type/:ressourceTypeId')
+  @ApiOperation({ summary: 'Souscrire un compte épargne à un type de ressource' })
+  @ApiResponse({ status: 201, description: 'Ressource créée avec succès' })
+  async subscribeRessourceType(
+    @Param('id') savings_account_id: string,
+    @Param('ressourceTypeId') ressource_type_id: string,
+  ) {
+    return await this.service.subscribeRessourceType(+savings_account_id, +ressource_type_id);
+}
     /*@Get('partner/:promo_code')
     async getByPartner(
     @Param('promo_code') promo_code: string,

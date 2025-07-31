@@ -75,6 +75,14 @@ export class TransactionTypeSeeder {
         fee_percentage: 0.0,
         status: 1,
       },
+      {
+        code: 'OM_WITHDRAW',
+        name: 'Retrait OM',
+        description: 'Retrait du portefeuille mobile Orange Money',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
     ];
 
     for (const type of types) {

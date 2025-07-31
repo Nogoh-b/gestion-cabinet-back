@@ -4,6 +4,7 @@ import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -119,6 +120,7 @@ export class ValidateTransactionSavingsAccountDto {
   @IsOptional()
   paymentCode?: string;
 
+  token?: string;
 
   @ApiPropertyOptional({ example: '3d48b310-7e22-48ab-80af-a53989009de8', description: 'paymentToenProvide(unique)' ,required: false})
   @IsString()

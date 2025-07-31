@@ -7,11 +7,14 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
+
+
 import { AgenciesModule } from '../agencies/agencies.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { PartnerModule } from '../partner/partner.module';
+import { RessourceModule } from '../ressource/ressource.module';
 import { TransactionModule } from '../transaction/transaction.module';
 import { CommissionController } from './commission/commission.controller';
 import { CommissionService } from './commission/commission.service';
@@ -34,11 +37,14 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
 
 
 
+
+
 @Module({
   imports: [
     DocumentsModule,
     AgenciesModule,
     forwardRef(() => TransactionModule),
+    forwardRef(() => RessourceModule),
     forwardRef(() => CustomerModule),
     forwardRef(() => PartnerModule),
     forwardRef(() => CommercialModule),
