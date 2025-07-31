@@ -62,12 +62,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto } from './dto/create-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
 
 
 
@@ -201,7 +207,7 @@ export class TransactionSavingsAccountService {
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
     tx.is_locked = dto.is_locked ?? false;
-    tx.status = dto.status ?? 0;
+    tx.status =  0; 
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.commission = dto.commission ?? 0;
