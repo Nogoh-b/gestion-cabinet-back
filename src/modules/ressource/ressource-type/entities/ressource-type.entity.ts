@@ -7,30 +7,14 @@ export class RessourceType {
   id: number;
 
   @Column()
-  name: string;
+  description: string;
 
   @Column()
-  code: string;
+  name: string;
   @Column()
   amount: number;
 
-  @Column({ nullable: true })
-  swift_code: string;
 
-  @Column({ nullable: true })
-  bank_code: string;
-
-  @Column({ nullable: true })
-  account_number: string;
-
-  @Column({ nullable: true })
-  key: string;
-
-  @Column({ nullable: true })
-  iban: string;
-
-  @Column({ nullable: true })
-  account_label: string;
 
   @CreateDateColumn()
   created_at: Date;

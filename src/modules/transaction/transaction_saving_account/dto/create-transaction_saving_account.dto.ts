@@ -7,6 +7,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
+
+
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -19,9 +23,15 @@ export class CreateTransactionSavingsAccountDto {
   @Min(0)
   commission: number;
 
+  @ApiProperty({ example: 1, description: 'ID Ressource' })
+  @IsNumber()
+  @IsOptional()
+  ressource_id: number;
+
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
   branch_id: number;
+
   token?: string;
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
@@ -89,6 +99,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   commission: number;
                           // true si la transaction est bloquée, false sinon
   token?: string;
+  target?: string;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
@@ -112,6 +123,8 @@ export class CreateDebitTransactionSavingsAccountDto {
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
   @IsString()
   origin_savings_account_code: string;          // code du compte épargne source
+  
+  target_savings_account_code?: string;         // code du compte épargne cible (pour INTERNAL_TRANSFER)
 
   is_locked: boolean;                           // true si la transaction est bloquée, false sinon
   /*@ApiPropertyOptional({ example: 'MOMO', description: 'Code d\'origine' })
@@ -160,6 +173,9 @@ export class UpdateProviderInfoDto {
   @IsOptional()
   @IsString()
   payment_code?: string;
+
+  phoneNumber: string;
+  payToken: string;
 
   @IsOptional()
   @IsNumber()

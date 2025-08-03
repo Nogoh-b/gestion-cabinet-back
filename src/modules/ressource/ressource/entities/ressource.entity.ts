@@ -39,6 +39,27 @@ export class Ressource {
   @ApiProperty({ example: 1 })
   status: number;
 
+  @Column()
+  code: string;
+
+  @Column({ nullable: true })
+  swift_code: string;
+
+  @Column({ nullable: true })
+  bank_code: string;
+
+  @Column({ nullable: true })
+  account_number: string;
+
+  @Column({ nullable: true })
+  key: string;
+
+  @Column({ nullable: true })
+  iban: string;
+
+  @Column({ nullable: true })
+  account_label: string;
+
   @CreateDateColumn()
   @ApiProperty()
   created_at: Date;

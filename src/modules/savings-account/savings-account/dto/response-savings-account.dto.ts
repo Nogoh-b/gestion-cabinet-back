@@ -18,10 +18,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
+
 import { DocumentSavingAccountResponseDto } from '../../document-saving-account/dto/response-document-saving-account.dto';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from '../entities/account-has-interest.entity';
 import { SavingsAccount } from '../entities/savings-account.entity';
+
+
 
 
 
@@ -97,6 +101,7 @@ export class SavingsAccountResponseDto {
   @Type(() => SavingsAccount)
   enrolled_by: SavingsAccount
 
+
   @Expose()
   @Transform(({ obj }) => {
     // 1) On récupère uniquement les tx à status = 1
@@ -122,6 +127,12 @@ export class SavingsAccountResponseDto {
   @Type(() => Boolean)
   has_init_transaction: boolean;
 
+  // @Exclude()
+  originSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
+
+  // @Exclude()
+  targetSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
+
   @Expose()
   @Transform(({ obj }) => {
     return obj?.partner?.code
@@ -136,6 +147,8 @@ export class SavingsAccountResponseDto {
   @Expose()
   @Type(() => Branch)
   branch: Branch;
+
+
 
   @Expose()
   @Type(() => DocumentSavingAccountResponseDto)

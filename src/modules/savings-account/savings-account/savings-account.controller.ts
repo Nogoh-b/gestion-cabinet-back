@@ -4,9 +4,17 @@ import { VerifyOtpDto } from 'src/core/shared/dto/otp.dto';
 import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
 
+import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 
+
+
+
+
+
+
+
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
 
 
 
@@ -16,6 +24,13 @@ import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
+
+
+
+
+
 
 
 
@@ -113,7 +128,7 @@ export class SavingsAccountController {
   findOne(
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.service.findOne(id);
+    return this.service.findOne(id, false);
   }
 
   @Get('by-code/:number_savings_account')
@@ -123,7 +138,7 @@ export class SavingsAccountController {
   findOneByCode(
     @Param('number_savings_account') number_savings_account: string,
   ) {
-    return this.service.findOneByCode(number_savings_account);
+    return this.service.findOneByCode(number_savings_account, false);
   }
 
   @Post()
@@ -281,10 +296,40 @@ export class SavingsAccountController {
   @ApiResponse({ status: 201, description: 'Ressource créée avec succès' })
   async subscribeRessourceType(
     @Param('id') savings_account_id: string,
+    @Body() dto:       CreateRessourceDto,
     @Param('ressourceTypeId') ressource_type_id: string,
+    // @Query() channel: string = 'BRANCH',
   ) {
-    return await this.service.subscribeRessourceType(+savings_account_id, +ressource_type_id);
-}
+    dto.savings_account_id = +savings_account_id;
+    dto.ressource_type_id = +ressource_type_id;
+    // dto.channel = channel;
+    return await this.service.subscribeRessourceType(+savings_account_id, dto);
+  }
+  @Get(':id/ressources')
+  @ApiOperation({ summary: 'Lister les ressources liées à un compte épargne' })
+  async getRessourcesBySavingsAccount(@Param('id') id: string) {
+    return await this.service.getBySavingsAccountId(+id);
+  }
+  @Get(':id/ressources/:ressourceId')
+  @ApiOperation({ summary: 'Récupérer une ressource liée à un compte épargne par ID' })
+  async getSingleRessourceBySavingsAccount(
+    @Param('id') savings_account_id: string,
+    @Param('ressourceId') ressource_id: string,
+  ) {
+    return await this.service.getByIdAndSavingsAccount(+ressource_id);
+  }
+
+
+  /*@Post(':id/subscribe-ressource/:ressourceTypeId')
+  @ApiOperation({ summary: 'Souscrire à une ressource depuis un compte épargne' })
+  @ApiResponse({ status: 201, description: 'Ressource souscrite avec succès' })
+  async subscribeToRessource(
+
+  ) {
+    return await this.service.subscribeFromSavingsAccount(dto);
+  }*/
+
+
     /*@Get('partner/:promo_code')
     async getByPartner(
     @Param('promo_code') promo_code: string,

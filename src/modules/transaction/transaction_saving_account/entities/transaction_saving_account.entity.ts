@@ -3,11 +3,24 @@ import { Partner } from 'src/modules/partner/entities/partner.entity';
 
 
 import { Provider } from 'src/modules/provider/provider/entities/provider.entity';
-import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 
+import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm';
+
+
+
+
+
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
+
+
+
+
+
 
 
 export enum TransactionTypeEnum {
@@ -53,6 +66,16 @@ export class PaymentsType {
   constructor(init: Partial<PaymentsType>) {
     Object.assign(this, init);
   }
+}
+export enum TransactionProvider {
+  CASH = 'CASH',
+  CHEQUE = 'CHEQUE',
+  E_WALLET = 'E_WALLET',
+  MOMO = 'MOMO',
+  OM = 'OM',
+  SAVINGS_ACCOUNT = 'SAVINGS_ACCOUNT',
+  SYSTEM = 'SYSTEM',
+  WALLET = 'WALLET'
 }
 
 
@@ -160,17 +183,24 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'origin_savings_account_id', referencedColumnName: 'id' })
   originSavingsAccount?: SavingsAccount | null;; // Relation vers SavingsAccount
 
+  @ManyToOne(() => Ressource, acc => acc.savings_account, {eager: true  })
+  @JoinColumn({ name: 'ressource_id', referencedColumnName: 'id' })
+  ressource?: Ressource | null;; // Relation vers SavingsAccount
+
   @ManyToOne(() => SavingsAccount, acc => acc.targetSavingsAccountTx, {eager: true  })
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
   targetSavingsAccount: SavingsAccount | null;; // Relation vers SavingsAccount
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
   promo_code: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
   commission: number | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  @Column({type: 'int', nullable: true }) 
+  branch_id: number ;
+
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
   commercial_code: string | null;
 
   @ManyToOne(() => Partner, acc => acc.transactions, {eager: true  })

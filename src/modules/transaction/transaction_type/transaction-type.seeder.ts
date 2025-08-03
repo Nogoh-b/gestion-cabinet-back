@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -76,9 +77,9 @@ export class TransactionTypeSeeder {
         status: 1,
       },
       {
-        code: 'OM_WITHDRAW',
-        name: 'Retrait OM',
-        description: 'Retrait du portefeuille mobile Orange Money',
+        code: 'RESSOURCE_BUY',
+        name: 'Payment D\'une resource',
+        description: 'Souscription à une resource',
         is_credit: 0,
         fee_percentage: 0.0,
         status: 1,

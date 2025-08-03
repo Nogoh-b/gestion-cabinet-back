@@ -14,48 +14,37 @@ import { PartnerService } from 'src/modules/partner/partner.service';
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { QueueService } from 'src/modules/queue/queue.service';
 
-import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 
+import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
+
 import { v4 as uuidv4 } from 'uuid';
 
+
 import { InjectQueue } from '@nestjs/bull';
-
-
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -69,39 +58,9 @@ import { ChannelTransaction } from '../chanel-transaction/entities/channel-trans
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto } from './dto/create-transaction_saving_account.dto';
+import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -136,8 +95,8 @@ export class TransactionSavingsAccountService {
     channel_code: string,
     provider_code: string,
     to_agency = false
-  ): Promise<TransactionSavingsAccount> {
-    let adminAcc = new SavingsAccount();
+  ): Promise<ResponseTransactionSavingsAccountDto> {
+    channel_code = dto.branch_id ? 'BRANCH' : 'MOBILE'
   
     if ((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code === dto.target_savings_account_code) {
       throw new BadRequestException(`Transfert vers le même compte interdit `);
@@ -165,7 +124,7 @@ export class TransactionSavingsAccountService {
         dto.target_savings_account_code ?? '0',
       ));
     }
-    else if(!(dto).target_savings_account_code && to_agency){
+    else if(!(dto).target_savings_account_code){
       target = await this.savingsAccountService.findOneAdmin(dto.branch_id)
     }
 
@@ -179,14 +138,21 @@ export class TransactionSavingsAccountService {
     if (!txType) {
       throw new NotFoundException(`Type transaction invalide : ${type_code}`);
     }
+    let ressource :Ressource | null = null;
+    if((dto  as CreateTransactionSavingsAccountDto).ressource_id)
+      ressource = await this.savingsAccountService.getByIdAndSavingsAccount((dto  as CreateTransactionSavingsAccountDto).ressource_id,false);
+    if (!txType) {
+      throw new NotFoundException(`Type transaction invalide : ${type_code}`);
+    }
     const isFirstTx = await this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     console.log('isFirstTx111', isFirstTx)
     if(origin){
       const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(origin?.id)
       if(!Boolean(txType.is_credit) && (!docStatsTargetAccount.allRequiredValidated || origin.status != SavingsAccountStatus.ACTIVE) ){
-        throw new NotFoundException(
-          `Tout vos documents ne sont pas validé et ou compte non actif : ${target?.id}`,  
-        );
+        if(this.can_refuse_transaction_type_for_debit(txType.code))
+          throw new NotFoundException(
+            `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,  
+          );
       }
     }
     const channel = await this.channelRepo.findOne({
@@ -203,15 +169,19 @@ export class TransactionSavingsAccountService {
     const paymentCode = await this.generateUniquePaymentCode();
     const payment_token_provider = await this.generateUniquePaymentTokenProvider();
     const reference = this.formatTransactionReference(txType,provider.code);
+
+
     // création de l'entité transaction
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
     tx.is_locked = dto.is_locked ?? false;
     tx.status =  0; 
+    tx.branch_id = dto.branch_id ?? null; 
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.commission = dto.commission ?? 0;
     tx.transactionType = txType;
+    tx.ressource = ressource;
     tx.origin = origin?.number_savings_account ? origin?.number_savings_account : "SYTEM";
     tx.target = target?.number_savings_account ?? "SYSTEM";    
     tx.originSavingsAccount = origin //(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
@@ -222,32 +192,44 @@ export class TransactionSavingsAccountService {
     tx.token = dto.token ?? '986907875'
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
-
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
       if( initial_deposit > dto.amount)
         throw new BadRequestException(`Pour votre premier dépôt vous devez avoir au minimum ${initial_deposit} pour ce type de compte : ${target.type_savings_account.name} `);
     }
 
-    // mise à jour des soldes
     await this.repo.manager.transaction(async (entityManager) => {
-      await this.validateTransaction(origin, target, dto.amount, !!txType.is_credit);
-
-      // 1. Sauvegarde de la transaction initiale
+      await this.validateTransaction(origin, target, dto.amount, !!txType.is_credit, txType.code);
       await entityManager.save(tx);
 
     });
-    if(!Boolean(txType.is_credit) || channel_code != TransactionChannel.MOBILE || txType.code === TransactionCode.INTERNAL_TRANSFER  ){
+    // if(!Boolean(txType.is_credit) || channel_code != TransactionChannel.MOBILE || txType.code === TransactionCode.INTERNAL_TRANSFER  ){
+    if(!Boolean(txType.is_credit) || 
+    (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) || 
+    txType.code === TransactionCode.INTERNAL_TRANSFER  ){
       
       this.validate(tx.id, isFirstTx)
       tx.status = 1
     }
       
 
-    return tx;
+    return plainToInstance(ResponseTransactionSavingsAccountDto, tx);
   }
 
-  
+  can_refuse_transaction_type_for_debit(txTypeCode){
+    return txTypeCode === TransactionCode.INTERNAL_TRANSFER || txTypeCode?.includes('_WITHDRAW')
+  }
 
+
+  async buy_ressource(dto: CreateDebitTransactionSavingsAccountDto, channel) {
+    const provider = channel === 'BRANCH' ? 'CASH' : channel;
+    const channel_ = channel === 'BRANCH' ? 'BRANCH' : 'MOBILE';
+    let saAdmin = new SavingsAccount
+    if(!dto.target_savings_account_code){
+      saAdmin = await this.savingsAccountService.findOneAdmin(dto.branch_id)
+    }
+    dto.target_savings_account_code = saAdmin.number_savings_account
+    return this.perform_transaction(dto, 'RESSOURCE_BUY', channel_ , provider);
+  }
   deposit_cash(dto: CreateCreditTransactionSavingsAccountDto) {
     return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
   }
@@ -307,9 +289,9 @@ export class TransactionSavingsAccountService {
 
   async internal_transfer(
     dto: CreateTransactionSavingsAccountDto,
-  ): Promise<TransactionSavingsAccount> {
+  ): Promise<ResponseTransactionSavingsAccountDto> {
     // maniere speciale pour virement interne
-    return this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'MOBILE', 'SYSTEM');
+    return this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'BRANCH', 'SYSTEM');
   }
 
 
@@ -517,7 +499,7 @@ export class TransactionSavingsAccountService {
     account: SavingsAccount | null,
     target: SavingsAccount | null,
     amount: number,
-    is_credit: boolean
+    is_credit: boolean, txTypeCode? : string
   ) 
   {
 
@@ -535,9 +517,9 @@ export class TransactionSavingsAccountService {
 
       const avalaible_balance = account ? await this.savingsAccountService.avalaibleBalance(account.id) : 0
 
-      if (!is_credit && avalaible_balance < amount) {
+      if (!is_credit && avalaible_balance < amount && this.can_refuse_transaction_type_for_debit(txTypeCode)) {
         throw new BadRequestException(`Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
-  );
+    );
       }
 
       // On suppose que `account.activeInterest` a déjà été calculé via @AfterLoad()
@@ -957,9 +939,16 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
       throw new NotFoundException(`Transaction with ID ${id} not found`);
     }
     tx.status = PaymentStatus[dto.status_provider ?? PaymentStatusProvider.PENDING] 
-
+    tx.payment_token_provider = dto.payToken
     const channel_code = tx.channelTransaction.code
     const txType = tx.transactionType
+    if(!!txType.is_credit){
+      tx.origin = dto.phoneNumber;
+    }
+    else{
+      tx.target = dto.phoneNumber;
+    }
+    this.repo.save(tx)
     const sa = await  this.savingsAccountService.findOneByCode(
       tx.targetSavingsAccount?.number_savings_account ?? '',
     );

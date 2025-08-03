@@ -3,8 +3,17 @@ import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
+
+
+import { RessourceType } from '../ressource-type/entities/ressource-type.entity';
 import { CreateRessourceDto } from './dto/create-ressource.dto';
 import { Ressource } from './entities/ressource.entity';
+
+
+
+
 
 @Injectable()
 export class RessourceService extends BaseService<Ressource> {
@@ -21,7 +30,9 @@ export class RessourceService extends BaseService<Ressource> {
 
   async create(data: CreateRessourceDto): Promise<Ressource> {
     const item = this.repository.create(data);
-    return await this.repository.save(item);
+    item.status = 1
+    const ressource = await this.repository.save(item);
+    return  this.findOne(ressource.id)
   }
 
   async findAll(): Promise<Ressource[]> {
@@ -38,4 +49,29 @@ export class RessourceService extends BaseService<Ressource> {
     const item = await this.findOne(id);
     await this.repository.remove(item);
   }
+
+    async getBySavingsAccountId(savings_account_id: number): Promise<Ressource[]> {
+    return this.repository.find({
+      where: { savings_account_id },
+      relations: ['ressource_type'],
+    });
+  }
+
+  async getByIdAndSavingsAccount(id: number, strict = true): Promise<Ressource | null> {
+    const ressource = await this.repository.findOne({
+      where: { id },
+      relations: ['ressource_type'],
+    });
+    if (!ressource && strict) throw new NotFoundException('Ressource non trouvée pour ce compte');
+    return ressource;
+  }
+  async getRessourceTypeById(id: number): Promise<RessourceType> {
+    const ressource = await this.repository.findOne({
+      where: { id },
+      relations: ['ressource_type'],
+    });
+    if (!ressource) throw new NotFoundException('Ressource non trouvée');
+    return ressource.ressource_type;
+  }
+
 }
