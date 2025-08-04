@@ -54,6 +54,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -61,6 +66,11 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
 
 
 
@@ -230,7 +240,13 @@ export class TransactionSavingsAccountService {
     dto.target_savings_account_code = saAdmin.number_savings_account
     return this.perform_transaction(dto, 'RESSOURCE_BUY', channel_ , provider);
   }
-  deposit_cash(dto: CreateCreditTransactionSavingsAccountDto) {
+  async deposit_cash(dto: CreateCreditTransactionSavingsAccountDto) {
+    /*const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'POST',
+            `epargne/bank/operator/update-sold`,{provider:'OM', isCredit:1,  amount:175,}
+        );
+        console.log('sold updated', code_cash)
+    return new TransactionSavingsAccount*/
     return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
   }
 
@@ -602,6 +618,13 @@ export class TransactionSavingsAccountService {
     if(entity.status == 0){
       entity.status = 1;
       entity.status_provider = 'SUCCESSFULL';
+      if(entity.provider_code == TransactionProvider.OM || entity.provider_code == TransactionProvider.MOMO ){
+        const updated_sold = await this.mcotiService.callMcotiEndpoint(
+              'POST',
+              `epargne/bank/operator/update-sold`,{provider:'OM', isCredit: entity.transactionType.is_credit,  amount: entity.amount,}
+          );
+          console.log('sold provider updated', updated_sold)
+      }
 
     }
     let target: SavingsAccount | null = null; // Initialisation explicite à null

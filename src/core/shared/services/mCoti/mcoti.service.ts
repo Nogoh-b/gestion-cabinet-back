@@ -35,6 +35,7 @@ import { ConfigService } from '@nestjs/config';
 
 
 
+
 @Injectable()
 export class McotiService {
   constructor(
@@ -44,7 +45,7 @@ export class McotiService {
   private readonly PAYMENT_STATUS_SUCCESS = 'SUCCESS'; // Define your status constant
 
 async callMcotiEndpoint(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH', 
   endpoint: string,
   payload?: any,
   params?: Record<string, any>
