@@ -59,6 +59,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -66,6 +67,7 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -618,6 +620,7 @@ export class TransactionSavingsAccountService {
     if(entity.status == 0){
       entity.status = 1;
       entity.status_provider = 'SUCCESSFULL';
+      console.log('entity.entity.provider_code', entity.provider_code)
       if(entity.provider_code == TransactionProvider.OM || entity.provider_code == TransactionProvider.MOMO ){
         const updated_sold = await this.mcotiService.callMcotiEndpoint(
               'POST',
