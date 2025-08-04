@@ -1,9 +1,12 @@
+import { BaseService } from 'src/core/shared/services/search/base.service';
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { BaseService } from 'src/core/shared/services/search/base.service';
-import { RessourceType } from './entities/ressource-type.entity';
+
 import { CreateRessourceTypeDto } from './dto/create-ressource-type.dto';
+import { UpdateRessourceTypeDto } from './dto/update-ressource-type.dto';
+import { RessourceType } from './entities/ressource-type.entity';
+
 
 @Injectable()
 export class RessourceTypeService extends BaseService<RessourceType> {
@@ -36,5 +39,17 @@ export class RessourceTypeService extends BaseService<RessourceType> {
   async remove(id: number): Promise<void> {
     const item = await this.findOne(id);
     await this.repository.remove(item);
+  }
+
+  async update(id: number, dto: UpdateRessourceTypeDto): Promise<RessourceType> {
+    // 1. Charge l’entité existante
+    const ressource_type = await this.repository.findOne({ where: { id } });
+    if (!ressource_type) {
+      throw new NotFoundException(`Compte épargne #${id} introuvable`);
+    }
+
+    Object.assign(ressource_type, dto);
+
+    return this.repository.save(ressource_type);
   }
 }

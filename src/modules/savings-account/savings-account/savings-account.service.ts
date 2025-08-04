@@ -95,6 +95,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -104,6 +107,9 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
 
 
 
@@ -727,6 +733,16 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return await this.calculateAvailableBalance(account,tx) ;
   }
 
+  async avalaibleBalanceByCodeOnline(number_savings_account: string): Promise<any> {
+    const account = await this.repo.findOne({
+      where: { number_savings_account },
+      relations: ['type_savings_account'],
+    });
+    if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
+    const tx = await this.getTransactions(account.id)
+    return await this.calculateAvailableBalanceOnline(account,tx) ;
+  }
+
   async getRequiredDocuments(id: number): Promise<DocumentType[]> {
     const sa = await this.findOne(id);
     return await this.typeSavingAcount.getRequiredDocuments(sa.type_savings_account.id);
@@ -1117,7 +1133,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     const total = transactions.reduce((sum, tx) => {
       // 1. Ignorer les transactions échouées
       if (tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.channelTransaction.code != TransactionChannel.MOBILE) {
-        console.log('originNum targetNum1111 ', tx.id ,' --- ', tx.channelTransaction.code ,' --- ', tx.status != TransactionSavingsAccountStatus.VALIDATE ,"||", tx.channelTransaction.code != TransactionChannel.MOBILE, ' ----- ', tx.channelTransaction.code != TransactionChannel.MOBILE);
+        // console.log('originNum targetNum1111 ', tx.id ,' --- ', tx.channelTransaction.code ,' --- ', tx.status != TransactionSavingsAccountStatus.VALIDATE ,"||", tx.channelTransaction.code != TransactionChannel.MOBILE, ' ----- ', tx.channelTransaction.code != TransactionChannel.MOBILE);
         return sum;
       }
 
@@ -1285,9 +1301,10 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     const ressource =  await this.ressourceService.create(dto_res);
     const sA = await this.findOne(dto_res.savings_account_id)
     let dto = new CreateTransactionSavingsAccountDto();
-    dto.amount = ressource.ressource_type.amount
+    dto.amount = ressource.ressource_type.amount * ressource.quantity;
     dto.origin_savings_account_code = sA.number_savings_account;
     dto.branch_id = dto_res.branch_id;
+    dto.ressource_id = ressource.id;
     return this.transactionSavingsAccountService.buy_ressource(dto, dto_res.channel)
     // this.transactionSavingsAccountService.deposit_cash(dto,);
   }

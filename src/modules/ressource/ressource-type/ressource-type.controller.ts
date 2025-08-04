@@ -1,9 +1,12 @@
 // resource_type.controller.ts
-import { Controller, Post, Body, Get, Param, Delete } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Delete, Patch } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
-import { RessourceTypeService } from './ressource-type.service';
+
 import { CreateRessourceTypeDto } from './dto/create-ressource-type.dto';
+import { UpdateRessourceTypeDto } from './dto/update-ressource-type.dto';
+import { RessourceTypeService } from './ressource-type.service';
+
 
 
 @ApiTags('resource-type')
@@ -29,7 +32,10 @@ export class RessourceTypeController {
   async findOne(@Param('id') id: string) {
     return await this.service.findOne(+id);
   }
-
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateRessourceTypeDto: UpdateRessourceTypeDto) {
+    return this.service.update(+id, updateRessourceTypeDto);
+  }
   @Delete(':id')
   @ApiOperation({ summary: 'Supprimer un type de ressource' })
   async remove(@Param('id') id: string) {

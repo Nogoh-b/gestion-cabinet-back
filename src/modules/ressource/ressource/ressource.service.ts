@@ -7,9 +7,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { RessourceType } from '../ressource-type/entities/ressource-type.entity';
+import { RessourceTypeService } from '../ressource-type/ressource-type.service';
 import { CreateRessourceDto } from './dto/create-ressource.dto';
 import { Ressource } from './entities/ressource.entity';
+
 
 
 
@@ -20,6 +23,7 @@ export class RessourceService extends BaseService<Ressource> {
   constructor(
     @InjectRepository(Ressource)
     private readonly repository: Repository<Ressource>,
+    private ressourceTypeService: RessourceTypeService
   ) {
     super();
   }
@@ -29,6 +33,10 @@ export class RessourceService extends BaseService<Ressource> {
   }
 
   async create(data: CreateRessourceDto): Promise<Ressource> {
+    const ressourceType = await this.ressourceTypeService.findOne(data.ressource_type_id);
+    if (!ressourceType || ressourceType.quantity <  data.quantity) {
+      throw new NotFoundException('Type de ressource non trouvé ou quantité insufisante');
+    }
     const item = this.repository.create(data);
     item.status = 1
     const ressource = await this.repository.save(item);

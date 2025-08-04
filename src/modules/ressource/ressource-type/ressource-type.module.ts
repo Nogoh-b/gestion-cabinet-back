@@ -3,10 +3,12 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
+
 import { Ressource } from '../ressource/entities/ressource.entity';
 import { RessourceType } from './entities/ressource-type.entity';
 import { RessourceTypeController } from './ressource-type.controller';
 import { RessourceTypeService } from './ressource-type.service';
+
 
 
 
@@ -19,5 +21,6 @@ import { RessourceTypeService } from './ressource-type.service';
   RessourceTypeModule],
   controllers: [RessourceTypeController],
   providers: [RessourceTypeService],
+  exports: [RessourceTypeService],
 })
 export class RessourceTypeModule {}
