@@ -20,11 +20,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from 
 
 
 
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
 
 
 
@@ -282,7 +284,7 @@ export class SavingsAccountController {
   }
   @Get('by-code/:code/avalaible-balance-online')
   balanceByCodeOnline( @Param('code') code: string) {
-    return this.service.avalaibleBalanceByCode(code);
+    return this.service.avalaibleBalanceByCodeOnline(code);
   }
 
   @Post(':id/interest-range')

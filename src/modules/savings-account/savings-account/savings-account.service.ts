@@ -46,6 +46,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -55,6 +58,9 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
 
 
 @Injectable()
@@ -1015,7 +1021,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     const acctNum = account.number_savings_account;
     const total = transactions.reduce((sum, tx) => {
       // 1. Ignorer les transactions échouées
-      if (tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.channelTransaction.code != TransactionChannel.MOBILE) {
+      if (tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.branch_id ) {
         // console.log('originNum targetNum1111 ', tx.id ,' --- ', tx.channelTransaction.code ,' --- ', tx.status != TransactionSavingsAccountStatus.VALIDATE ,"||", tx.channelTransaction.code != TransactionChannel.MOBILE, ' ----- ', tx.channelTransaction.code != TransactionChannel.MOBILE);
         return sum;
       }
@@ -1029,8 +1035,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
           return sum + tx.amount;
         }
         if (originNum === acctNum) {
-          if(tx.transactionType.code === 'MIN_BALANCE')
-            return sum
+
           // envoi / débit
           return sum - tx.amount;
         }
@@ -1050,7 +1055,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
         return sum - tx.amount;
       }
     }, 0);
-    account.balance = total
+    account.avalaible_balance_online = total
     console.log('total ', total)
     await this.repo.save(account)
     return total; // ou Math.max(0, total) si vous voulez forcer ≥ 0

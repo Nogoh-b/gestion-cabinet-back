@@ -60,6 +60,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -67,6 +71,10 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
 
 
 
@@ -137,7 +145,7 @@ export class TransactionSavingsAccountService {
       ));
     }
     else if(!(dto).target_savings_account_code){
-      target = await this.savingsAccountService.findOneAdmin(dto.branch_id)
+      // target = await this.savingsAccountService.findOneAdmin(dto.branch_id)
     }
 
     if (!target && dto.target_savings_account_code) {
@@ -240,7 +248,7 @@ export class TransactionSavingsAccountService {
       saAdmin = await this.savingsAccountService.findOneAdmin(dto.branch_id)
     }
     dto.target_savings_account_code = saAdmin.number_savings_account
-    return this.perform_transaction(dto, 'RESSOURCE_BUY', channel_ , provider);
+    return await this.perform_transaction(dto, 'RESSOURCE_BUY', channel_ , provider);
   }
   async deposit_cash(dto: CreateCreditTransactionSavingsAccountDto) {
     /*const code_cash = await this.mcotiService.callMcotiEndpoint(
@@ -249,45 +257,45 @@ export class TransactionSavingsAccountService {
         );
         console.log('sold updated', code_cash)
     return new TransactionSavingsAccount*/
-    return this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
+    return await this.perform_transaction(dto, 'CASH_DEPOSIT', 'BRANCH', 'CASH');
   }
 
-  withdraw_cash(dto: CreateDebitTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'CASH_WITHDRAWAL', 'BRANCH', 'CASH');
+  async withdraw_cash(dto: CreateDebitTransactionSavingsAccountDto) {
+    return await this.perform_transaction(dto, 'CASH_WITHDRAWAL', 'BRANCH', 'CASH');
   }
 
-  deposit_cheque(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'CHEQUE_DEPOSIT', 'BRANCH', 'CHEQUE');
+  async deposit_cheque(dto: CreateCreditTransactionSavingsAccountDto) {
+    return await this.perform_transaction(dto, 'CHEQUE_DEPOSIT', 'BRANCH', 'CHEQUE');
   }
 
-  credit_interest(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'INTEREST_CREDIT', 'API', 'SYSTEM', true);
+  async credit_interest(dto: CreateCreditTransactionSavingsAccountDto) {
+    return await this.perform_transaction(dto, 'INTEREST_CREDIT', 'API', 'SYSTEM', true);
   }
 
-  e_wallet_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'MOBILE', 'WALLET'); 
+  async e_wallet_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+    return await this.perform_transaction(dto, 'E_WALLET_DEPOSIT', 'MOBILE', 'WALLET'); 
   }
 
-  momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'MOMO_DEPOSIT', 'MOBILE', TransactionProvider.MOMO);
+  async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+    return await this.perform_transaction(dto, 'MOMO_DEPOSIT', 'MOBILE', TransactionProvider.MOMO);
   }  
 
-  om_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
+  async om_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
     dto.status = PaymentStatus.SUCCESSFULL;
-    return this.perform_transaction(dto, 'OM_WITHDRAW', 'MOBILE', TransactionProvider.OM);
+    return await this.perform_transaction(dto, 'OM_WITHDRAW', 'MOBILE', TransactionProvider.OM);
   }
 
-  momo_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
+  async momo_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
     dto.status = PaymentStatus.SUCCESSFULL;
-    return this.perform_transaction(dto, 'MOMO_WITHDRAW', 'MOBILE', TransactionProvider.MOMO);
+    return await this.perform_transaction(dto, 'MOMO_WITHDRAW', 'MOBILE', TransactionProvider.MOMO);
   }  
 
-  om_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return this.perform_transaction(dto, 'OM_DEPOSIT', 'MOBILE', TransactionProvider.OM);
+  async om_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+    return await this.perform_transaction(dto, 'OM_DEPOSIT', 'MOBILE', TransactionProvider.OM);
   }
 
-  e_wallet_withdrawal(dto: CreateDebitTransactionSavingsAccountDto) {
-    return this.perform_transaction(
+  async e_wallet_withdrawal(dto: CreateDebitTransactionSavingsAccountDto) {
+    return await this.perform_transaction(
       dto,
       'E_WALLET_WITHDRAWAL',
       'MOBILE',
@@ -295,8 +303,10 @@ export class TransactionSavingsAccountService {
     );
   }
 
-  fee_maintenance(dto: CreateDebitTransactionSavingsAccountDto) {
-    return this.perform_transaction(
+  async fee_maintenance(dto: CreateDebitTransactionSavingsAccountDto) {
+    const saAdmin = await this.savingsAccountService.findOneAdmin(dto.branch_id)
+    dto.target_savings_account_code = saAdmin.number_savings_account
+    return await this.perform_transaction(
       dto,
       'ACCOUNT_MAINTENANCE_FEE',
       'API',
@@ -309,7 +319,7 @@ export class TransactionSavingsAccountService {
     dto: CreateTransactionSavingsAccountDto,
   ): Promise<ResponseTransactionSavingsAccountDto> {
     // maniere speciale pour virement interne
-    return this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'BRANCH', 'SYSTEM');
+    return  await this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'BRANCH', 'SYSTEM');
   }
 
 
@@ -960,11 +970,12 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
 
   async updateProviderInfo(id: number, dto: UpdateProviderInfoDto) {
     console.log(dto)
+
     let tx = await this.findOne( id );
     if (!tx) {
       throw new NotFoundException(`Transaction with ID ${id} not found`);
     }
-    tx.status = PaymentStatus[dto.status_provider ?? PaymentStatusProvider.PENDING] 
+    // tx.status = PaymentStatus[dto.status_provider ?? PaymentStatusProvider.PENDING] 
     tx.payment_token_provider = dto.payToken
     const channel_code = tx.channelTransaction.code
     const txType = tx.transactionType
@@ -975,12 +986,16 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
       tx.target = dto.phoneNumber;
     }
     this.repo.save(tx)
-    const sa = await  this.savingsAccountService.findOneByCode(
-      tx.targetSavingsAccount?.number_savings_account ?? '',
-    );
-    const isFirstTx = await this.isFirstTransaction(plainToInstance(SavingsAccount,sa))
     // const isFirstTx = await  this.isFirstTransaction(tx.targetSavingsAccount)
     if(channel_code === 'MOBILE' && Boolean(txType.is_credit)){
+      let isFirstTx = false
+      // if(tx.targetSavingsAccount){
+
+        const sa = await  this.savingsAccountService.findOneByCode(
+          tx.targetSavingsAccount?.number_savings_account ?? '',
+        );
+         isFirstTx = await this.isFirstTransaction(plainToInstance(SavingsAccount,sa))
+      // }
         console.log(tx.token,'  ' , tx.provider.code)
         const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
         setTimeout(() => {
