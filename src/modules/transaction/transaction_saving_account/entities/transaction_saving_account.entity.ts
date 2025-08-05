@@ -173,6 +173,9 @@ export class TransactionSavingsAccount {
   @Column()
   transaction_type_id: number; // Référence du type de transaction
 
+  @Column({ nullable: true, type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  date_for_withdraw: Date;
+
   @CreateDateColumn()
   created_at: Date; // Date de création
 

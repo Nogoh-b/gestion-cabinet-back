@@ -49,6 +49,27 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -58,6 +79,27 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -578,8 +620,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
 
-    const tx = await this.getTransactions(id)
-    return await this.calculateTotalBalance(account,tx);
+    const txs = await this.getTransactions(id)
+    return  await this.calculateBalance(account, txs, {
+      balanceType: 'total'
+    });
+    // return await this.calculateTotalBalance(account,txs);
   }
 
   async avalaibleBalance(id: number): Promise<any> {
@@ -588,8 +633,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations: ['type_savings_account'],
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
-    const tx = await this.getTransactions(id)
-    return await this.calculateAvailableBalance(account,tx) ;
+    const txs = await this.getTransactions(id)
+    return  await this.calculateBalance(account, txs, {
+      balanceType: 'available'
+    });
+    // return await this.calculateAvailableBalance(account,txs) ;
   }
     async avalaibleBalanceOnline(id: number): Promise<any> {
     const account = await this.repo.findOne({
@@ -597,8 +645,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations: ['type_savings_account'],
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
-    const tx = await this.getTransactions(id)
-    return await this.calculateAvailableBalanceOnline(account,tx) ;
+    const txs = await this.getTransactions(id)
+    return  await this.calculateBalance(account, txs, {
+      balanceType: 'online',
+      ensureNonNegative:true
+    });
+    // return await this.calculateAvailableBalanceOnline(account,tx) ;
   }
 
   async balanceByCode(number_savings_account: string): Promise<any> {
@@ -608,8 +660,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
     if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
 
-    const tx = await this.getTransactions(account.id)
-    return await this.calculateTotalBalance(account,tx);
+    const txs = await this.getTransactions(account.id)
+        return  await this.calculateBalance(account, txs, {
+      balanceType: 'total'
+    });
+    // return await this.calculateTotalBalance(account,tx);
   }
 
   async avalaibleBalanceByCode(number_savings_account: string): Promise<any> {
@@ -618,8 +673,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations: ['type_savings_account'],
     });
     if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
-    const tx = await this.getTransactions(account.id)
-    return await this.calculateAvailableBalance(account,tx) ;
+    const txs = await this.getTransactions(account.id)
+        return  await this.calculateBalance(account, txs, {
+      balanceType: 'available'
+    });
+    // return await this.calculateAvailableBalance(account,tx) ;
   }
 
   async avalaibleBalanceByCodeOnline(number_savings_account: string): Promise<any> {
@@ -628,8 +686,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations: ['type_savings_account'],
     });
     if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
-    const tx = await this.getTransactions(account.id)
-    return await this.calculateAvailableBalanceOnline(account,tx) ;
+    const txs = await this.getTransactions(account.id)
+        return  await this.calculateBalance(account, txs, {
+      balanceType: 'online',
+      ensureNonNegative:true
+    });
+    // return await this.calculateAvailableBalanceOnline(account,tx) ;
   }
 
   async getRequiredDocuments(id: number): Promise<DocumentType[]> {
@@ -1058,10 +1120,95 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     account.avalaible_balance_online = total
     console.log('total ', total)
     await this.repo.save(account)
-    return total; // ou Math.max(0, total) si vous voulez forcer ≥ 0
+    return Math.max(total, 0);  
   }
 
+  async calculateBalance(
+    account: SavingsAccount,
+    transactions: TransactionSavingsAccount[],
+    options: {
+      balanceType: 'total' | 'available' | 'online';
+      ensureNonNegative?: boolean;
+    }
+  ): Promise<number> {
+    if (!transactions?.length) return 0;
 
+    const acctNum = account.number_savings_account;
+    
+    const balance = transactions.reduce((sum, tx) => {
+      let commission :number = 0;
+      if(tx.origin == acctNum ){
+        commission = tx.commission || 0;
+      }
+      console.log(commission)
+      // 1. Filtrage selon le type de balance
+      switch (options.balanceType) {
+        case 'available':
+          if (tx.is_locked && tx?.targetSavingsAccount?.number_savings_account === acctNum) {
+            return sum;
+          }
+          break;
+          
+        case 'online':
+          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE || tx.branch_id) {
+            return sum;
+          }
+          break;
+          
+        case 'total':
+        default:
+          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE) {
+            return sum;
+          }
+          break;
+      }
+
+
+      // 2. Logique de transfert interne (commune aux trois méthodes)
+      if (tx.originSavingsAccount && tx.targetSavingsAccount) {
+        const originNum = tx.originSavingsAccount.number_savings_account;
+        const targetNum = tx.targetSavingsAccount.number_savings_account;
+
+        if (targetNum === acctNum) return sum + tx.amount;
+        if (originNum === acctNum) {
+          if (options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') {
+            console.log('debit ',sum ,' ', (sum | 0) + (commission | 0))
+            return (sum | 0) + (commission | 0);
+          }
+          return sum - ((tx.amount | 0) + (commission | 0));
+        }
+        return sum;
+      }
+
+      // 3. Logique de crédit/débit standard
+      if (tx.transactionType?.is_credit === 1) {
+        return sum + ((tx.amount | 0) + (commission | 0));
+      } else {
+        if (options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') {
+          return sum;
+        }
+        return sum - ((tx.amount | 0) + (commission | 0));
+      }
+    }, 0);
+
+    // Mise à jour du compte selon le type de balance
+    switch (options.balanceType) {
+      case 'total':
+        account.balance = balance;
+        break;
+      case 'available':
+        account.avalaible_balance = balance;
+        break;
+      case 'online':
+        account.avalaible_balance_online = balance;
+        break;
+    }
+
+    await this.repo.save(account);
+    console.log(`${options.balanceType} balance`, balance);
+    
+    return options.ensureNonNegative ? Math.max(balance, 0) : balance;
+  }
 
 async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
   // 1) On récupère le résultat brut

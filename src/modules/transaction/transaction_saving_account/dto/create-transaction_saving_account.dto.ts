@@ -22,6 +22,7 @@ export class CreateTransactionSavingsAccountDto {
   @IsOptional()
   @Min(0)
   commission: number;
+  day_before_withdraw: number;
 
   @ApiProperty({ example: 1, description: 'ID Ressource' })
   @IsNumber()

@@ -28,38 +28,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -71,21 +40,6 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -110,7 +64,7 @@ export class TransactionSavingsAccountService {
   ) {}
 
    async perform_transaction(
-    dto:  CreateCreditTransactionSavingsAccountDto | CreateTransactionSavingsAccountDto ,
+    dto:  CreateCreditTransactionSavingsAccountDto | CreateTransactionSavingsAccountDto | CreateDebitTransactionSavingsAccountDto ,
     type_code: string,
     channel_code: string,
     provider_code: string,
@@ -147,13 +101,13 @@ export class TransactionSavingsAccountService {
     else if(!(dto).target_savings_account_code){
       // target = await this.savingsAccountService.findOneAdmin(dto.branch_id)
     }
-
     if (!target && dto.target_savings_account_code) {
       throw new NotFoundException(
         `Compte cible introuvable pour code : ${dto.target_savings_account_code}`,
       );
     }
-    // récupération du type, du canal et du provider
+
+    // récupération du type, du canal et du provider et ressource
     const txType = await this.transactionTypeService.findOneByCode(type_code);
     if (!txType) {
       throw new NotFoundException(`Type transaction invalide : ${type_code}`);
@@ -161,20 +115,10 @@ export class TransactionSavingsAccountService {
     let ressource :Ressource | null = null;
     if((dto  as CreateTransactionSavingsAccountDto).ressource_id)
       ressource = await this.savingsAccountService.getByIdAndSavingsAccount((dto  as CreateTransactionSavingsAccountDto).ressource_id,false);
-    if (!txType) {
-      throw new NotFoundException(`Type transaction invalide : ${type_code}`);
-    }
-    const isFirstTx = await this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
+
+    const isFirstTx = await this.isFirstTransaction(target) //Verifie si c'est la première transaction
     console.log('isFirstTx111', isFirstTx)
-    if(origin){
-      const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(origin?.id)
-      if(!Boolean(txType.is_credit) && (!docStatsTargetAccount.allRequiredValidated || origin.status != SavingsAccountStatus.ACTIVE) ){
-        if(this.can_refuse_transaction_type_for_debit(txType.code))
-          throw new NotFoundException(
-            `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,  
-          );
-      }
-    }
+
     const channel = await this.channelRepo.findOne({
       where: { code: channel_code },
     });
@@ -186,6 +130,18 @@ export class TransactionSavingsAccountService {
     if (!provider) {
       throw new NotFoundException(`Provider invalide : ${provider_code}`);
     }
+
+    // Vérification des documents requis pour le compte cible et la transaction est accepté
+    if(origin){
+      const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(origin?.id)
+      if(!Boolean(txType.is_credit) && (!docStatsTargetAccount.allRequiredValidated || origin.status != SavingsAccountStatus.ACTIVE) ){
+        if(this.can_refuse_transaction_type_for_debit(txType.code))
+          throw new NotFoundException(
+            `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,  
+          );
+      }
+    }
+
     const paymentCode = await this.generateUniquePaymentCode();
     const payment_token_provider = await this.generateUniquePaymentTokenProvider();
     const reference = this.formatTransactionReference(txType,provider.code);
@@ -207,9 +163,11 @@ export class TransactionSavingsAccountService {
     tx.originSavingsAccount = origin //(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
     tx.targetSavingsAccount = target // (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
     tx.payment_code = paymentCode;
+    tx.date_for_withdraw = (dto  as CreateTransactionSavingsAccountDto).day_before_withdraw ? new Date(Date.now() + (dto  as CreateTransactionSavingsAccountDto).day_before_withdraw * 24 * 60 * 60 * 1000) : new Date();
     tx.payment_token_provider = payment_token_provider; 
     tx.reference = await reference;
-    tx.token = dto.token ?? '986907875'
+    tx.token = dto.token ?? '986907875';
+
     // si c\'est la première transaction dans un compte 
     if(isFirstTx && target){
       const initial_deposit = await this.savingsAccountService.getInitialDeposit(target!.type_savings_account)
@@ -574,7 +532,7 @@ export class TransactionSavingsAccountService {
         throw new BadRequestException(
           `Solde insuffisant. Minimum requis: ${account?.type_savings_account.minimum_balance}`,
         );
-      }*/
+      }
 
       // 3. Vérifier la durée de blocage (ex: 6 mois)
       const accountAgeMonths = this.getAccountAgeMonths(
@@ -586,7 +544,7 @@ export class TransactionSavingsAccountService {
         throw new BadRequestException(
           `Durée de blocage non atteinte (${account!.type_savings_account.minimum_blocking_duration} mois requis)`,
         );
-      }
+      }*/
 
       // 4. Calculer les frais (ex: commission_per_product devenu account_opening_fee)
       const totalFees = account!.type_savings_account.account_opening_fee; // + autres frais si besoin
