@@ -3,6 +3,8 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateCol
 
 
 
+
+
 @Entity()
 export class RessourceType {
   @PrimaryGeneratedColumn()
@@ -40,7 +42,11 @@ export class RessourceType {
 
   @Column({ nullable: true })
   account_label: string;
+  @Column({ nullable: true, length: 20 })
+  branch_code: string;
 
+  @Column({ nullable: true, length: 10 })
+  country_code: string;
   @CreateDateColumn()
   created_at: Date;
 

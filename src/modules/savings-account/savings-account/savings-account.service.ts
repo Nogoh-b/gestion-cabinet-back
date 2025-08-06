@@ -72,6 +72,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -81,6 +83,8 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 
 
@@ -353,7 +357,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     ];
 
     if (all) {
-      relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
+      relations.push('originSavingsAccountTx', 'targetSavingsAccountTx'); 
     }
 
 
@@ -462,6 +466,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       fee_savings: 0.0,
       amount_created: 0,
       avalaible_balance: 0,
+      avalaible_balance_online:0,
       status: SavingsAccountStatus.PENDING,
       // code_product: dto.code_product,
       created_online: dto.created_online,

@@ -8,10 +8,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { RessourceType } from '../ressource-type/entities/ressource-type.entity';
 import { RessourceTypeService } from '../ressource-type/ressource-type.service';
 import { CreateRessourceDto } from './dto/create-ressource.dto';
 import { Ressource } from './entities/ressource.entity';
+
 
 
 
@@ -40,6 +42,10 @@ export class RessourceService extends BaseService<Ressource> {
     const item = this.repository.create(data);
     item.status = 1
     const ressource = await this.repository.save(item);
+
+    ressourceType.quantity -= data.quantity;
+    await this.ressourceTypeService.update(ressourceType.id, { quantity: ressourceType.quantity });
+    
     return  this.findOne(ressource.id)
   }
 

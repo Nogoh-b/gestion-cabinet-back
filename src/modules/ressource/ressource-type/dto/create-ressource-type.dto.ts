@@ -6,6 +6,7 @@ import { ApiProperty } from "@nestjs/swagger";
 
 
 
+
 export class CreateRessourceTypeDto {
  
   @ApiProperty({ example: 'Carnet de chèque' })
@@ -34,7 +35,12 @@ export class CreateRessourceTypeDto {
 
   @ApiProperty({ required: false, example: 'Compte courant client' })
   account_label?: string;
+  @ApiProperty({ example: 'BR001', required: false })
+  branch_code: string;
 
+  // ✅ Nouveau champ : country_code (au lieu de code_pays)
+  @ApiProperty({ example: 'CM', required: false })
+  country_code: string;
 
 
   @ApiProperty({ example: 100 })
