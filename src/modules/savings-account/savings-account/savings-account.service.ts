@@ -70,6 +70,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -79,6 +81,8 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 
 
@@ -1140,17 +1144,17 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if(tx.origin == acctNum ){
         commission = tx.commission || 0;
       }
-      console.log(commission)
+      // console.log(commission)
       // 1. Filtrage selon le type de balance
       switch (options.balanceType) {
         case 'available':
-          if (tx.is_locked && tx?.targetSavingsAccount?.number_savings_account === acctNum) {
+          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE  || (tx.is_locked && tx?.targetSavingsAccount?.number_savings_account === acctNum)) {
             return sum;
           }
           break;
           
         case 'online':
-          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE || tx.branch_id) {
+          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE || tx.branch_id || (tx.is_locked && tx?.targetSavingsAccount?.number_savings_account === acctNum)) {
             return sum;
           }
           break;

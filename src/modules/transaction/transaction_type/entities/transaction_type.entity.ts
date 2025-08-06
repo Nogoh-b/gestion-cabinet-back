@@ -12,7 +12,11 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColum
 
 
 
+
+
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
+
 
 
 
@@ -63,6 +67,12 @@ export enum TransactionCode {
   MOMO_WITHDRAW = 'MOMO_WITHDRAW',
   OM_WITHDRAW = 'OM_WITHDRAW',
   MIN_BALANCE = 'MIN_BALANCE',
+  COMMERCIAL_COMMISSION = 'COMMERCIAL_COMMISSION',
+  PARTNER_COMMISSION = 'PARTNER_COMMISSION',
+  COMMISSION_CASH_DEPOSIT_MFINANCE = 'COMMISSION_CASH_DEPOSIT_MFINANCE',
+  COMMISSION_CASH_DEPOSIT = 'COMMISSION_CASH_DEPOSIT',
+  COMMISSION_CASH_WITHDRAW = 'COMMISSION_CASH_WITHDRAW',
+  COMMISSION_CASH_WITHDRAW_MFINANCE = 'COMMISSION_CASH_WITHDRAW_MFINANCE',
 
 }
 export enum TransactionChannel {

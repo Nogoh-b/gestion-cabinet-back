@@ -11,6 +11,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -80,6 +82,38 @@ export class TransactionTypeSeeder {
         code: 'RESSOURCE_BUY',
         name: 'Payment D\'une resource',
         description: 'Souscription à une resource',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMISSION_CASH_DEPOSIT_MFINANCE',
+        name: 'Commission Cash DEPOSIT MFINANCE',
+        description: 'Commission sur les transactions Cash DEPOSIT MFINANCE',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMISSION_CASH_DEPOSIT',
+        name: 'Commission Cash DEPOSIT',
+        description: 'Commission sur les transactions Cash DEPOSIT',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMISSION_CASH_WITHDRAW',
+        name: 'Commission Cash WITHDRAW',
+        description: 'Commission sur les transactions Cash WITHDRAW',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMISSION_CASH_WITHDRAW_MFINANCE',
+        name: 'Commission Cash WITHDRAW MFINANCE',
+        description: 'Commission sur les transactions Cash WITHDRAW MFINANCE',
         is_credit: 0,
         fee_percentage: 0.0,
         status: 1,

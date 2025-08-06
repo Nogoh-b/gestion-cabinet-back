@@ -33,6 +33,23 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -40,6 +57,23 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -145,13 +179,14 @@ export class TransactionSavingsAccountService {
     const paymentCode = await this.generateUniquePaymentCode();
     const payment_token_provider = await this.generateUniquePaymentTokenProvider();
     const reference = this.formatTransactionReference(txType,provider.code);
+    const dayBeforeWithdraw = (dto as CreateTransactionSavingsAccountDto).day_before_withdraw ?? 0;
 
-
+    console.log('dayBeforeWithdraw', (dto as CreateTransactionSavingsAccountDto).day_before_withdraw )
     // création de l'entité transaction
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
     tx.is_locked = dto.is_locked ?? false;
-    tx.status =  0; 
+    tx.status =  origin && dayBeforeWithdraw === 0 ? 1 :0; 
     tx.branch_id = dto.branch_id ?? null; 
     tx.channelTransaction = channel;
     tx.provider = provider;
@@ -163,7 +198,8 @@ export class TransactionSavingsAccountService {
     tx.originSavingsAccount = origin //(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
     tx.targetSavingsAccount = target // (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
     tx.payment_code = paymentCode;
-    tx.date_for_withdraw = (dto  as CreateTransactionSavingsAccountDto).day_before_withdraw ? new Date(Date.now() + (dto  as CreateTransactionSavingsAccountDto).day_before_withdraw * 24 * 60 * 60 * 1000) : new Date();
+    tx.date_for_withdraw = dayBeforeWithdraw > 0 ? new Date(Date.now() + dayBeforeWithdraw * 24 * 60 * 60 * 1000) : new Date();
+    // tx.date_for_withdraw = (dto  as CreateTransactionSavingsAccountDto).day_before_withdraw ? new Date(Date.now() + (dto  as CreateTransactionSavingsAccountDto).day_before_withdraw * 24 * 60 * 60 * 1000) : new Date();
     tx.payment_token_provider = payment_token_provider; 
     tx.reference = await reference;
     tx.token = dto.token ?? '986907875';
@@ -180,10 +216,12 @@ export class TransactionSavingsAccountService {
       await entityManager.save(tx);
 
     });
-    // if(!Boolean(txType.is_credit) || channel_code != TransactionChannel.MOBILE || txType.code === TransactionCode.INTERNAL_TRANSFER  ){
-    if(!Boolean(txType.is_credit) || 
+    /*if(!Boolean(txType.is_credit) || 
     (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) || 
-    txType.code === TransactionCode.INTERNAL_TRANSFER  ){
+    txType.code === TransactionCode.INTERNAL_TRANSFER  ){    */
+    if((!Boolean(txType.is_credit) || 
+    (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) || 
+    txType.code === TransactionCode.INTERNAL_TRANSFER) && dayBeforeWithdraw === 0  ){
       
       this.validate(tx.id, isFirstTx)
       tx.status = 1
@@ -296,9 +334,12 @@ export class TransactionSavingsAccountService {
     });
     console.log(reference)
     if (!tx) throw new NotFoundException(`Transaction ${reference} non trouvé`);
+    if(tx.status === 1)
+      return tx
 
     const payment = await this.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
     if (payment.paymentStatus != PaymentStatusProvider.PENDING && payment.data && tx.channelTransaction.code === TransactionChannel.MOBILE) {
+      const isFirstTx = await this.isFirstTransaction(tx.targetSavingsAccount);
       console.log('payment', payment)
       tx.status_provider = payment.paymentStatus
       tx.status = PaymentStatus.PENDING
@@ -313,7 +354,9 @@ export class TransactionSavingsAccountService {
       else{
         tx.target = dataPayment.ref;
       }
-      this.update(tx)
+      if(tx.status === PaymentStatus.SUCCESSFULL){
+        return  await this.validate(tx.id, isFirstTx);
+      }
 
     }
     return tx; // ignore si inactif
@@ -589,6 +632,8 @@ export class TransactionSavingsAccountService {
       entity.status = 1;
       entity.status_provider = 'SUCCESSFULL';
       console.log('entity.entity.provider_code', entity.provider_code)
+
+      // mettre a jour les solde coté coti
       if(entity.provider_code == TransactionProvider.OM || entity.provider_code == TransactionProvider.MOMO ){
         const updated_sold = await this.mcotiService.callMcotiEndpoint(
               'POST',
@@ -613,6 +658,10 @@ export class TransactionSavingsAccountService {
       adminSa = await this.savingsAccountService.findOneAdmin(target?.branch_id);
     }
 
+    let mendoCoSa: SavingsAccount |  null = null;
+    if (process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT) {
+      mendoCoSa = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT));
+    }
     // const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     await this.repo.manager.transaction(async (entityManager) => {
 
@@ -676,7 +725,7 @@ export class TransactionSavingsAccountService {
             comercial = await this.commissionService.getByCode(target.commercial_code);
             if(comercial && comercial.saving_account){
             // Transaction pour le le partenaire
-            const txTypePartner = await this.transactionTypeService.findOneByCode('PARTNER_COMMISSION');
+            const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMERCIAL_COMMISSION);
             const providerOpenProduct = await this.providerService.findOne('SYSTEM');
             const fifthTx = new TransactionSavingsAccount();
             Object.assign(fifthTx, txData);
@@ -711,7 +760,7 @@ export class TransactionSavingsAccountService {
             partner = await this.partnerService.getByCode(target.promo_code);
             if(partner && partner.saving_account){
             // Transaction pour le le partenaire
-            const txTypePartner = await this.transactionTypeService.findOneByCode('PARTNER_COMMISSION');
+            const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.PARTNER_COMMISSION);
             const providerOpenProduct = await this.providerService.findOne('SYSTEM');
             const fourthTx = new TransactionSavingsAccount();
             Object.assign(fourthTx, txData);
@@ -734,11 +783,56 @@ export class TransactionSavingsAccountService {
               fourthTx.channelTransaction = chanelOpenProduct;
             }
             const r = await entityManager.save(fourthTx);
-            console.log('rrrr ', r.id)
+            console.log('rrrr ', tx.commission)
             // this.savingsAccountService.updateBalance(partner.saving_account.id)
           }
         }
-      
+
+        if (tx.commission && tx.commission > 0) {
+            const commissionCash = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_CASH_DEPOSIT);
+            const providerOpenProduct = await this.providerService.findOne('SYSTEM');
+            const commissionTx = new TransactionSavingsAccount();
+            Object.assign(commissionTx, txData);
+            commissionTx.amount = tx.commission;
+            commissionTx.transactionType = commissionCash;
+            commissionTx.provider = providerOpenProduct;
+            commissionTx.targetSavingsAccount = adminSa;
+            commissionTx.target = adminSa?.number_savings_account;
+            commissionTx.originSavingsAccount = null;
+            commissionTx.origin = 'SYSTEM';
+            commissionTx.promo_code = null;
+            commissionTx.payment_code = await this.generateUniquePaymentCode();
+            commissionTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
+            commissionTx.reference = await this.formatTransactionReference(commissionTx.transactionType,providerOpenProduct.code);
+            commissionTx.status = TransactionSavingsAccountStatus.VALIDATE;
+            commissionTx.is_locked = false;
+            // commissionTx.tx_parent_id = tx.id;
+            commissionTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
+            if (chanelOpenProduct !== null) {
+              commissionTx.channelTransaction = chanelOpenProduct;
+            }
+            const r = await entityManager.save(commissionTx);
+
+
+            const { id, ...commissionTxData } = r;
+            const commissionCashFinance = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_CASH_DEPOSIT_MFINANCE);
+
+            const commissionTxMC = new TransactionSavingsAccount(); // Create new instance
+            Object.assign(commissionTxMC, commissionTxData);
+            if(mendoCoSa){
+              commissionTxMC.targetSavingsAccount = mendoCoSa;
+              commissionTxMC.target = mendoCoSa?.number_savings_account;
+            }
+            commissionTxMC.transactionType = commissionCashFinance;
+            commissionTxMC.originSavingsAccount = adminSa;
+            commissionTxMC.origin = adminSa?.number_savings_account;
+            commissionTxMC.payment_code = await this.generateUniquePaymentCode();
+            commissionTxMC.amount = 2;
+            commissionTxMC.payment_token_provider = await this.generateUniquePaymentTokenProvider();
+            commissionTxMC.reference = await this.formatTransactionReference(commissionTxMC.transactionType,providerOpenProduct.code);
+            const rs = await entityManager.save(commissionTxMC);
+            console.log('rrrr ', r.id)
+        }
 
         console.log('target.commercial_code) ', target.commercial_code)
         console.log('target.promo_code) ', target.promo_code)

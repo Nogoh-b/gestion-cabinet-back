@@ -11,6 +11,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -22,7 +23,7 @@ export class CreateTransactionSavingsAccountDto {
   @IsOptional()
   @Min(0)
   commission: number;
-  day_before_withdraw: number;
+  day_before_withdraw ?: number;
 
   @ApiProperty({ example: 1, description: 'ID Ressource' })
   @IsNumber()

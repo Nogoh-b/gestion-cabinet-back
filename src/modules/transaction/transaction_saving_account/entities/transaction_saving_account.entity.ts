@@ -13,8 +13,16 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 
+
+
+
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
+
+
+
 
 
 
@@ -173,6 +181,9 @@ export class TransactionSavingsAccount {
   @Column()
   transaction_type_id: number; // Référence du type de transaction
 
+  @Column({ type: 'int', nullable: true })
+  tx_parent_id: number; // Référence du type de transaction
+
   @Column({ nullable: true, type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   date_for_withdraw: Date;
 
@@ -181,6 +192,9 @@ export class TransactionSavingsAccount {
 
   @UpdateDateColumn()
   updated_at: Date; // Date de mise à jour
+
+  @JoinColumn({ name: 'tx_parent_id', referencedColumnName: 'id' })
+  tx_parent?: TransactionSavingsAccount | null;
 
   @ManyToOne(() => SavingsAccount, acc => acc.originSavingsAccountTx, {eager: true  })
   @JoinColumn({ name: 'origin_savings_account_id', referencedColumnName: 'id' })
