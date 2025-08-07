@@ -22,6 +22,7 @@ import {
 
 
 
+
 @Entity('partner')
 export class Partner extends BaseEntity {
   /*@PrimaryGeneratedColumn()
@@ -63,8 +64,8 @@ export class Partner extends BaseEntity {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @OneToMany(() => SavingsAccount, account => account.partner)
-  created_savings_accounts: SavingsAccount[];
+  // @OneToMany(() => SavingsAccount, account => account.partner)
+  // created_savings_accounts: SavingsAccount[];
 
   /*@BeforeInsert()
   async generateUniqueCode(): Promise<void> {

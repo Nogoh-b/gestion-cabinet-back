@@ -44,6 +44,7 @@ import { Not, Repository } from 'typeorm';
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -53,6 +54,7 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 @Injectable()
@@ -425,9 +427,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
     });
     if(partner && partner.code)
-      account.partner = partner;
+      account.promo_code = partner.code;
     if(commercial && commercial.code)
-      account.commercial = commercial;
+      account.commercial_code = commercial.code;
 
     if(dto.location_city_id){
       this.customerService.update(customer.id, {

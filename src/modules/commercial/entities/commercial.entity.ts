@@ -3,17 +3,18 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import {
-    Entity, Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    ManyToOne,
-    JoinColumn,
-    BeforeInsert,
-    Index,
-    BaseEntity,
-    OneToMany,
-    PrimaryColumn
+  Entity, Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  BeforeInsert,
+  Index,
+  BaseEntity,
+  OneToMany,
+  PrimaryColumn
 } from 'typeorm';
+
 
 
 
@@ -59,8 +60,8 @@ export class Commercial extends BaseEntity {
     @UpdateDateColumn()
     updated_at: Date;
   
-    @OneToMany(() => SavingsAccount, account => account.partner)
-    created_savings_accounts: SavingsAccount[];
+    // @OneToMany(() => SavingsAccount, account => account.partner)
+    // created_savings_accounts: SavingsAccount[];
   
     @BeforeInsert()
     async setIncrementalCode(): Promise<void> {
