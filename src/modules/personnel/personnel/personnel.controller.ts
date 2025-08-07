@@ -10,11 +10,17 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 
 
+
+
+
 import { PersonnelTypeCode } from '../type_personnel/entities/type_personnel.entity';
 import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
 import { PersonnelService } from './personnel.service';
+
+
+
 
 
 
@@ -58,12 +64,12 @@ export class PersonnelController {
     return this.personnel_service.remove(id);
   }
 
-  @Get(':code/check')
+  @Get(':type_personnel/check/:code')
   @ApiOperation({ summary: 'Détaille un partenaire' })
   @ApiParam({ name: 'code', description: 'ID du partenaire', type: String })
   @ApiResponse({ status: 200, description: 'Partenaire trouvé', type: Personnel })
   @ApiResponse({ status: 404, description: 'Partenaire introuvable' })
-  checkPromoCode(@Param('code') code: string, @Query('type_personnel') type_personnel: PersonnelTypeCode) {
+  checkPromoCode(@Param('code') code: string, @Param('type_personnel') type_personnel: PersonnelTypeCode) {
       return this.personnel_service.checkCode(code, type_personnel);
   }
 
