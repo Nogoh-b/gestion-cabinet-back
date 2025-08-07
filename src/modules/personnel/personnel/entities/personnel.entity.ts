@@ -11,7 +11,11 @@ import { ApiProperty } from '@nestjs/swagger';
 
 
 
+
+
 import { TypePersonnel } from '../../type_personnel/entities/type_personnel.entity';
+
+
 
 
 
@@ -42,6 +46,9 @@ export class Personnel extends BaseEntity {
   @ApiProperty({ type: () => SavingsAccount })
   savings_account: SavingsAccount;
 
+  
+  @Column({ length: 20,  nullable: true })
+  name: string ;
   
   @Column({ length: 20, unique: true, nullable: true })
   code: string;

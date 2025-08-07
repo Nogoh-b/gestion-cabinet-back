@@ -16,9 +16,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
 import { CommercialModule } from '../commercial/commercial.module';
 import { PartnerModule } from '../partner/partner.module';
-import { PersonnelModule } from '../personnel/personnel/personnel.module';
+import { PersonnelModule } from '../personnel/personnel.module';
 import { ProviderModule } from '../provider/provider.module';
 import { QueueModule } from '../queue/queue.module';
 import { SavingsAccountModule } from '../savings-account/savings-account.module';
@@ -32,6 +33,7 @@ import { TransactionType } from './transaction_type/entities/transaction_type.en
 import { TransactionTypeController } from './transaction_type/transaction_type.controller';
 import { TransactionTypeService } from './transaction_type/transaction_type.service';
 import { TransactionTypeSeeder } from './transaction_type/transaction-type.seeder';
+
 
 
 

@@ -12,7 +12,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -87,34 +86,45 @@ export class TransactionTypeSeeder {
         status: 1,
       },
       {
-        code: 'COMMISSION_CASH_DEPOSIT_MFINANCE',
-        name: 'Commission Cash DEPOSIT MFINANCE',
-        description: 'Commission sur les transactions Cash DEPOSIT MFINANCE',
+        code: 'COMMISSION_CASH_OM_MFINANCE',
+        name: 'Commission Cash OM MFINANCE',
+        description: 'Commission sur les transactions Cash OM MFINANCE',
         is_credit: 0,
         fee_percentage: 0.0,
         status: 1,
       },
       {
-        code: 'COMMISSION_CASH_DEPOSIT',
-        name: 'Commission Cash DEPOSIT',
-        description: 'Commission sur les transactions Cash DEPOSIT',
-        is_credit: 0,
+        code: 'COMMISSION_CASH_MOMO',
+        name: 'Commission Cash MOMO',
+        description: 'Commission sur les transactions Cash MOMO',
+        is_credit: 1,
         fee_percentage: 0.0,
         status: 1,
       },
       {
-        code: 'COMMISSION_CASH_WITHDRAW',
-        name: 'Commission Cash WITHDRAW',
-        description: 'Commission sur les transactions Cash WITHDRAW',
+        code: 'COMMISSION_CASH_OM',
+        name: 'Commission Cash OM',
+        description: 'Commission sur les transactions Cash OM',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+
+
+      {
+        code: 'COMMISSION_CASH_MOMO_MFINANCE',
+        name: 'Commission Cash MOMO MFINANCE',
+        description: 'Commission sur les transactions Cash MOMO MFINANCE',
         is_credit: 0,
         fee_percentage: 0.0,
         status: 1,
       },
+      
       {
-        code: 'COMMISSION_CASH_WITHDRAW_MFINANCE',
-        name: 'Commission Cash WITHDRAW MFINANCE',
-        description: 'Commission sur les transactions Cash WITHDRAW MFINANCE',
-        is_credit: 0,
+        code: 'COMMISSION_PERSONNEL',
+        name: 'Commission PERSONNEL',
+        description: 'Commission sur les transactions reverssé au personnel',
+        is_credit: 1,
         fee_percentage: 0.0,
         status: 1,
       },

@@ -9,11 +9,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { AgenciesModule } from '../agencies/agencies.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { PartnerModule } from '../partner/partner.module';
+import { PersonnelModule } from '../personnel/personnel.module';
 import { RessourceModule } from '../ressource/ressource.module';
 import { TransactionModule } from '../transaction/transaction.module';
 import { CommissionController } from './commission/commission.controller';
@@ -34,7 +39,10 @@ import { TypeHasDocument } from './type-savings-account/entities/type-has-docume
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
-import { PersonnelModule } from '../personnel/personnel/personnel.module';
+
+
+
+
 
 
 

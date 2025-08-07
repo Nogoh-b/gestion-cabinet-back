@@ -21,7 +21,10 @@ import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.en
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 
 
+import { PersonnelTypeCode } from 'src/modules/personnel/type_personnel/entities/type_personnel.entity';
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
+
+
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 
 
@@ -30,19 +33,28 @@ import { RessourceService } from 'src/modules/ressource/ressource/ressource.serv
 
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
-
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
+
 
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 
 
 import { Not, Repository } from 'typeorm';
-
-
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
+
+
 
 
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
@@ -57,9 +69,22 @@ import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
   constructor(
+    @Inject(forwardRef(() => PersonnelService))
+    private readonly personnelService: PersonnelService,
     @InjectRepository(SavingsAccount)
     private readonly repo: Repository<SavingsAccount>,
     @InjectRepository(Branch)
@@ -83,8 +108,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @Inject(forwardRef(() => PartnerService))
     // private partnerService: PartnerService,
     // private commercialService: CommercialService,
-    @Inject(forwardRef(() => PersonnelService))
-    private readonly personnelService: PersonnelService,
+    // @Inject(forwardRef(() => PersonnelService))
     private readonly ressourceService: RessourceService,
      private readonly otpService: OtpService
   ) { super(); console.log(forwardRef) }
@@ -351,6 +375,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     dto: CreateSavingsAccountDto,
     is_admin = false
   ): Promise<SavingsAccountResponseDto> {
+
+
     if(is_admin){
       const acc = await this.repo.findOne({ where: { is_admin, branch_id: dto.branch_id  } });
       if (acc) throw new NotFoundException(`Compte Admin déjà existant`);
@@ -376,16 +402,16 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (dto.promo_code) {
       console.log('dto.code_promo ' ,dto)
       partner = await this.personnelService.findOneByCode(dto.promo_code);
-      if (!partner) {
+      if (!partner || partner.type_personnel.code !== PersonnelTypeCode.PARTNER) {
         throw new NotFoundException('Partner introuvable');
       }
     }
 
     let commercial : Personnel | null = new Personnel();
     if (dto.commercial_code) {
-      console.log('dto.commercial_code ' ,dto)
       commercial = await this.personnelService.findOneByCode(dto.commercial_code);
-      if (!commercial) {
+      console.log('dto.commercial_code ' ,commercial.type_personnel)
+      if (!commercial || commercial.type_personnel.code !== PersonnelTypeCode.COMMERCIAL) {
         throw new NotFoundException('Commercial introuvable ' + dto.commercial_code );
       }
     }
@@ -960,7 +986,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       }
     }, 0);
     account.balance = total
-    console.log('total ', total)
+    // console.log('total ', total)
     await this.repo.save(account)
     return total; // ou Math.max(0, total) si vous voulez forcer ≥ 0
   }
@@ -1091,7 +1117,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     
     const balance = transactions.reduce((sum, tx) => {
       let commission :number = 0;
-      if(tx.origin == acctNum ){
+      if(tx.originSavingsAccount?.number_savings_account == acctNum ){
         commission = tx.commission || 0;
       }
       // console.log(commission)
@@ -1159,7 +1185,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     }
 
     await this.repo.save(account);
-    console.log(`${options.balanceType} balance`, balance);
+    // console.log(`${options.balanceType} balance`, balance);
     
     return options.ensureNonNegative ? Math.max(balance, 0) : balance;
   }

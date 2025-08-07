@@ -13,6 +13,10 @@ export class CreatePersonnelDto {
 
 
   @Length(1, 20)
+  @ApiProperty({ example: 'Mous' })
+  name: string;
+
+  @Length(1, 20)
   @ApiProperty({ example: 'PROMO2025CODEX' })
   code: string;
 }
