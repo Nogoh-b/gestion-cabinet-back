@@ -34,6 +34,7 @@ import { TypeHasDocument } from './type-savings-account/entities/type-has-docume
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
+import { PersonnelModule } from '../personnel/personnel/personnel.module';
 
 
 
@@ -49,6 +50,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
     forwardRef(() => PartnerModule),
     forwardRef(() => CommercialModule),
     forwardRef(() => CoreModule),
+    forwardRef(() => PersonnelModule),
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,

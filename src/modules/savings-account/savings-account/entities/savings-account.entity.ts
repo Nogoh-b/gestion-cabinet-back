@@ -1,9 +1,7 @@
 
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
-import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { Partner } from 'src/modules/partner/entities/partner.entity';
 
 
 
@@ -34,6 +32,7 @@ import {
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 
 
 
@@ -134,13 +133,13 @@ export class SavingsAccount extends BaseEntity {
   @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
   commercial_code: string | null;
 
-  @ManyToOne(() => Partner)
-  @JoinColumn({ name: 'promo_code' })
-  partner: Partner | null;
+  @ManyToOne(() => Personnel)
+  @JoinColumn({ name: 'promo_code', referencedColumnName: 'code' })
+  partner: Personnel | null;
 
-  @ManyToOne(() => Commercial)
-  @JoinColumn({ name: 'commercial_code' })
-  commercial: Commercial | null;
+  @ManyToOne(() => Personnel)
+  @JoinColumn({ name: 'commercial_code', referencedColumnName: 'code' })
+  commercial: Personnel | null;
 
 
   // Relations

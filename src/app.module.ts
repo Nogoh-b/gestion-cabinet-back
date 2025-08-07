@@ -24,6 +24,7 @@ import { QueueModule } from './modules/queue/queue.module';
 import { RessourceModule } from './modules/ressource/ressource.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
+import { PersonnelModule } from './modules/personnel/personnel.module';
 
 
 
@@ -91,7 +92,8 @@ dotenv.config();
     QueueModule,
     PartnerModule,
     CommercialModule,
-    RessourceModule
+    RessourceModule,
+    PersonnelModule
   ],
   controllers: [AppController],
   providers: [AppService],

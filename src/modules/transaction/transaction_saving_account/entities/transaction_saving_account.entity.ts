@@ -2,23 +2,26 @@ import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
 import { Partner } from 'src/modules/partner/entities/partner.entity';
 
 
+import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 import { Provider } from 'src/modules/provider/provider/entities/provider.entity';
+
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
-
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm';
-
-
-
-
-
-
-
-
-
 
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -181,6 +184,10 @@ export class TransactionSavingsAccount {
   @Column()
   transaction_type_id: number; // Référence du type de transaction
 
+  @Index()
+  @Column()
+  personnel_id: number; 
+
   @Column({ type: 'int', nullable: true })
   tx_parent_id: number; // Référence du type de transaction
 
@@ -203,6 +210,10 @@ export class TransactionSavingsAccount {
   @ManyToOne(() => Ressource, acc => acc.savings_account, {eager: true  })
   @JoinColumn({ name: 'ressource_id', referencedColumnName: 'id' })
   ressource?: Ressource | null;; // Relation vers SavingsAccount
+
+  @ManyToOne(() => Personnel, acc => acc.savings_account, {eager: true  })
+  @JoinColumn({ name: 'personnel_id', referencedColumnName: 'id' })
+  personnel?: Personnel | null;; // Relation vers SavingsAccount
 
   @ManyToOne(() => SavingsAccount, acc => acc.targetSavingsAccountTx, {eager: true  })
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })

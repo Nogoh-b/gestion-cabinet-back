@@ -14,6 +14,7 @@ import { swaggerConfig } from './core/config/swagger.config';
 import { SuperAdminSeeder } from './core/database/seeders/super-admin.seeder';
 import { ProviderSeeder } from './modules/provider/provider/provider.seeder';
 import { TransactionTypeSeeder } from './modules/transaction/transaction_type/transaction-type.seeder';
+import { TypePersonnelSeeder } from './modules/personnel/type_personnel/seed-type-personnel';
 
 
 dotenv.config();
@@ -52,10 +53,12 @@ async function bootstrap() {
     const seederAdmin = app.get(SuperAdminSeeder);
     const txType = app.get(TransactionTypeSeeder);
     const providerSeeder = app.get(ProviderSeeder);
+    const typePersonnelSeeder = app.get(TypePersonnelSeeder);
     await seeder.seed();
     await seederAdmin.seed();
     await txType.seed();
     await providerSeeder.seed();
+    await typePersonnelSeeder.seed();
     // Configuration Swagger
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api-docs', app, document, {

@@ -7,17 +7,18 @@ import { BaseService } from 'src/core/shared/services/search/base.service';
 
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 
-import { CommercialService } from 'src/modules/commercial/commercial.service';
-import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 
-import { Partner } from 'src/modules/partner/entities/partner.entity';
 
 
 import { PartnerService } from 'src/modules/partner/partner.service';
 
+
+
+import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
+import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 
 
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
@@ -25,54 +26,23 @@ import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.en
 
 
 import { RessourceService } from 'src/modules/ressource/ressource/ressource.service';
+
+
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
 
 import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
-
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
-
 
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 
+
 import { Not, Repository } from 'typeorm';
 
+
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
@@ -83,34 +53,6 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Injectable()
@@ -137,9 +79,10 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @Inject(forwardRef(() => CustomersService))
     private customerService: CustomersService,
     @Inject(forwardRef(() => PartnerService))
-    private partnerService: PartnerService,
-    @Inject(forwardRef(() => CommercialService))
-    private commercialService: CommercialService,
+    // private partnerService: PartnerService,
+    // private commercialService: CommercialService,
+    @Inject(forwardRef(() => PersonnelService))
+    private readonly personnelService: PersonnelService,
     private readonly ressourceService: RessourceService,
      private readonly otpService: OtpService
   ) { super(); console.log(forwardRef) }
@@ -427,19 +370,19 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         throw new NotFoundException('Compte parrain introuvable');
       }
     }*/
-    let partner : Partner | null = new Partner();
+    let partner : Personnel | null = new Personnel();
     if (dto.promo_code) {
       console.log('dto.code_promo ' ,dto)
-      partner = await this.partnerService.getByCode(dto.promo_code);
+      partner = await this.personnelService.findOneByCode(dto.promo_code);
       if (!partner) {
         throw new NotFoundException('Partner introuvable');
       }
     }
 
-    let commercial : Commercial | null = new Commercial();
+    let commercial : Personnel | null = new Personnel();
     if (dto.commercial_code) {
       console.log('dto.commercial_code ' ,dto)
-      commercial = await this.commercialService.getByCode(dto.commercial_code);
+      commercial = await this.personnelService.findOneByCode(dto.commercial_code);
       if (!commercial) {
         throw new NotFoundException('Commercial introuvable ' + dto.commercial_code );
       }
@@ -481,9 +424,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       } as TypeSavingsAccount,
 
     });
-    if(partner && partner.promo_code)
+    if(partner && partner.code)
       account.partner = partner;
-    if(commercial && commercial.commercial_code)
+    if(commercial && commercial.code)
       account.commercial = commercial;
 
     if(dto.location_city_id){
@@ -1361,6 +1304,25 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     const ressource = await this.ressourceService.getByIdAndSavingsAccount(id, strict);
     if (!ressource && strict) throw new NotFoundException('Ressource non trouvée pour ce compte');
     return ressource;
+  }
+
+    async findFirstOnlineByCustomer(customer_id: number): Promise<SavingsAccount | null> {
+    return this.repo.findOne({
+      where: {
+        customer: { id: customer_id },
+        created_online: 1,
+      },
+      order: { id: 'ASC' },
+    });
+  }
+
+  async findFirstByCustomer(customer_id: number): Promise<SavingsAccount | null> {
+    return this.repo.findOne({
+      where: {
+        customer: { id: customer_id },
+      },
+      order: { id: 'ASC' },
+    });
   }
 
 }
