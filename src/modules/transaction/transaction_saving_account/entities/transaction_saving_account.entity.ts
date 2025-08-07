@@ -25,8 +25,10 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -198,7 +200,7 @@ export class TransactionSavingsAccount {
   @Column()
   transaction_type_id: number; // Référence du type de transaction
 
-  @Column({nullable: true})
+  @Column({nullable: true, default: null})
   personnel_id: number; 
 
   @Column({ type: 'int', nullable: true })
