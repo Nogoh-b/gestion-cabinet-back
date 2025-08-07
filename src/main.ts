@@ -60,7 +60,7 @@ async function bootstrap() {
     await seederAdmin.seed();
     await txType.seed();
     await providerSeeder.seed();
-    // await typePersonnelSeeder.seed();
+    await typePersonnelSeeder.seed();
     // Configuration Swagger
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api-docs', app, document, {
