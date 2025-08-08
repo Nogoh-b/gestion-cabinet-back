@@ -1,5 +1,5 @@
 // savings-account-response.dto.ts
-import { Expose, Transform, Type } from 'class-transformer';
+import { Exclude, Expose, Transform, Type } from 'class-transformer';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
@@ -20,10 +20,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
+
 import { DocumentSavingAccountResponseDto } from '../../document-saving-account/dto/response-document-saving-account.dto';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from '../entities/account-has-interest.entity';
 import { SavingsAccount } from '../entities/savings-account.entity';
+
+
 
 
 
@@ -104,6 +108,7 @@ export class SavingsAccountResponseDto {
 
   @Expose()
   @Transform(({ obj }) => {
+    console.log('obj.targetSavingsAccountTx', obj.targetSavingsAccountTx);
     // 1) On récupère uniquement les tx à status = 1
     const filteredTxs: TransactionSavingsAccount[] = (obj.targetSavingsAccountTx ?? [])
       .filter(tx => tx.status === 1);
@@ -127,10 +132,10 @@ export class SavingsAccountResponseDto {
   @Type(() => Boolean)
   has_init_transaction: boolean;
 
-  // @Exclude()
+  @Exclude()
   originSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
 
-  // @Exclude()
+  @Exclude()
   targetSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
 
   @Expose()
