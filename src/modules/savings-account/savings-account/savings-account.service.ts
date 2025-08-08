@@ -59,6 +59,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -68,6 +71,9 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
 
 
 
@@ -268,7 +274,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     data,
   };
   }
-  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto> {
+  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
         const relations = [
       'customer',
       'type_savings_account',
@@ -279,9 +285,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    if (all) {
+    // if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
-    }
+    // }
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations,
@@ -296,7 +302,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     /*const sa = await this.updateCodeCash(account.id)
     if(sa && sa.code_cash)
       account.code_cash = sa.code_cash;*/
-    return plainToInstance(SavingsAccountResponseDto, account);
+    return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
   async findOneAdmin(branch_id: number = 1): Promise<SavingsAccount> {
@@ -330,9 +336,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    if (all) {
+    // if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx'); 
-    }
+    // }
 
 
     const account = await this.repo.findOne({
