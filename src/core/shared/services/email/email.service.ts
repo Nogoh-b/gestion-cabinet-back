@@ -59,12 +59,16 @@ export class EmailService {
     });
   }
 
-  async sendPasswordResetEmail(to: string, resetLink: string): Promise<boolean> {
+  async sendPasswordResetEmail(to: string, message: string): Promise<boolean> {
     return this.sendMail({
+
       to,
-      subject: 'Réinitialisation de votre mot de passe',
-      message: 'reset-password',
-      context: { resetLink },
+      subject: 'Bienvenue sur notre plateforme !',
+      message,
+      context: {
+        name: '',
+        message
+      },
     });
   }
 

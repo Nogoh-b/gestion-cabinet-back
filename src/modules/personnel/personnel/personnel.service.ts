@@ -19,11 +19,17 @@ import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/commo
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
+
 import { PersonnelTypeCode } from '../type_personnel/entities/type_personnel.entity';
 import { TypePersonnelService } from '../type_personnel/type_personnel.service';
 import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
+
+
+
 
 
 
@@ -185,7 +191,8 @@ export class PersonnelService extends BaseService<Personnel> {
     if(doc)
       file_path = doc.file_path
       let promo_code_reduction 
-      if(personnel.type_personnel.code !== type_personnel)
+      console.log('type_personnel', personnel.savings_account.type_savings_account)
+      if(type_personnel === PersonnelTypeCode.PARTNER)
         promo_code_reduction = personnel.savings_account.type_savings_account.promo_code_reduction
     return {name, promo_code_reduction, file_path};
   }

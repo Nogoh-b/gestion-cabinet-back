@@ -67,6 +67,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -74,6 +85,17 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -139,7 +161,7 @@ export class TransactionSavingsAccountService {
     provider_code: string,
     to_agency = false
   ): Promise<ResponseTransactionSavingsAccountDto> {
-    channel_code = dto.branch_id ? 'BRANCH' : 'MOBILE'
+    // channel_code = dto.branch_id ? 'BRANCH' : 'MOBILE'
   
     if ((dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code === dto.target_savings_account_code) {
       throw new BadRequestException(`Transfert vers le même compte interdit `);
@@ -353,7 +375,8 @@ export class TransactionSavingsAccountService {
     dto: CreateTransactionSavingsAccountDto,
   ): Promise<ResponseTransactionSavingsAccountDto> {
     // maniere speciale pour virement interne
-    return  await this.perform_transaction(dto, 'INTERNAL_TRANSFER', 'BRANCH', 'SYSTEM');
+    const channel_code = dto.branch_id ? 'BRANCH' : 'MOBILE'
+    return  await this.perform_transaction(dto, 'INTERNAL_TRANSFER', channel_code, 'SYSTEM');
   }
 
 
@@ -646,18 +669,18 @@ export class TransactionSavingsAccountService {
    /* const min_blances = await this.findAllByTypeSimple('0','MIN_BALANCE',target?.number_savings_account)
     console.log(min_blances) 
     return min_blances.length === 0*/
-    // console.log('isFirstTransaction ', target && !target.targetSavingsAccountTx)
-    if(target && !target.targetSavingsAccountTx )
-      return true
-      
+    console.log('isFirstTransaction ', target?.targetSavingsAccountTx)
     if(target?.is_admin){
       return false
     }
+    if(target && (!target.targetSavingsAccountTx  || target?.is_admin))
+      return true
+      
 
     let hasFirstDeposit = true
     if(target){
         for (const tx of target.targetSavingsAccountTx || []) {
-            if (tx.transactionType?.is_credit && tx.status === PaymentStatus.SUCCESSFULL) {
+            if (tx.status === PaymentStatus.SUCCESSFULL) {
                 hasFirstDeposit = false;
                 break; // Sortie immédiate de la boucle 
             }
@@ -836,6 +859,45 @@ export class TransactionSavingsAccountService {
           }
         }
 
+              // Transaction pour le personnel
+        const personnels = await this.personnelService.findAllExceptCommercialAndPartner()
+        for (const personnel of personnels) {
+          console.log('personnel', personnel.savings_account.id)
+          //|| tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER
+          if(!personnel.savings_account || !target )
+            continue;
+          const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_PERSONNEL);
+          const provider = await this.providerService.findOne('SYSTEM');
+          const personnelTx = new TransactionSavingsAccount();
+          Object.assign(personnelTx, txData);
+          let amount = Math.round((tx.amount * target!.type_savings_account[`commission_${personnel.type_personnel.code.toLocaleLowerCase()}`])/100)
+          if(personnel.type_personnel.code === PersonnelTypeCode.MEMBRE)
+            amount = amount / await this.personnelService.findAllMembersLength(personnels);
+          console.log('personnelTx.amount) ', personnelTx.amount)
+
+          personnelTx.amount = amount 
+          personnelTx.transactionType = txTypePartner;
+          personnelTx.provider = provider;
+          personnelTx.targetSavingsAccount = personnel?.savings_account;
+          personnelTx.target = personnel?.savings_account.number_savings_account;
+          personnelTx.originSavingsAccount = personnel.savings_account;
+          personnelTx.origin = adminSa?.number_savings_account;
+          personnelTx.commercial_code = null;
+          personnelTx.payment_code = await this.generateUniquePaymentCode();
+          personnelTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
+          personnelTx.reference = await this.formatTransactionReference(personnelTx.transactionType,provider.code);
+          personnelTx.is_locked = true;
+          personnelTx.tx_parent_id = tx.id;
+          personnelTx.personnel = personnel;
+          personnelTx.status = TransactionSavingsAccountStatus.VALIDATE;
+          personnelTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
+          if (chanelOpenProduct !== null) {
+            personnelTx.channelTransaction = chanelOpenProduct;
+          }
+          const r = await entityManager.save(personnelTx);
+          this.savingsAccountService.updateBalance(personnel.savings_account.id)
+        }
+
 
 
         console.log('target.commercial_code) ', target.commercial_code)
@@ -847,56 +909,12 @@ export class TransactionSavingsAccountService {
       }
 
 
-      /*if (tx.commission && tx.commission > 0) {
-            const commissionCash = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_CASH_DEPOSIT);
-            const providerOpenProduct = await this.providerService.findOne('SYSTEM');
-            const commissionTx = new TransactionSavingsAccount();
-            Object.assign(commissionTx, txData);
-            commissionTx.amount = tx.commission;
-            commissionTx.transactionType = commissionCash;
-            commissionTx.provider = providerOpenProduct;
-            commissionTx.targetSavingsAccount = adminSa;
-            commissionTx.target = adminSa?.number_savings_account;
-            commissionTx.originSavingsAccount = null;
-            commissionTx.origin = 'SYSTEM';
-            commissionTx.promo_code = null;
-            commissionTx.payment_code = await this.generateUniquePaymentCode();
-            commissionTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
-            commissionTx.reference = await this.formatTransactionReference(commissionTx.transactionType,providerOpenProduct.code);
-            commissionTx.status = TransactionSavingsAccountStatus.VALIDATE;
-            commissionTx.is_locked = false;
-            commissionTx.tx_parent_id = tx.id;
-            commissionTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
-            if (chanelOpenProduct !== null) {
-              commissionTx.channelTransaction = chanelOpenProduct;
-            }
-            const r = await entityManager.save(commissionTx);
 
-
-            const { id, ...commissionTxData } = r;
-            const commissionCashFinance = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_CASH_DEPOSIT_MFINANCE);
-
-            const commissionTxMC = new TransactionSavingsAccount(); // Create new instance
-            Object.assign(commissionTxMC, commissionTxData);
-            if(mendoCoSa){
-              commissionTxMC.targetSavingsAccount = mendoCoSa;
-              commissionTxMC.target = mendoCoSa?.number_savings_account;
-            }
-            commissionTxMC.transactionType = commissionCashFinance;
-            commissionTxMC.originSavingsAccount = adminSa;
-            commissionTxMC.origin = adminSa?.number_savings_account;
-            commissionTxMC.payment_code = await this.generateUniquePaymentCode();
-            commissionTxMC.amount = 2;
-            commissionTxMC.payment_token_provider = await this.generateUniquePaymentTokenProvider();
-            commissionTxMC.reference = await this.formatTransactionReference(commissionTxMC.transactionType,providerOpenProduct.code);
-            const rs = await entityManager.save(commissionTxMC);
-            console.log('rrrr ', r.id)
-      }*/
 
 
 
       // Transaction pour les commissions
-      if (tx.commission && tx.commission > 0 && tx.channelTransaction.code == TransactionChannel.MOBILE) {
+      if (tx.commission && tx.commission > 0 && tx.channelTransaction.code == TransactionChannel.MOBILE && tx.transactionType.code != TransactionCode.INTERNAL_TRANSFER) {
         const commissionCash = await this.transactionTypeService.findOneByCode(tx.provider.code === TransactionProvider.MOMO ? TransactionCode.COMMISSION_CASH_MOMO : TransactionCode.COMMISSION_CASH_OM);
         const providerOpenProduct = await this.providerService.findOne('SYSTEM');
         const commissionTx = new TransactionSavingsAccount();
@@ -943,43 +961,7 @@ export class TransactionSavingsAccountService {
       }
       
 
-      // Transaction pour le personnel
-      const personnels = await this.personnelService.findAllExceptCommercialAndPartner()
-      for (const personnel of personnels) {
-        console.log('personnel', personnel.savings_account.id)
-        if(!personnel.savings_account)
-          continue;
-        const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_PERSONNEL);
-        const provider = await this.providerService.findOne('SYSTEM');
-        const personnelTx = new TransactionSavingsAccount();
-        Object.assign(personnelTx, txData);
-        let amount = Math.round((tx.amount * target!.type_savings_account[`commission_${personnel.type_personnel.code.toLocaleLowerCase()}`])/100)
-        if(personnel.type_personnel.code === PersonnelTypeCode.MEMBRE)
-          amount = amount / await this.personnelService.findAllMembersLength(personnels);
-        console.log('personnelTx.amount) ', personnelTx.amount)
 
-        personnelTx.amount = amount 
-        personnelTx.transactionType = txTypePartner;
-        personnelTx.provider = provider;
-        personnelTx.targetSavingsAccount = personnel?.savings_account;
-        personnelTx.target = personnel?.savings_account.number_savings_account;
-        personnelTx.originSavingsAccount = personnel.savings_account;
-        personnelTx.origin = adminSa?.number_savings_account;
-        personnelTx.commercial_code = null;
-        personnelTx.payment_code = await this.generateUniquePaymentCode();
-        personnelTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
-        personnelTx.reference = await this.formatTransactionReference(personnelTx.transactionType,provider.code);
-        personnelTx.is_locked = true;
-        personnelTx.tx_parent_id = tx.id;
-        personnelTx.personnel = personnel;
-        personnelTx.status = TransactionSavingsAccountStatus.VALIDATE;
-        personnelTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
-        if (chanelOpenProduct !== null) {
-          personnelTx.channelTransaction = chanelOpenProduct;
-        }
-        const r = await entityManager.save(personnelTx);
-        this.savingsAccountService.updateBalance(personnel.savings_account.id)
-      }
 
 
     });
@@ -1189,6 +1171,8 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
     else{
       tx.target = dto.phoneNumber;
     }
+    tx.payment_token_provider = dto.payment_token_provider ?? this.generateUniquePaymentTokenProvider()
+    tx.payment_code = dto.payment_code ?? this.generateUniquePaymentCode()
     this.repo.save(tx)
     // const isFirstTx = await  this.isFirstTransaction(tx.targetSavingsAccount)
     if(channel_code === 'MOBILE' && Boolean(txType.is_credit)){

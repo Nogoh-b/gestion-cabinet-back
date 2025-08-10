@@ -30,6 +30,7 @@ import { Employee } from './employee/entities/employee.entity';
   imports: [
     forwardRef(() => CoreModule),
     forwardRef(() => GeographyModule),
+    forwardRef(() => IamModule),
     IamModule,
     TypeOrmModule.forFeature([Branch, Employee]),
 

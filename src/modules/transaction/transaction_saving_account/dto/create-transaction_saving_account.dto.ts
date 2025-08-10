@@ -12,6 +12,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -166,7 +167,7 @@ export class ValidateTransactionSavingsAccountDto {
 export class UpdateProviderInfoDto {
   @IsOptional()
   @IsString()
-  payment_token_provider?: string;
+  payment_token_provider: string;
 
   @IsOptional()
   @IsString()
@@ -174,7 +175,7 @@ export class UpdateProviderInfoDto {
 
   @IsOptional()
   @IsString()
-  payment_code?: string;
+  payment_code: string;
 
   phoneNumber: string;
   payToken: string;

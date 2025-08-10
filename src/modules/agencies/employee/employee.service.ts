@@ -1,21 +1,60 @@
+import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
+import { EmailService } from 'src/core/shared/services/email/email.service';
 import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
+
+import { User } from 'src/modules/iam/user/entities/user.entity';
+
+
+
+
+
 import { UsersService } from 'src/modules/iam/user/user.service';
+
 import { Repository } from 'typeorm';
-
-
-
-
 
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
 
 
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee } from './entities/employee.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -26,6 +65,9 @@ export class EmployeeService {
     private branchRepository: Repository<Branch>,
     @InjectRepository(Employee)
     private employeeRepository: Repository<Employee>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
+    private mailerService: EmailService,
     private userService: UsersService,
   ) {}
   async createEmployee(dto: CreateUserDto, is_strict = true): Promise<EmployeeResponseDto> {
@@ -90,7 +132,75 @@ export class EmployeeService {
   }
 
 
+    // Génère un mot de passe temporaire (alphanum + caractères spéciaux)
+  private generate_temp_password(length = 12): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*?';
+    let pwd = '';
+    for (let i = 0; i < length; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pwd;
+  }
 
+  /**
+  * Réinitialise le mot de passe d'un utilisateur et envoie le nouveau par email.
+  * - On accepte soit un id, soit un email pour identifier l'utilisateur.
+  * - Le mot de passe est hashé en base et le clair est envoyé par email.
+  * - À utiliser comme mot de passe temporaire (l'utilisateur devra le changer après connexion).
+  */
+  async send_new_password(params: { id: number; email?: string }): Promise<any> {
+    // 1) Vérifications de base
+    if (!params?.id && !params?.email) {
+      throw new NotFoundException('Veuillez fournir un identifiant (id) ou un email utilisateur.');
+    }
+
+    // 2) Récupération utilisateur
+    // Si vous voulez être explicite :
+    const user =  await this.userService.findOne(params.id);
+    if (!user) {
+      throw new NotFoundException('Utilisateur introuvable'); 
+    }
+    if (!user.email) {
+      throw new NotFoundException("L'utilisateur n'a pas d'email renseigné"); 
+    }
+
+    // 3) Génération + hash
+    const plain_password = this.generate_temp_password(12);
+    const hashed_password = await bcrypt.hash(plain_password, 10);
+
+    // 4) Sauvegarde en base
+    await this.userService.update(user.id, { password: hashed_password });
+
+    const html =
+    `<p>Bonjour,</p>
+    <p>Votre mot de passe a été réinitialisé.</p>
+    <p><strong>Nouveau mot de passe temporaire :</strong> ${plain_password}</p>
+    <p>Par mesure de sécurité, merci de le changer dès votre prochaine connexion.</p>
+    <p>— Support</p>`
+    await this.mailerService.sendPasswordResetEmail(user.email, html)
+    /*await this.mailerService.sendMail({
+      to: user.email,
+      subject: 'Votre nouveau mot de passe',
+      text:
+    `Bonjour,
+
+    Votre mot de passe a été réinitialisé.
+    Nouveau mot de passe temporaire : ${plain_password}
+
+    Par mesure de sécurité, merci de le changer dès votre prochaine connexion.
+
+    — Support`,
+        html:
+    `<p>Bonjour,</p>
+    <p>Votre mot de passe a été réinitialisé.</p>
+    <p><strong>Nouveau mot de passe temporaire :</strong> ${plain_password}</p>
+    <p>Par mesure de sécurité, merci de le changer dès votre prochaine connexion.</p>
+    <p>— Support</p>`,
+      });*/
+
+    // 6) Retour clair en français
+    return { message: 'Mot de passe réinitialisé et envoyé par email.' };
+  }
 
 /*
   

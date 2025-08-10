@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
 import { Repository } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
 
 @Injectable()
 export class PermissionSeeder {
@@ -82,6 +83,36 @@ export class PermissionSeeder {
     { code: 'EDIT_EMPLOYEE', description: 'Modifier un employé' },
     { code: 'DELETE_EMPLOYEE', description: 'Supprimer un employé' },
 
+
+        // Permissions pour Type de compte épargne
+    { code: 'CREATE_TYPE_SAVINGS_ACCOUNT', description: 'Ajouter un type de compte épargne' },
+    { code: 'VIEW_TYPE_SAVINGS_ACCOUNT', description: 'Voir les informations sur les types de comptes épargne' },
+    { code: 'EDIT_TYPE_SAVINGS_ACCOUNT', description: 'Modifier un type de compte épargne' },
+    { code: 'DELETE_TYPE_SAVINGS_ACCOUNT', description: 'Supprimer un type de compte épargne' },
+
+    // Permissions pour Personnel
+    { code: 'CREATE_PERSONNEL', description: 'Ajouter un personnel' },
+    { code: 'VIEW_PERSONNEL', description: 'Voir les informations du personnel' },
+    { code: 'EDIT_PERSONNEL', description: 'Modifier un personnel' },
+    { code: 'DELETE_PERSONNEL', description: 'Supprimer un personnel' },
+    { code: 'BUY_PERSONNEL', description: 'Payer un personnel' },
+
+    // Permissions pour Ressource
+    { code: 'CREATE_RESSOURCE', description: 'Ajouter une ressource' },
+    { code: 'VIEW_RESSOURCE', description: 'Voir les informations d’une ressource' },
+    { code: 'EDIT_RESSOURCE', description: 'Modifier une ressource' },
+    { code: 'DELETE_RESSOURCE', description: 'Supprimer une ressource' },
+
+    { code: 'CREATE_TYPE_RESSOURCE', description: 'Ajouter un type de ressource' },
+    { code: 'VIEW_TYPE_RESSOURCE', description: 'Voir les informations sur les types de ressources' },
+    { code: 'EDIT_TYPE_RESSOURCE', description: 'Modifier un type de ressource' },
+    { code: 'DELETE_TYPE_RESSOURCE', description: 'Supprimer un type de ressource' },
+
+    // Type de personnel
+    { code: 'CREATE_TYPE_PERSONNEL', description: 'Ajouter un type de personnel' },
+    { code: 'VIEW_TYPE_PERSONNEL', description: 'Voir les informations sur les types de personnel' },
+    { code: 'EDIT_TYPE_PERSONNEL', description: 'Modifier un type de personnel' },
+    { code: 'DELETE_TYPE_PERSONNEL', description: 'Supprimer un type de personnel' },
     // ==================== Localisations ====================
     /*{ code: 'CREATE_LOCATION', description: 'Ajouter un pays/ville' },
     { code: 'VIEW_LOCATION', description: 'Voir les localisations' },

@@ -13,10 +13,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
 import { AgenciesModule } from '../agencies/agencies.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { IamModule } from '../iam/iam.module';
 import { PartnerModule } from '../partner/partner.module';
 import { PersonnelModule } from '../personnel/personnel.module';
 import { RessourceModule } from '../ressource/ressource.module';
@@ -48,6 +50,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
 
 
 
+
 @Module({
   imports: [
     DocumentsModule,
@@ -58,6 +61,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
     forwardRef(() => PartnerModule),
     forwardRef(() => CommercialModule),
     forwardRef(() => CoreModule),
+    forwardRef(() => IamModule),
     forwardRef(() => PersonnelModule),
     TypeOrmModule.forFeature([
       DocumentSavingAccount,

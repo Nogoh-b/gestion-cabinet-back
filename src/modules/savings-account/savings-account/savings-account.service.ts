@@ -62,6 +62,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -90,11 +91,13 @@ import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account
 
 
 
+
 @Injectable()
 export class SavingsAccountService extends BaseService<SavingsAccount> {
   constructor(
     @Inject(forwardRef(() => PersonnelService))
     private readonly personnelService: PersonnelService,
+    private readonly ressourceService: RessourceService,
     @InjectRepository(SavingsAccount)
     private readonly repo: Repository<SavingsAccount>,
     @InjectRepository(Branch)
@@ -119,7 +122,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // private partnerService: PartnerService,
     // private commercialService: CommercialService,
     // @Inject(forwardRef(() => PersonnelService))
-    private readonly ressourceService: RessourceService,
      private readonly otpService: OtpService
   ) { super(); console.log(forwardRef) }
 
