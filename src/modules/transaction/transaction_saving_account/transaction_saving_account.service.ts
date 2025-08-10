@@ -78,6 +78,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -85,6 +94,15 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -225,7 +243,7 @@ export class TransactionSavingsAccountService {
     // Vérification des documents requis pour le compte cible et la transaction est accepté
     if(origin){
       const docStatsTargetAccount = await this.savingsAccountService.getDocumentStatus(origin?.id)
-      if(!Boolean(txType.is_credit) && (!docStatsTargetAccount.allRequiredValidated || origin.status != SavingsAccountStatus.ACTIVE) ){
+      if( (!docStatsTargetAccount.allRequiredValidated || origin.status != SavingsAccountStatus.ACTIVE) ){
         if(this.can_refuse_transaction_type_for_debit(txType.code))
           throw new NotFoundException(
             `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,  
@@ -269,7 +287,7 @@ export class TransactionSavingsAccountService {
     }
 
     await this.repo.manager.transaction(async (entityManager) => {
-      await this.validateTransaction(origin, target, dto.amount, !!txType.is_credit, txType.code);
+      await this.validateTransaction(origin, target, dto.amount, target != null, txType.code);
       await entityManager.save(tx);
 
     });
@@ -277,12 +295,14 @@ export class TransactionSavingsAccountService {
     (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) || 
     txType.code === TransactionCode.INTERNAL_TRANSFER  ){    */
     // this.validate(tx.id, isFirstTx)
-    if((!Boolean(txType.is_credit) || 
+    // console.log('txxxxxxxx11 ', tx.targetSavingsAccount ,' ', tx.status)
+    if((origin != null || 
     (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) || 
-    txType.code === TransactionCode.INTERNAL_TRANSFER) && dayBeforeWithdraw === 0  ){
+    txType.code === TransactionCode.INTERNAL_TRANSFER) ){
       
       this.validate(tx.id, isFirstTx)
       tx.status = 1
+
     }
     const tx1 = await this.repo.save(tx)
     console.log('txxxxxxxx ', tx1.id ,' ', tx1.channelTransaction.code)
@@ -612,7 +632,7 @@ export class TransactionSavingsAccountService {
 
       const avalaible_balance = account ? await this.savingsAccountService.avalaibleBalance(account.id) : 0
 
-      if (!is_credit && avalaible_balance < amount && this.can_refuse_transaction_type_for_debit(txTypeCode)) {
+      if (account != null && avalaible_balance < amount && this.can_refuse_transaction_type_for_debit(txTypeCode)) {
         throw new BadRequestException(`Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
     );
       }
@@ -628,7 +648,7 @@ export class TransactionSavingsAccountService {
       }
 
       // 1. Vérifier si le compte est actif
-      if (account?.status === SavingsAccountStatus.DEACTIVATE || (account?.status === SavingsAccountStatus.BLOCKED && !is_credit)) {
+      if (account?.status === SavingsAccountStatus.DEACTIVATE || (account?.status === SavingsAccountStatus.BLOCKED && account != null)) {
         throw new BadRequestException('Ce compte est inactif ou bloqué.');
       }
 
