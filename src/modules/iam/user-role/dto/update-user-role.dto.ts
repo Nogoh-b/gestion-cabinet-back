@@ -1,18 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { PartialType } from '@nestjs/swagger';
+import { CreateUserRoleDto } from './create-user-role.dto';
 
-export class UpdateUserRoleDto {
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  name?: string;
-
-  @ApiProperty({ required: false })
-  @IsString()
-  @IsOptional()
-  description?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  status?: number;
-}
+export class UpdateUserRoleDto extends PartialType(CreateUserRoleDto) {}

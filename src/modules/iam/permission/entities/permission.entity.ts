@@ -1,27 +1,30 @@
+// permission.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { RolePermission } from '../../role-permission/entities/role-permission.entity';
-import { BaseEntity } from 'src/core/entities/base.entity';
 
-@Entity({ name: 'permission', schema: 'core_banking' })
-export class Permission extends BaseEntity {
-  @PrimaryGeneratedColumn({ type: 'smallint', unsigned: true })
+@Entity('permission')
+export class Permission {
+  @PrimaryGeneratedColumn({ unsigned: true, type: 'smallint' })
   id: number;
 
-  @Column({ type: 'varchar', length: 50, unique: true })
+  @Column({ length: 50, unique: true })
   code: string;
 
-  @Column({ type: 'text', nullable: true })
-  description?: string;
+  @Column('text', { nullable: true })
+  description: string;
+
+  @Column({ type: 'tinyint', nullable: true, default: 1 })
+  canChange: number;
 
   @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
+  create_at: Date;
+
+  @OneToMany(() => RolePermission, (rp) => rp.permission)
+  roles: RolePermission[];
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updated_at: Date;
+  update_at: Date;
 
   @Column({ type: 'tinyint', nullable: true })
-  status?: number;
-
-  @OneToMany(() => RolePermission, (rolePermission) => rolePermission.permission)
-  rolePermissions: RolePermission[];
+  status: number;
 }

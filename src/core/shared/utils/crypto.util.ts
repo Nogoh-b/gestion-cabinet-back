@@ -1,13 +1,13 @@
 import * as crypto from 'crypto';
 
 export class CryptoUtil {
-  static encrypt(data: string, publicKey: string): string {
-    return crypto.publicEncrypt(publicKey, Buffer.from(data)).toString('base64');
+  static encrypt(data: string, public_key: string): string {
+    return crypto.publicEncrypt(public_key, Buffer.from(data)).toString('base64');
   }
 
-  static decrypt(encryptedData: string, privateKey: string): string {
+  static decrypt(encryptedData: string, private_key: string): string {
     return crypto.privateDecrypt(
-      { key: privateKey, passphrase: '' },
+      { key: private_key, passphrase: '' },
       Buffer.from(encryptedData, 'base64'),
     ).toString();
   }

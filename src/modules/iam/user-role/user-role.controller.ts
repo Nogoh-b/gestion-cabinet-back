@@ -1,33 +1,55 @@
-import { Controller, Post, Body, Get } from '@nestjs/common';
-import { UserRoleService } from './user-role.service';
-import { CreateUserRoleDto } from './dto/create-user-role.dto';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { UpdateUserRoleDto } from './dto/update-user-role.dto';
-import { UserRole } from './entities/user-role.entity';
+// user-roles.controller.ts
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { Controller, Post, Body, Get, Param, Delete, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 
-@ApiTags('IAM - Roles')
-@Controller('iam/roles')
-export class UserRoleController {
-  constructor(private readonly userRoleService: UserRoleService) {}
+
+import { CreateUserRoleDto } from './dto/create-user-role.dto';
+import { RoleResponseDto } from './dto/role-response.dto';
+import { UserRole } from './entities/user-role.entity';
+import { UserRolesService } from './user-role.service';
+
+
+
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiTags('User Roles')
+@Controller('user-roles')
+@ApiBearerAuth() 
+
+export class UserRolesController {
+  constructor(private readonly service: UserRolesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'creation d\'un role ' })
-  async create(@Body() createUserRoleDto: CreateUserRoleDto) {
-    return this.userRoleService.create(createUserRoleDto);
+  @ApiOperation({ summary: 'Create new user role' })
+  @ApiResponse({ status: 201, description: 'Role created', type: UserRole })
+  @RequirePermissions('MANAGE_ROLE')
+    create(@Body() dto: CreateUserRoleDto) {
+    return this.service.create(dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Mettre à jour le statut d\'une assignation' })
-  async findAll() {
-    return this.userRoleService.findAll();
+  @ApiOperation({ summary: 'Get all roles with permissions' })
+  // @RequirePermissions('')
+  async findAll(): Promise<RoleResponseDto[]> {
+    return this.service.findAllWithPermissions();
   }
 
-  @ApiOperation({ summary: 'Mettre à jour le statut d\'une assignation' })
-  async update(id: number, updateUserRoleDto: UpdateUserRoleDto): Promise<UserRole> {
-    return this.userRoleService.update(id, updateUserRoleDto);
+  @Get(':id')
+  @ApiOperation({ summary: 'Get role by ID with permissions' })
+  @RequirePermissions('')
+  async findOne(@Param('id') id: number): Promise<any> {
+    return this.service.findOneWithPermissions(id);
   }
 
-  async remove(id: number): Promise<void> {
-    // await this.userRoleRepository.delete(id);
+
+
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete role' })
+  @RequirePermissions('MANAGE_ROLE')
+  remove(@Param('id') id: number): Promise<void> {
+    return this.service.remove(id);
   }
 }

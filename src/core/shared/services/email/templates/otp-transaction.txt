@@ -1,0 +1,17 @@
+Objet : Vérification de votre transaction
+
+Bonjour {{nom}},
+
+Vous avez initié une transaction de {{montant}} XAF via {{provider}} ({{typeTransaction}}).
+
+Pour valider cette opération, veuillez utiliser le code OTP ci-dessous :
+
+🔐 Code OTP : {{otp}}
+
+Ce code est valable pendant 5 minutes.  
+Ne le partagez jamais avec qui que ce soit, même si la personne prétend appartenir à Mendo Finances.
+
+Merci de votre confiance.
+
+—
+Mendo Finances

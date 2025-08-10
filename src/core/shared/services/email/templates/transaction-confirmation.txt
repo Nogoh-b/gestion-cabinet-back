@@ -1,0 +1,20 @@
+Objet : Confirmation de transaction
+
+Bonjour {{nom}},
+
+Votre transaction a été effectuée avec succès.
+
+📌 Détails :
+- Type : {{typeTransaction}}
+- Montant : {{montant}} XAF
+- Compte : {{savingsAccountCode}}
+- Fournisseur : {{provider}}
+- Référence : {{reference}}
+- Date : {{date}}
+
+Si vous n’êtes pas à l’origine de cette opération, veuillez contacter immédiatement notre support.
+
+Merci d’utiliser Mendo Finances.
+
+—
+Mendo Finances

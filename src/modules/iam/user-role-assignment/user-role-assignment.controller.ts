@@ -1,53 +1,42 @@
-// src/iam/user-role-assignment/user-role-assignment.controller.ts
-import {
-  Controller,
-  Post,
-  Body,
-  Get,
-  Param,
-  Patch,
-  Delete,
-} from '@nestjs/common';
+// user-role-assignment.controller.ts
+import { Controller, Post, Body, Delete, Get, Param, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { UserRoleAssignmentService } from './user-role-assignment.service';
-import { AssignRoleDto } from './dto/assign-role.dto';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { UpdateRoleAssignmentDto } from './dto/update-role-assignment.dto';
+import { CreateUserRoleAssignmentDto } from './dto/create-user-role-assignment.dto';
+import { UserRoleAssignment } from './entities/user-role-assignment.entity';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
-@ApiTags('IAM - User Role Assignments')
-@Controller('iam/user-role-assignments')
-export class UserRoleAssignmentController {
-  constructor(
-    private readonly assignmentService: UserRoleAssignmentService,
-  ) {}
+@ApiTags('Gestion des Assignations Utilisateur-Rôle')
+@Controller('user-role-assignments')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth() 
+
+export class UserRoleAssignmentController { 
+  constructor(private readonly service: UserRoleAssignmentService) {}
 
   @Post()
   @ApiOperation({ summary: 'Assigner un rôle à un utilisateur' })
-  async assignRole(@Body() assignRoleDto: AssignRoleDto) {
-    return this.assignmentService.assignRole(assignRoleDto);
+  @ApiResponse({ status: 201, description: 'Rôle assigné', type: UserRoleAssignment })
+  @RequirePermissions('MANAGE_ROLE')
+    create(@Body() dto: CreateUserRoleAssignmentDto) {
+    return this.service.create(dto);
   }
 
-  @Get(':userId')
-  @ApiOperation({ summary: 'Lister les rôles d\'un utilisateur' })
-  async getUserRoles(@Param('userId') userId: number) {
-    return this.assignmentService.getUserRoles(userId);
-  }
-
-  @Patch(':userId/roles/:roleId')
-  @ApiOperation({ summary: 'Mettre à jour le statut d\'une assignation' })
-  async updateStatus(
-    @Param('userId') userId: number,
-    @Param('roleId') roleId: number,
-    @Body() updateDto: UpdateRoleAssignmentDto,
-  ) {
-    return this.assignmentService.updateStatus(userId, roleId, updateDto.status);
-  }
-
-  @Delete(':userId/roles/:roleId')
+  @Delete(':userId/:roleId')
   @ApiOperation({ summary: 'Retirer un rôle à un utilisateur' })
-  async removeRole(
+  @RequirePermissions('MANAGE_ROLE')
+  remove(
     @Param('userId') userId: number,
     @Param('roleId') roleId: number,
   ) {
-    return this.assignmentService.removeAssignment(userId, roleId);
+    return this.service.remove(userId, roleId);
+  }
+
+  @Get('user/:userId')
+  @ApiOperation({ summary: 'Lister les rôles d\'un utilisateur' })
+  findByUser(@Param('userId') userId: number) {
+    return this.service.findByUser(userId);
   }
 }

@@ -1,49 +1,121 @@
-// src/modules/iam/role-permission/role-permission.service.ts
-import { Injectable } from '@nestjs/common';
+// role-permission.service.ts
+import { Injectable, ConflictException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CreateRolePermissionDto } from './dto/create-role-permission.dto';
 import { RolePermission } from './entities/role-permission.entity';
-import { AssignPermissionDto } from './dto/assign-permission.dto';
+import { UserRolesService } from '../user-role/user-role.service';
+import { PermissionsService } from '../permission/permission.service';
+import { Permission } from '../permission/entities/permission.entity';
+import { validateDto } from 'src/core/shared/pipes/validate-dto';
 
 @Injectable()
 export class RolePermissionService {
   constructor(
     @InjectRepository(RolePermission)
-    private rolePermissionRepository: Repository<RolePermission>,
-  ) {}
-
-  // Assigner des permissions
-  async assignPermissions(roleId: number, dto: AssignPermissionDto): Promise<void> {
-    const assignments = dto.permissionIds.map(permissionId => ({
-      roleId,
-      permissionId,
-      status: 1, // Actif par défaut
-    }));
-    await this.rolePermissionRepository.save(assignments);
+    private readonly rolePermissionRepository: Repository<RolePermission>,
+    @Inject(forwardRef(() => UserRolesService))
+    private readonly userRolesService: UserRolesService,
+    private readonly permissionsService: PermissionsService,
+  ) {
+    console.log(forwardRef)
   }
 
-  // Récupérer les permissions d'un rôle
-  async getRolePermissions(roleId: number): Promise<RolePermission[]> {
+
+  async createRolesPermissions(createDto: CreateRolePermissionDto): Promise<any> {
+    // Vérifier l'existence du rôle et de la permission
+    const role = await this.userRolesService.findOne(createDto.role_id);
+    const role_permissions: RolePermission[] = []
+    await validateDto(CreateRolePermissionDto, createDto)
+
+    for (const element of createDto.permissions_ids) {
+      const permission = await this.permissionsService.findOne(element);
+      // Vérifier si l'association existe déjà
+      const exists = await this.rolePermissionRepository.findOne({
+        where: {
+          role_id: createDto.role_id,
+          permission_id: element,
+          status: 1
+        }
+      });
+
+      if (exists) {
+        throw new ConflictException(
+          `La permission ${element} est déjà assignée au rôle ${createDto.role_id}`,
+        );
+      }
+
+      // Créer la nouvelle association
+      const rolePermission = this.rolePermissionRepository.create({
+        role_id: createDto.role_id,
+        permission_id: element,
+        status:  1
+      });
+
+      role_permissions.push(
+        await this.rolePermissionRepository.save({
+          ...rolePermission,
+          role,
+          permission,
+        }),
+      );
+      
+    }
+    return this.userRolesService.findOne(createDto.role_id);
+
+  }
+
+  async remove(role_id: number, permission_id: number): Promise<void> {
+    const result = await this.rolePermissionRepository.delete({
+      role_id,
+      permission_id
+    });
+    
+    if (result.affected === 0) {
+      throw new NotFoundException('Association rôle-permission non trouvée');
+    }
+  }
+
+  async findByRole(role_id: number): Promise<RolePermission[]> {
     return this.rolePermissionRepository.find({
-      where: { roleId },
-      relations: ['permission'],
+      where: { role_id },
+      relations: ['permission','role']
     });
   }
 
-  // Modifier le statut
-  async updateStatus(
-    roleId: number,
-    permissionId: number,
-    status: number,
-  ): Promise<any> {
-    return this.rolePermissionRepository.update(
-      { roleId, permissionId },
-      { status },
-    );
+async getPermissionsByRole(role_id: number): Promise<Permission[]> {
+  return this.rolePermissionRepository
+    .createQueryBuilder('rp')
+    .innerJoinAndSelect('rp.permission', 'permission')
+    .where('rp.role_id = :role_id', { role_id })
+    .select([
+      'permission.id', 
+      'permission.code', 
+      'permission.description',
+      'permission.status',
+      'permission.create_at',
+      'permission.update_at'
+    ])
+    .getMany()
+    .then(results => results.map(r => r.permission));
+}
+
+  async findByPermission(permission_id: number): Promise<RolePermission[]> {
+    return this.rolePermissionRepository.find({
+      where: { permission_id },
+      relations: ['role','permission']
+    });
   }
 
-  // Supprimer une permission
-  async removePermission(roleId: number, permissionId: number): Promise<void> {
-    await this.rolePermissionRepository.delete({ roleId, permissionId });
+  async getRolePermissions(role_id: number): Promise<Permission[]> {
+    const permissions = await this.rolePermissionRepository.find({
+      where: { role_id },
+      relations: ['permission'],
+    });
+    return permissions.map(p => p.permission);
+  }
+
+  async descativeRolePermission(id: number): Promise<void> {
+    await this.rolePermissionRepository.update(id, { status: 0 });
   }
 }
