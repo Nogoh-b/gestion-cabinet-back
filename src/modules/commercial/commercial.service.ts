@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { CustomersService } from '../customer/customer/customer.service';
 import { CustomerStatus } from '../customer/customer/entities/customer.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
@@ -18,6 +19,7 @@ import { TransactionSavingsAccount } from '../transaction/transaction_saving_acc
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
 import { CreateCommercialDto } from './dto/create-commercial.dto';
 import { Commercial } from './entities/commercial.entity';
+
 
 
 
@@ -59,7 +61,7 @@ export class CommercialService extends BaseService<Commercial> {
     const saving_account = await this.savingsAccountService.findOneByCustomer(customer.id)
     // const savingsAccount = await 
     dto.name = customer.first_name + ' ' + customer.last_name;
-    const partner = this.commercialRepository.create({...dto, customer, saving_account});
+    const partner = this.commercialRepository.create({...dto, customer   });
     return this.commercialRepository.save(partner);
   }
 
@@ -131,7 +133,7 @@ export class CommercialService extends BaseService<Commercial> {
 
   async buyAll(commercial_code: string = "F6XH"): Promise<any> {
     const com = await this.getByCode(commercial_code);
-    return await this.transactionService.unlockTransactionByCommercial(commercial_code, com?.saving_account?.id);
+    return await this.transactionService.unlockTransactionByCommercial(commercial_code,0);
   }
 
 

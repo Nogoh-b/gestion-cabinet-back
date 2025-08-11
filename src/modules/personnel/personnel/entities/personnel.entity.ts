@@ -13,7 +13,9 @@ import { ApiProperty } from '@nestjs/swagger';
 
 
 
+
 import { TypePersonnel } from '../../type_personnel/entities/type_personnel.entity';
+
 
 
 
@@ -41,7 +43,7 @@ export class Personnel extends BaseEntity {
   @ApiProperty({ type: () => Customer })
   customer: Customer;
 
-@ManyToOne(() => SavingsAccount)
+  @ManyToOne(() => SavingsAccount)
   @JoinColumn({ name: 'savings_account_id' })
   @ApiProperty({ type: () => SavingsAccount })
   savings_account: SavingsAccount;
@@ -49,6 +51,9 @@ export class Personnel extends BaseEntity {
   
   @Column({ length: 20,  nullable: true })
   name: string ;
+  
+  @Column({ type: 'boolean', nullable: true, default: false })
+  is_intern: boolean;
   
   @Column({ length: 20, unique: true, nullable: true })
   code: string;

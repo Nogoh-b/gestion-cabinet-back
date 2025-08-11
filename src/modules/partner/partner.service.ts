@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { CustomersService } from '../customer/customer/customer.service';
 import { CustomerStatus } from '../customer/customer/entities/customer.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
@@ -19,6 +20,7 @@ import { TransactionSavingsAccount } from '../transaction/transaction_saving_acc
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { Partner } from './entities/partner.entity';
+
 
 
 
@@ -60,7 +62,7 @@ export class PartnerService extends BaseService<Partner> {
     const saving_account = await this.savingsAccountService.findOneByCustomer(customer.id,1)
     // const savingsAccount = await 
     dto.name = customer.first_name + ' ' + customer.last_name;
-    const partner = this.partnerRepository.create({...dto, customer, saving_account});
+    const partner = this.partnerRepository.create({...dto, customer  });
     return this.partnerRepository.save(partner);
   }
 
@@ -122,8 +124,7 @@ export class PartnerService extends BaseService<Partner> {
     let  file_path = ''
     if(doc)
       file_path = doc.file_path
-    const {promo_code_reduction} = partner.saving_account.type_savings_account
-    return {name, promo_code_reduction, file_path};
+    return {name , file_path};
   }
     /**
    * Récupère un partenaire par son ID

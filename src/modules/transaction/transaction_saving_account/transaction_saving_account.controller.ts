@@ -6,9 +6,11 @@ import { Controller, Get, Post, Body, Param, Query, Patch } from '@nestjs/common
 
 
 
+
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
 
 
 
@@ -79,6 +81,10 @@ export class TransactionSavingAccountController {
   @Get('check-payment/:reference')
   checkStatusPayment(@Param('reference') reference: string) {
     return this.transactionSavingAccountService.checkStatusPayment(reference);
+  }
+  @Get('check-wthdraw/:reference')
+  checkStatuswthdraw(@Param('reference') reference: string) {
+    return this.transactionSavingAccountService.checkWthDraw(reference);
   }
   @Get()
   findAll(@Query() query: PaginationQueryTxDto) {
