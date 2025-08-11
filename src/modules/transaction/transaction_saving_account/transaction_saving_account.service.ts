@@ -87,6 +87,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -94,6 +97,9 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
 
 
 
@@ -1191,6 +1197,8 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
     else{
       tx.target = dto.phoneNumber;
     }
+    if(tx.originSavingsAccount)
+      tx.status_provider = PaymentStatusProvider.SUCCESSFULL
     tx.payment_token_provider = dto.payment_token_provider ?? this.generateUniquePaymentTokenProvider()
     tx.payment_code = dto.payment_code ?? this.generateUniquePaymentCode()
     this.repo.save(tx)
@@ -1202,7 +1210,7 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
         const sa = await  this.savingsAccountService.findOneByCode(
           tx.targetSavingsAccount?.number_savings_account ?? '',
         );
-         isFirstTx = await this.isFirstTransaction(plainToInstance(SavingsAccount,sa))
+         isFirstTx = await this.isFirstTransaction(plainToInstance(SavingsAccount,sa)) 
       // }
         console.log(tx.token,'  ' , tx.provider.code)
         const paymentResult = await new Promise<ReturnType<typeof this.mcotiService.checkStatusPaymentDeposit>>((resolve, reject) => {
@@ -1245,6 +1253,12 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
     // Object.assign(tx, dto); // Mise à jour des champs fournis
 
     return this.repo.save(tx);
+  }
+  async checkWthDraw(t){
+
+    return await this.mcotiService
+      .checkStatusPaymentWithDraw(t )
+       
   }
 
 }
