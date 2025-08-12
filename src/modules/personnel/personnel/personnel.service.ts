@@ -22,11 +22,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { PersonnelTypeCode } from '../type_personnel/entities/type_personnel.entity';
 import { TypePersonnelService } from '../type_personnel/type_personnel.service';
 import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
+
 
 
 
@@ -90,8 +92,9 @@ export class PersonnelService extends BaseService<Personnel> {
     const entity = this.personnel_repository.create({
       customer,
       savings_account,
-      name : dto.name,
       type_personnel: type,
+      name : dto.name,
+      is_intern : dto.is_intern,
     });
     if(code)
       entity.code = code;
@@ -139,6 +142,7 @@ export class PersonnelService extends BaseService<Personnel> {
     const entity = await this.findOne(id);
     const merged = this.personnel_repository.merge(entity, {
       code: dto.code ? next_code : undefined,
+      is_intern: dto.is_intern,
       customer: await this.customer_service.findOne(dto.customer_id ?? entity.customer.id),
       type_personnel: await this.type_personnel_service.findOne(dto.type_personnel_id ?? entity.type_personnel.id),
     });

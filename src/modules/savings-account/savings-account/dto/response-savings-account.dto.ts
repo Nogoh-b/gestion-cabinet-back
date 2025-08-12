@@ -22,10 +22,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 import { DocumentSavingAccountResponseDto } from '../../document-saving-account/dto/response-document-saving-account.dto';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from '../entities/account-has-interest.entity';
 import { SavingsAccount } from '../entities/savings-account.entity';
+
 
 
 
@@ -108,7 +110,7 @@ export class SavingsAccountResponseDto {
 
   @Expose()
   @Transform(({ obj }) => {
-    console.log('obj.targetSavingsAccountTx', obj.targetSavingsAccountTx);
+    //sconsole.log('obj.targetSavingsAccountTx', obj.targetSavingsAccountTx);
     // 1) On récupère uniquement les tx à status = 1
     const filteredTxs: TransactionSavingsAccount[] = (obj.targetSavingsAccountTx ?? [])
       .filter(tx => tx.status === 1);

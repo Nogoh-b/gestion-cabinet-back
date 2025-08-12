@@ -90,6 +90,19 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -97,6 +110,19 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -416,9 +442,17 @@ export class TransactionSavingsAccountService {
         'provider',
         'transactionType',
         'originSavingsAccount',
-        'targetSavingsAccount'
+        'originSavingsAccount.originSavingsAccountTx',
+        'originSavingsAccount.targetSavingsAccountTx',
+        'targetSavingsAccount',
+        'targetSavingsAccount.originSavingsAccountTx',
+        'targetSavingsAccount.targetSavingsAccountTx'
       ],
     });
+    const sa = await  this.savingsAccountService.findOneByCode(
+      tx?.targetSavingsAccount?.number_savings_account ?? '',
+    );
+    
     console.log(reference)
     if (!tx) throw new NotFoundException(`Transaction ${reference} non trouvé`);
     if(tx.status === 1)
@@ -426,7 +460,7 @@ export class TransactionSavingsAccountService {
 
     const payment = await this.mcotiService.checkStatusPaymentDeposit(tx.token, tx.provider.code)
     if (payment.paymentStatus != PaymentStatusProvider.PENDING && payment.data && tx.channelTransaction.code === TransactionChannel.MOBILE) {
-      const isFirstTx = await this.isFirstTransaction(tx.targetSavingsAccount);
+      const isFirstTx = await this.isFirstTransaction(plainToInstance(SavingsAccount,sa));
       console.log('payment', payment)
       tx.status_provider = payment.paymentStatus
       tx.status = PaymentStatus.PENDING
@@ -434,7 +468,7 @@ export class TransactionSavingsAccountService {
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
       tx.status_provider = dataPayment.paymentStatus;
-      tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
+      tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];  
       if(!!tx.transactionType.is_credit){
         tx.origin = dataPayment.ref;
       }
@@ -717,7 +751,7 @@ export class TransactionSavingsAccountService {
   }
 
   async validate(
-    id: number, isFirstTx = false
+    id: number, isFirstTx = false, force = false
   ): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
     if(entity.status == 0){
@@ -728,7 +762,7 @@ export class TransactionSavingsAccountService {
       if(entity.provider_code == TransactionProvider.OM || entity.provider_code == TransactionProvider.MOMO ){
         const updated_sold = await this.mcotiService.callMcotiEndpoint(
               'POST',
-              `epargne/bank/operator/update-sold`,{provider:'OM', isCredit: entity.origin ? 0 : 1,  amount: entity.amount,}
+              `epargne/bank/operator/update-sold`,{provider:'OM', isCredit: entity.origin ? 0 : 1,  amount: entity.amount + (entity.commission ?? 0),}
           );
           console.log('sold provider updated', updated_sold)
       }
@@ -761,7 +795,7 @@ export class TransactionSavingsAccountService {
         where: { code: 'API' },
       });
       
-      if (isFirstTx && target) {
+      if (target && (isFirstTx && target || force)) {
         tx.status = 1
         console.log('isFirstTx------ ', isFirstTx, ' ', tx.status)
         // Transaction pour le minimum de balance
@@ -821,33 +855,35 @@ export class TransactionSavingsAccountService {
             console.log('rrrr11 ', comercial)
             if(comercial && comercial.savings_account){
               // Transaction pour le le partenaire
-              const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMERCIAL_COMMISSION);
-              const providerOpenProduct = await this.providerService.findOne('SYSTEM');
-              const commercial = await  this.personnelService.findOneByCode(target.commercial_code);
-              const fifthTx = new TransactionSavingsAccount();
-              Object.assign(fifthTx, txData);
-              fifthTx.amount = Math.round((tx.amount * target!.type_savings_account.commission_per_product)/100);
-              console.log('fifthTx.amount) ', fifthTx.amount)
+              if(comercial.is_intern && (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 || !comercial.is_intern){
+                const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMERCIAL_COMMISSION);
+                const providerOpenProduct = await this.providerService.findOne('SYSTEM');
+                const commercial = await  this.personnelService.findOneByCode(target.commercial_code);
+                const fifthTx = new TransactionSavingsAccount();
+                Object.assign(fifthTx, txData);
+                fifthTx.amount = Math.round((tx.amount * target!.type_savings_account.commission_per_product)/100);
+                console.log('fifthTx.amount) ', fifthTx.amount)
 
-              fifthTx.transactionType = txTypePartner;
-              fifthTx.provider = providerOpenProduct;
-              fifthTx.targetSavingsAccount = comercial?.savings_account;
-              fifthTx.target = comercial?.savings_account.number_savings_account;
-              fifthTx.originSavingsAccount = adminSa;
-              fifthTx.origin = tx.targetSavingsAccount?.number_savings_account ?? 'SYSTEM';
-              fifthTx.commercial_code = target.commercial_code;
-              fifthTx.payment_code = await this.generateUniquePaymentCode();
-              fifthTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
-              fifthTx.reference = await this.formatTransactionReference(fifthTx.transactionType,providerOpenProduct.code);
-              fifthTx.is_locked = true;
-              fifthTx.personnel = comercial;
-              fifthTx.status = TransactionSavingsAccountStatus.VALIDATE;
-              fifthTx.status = TransactionSavingsAccountStatus.VALIDATE;
-              fifthTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
-              if (chanelOpenProduct !== null) {
-                fifthTx.channelTransaction = chanelOpenProduct;
+                fifthTx.transactionType = txTypePartner;
+                fifthTx.provider = providerOpenProduct;
+                fifthTx.targetSavingsAccount = comercial?.savings_account;
+                fifthTx.target = comercial?.savings_account.number_savings_account;
+                fifthTx.originSavingsAccount = adminSa;
+                fifthTx.origin = tx.targetSavingsAccount?.number_savings_account ?? 'SYSTEM';
+                fifthTx.commercial_code = target.commercial_code;
+                fifthTx.payment_code = await this.generateUniquePaymentCode();
+                fifthTx.payment_token_provider = await this.generateUniquePaymentTokenProvider();
+                fifthTx.reference = await this.formatTransactionReference(fifthTx.transactionType,providerOpenProduct.code);
+                fifthTx.is_locked = true;
+                fifthTx.personnel = comercial;
+                fifthTx.status = TransactionSavingsAccountStatus.VALIDATE;
+                fifthTx.status = TransactionSavingsAccountStatus.VALIDATE;
+                fifthTx.status_provider = PaymentStatusProvider.SUCCESSFULL;
+                if (chanelOpenProduct !== null) {
+                  fifthTx.channelTransaction = chanelOpenProduct;
+                }
+                const r = await entityManager.save(fifthTx);
               }
-              const r = await entityManager.save(fifthTx);
             // this.savingsAccountService.updateBalance(comercial.saving_account.id)
             }
         }
@@ -979,7 +1015,7 @@ export class TransactionSavingsAccountService {
         commissionTxMC.originSavingsAccount = adminSa;
         commissionTxMC.origin = adminSa?.number_savings_account;
         commissionTxMC.payment_code = await this.generateUniquePaymentCode();
-        commissionTxMC.amount = 2;
+        commissionTxMC.amount = 4;
         commissionTxMC.payment_token_provider = await this.generateUniquePaymentTokenProvider();
         commissionTxMC.reference = await this.formatTransactionReference(commissionTxMC.transactionType,providerOpenProduct.code);
         const rs = await this.repo.save(commissionTxMC);
@@ -991,6 +1027,7 @@ export class TransactionSavingsAccountService {
 
 
     });
+
     console.log('entity.entity.provider_code', entity.channelTransaction.code)
 
     
@@ -1149,7 +1186,7 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
     // Génération du suffixe numérique unique
     const suffix = await this.generateDailySequence(); // Implémentez cette méthode
 
-    return `${prefix}${provider}${day}${month}${year}${suffix}`;
+    return `${prefix}${provider}${day}${month}${year}${suffix}`; 
   }
 
   async generateDailySequence(): Promise<string> {
