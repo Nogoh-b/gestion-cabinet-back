@@ -14,7 +14,9 @@ import { ApiProperty } from '@nestjs/swagger';
 
 
 
+
 import { TypePersonnel } from '../../type_personnel/entities/type_personnel.entity';
+
 
 
 
@@ -53,7 +55,7 @@ export class Personnel extends BaseEntity {
   name: string ;
   
   @Column({ type: 'boolean', nullable: true, default: false })
-  is_intern: boolean;
+  is_intern: boolean | null;
   
   @Column({ length: 20, unique: true, nullable: true })
   code: string;
