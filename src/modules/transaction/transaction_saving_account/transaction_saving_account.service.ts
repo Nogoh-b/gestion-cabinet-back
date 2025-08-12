@@ -102,6 +102,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -109,6 +110,7 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -749,7 +751,7 @@ export class TransactionSavingsAccountService {
   }
 
   async validate(
-    id: number, isFirstTx = false
+    id: number, isFirstTx = false, force = false
   ): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
     if(entity.status == 0){
@@ -793,7 +795,7 @@ export class TransactionSavingsAccountService {
         where: { code: 'API' },
       });
       
-      if (isFirstTx && target) {
+      if (target && (isFirstTx && target || force)) {
         tx.status = 1
         console.log('isFirstTx------ ', isFirstTx, ' ', tx.status)
         // Transaction pour le minimum de balance
@@ -1025,6 +1027,7 @@ export class TransactionSavingsAccountService {
 
 
     });
+
     console.log('entity.entity.provider_code', entity.channelTransaction.code)
 
     

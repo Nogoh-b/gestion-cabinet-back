@@ -37,7 +37,7 @@ import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
 
-import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
+import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 
 
 import { Not, Repository } from 'typeorm';
@@ -68,6 +68,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -77,6 +78,7 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 
@@ -1391,4 +1393,48 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     return sAccounts;
   }
 
+  /**
+   * Comptes SANS transaction MIN_BALANCE
+   * MAIS avec >= 1 transaction validée (status=1) liée par origin/target = number_savings_account.
+   */
+  async findAccountsMissingMinBalanceButWithValidatedTx(): Promise<SavingsAccount[]> {
+    const qb = this.repo.createQueryBuilder('sa');
+
+    // Sous-requête: au moins une transaction VALIDÉE (status=1) liée à ce compte
+    const subHasValidatedTx = qb.subQuery()
+      .select('1')
+      .from(TransactionSavingsAccount, 'tx1')
+      .where('(tx1.origin = sa.number_savings_account OR tx1.target = sa.number_savings_account)')
+      .andWhere('tx1.status = :validatedStatus') // 1 = VALIDATE
+      .getQuery();
+
+    // Sous-requête: transaction MIN_BALANCE (à exclure)
+    const subHasMinBalance = qb.subQuery()
+      .select('1')
+      .from(TransactionSavingsAccount, 'tx2')
+      .innerJoin(TransactionType, 'tt', 'tt.id = tx2.transaction_type_id')
+      .where('(tx2.origin = sa.number_savings_account OR tx2.target = sa.number_savings_account)')
+      .andWhere('tt.code = :minBalanceCode') // 'MIN_BALANCE'
+      .getQuery();
+
+    const sas = await qb
+      .where(`EXISTS ${subHasValidatedTx}`)
+      .andWhere(`NOT EXISTS ${subHasMinBalance}`)
+      .setParameters({
+        validatedStatus: TransactionSavingsAccountStatus.VALIDATE, // 1
+        minBalanceCode: 'MIN_BALANCE',
+      })
+      .getMany();
+
+      return sas
+  }
+  async initAccountsMissingMinBalanceButWithValidatedTx(): Promise<boolean> {
+    const qb = this.repo.createQueryBuilder('sa');
+
+      const sas = await this.findAccountsMissingMinBalanceButWithValidatedTx()
+      for (const sa of sas) {
+        this.transactionSavingsAccountService.validate(sa.id, false,true)
+      }
+      return true
+  }
 }
