@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { Base } from 'src/core/entities/base';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { Entity, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable, OneToMany } from 'typeorm';
 
@@ -23,7 +23,7 @@ import { SavingsAccount } from '../../savings-account/entities/savings-account.e
 
 
 @Entity('type_savings_account')
-export class TypeSavingsAccount extends BaseEntity {
+export class TypeSavingsAccount extends Base {
   @Column({ primary: true, generated: true })
   id: number;
 

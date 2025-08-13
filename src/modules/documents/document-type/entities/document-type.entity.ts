@@ -1,7 +1,15 @@
 // src/core/document/entities/document-type.entity.ts
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { Base } from 'src/core/entities/base';
 import { TypeCustomer } from 'src/modules/customer/type-customer/entities/type_customer.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToMany,
+  JoinTable, ManyToOne,
+} from 'typeorm';
+import { TypeCredit } from '../../../credit/type_credit/entities/typeCredit.entity';
+import { Credit } from '../../../credit/credit/entities/credit.entity';
 
 export enum DocumentTypeStatus {
   PENDING = 0,
@@ -9,11 +17,9 @@ export enum DocumentTypeStatus {
   REFUSED = 2,
 }
 @Entity('document_type')
-export class DocumentType extends BaseEntity {
+export class DocumentType extends Base {
   @PrimaryGeneratedColumn()
   id: number;
-
-
 
   @Column({ length: 100 })
   code: string;
@@ -30,14 +36,14 @@ export class DocumentType extends BaseEntity {
   @Column({ name: 'mimetype', nullable: true, default: 'image/' })
   mimetype: string;
 
-  @Column({ name: 'max_size', nullable: true, default: 1024*1024*3 })
+  @Column({ name: 'max_size', nullable: true, default: 1024 * 1024 * 3 })
   max_size: string;
 
   @ManyToMany(() => TypeCustomer)
   @JoinTable({
-    name: 'type_customer_document_type', 
+    name: 'type_customer_document_type',
     joinColumn: { name: 'document_type_id' },
-    inverseJoinColumn: { name: 'type_customer_id' }
+    inverseJoinColumn: { name: 'type_customer_id' },
   })
   customerTypes: TypeCustomer[];
 
@@ -48,5 +54,8 @@ export class DocumentType extends BaseEntity {
   status: number;
   // @ManyToMany(() => TypeSavingsAccount, type => type.documentTypes)
   // typeAccounts: TypeSavingsAccount[];
-
+  @ManyToOne(() => Credit, (type) => type.typeDocument, {
+    nullable: true,
+  })
+  credit: Credit;
 }

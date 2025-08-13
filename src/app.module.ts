@@ -50,27 +50,6 @@ import { RessourceTypeModule } from './ressource/ressource-type/ressource-type.m
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 dotenv.config();
 
 @Module({
@@ -133,7 +112,7 @@ dotenv.config();
     QueueModule,
     PartnerModule,
     CommercialModule,
-    RessourceTypeModule
+    RessourceTypeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

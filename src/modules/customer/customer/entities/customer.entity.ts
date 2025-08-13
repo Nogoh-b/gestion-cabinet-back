@@ -1,33 +1,36 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { Base } from 'src/core/entities/base';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
-
-import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-
+import {
+  BeforeInsert,
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
+import { Credit } from 'src/modules/credit/credit/entities/credit.entity';
 
-
-
-
-export enum CustomerStatus{
+export enum CustomerStatus {
   ACTIVE = 1,
   INACTIVE = 0,
   DELETED = -1,
   BLOCKED = -2,
   SUSPENDED = -3,
   LOCKED = -4,
-
 }
-export enum CustomerCreatedFrom{
+export enum CustomerCreatedFrom {
   ONLINE = 1,
   AGENCY = 0,
 }
 @Entity('customer')
-export class Customer extends BaseEntity {
+export class Customer extends Base {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -59,12 +62,11 @@ export class Customer extends BaseEntity {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
+  @OneToMany(() => Credit, (type) => type.customer)
+  credit: Credit[];
 
-  @OneToMany(
-    () => SavingsAccount,
-    (sa) => sa.customer
-  )
-  savings_accounts: SavingsAccount[]; 
+  @OneToMany(() => SavingsAccount, (sa) => sa.customer)
+  savings_accounts: SavingsAccount[];
 
   @ManyToOne(() => TypeCustomer)
   @JoinColumn({ name: 'type_customer_id' })
@@ -74,7 +76,7 @@ export class Customer extends BaseEntity {
   @JoinColumn({ name: 'location_city_id' })
   location_city: LocationCity;
 
-  @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY  })
+  @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY })
   created_from: CustomerCreatedFrom;
 
   // Ajoutez ces propriétés pour accéder directement aux IDs

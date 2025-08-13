@@ -1,7 +1,7 @@
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { DocumentType } from '../../document-type/entities/document-type.entity';
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { Base } from 'src/core/entities/base';
 
 export enum DocumentCustomerStatus{
   PENDING = 0,
@@ -10,7 +10,7 @@ export enum DocumentCustomerStatus{
 }
 
 @Entity('document_customer')
-export class DocumentCustomer extends BaseEntity {
+export class DocumentCustomer extends Base {
   @PrimaryGeneratedColumn()
   id: number;
 
