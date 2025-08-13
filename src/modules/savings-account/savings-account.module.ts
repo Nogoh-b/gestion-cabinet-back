@@ -14,6 +14,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { AgenciesModule } from '../agencies/agencies.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { CustomerModule } from '../customer/customer.module';
@@ -51,13 +57,20 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
 
 
 
+
+
+
+
+
+
 @Module({
   imports: [
     DocumentsModule,
-    AgenciesModule,
     forwardRef(() => TransactionModule),
+    forwardRef(() => AgenciesModule),
     forwardRef(() => RessourceModule),
     forwardRef(() => CustomerModule),
+    forwardRef(() => AgenciesModule),
     forwardRef(() => PartnerModule),
     forwardRef(() => CommercialModule),
     forwardRef(() => CoreModule),
@@ -95,6 +108,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
       CommissionService,
       InterestSavingAccountService,
       SavingsAccountService,
+      TypeOrmModule
   ]
 })
 export class SavingsAccountModule {}

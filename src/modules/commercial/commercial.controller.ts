@@ -1,20 +1,21 @@
 // src/commercial/commercial.controller.ts
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 import {
-    Controller,
     Get,
     Post,
     Body,
     Param, Patch,
-    Query
+    Query,
+    Controller
 } from '@nestjs/common';
 import {
-    ApiTags,
     ApiOperation,
     ApiResponse,
     ApiParam,
-    ApiQuery,
+    ApiQuery
 } from '@nestjs/swagger';
+
+
 
 
 
@@ -30,7 +31,9 @@ import { Commercial } from './entities/commercial.entity';
 
 
 
-@ApiTags('commercials')
+
+
+// @ApiTags('commercials')
 @Controller('commercials')
 export class CommercialController {
   constructor(private readonly commercialService: CommercialService) {}

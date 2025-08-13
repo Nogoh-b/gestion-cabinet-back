@@ -1,24 +1,39 @@
+import { plainToInstance } from 'class-transformer';
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
-import { PaginatedResult } from 'src/core/shared/interfaces/pagination.interface';
+import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
+import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
+
+
+
+
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-
-
-
-
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
+
+
+
+
+
 import { Repository } from 'typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
 
 
 
@@ -28,6 +43,19 @@ import { TypePersonnelService } from '../type_personnel/type_personnel.service';
 import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -53,6 +81,7 @@ export class PersonnelService extends BaseService<Personnel> {
     @Inject(forwardRef(() => TransactionSavingsAccountService))
     private readonly transactionSavingsAccountService: TransactionSavingsAccountService,
     private readonly type_personnel_service: TypePersonnelService,
+    private paginationService: PaginationService,
     private readonly documentCustomerService: DocumentCustomerService,
   ) {
     super();
@@ -69,7 +98,7 @@ export class PersonnelService extends BaseService<Personnel> {
 
     // Toujours récupérer le compte épargne en ligne
     const savings_account = await this.savings_account_service.findFirstOnlineByCustomer(dto.customer_id);
-    if (!savings_account) throw new NotFoundException('Associated savings account not found');
+    if (!savings_account) throw new NotFoundException('Associated savings account online not found');
 
     let code: any = null;
 
@@ -86,7 +115,18 @@ export class PersonnelService extends BaseService<Personnel> {
 
     } else if (type.code === PersonnelTypeCode.PARTNER) {
       code = dto.code;
+    }
+    if(type.code == PersonnelTypeCode.DG || type.code == PersonnelTypeCode.PCA){
+      const ids = await this.personnel_repository
+        .createQueryBuilder('p')
+        .innerJoin('p.type_personnel', 't')
+        .where('t.code = :code', { code: type.code })
+        .getMany();
 
+      await this.personnel_repository.update(
+        ids.map(p => p.id),
+        { status: 0 }
+      );
     }
 
     const entity = this.personnel_repository.create({
@@ -94,6 +134,7 @@ export class PersonnelService extends BaseService<Personnel> {
       savings_account,
       type_personnel: type,
       name : dto.name,
+      status : 1,
       is_intern : dto.is_intern,
     });
     if(code)
@@ -103,11 +144,56 @@ export class PersonnelService extends BaseService<Personnel> {
   }
 
 
-  async findAll(): Promise<Personnel[]> {
-    return this.personnel_repository.find({
-      relations: ['customer', 'type_personnel', 'savings_account'],
-    });
+  async findAll(
+    status = 1,
+    page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string
+  ): Promise<PaginatedResult<Personnel>> {
+    const qb = this.personnel_repository
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.customer', 'customer')
+      .leftJoinAndSelect('p.type_personnel', 'type')
+      .leftJoinAndSelect('p.savings_account', 'sa')
+
+    // Filtre statut (désactivation)
+    if (status) {
+      qb.andWhere('p.status = :status', { status });
+    }
+
+    // Options de pagination / recherche / plage de dates
+    const options: PaginationOptions & {
+      search?: SearchOptions;
+      dateRange?: DateRange;
+    } = { page, limit };
+
+    if (term) {
+      options.search = { term, fields, exact };
+    }
+
+    if (from || to) {
+      options.dateRange = {
+        from: from ? new Date(from) : undefined,
+        to: to ? new Date(to) : undefined,
+      };
+    }
+
+    const paginatedResult = await this.paginationService.paginate<Personnel>(qb, options);
+
+    const data = paginatedResult.data.map((personnel) =>
+      plainToInstance(Personnel, personnel),
+    );
+
+    return {
+      ...paginatedResult,
+      data,
+    };
   }
+
 
   async findAllMembersLength(personnels: Personnel[]): Promise<number> {
     let count = 0
@@ -119,15 +205,21 @@ export class PersonnelService extends BaseService<Personnel> {
     return count;
   }
 
-  async findOne(id: number): Promise<Personnel> {
-    const entity = await this.personnel_repository.findOne({ where: { id } });
-    if (!entity) throw new NotFoundException('Personnel not found1');
+  async findOne(id: number, strict =true): Promise<Personnel | null> {
+    const entity = await this.personnel_repository.findOne({ where: { id } , relations: ['customer', 'type_personnel', 'savings_account']  });
+    if (!entity && strict) throw new NotFoundException('Personnel not found1');
+    if (entity && entity.status == 0 && strict) throw new NotFoundException('Personnel desactivé');
     return entity;
   }
 
-  async findOneByCode(code: string): Promise<Personnel> {
-    const entity = await this.personnel_repository.findOne({ where: { code }, relations: ['customer', 'type_personnel', 'savings_account'] });
-    if (!entity) throw new NotFoundException('Personnel not found2 ', code); 
+  async findOneByCode(code: string, strict = true): Promise<Personnel | null> {
+    const entity = await this.personnel_repository.findOne({
+      where: { code, status: 1 },
+      relations: ['customer', 'type_personnel', 'savings_account'],
+      order: { updated_at: 'DESC', id: 'DESC' }
+    });
+    if (!entity  && strict) throw new NotFoundException('Personnel not found2 ', code); 
+    if (entity && entity.status == 0 && strict) throw new NotFoundException('Personnel desactivé');
     return entity;
   }
 
@@ -140,9 +232,12 @@ export class PersonnelService extends BaseService<Personnel> {
     const next_code = (parseInt(max?.max || '0') + 1).toString().padStart(4, '0');
 
     const entity = await this.findOne(id);
+
+    if (!entity) throw new NotFoundException('Personnel inexistante');
     const merged = this.personnel_repository.merge(entity, {
       code: dto.code ? next_code : undefined,
       is_intern: dto.is_intern,
+      status: dto.status,
       customer: await this.customer_service.findOne(dto.customer_id ?? entity.customer.id),
       type_personnel: await this.type_personnel_service.findOne(dto.type_personnel_id ?? entity.type_personnel.id),
     });
@@ -157,12 +252,35 @@ export class PersonnelService extends BaseService<Personnel> {
       .where('type.code NOT IN (:...excluded)', {
         excluded: [PersonnelTypeCode.COMMERCIAL, PersonnelTypeCode.PARTNER],
       })
+      .andWhere('personnel.status = :status', { status: 1 })
       .getMany();
+
   }
 
   async remove(id: number): Promise<void> {
     const entity = await this.findOne(id);
+    if (!entity) throw new NotFoundException('Personnel not found'); 
+      
     await this.personnel_repository.remove(entity);
+  }
+
+  async activate(id: number): Promise<Personnel> {
+    const personnel = await this.personnel_repository.findOne({
+      where: { id, status: 0 },
+    });
+    if (!personnel) throw new NotFoundException('Personnel inexistant ou actif');
+    personnel!.status = 1;
+    personnel?.save();
+    return personnel;
+  }
+  async deactivate(id: number): Promise<Personnel> {
+    const personnel = await this.personnel_repository.findOne({
+      where: { id, status: 1 },
+    });
+    if (!personnel) throw new NotFoundException('Personnel inexistante ou deja inactif');
+    personnel!.status = 0;
+    personnel?.save();
+    return personnel;
   }
 
   async getPersonnelTransactions(id,query: PaginationQueryTxDto): Promise<PaginatedResult<TransactionSavingsAccount>> {
@@ -181,6 +299,8 @@ export class PersonnelService extends BaseService<Personnel> {
 
   async unlockIfMaxReached(personnel_id: number): Promise<number> {
     const personnel = await this.findOne(personnel_id);
+    if (!personnel) throw new NotFoundException('Personnel not found'); 
+
     return await this.transactionSavingsAccountService.unlockTransactionForPersonnel(personnel.id, personnel?.savings_account?.id, personnel.type_personnel.max_transaction_blocked );
   }
 
@@ -188,6 +308,9 @@ export class PersonnelService extends BaseService<Personnel> {
     const personnel = await this.personnel_repository.findOne({where: { code }, relations: ['type_personnel','savings_account','savings_account.type_savings_account']});
     if (!personnel || personnel.type_personnel.code !== type_personnel) {
       throw new NotFoundException(`${type_personnel} ${code} introuvable`);
+    }
+    if (personnel && personnel.type_personnel.code == type_personnel && personnel.status == 0) {
+      throw new NotFoundException(`${type_personnel} ${code} desactivé`);
     }
     const doc = await this.documentCustomerService.findByType('PHOTO 4X4')
     const {name} = personnel
@@ -198,7 +321,7 @@ export class PersonnelService extends BaseService<Personnel> {
       console.log('type_personnel', personnel.savings_account.type_savings_account)
       if(type_personnel === PersonnelTypeCode.PARTNER)
         promo_code_reduction = personnel.savings_account.type_savings_account.promo_code_reduction
-    return {name, promo_code_reduction, file_path};
+    return {name, promo_code_reduction, file_path, code};
   }
 
 }

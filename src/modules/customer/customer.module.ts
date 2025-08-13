@@ -7,6 +7,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
 import { AgenciesModule } from '../agencies/agencies.module';
 import { BranchService } from '../agencies/branch/branch.service';
 import { DocumentType } from '../documents/document-type/entities/document-type.entity';
@@ -27,12 +36,22 @@ import { TypeCustomersService } from './type-customer/type-customer.service';
 
 
 
+
+
+
+
+
+
+
+
+
 @Module({
   imports: [
-    GeographyModule,
-    CoreModule,
-    IamModule,
+    
     forwardRef(() => AgenciesModule),
+    forwardRef(() => IamModule),
+    forwardRef(() => CoreModule),
+    forwardRef(() => GeographyModule),
     forwardRef(() => DocumentsModule),
     forwardRef(() => SavingsAccountModule), 
     TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType]),

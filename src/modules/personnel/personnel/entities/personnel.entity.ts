@@ -1,32 +1,13 @@
 import { BaseEntity } from 'src/core/entities/base.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
-
-
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, BeforeInsert } from 'typeorm';
 
 import { ApiProperty } from '@nestjs/swagger';
 
 
 
-
-
-
-
-
-
 import { TypePersonnel } from '../../type_personnel/entities/type_personnel.entity';
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Entity('personnel')
@@ -58,5 +39,14 @@ export class Personnel extends BaseEntity {
   is_intern: boolean | null;
   
   @Column({ length: 20, unique: true, nullable: true })
-  code: string;
+  code: string; 
+
+  @Column({ nullable: false })
+  status: number;
+
+
+  @BeforeInsert()
+  setDefaultHireDate() {
+    this.status  = 1
+  }
 }

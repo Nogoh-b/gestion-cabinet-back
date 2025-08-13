@@ -1,10 +1,22 @@
-import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+
+
+
+
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
+
+
+
+
+
+
+
+import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
-
-
-
-
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+
 
 
 
@@ -18,9 +30,15 @@ import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
 import { PersonnelService } from './personnel.service';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -48,12 +66,29 @@ export class PersonnelController {
   }
 
   @Get()
-  findAll() {
-    return this.personnel_service.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    const { page, limit, term, fields, exact, from, to } = query;
+    const fieldList = fields ? fields.split(',') : undefined;
+    const isExact = exact ;
+    return this.personnel_service.findAll( query.status,
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+      term,
+      fieldList,
+      isExact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined);
   }
   @Get('non-commercial-partner')
   findAllExceptCommercialAndPartner() {
     return this.personnel_service.findAllExceptCommercialAndPartner();
+  }
+  @Get('/by-code/:code')
+  @ApiOperation({ summary: 'Récupère par CODE ' })
+  @ApiParam({ name: 'code', description: "CODE", type: String })
+  @ApiResponse({ status: 200, description: 'Compte trouvé', type: Personnel })
+  findOneByCode(@Param('code') code: string) {
+    return this.personnel_service.findOneByCode(code);
   }
   @Get(':id')
   findOne(@Param('id') id: number) {
@@ -61,9 +96,9 @@ export class PersonnelController {
   }
 
   @Put(':id')
-     @UseGuards(JwtAuthGuard, PermissionsGuard)
+    @UseGuards(JwtAuthGuard, PermissionsGuard)
     @RequirePermissions('EDIT_PERSONNEL')
-  update(@Param('id') id: number, @Body() dto: UpdatePersonnelDto) {
+    update(@Param('id') id: number, @Body() dto: UpdatePersonnelDto) {
     return this.personnel_service.update(id, dto);
   }
 
@@ -96,5 +131,22 @@ export class PersonnelController {
   @RequirePermissions('BUY_PERSONNEL')
   unlockIfMaxReached(@Param('id') id: number) {
     return this.personnel_service.unlockIfMaxReached(id);
+  }
+
+  
+  @Get(':id/deactivate')
+  @ApiOperation({ summary: '' })
+  // @UseGuards(JwtAuthGuard, PermissionsGuard)
+  // @RequirePermissions('VIEW_BRANCH')
+  deactivatePersonnel(@Param('id') id: number) {
+    return this.personnel_service.deactivate(id);
+  }
+
+  @Get(':id/activate')
+  // @UseGuards(JwtAuthGuard, PermissionsGuard)
+  // @ApiOperation({ summary: 'Get Inactive Personnel' })
+  // @RequirePermissions('VIEW_BRANCH')
+  activatePersonnel(@Param('id') id: number) {
+    return this.personnel_service.activate(id);
   }
 }

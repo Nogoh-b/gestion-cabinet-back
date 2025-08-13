@@ -1,4 +1,6 @@
+import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
+
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CustomerModule } from '../customer/customer.module';
@@ -14,12 +16,14 @@ import { TypePersonnelSeeder } from './type_personnel/seed-type-personnel';
 import { TypePersonnelController } from './type_personnel/type_personnel.controller';
 import { TypePersonnelService } from './type_personnel/type_personnel.service';
 
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([TypePersonnel, Personnel]),
       forwardRef(() => SavingsAccountModule),
       forwardRef(() => CustomerModule),
       forwardRef(() => DocumentsModule),
+      forwardRef(() => CoreModule),
       forwardRef(() => TransactionModule),
       forwardRef(() => IamModule),
     
