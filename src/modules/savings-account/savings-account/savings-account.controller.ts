@@ -22,19 +22,19 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from 
 
 
 
+
+
+
+
+
+
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
-
-
-
-
-
-
-
-
 
 
 
@@ -93,8 +93,20 @@ export class SavingsAccountController {
   @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
   findAllDeactivate() {
     return this.service.findAll(true);
+  }  
+  @Get('find_all_acccount_not_have_init_trans')
+  @ApiOperation({ summary: '' })
+  @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
+  findAccountsMissingMinBalanceButWithValidatedTx() {
+    return this.service.findAccountsMissingMinBalanceButWithValidatedTx();
   }
 
+  @Get('init_all_acccount_not_have_init_trans')
+  @ApiOperation({ summary: '' })
+  @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
+  initAccountsMissingMinBalanceButWithValidatedTx() {
+    return this.service.initAccountsMissingMinBalanceButWithValidatedTx();
+  }
 
   @Get(':id/documents/status')
   @ApiOperation({ summary: 'Get validation status of all documents for an account' })
@@ -146,6 +158,12 @@ export class SavingsAccountController {
   ) {
     return this.service.findOneByCode(number_savings_account, false);
   }
+
+  /*@Get('find_all_acccount_not_have_init_trans')
+  findAccountsMissingMinBalanceButWithValidatedTx(
+  ) {
+    return this.service.findAccountsMissingMinBalanceButWithValidatedTx();
+  }*/
 
   @Post()
   @ApiOperation({ summary: 'Crée un nouveau compte d’épargne' })

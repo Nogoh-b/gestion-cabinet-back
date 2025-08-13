@@ -8,11 +8,13 @@ import { forwardRef, Module, OnModuleInit } from '@nestjs/common';
 
 
 
+
 import { SavingsAccountModule } from '../savings-account/savings-account.module';
 import { TransactionModule } from '../transaction/transaction.module';
 import { QueueController } from './queue.controller';
 import { QueueProcessor } from './queue.processor';
 import { QueueService } from './queue.service';
+
 
 
 
@@ -26,7 +28,7 @@ import { QueueService } from './queue.service';
     BullModule.registerQueue({ name: 'task-queue' }),
     forwardRef(() => TransactionModule),
     forwardRef(() =>SavingsAccountModule),
-    CoreModule,
+      forwardRef(() => CoreModule),
   ],
   controllers: [QueueController],
   providers: [QueueService, QueueProcessor],

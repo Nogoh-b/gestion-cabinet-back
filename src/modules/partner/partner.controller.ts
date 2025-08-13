@@ -1,6 +1,9 @@
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
-import { Controller, Get, Post, Body, Param, Query, Patch } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Get, Post, Body, Param, Query, Patch, Controller } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+
+
+
 
 
 
@@ -13,7 +16,10 @@ import { Partner } from './entities/partner.entity';
 import { PartnerService } from './partner.service';
 
 
-@ApiTags('partners')
+
+
+
+// @ApiTags('partners')
 @Controller('partners')
 export class PartnerController {
 constructor(private readonly partnerService: PartnerService) {}

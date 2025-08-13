@@ -20,7 +20,6 @@ import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.en
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 
 
-import { PersonnelTypeCode } from 'src/modules/personnel/type_personnel/entities/type_personnel.entity';
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
 
 
@@ -37,7 +36,7 @@ import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
 
-import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
+import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 
 
 import { Not, Repository } from 'typeorm';
@@ -68,6 +67,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -77,6 +85,15 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -425,19 +442,19 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     let partner : Personnel | null = new Personnel();
     if (dto.promo_code) {
       console.log('dto.code_promo ' ,dto)
-      partner = await this.personnelService.findOneByCode(dto.promo_code);
-      if (!partner || partner.type_personnel.code !== PersonnelTypeCode.PARTNER) {
+      partner = await this.personnelService.findOneByCode(dto.promo_code, false);
+      /*if (!partner || partner.type_personnel.code !== PersonnelTypeCode.PARTNER) {
         throw new NotFoundException('Partner introuvable');
-      }
+      }*/
     }
 
     let commercial : Personnel | null = new Personnel();
     if (dto.commercial_code) {
-      commercial = await this.personnelService.findOneByCode(dto.commercial_code);
-      console.log('dto.commercial_code ' ,commercial.type_personnel)
-      if (!commercial || commercial.type_personnel.code !== PersonnelTypeCode.COMMERCIAL) {
+      commercial = await this.personnelService.findOneByCode(dto.commercial_code, false);
+      console.log('dto.commercial_code ' ,commercial?.type_personnel)
+      /*if (!commercial || commercial.type_personnel.code !== PersonnelTypeCode.COMMERCIAL) {
         throw new NotFoundException('Commercial introuvable ' + dto.commercial_code );
-      }
+      }*/
     }
 
     let number_savings_account: string;
@@ -559,25 +576,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     }
     return account; 
 
-   /* try {
-        const code_cash = await this.mcotiService.callMcotiEndpoint(
-            'GET',
-            `epargne/epargne-accounts/${account.number_savings_account}/update-code-cash`
-        );
 
-        if (code_cash) {
-            account.code_cash = code_cash;
-            await this.repo.save(account); // Added await here
-            return account;
-        }
-
-        // Return empty account if no code_cash was returned
-        return new SavingsAccount();
-
-    } catch (error) {
-        console.error('Error updating code cash:', error);
-        return new SavingsAccount();
-    }*/
 }
 
   async remove(id: number): Promise<any> {
@@ -1180,7 +1179,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
             return (sum | 0) + (commission | 0);
           }
           return sum - ((tx.amount | 0) + (commission | 0));
-        }
+        } 
         return sum;
       }
 
@@ -1391,4 +1390,54 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     return sAccounts;
   }
 
+  /**
+   * Comptes SANS transaction MIN_BALANCE
+   * MAIS avec >= 1 transaction validée (status=1) liée par origin/target = number_savings_account.
+   */
+  async findAccountsMissingMinBalanceButWithValidatedTx(): Promise<SavingsAccount[]> {
+    const qb = this.repo.createQueryBuilder('sa');
+
+    // Sous-requête: au moins une transaction VALIDÉE (status=1) liée à ce compte
+    const subHasValidatedTx = qb.subQuery()
+      .select('1')
+      .from(TransactionSavingsAccount, 'tx1')
+      .where('(tx1.origin = sa.number_savings_account OR tx1.target = sa.number_savings_account)')
+      .andWhere('tx1.status = :validatedStatus') // 1 = VALIDATE
+      .getQuery();
+
+    // Sous-requête: transaction MIN_BALANCE (à exclure)
+    const subHasMinBalance = qb.subQuery()
+      .select('1')
+      .from(TransactionSavingsAccount, 'tx2')
+      .innerJoin(TransactionType, 'tt', 'tt.id = tx2.transaction_type_id')
+      .where('(tx2.origin = sa.number_savings_account OR tx2.target = sa.number_savings_account)')
+      .andWhere('tt.code = :minBalanceCode') // 'MIN_BALANCE'
+      .getQuery();
+
+    const sas = await qb
+      .where(`EXISTS ${subHasValidatedTx}`)
+      .andWhere(`NOT EXISTS ${subHasMinBalance}`)
+      .setParameters({
+        validatedStatus: TransactionSavingsAccountStatus.VALIDATE, // 1
+        minBalanceCode: 'MIN_BALANCE',
+      })
+      .getMany();
+
+      return sas
+  }
+  async initAccountsMissingMinBalanceButWithValidatedTx(): Promise<boolean> {
+    const qb = this.repo.createQueryBuilder('sa');
+
+      const sas = await this.findAccountsMissingMinBalanceButWithValidatedTx()
+      for (const sa of sas) {
+        this.transactionSavingsAccountService.validate(sa.id, false,true)
+      }
+      return true
+  }
+
+    findAllTrans(): 
+    Promise<TransactionSavingsAccount[]> {
+  
+      return this.transactionSavingsAccountService.findAllTrans()
+    }
 }

@@ -33,72 +33,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -109,75 +44,6 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -523,6 +389,17 @@ export class TransactionSavingsAccountService {
   }
 
 
+  findAllTrans(): 
+  Promise<TransactionSavingsAccount[]> {
+
+    return this.repo.find({relations : [ 'channelTransaction',
+      'provider',
+      'personnel',
+      'personnel.type_personnel',
+      'originSavingsAccount',
+      'targetSavingsAccount']})
+
+  }
 
 
   findAllByType(
@@ -749,7 +626,7 @@ export class TransactionSavingsAccountService {
   }
 
   async validate(
-    id: number, isFirstTx = false
+    id: number, isFirstTx = false, force = false
   ): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
     if(entity.status == 0){
@@ -785,6 +662,7 @@ export class TransactionSavingsAccountService {
     if (process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT) {
       mendoCoSa = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT));
     }
+    let personnels : Personnel [] = []
     // const isFirstTx = this.isFirstTransaction(target)// target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && (!target.targetSavingsAccountTx || target && target.targetSavingsAccountTx.length === 1)
     await this.repo.manager.transaction(async (entityManager) => {
 
@@ -793,12 +671,13 @@ export class TransactionSavingsAccountService {
         where: { code: 'API' },
       });
       
-      if (isFirstTx && target) {
+      if (target && (isFirstTx || force)) {
         tx.status = 1
         console.log('isFirstTx------ ', isFirstTx, ' ', tx.status)
         // Transaction pour le minimum de balance
 
-
+          const txRepo = entityManager.getRepository(TransactionSavingsAccount);
+          const saRepo = entityManager.getRepository(SavingsAccount);
           txData.origin = txData.target;
           txData.originSavingsAccount = txData.targetSavingsAccount;
           const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
@@ -920,13 +799,13 @@ export class TransactionSavingsAccountService {
         }
 
               // Transaction pour le personnel
-        const personnels = await this.personnelService.findAllExceptCommercialAndPartner()
+        personnels = await this.personnelService.findAllExceptCommercialAndPartner()
         for (const personnel of personnels) {
           console.log('personnel', personnel.savings_account.id)
           //|| tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER
           if(!personnel.savings_account || !target )
             continue;
-          const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_PERSONNEL);
+          const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMISSION_PERSONNEL); 
           const provider = await this.providerService.findOne('SYSTEM');
           const personnelTx = new TransactionSavingsAccount();
           Object.assign(personnelTx, txData);
@@ -955,7 +834,6 @@ export class TransactionSavingsAccountService {
             personnelTx.channelTransaction = chanelOpenProduct;
           }
           const r = await entityManager.save(personnelTx);
-          this.savingsAccountService.updateBalance(personnel.savings_account.id)
         }
 
 
@@ -1025,10 +903,10 @@ export class TransactionSavingsAccountService {
 
 
     });
+
     console.log('entity.entity.provider_code', entity.channelTransaction.code)
 
     
-
 
     if(adminSa && adminSa.id){
       this.savingsAccountService.updateBalance(adminSa.id)
@@ -1051,6 +929,9 @@ export class TransactionSavingsAccountService {
       console.log('update solde origin')
 
       this.savingsAccountService.updateBalance(entity.originSavingsAccount.id)
+    }
+    for (const personnel of personnels) { 
+      await this.savingsAccountService.updateBalance(personnel.savings_account.id)
     }
     return tx
   }

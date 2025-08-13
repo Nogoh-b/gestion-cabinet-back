@@ -2,6 +2,8 @@
 // src/core/config/database.config.ts
 import { SavingsAccountSubscriber } from 'src/modules/savings-account/savings-account/savings-account.subscriber';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+
+
  
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {

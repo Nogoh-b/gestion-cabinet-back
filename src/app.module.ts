@@ -8,23 +8,25 @@ import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ServeStaticModule } from '@nestjs/serve-static';
 
+
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
-import { CommercialModule } from './modules/commercial/commercial.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { IamModule } from './modules/iam/iam.module';
-import { PartnerModule } from './modules/partner/partner.module';
+import { PersonnelModule } from './modules/personnel/personnel.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { RessourceModule } from './modules/ressource/ressource.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
-import { PersonnelModule } from './modules/personnel/personnel.module';
+
+
 
 
 
@@ -90,8 +92,8 @@ dotenv.config();
     TransactionModule,
     ActivitiesModule,
     QueueModule,
-    PartnerModule,
-    CommercialModule,
+    // PartnerModule,
+    // CommercialModule,
     RessourceModule,
     PersonnelModule
   ],
