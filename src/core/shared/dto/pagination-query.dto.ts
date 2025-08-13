@@ -17,6 +17,8 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
+
 export class PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Numéro de page', example: 1 })
   @IsOptional()
@@ -76,6 +78,11 @@ export class PaginationQueryDto {
   @IsDateString()
   @Type(() => Date)
   to?: Date;
+
+  @ApiPropertyOptional({ description: 'status', example: 1 })
+  @IsOptional()
+  @IsInt()
+  status: number = 1;
 
   fieldList : string [];
   isExact :boolean = false;

@@ -20,7 +20,6 @@ import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.en
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 
 
-import { PersonnelTypeCode } from 'src/modules/personnel/type_personnel/entities/type_personnel.entity';
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
 
 
@@ -69,6 +68,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -78,6 +85,14 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
 
 
 
@@ -427,19 +442,19 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     let partner : Personnel | null = new Personnel();
     if (dto.promo_code) {
       console.log('dto.code_promo ' ,dto)
-      partner = await this.personnelService.findOneByCode(dto.promo_code);
-      if (!partner || partner.type_personnel.code !== PersonnelTypeCode.PARTNER) {
+      partner = await this.personnelService.findOneByCode(dto.promo_code, false);
+      /*if (!partner || partner.type_personnel.code !== PersonnelTypeCode.PARTNER) {
         throw new NotFoundException('Partner introuvable');
-      }
+      }*/
     }
 
     let commercial : Personnel | null = new Personnel();
     if (dto.commercial_code) {
-      commercial = await this.personnelService.findOneByCode(dto.commercial_code);
-      console.log('dto.commercial_code ' ,commercial.type_personnel)
-      if (!commercial || commercial.type_personnel.code !== PersonnelTypeCode.COMMERCIAL) {
+      commercial = await this.personnelService.findOneByCode(dto.commercial_code, false);
+      console.log('dto.commercial_code ' ,commercial?.type_personnel)
+      /*if (!commercial || commercial.type_personnel.code !== PersonnelTypeCode.COMMERCIAL) {
         throw new NotFoundException('Commercial introuvable ' + dto.commercial_code );
-      }
+      }*/
     }
 
     let number_savings_account: string;
@@ -561,25 +576,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     }
     return account; 
 
-   /* try {
-        const code_cash = await this.mcotiService.callMcotiEndpoint(
-            'GET',
-            `epargne/epargne-accounts/${account.number_savings_account}/update-code-cash`
-        );
 
-        if (code_cash) {
-            account.code_cash = code_cash;
-            await this.repo.save(account); // Added await here
-            return account;
-        }
-
-        // Return empty account if no code_cash was returned
-        return new SavingsAccount();
-
-    } catch (error) {
-        console.error('Error updating code cash:', error);
-        return new SavingsAccount();
-    }*/
 }
 
   async remove(id: number): Promise<any> {
@@ -1182,7 +1179,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
             return (sum | 0) + (commission | 0);
           }
           return sum - ((tx.amount | 0) + (commission | 0));
-        }
+        } 
         return sum;
       }
 
@@ -1437,4 +1434,10 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       }
       return true
   }
+
+    findAllTrans(): 
+    Promise<TransactionSavingsAccount[]> {
+  
+      return this.transactionSavingsAccountService.findAllTrans()
+    }
 }

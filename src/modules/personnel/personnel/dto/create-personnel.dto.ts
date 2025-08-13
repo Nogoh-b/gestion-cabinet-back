@@ -24,4 +24,6 @@ export class CreatePersonnelDto {
   @Length(1, 20)
   @ApiProperty({ example: 'PROMO2025CODEX' })
   code: string;
+
+  status : number
 }
