@@ -20,7 +20,7 @@ import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-accoun
 
 
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 
 
 
@@ -47,6 +47,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -54,6 +60,12 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
 
 
 
@@ -756,13 +768,14 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
 
         if(target.commercial_code){
             comercial = await this.personnelService.findOneByCode(target.commercial_code);
-            if(comercial && comercial.savings_account){
+            const unicity = await this.checkUniquenessPairs({commercial_code: comercial?.code , origin : tx.targetSavingsAccount?.number_savings_account ?? 'SYSTEM' })
+            if(comercial && comercial.savings_account && !unicity.commercialConflict){
               // Transaction pour le le partenaire
               if((comercial.is_intern && (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 ) || !comercial.is_intern){
                 console.log('rrrrCom ', (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 )
                 const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMERCIAL_COMMISSION);
                 const providerOpenProduct = await this.providerService.findOne('SYSTEM');
-                const commercial = await  this.personnelService.findOneByCode(target.commercial_code);
+                const commercial = await  this.personnelService.findOneByCode(target.commercial_code, false);
                 const fifthTx = new TransactionSavingsAccount();
                 Object.assign(fifthTx, txData);
                 fifthTx.amount = Math.floor((target!.type_savings_account.minimum_balance * target!.type_savings_account.commission_per_product)/100);
@@ -794,14 +807,15 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
 
 
         if(target.promo_code){
-            partner = await this.personnelService.findOneByCode(target.promo_code);
-            if(partner && partner.savings_account){
+            partner = await this.personnelService.findOneByCode(target.promo_code, false);
+            const unicity = await this.checkUniquenessPairs({promo_code: partner?.code , origin : tx.targetSavingsAccount?.number_savings_account ?? 'SYSTEM' })
+            if(partner && partner.savings_account && !unicity.promoConflict){
             // Transaction pour le le partenaire
             const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.PARTNER_COMMISSION);
             const providerOpenProduct = await this.providerService.findOne('SYSTEM');
             const fourthTx = new TransactionSavingsAccount();
             Object.assign(fourthTx, txData);
-            fourthTx.amount = Math.round((target!.type_savings_account.minimum_balance * target!.type_savings_account.promo_code_fee)/100);
+            fourthTx.amount = Math.ceil((target!.type_savings_account.minimum_balance * target!.type_savings_account.promo_code_fee)/100);
             fourthTx.transactionType = txTypePartner;
             fourthTx.provider = providerOpenProduct;
             fourthTx.targetSavingsAccount = partner?.savings_account;
@@ -1201,6 +1215,50 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
     return await this.mcotiService
       .checkStatusPaymentWithDraw(t )
        
+  }
+
+  async checkUniquenessPairs(params: {
+    origin: string;
+    promo_code?: string | null;
+    commercial_code?: string | null;
+    excludeId?: number;
+  }): Promise<{
+    promoConflict: boolean;
+    promoId: number | null;
+    commercialConflict: boolean;
+    txId: number | null;
+  }> {
+    const { origin } = params;
+    const promo_code = params.promo_code?.trim() || null;
+    const commercial_code = params.commercial_code?.trim() || null;
+    const excludeId = params.excludeId;
+
+    const wherePromo =
+      promo_code
+        ? { origin, promo_code, ...(excludeId ? { id: Not(excludeId) } : {}) }
+        : null;
+
+    const whereCommercial =
+      commercial_code
+        ? { origin, commercial_code, ...(excludeId ? { id: Not(excludeId) } : {}) }
+        : null;
+
+    // aucune paire fournie → pas de conflit
+    if (!wherePromo && !whereCommercial) {
+      return { promoConflict: false, promoId: null, commercialConflict: false, txId: null };
+    }
+
+    const [promoHit, commercialHit] = await Promise.all([
+      wherePromo ? this.repo.findOne({ where: wherePromo, select: ['id'] }) : null,
+      whereCommercial ? this.repo.findOne({ where: whereCommercial, select: ['id'] }) : null,
+    ]);
+
+    return {
+      promoConflict: !!promoHit,
+      promoId: promoHit?.id ?? null,
+      commercialConflict: !!commercialHit,
+      txId: commercialHit?.id ?? null,
+    };
   }
 
 }
