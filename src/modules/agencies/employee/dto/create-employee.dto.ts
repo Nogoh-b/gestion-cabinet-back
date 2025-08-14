@@ -1,6 +1,14 @@
 
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsDateString } from 'class-validator';
+import { IsInt, IsDateString, IsOptional } from 'class-validator';
+export class ResetPasswordRequestDto {
+  // au moins l'un des deux doit être fourni
+  @ApiProperty({ required: true, example: 'superadmin' })
+  @IsOptional()
+  @IsInt()
+  id: number;
+}
+
 export class CreateEmployeeDto {
   @ApiProperty()
   @IsInt()

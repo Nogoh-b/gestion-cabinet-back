@@ -1,20 +1,16 @@
-import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
-import { Partner } from 'src/modules/partner/entities/partner.entity';
 
 
-
-
-
-
-
-
-
-
-
-
-
+import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 import { Provider } from 'src/modules/provider/provider/entities/provider.entity';
+
+import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+
+
+
+
+
+
 
 
 
@@ -22,8 +18,25 @@ import { SavingsAccount } from 'src/modules/savings-account/savings-account/enti
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm';
 
 
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -81,6 +94,16 @@ export class PaymentsType {
     Object.assign(this, init);
   }
 }
+export enum TransactionProvider {
+  CASH = 'CASH',
+  CHEQUE = 'CHEQUE',
+  E_WALLET = 'E_WALLET',
+  MOMO = 'MOMO',
+  OM = 'OM',
+  SAVINGS_ACCOUNT = 'SAVINGS_ACCOUNT',
+  SYSTEM = 'SYSTEM',
+  WALLET = 'WALLET'
+}
 
 
 export class Payment {
@@ -90,7 +113,7 @@ export class Payment {
   description: string;
   payToken: string;
   rate: string;
-  amountHT: string;
+  amountHT: number;
   type: string;
   paymentType: string | null;
   ref: string;
@@ -177,36 +200,59 @@ export class TransactionSavingsAccount {
   @Column()
   transaction_type_id: number; // Référence du type de transaction
 
+  @Column({nullable: true, default: null})
+  personnel_id: number; 
+
+  @Column({ type: 'int', nullable: true })
+  tx_parent_id: number; // Référence du type de transaction
+
+  @Column({ nullable: true, type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })  
+  date_for_withdraw: Date;
+
   @CreateDateColumn()
   created_at: Date; // Date de création
 
   @UpdateDateColumn()
   updated_at: Date; // Date de mise à jour
 
+  @JoinColumn({ name: 'tx_parent_id', referencedColumnName: 'id' })
+  tx_parent?: TransactionSavingsAccount | null;
+
   @ManyToOne(() => SavingsAccount, acc => acc.originSavingsAccountTx, {eager: true  })
   @JoinColumn({ name: 'origin_savings_account_id', referencedColumnName: 'id' })
   originSavingsAccount?: SavingsAccount | null;; // Relation vers SavingsAccount
+
+  @ManyToOne(() => Ressource, acc => acc.savings_account, {eager: true  })
+  @JoinColumn({ name: 'ressource_id', referencedColumnName: 'id' })
+  ressource?: Ressource | null;; // Relation vers SavingsAccount
+
+  @ManyToOne(() => Personnel, acc => acc.savings_account, {eager: true,nullable: true })
+  @JoinColumn({ name: 'personnel_id', referencedColumnName: 'id' })
+  personnel?: Personnel | null;; // Relation vers SavingsAccount
 
   @ManyToOne(() => SavingsAccount, acc => acc.targetSavingsAccountTx, {eager: true  })
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
   targetSavingsAccount: SavingsAccount | null;; // Relation vers SavingsAccount
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
   promo_code: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
-  commission: number | null;
-
-  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
   commercial_code: string | null;
 
-  @ManyToOne(() => Partner, acc => acc.transactions, {eager: true  })
-  @JoinColumn({ name: 'promo_code', referencedColumnName: 'promo_code' })
-  partner: Partner | null;; // Relation vers SavingsAccount
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
+  commission: number | null;
 
-  @ManyToOne(() => Commercial, acc => acc.transactions, {eager: true  })
-  @JoinColumn({ name: 'commercial_code', referencedColumnName: 'commercial_code' })
-  commercial: Partner | null;; // Relation vers SavingsAccount
+  @Column({type: 'int', nullable: true }) 
+  branch_id: number ;
+
+  @ManyToOne(() => Personnel)
+  @JoinColumn({ name: 'promo_code', referencedColumnName: 'code' })
+  partner: Personnel | null;; // Relation vers SavingsAccount
+
+  @ManyToOne(() => Personnel)
+  @JoinColumn({ name: 'commercial_code', referencedColumnName: 'code' })
+  commercial: Personnel | null;; // Relation vers SavingsAccount
 
   /*@ManyToOne(() => Partner, acc => acc.transactions, {eager: true  })
   @JoinColumn({ name: 'partner_id', referencedColumnName: 'promo_code' })

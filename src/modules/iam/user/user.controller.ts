@@ -1,16 +1,20 @@
 // users.controller.ts
-import { Post, Body, Get, Param, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UsersService } from './user.service';
-import { User } from './entities/user.entity';
-import { UserResponseDto } from './dto/user-response.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { Post, Body, Get, Param, UseGuards, ParseIntPipe, Controller } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
-// @ApiTags('Users')
-// @Controller('users')
+
+import { CreateUserDto, ResetPasswordRequestDto } from './dto/create-user.dto';
+import { UserResponseDto } from './dto/user-response.dto';
+import { User } from './entities/user.entity';
+import { UsersService } from './user.service';
+
+
+
+@ApiTags('Users1')
+@Controller('users1')
 
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth() 
@@ -51,5 +55,26 @@ export class UsersController {
   @RequirePermissions('DELETE_EMPLOYEE')
   add(@Param('id') id: string): Promise<User> {
     return this.usersService.descativeUser(+id);
+  }
+
+
+    /**
+   * Envoie un mot de passe temporaire à l'utilisateur (identification par email ou id dans le body).
+   * - Variables en snake_case dans le DTO
+   * - Commentaires en français
+   */
+  @Post('send-new-password')
+  async sendNewPassword(@Body() dto: ResetPasswordRequestDto) {
+    return this.usersService.send_new_password({
+      id: dto.id
+    });
+  }
+
+  /**
+   * Variante: réinitialisation par id directement dans l'URL.
+   */
+  @Post(':id/send-new-password')
+  async sendNewPasswordById(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.send_new_password({ id });
   }
 }

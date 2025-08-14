@@ -1,14 +1,16 @@
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Patch } from '@nestjs/common';
+
 
 
 
 
 
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
-import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
 
 
 
@@ -80,6 +82,10 @@ export class TransactionSavingAccountController {
   checkStatusPayment(@Param('reference') reference: string) {
     return this.transactionSavingAccountService.checkStatusPayment(reference);
   }
+  @Get('check-wthdraw/:reference')
+  checkStatuswthdraw(@Param('reference') reference: string) {
+    return this.transactionSavingAccountService.checkWthDraw(reference);
+  }
   @Get()
   findAll(@Query() query: PaginationQueryTxDto) {
     const { page, limit, term, fields, exact, from, to, type, txType } = query;
@@ -113,6 +119,11 @@ export class TransactionSavingAccountController {
   @Get('wallet_withdrawl')
   findAllWalletWin(@Query() query: PaginationQueryTxDto) {
     return this.findByTypeParent(query, TransactionProvider.WALLET)
+  }
+
+  @Get('by-type')
+  findTransactionByType(){
+
   }
 
   findByTypeParent(query,
@@ -149,5 +160,14 @@ export class TransactionSavingAccountController {
   @Get(':id/unlock')
   unlockTransaction(@Param('id') id: string) {
     return this.transactionSavingAccountService.validate(+id);
+  }
+
+
+  @Patch(':id/update-provider-info')
+  updateProviderInfo(
+    @Param('id') id: string,
+    @Body() dto: UpdateProviderInfoDto,
+  ) {
+    return this.transactionSavingAccountService.updateProviderInfo(+id, dto);
   }
 }

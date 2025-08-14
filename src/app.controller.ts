@@ -6,15 +6,17 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiBody } from '@nestjs/swagger';
 
+
 import { AppService } from './app.service';
 import { QueueService } from './modules/queue/queue.service';
 import { TransactionSavingsAccountService } from './modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
 
 
+
 class AddJobDto {
   foo: string;
-  accountId:any;
+  accountId:any; 
   /**
    * Mettre à true pour exécuter le job chaque mois à la même date
    */

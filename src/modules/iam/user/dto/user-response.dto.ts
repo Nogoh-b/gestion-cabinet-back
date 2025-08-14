@@ -5,6 +5,8 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { ApiProperty } from '@nestjs/swagger';
 
 
+
+
 export class UserResponseDto {
   @Expose()
   @ApiProperty()
@@ -16,7 +18,7 @@ export class UserResponseDto {
 
   @Expose()
   @ApiProperty()
-  status: number;
+  status: number; 
 
   @Expose()
   @ApiProperty()
@@ -25,6 +27,10 @@ export class UserResponseDto {
   @Expose()
   @ApiProperty({ enum: ['caisse', 'comptable', 'DG', 'DAF', 'PCA'] })
   type: string;
+
+  @Expose()
+  @ApiProperty()
+  email: string;
 
   @Expose({ name: 'customer_id' })
   @ApiProperty()

@@ -1,9 +1,20 @@
 
 import { Base } from 'src/core/entities/base';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
-import { Commercial } from 'src/modules/commercial/entities/commercial.entity';
+
+
+
+
+
+
+
+
+
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { Partner } from 'src/modules/partner/entities/partner.entity';
+
+
+
+
 
 
 
@@ -14,12 +25,6 @@ import { Partner } from 'src/modules/partner/entities/partner.entity';
 
 
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-
-
-
-
-
-
 import {
   Entity,
   Column,
@@ -30,9 +35,18 @@ import {
   AfterLoad,
 } from 'typeorm';
 
+
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
+
+
+
+
+
+
+
 
 
 
@@ -74,6 +88,9 @@ export class SavingsAccount extends Base {
 
   @Column({ name: 'avalaible_balance', type: 'decimal' }) 
   avalaible_balance: number;
+
+  @Column({ name: 'avalaible_balance_online', type: 'decimal' }) 
+  avalaible_balance_online: number;
   
   // @Column({ name: 'balance_init_savings_account', type: 'decimal' }) 
   balance_init_savings_account: number;
@@ -126,17 +143,24 @@ export class SavingsAccount extends Base {
   @Column({ type: 'varchar', length: 50, nullable: true }) // Doit correspondre au type de Partner.promo_code
   promo_code: string | null;  
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  @Column({ type: 'varchar', length: 10, nullable: true, }) // Doit correspondre au type de Partner.promo_code
   commercial_code: string | null;
+
+  /*@ManyToOne(() => Personnel,{ nullable: true })
+  @JoinColumn({ name: 'promo_code', referencedColumnName: 'code' })
+  partner: Personnel | null;
+
+  @ManyToOne(() => Personnel,{ nullable: true })
+  @JoinColumn({ name: 'commercial_code', referencedColumnName: 'code' })  
+  commercial: Personnel | null;
 
   @ManyToOne(() => Partner)
   @JoinColumn({ name: 'promo_code' })
-  partner: Partner | null;
+  partner1: Partner | null;
 
   @ManyToOne(() => Commercial)
   @JoinColumn({ name: 'commercial_code' })
-  commercial: Commercial | null;
-
+  commercial1: Commercial | null;*/
 
   // Relations
   @ManyToOne(() => Customer)
@@ -147,7 +171,7 @@ export class SavingsAccount extends Base {
   enrolled_by_id: number; // Stocke l'ID du compte parrain
 
   // Relation Many-to-One (optionnelle, pour faciliter les jointures)
-  @ManyToOne(() => SavingsAccount, { nullable: true })
+  @ManyToOne(() => SavingsAccount, { nullable: true }) 
   @JoinColumn({ name: 'enrolled_by_id' })
   enrolled_by: SavingsAccount; // Référence à l'entité parente
 

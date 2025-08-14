@@ -45,3 +45,36 @@ export class OtpCode {
   @UpdateDateColumn()
   updatedAt: Date;
 }
+
+
+
+
+@Entity('otp_online_link')
+export class OtpOnlineLink {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  email: string;
+
+  @Column()
+  code: string;
+
+  @Column({ type: 'timestamp' })
+  expiresAt: Date;
+
+  @Column({ default: false })
+  used: boolean;
+
+  @Column({ type: 'varchar', length: 50, comment: 'Code du compte épargne concerné' })
+  savingsAccountCode: string;
+
+  @Column({ type: 'varchar', length: 50, nullable:true, comment: 'Identifiant unique dans le système COTI' })
+  cotiCustomerCode: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}

@@ -1,20 +1,21 @@
 // src/commercial/commercial.controller.ts
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param, Patch,
-  Query
+    Get,
+    Post,
+    Body,
+    Param, Patch,
+    Query,
+    Controller
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-  ApiQuery,
+    ApiOperation,
+    ApiResponse,
+    ApiParam,
+    ApiQuery
 } from '@nestjs/swagger';
+
+
 
 
 
@@ -30,7 +31,9 @@ import { Commercial } from './entities/commercial.entity';
 
 
 
-@ApiTags('commercials')
+
+
+// @ApiTags('commercials')
 @Controller('commercials')
 export class CommercialController {
   constructor(private readonly commercialService: CommercialService) {}
@@ -163,6 +166,16 @@ export class CommercialController {
           to ? new Date(to).toISOString() : undefined, code)
           
       }
+
+      
+    @Get(':commercial_code/check')
+    @ApiOperation({ summary: 'Détaille un partenaire' })
+    @ApiParam({ name: 'commercial_code', description: 'ID du partenaire', type: String })
+    @ApiResponse({ status: 200, description: 'Partenaire trouvé', type: Commercial })
+    @ApiResponse({ status: 404, description: 'Partenaire introuvable' })
+    checkPromoCode(@Param('commercial_code') commercial_code: string) {
+        return this.commercialService.checkPromoCode(commercial_code);
+    }
 
       
 }

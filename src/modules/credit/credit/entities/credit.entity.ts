@@ -44,8 +44,7 @@ export class Credit extends Base {
   @Column()
   nextDatePrevalent: string;
   //
-  @ManyToOne(() => Customer, (type) => type.credit)
-  @JoinColumn()
+  @ManyToOne(() => Customer, (type) => type.credits)
   customer: Customer;
 
   @OneToMany(() => DocumentType, (type) => type.credit)
@@ -53,5 +52,4 @@ export class Credit extends Base {
 
   @OneToMany(() => GuarantyEstimation, (type) => type.credit)
   guaranties: GuarantyEstimation[];
-
 }

@@ -3,51 +3,7 @@ import { plainToInstance } from 'class-transformer';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { Processor, Process } from '@nestjs/bull';
-
-
-
-
-
-
-
 
 
 
@@ -56,28 +12,6 @@ import { SavingsAccountService } from '../savings-account/savings-account/saving
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -111,11 +45,12 @@ export class QueueProcessor {
     // console.log('payment ',sa)
     if (dataPayment && dataPayment.paymentStatus != PaymentStatusProvider.PENDING ){
       // console.log('payment ',tx.provider.code)
-      const isFirstTx = this.txService.isFirstTransaction(plainToInstance(SavingsAccount,sa))
+      const isFirstTx = await this.txService.isFirstTransaction(plainToInstance(SavingsAccount,sa))
       const repeatOpts = job.opts.repeat;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
       tx.status_provider = dataPayment.paymentStatus;
+      tx.commission = dataPayment.amountHT -tx.amount
       tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
       this.txService.update(tx)
       if(tx.status === PaymentStatus.SUCCESSFULL){
@@ -128,14 +63,14 @@ export class QueueProcessor {
       }
       return {dataPayment, tx}; // ignore si inactif
     }else if(job.attemptsMade + 1 === 3){
-      /*console.log('job.attemptsMade + 1 === 3')
-      const isFirstTx = this.txService.isFirstTransaction(tx.targetSavingsAccount)
+      console.log('job.attemptsMade + 1 === 3')
+      const isFirstTx = await  this.txService.isFirstTransaction(tx.targetSavingsAccount)
       const repeatOpts = job.opts.repeat;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
       tx.status_provider = PaymentStatusProvider.ISSUE;
       tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
-      this.txService.update(tx)*/
+      this.txService.update(tx)
       
     }
       /*:

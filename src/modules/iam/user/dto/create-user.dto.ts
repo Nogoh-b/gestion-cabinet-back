@@ -1,7 +1,15 @@
 // create-user.dto.ts
-import { IsInt, IsString, IsEmail, IsNotEmpty, IsDateString } from 'class-validator';
+import { IsInt, IsString, IsEmail, IsNotEmpty, IsDateString, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
+
+export class ResetPasswordRequestDto {
+  // au moins l'un des deux doit être fourni
+  @ApiProperty({ required: true, example: 'superadmin' })
+  @IsOptional()
+  @IsInt()
+  id?: number;
+}
 
 
 export class CreateUserDto {

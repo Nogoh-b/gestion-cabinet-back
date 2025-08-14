@@ -1,4 +1,9 @@
+import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
+
+
+
+
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
@@ -14,10 +19,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
 import { AgenciesModule } from '../agencies/agencies.module';
+import { CommercialModule } from '../commercial/commercial.module';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { IamModule } from '../iam/iam.module';
 import { PartnerModule } from '../partner/partner.module';
+import { PersonnelModule } from '../personnel/personnel.module';
+import { RessourceModule } from '../ressource/ressource.module';
 import { TransactionModule } from '../transaction/transaction.module';
 import { CommissionController } from './commission/commission.controller';
 import { CommissionService } from './commission/commission.service';
@@ -37,7 +47,7 @@ import { TypeHasDocument } from './type-savings-account/entities/type-has-docume
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
-import { CommercialModule } from '../commercial/commercial.module';
+
 
 
 
@@ -56,11 +66,16 @@ import { CommercialModule } from '../commercial/commercial.module';
 @Module({
   imports: [
     DocumentsModule,
-    AgenciesModule,
     forwardRef(() => TransactionModule),
+    forwardRef(() => AgenciesModule),
+    forwardRef(() => RessourceModule),
     forwardRef(() => CustomerModule),
+    forwardRef(() => AgenciesModule),
     forwardRef(() => PartnerModule),
     forwardRef(() => CommercialModule),
+    forwardRef(() => CoreModule),
+    forwardRef(() => IamModule),
+    forwardRef(() => PersonnelModule),
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,
@@ -93,6 +108,7 @@ import { CommercialModule } from '../commercial/commercial.module';
       CommissionService,
       InterestSavingAccountService,
       SavingsAccountService,
+      TypeOrmModule
   ]
 })
 export class SavingsAccountModule {}

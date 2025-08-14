@@ -15,8 +15,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
 import { CommercialModule } from '../commercial/commercial.module';
 import { PartnerModule } from '../partner/partner.module';
+import { PersonnelModule } from '../personnel/personnel.module';
 import { ProviderModule } from '../provider/provider.module';
 import { QueueModule } from '../queue/queue.module';
 import { SavingsAccountModule } from '../savings-account/savings-account.module';
@@ -33,15 +41,26 @@ import { TransactionTypeSeeder } from './transaction_type/transaction-type.seede
 
 
 
+
+
+
+
+
+
+
 @Module({
-  imports: [TypeOrmModule.forFeature([
+  imports: [
+    
+    forwardRef(() => CoreModule)
+  
+  ,TypeOrmModule.forFeature([
     TransactionSavingsAccount,
     TransactionType,
     ChannelTransaction,
-    CoreModule,
     Sequence,
     
   ]),
+    
   BullModule.registerQueue({
     name: 'maintenance',
   }),
@@ -49,6 +68,7 @@ import { TransactionTypeSeeder } from './transaction_type/transaction-type.seede
   forwardRef(() => QueueModule),
   forwardRef(() => PartnerModule),
   forwardRef(() => CommercialModule),
+  forwardRef(() => PersonnelModule),
   ProviderModule],
   controllers: [TransactionSavingAccountController, TransactionTypeController],
   providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor ,  TransactionTypeSeeder,   ],

@@ -1,6 +1,5 @@
 // src/partner/entities/partner.entity.ts
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import {
   Entity,
@@ -14,6 +13,8 @@ import {
   OneToMany,
   PrimaryColumn,
 } from 'typeorm';
+
+
 
 
 
@@ -40,13 +41,16 @@ export class Partner extends BaseEntity {
   @Column()
   customer_id: number; // Lien unique vers le client
 
+  @Column()
+  saving_account_id: number; // Lien unique vers le client
+
   @ManyToOne(() => Customer)
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
-  @ManyToOne(() => SavingsAccount)
+  /*@ManyToOne(() => SavingsAccount)
   @JoinColumn({ name: 'saving_account_id' })
-  saving_account: SavingsAccount;
+  saving_account: SavingsAccount;*/
 
   @OneToMany(
     () => TransactionSavingsAccount,
@@ -63,8 +67,8 @@ export class Partner extends BaseEntity {
   @UpdateDateColumn()
   updated_at: Date;
 
-  @OneToMany(() => SavingsAccount, account => account.partner)
-  created_savings_accounts: SavingsAccount[];
+  // @OneToMany(() => SavingsAccount, account => account.partner)
+  // created_savings_accounts: SavingsAccount[];
 
   /*@BeforeInsert()
   async generateUniqueCode(): Promise<void> {

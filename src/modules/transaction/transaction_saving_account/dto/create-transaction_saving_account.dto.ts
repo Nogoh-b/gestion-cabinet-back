@@ -4,6 +4,15 @@ import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
+
+
+
+
+
+
+
+
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -15,10 +24,17 @@ export class CreateTransactionSavingsAccountDto {
   @IsOptional()
   @Min(0)
   commission: number;
+  day_before_withdraw ?: number;
+
+  @ApiProperty({ example: 1, description: 'ID Ressource' })
+  @IsNumber()
+  @IsOptional()
+  ressource_id: number;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
   branch_id: number;
+
   token?: string;
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
@@ -47,6 +63,7 @@ export class CreateTransactionSavingsAccountDto {
   @IsString()
   external_savings_account_number?: string;*/
 
+  status : number 
 
 
   /*@ApiProperty({ example: 2, description: 'ID du canal de transaction' })
@@ -73,7 +90,9 @@ export class CreateCreditTransactionSavingsAccountDto {
 
   @ApiPropertyOptional({ example: false, description: 'Si la transaction est bloquée ou pas' })
   @IsBoolean()
-  is_locked: boolean;   
+  is_locked: boolean;  
+
+  status : number 
   
   
   @ApiProperty({ example: 1000, description: 'Montant de la commission' })
@@ -83,6 +102,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   commission: number;
                           // true si la transaction est bloquée, false sinon
   token?: string;
+  target?: string;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
@@ -101,10 +121,13 @@ export class CreateDebitTransactionSavingsAccountDto {
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
   branch_id: number;
+  status : number 
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
   @IsString()
   origin_savings_account_code: string;          // code du compte épargne source
+  
+  target_savings_account_code?: string;         // code du compte épargne cible (pour INTERNAL_TRANSFER)
 
   is_locked: boolean;                           // true si la transaction est bloquée, false sinon
   /*@ApiPropertyOptional({ example: 'MOMO', description: 'Code d\'origine' })
@@ -119,6 +142,7 @@ export class ValidateTransactionSavingsAccountDto {
   @IsOptional()
   paymentCode?: string;
 
+  token?: string;
 
   @ApiPropertyOptional({ example: '3d48b310-7e22-48ab-80af-a53989009de8', description: 'paymentToenProvide(unique)' ,required: false})
   @IsString()
@@ -136,4 +160,27 @@ export class ValidateTransactionSavingsAccountDto {
   target?: string;
 
 
+}
+
+
+
+export class UpdateProviderInfoDto {
+  @IsOptional()
+  @IsString()
+  payment_token_provider: string;
+
+  @IsOptional()
+  @IsString()
+  status_provider?: string;
+
+  @IsOptional()
+  @IsString()
+  payment_code: string;
+
+  phoneNumber: string;
+  payToken: string;
+
+  @IsOptional()
+  @IsNumber()
+  commission?: number;
 }

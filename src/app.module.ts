@@ -2,53 +2,30 @@ import * as dotenv from 'dotenv';
 import { ExpressAdapter } from '@bull-board/express';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
-
-
-
 import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
-
-
-
-
-
-
-
-
-
-
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ServeStaticModule } from '@nestjs/serve-static';
 
-
-
-
-
-
-
-
-
-
-
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
+import {
+  UPLOAD_FOLDER_NAME,
+  UPLOAD_PATH,
+} from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
-import { CommercialModule } from './modules/commercial/commercial.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { IamModule } from './modules/iam/iam.module';
-import { PartnerModule } from './modules/partner/partner.module';
+import { PersonnelModule } from './modules/personnel/personnel.module';
 import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
+import { RessourceModule } from './modules/ressource/ressource.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
-import { RessourceTypeModule } from './ressource/ressource-type/ressource-type.module';
-
-
 
 dotenv.config();
 
@@ -70,7 +47,7 @@ dotenv.config();
     MailerModule.forRoot({
       transport: {
         host: 'vshp3.clo.xelgrp.com',
-        port: 465 ,
+        port: 465,
         secure: true, // true pour le port 465
         auth: {
           user: 'mendo-temp@xelgrp.com',
@@ -93,13 +70,15 @@ dotenv.config();
     ]),
 
     BullModule.forRoot({
-          redis: {
-            host: 'localhost',
-            port: 6379,
-          },
+      redis: {
+        host: process.env.BULL_REDIS_HOST,
+        port: parseInt(process.env.BULL_REDIS_PORT || '6379', 10),
+        db: parseInt(process.env.BULL_REDIS_DB || '0', 10),
+      },
+      prefix: process.env.BULL_QUEUE_PREFIX || 'core-server-dev',
     }),
     BullModule.registerQueue({
-        name: 'maintenance',
+      name: 'maintenance',
     }),
     BullBoardModule.forRoot({
       route: '/admin/queues',
@@ -110,13 +89,14 @@ dotenv.config();
     TransactionModule,
     ActivitiesModule,
     QueueModule,
-    PartnerModule,
-    CommercialModule,
-    RessourceTypeModule,
+    // PartnerModule,
+    // CommercialModule,
+    RessourceModule,
+    PersonnelModule,
   ],
   controllers: [AppController],
   providers: [AppService],
-  exports:[MailerModule]
+  exports: [MailerModule],
 })
 export class AppModule {
   /*configure(consumer: MiddlewareConsumer) {

@@ -14,10 +14,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class CreateSavingsAccountDto {
 
   balance: number;
   avalaible_balance: number;
+  avalaible_balance_online: number;
   customer_code: string;
 
   @ApiProperty({ description: 'ID du client', example: 1 })

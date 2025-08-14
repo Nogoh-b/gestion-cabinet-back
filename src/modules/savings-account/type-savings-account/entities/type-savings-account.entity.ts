@@ -13,9 +13,11 @@ import { Entity, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable, OneToMany
 
 
 
+
 import { Commission } from '../../commission/entities/commission.entity';
 import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
+
 
 
 
@@ -62,6 +64,19 @@ export class TypeSavingsAccount extends Base {
 
   @Column({ type: 'double', nullable: true })
   commission_per_product: number;
+
+
+
+  @Column({ type: 'double', nullable: true })
+  commission_dg: number;
+
+  
+  @Column({ type: 'double', nullable: true })
+  commission_pca: number;
+
+  
+  @Column({ type: 'double', nullable: true })
+  commission_membre: number;
 
   @Column({ type: 'double', nullable: true })
   monthly_maintenance_costs: number;

@@ -1,10 +1,24 @@
 import { SearchQueryDto } from 'src/core/shared/dto/advanced-search.dto';
+import { VerifyOtpDto } from 'src/core/shared/dto/otp.dto';
+
 import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
+
+import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
 import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
 
 
+
+
+
+
+
+
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger';
+
+
+
+
 
 
 
@@ -21,12 +35,6 @@ import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
-
-
-
-
-
-
 
 
 
@@ -85,8 +93,20 @@ export class SavingsAccountController {
   @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
   findAllDeactivate() {
     return this.service.findAll(true);
+  }  
+  @Get('find_all_acccount_not_have_init_trans')
+  @ApiOperation({ summary: '' })
+  @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
+  findAccountsMissingMinBalanceButWithValidatedTx() {
+    return this.service.findAccountsMissingMinBalanceButWithValidatedTx();
   }
 
+  @Get('init_all_acccount_not_have_init_trans')
+  @ApiOperation({ summary: '' })
+  @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
+  initAccountsMissingMinBalanceButWithValidatedTx() {
+    return this.service.initAccountsMissingMinBalanceButWithValidatedTx();
+  }
 
   @Get(':id/documents/status')
   @ApiOperation({ summary: 'Get validation status of all documents for an account' })
@@ -126,7 +146,7 @@ export class SavingsAccountController {
   findOne(
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.service.findOne(id);
+    return this.service.findOne(id, false);
   }
 
   @Get('by-code/:number_savings_account')
@@ -136,8 +156,14 @@ export class SavingsAccountController {
   findOneByCode(
     @Param('number_savings_account') number_savings_account: string,
   ) {
-    return this.service.findOneByCode(number_savings_account);
+    return this.service.findOneByCode(number_savings_account, false);
   }
+
+  /*@Get('find_all_acccount_not_have_init_trans')
+  findAccountsMissingMinBalanceButWithValidatedTx(
+  ) {
+    return this.service.findAccountsMissingMinBalanceButWithValidatedTx();
+  }*/
 
   @Post()
   @ApiOperation({ summary: 'Crée un nouveau compte d’épargne' })
@@ -161,7 +187,11 @@ export class SavingsAccountController {
   @ApiResponse({ status: 201, description: 'Compte créé', type: SavingsAccount })
   createOnline(
     @Body() dto: CreateSavingsAccountDto,
+    @Query('commercial_code') commercial_code?: string,
+    @Query('promo_code') promo_code?: string,
   ) {
+    dto.commercial_code = commercial_code
+    dto.promo_code = promo_code
     return this.service.createOnline(dto);
   }
 
@@ -216,6 +246,18 @@ export class SavingsAccountController {
     return this.service.remove(id);
   }
 
+  @Get(':code/request-link')
+  requestLink( @Param('code') code: string) {
+    
+    return this.service.requestLink(code);
+  }
+
+  @Post('validate-link-account')
+  validateLinkaccount(  @Body() dto: VerifyOtpDto) {
+    console.log(dto)
+    return this.service.validateRequestLinkAccount( dto);
+  }
+
   @Get(':id/stats')
   stats( @Param('id', ParseIntPipe) id: number) {
     return this.service.stats(id);
@@ -260,6 +302,10 @@ export class SavingsAccountController {
   balanceByCode( @Param('code') code: string) {
     return this.service.avalaibleBalanceByCode(code);
   }
+  @Get('by-code/:code/avalaible-balance-online')
+  balanceByCodeOnline( @Param('code') code: string) {
+    return this.service.avalaibleBalanceByCodeOnline(code);
+  }
 
   @Post(':id/interest-range')
   @ApiOperation({ summary: "Attribuer un taux sur une période donnée" })
@@ -272,6 +318,45 @@ export class SavingsAccountController {
   ): Promise<SavingsAccountHasInterest> {
     return this.service.assign_interest_range(id, dto);
   }
+  
+  @Post(':id/subscribe-ressource-type/:ressourceTypeId')
+  @ApiOperation({ summary: 'Souscrire un compte épargne à un type de ressource' })
+  @ApiResponse({ status: 201, description: 'Ressource créée avec succès' })
+  async subscribeRessourceType(
+    @Param('id') savings_account_id: string,
+    @Body() dto:       CreateRessourceDto,
+    @Param('ressourceTypeId') ressource_type_id: string,
+    // @Query() channel: string = 'BRANCH',
+  ) {
+    dto.savings_account_id = +savings_account_id;
+    dto.ressource_type_id = +ressource_type_id;
+    // dto.channel = channel;
+    return await this.service.subscribeRessourceType(+savings_account_id, dto);
+  }
+  @Get(':id/ressources')
+  @ApiOperation({ summary: 'Lister les ressources liées à un compte épargne' })
+  async getRessourcesBySavingsAccount(@Param('id') id: string) {
+    return await this.service.getBySavingsAccountId(+id);
+  }
+  @Get(':id/ressources/:ressourceId')
+  @ApiOperation({ summary: 'Récupérer une ressource liée à un compte épargne par ID' })
+  async getSingleRessourceBySavingsAccount(
+    @Param('id') savings_account_id: string,
+    @Param('ressourceId') ressource_id: string,
+  ) {
+    return await this.service.getByIdAndSavingsAccount(+ressource_id);
+  }
+
+
+  /*@Post(':id/subscribe-ressource/:ressourceTypeId')
+  @ApiOperation({ summary: 'Souscrire à une ressource depuis un compte épargne' })
+  @ApiResponse({ status: 201, description: 'Ressource souscrite avec succès' })
+  async subscribeToRessource(
+
+  ) {
+    return await this.service.subscribeFromSavingsAccount(dto);
+  }*/
+
 
     /*@Get('partner/:promo_code')
     async getByPartner(

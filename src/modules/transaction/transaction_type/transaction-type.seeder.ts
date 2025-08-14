@@ -10,6 +10,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -72,6 +74,57 @@ export class TransactionTypeSeeder {
         name: 'Retrait OM',
         description: 'Retrait du portefeuille mobile Orange Money',
         is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'RESSOURCE_BUY',
+        name: 'Payment D\'une resource',
+        description: 'Souscription à une resource',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMISSION_CASH_OM_MFINANCE',
+        name: 'Commission Cash OM MFINANCE',
+        description: 'Commission sur les transactions Cash OM MFINANCE',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMISSION_CASH_MOMO',
+        name: 'Commission Cash MOMO',
+        description: 'Commission sur les transactions Cash MOMO',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      {
+        code: 'COMMISSION_CASH_OM',
+        name: 'Commission Cash OM',
+        description: 'Commission sur les transactions Cash OM',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+
+
+      {
+        code: 'COMMISSION_CASH_MOMO_MFINANCE',
+        name: 'Commission Cash MOMO MFINANCE',
+        description: 'Commission sur les transactions Cash MOMO MFINANCE',
+        is_credit: 0,
+        fee_percentage: 0.0,
+        status: 1,
+      },
+      
+      {
+        code: 'COMMISSION_PERSONNEL',
+        name: 'Commission PERSONNEL',
+        description: 'Commission sur les transactions reverssé au personnel',
+        is_credit: 1,
         fee_percentage: 0.0,
         status: 1,
       },

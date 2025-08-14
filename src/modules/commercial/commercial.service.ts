@@ -10,50 +10,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { CustomersService } from '../customer/customer/customer.service';
 import { CustomerStatus } from '../customer/customer/entities/customer.entity';
+import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { SavingsAccountResponseDto } from '../savings-account/savings-account/dto/response-savings-account.dto';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { TransactionSavingsAccount } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
 import { CreateCommercialDto } from './dto/create-commercial.dto';
 import { Commercial } from './entities/commercial.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -72,6 +37,7 @@ export class CommercialService extends BaseService<Commercial> {
     private readonly transactionService: TransactionSavingsAccountService,
     @InjectRepository(Commercial)
     private readonly commercialRepository: Repository<Commercial>,
+    private readonly documentCustomerService: DocumentCustomerService,
 
   ) {
     super();console.log(forwardRef)
@@ -95,7 +61,7 @@ export class CommercialService extends BaseService<Commercial> {
     const saving_account = await this.savingsAccountService.findOneByCustomer(customer.id)
     // const savingsAccount = await 
     dto.name = customer.first_name + ' ' + customer.last_name;
-    const partner = this.commercialRepository.create({...dto, customer, saving_account});
+    const partner = this.commercialRepository.create({...dto, customer   });
     return this.commercialRepository.save(partner);
   }
 
@@ -167,7 +133,7 @@ export class CommercialService extends BaseService<Commercial> {
 
   async buyAll(commercial_code: string = "F6XH"): Promise<any> {
     const com = await this.getByCode(commercial_code);
-    return await this.transactionService.unlockTransactionByCommercial(commercial_code, com?.saving_account?.id);
+    return await this.transactionService.unlockTransactionByCommercial(commercial_code,0);
   }
 
 
@@ -213,5 +179,18 @@ export class CommercialService extends BaseService<Commercial> {
       exact,
       from,
       to, {commercial_code})
+    }
+
+    async checkPromoCode(commercial_code: string): Promise<any> {
+      const partner = await this.commercialRepository.findOne({where: { commercial_code }, relations: ['customer','saving_account','saving_account.type_savings_account']});
+      if (!partner) {
+        throw new NotFoundException(`Commercial ${commercial_code} introuvable`);
+      }
+      const doc = await this.documentCustomerService.findByType('PHOTO 4X4')
+      const {name} = partner
+      let  file_path = ''
+      if(doc)
+        file_path = doc.file_path
+      return {name, file_path};
     }
 }

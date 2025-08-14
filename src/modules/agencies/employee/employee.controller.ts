@@ -2,10 +2,15 @@ import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
-import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Param, ParseIntPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
+
+
+import { ResetPasswordRequestDto } from './dto/create-employee.dto';
 import { EmployeeService } from './employee.service';
+
+
 
 
 @Controller('user')
@@ -28,7 +33,20 @@ export class EmployeeController {
   findAllEmployees() {
     return this.employeeService.findAllEmployees();
   }
+  @Post('send-new-password')
+  async sendNewPassword(@Body() dto: ResetPasswordRequestDto) {
+    return this.employeeService.send_new_password({
+      id: dto.id
+    });
+  }
 
+  /**
+   * Variante: réinitialisation par id directement dans l'URL.
+   */
+  @Post(':id/send-new-password')
+  async sendNewPasswordById(@Param('id', ParseIntPipe) id: number) {
+    return this.employeeService.send_new_password({ id });
+  }
     /*@Get(':id')
     @ApiOperation({ summary: 'Récupérer un utilisateur avec son role' })
     @RequirePermissions('VIEW_EMPLOYEE')

@@ -63,7 +63,7 @@ export class Customer extends Base {
   branch: Branch;
 
   @OneToMany(() => Credit, (type) => type.customer)
-  credit: Credit[];
+  credits: Credit[];
 
   @OneToMany(() => SavingsAccount, (sa) => sa.customer)
   savings_accounts: SavingsAccount[];

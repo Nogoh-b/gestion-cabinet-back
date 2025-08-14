@@ -5,7 +5,9 @@ import { Expose, Transform, Type } from 'class-transformer';
 import { UPLOAD_DOCS_FOLDER_NAME, UPLOAD_FOLDER_NAME } from 'src/core/common/constants/constants';
 import { ApiProperty } from '@nestjs/swagger';
 
+
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
+
 
 
 export class DocumentSavingAccountResponseDto {
@@ -30,7 +32,7 @@ export class DocumentSavingAccountResponseDto {
   status: number;
 
   @Expose()
-  @Transform(({ obj }) => `http://${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${obj.file_path}`)
+  @Transform(({ obj }) => `${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${obj.file_path}`)
   @ApiProperty({
     example: 'http://localhost:3000/uploads/abc123-passeport.pdf',
     description: 'URL complète de téléchargement'

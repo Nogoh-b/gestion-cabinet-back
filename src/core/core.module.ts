@@ -5,10 +5,17 @@ import { HttpModule } from '@nestjs/axios';
 import { forwardRef, Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
-import { JwtModule } from '@nestjs/jwt';
 
+import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+
+
+
+
+
+
 import { TypeOrmModule } from '@nestjs/typeorm';
+
 
 
 
@@ -17,14 +24,14 @@ import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
-import { JwtStrategy } from './auth/strategies/jwt.strategy';
 // import { swaggerConfig } from './config/swagger.config';
+import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
 import { SeedersModule } from './database/seeders/seeders.module';
-import { OtpCode } from './entities/otp-code.entity';
+import { OtpCode, OtpOnlineLink } from './entities/otp-code.entity';
 import { InitService } from './init/init.service';
 import { OtpController } from './shared/controlers/otp.controller';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
@@ -39,11 +46,13 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
 
 
 
+
 @Global()
 @Module({
   imports: [
     forwardRef(() => IamModule),
     forwardRef(() => AgenciesModule),
+    // forwardRef(() => SavingsAccountModule),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
@@ -68,6 +77,7 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
     }),
     TypeOrmModule.forFeature([
       OtpCode,
+      OtpOnlineLink,
     ]),
     PassportModule,
     SeedersModule,

@@ -4,11 +4,6 @@ import * as tls from 'tls';
 import { createBullBoard } from '@bull-board/api';
 import { BullAdapter } from '@bull-board/api/bullAdapter';
 import { ExpressAdapter } from '@bull-board/express';
-
-
-
-
-
 import { getQueueToken } from '@nestjs/bull';
 import { NestFactory } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
@@ -20,12 +15,9 @@ import { AppModule } from './app.module';
 import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
 import { SuperAdminSeeder } from './core/database/seeders/super-admin.seeder';
+import { TypePersonnelSeeder } from './modules/personnel/type_personnel/seed-type-personnel';
 import { ProviderSeeder } from './modules/provider/provider/provider.seeder';
 import { TransactionTypeSeeder } from './modules/transaction/transaction_type/transaction-type.seeder';
-
-
-
-
 
 
 
@@ -67,10 +59,12 @@ async function bootstrap() {
     const seederAdmin = app.get(SuperAdminSeeder);
     const txType = app.get(TransactionTypeSeeder);
     const providerSeeder = app.get(ProviderSeeder);
+    const typePersonnelSeeder = app.get(TypePersonnelSeeder);
     await seeder.seed();
     await seederAdmin.seed();
     await txType.seed();
     await providerSeeder.seed();
+    await typePersonnelSeeder.seed();
     // Configuration Swagger
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api-docs', app, document, {
