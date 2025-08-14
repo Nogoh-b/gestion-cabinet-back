@@ -6,16 +6,26 @@ import { LocationCitiesService } from 'src/modules/geography/location_city/locat
 import { SavingsAccountResponseDto } from 'src/modules/savings-account/savings-account/dto/response-savings-account.dto';
 
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-import { PaymentStatus, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 
 
 
 
-import { TransactionChannel, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
+import { TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 import { Repository } from 'typeorm';
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -31,6 +41,16 @@ import { EmployeeService } from '../employee/employee.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -125,9 +145,16 @@ export class BranchService {
     return !existing;
   }
 
-  async findOne(id: number): Promise<Branch> {
+  async findOne(id: number, all = false): Promise<Branch> {
+    const relations = all ? [
+      'employees',
+      'savingsAccounts',
+      'customers'
+      
+    ] : []
     const branch = await this.branchRepository.findOne({
       where: { id, status: 1 },
+      relations
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
     return branch;
@@ -183,8 +210,10 @@ export class BranchService {
 
   async stats(id: number): Promise<any> {
 
+    const branch = await this.findOne(id,true)
 
-    const txs = await this.savingsAccountService.findAllTrans()
+
+    const txs = await this.savingsAccountService.findAllTrans(id)
 
     let  stats = {
       online : {
@@ -202,6 +231,8 @@ export class BranchService {
           transactionAmountOutcomming : 0,
           balance : 0
         },
+        savings_accounts : 0,
+        customer : 0,
         transactionCountIncomming : 0,
         transactionAmountIncomming : 0,
         transactionCountOutcomming : 0,
@@ -211,12 +242,17 @@ export class BranchService {
       },
       agency :{
           transactionCountIncomming : 0,
+          customer : 0,
           transactionAmountIncomming : 0,
           transactionCountOutcomming : 0,
           transactionAmountOutcomming : 0,
+          savings_accounts : 0,
           balance : 0
       },
       global : {
+          customer : 0,
+          savings_accounts : 0,
+          employees :0,
           transactionCountIncomming : 0,
           transactionAmountIncomming : 0,
           transactionCountOutcomming : 0,
@@ -272,6 +308,24 @@ export class BranchService {
       stats.online.momo.balance = stats.online.momo.transactionAmountIncomming - stats.online.momo.transactionAmountOutcomming
       stats.online.om.balance = stats.online.om.transactionAmountIncomming - stats.online.om.transactionAmountOutcomming
     }
+
+    // return branch
+    if(branch){
+
+      stats.global.savings_accounts  = branch.savingsAccounts.length
+      stats.global.employees  = branch.employees.length
+      for (const sa of branch?.savingsAccounts) {
+        if(sa.created_online = 1){
+          stats.online.savings_accounts++
+          stats.online.savings_accounts++
+        }
+        else{
+          stats.agency.savings_accounts++
+          stats.agency.savings_accounts++
+        }
+
+      }
+    }
     return stats
     
     console.log('stats');
@@ -284,7 +338,7 @@ export class BranchService {
         'savingsAccounts.targetSavingsAccountTx', // Transactions entrantes
       ],
     });
-    const branch = await this.branchRepository
+    /*const branch = await this.branchRepository
     .createQueryBuilder('branch')
     // Jointure UNIQUE pour savingsAccounts
     .leftJoinAndSelect('branch.savingsAccounts', 'savingsAccount', 'savingsAccount.branch.id = :branchId', { branchId: id })
@@ -368,9 +422,12 @@ export class BranchService {
       outgoingAmountCustomer,
       inComingAmountBranch,
       outgoingAmountBranch,
-    };
+    };*/
 
   }
+
+
+
 
   /**
  * Génère le prochain code de branche incrémental sur 3 chiffres (000 à 999).

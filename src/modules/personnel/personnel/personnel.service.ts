@@ -38,11 +38,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { PersonnelTypeCode } from '../type_personnel/entities/type_personnel.entity';
 import { TypePersonnelService } from '../type_personnel/type_personnel.service';
 import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
+
 
 
 
@@ -117,16 +119,24 @@ export class PersonnelService extends BaseService<Personnel> {
       code = dto.code;
     }
     if(type.code == PersonnelTypeCode.DG || type.code == PersonnelTypeCode.PCA){
-      const ids = await this.personnel_repository
-        .createQueryBuilder('p')
+      const sub = this.personnel_repository.manager
+        .createQueryBuilder()                // <- SelectQueryBuilder
+        .subQuery()
+        .select('p.id')
+        .from(Personnel, 'p')
         .innerJoin('p.type_personnel', 't')
-        .where('t.code = :code', { code: type.code })
-        .getMany();
+        .where('t.code = :code')
+        .getQuery();
 
-      await this.personnel_repository.update(
-        ids.map(p => p.id),
-        { status: 0 }
-      );
+      // Faire l'UPDATE en s'appuyant sur la sous-requête
+      await this.personnel_repository
+        .createQueryBuilder()                // <- UpdateQueryBuilder
+        .update(Personnel)
+        .set({ status: 0 })
+        .where(`id IN ${sub}`)
+        .setParameters({ code: type.code })
+        .execute();
+
     }
 
     const entity = this.personnel_repository.create({
