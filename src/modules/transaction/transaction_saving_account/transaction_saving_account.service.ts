@@ -48,6 +48,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -55,6 +56,7 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -764,7 +766,7 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
                 console.log('rrrrCom ', (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 )
                 const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMERCIAL_COMMISSION);
                 const providerOpenProduct = await this.providerService.findOne('SYSTEM');
-                const commercial = await  this.personnelService.findOneByCode(target.commercial_code);
+                const commercial = await  this.personnelService.findOneByCode(target.commercial_code, false);
                 const fifthTx = new TransactionSavingsAccount();
                 Object.assign(fifthTx, txData);
                 fifthTx.amount = Math.floor((target!.type_savings_account.minimum_balance * target!.type_savings_account.commission_per_product)/100);
@@ -796,7 +798,7 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
 
 
         if(target.promo_code){
-            partner = await this.personnelService.findOneByCode(target.promo_code);
+            partner = await this.personnelService.findOneByCode(target.promo_code, false);
             if(partner && partner.savings_account){
             // Transaction pour le le partenaire
             const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.PARTNER_COMMISSION);
