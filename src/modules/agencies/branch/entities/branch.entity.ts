@@ -1,12 +1,15 @@
 /* eslint-disable prettier/prettier */
 import { BaseEntity } from 'src/core/entities/base.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
+import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity, OneToMany } from 'typeorm';
+
 import { ApiProperty } from '@nestjs/swagger';
 
 import { Employee } from '../../employee/entities/employee.entity';
+
 
 
 
@@ -49,6 +52,9 @@ export class Branch extends BaseEntity {
 
   @OneToMany(() => SavingsAccount, (sa) => sa.branch)
   savingsAccounts: SavingsAccount[];
+
+  @OneToMany(() => Customer, (c) => c.branch)
+  customers: Customer[];
 
   // @OneToMany(() => TransactionSavingsAccount, (tx) => tx.)
   // transactions: TransactionSavingsAccount[];
