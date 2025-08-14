@@ -36,7 +36,7 @@ import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
 
-import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
+import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 
 
 import { Not, Repository } from 'typeorm';
@@ -76,6 +76,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -85,6 +100,21 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1141,7 +1171,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     const balance = transactions.reduce((sum, tx) => {
       let commission :number = 0;
       if(tx.originSavingsAccount?.number_savings_account == acctNum ){
-        commission = tx.commission || 0;
+        // commission = tx.commission || 0;
       }
       // console.log(commission)
       // 1. Filtrage selon le type de balance
@@ -1184,20 +1214,21 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       }
 
       // 3. Logique de crédit/débit standard
-      if (tx.transactionType?.is_credit === 1) {
+      if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
         return sum + ((tx.amount | 0) + (commission | 0));
-      } else {
+      } else if(!tx.targetSavingsAccount && tx.originSavingsAccount) {
         if (options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') {
           return sum;
         }
         return sum - ((tx.amount | 0) + (commission | 0));
       }
+      return sum
     }, 0);
 
     // Mise à jour du compte selon le type de balance
     switch (options.balanceType) {
       case 'total':
-        account.balance = balance;
+        account.balance = balance ;
         break;
       case 'available':
         account.avalaible_balance = balance;
@@ -1376,68 +1407,200 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     });
   }
 
-  async accountCreatedByCommercial(commercial_code: string): Promise<SavingsAccount []> {
-    const sAccounts = this.repo.find({
-      where: {
-        commercial_code
-      },
-      order: { id: 'ASC' }
-    });
-    /*for (const element of object) {
-      
-    }*/
+async accountCreatedByCommercial(commercial_code: string): Promise<SavingsAccount[]> {
+  return this.repo.createQueryBuilder('sa')
+    .where('sa.commercial_code = :commercial_code', { commercial_code })
+    .andWhere(`EXISTS (
+      SELECT 1
+      FROM transaction_savings_account tx
+      WHERE tx.target_savings_account_id = sa.id AND tx.status = :status
+    )`, { status: 1 })
+    .orderBy('sa.id', 'ASC')
+    .getMany();
+}
 
-    return sAccounts;
-  }
 
   /**
    * Comptes SANS transaction MIN_BALANCE
    * MAIS avec >= 1 transaction validée (status=1) liée par origin/target = number_savings_account.
    */
-  async findAccountsMissingMinBalanceButWithValidatedTx(): Promise<SavingsAccount[]> {
+
+
+  async findAccountsMissingMinBalanceButWithValidatedTx_old(): Promise<Array<{
+    sa_id: number;
+    dateSa: Date;
+    sa_number_savings_account: string;
+    firstTargetTxId: number | null;
+    dateTx: Date | null;
+  }>> 
+    {
     const qb = this.repo.createQueryBuilder('sa');
 
-    // Sous-requête: au moins une transaction VALIDÉE (status=1) liée à ce compte
-    const subHasValidatedTx = qb.subQuery()
+    // 1) EXISTS: au moins une tx VALIDÉE liée (origin OU target)
+    const subHasValidatedTx = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
       .select('1')
       .from(TransactionSavingsAccount, 'tx1')
       .where('(tx1.origin = sa.number_savings_account OR tx1.target = sa.number_savings_account)')
-      .andWhere('tx1.status = :validatedStatus') // 1 = VALIDATE
+      .andWhere('tx1.status = :validatedStatus')
       .getQuery();
 
-    // Sous-requête: transaction MIN_BALANCE (à exclure)
-    const subHasMinBalance = qb.subQuery()
+    // 2) NOT EXISTS: une tx MIN_BALANCE (à exclure)
+    //   - si tu as une relation "transactionType" dans TransactionSavingsAccount :
+    const subHasMinBalance = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
       .select('1')
       .from(TransactionSavingsAccount, 'tx2')
-      .innerJoin(TransactionType, 'tt', 'tt.id = tx2.transaction_type_id')
+      .innerJoin('tx2.transactionType', 'tt') // <-- relation; sinon remplace par ON tt.id = tx2.transaction_type_id
       .where('(tx2.origin = sa.number_savings_account OR tx2.target = sa.number_savings_account)')
-      .andWhere('tt.code = :minBalanceCode') // 'MIN_BALANCE'
+      .andWhere('tt.code = :minBalanceCode')
       .getQuery();
 
-    const sas = await qb
-      .where(`EXISTS ${subHasValidatedTx}`)
+    // 3) Première tx en tant que TARGET, VALIDÉE (id + date)
+    const subFirstTargetValidatedId = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('tx3.id')
+      .from(TransactionSavingsAccount, 'tx3')
+      .where('tx3.target_savings_account_id = sa.id')
+      .andWhere('tx3.status = :validatedStatus')
+      .orderBy('tx3.id', 'ASC')       // ou 'tx3.created_at' si tu préfères la date
+      .limit(1)
+      .getQuery();
+
+    const subFirstTargetValidatedDate = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('tx4.created_at')
+      .from(TransactionSavingsAccount, 'tx4')
+      .where('tx4.target_savings_account_id = sa.id')
+      .andWhere('tx4.status = :validatedStatus')
+      .orderBy('tx4.id', 'ASC')       // idem
+      .limit(1)
+      .getQuery();
+
+    // SELECT minimal + filtres combinés
+    const rows = await qb
+      .select('sa.id', 'sa_id')
+      .addSelect('sa.created_at', 'dateSa')
+      .addSelect('sa.number_savings_account', 'sa_number_savings_account')
+      .addSelect(`(${subFirstTargetValidatedId})`, 'firstTargetTxId')
+      .addSelect(`(${subFirstTargetValidatedDate})`, 'dateTx')
+      // (EXISTS tx validée) OU (première target tx validée)
+      .where(`(EXISTS ${subHasValidatedTx} OR EXISTS (${subFirstTargetValidatedId}))`)
+      // ET pas de MIN_BALANCE
       .andWhere(`NOT EXISTS ${subHasMinBalance}`)
       .setParameters({
-        validatedStatus: TransactionSavingsAccountStatus.VALIDATE, // 1
+        validatedStatus: TransactionSavingsAccountStatus.VALIDATE, // généralement 1
         minBalanceCode: 'MIN_BALANCE',
       })
-      .getMany();
+      .orderBy('sa.id', 'ASC')
+      .getRawMany();
 
-      return sas
+    return rows;
   }
+
+
+  async findAccountsMissingMinBalanceButWithValidatedTx(): Promise<Array<{
+    sa_id: number;
+    dateSa: Date;
+    sa_number_savings_account: string;
+    firstTargetTxId: number | null;
+    dateTx: Date | null;
+  }>> 
+  {
+    const qb = this.repo.createQueryBuilder('sa');
+
+    // Expression SQL corrélée pour le minimum_balance du compte courant
+    const minBalExpr =
+      '(SELECT tsa.minimum_balance FROM type_savings_account tsa WHERE tsa.id = sa.type_savings_account_id)';
+
+    // 1) EXISTS: au moins une tx VALIDÉE liée (origin OU target) ET montant >= minBal
+    const subHasValidatedTx = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('1')
+      .from(TransactionSavingsAccount, 'tx1')
+      .where('(tx1.origin = sa.number_savings_account OR tx1.target = sa.number_savings_account)')
+      .andWhere('tx1.status = :validatedStatus')
+      .andWhere(`tx1.amount >= ${minBalExpr}`) // 👈 contrainte montant
+      .getQuery();
+
+    // 2) NOT EXISTS: une tx MIN_BALANCE (à exclure)
+    const subHasMinBalance = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('1')
+      .from(TransactionSavingsAccount, 'tx2')
+      .innerJoin('tx2.transactionType', 'tt') // ou: .innerJoin(TransactionType,'tt','tt.id = tx2.transaction_type_id')
+      .where('(tx2.origin = sa.number_savings_account OR tx2.target = sa.number_savings_account)')
+      .andWhere('tt.code = :minBalanceCode')
+      .getQuery();
+
+    // 3) Première tx en TARGET VALIDÉE avec montant >= minBal (id + date)
+    const subFirstTargetValidatedId = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('tx3.id')
+      .from(TransactionSavingsAccount, 'tx3')
+      .where('tx3.target_savings_account_id = sa.id')
+      .andWhere('tx3.status = :validatedStatus')
+      .andWhere(`tx3.amount >= ${minBalExpr}`) // 👈 contrainte montant
+      .orderBy('tx3.id', 'ASC') // ou 'tx3.created_at' si tu préfères
+      .limit(1)
+      .getQuery();
+
+    const subFirstTargetValidatedDate = this.repo.manager
+      .createQueryBuilder()
+      .subQuery()
+      .select('tx4.created_at')
+      .from(TransactionSavingsAccount, 'tx4')
+      .where('tx4.target_savings_account_id = sa.id')
+      .andWhere('tx4.status = :validatedStatus')
+      .andWhere(`tx4.amount >= ${minBalExpr}`) // 👈 même contrainte
+      .orderBy('tx4.id', 'ASC')
+      .limit(1)
+      .getQuery();
+
+    // SELECT minimal + filtres combinés
+    const rows = await qb
+      .select('sa.id', 'sa_id')
+      .addSelect('sa.created_at', 'dateSa')
+      .addSelect('sa.number_savings_account', 'sa_number_savings_account')
+      .addSelect(`(${subFirstTargetValidatedId})`, 'firstTargetTxId')
+      .addSelect(`(${subFirstTargetValidatedDate})`, 'dateTx')
+      // (EXISTS tx validée & montant>=minBal) OU (première target tx validée & montant>=minBal)
+      .where(`(EXISTS ${subHasValidatedTx} OR EXISTS (${subFirstTargetValidatedId}))`)
+      // ET pas de MIN_BALANCE
+      .andWhere(`NOT EXISTS ${subHasMinBalance}`)
+      .setParameters({
+        validatedStatus: TransactionSavingsAccountStatus.VALIDATE, // ex: 1
+        minBalanceCode: 'MIN_BALANCE',
+      })
+      .orderBy('sa.id', 'ASC')
+      .getRawMany();
+
+    return rows;
+  }
+
+
+
   async initAccountsMissingMinBalanceButWithValidatedTx(): Promise<boolean> {
     const qb = this.repo.createQueryBuilder('sa');
 
-      const sas = await this.findAccountsMissingMinBalanceButWithValidatedTx()
-      for (const sa of sas) {
-        this.transactionSavingsAccountService.validate(sa.id, false,true)
+      const datas = await this.findAccountsMissingMinBalanceButWithValidatedTx()
+      for (const data of datas) {
+        if(data.firstTargetTxId)
+          this.transactionSavingsAccountService.validate(data.firstTargetTxId, false ,true)
       }
       return true
   }
 
-    findAllTrans(): 
+    findAllTrans(branch_id: number | null): 
     Promise<TransactionSavingsAccount[]> {
   
-      return this.transactionSavingsAccountService.findAllTrans()
+      return this.transactionSavingsAccountService.findAllTrans(branch_id)
     }
 }

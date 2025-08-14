@@ -12,6 +12,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -47,7 +48,7 @@ export class TransactionTypeSeeder {
       },
       {
         code: 'COMMERCIAL_COMMISSION',
-        name: 'Paiment Partenaire',
+        name: 'Paiment Commercial',
         description: 'Versement dans Compte Commercial de la comission',
         is_credit: 1,
         fee_percentage: 0.0,

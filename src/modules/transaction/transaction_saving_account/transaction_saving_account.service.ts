@@ -37,6 +37,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -44,6 +54,16 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -389,17 +409,24 @@ export class TransactionSavingsAccountService {
   }
 
 
-  findAllTrans(): 
-  Promise<TransactionSavingsAccount[]> {
+async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[]> {
+  const qb = this.repo.createQueryBuilder('tx')
+    .leftJoinAndSelect('tx.channelTransaction', 'channelTransaction')
+    .leftJoinAndSelect('tx.provider', 'provider')
+    .leftJoinAndSelect('tx.personnel', 'personnel')
+    .leftJoinAndSelect('personnel.type_personnel', 'type_personnel')
+    .leftJoinAndSelect('tx.originSavingsAccount', 'originSa')
+    .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSa')
+    .leftJoin('originSa.branch', 'originBranch')
+    .leftJoin('targetSa.branch', 'targetBranch');
 
-    return this.repo.find({relations : [ 'channelTransaction',
-      'provider',
-      'personnel',
-      'personnel.type_personnel',
-      'originSavingsAccount',
-      'targetSavingsAccount']})
-
+  if (branch_id != null) {
+    qb.andWhere('(originBranch.id = :branch_id OR targetBranch.id = :branch_id)', { branch_id });
   }
+
+  return qb.getMany();
+}
+
 
 
   findAllByType(
@@ -729,16 +756,16 @@ export class TransactionSavingsAccountService {
 
         if(target.commercial_code){
             comercial = await this.personnelService.findOneByCode(target.commercial_code);
-            console.log('rrrr11 ', comercial)
             if(comercial && comercial.savings_account){
               // Transaction pour le le partenaire
-              if(comercial.is_intern && (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 || !comercial.is_intern){
+              if((comercial.is_intern && (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 ) || !comercial.is_intern){
+                console.log('rrrrCom ', (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 )
                 const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.COMMERCIAL_COMMISSION);
                 const providerOpenProduct = await this.providerService.findOne('SYSTEM');
                 const commercial = await  this.personnelService.findOneByCode(target.commercial_code);
                 const fifthTx = new TransactionSavingsAccount();
                 Object.assign(fifthTx, txData);
-                fifthTx.amount = Math.round((tx.amount * target!.type_savings_account.commission_per_product)/100);
+                fifthTx.amount = Math.floor((target!.type_savings_account.minimum_balance * target!.type_savings_account.commission_per_product)/100);
                 console.log('fifthTx.amount) ', fifthTx.amount)
 
                 fifthTx.transactionType = txTypePartner;
@@ -774,7 +801,7 @@ export class TransactionSavingsAccountService {
             const providerOpenProduct = await this.providerService.findOne('SYSTEM');
             const fourthTx = new TransactionSavingsAccount();
             Object.assign(fourthTx, txData);
-            fourthTx.amount = Math.round((tx.amount * target!.type_savings_account.promo_code_fee)/100);
+            fourthTx.amount = Math.round((target!.type_savings_account.minimum_balance * target!.type_savings_account.promo_code_fee)/100);
             fourthTx.transactionType = txTypePartner;
             fourthTx.provider = providerOpenProduct;
             fourthTx.targetSavingsAccount = partner?.savings_account;
@@ -809,10 +836,10 @@ export class TransactionSavingsAccountService {
           const provider = await this.providerService.findOne('SYSTEM');
           const personnelTx = new TransactionSavingsAccount();
           Object.assign(personnelTx, txData);
-          let amount = Math.round((tx.amount * target!.type_savings_account[`commission_${personnel.type_personnel.code.toLocaleLowerCase()}`])/100)
+          let amount = Math.round((target!.type_savings_account.minimum_balance * target!.type_savings_account[`commission_${personnel.type_personnel.code.toLocaleLowerCase()}`])/100)
           if(personnel.type_personnel.code === PersonnelTypeCode.MEMBRE)
-            amount = amount / await this.personnelService.findAllMembersLength(personnels);
-          console.log('personnelTx.amount) ', personnelTx.amount)
+            amount = Math.round(amount / await this.personnelService.findAllMembersLength(personnels));
+          // console.log('personnelTx.amount) ', personnelTx.amount)
 
           personnelTx.amount = amount 
           personnelTx.transactionType = txTypePartner;
