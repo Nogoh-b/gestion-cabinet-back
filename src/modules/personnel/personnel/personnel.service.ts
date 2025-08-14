@@ -40,11 +40,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
 import { PersonnelTypeCode } from '../type_personnel/entities/type_personnel.entity';
 import { TypePersonnelService } from '../type_personnel/type_personnel.service';
 import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
+
+
+
+
+
 
 
 
@@ -96,7 +106,7 @@ export class PersonnelService extends BaseService<Personnel> {
     return this.personnel_repository;
   }
 
-  async create(dto: CreatePersonnelDto): Promise<Personnel> {
+  async create(dto: CreatePersonnelDto): Promise<Personnel | any> {
     const type = await this.type_personnel_service.findOne(dto.type_personnel_id);
     const customer = await this.customer_service.findOne(dto.customer_id);
 
@@ -121,22 +131,18 @@ export class PersonnelService extends BaseService<Personnel> {
       code = dto.code;
     }
     if(type.code == PersonnelTypeCode.DG || type.code == PersonnelTypeCode.PCA){
-      const sub = this.personnel_repository.manager
-        .createQueryBuilder()
-        .select('p.id', 'id')
-        .from(Personnel, 'p')
-        .innerJoin('p.type_personnel', 't')
-        .where('t.code = :code')
-        .andWhere('p.deleted_at IS NULL')
-        .getQuery();
-
-      await this.personnel_repository
-        .createQueryBuilder()
-        .update(Personnel)
-        .set({ status: 0 })
-        .where(`id IN (${sub})`)
-        .setParameters({ code: type.code })
-        .execute();
+      const personnelsToDisable = await this.personnel_repository
+      .createQueryBuilder('p')
+      .innerJoin('p.type_personnel', 't', 't.code = :code AND t.deleted_at IS NULL', { code: type.code })
+      // .where('p.deleted_at IS NULL')
+      .getMany( );
+        // 2. Désactiver chaque personnel un par un
+        for (const personnel of personnelsToDisable) {
+          personnel.status = 0; // ou false selon votre modèle
+          personnel.updated_at = new Date();
+          
+          await this.personnel_repository.save(personnel);
+        }
 
     }
 
