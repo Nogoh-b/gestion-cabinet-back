@@ -1,7 +1,9 @@
 // DTO de création - src/core-banking/dto/create-transaction-savings-account.dto.ts
 // Format des données pour créer une transaction épargne
-import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 
 
 
@@ -162,7 +164,25 @@ export class ValidateTransactionSavingsAccountDto {
 
 }
 
+export class UniqueCheckQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  origin!: string;
 
+  @IsOptional()
+  @IsString()
+  promo_code?: string;
+
+  @IsOptional()
+  @IsString()
+  commercial_code?: string;
+
+  // utile en update pour ignorer la ligne courante
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  excludeId?: number;
+}
 
 export class UpdateProviderInfoDto {
   @IsOptional()

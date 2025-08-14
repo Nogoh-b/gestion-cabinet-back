@@ -7,9 +7,12 @@ import { Controller, Get, Post, Body, Param, Query, Patch } from '@nestjs/common
 
 
 
+import { ApiOperation, ApiQuery } from '@nestjs/swagger';
+
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
-import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UniqueCheckQueryDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
 
 
 
@@ -86,6 +89,31 @@ export class TransactionSavingAccountController {
   checkStatuswthdraw(@Param('reference') reference: string) {
     return this.transactionSavingAccountService.checkWthDraw(reference);
   }
+
+  @Get('unique-check')
+  @ApiOperation({
+    summary: 'Vérifie l’unicité (origin,promo_code) et (origin,commercial_code)',
+    description:
+      'Retourne si une transaction existe déjà pour les paires uniques. Utiliser excludeId pour ignorer un enregistrement (cas update).',
+  })
+  @ApiQuery({ name: 'origin', required: true, type: String })
+  @ApiQuery({ name: 'promo_code', required: false, type: String })
+  @ApiQuery({ name: 'commercial_code', required: false, type: String })
+  @ApiQuery({ name: 'excludeId', required: false, type: Number })
+  async checkUnique(@Query() q: UniqueCheckQueryDto) {
+    const res = await this.transactionSavingAccountService.checkUniquenessPairs({
+      origin: q.origin,
+      promo_code: q.promo_code,
+      commercial_code: q.commercial_code,
+      excludeId: q.excludeId,
+    });
+
+    return res
+
+
+  }
+
+
   @Get()
   findAll(@Query() query: PaginationQueryTxDto) {
     const { page, limit, term, fields, exact, from, to, type, txType } = query;
