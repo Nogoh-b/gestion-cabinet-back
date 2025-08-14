@@ -52,6 +52,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -59,6 +60,7 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -766,7 +768,8 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
 
         if(target.commercial_code){
             comercial = await this.personnelService.findOneByCode(target.commercial_code);
-            if(comercial && comercial.savings_account){
+            const unicity = await this.checkUniquenessPairs({commercial_code: comercial?.code , origin : tx.targetSavingsAccount?.number_savings_account ?? 'SYSTEM' })
+            if(comercial && comercial.savings_account && !unicity.commercialConflict){
               // Transaction pour le le partenaire
               if((comercial.is_intern && (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 ) || !comercial.is_intern){
                 console.log('rrrrCom ', (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length > 10 )
@@ -805,7 +808,8 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
 
         if(target.promo_code){
             partner = await this.personnelService.findOneByCode(target.promo_code, false);
-            if(partner && partner.savings_account){
+            const unicity = await this.checkUniquenessPairs({promo_code: partner?.code , origin : tx.targetSavingsAccount?.number_savings_account ?? 'SYSTEM' })
+            if(partner && partner.savings_account && !unicity.promoConflict){
             // Transaction pour le le partenaire
             const txTypePartner = await this.transactionTypeService.findOneByCode(TransactionCode.PARTNER_COMMISSION);
             const providerOpenProduct = await this.providerService.findOne('SYSTEM');
