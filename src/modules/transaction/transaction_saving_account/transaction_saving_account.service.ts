@@ -20,7 +20,7 @@ import { SavingsAccount, SavingsAccountStatus } from 'src/modules/savings-accoun
 
 
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 
 
 
@@ -49,6 +49,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -56,6 +59,9 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
 
 
 
@@ -1205,6 +1211,50 @@ private async generateUniquePaymentTokenProvider(): Promise<string> {
     return await this.mcotiService
       .checkStatusPaymentWithDraw(t )
        
+  }
+
+  async checkUniquenessPairs(params: {
+    origin: string;
+    promo_code?: string | null;
+    commercial_code?: string | null;
+    excludeId?: number;
+  }): Promise<{
+    promoConflict: boolean;
+    promoId: number | null;
+    commercialConflict: boolean;
+    txId: number | null;
+  }> {
+    const { origin } = params;
+    const promo_code = params.promo_code?.trim() || null;
+    const commercial_code = params.commercial_code?.trim() || null;
+    const excludeId = params.excludeId;
+
+    const wherePromo =
+      promo_code
+        ? { origin, promo_code, ...(excludeId ? { id: Not(excludeId) } : {}) }
+        : null;
+
+    const whereCommercial =
+      commercial_code
+        ? { origin, commercial_code, ...(excludeId ? { id: Not(excludeId) } : {}) }
+        : null;
+
+    // aucune paire fournie → pas de conflit
+    if (!wherePromo && !whereCommercial) {
+      return { promoConflict: false, promoId: null, commercialConflict: false, txId: null };
+    }
+
+    const [promoHit, commercialHit] = await Promise.all([
+      wherePromo ? this.repo.findOne({ where: wherePromo, select: ['id'] }) : null,
+      whereCommercial ? this.repo.findOne({ where: whereCommercial, select: ['id'] }) : null,
+    ]);
+
+    return {
+      promoConflict: !!promoHit,
+      promoId: promoHit?.id ?? null,
+      commercialConflict: !!commercialHit,
+      txId: commercialHit?.id ?? null,
+    };
   }
 
 }
