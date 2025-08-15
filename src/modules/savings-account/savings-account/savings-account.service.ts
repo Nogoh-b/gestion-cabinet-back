@@ -1175,6 +1175,8 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if(tx.originSavingsAccount?.number_savings_account == acctNum ){
         // commission = tx.commission || 0;
       }
+      // if(tx.is_locked)
+        // return sum
       // console.log(commission)
       // 1. Filtrage selon le type de balance
       switch (options.balanceType) {

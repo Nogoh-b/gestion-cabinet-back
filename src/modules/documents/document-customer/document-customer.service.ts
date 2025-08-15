@@ -9,11 +9,15 @@ import { BadRequestException, ConflictException, NotAcceptableException, NotFoun
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
-import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
+import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
@@ -111,7 +115,7 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       file_path: uploadedFile.fileName,
       file_size: uploadedFile.fileSize,
       name: docType.name,
-      status: DocumentCustomerStatus.PENDING,
+      status: dto.status ?? DocumentCustomerStatus.PENDING,
     });
     return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
   }
@@ -204,5 +208,9 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
 
   getRepository(): Repository<DocumentCustomer> {
     return this.docRepository;
+  }
+
+  async sync(dto : KycSyncDto){
+
   }
 }

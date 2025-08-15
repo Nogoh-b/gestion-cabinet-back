@@ -19,6 +19,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
@@ -26,6 +27,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
+
 
 
 
@@ -214,27 +216,27 @@ export class CustomersService extends BaseService<Customer> {
     }
 
 
-    async generateNextCustomerCode(): Promise<string> {
-  // 1) Récupère la plus grande valeur numérique de `code`
-  const raw = await this.customerRepository
-    .createQueryBuilder('c')
-    .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max')
-    .getRawOne<{ max: string }>();
+  async generateNextCustomerCode(): Promise<string> {
+    // 1) Récupère la plus grande valeur numérique de `code`
+    const raw = await this.customerRepository
+      .createQueryBuilder('c')
+      .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max')
+      .getRawOne<{ max: string }>();
 
-  // 2) Parse ou démarre à 0
-  const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
+    // 2) Parse ou démarre à 0
+    const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
 
-  // 3) Calcule le prochain
-  const next = maxValue + 1;
+    // 3) Calcule le prochain
+    const next = maxValue + 1;
 
-  // 4) Sécurité overflow
-  if (next > 9_999_999) {
-    throw new Error('Plus de codes clients disponibles (limite 7 chiffres atteinte)');
+    // 4) Sécurité overflow
+    if (next > 9_999_999) {
+      throw new Error('Plus de codes clients disponibles (limite 7 chiffres atteinte)');
+    }
+
+    // 5) Retourne formatté sur 7 chiffres
+    return next.toString().padStart(7, '0');
   }
-
-  // 5) Retourne formatté sur 7 chiffres
-  return next.toString().padStart(7, '0');
-}
 
   async findOneStats(id: number): Promise<any> {
     console.log('stats');
