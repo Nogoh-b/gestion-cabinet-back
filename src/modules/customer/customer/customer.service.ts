@@ -5,7 +5,7 @@ import { BaseService } from 'src/core/shared/services/search/base.service';
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
-import { CreateDocumentFromCotiDto, DocTypeNameOnline } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+import { CreateDocumentFromCotiDto, DocTypeNameOnline, KycSyncDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
@@ -20,6 +20,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
@@ -27,6 +31,10 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
+
+
+
+
 
 
 
@@ -172,6 +180,12 @@ export class CustomersService extends BaseService<Customer> {
     if (!customer) throw new NotFoundException();
     return plainToInstance(CustomerResponseDto, customer);
   }
+  async findOneByCode(customer_code: string, strict = true): Promise<CustomerResponseDto> {
+    const customer = await this.customerRepository.findOne({ where: { customer_code } , relations : ['type_customer','location_city'] });
+    if (!customer && strict) throw new NotFoundException(`client ${customer_code} non trouvé`);
+    if (!strict) console.log(`client ${customer_code} non trouvé`);
+    return plainToInstance(CustomerResponseDto, customer);
+  }
 
   
   async findDocumentsOne(customer_code: string): Promise<any> {
@@ -281,6 +295,10 @@ export class CustomersService extends BaseService<Customer> {
     
     return stats;
   }
+
+    async sync(dto : KycSyncDto){
+      return await this.documentCustomerService.sync(dto)
+    }
 
 
 }

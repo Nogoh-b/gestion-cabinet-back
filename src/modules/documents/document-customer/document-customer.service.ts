@@ -1,12 +1,35 @@
 import { plainToInstance } from 'class-transformer';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
 import { Repository } from 'typeorm';
-import { BadRequestException, ConflictException, NotAcceptableException, NotFoundException } from '@nestjs/common';
+
+import { BadRequestException, ConflictException, forwardRef, Inject, NotAcceptableException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18,6 +41,30 @@ import { DocumentCustomerResponseDto } from './dto/document-customer-response.dt
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
@@ -27,9 +74,13 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     private docTypeRepository: Repository<DocumentType>,    
 
     @InjectRepository(Customer)
-    private customerRepository: Repository<Customer>
+    private customerRepository: Repository<Customer>,
+    @Inject(forwardRef(() => CustomersService))
+    private customerService: CustomersService,
+    private mcotiService: McotiService,
   ) {    
     super();
+    console.log(forwardRef)
   }
 
   async create(dto: CreateDocumentCustomerDto, customer_id = null): Promise<any> {
@@ -115,9 +166,14 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       file_path: uploadedFile.fileName,
       file_size: uploadedFile.fileSize,
       name: docType.name,
-      status: dto.status ?? DocumentCustomerStatus.PENDING,
+      status: DocumentCustomerStatus.PENDING,
     });
-    return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
+    const doc = await  plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
+    console.log('DOC--- ',doc)
+    if(dto.status){ 
+      this.validate(doc.id)
+    }
+    return doc
   }
 
 
@@ -147,6 +203,13 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     });
   }
 
+  async findByCustomerCode(customer_code: string, accepted = false, strict = true): Promise<any[]> {
+    const customer = await this.customerService.findOneByCode(customer_code,strict)
+    if(customer)
+      return await this.findByCustomer(customer?.id, accepted)
+    return []
+  }
+
   async findByType(typeCode: string): Promise<DocumentCustomer | null> {
     let where = {name: typeCode }
     return this.docRepository.findOne({
@@ -167,6 +230,7 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     
     if(!doc)
       throw new  NotFoundException("Document non trouvé");
+      console.log('doccccc ', doc)
     if(doc.status !== DocumentCustomerStatus.PENDING)
       throw new  NotFoundException("Document déja traité");
 
@@ -211,6 +275,20 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   }
 
   async sync(dto : KycSyncDto){
+    let r : any  = []
+    for (const data of dto.items) {
+        const docs = plainToInstance(DocumentCustomerResponseDto , await this.findByCustomerCode(data.code_customer,true, false))
+        if(docs && docs.length > 0){
+          r.push(docs) 
+          for (const doc of docs) {
+            console.log('doc ' ,doc.document_type_id , process.env[`DOC_${doc.document_type_id}`] )
+            const code_cash = await this.mcotiService.uploadKycToCoti(data.personne_id,{document_type_name : process.env[`DOC_${doc.document_type_id}`] , bank_system_idbank_system : 1 },doc.file_url);
+          }
 
+        }
+    }
+    return r
   }
+
+  
 }

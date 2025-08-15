@@ -1,3 +1,6 @@
+import axios from 'axios';
+import * as FormData from 'form-data';
+import * as path from 'node:path';
 import { firstValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
 import { Injectable, NotFoundException } from '@nestjs/common';
@@ -8,32 +11,7 @@ import { ConfigService } from '@nestjs/config';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export type KycType = 'front_cni' | 'back_cni' | 'selfie';
 
 
 @Injectable()
@@ -73,6 +51,62 @@ async callMcotiEndpoint(
 }
 
 
+async callMcotiEndpointV1(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH',
+  endpoint: string,
+  payload?: any,                            // peut être FormData
+  params?: Record<string, any>
+) {
+  const url = `${this.configService.get('ENDPOINT_MCOTI')}/${endpoint}`;
+
+  // headers par défaut (JSON)
+   const headers =
+      payload instanceof FormData
+        ? { ...payload.getHeaders() }
+        : { 'Content-Type': 'application/json' };
+
+    const config = {
+      headers,
+      params,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    };
+
+  switch (method) {
+    case 'GET':  return (await firstValueFrom(this.httpService.get(url, config))).data;
+    case 'POST': return (await firstValueFrom(this.httpService.post(url, payload, config))).data;
+    case 'PUT':  return (await firstValueFrom(this.httpService.put(url, payload, config))).data;
+    case 'PATCH':return (await firstValueFrom(this.httpService.patch(url, payload, config))).data;
+    default:     throw new Error(`Méthode HTTP non supportée: ${method}`);
+  }
+}
+
+
+async uploadKycToCoti(
+  personneId: number,
+  dto: { document_type_name ?: any; bank_system_idbank_system: number },
+  fileUrl: string,
+) {
+  // 1) Télécharger le fichier en stream
+  console.log(fileUrl)
+  const resp = await axios.get(fileUrl, { responseType: 'stream' });
+  const contentType = resp.headers['content-type'] || 'application/octet-stream';
+  const filename = path.basename(new URL(fileUrl).pathname) || 'file';
+
+  // 2) Construire le multipart attendu par Yii2
+  const form = new FormData();
+  form.append('document_type_name', dto.document_type_name);
+  form.append('bank_system_idbank_system', String(dto.bank_system_idbank_system));
+  form.append('force', String(1)); 
+  form.append('file', resp.data, { filename, contentType });
+
+  // 3) Appeler ton helper HTTP (qui détecte FormData et met les bons headers)
+  return this.callMcotiEndpointV1(
+    'POST',
+    `member/${personneId}/kyc/upload`,
+    form,                 
+  );
+}
 
 
   private async getTokenDisbursement(): Promise<any> {
