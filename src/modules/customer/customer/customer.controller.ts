@@ -27,11 +27,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody
 
 
 
+
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
 
 
 
@@ -150,7 +152,7 @@ export class CustomerController {
   @ApiBody({ type: KycSyncDto })
   async sync( @Body() dto: KycSyncDto) {
     // traite comme tu veux dans le service
-    return this.customerService.sync(dto);
+    return this.customerService.sync(dto); 
   }
 
   @Post('contact')
