@@ -1,10 +1,10 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Entity, Column, OneToMany } from 'typeorm';
 import { SavingsAccountHasInterest } from '../../savings-account/entities/account-has-interest.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 
 @Entity('interest_saving_account')
-export class InterestSavingAccount extends Base {
+export class InterestSavingAccount extends BaseEntity {
   @Column({ primary: true, generated: true })
   id: number;
 

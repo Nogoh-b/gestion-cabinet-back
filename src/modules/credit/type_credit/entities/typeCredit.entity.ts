@@ -1,5 +1,5 @@
-import { Base } from 'src/core/entities/base';
-import { Credit } from 'src/modules/credit/credit/entities/credit.entity';
+import { BaseEntity } from 'src/core/entities/baseEntity';
+import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
 import {
   Column,
   Entity,
@@ -12,7 +12,7 @@ import { MODE_REIMBURSEMENT_PERIOD, TYPE_CREDIT_STATE } from 'src/utils/types';
 import { TypeGuaranty } from '../../guaranty/type_guaranty/entity/type_guaranty.entity';
 
 @Entity()
-export class TypeCredit extends Base {
+export class TypeCredit extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -22,7 +22,9 @@ export class TypeCredit extends Base {
   @Column()
   interest: number;
 
-  @Column()
+  @Column({
+    type: 'text',
+  })
   description: string;
 
   @Column()
@@ -39,8 +41,8 @@ export class TypeCredit extends Base {
   })
   status: TYPE_CREDIT_STATE;
 
-  @OneToMany(() => Credit, (type) => type.typeCredit)
-  credits: Credit[];
+  @OneToMany(() => Loan, (type) => type.typeCredit)
+  loans: Loan[];
 
   @ManyToMany(() => TypeGuaranty, (type) => type.typeCredits)
   @JoinTable()

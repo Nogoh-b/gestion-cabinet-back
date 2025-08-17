@@ -1,5 +1,5 @@
 
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 
 
@@ -70,7 +70,7 @@ export enum SavingsAccountStatus {
   BLOCKED = 3,
 }
 @Entity('savings_account')
-export class SavingsAccount extends Base {
+export class SavingsAccount extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 

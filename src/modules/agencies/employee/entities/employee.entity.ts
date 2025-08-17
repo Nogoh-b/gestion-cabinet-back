@@ -1,4 +1,4 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
   Column,
@@ -14,7 +14,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Branch } from '../../branch/entities/branch.entity';
 
 @Entity('employee')
-export class Employee extends Base {
+export class Employee extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number; // sera égal à user.id
 

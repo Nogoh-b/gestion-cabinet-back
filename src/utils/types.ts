@@ -25,3 +25,9 @@ export enum TYPE_CREDIT_STATE {
   PENDING = 'PENDING',
   DISABLE = 'DISABLE',
 }
+
+export enum TYPE_STATUS {
+  ACTIVE = 1,
+  PENDING = 0,
+  DISABLE = -1,
+}

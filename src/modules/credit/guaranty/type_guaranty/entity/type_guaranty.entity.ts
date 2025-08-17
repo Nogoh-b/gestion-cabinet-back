@@ -1,17 +1,14 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import {
   Column,
   Entity,
-  JoinColumn,
   ManyToMany,
-  OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { TypeCredit } from '../../../type_credit/entities/typeCredit.entity';
-import { DocumentType } from '../../../../documents/document-type/entities/document-type.entity';
 
 @Entity()
-export class TypeGuaranty extends Base {
+export class TypeGuaranty extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 

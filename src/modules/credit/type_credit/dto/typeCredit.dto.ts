@@ -1,13 +1,14 @@
-import { IsNumber, IsString } from 'class-validator';
+import { IsEnum, IsNumber, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { MODE_REIMBURSEMENT_PERIOD } from '../../../../utils/types';
 
 export class TypeCreditDto {
-  @ApiProperty({ description: 'id of credit', type: 'string', required: true })
+  @ApiProperty({ description: 'id of loan', type: 'string', required: true })
   @IsString()
   name: string;
 
   @ApiProperty({
-    description: 'interest of credit',
+    description: 'interest of loan',
     type: 'number',
     required: true,
   })
@@ -15,7 +16,7 @@ export class TypeCreditDto {
   interest: number;
 
   @ApiProperty({
-    description: 'description of credit',
+    description: 'description of loan',
     type: 'string',
     required: true,
   })
@@ -23,15 +24,14 @@ export class TypeCreditDto {
   description: string;
   // During in days
   @ApiProperty({
-    description: 'duringMax: period maximum of credit',
-    type: 'number',
+    description: 'duringMax: period maximum of loan',
     required: true,
   })
-  @IsNumber()
-  duringMax: number;
+  @IsEnum(MODE_REIMBURSEMENT_PERIOD)
+  reimbursement_period: MODE_REIMBURSEMENT_PERIOD;
 
   @ApiProperty({
-    description: 'penality of credit',
+    description: 'penality of loan',
     type: 'number',
     required: true,
   })
@@ -39,10 +39,16 @@ export class TypeCreditDto {
   penality: number;
 
   @ApiProperty({
-    description: 'eligibility_rating of credit',
+    description: 'eligibility_rating of loan',
     type: 'number',
     required: true,
   })
   @IsNumber()
   eligibility_rating: number;
+}
+
+export class GuarantyCreditsDto {
+  @ApiProperty()
+  @IsNumber()
+  id: number;
 }

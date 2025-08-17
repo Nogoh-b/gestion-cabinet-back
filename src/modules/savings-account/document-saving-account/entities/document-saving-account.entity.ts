@@ -1,4 +1,4 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
@@ -13,7 +13,7 @@ export enum DocumentCustomerStatus{
 }
 
 @Entity('document_saving_account')
-export class DocumentSavingAccount extends Base {
+export class DocumentSavingAccount extends BaseEntity {
     @PrimaryGeneratedColumn()
     id: number;
     @Column({ length: 100 })

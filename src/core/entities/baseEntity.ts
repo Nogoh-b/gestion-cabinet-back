@@ -7,7 +7,7 @@ import {
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 
-export abstract class Base extends TypeORMBaseEntity {
+export abstract class BaseEntity extends TypeORMBaseEntity {
 
   @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
   @CreateDateColumn({ type: 'timestamp',  name: 'created_at' })

@@ -1049,7 +1049,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
         }
         if (originNum === acctNum) {
           // envoi / débit
-          console.log('credit ',sum ,' ', tx.amount)
+          console.log('loan ',sum ,' ', tx.amount)
           return sum - tx.amount;
         }
         // si la transaction n'implique pas ce compte, on l'ignore

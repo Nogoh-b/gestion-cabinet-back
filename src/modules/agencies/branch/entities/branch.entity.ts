@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
@@ -11,7 +11,7 @@ import { Employee } from '../../employee/entities/employee.entity';
 
 
 @Entity('branch')
-export class Branch extends Base {
+export class Branch extends BaseEntity {
   @ApiProperty()
   @PrimaryGeneratedColumn()
   id: number;

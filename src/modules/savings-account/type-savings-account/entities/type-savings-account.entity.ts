@@ -1,31 +1,21 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-import { Entity, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable, OneToMany } from 'typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
+import {
+  Entity,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  ManyToMany,
+  JoinTable,
+  OneToMany,
+} from 'typeorm';
 
 import { Commission } from '../../commission/entities/commission.entity';
 import { InterestSavingAccount } from '../../interest-saving-account/entities/interest-saving-account.entity';
 import { SavingsAccount } from '../../savings-account/entities/savings-account.entity';
 
-
-
-
-
-
-
 @Entity('type_savings_account')
-export class TypeSavingsAccount extends Base {
+export class TypeSavingsAccount extends BaseEntity {
   @Column({ primary: true, generated: true })
   id: number;
 
@@ -50,7 +40,7 @@ export class TypeSavingsAccount extends Base {
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   interest_year_savings_account: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true})
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   minimum_blocking_duration: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2 })
@@ -65,16 +55,12 @@ export class TypeSavingsAccount extends Base {
   @Column({ type: 'double', nullable: true })
   commission_per_product: number;
 
-
-
   @Column({ type: 'double', nullable: true })
   commission_dg: number;
 
-  
   @Column({ type: 'double', nullable: true })
   commission_pca: number;
 
-  
   @Column({ type: 'double', nullable: true })
   commission_membre: number;
 
@@ -87,10 +73,10 @@ export class TypeSavingsAccount extends Base {
   @Column({ type: 'int', nullable: true })
   commission_id: number;
 
-  @Column({ type: 'int' , nullable: true})
+  @Column({ type: 'int', nullable: true })
   interest_saving_account_id: number;
 
-  @Column({ type: 'tinyint', default : 0 })
+  @Column({ type: 'tinyint', default: 0 })
   canCreateOnline: number;
 
   @ManyToMany(() => DocumentType)

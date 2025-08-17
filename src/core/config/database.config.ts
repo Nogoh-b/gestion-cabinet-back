@@ -2,6 +2,7 @@
 // src/core/config/database.config.ts
 import { SavingsAccountSubscriber } from 'src/modules/savings-account/savings-account/savings-account.subscriber';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { join } from 'path';
 
 
  
@@ -13,9 +14,9 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     username: process.env.DB_USER ?? 'mendo', 
     password: process.env.DB_PASSWORD ?? 'mendo',
     database: process.env.DB_NAME ??  'core_banking',  
-    synchronize: false,  
-    subscribers: [SavingsAccountSubscriber],  
-    autoLoadEntities: true, 
+    synchronize: true,
+    subscribers: [join(__dirname, '../../**/*.subscriber{.ts,.js}')],
+    entities: [join(__dirname, '../../**/*.entity{.ts,.js}')],
     logging: ["error",],
     // logging: ["query", "error", "schema"], 
     logger: "advanced-console" 

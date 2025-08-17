@@ -1,30 +1,35 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import {
   Column,
   Entity,
-  JoinColumn, ManyToOne,
+  JoinColumn,
+  ManyToOne,
   OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { TypeGuaranty } from '../../type_guaranty/entity/type_guaranty.entity';
 import { DocumentType } from '../../../../documents/document-type/entities/document-type.entity';
-import { Credit } from '../../../credit/entities/credit.entity';
+import { Loan } from '../../../loan/entities/loan.entity';
+import { CREDIT_STATUS } from 'src/utils/types';
 
 @Entity()
-export class GuarantyEstimation extends Base {
+export class GuarantyEstimation extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
   @Column()
   value: number;
 
+  @Column()
+  status: CREDIT_STATUS;
+
   @OneToOne(() => TypeGuaranty)
   @JoinColumn()
   typeGuaranty: TypeGuaranty;
 
-  @ManyToOne(() => Credit, (type) => type.guaranties)
+  @ManyToOne(() => Loan, (type) => type.guaranties)
   @JoinColumn()
-  credit: Credit;
+  loan: Loan;
 
   @OneToOne(() => DocumentType)
   @JoinColumn()

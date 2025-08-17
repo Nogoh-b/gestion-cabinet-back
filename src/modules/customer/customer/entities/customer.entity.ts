@@ -1,4 +1,4 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
@@ -15,7 +15,7 @@ import {
 } from 'typeorm';
 
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
-import { Credit } from 'src/modules/credit/credit/entities/credit.entity';
+import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
 
 export enum CustomerStatus {
   ACTIVE = 1,
@@ -30,7 +30,7 @@ export enum CustomerCreatedFrom {
   AGENCY = 0,
 }
 @Entity('customer')
-export class Customer extends Base {
+export class Customer extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -62,8 +62,8 @@ export class Customer extends Base {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
-  @OneToMany(() => Credit, (type) => type.customer)
-  credits: Credit[];
+  @OneToMany(() => Loan, (type) => type.customer)
+  loans: Loan[];
 
   @OneToMany(() => SavingsAccount, (sa) => sa.customer)
   savings_accounts: SavingsAccount[];

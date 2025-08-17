@@ -1,15 +1,15 @@
 // src/core/document/entities/document-type.entity.ts
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { TypeCustomer } from 'src/modules/customer/type-customer/entities/type_customer.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
   ManyToMany,
-  JoinTable, ManyToOne,
+  JoinTable,
+  ManyToOne,
 } from 'typeorm';
-import { TypeCredit } from '../../../credit/type_credit/entities/typeCredit.entity';
-import { Credit } from '../../../credit/credit/entities/credit.entity';
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 
 export enum DocumentTypeStatus {
   PENDING = 0,
@@ -17,7 +17,7 @@ export enum DocumentTypeStatus {
   REFUSED = 2,
 }
 @Entity('document_type')
-export class DocumentType extends Base {
+export class DocumentType extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -54,8 +54,8 @@ export class DocumentType extends Base {
   status: number;
   // @ManyToMany(() => TypeSavingsAccount, type => type.documentTypes)
   // typeAccounts: TypeSavingsAccount[];
-  @ManyToOne(() => Credit, (type) => type.typeDocument, {
+  @ManyToOne(() => Loan, (type) => type.typeDocument, {
     nullable: true,
   })
-  credit: Credit;
+  loan: Loan;
 }

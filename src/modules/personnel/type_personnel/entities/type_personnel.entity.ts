@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
 
 

@@ -1,4 +1,4 @@
-import { Base } from 'src/core/entities/base';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { TypeCredit } from 'src/modules/credit/type_credit/entities/typeCredit.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import {
@@ -6,7 +6,6 @@ import {
   Column,
   PrimaryGeneratedColumn,
   ManyToOne,
-  JoinColumn,
   OneToMany,
   OneToOne,
 } from 'typeorm';
@@ -16,7 +15,7 @@ import { User } from '../../../iam/user/entities/user.entity';
 import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 
 @Entity()
-export class Credit extends Base {
+export class Loan extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -35,21 +34,34 @@ export class Credit extends Base {
   @Column()
   duringMax: number;
   //
+  @Column({
+    type: 'text',
+  })
+  object: string;
+
+  @Column({
+    type: 'text',
+  })
+  comment: string;
+  //
   @OneToOne(() => User, { nullable: true })
   approvedBy: User;
   //
-  @ManyToOne(() => TypeCredit, (type) => type.credits)
+  @OneToOne(() => User, { nullable: true })
+  manageBy: User;
+  //
+  @ManyToOne(() => TypeCredit, (type) => type.loans)
   typeCredit: TypeCredit;
   //
   @Column()
   nextDatePrevalent: string;
   //
-  @ManyToOne(() => Customer, (type) => type.credits)
+  @ManyToOne(() => Customer, (type) => type.loans)
   customer: Customer;
 
-  @OneToMany(() => DocumentType, (type) => type.credit)
+  @OneToMany(() => DocumentType, (type) => type.loan)
   typeDocument: DocumentType[];
 
-  @OneToMany(() => GuarantyEstimation, (type) => type.credit)
+  @OneToMany(() => GuarantyEstimation, (type) => type.loan)
   guaranties: GuarantyEstimation[];
 }
