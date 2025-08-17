@@ -3,6 +3,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
 import { EmailService } from 'src/core/shared/services/email/email.service';
+import { KycSyncDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
 import {
   Controller,
   Get,
@@ -16,7 +17,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth } from '@nestjs/swagger';
+
+
+
+
+
+
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
 
 
 
@@ -28,6 +35,12 @@ import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
+
+
+
+
+
 
 
 
@@ -138,6 +151,14 @@ export class CustomerController {
     return await this.customerService.remove(+id);
   }
 
+  @Post('sync-kyc')
+  @ApiOperation({ summary: 'Réceptionne les codes clients à synchroniser' })
+  @ApiBody({ type: KycSyncDto })
+  async sync( @Body() dto: KycSyncDto) {
+    // traite comme tu veux dans le service
+    return this.customerService.sync(dto); 
+  }
+
   @Post('contact')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   async contactForm(@Body() contactDto: any) {
@@ -150,5 +171,10 @@ export class CustomerController {
         message: 'contactDto.message'
       }
     });
-}
+  }
+
+  @Get('kyc/missing')
+  async getCustomersWithMissingKyc() {
+    return this.customerService.findCustomersWithMissingKyc();
+  }
 }

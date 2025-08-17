@@ -5,19 +5,26 @@ import { BaseService } from 'src/core/shared/services/search/base.service';
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
-import { CreateDocumentFromCotiDto, DocTypeNameOnline } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+import { CreateDocumentFromCotiDto, DocTypeNameOnline, KycSyncDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+import { DocumentCustomer, DocumentCustomerStatus } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+
 import { DataSource, Repository } from 'typeorm';
 
 import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
@@ -26,6 +33,12 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
+
+
+
+
+
+
 
 
 
@@ -170,6 +183,12 @@ export class CustomersService extends BaseService<Customer> {
     if (!customer) throw new NotFoundException();
     return plainToInstance(CustomerResponseDto, customer);
   }
+  async findOneByCode(customer_code: string, strict = true): Promise<CustomerResponseDto> {
+    const customer = await this.customerRepository.findOne({ where: { customer_code } , relations : ['type_customer','location_city'] });
+    if (!customer && strict) throw new NotFoundException(`client ${customer_code} non trouvé`);
+    if (!strict) console.log(`client ${customer_code} non trouvé`);
+    return plainToInstance(CustomerResponseDto, customer);
+  }
 
   
   async findDocumentsOne(customer_code: string): Promise<any> {
@@ -214,27 +233,27 @@ export class CustomersService extends BaseService<Customer> {
     }
 
 
-    async generateNextCustomerCode(): Promise<string> {
-  // 1) Récupère la plus grande valeur numérique de `code`
-  const raw = await this.customerRepository
-    .createQueryBuilder('c')
-    .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max')
-    .getRawOne<{ max: string }>();
+  async generateNextCustomerCode(): Promise<string> {
+    // 1) Récupère la plus grande valeur numérique de `code`
+    const raw = await this.customerRepository
+      .createQueryBuilder('c')
+      .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max')
+      .getRawOne<{ max: string }>();
 
-  // 2) Parse ou démarre à 0
-  const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
+    // 2) Parse ou démarre à 0
+    const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
 
-  // 3) Calcule le prochain
-  const next = maxValue + 1;
+    // 3) Calcule le prochain
+    const next = maxValue + 1;
 
-  // 4) Sécurité overflow
-  if (next > 9_999_999) {
-    throw new Error('Plus de codes clients disponibles (limite 7 chiffres atteinte)');
+    // 4) Sécurité overflow
+    if (next > 9_999_999) {
+      throw new Error('Plus de codes clients disponibles (limite 7 chiffres atteinte)');
+    }
+
+    // 5) Retourne formatté sur 7 chiffres
+    return next.toString().padStart(7, '0');
   }
-
-  // 5) Retourne formatté sur 7 chiffres
-  return next.toString().padStart(7, '0');
-}
 
   async findOneStats(id: number): Promise<any> {
     console.log('stats');
@@ -279,6 +298,35 @@ export class CustomersService extends BaseService<Customer> {
     
     return stats;
   }
+
+    async sync(dto : KycSyncDto){
+      return await this.documentCustomerService.sync(dto)
+    }
+
+
+    // ...
+
+async findCustomersWithMissingKyc() {
+  return await this.customerRepository
+    .createQueryBuilder('c')
+    .leftJoin('c.type_customer', 'tc')
+    .addSelect(subQuery => {
+      return subQuery
+        .select('COUNT(DISTINCT tcd.document_type_id)', 'requiredCount')
+        .from('type_customer_document_type', 'tcd')
+        .where('tcd.type_customer_id = tc.id');
+    }, 'requiredCount')
+    .addSelect(subQuery => {
+      return subQuery
+        .select('COUNT(DISTINCT dc.document_type_id)', 'sentCount')
+        .from(DocumentCustomer, 'dc')
+        .where('dc.customer_id = c.id')
+        .andWhere('dc.status = :accepted', { accepted: DocumentCustomerStatus.ACCEPTED });
+    }, 'sentCount')
+    .having('sentCount < requiredCount')
+    .getMany();
+}
+
 
 
 }
