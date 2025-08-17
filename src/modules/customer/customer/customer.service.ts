@@ -6,23 +6,25 @@ import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, DocTypeNameOnline, KycSyncDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+import { DocumentCustomer, DocumentCustomerStatus } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+
 import { DataSource, Repository } from 'typeorm';
 
 import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
@@ -31,6 +33,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer, CustomerCreatedFrom, CustomerStatus } from './entities/customer.entity';
+
 
 
 
@@ -299,6 +302,31 @@ export class CustomersService extends BaseService<Customer> {
     async sync(dto : KycSyncDto){
       return await this.documentCustomerService.sync(dto)
     }
+
+
+    // ...
+
+async findCustomersWithMissingKyc() {
+  return await this.customerRepository
+    .createQueryBuilder('c')
+    .leftJoin('c.type_customer', 'tc')
+    .addSelect(subQuery => {
+      return subQuery
+        .select('COUNT(DISTINCT tcd.document_type_id)', 'requiredCount')
+        .from('type_customer_document_type', 'tcd')
+        .where('tcd.type_customer_id = tc.id');
+    }, 'requiredCount')
+    .addSelect(subQuery => {
+      return subQuery
+        .select('COUNT(DISTINCT dc.document_type_id)', 'sentCount')
+        .from(DocumentCustomer, 'dc')
+        .where('dc.customer_id = c.id')
+        .andWhere('dc.status = :accepted', { accepted: DocumentCustomerStatus.ACCEPTED });
+    }, 'sentCount')
+    .having('sentCount < requiredCount')
+    .getMany();
+}
+
 
 
 }

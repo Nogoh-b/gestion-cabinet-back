@@ -34,11 +34,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
 
 
 
@@ -87,11 +93,15 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     const file = dto.file!
     const docType = await this.docTypeRepository.findOneBy({ id: dto.document_type_id });
     if (!docType) {
+      if(!dto.strict)
+        return
       throw new NotFoundException('Type document non trouvé');
     }    
     const customer  = await this.customerRepository.findOne({ where: { id: dto.customer_id }, relations: ['type_customer', 'type_customer.requiredDocuments'] });
 
     if (!customer) {
+      if(!dto.strict)
+        return
       throw new NotFoundException(`client ${dto.customer_id} non trouvé`);
     }
     const requiredDocument = customer?.type_customer?.requiredDocuments.find(
@@ -102,7 +112,9 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     customer?.type_customer?.requiredDocuments.forEach(doc => {
       console.log('doc.id:', doc.id, 'vs', 'dto:', dto.document_type_id);
     });
-    if(!requiredDocument){
+    if(!requiredDocument ){
+      if(!dto.strict)
+        return
       throw new NotAcceptableException(`vous ne pouvez pas soumettre ce type de document `);
     }
     const getSimilarDocs : DocumentCustomer[] = await this.searchWithJoinsAdvanced({
@@ -134,18 +146,26 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       ],
     });
     if (getSimilarDocs.length > 0) {
+      if(!dto.strict)
+        return
       throw new ConflictException(`Document : ${getSimilarDocs[0].name} deja soumis ou validé`);
     } 
 
     if (!file) {
+      if(!dto.strict)
+        return
       throw new BadRequestException('Aucun fichier uploadé');
     }
 
     if (!file.mimetype.startsWith(docType.mimetype)) {
+      if(!dto.strict)
+        return
       throw new BadRequestException(`le fichier doit être de type : ${docType.mimetype}`);
     }
 
     if (file.size > 1024 * 1024 * 3) { 
+      if(!dto.strict)
+        return
       throw new BadRequestException('Le fichier est trop volumineux (max 1MB)');
     }
     

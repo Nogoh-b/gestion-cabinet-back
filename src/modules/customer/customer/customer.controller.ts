@@ -28,11 +28,15 @@ import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody
 
 
 
+
+
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
+
 
 
 
@@ -167,5 +171,10 @@ export class CustomerController {
         message: 'contactDto.message'
       }
     });
-}
+  }
+
+  @Get('kyc/missing')
+  async getCustomersWithMissingKyc() {
+    return this.customerService.findCustomersWithMissingKyc();
+  }
 }
