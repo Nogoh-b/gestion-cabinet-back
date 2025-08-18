@@ -16,9 +16,12 @@ import { PermissionsGuard } from '../../../core/common/guards/permissions.guard'
 import { TypeCreditService } from './typeCredit.service';
 import { TypeCredit } from './entities/typeCredit.entity';
 import { TypeGuarantyService } from '../guaranty/type_guaranty/type_guaranty.service';
+import { ApiBearerAuth } from '@nestjs/swagger';
+import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
 
-@Controller('type-loan')
+@Controller('type-credit')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth()
 export class TypeCreditController {
   constructor(
     private readonly typeCreditService: TypeCreditService,
@@ -101,7 +104,7 @@ export class TypeCreditController {
     return {
       success: true,
       status: HttpStatus.OK,
-      data: await this.typeGuarantyService.findAllTypeGuaranty(id),
+      data: await this.typeGuarantyService.findAllTypeGuarantyBy(id),
     };
   }
 
@@ -115,6 +118,7 @@ export class TypeCreditController {
       throw new ForbiddenException({
         ...result,
       });
+
     const typeGuaranty = await this.typeGuarantyService.findOneTypeGuaranty(
       body.id,
     );
@@ -122,12 +126,15 @@ export class TypeCreditController {
       throw new ForbiddenException({
         ...typeGuaranty,
       });
+    console.log(typeGuaranty);
+
     return {
       success: true,
       status: HttpStatus.OK,
-      data: await this.typeCreditService.updateTypeCredit(id, {
-        typeGuaranties: { id: body.id },
-      } as Partial<TypeCreditDto>),
+      data: await this.typeCreditService.updateTypeOfGuarantyToTypeCredit(
+        result as TypeCredit,
+        typeGuaranty as TypeGuaranty,
+      ),
     };
   }
 }

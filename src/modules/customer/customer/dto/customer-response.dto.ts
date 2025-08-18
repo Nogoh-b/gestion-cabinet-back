@@ -74,4 +74,7 @@ export class CustomerResponseDto {
 
   @Expose()
   status: number;
+
+  @Expose()
+  cote: number;
 }

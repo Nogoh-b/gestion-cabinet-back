@@ -55,6 +55,9 @@ export class Customer extends BaseEntity {
   @Column({ length: 45, nullable: true, unique: false })
   email: string;
 
+  @Column({ nullable: true, default: 0 })
+  cote: number;
+
   @Column({ name: 'customer_code', length: 45, nullable: false, unique: true })
   customer_code: string;
 

@@ -20,6 +20,11 @@ export class TypeGuarantyService {
     return true;
   }
 
+  async updateTypeGuaranty(id: number, data: Partial<TypeGuaranty>) {
+    await this.typeGuarantyRepository.update(id, { ...data });
+    return true;
+  }
+
   async findOneTypeGuaranty(id: number) {
     const typeGuaranty = await this.typeGuarantyRepository.findOneBy({ id });
     if (!typeGuaranty)
@@ -31,9 +36,13 @@ export class TypeGuarantyService {
     return typeGuaranty;
   }
 
-  async findAllTypeGuaranty(id: number) {
+  async findAllTypeGuarantyBy(id: number) {
     return await this.typeGuarantyRepository.find({
       where: { typeCredits: { id } },
     });
+  }
+
+  async findAllTypeGuaranty() {
+    return await this.typeGuarantyRepository.find();
   }
 }

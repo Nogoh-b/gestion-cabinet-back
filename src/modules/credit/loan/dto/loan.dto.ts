@@ -11,14 +11,6 @@ export class LoanDto {
   @IsNumber()
   amount: number;
 
-  @ApiProperty({
-    description: 'reimbursement_amount of loan',
-    required: true,
-    type: 'number',
-  })
-  @IsNumber()
-  reimbursement_amount: number;
-
   // in days
   @ApiProperty({
     description: 'During of loan',
@@ -44,12 +36,13 @@ export class LoanDto {
 }
 
 export class DocumentsLoanDto {
-  @ApiProperty({ type: 'string', format: 'binary' })
-  file: any;
+  @ApiProperty()
+  @IsNumber()
+  documentId: number;
 }
 
 
-export class GuarantiesLoanDto extends DocumentsLoanDto {
+export class GuarantiesLoanDto {
   @ApiProperty({
     required: true,
   })
@@ -61,6 +54,12 @@ export class GuarantiesLoanDto extends DocumentsLoanDto {
   })
   @IsNumber()
   typeGuaranty: number;
+
+  @ApiProperty({
+    required: true,
+  })
+  @IsNumber()
+  documentId: number;
 }
 
 export class SubmitLoanDto {

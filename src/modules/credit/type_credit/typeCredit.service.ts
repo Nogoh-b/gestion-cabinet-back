@@ -3,6 +3,7 @@ import { TypeCredit } from './entities/typeCredit.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TypeCreditDto } from './dto/typeCredit.dto';
+import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
 
 @Injectable()
 export class TypeCreditService {
@@ -19,7 +20,7 @@ export class TypeCreditService {
     if (!typeCredit)
       return {
         success: false,
-        message: 'No such type',
+        message: 'No such type credit',
         status: HttpStatus.NOT_FOUND,
       };
     return typeCredit;
@@ -32,6 +33,12 @@ export class TypeCreditService {
 
   async updateTypeCredit(id: number, data: Partial<TypeCreditDto>) {
     await this.typeCreditRepository.update(id, { ...data });
+    return true;
+  }
+
+  async updateTypeOfGuarantyToTypeCredit(typeCredit: TypeCredit, guaranty: TypeGuaranty) {
+    typeCredit.typeGuaranties = [guaranty];
+    await this.typeCreditRepository.save(typeCredit);
     return true;
   }
 

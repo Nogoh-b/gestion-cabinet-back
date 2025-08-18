@@ -13,6 +13,9 @@ import { CREDIT_STATE, CREDIT_STATUS } from 'src/utils/types';
 import { DocumentType } from '../../../documents/document-type/entities/document-type.entity';
 import { User } from '../../../iam/user/entities/user.entity';
 import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
+import {
+  TransactionSavingsAccount
+} from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 @Entity()
 export class Loan extends BaseEntity {
@@ -53,14 +56,20 @@ export class Loan extends BaseEntity {
   @ManyToOne(() => TypeCredit, (type) => type.loans)
   typeCredit: TypeCredit;
   //
+  @Column({ type: 'datetime', nullable: true })
+  nextDatePrevalent: Date;
+  //
   @Column()
-  nextDatePrevalent: string;
+  remainPaymentNumber: number;
   //
   @ManyToOne(() => Customer, (type) => type.loans)
   customer: Customer;
 
   @OneToMany(() => DocumentType, (type) => type.loan)
   typeDocument: DocumentType[];
+
+  @OneToMany(() => TransactionSavingsAccount, (type) => type.loan)
+  transactions: TransactionSavingsAccount[];
 
   @OneToMany(() => GuarantyEstimation, (type) => type.loan)
   guaranties: GuarantyEstimation[];

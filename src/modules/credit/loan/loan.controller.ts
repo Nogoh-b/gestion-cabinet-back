@@ -24,14 +24,25 @@ import { ResponseApi } from '../../../utils/interfaces';
 import { Loan } from './entities/loan.entity';
 import { User } from '../../iam/user/entities/user.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../core/common/guards/permissions.guard';
+import { TransactionSavingsAccount } from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { TypeCreditService } from '../type_credit/typeCredit.service';
+import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
+import { CustomersService } from '../../customer/customer/customer.service';
+import { dayTime } from '../../../utils/constantes';
+import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth()
 export class LoanController {
-  constructor(private readonly loanService: LoanService) {}
+  constructor(
+    private readonly loanService: LoanService,
+    private readonly typeCreditService: TypeCreditService,
+    private readonly customersService: CustomersService,
+  ) {}
 
   @Get('/:customerId/all')
   async findAllLoans(@Param('customerId', ParseIntPipe) customerId: number) {
@@ -39,7 +50,7 @@ export class LoanController {
     return await this.loanService.findAllLoansByCustomerId(customerId);
   }
 
-  @Get('/:customerId/:loanId')
+  @Get('one/:customerId/:loanId')
   async findLoanById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
@@ -55,6 +66,27 @@ export class LoanController {
       });
     return {
       data: result as Loan,
+      status: HttpStatus.OK,
+      success: true,
+    };
+  }
+
+  @Get('transactions/:customerId/:loanId')
+  async findTransactionsLoanById(
+    @Param('customerId') customerId: number,
+    @Param('loanId') id: number,
+  ): Promise<ResponseApi<TransactionSavingsAccount[]>> {
+    // Implementation for finding a loan by ID
+    const result = await this.loanService.findTransactionsLoanByCustomerId(
+      id,
+      customerId,
+    );
+    if (result.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...result,
+      });
+    return {
+      data: result as TransactionSavingsAccount[],
       status: HttpStatus.OK,
       success: true,
     };
@@ -136,31 +168,26 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
+    const isDelete = await this.loanService.deleteCreditByCustomerId(
+      result as Loan,
+    );
+    if ((isDelete as any).hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...(isDelete as any),
+      });
     return {
-      data: await this.loanService.deleteCreditByCustomerId(id),
+      data: isDelete,
       status: HttpStatus.OK,
       success: true,
     };
   }
 
-  @Post('docs/:customerId/:loanId')
-  @UseInterceptors(FileInterceptor('files'))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Document of guaranty',
-    type: GuarantiesLoanDto,
-  })
-  async uploadGuarantyLoanById(
+  @Post('guaranty/:customerId/:loanId')
+  async setGuarantyLoanDocumentById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
     @Body() body: GuarantiesLoanDto,
-    @UploadedFile(
-      new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /(jpg|jpeg|png|gif|pdf)$/ })
-        .addMaxSizeValidator({ maxSize: 5 * 1024 * 1024 })
-        .build({ errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY }),
-    )
-    file: Express.Multer.File,
+
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.findOneLoanByCustomerId(
@@ -173,30 +200,17 @@ export class LoanController {
       });
     const loan = result as Loan;
     return {
-      data: await this.loanService.setGuarantiesDocumentsToLoan(loan, []),
+      data: await this.loanService.setGuarantiesDocumentsToLoan(loan, body),
       status: HttpStatus.OK,
       success: true,
     };
   }
 
-  @Post('guaranty/:customerId/:loanId')
-  @UseInterceptors(FileInterceptor('files'))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Document of guaranty',
-    type: DocumentsLoanDto,
-  })
-  async uploadDocumentLoanById(
+  @Post('doc/:customerId/:loanId')
+  async setDocumentLoanById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
     @Body() body: DocumentsLoanDto,
-    @UploadedFile(
-      new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /(jpg|jpeg|png|gif|pdf)$/ })
-        .addMaxSizeValidator({ maxSize: 5 * 1024 * 1024 })
-        .build({ errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY }),
-    )
-    file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.getLoanInProcessing(customerId);
@@ -204,21 +218,30 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    const loan = result as Loan;
+    const loan = { ...result, typeDocument: [{ id: body.documentId }] } as Loan;
+    console.log('Document of guaranty');
+
     return {
-      data: await this.loanService.setTypeDocumentsToLoan(loan, []),
+      data: await this.loanService.setTypeDocumentsToLoan(loan),
       status: HttpStatus.OK,
       success: true,
     };
   }
 
-  @Post('/:customerId')
+  @Post('/:customerId/:typeCreditId')
   async createLoan(
+    @Param('typeCreditId') typeCreditId: number,
     @Param('customerId') customerId: number,
     @Body() body: LoanDto,
     @Req() { user }: { user: User },
   ) {
     // Implementation for creating a loan
+    if (!body.amount)
+      throw new ForbiddenException({
+        status: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: 'Please amount is not null',
+      })
     // check if user as loan in processing
     const result = await this.loanService.getLoanInProcessing(customerId);
     if (!result.hasOwnProperty('success'))
@@ -227,10 +250,54 @@ export class LoanController {
         message: 'You have a Loan in processing',
         status: HttpStatus.FORBIDDEN,
       });
+    const typeCredit =
+      await this.typeCreditService.findOneTypeCredits(typeCreditId);
+    if (typeCredit.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...typeCredit,
+      });
+    const customer = await this.customersService.findOne(customerId);
+    console.log('Document of guaranty', customer);
+    if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
+      throw new ForbiddenException({
+        success: false,
+        message: "You don't have eligibility rating",
+        status: HttpStatus.FORBIDDEN,
+      });
     return {
-      data: await this.loanService.createLoan(body, user),
+      data: await this.loanService.createLoan(
+        { ...body, customer: { id: customerId } } as Loan,
+        typeCredit as TypeCredit,
+        user,
+      ),
       success: true,
       status: HttpStatus.OK,
     };
+  }
+
+  @Get('simulate/:typeCreditId')
+  async simulateLoan(
+    @Query('amount', ParseIntPipe) amount: number,
+    @Query('during', ParseIntPipe) during: number,
+    @Param('typeCreditId', ParseIntPipe) typeCreditId: number,
+  ) {
+    const result =
+      await this.typeCreditService.findOneTypeCredits(typeCreditId);
+    if (result.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...result,
+      });
+    const typeCredit = result as TypeCredit;
+    const remainPaymentNumber = Math.ceil(
+      during / dayTime[typeCredit.reimbursement_period],
+    );
+    return {
+      data: this.loanService.simulationReimbursementAmount(
+        amount,
+        remainPaymentNumber,
+      ),
+      status: HttpStatus.OK,
+      success: true,
+    }
   }
 }

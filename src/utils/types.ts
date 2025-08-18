@@ -3,7 +3,8 @@ export enum MODE_REIMBURSEMENT_PERIOD {
   WEEKLY = 'WEEKLY',
   BIWEEKLY = 'BIWEEKLY', // 2-week
   MONTHLY = 'MONTHLY',
-  QUARTERLY = 'QUARTERLY', // 3 or 4-month
+  QUARTERLY_3 = 'QUARTERLY_3', // 3 or 4-month
+  QUARTERLY_4 = 'QUARTERLY_4', // 3 or 4-month
   YEARLY = 'YEARLY',
 }
 
