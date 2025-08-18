@@ -9,6 +9,7 @@ import {
 import { DocumentType } from '../../document-type/entities/document-type.entity';
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Loan } from '../../../credit/loan/entities/loan.entity';
+import { TypeCredit } from '../../../credit/type_credit/entities/typeCredit.entity';
 
 export enum DocumentCustomerStatus {
   PENDING = 0,

@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Loan } from './entities/loan.entity';
 import { In, Repository } from 'typeorm';
 import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
-import { GuarantiesLoanDto } from './dto/loan.dto';
+import { DocumentLoanDto } from './dto/loan.dto';
 import { User } from '../../iam/user/entities/user.entity';
 import { DocumentType } from '../../documents/document-type/entities/document-type.entity';
 import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
@@ -143,7 +143,7 @@ export class LoanService {
     return loan;
   }
 
-  async setGuarantiesDocumentsToLoan(loan: Loan, guaranty: GuarantiesLoanDto) {
+  async setGuarantiesDocumentsToLoan(loan: Loan, guaranty: DocumentLoanDto) {
     // create guaranties list
     const { documentId, typeGuaranty, ...result } = guaranty;
     const doc = await this.documentCustomerRepository.findOneBy({
@@ -163,14 +163,16 @@ export class LoanService {
     return await this.loanRepository.save(loan);
   }
 
-  async createLoan(data: Loan, typeCredit: TypeCredit, user: User) {
+  async createLoan(
+    data: Loan,
+    typeCredit: TypeCredit,
+  ) {
     const remainPaymentNumber = Math.ceil(
       data.duringMax / dayTime[typeCredit.reimbursement_period],
     );
     const loan = this.loanRepository.create({
       ...data,
       typeCredit,
-      manageBy: user,
       remainPaymentNumber,
       reimbursement_amount: this.simulationReimbursementAmount(
         data.amount,

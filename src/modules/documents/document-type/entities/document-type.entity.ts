@@ -10,6 +10,7 @@ import {
   ManyToOne,
 } from 'typeorm';
 import { Loan } from '../../../credit/loan/entities/loan.entity';
+import { TypeCredit } from '../../../credit/type_credit/entities/typeCredit.entity';
 
 export enum DocumentTypeStatus {
   PENDING = 0,
@@ -54,5 +55,8 @@ export class DocumentType extends BaseEntity {
   status: number;
   // @ManyToMany(() => TypeSavingsAccount, type => type.documentTypes)
   // typeAccounts: TypeSavingsAccount[];
-
+  @ManyToMany(() => TypeCredit, (type) => type.typeOfDocuments, {
+    nullable: true,
+  })
+  typeCredits: TypeCredit[];
 }

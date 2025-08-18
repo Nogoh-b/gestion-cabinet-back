@@ -42,7 +42,7 @@ export class DocumentsLoanDto {
 }
 
 
-export class GuarantiesLoanDto {
+export class DocumentLoanDto {
   @ApiProperty({
     required: true,
   })

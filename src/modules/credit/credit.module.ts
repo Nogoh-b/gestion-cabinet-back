@@ -28,6 +28,7 @@ import { TypeCustomersService } from '../customer/type-customer/type-customer.se
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
+import { DocumentsModule } from '../documents/documents.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { DocumentCustomer } from '../documents/document-customer/entities/docume
       TypeCustomer,
     ]),
     CustomerModule,
+    DocumentsModule,
   ],
   controllers: [
     TypeCreditController,

@@ -10,6 +10,8 @@ import {
 } from 'typeorm';
 import { MODE_REIMBURSEMENT_PERIOD, TYPE_CREDIT_STATE } from 'src/utils/types';
 import { TypeGuaranty } from '../../guaranty/type_guaranty/entity/type_guaranty.entity';
+import { DocumentCustomer } from '../../../documents/document-customer/entities/document-customer.entity';
+import { DocumentType } from '../../../documents/document-type/entities/document-type.entity';
 
 @Entity()
 export class TypeCredit extends BaseEntity {
@@ -53,4 +55,8 @@ export class TypeCredit extends BaseEntity {
   @ManyToMany(() => TypeGuaranty, (type) => type.typeCredits)
   @JoinTable()
   typeGuaranties: TypeGuaranty[];
+
+  @ManyToMany(() => DocumentType, (type) => type.typeCredits)
+  @JoinTable()
+  typeOfDocuments: DocumentType[];
 }

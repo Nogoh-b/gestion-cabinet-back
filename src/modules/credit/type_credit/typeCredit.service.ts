@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GuarantyChangeCreditsDto, TypeCreditDto } from './dto/typeCredit.dto';
 import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
+import { DocumentType } from '../../documents/document-type/entities/document-type.entity';
 
 @Injectable()
 export class TypeCreditService {
@@ -65,6 +66,15 @@ export class TypeCreditService {
     guaranty: TypeGuaranty,
   ) {
     typeCredit.typeGuaranties = [guaranty];
+    await this.typeCreditRepository.save(typeCredit);
+    return true;
+  }
+
+  async addTypeOfDocumentsToTypeCredit(
+    typeCredit: TypeCredit,
+    doc: DocumentType,
+  ) {
+    typeCredit.typeOfDocuments = [doc];
     await this.typeCreditRepository.save(typeCredit);
     return true;
   }

@@ -13,7 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { DocumentsLoanDto, GuarantiesLoanDto, LoanDto } from './dto/loan.dto';
+import { DocumentsLoanDto, DocumentLoanDto, LoanDto } from './dto/loan.dto';
 import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
 import { LoanService } from './loan.service';
 import { ResponseApi } from '../../../utils/interfaces';
@@ -163,7 +163,7 @@ export class LoanController {
   async setGuarantyLoanDocumentById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
-    @Body() body: GuarantiesLoanDto,
+    @Body() body: DocumentLoanDto,
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.findOneLoanByCustomerId(
@@ -201,7 +201,7 @@ export class LoanController {
     @Param('typeCreditId') typeCreditId: number,
     @Param('customerId') customerId: number,
     @Body() body: LoanDto,
-    @Req() { user }: { user: User },
+    @Req() { user }: { user: any },
   ) {
     // Implementation for creating a loan
     if (!body.amount)
@@ -233,9 +233,12 @@ export class LoanController {
         status: HttpStatus.FORBIDDEN,
       });
     return await this.loanService.createLoan(
-      { ...body, customer: { id: customerId } } as Loan,
+      {
+        ...body,
+        customer: { id: customerId },
+        manageBy: { id: user.userId },
+      } as Loan,
       typeCredit as TypeCredit,
-      user,
     );
   }
 

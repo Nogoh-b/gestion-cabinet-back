@@ -63,7 +63,7 @@ export class TypeCreditDto {
   fee: number;
 }
 
-export class GuarantyCreditsDto {
+export class DocumentsCreditsDto {
   @ApiProperty()
   @IsNumber()
   id: number;

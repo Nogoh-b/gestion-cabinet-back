@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   GuarantyChangeCreditsDto,
-  GuarantyCreditsDto,
+  DocumentsCreditsDto,
   TypeCreditDto,
   UpdateTypeCredit,
 } from './dto/typeCredit.dto';
@@ -24,6 +24,8 @@ import { TypeCredit } from './entities/typeCredit.entity';
 import { TypeGuarantyService } from '../guaranty/type_guaranty/type_guaranty.service';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
+import { DocumentTypeService } from '../../documents/document-type/document-type.service';
+import { DocumentType } from '../../documents/document-type/entities/document-type.entity';
 
 @Controller('type-credit')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -32,6 +34,7 @@ export class TypeCreditController {
   constructor(
     private readonly typeCreditService: TypeCreditService,
     private readonly typeGuarantyService: TypeGuarantyService,
+    private readonly typeOfDocumentService: DocumentTypeService,
   ) {}
 
   @Get('all')
@@ -121,7 +124,7 @@ export class TypeCreditController {
   @Put('set/guaranty/:typeCreditId')
   async setTypeOfGuarantyOfTypeCredit(
     @Param('typeCreditId') id: number,
-    @Body() body: GuarantyCreditsDto,
+    @Body() body: DocumentsCreditsDto,
   ) {
     const result = await this.typeCreditService.findOneTypeCredits(id);
     if (result.hasOwnProperty('success'))
@@ -141,6 +144,24 @@ export class TypeCreditController {
     return await this.typeCreditService.addTypeOfGuarantyToTypeCredit(
       result as TypeCredit,
       typeGuaranty as TypeGuaranty,
+    );
+  }
+
+  @Put('set/typeOfdocument/:typeCreditId')
+  async setTypeOfDocumentOfTypeCredit(
+    @Param('typeCreditId') id: number,
+    @Body() body: DocumentsCreditsDto,
+  ) {
+    const result = await this.typeCreditService.findOneTypeCredits(id);
+    if (result.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...result,
+      });
+
+    const typeDoc = await this.typeOfDocumentService.findOne(body.id);
+    return await this.typeCreditService.addTypeOfDocumentsToTypeCredit(
+      result as TypeCredit,
+      typeDoc,
     );
   }
 }
