@@ -5,12 +5,18 @@ import {
   ForbiddenException,
   Get,
   HttpStatus,
-  Param, Patch,
+  Param,
+  Patch,
   Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { GuarantyChangeCreditsDto, GuarantyCreditsDto, TypeCreditDto } from './dto/typeCredit.dto';
+import {
+  GuarantyChangeCreditsDto,
+  GuarantyCreditsDto,
+  TypeCreditDto,
+  UpdateTypeCredit,
+} from './dto/typeCredit.dto';
 import { JwtAuthGuard } from '../../../core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../core/common/guards/permissions.guard';
 import { TypeCreditService } from './typeCredit.service';
@@ -48,16 +54,16 @@ export class TypeCreditController {
       success: true,
       data: result,
       status: HttpStatus.OK,
-    }
+    };
   }
 
   @Post('add')
-  async createTypeCredit(@Body() body: TypeCreditDto){
+  async createTypeCredit(@Body() body: TypeCreditDto) {
     return {
       data: await this.typeCreditService.addTypeCredit(body),
       success: true,
       status: HttpStatus.OK,
-    }
+    };
   }
 
   @Post(':typeCreditId')
@@ -66,18 +72,14 @@ export class TypeCreditController {
   @Put(':typeCreditId')
   async updateTypeCredit(
     @Param('typeCreditId') id: number,
-    @Body() body: Partial<TypeCreditDto>,
+    @Body() body: UpdateTypeCredit,
   ) {
     const result = await this.typeCreditService.findOneTypeCredits(id);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: await this.typeCreditService.updateTypeCredit(id, body),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeCreditService.updateTypeCredit(id, body);
   }
 
   @Put('change/guaranty/:typeCreditId')
@@ -90,14 +92,10 @@ export class TypeCreditController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: await this.typeCreditService.updateTypeOfGuarantyToTypeCredit(
-        result as TypeCredit,
-        body,
-      ),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeCreditService.updateTypeOfGuarantyToTypeCredit(
+      result as TypeCredit,
+      body,
+    );
   }
 
   @Delete(':typeCreditId')
@@ -107,11 +105,7 @@ export class TypeCreditController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      success: true,
-      status: HttpStatus.OK,
-      data: await this.typeCreditService.deleteTypeCredit(id),
-    };
+    return await this.typeCreditService.deleteTypeCredit(id);
   }
 
   @Get('guaranty/:typeCreditId')
@@ -121,11 +115,7 @@ export class TypeCreditController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      success: true,
-      status: HttpStatus.OK,
-      data: await this.typeGuarantyService.findAllTypeGuarantyBy(id),
-    };
+    return await this.typeGuarantyService.findAllTypeGuarantyBy(id);
   }
 
   @Put('set/guaranty/:typeCreditId')
@@ -148,13 +138,9 @@ export class TypeCreditController {
       });
     console.log(typeGuaranty);
 
-    return {
-      success: true,
-      status: HttpStatus.OK,
-      data: await this.typeCreditService.addTypeOfGuarantyToTypeCredit(
-        result as TypeCredit,
-        typeGuaranty as TypeGuaranty,
-      ),
-    };
+    return await this.typeCreditService.addTypeOfGuarantyToTypeCredit(
+      result as TypeCredit,
+      typeGuaranty as TypeGuaranty,
+    );
   }
 }

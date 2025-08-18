@@ -9,20 +9,12 @@ export class TypeGuarantyController {
   constructor(private readonly typeGuarantyService: TypeGuarantyService) {}
   @Post('')
   async create(@Body() data: TypeGuarantyDto) {
-    return {
-      data: await this.typeGuarantyService.addTypeGuaranty(data),
-      success: true,
-      status: HttpStatus.CREATED,
-    };
+    return await this.typeGuarantyService.addTypeGuaranty(data);
   }
 
   @Get('all')
   async findAllTypeOfGuaranty() {
-    return {
-      data: await this.typeGuarantyService.findAllTypeGuaranty(),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeGuarantyService.findAllTypeGuaranty();
   }
 
   @Delete(':id')
@@ -32,11 +24,7 @@ export class TypeGuarantyController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: await this.typeGuarantyService.deleteTypeGuaranty(id),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeGuarantyService.deleteTypeGuaranty(id);
   }
 
   @Put(':id')
@@ -49,10 +37,6 @@ export class TypeGuarantyController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: await this.typeGuarantyService.updateTypeGuaranty(id, data),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeGuarantyService.updateTypeGuaranty(id, data);
   }
 }

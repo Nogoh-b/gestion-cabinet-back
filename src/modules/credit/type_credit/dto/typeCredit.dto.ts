@@ -1,5 +1,5 @@
 import { IsEnum, IsNumber, IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { MODE_REIMBURSEMENT_PERIOD } from '../../../../utils/types';
 
 export class TypeCreditDto {
@@ -79,3 +79,4 @@ export class GuarantyChangeCreditsDto {
   to: number;
 }
 
+export class UpdateTypeCredit extends PartialType(TypeCreditDto) {}

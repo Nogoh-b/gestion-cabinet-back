@@ -51,7 +51,7 @@ export class LoanController {
   async findLoanById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
-  ): Promise<ResponseApi<Loan>> {
+  ) {
     // Implementation for finding a loan by ID
     const result = await this.loanService.findOneLoanByCustomerId(
       id,
@@ -61,18 +61,14 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: result as Loan,
-      status: HttpStatus.OK,
-      success: true,
-    };
+    return result as Loan;
   }
 
   @Get('transactions/:customerId/:loanId')
   async findTransactionsLoanById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
-  ): Promise<ResponseApi<TransactionSavingsAccount[]>> {
+  ) {
     // Implementation for finding a loan by ID
     const result = await this.loanService.findTransactionsLoanByCustomerId(
       id,
@@ -82,11 +78,7 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: result as TransactionSavingsAccount[],
-      status: HttpStatus.OK,
-      success: true,
-    };
+    return true;
   }
 
   @Put('valid/:customerId/:loanId')
@@ -94,7 +86,7 @@ export class LoanController {
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
     @Req() { user }: { user: User },
-  ): Promise<ResponseApi<boolean>> {
+  ) {
     // Implementation for updating a loan
     const result = await this.loanService.findOneLoanByCustomerId(
       id,
@@ -112,11 +104,7 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: loan as boolean,
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return true;
   }
 
   @Put('revoked/:customerId/:loanId')
@@ -124,7 +112,7 @@ export class LoanController {
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
     @Req() { user }: { user: User },
-  ): Promise<ResponseApi<boolean>> {
+  ) {
     // Implementation for updating a loan
     const result = await this.loanService.findOneLoanByCustomerId(
       id,
@@ -135,11 +123,7 @@ export class LoanController {
         ...result,
       });
     const loan = result as Loan;
-    return {
-      data: await this.loanService.setRevokedLoanByCustomerId(loan, user),
-      status: HttpStatus.OK,
-      success: true,
-    };
+    return await this.loanService.setRevokedLoanByCustomerId(loan, user);
   }
 
   @Put('/:customerId/:loanId')
@@ -172,11 +156,7 @@ export class LoanController {
       throw new ForbiddenException({
         ...(isDelete as any),
       });
-    return {
-      data: isDelete,
-      status: HttpStatus.OK,
-      success: true,
-    };
+    return isDelete;
   }
 
   @Post('guaranty/:customerId/:loanId')
@@ -184,7 +164,6 @@ export class LoanController {
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
     @Body() body: GuarantiesLoanDto,
-
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.findOneLoanByCustomerId(
@@ -196,11 +175,7 @@ export class LoanController {
         ...result,
       });
     const loan = result as Loan;
-    return {
-      data: await this.loanService.setGuarantiesDocumentsToLoan(loan, body),
-      status: HttpStatus.OK,
-      success: true,
-    };
+    return await this.loanService.setGuarantiesDocumentsToLoan(loan, body);
   }
 
   @Post('doc/:customerId/:loanId')
@@ -218,11 +193,7 @@ export class LoanController {
     const loan = { ...result, documents: [{ id: body.documentId }] } as Loan;
     console.log('Document of guaranty');
 
-    return {
-      data: await this.loanService.setTypeDocumentsToLoan(loan),
-      status: HttpStatus.OK,
-      success: true,
-    };
+    return await this.loanService.setTypeDocumentsToLoan(loan);
   }
 
   @Post('/:customerId/:typeCreditId')
@@ -238,7 +209,7 @@ export class LoanController {
         status: HttpStatus.NOT_ACCEPTABLE,
         success: false,
         message: 'Please amount is not null',
-      })
+      });
     // check if user as loan in processing
     const result = await this.loanService.getLoanInProcessing(customerId);
     if (!result.hasOwnProperty('success'))
@@ -261,15 +232,11 @@ export class LoanController {
         message: "You don't have eligibility rating",
         status: HttpStatus.FORBIDDEN,
       });
-    return {
-      data: await this.loanService.createLoan(
-        { ...body, customer: { id: customerId } } as Loan,
-        typeCredit as TypeCredit,
-        user,
-      ),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.loanService.createLoan(
+      { ...body, customer: { id: customerId } } as Loan,
+      typeCredit as TypeCredit,
+      user,
+    );
   }
 
   @Get('simulate/:typeCreditId')
@@ -288,13 +255,9 @@ export class LoanController {
     const remainPaymentNumber = Math.ceil(
       during / dayTime[typeCredit.reimbursement_period],
     );
-    return {
-      data: this.loanService.simulationReimbursementAmount(
-        amount,
-        remainPaymentNumber,
-      ),
-      status: HttpStatus.OK,
-      success: true,
-    }
+    return this.loanService.simulationReimbursementAmount(
+      amount,
+      remainPaymentNumber,
+    );
   }
 }

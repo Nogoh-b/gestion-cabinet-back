@@ -24,10 +24,6 @@ export class GuarantyEstimationController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      data: await this.typeGuarantyEstimationService.deleteGuarantyEstimation(id),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeGuarantyEstimationService.deleteGuarantyEstimation(id);
   }
 }
