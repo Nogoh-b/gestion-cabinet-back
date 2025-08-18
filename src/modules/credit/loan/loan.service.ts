@@ -2,32 +2,23 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Loan } from './entities/loan.entity';
 import { In, Repository } from 'typeorm';
-import {
-  CREDIT_STATE,
-  CREDIT_STATUS,
-  MODE_REIMBURSEMENT_PERIOD,
-} from '../../../utils/types';
-import { DocumentsLoanDto, GuarantiesLoanDto, LoanDto } from './dto/loan.dto';
+import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
+import { GuarantiesLoanDto } from './dto/loan.dto';
 import { User } from '../../iam/user/entities/user.entity';
 import { DocumentType } from '../../documents/document-type/entities/document-type.entity';
 import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { dayTime } from '../../../utils/constantes';
-import { FilesUtil } from '../../../core/shared/utils/file.util';
-import { UPLOAD_DOCS_PATH } from '../../../core/common/constants/constants';
-import { DocumentCustomerStatus } from '../../documents/document-customer/entities/document-customer.entity';
-import { join } from 'path';
-import * as sharp from 'sharp';
-import { createWriteStream } from 'fs';
 import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaranty_estimation.service';
+import { DocumentCustomer } from '../../documents/document-customer/entities/document-customer.entity';
 
 @Injectable()
 export class LoanService {
   constructor(
     @InjectRepository(Loan)
     private readonly loanRepository: Repository<Loan>,
-    @InjectRepository(DocumentType)
-    private readonly documentRepository: Repository<DocumentType>,
+    @InjectRepository(DocumentCustomer)
+    private readonly documentCustomerRepository: Repository<DocumentCustomer>,
     private readonly guarantyEstimationService: GuarantyEstimationService,
   ) {}
 
@@ -39,17 +30,19 @@ export class LoanService {
   }
 
   async findOneLoanByCustomerId(id: number, customerId: number) {
-    const credit = await this.loanRepository.findOneBy({
-      id,
-      customer: { id: customerId },
+    const loan = await this.loanRepository.findOne({
+      where: {
+        id,
+        customer: { id: customerId },
+      },
     });
-    if (!credit)
+    if (!loan)
       return {
         success: false,
-        message: 'No Loans Found',
+        message: 'No Loan Found',
         status: HttpStatus.NOT_FOUND,
       };
-    return credit;
+    return loan;
   }
 
   async findTransactionsLoanByCustomerId(id: number, customerId: number) {
@@ -73,7 +66,8 @@ export class LoanService {
   }
 
   async setApprovedLoanByCustomerId(loan: Loan, user: User) {
-    const docs = loan.typeDocument
+    console.log(loan);
+    const docs = loan.documents
       .map((next) => next.status === 1)
       .filter((t) => !t);
     // check if all docs are ok
@@ -152,10 +146,14 @@ export class LoanService {
   async setGuarantiesDocumentsToLoan(loan: Loan, guaranty: GuarantiesLoanDto) {
     // create guaranties list
     const { documentId, typeGuaranty, ...result } = guaranty;
+    const doc = await this.documentCustomerRepository.findOneBy({
+      id: documentId,
+    });
     return await this.guarantyEstimationService.addGuarantyEstimation({
       ...result,
       typeGuaranty: { id: typeGuaranty },
-      documents: { id: documentId },
+      documents: doc,
+      status: CREDIT_STATUS.PENDING,
       loan,
     } as GuarantyEstimation);
   }

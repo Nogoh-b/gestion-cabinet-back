@@ -7,15 +7,14 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   OneToMany,
-  OneToOne,
+  OneToOne, JoinColumn,
 } from 'typeorm';
 import { CREDIT_STATE, CREDIT_STATUS } from 'src/utils/types';
 import { DocumentType } from '../../../documents/document-type/entities/document-type.entity';
 import { User } from '../../../iam/user/entities/user.entity';
 import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
-import {
-  TransactionSavingsAccount
-} from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { TransactionSavingsAccount } from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { DocumentCustomer } from '../../../documents/document-customer/entities/document-customer.entity';
 
 @Entity()
 export class Loan extends BaseEntity {
@@ -48,9 +47,11 @@ export class Loan extends BaseEntity {
   comment: string;
   //
   @OneToOne(() => User, { nullable: true })
+  @JoinColumn()
   approvedBy: User;
   //
   @OneToOne(() => User, { nullable: true })
+  @JoinColumn()
   manageBy: User;
   //
   @ManyToOne(() => TypeCredit, (type) => type.loans)
@@ -65,8 +66,8 @@ export class Loan extends BaseEntity {
   @ManyToOne(() => Customer, (type) => type.loans)
   customer: Customer;
 
-  @OneToMany(() => DocumentType, (type) => type.loan)
-  typeDocument: DocumentType[];
+  @OneToMany(() => DocumentCustomer, (type) => type.loan)
+  documents: DocumentCustomer[];
 
   @OneToMany(() => TransactionSavingsAccount, (type) => type.loan)
   transactions: TransactionSavingsAccount[];

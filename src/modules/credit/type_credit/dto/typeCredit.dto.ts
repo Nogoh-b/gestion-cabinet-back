@@ -45,6 +45,22 @@ export class TypeCreditDto {
   })
   @IsNumber()
   eligibility_rating: number;
+
+  @ApiProperty({
+    description: 'code of loan',
+    type: 'string',
+    required: true,
+  })
+  @IsString()
+  code: string;
+
+  @ApiProperty({
+    description: 'eligibility_rating of loan',
+    type: 'number',
+    required: true,
+  })
+  @IsNumber()
+  fee: number;
 }
 
 export class GuarantyCreditsDto {
@@ -52,3 +68,14 @@ export class GuarantyCreditsDto {
   @IsNumber()
   id: number;
 }
+
+export class GuarantyChangeCreditsDto {
+  @ApiProperty()
+  @IsNumber()
+  from: number;
+
+  @ApiProperty()
+  @IsNumber()
+  to: number;
+}
+

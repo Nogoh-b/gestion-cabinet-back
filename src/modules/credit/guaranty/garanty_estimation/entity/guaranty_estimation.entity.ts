@@ -11,6 +11,7 @@ import { TypeGuaranty } from '../../type_guaranty/entity/type_guaranty.entity';
 import { DocumentType } from '../../../../documents/document-type/entities/document-type.entity';
 import { Loan } from '../../../loan/entities/loan.entity';
 import { CREDIT_STATUS } from 'src/utils/types';
+import { DocumentCustomer } from '../../../../documents/document-customer/entities/document-customer.entity';
 
 @Entity()
 export class GuarantyEstimation extends BaseEntity {
@@ -23,7 +24,7 @@ export class GuarantyEstimation extends BaseEntity {
   @Column()
   status: CREDIT_STATUS;
 
-  @OneToOne(() => TypeGuaranty)
+  @ManyToOne(() => TypeGuaranty, (type) => type.guaranties)
   @JoinColumn()
   typeGuaranty: TypeGuaranty;
 
@@ -31,7 +32,7 @@ export class GuarantyEstimation extends BaseEntity {
   @JoinColumn()
   loan: Loan;
 
-  @OneToOne(() => DocumentType)
+  @OneToOne(() => DocumentCustomer)
   @JoinColumn()
-  documents: DocumentType;
+  documents: DocumentCustomer;
 }

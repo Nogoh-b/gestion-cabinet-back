@@ -54,8 +54,5 @@ export class DocumentType extends BaseEntity {
   status: number;
   // @ManyToMany(() => TypeSavingsAccount, type => type.documentTypes)
   // typeAccounts: TypeSavingsAccount[];
-  @ManyToOne(() => Loan, (type) => type.typeDocument, {
-    nullable: true,
-  })
-  loan: Loan;
+
 }

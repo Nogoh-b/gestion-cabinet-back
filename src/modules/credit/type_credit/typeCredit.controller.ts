@@ -10,7 +10,7 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { GuarantyCreditsDto, TypeCreditDto } from './dto/typeCredit.dto';
+import { GuarantyChangeCreditsDto, GuarantyCreditsDto, TypeCreditDto } from './dto/typeCredit.dto';
 import { JwtAuthGuard } from '../../../core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../core/common/guards/permissions.guard';
 import { TypeCreditService } from './typeCredit.service';
@@ -80,6 +80,26 @@ export class TypeCreditController {
     };
   }
 
+  @Put('change/guaranty/:typeCreditId')
+  async updateTypeGuarantyOfTypeCredit(
+    @Param('typeCreditId') id: number,
+    @Body() body: GuarantyChangeCreditsDto,
+  ) {
+    const result = await this.typeCreditService.findOneTypeCredits(id);
+    if (result.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...result,
+      });
+    return {
+      data: await this.typeCreditService.updateTypeOfGuarantyToTypeCredit(
+        result as TypeCredit,
+        body,
+      ),
+      success: true,
+      status: HttpStatus.OK,
+    };
+  }
+
   @Delete(':typeCreditId')
   async deleteTypeCredit(@Param('typeCreditId') id: number) {
     const result = await this.typeCreditService.findOneTypeCredits(id);
@@ -131,7 +151,7 @@ export class TypeCreditController {
     return {
       success: true,
       status: HttpStatus.OK,
-      data: await this.typeCreditService.updateTypeOfGuarantyToTypeCredit(
+      data: await this.typeCreditService.addTypeOfGuarantyToTypeCredit(
         result as TypeCredit,
         typeGuaranty as TypeGuaranty,
       ),

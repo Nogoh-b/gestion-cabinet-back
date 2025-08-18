@@ -6,16 +6,12 @@ import {
   Get,
   HttpStatus,
   Param,
-  ParseFilePipeBuilder,
   ParseIntPipe,
-  Patch,
   Post,
   Put,
   Query,
   Req,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import { DocumentsLoanDto, GuarantiesLoanDto, LoanDto } from './dto/loan.dto';
 import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
@@ -33,6 +29,7 @@ import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { CustomersService } from '../../customer/customer/customer.service';
 import { dayTime } from '../../../utils/constantes';
 import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
+import { DocumentCustomerService } from '../../documents/document-customer/document-customer.service';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -122,7 +119,7 @@ export class LoanController {
     };
   }
 
-  @Put('/:customerId/:loanId')
+  @Put('revoked/:customerId/:loanId')
   async updateLoanStatusToRevoke(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
@@ -218,7 +215,7 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    const loan = { ...result, typeDocument: [{ id: body.documentId }] } as Loan;
+    const loan = { ...result, documents: [{ id: body.documentId }] } as Loan;
     console.log('Document of guaranty');
 
     return {

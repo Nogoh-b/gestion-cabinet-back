@@ -31,6 +31,12 @@ export class TypeCredit extends BaseEntity {
   penality: number;
 
   @Column()
+  code: string;
+
+  @Column()
+  fee: number;
+
+  @Column()
   eligibility_rating: number;
 
   @Column()

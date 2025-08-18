@@ -27,6 +27,7 @@ import { TypeCustomer } from '../customer/type-customer/entities/type_customer.e
 import { TypeCustomersService } from '../customer/type-customer/type-customer.service';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CustomerModule } from '../customer/customer.module';
+import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { CustomerModule } from '../customer/customer.module';
       GuarantyEstimation,
       Loan,
       DocumentType,
+      DocumentCustomer,
       TypeCustomer,
     ]),
     CustomerModule,

@@ -1,9 +1,16 @@
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { DocumentType } from '../../document-type/entities/document-type.entity';
 import { BaseEntity } from 'src/core/entities/baseEntity';
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 
-export enum DocumentCustomerStatus{
+export enum DocumentCustomerStatus {
   PENDING = 0,
   ACCEPTED = 1,
   REFUSED = 2,
@@ -42,4 +49,9 @@ export class DocumentCustomer extends BaseEntity {
 
   @Column({ name: 'date_expired', nullable: true })
   date_expired: Date;
+
+  @ManyToOne(() => Loan, (type) => type.documents, {
+    nullable: true,
+  })
+  loan: Loan;
 }
