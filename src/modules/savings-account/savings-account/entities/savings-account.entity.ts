@@ -1,28 +1,7 @@
-
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 
-
-
-
-
-
-
-
-
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import {
@@ -35,33 +14,9 @@ import {
   AfterLoad,
 } from 'typeorm';
 
-
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -77,22 +32,27 @@ export class SavingsAccount extends BaseEntity {
   @Column({ name: 'branch_id', type: 'int' })
   branch_id: number;
 
-  @Column({ name: 'number_savings_account', type: 'varchar', length: 45, unique: true })
+  @Column({
+    name: 'number_savings_account',
+    type: 'varchar',
+    length: 45,
+    unique: true,
+  })
   number_savings_account: string;
 
-  @Column({ name: 'fee_savings', type: 'decimal' }) 
+  @Column({ name: 'fee_savings', type: 'decimal' })
   fee_savings: number;
 
   @Column({ name: 'amount_created', type: 'decimal' })
   amount_created: number;
 
-  @Column({ name: 'avalaible_balance', type: 'decimal' }) 
+  @Column({ name: 'avalaible_balance', type: 'decimal' })
   avalaible_balance: number;
 
-  @Column({ name: 'avalaible_balance_online', type: 'decimal' }) 
+  @Column({ name: 'avalaible_balance_online', type: 'decimal' })
   avalaible_balance_online: number;
-  
-  // @Column({ name: 'balance_init_savings_account', type: 'decimal' }) 
+
+  // @Column({ name: 'balance_init_savings_account', type: 'decimal' })
   balance_init_savings_account: number;
 
   @Column({ name: 'balance', type: 'int', default: 0 })
@@ -101,32 +61,40 @@ export class SavingsAccount extends BaseEntity {
   // @JoinColumn({ name: 'customer_id' })
   // customer: Customer;
 
-  @ManyToOne(() => TypeSavingsAccount, type => type.savings_accounts)
+  @ManyToOne(() => TypeSavingsAccount, (type) => type.savings_accounts)
   @JoinColumn({ name: 'type_savings_account_id' })
   type_savings_account: TypeSavingsAccount;
 
   @Column({ name: 'status', type: 'tinyint' })
   status: number;
 
-
   @Column({ name: 'iban', type: 'varchar', length: 50, unique: true })
   iban: string;
 
   /*@Column({ name: 'code_product', type: 'varchar', length: 45 })
   code_product: string;*/
- 
+
   @Column({ type: 'varchar', nullable: true })
   code_cash: Date;
-  
+
   @Column({ name: 'wallet_link', type: 'varchar', length: 45, nullable: true })
-  wallet_link?: string;  
+  wallet_link?: string;
   @Column({ nullable: true })
   created_online?: number;
 
-  @Column({ name: 'interest_year_savings_account', type: 'decimal', nullable: true })
+  @Column({
+    name: 'interest_year_savings_account',
+    type: 'decimal',
+    nullable: true,
+  })
   interest_year_savings_account?: number;
 
-  @Column({ name: 'account_number', type: 'varchar', length: 45, nullable: true })
+  @Column({
+    name: 'account_number',
+    type: 'varchar',
+    length: 45,
+    nullable: true,
+  })
   account_number?: string;
 
   @Column({
@@ -139,11 +107,11 @@ export class SavingsAccount extends BaseEntity {
 
   @Column({ type: 'varchar', length: 4, nullable: true }) // Doit correspondre au type de Partner.promo_code
   partner_id: string | null;
-  
-  @Column({ type: 'varchar', length: 50, nullable: true }) // Doit correspondre au type de Partner.promo_code
-  promo_code: string | null;  
 
-  @Column({ type: 'varchar', length: 10, nullable: true, }) // Doit correspondre au type de Partner.promo_code
+  @Column({ type: 'varchar', length: 50, nullable: true }) // Doit correspondre au type de Partner.promo_code
+  promo_code: string | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
   commercial_code: string | null;
 
   /*@ManyToOne(() => Personnel,{ nullable: true })
@@ -171,7 +139,7 @@ export class SavingsAccount extends BaseEntity {
   enrolled_by_id: number; // Stocke l'ID du compte parrain
 
   // Relation Many-to-One (optionnelle, pour faciliter les jointures)
-  @ManyToOne(() => SavingsAccount, { nullable: true }) 
+  @ManyToOne(() => SavingsAccount, { nullable: true })
   @JoinColumn({ name: 'enrolled_by_id' })
   enrolled_by: SavingsAccount; // Référence à l'entité parente
 
@@ -181,38 +149,33 @@ export class SavingsAccount extends BaseEntity {
 
   @OneToMany(
     () => DocumentSavingAccount,
-    (document) => document.savings_account
+    (document) => document.savings_account,
   )
   documents: DocumentSavingAccount[];
 
   @OneToMany(
     () => SavingsAccountHasInterest,
-    (relation) => relation.savings_account
+    (relation) => relation.savings_account,
   )
   interestRelations: SavingsAccountHasInterest[];
 
-    @OneToMany(
-    () => TransactionSavingsAccount,
-    tx => tx.originSavingsAccount
-  )
+  @OneToMany(() => TransactionSavingsAccount, (tx) => tx.originSavingsAccount)
   originSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
 
-    @OneToMany(
-    () => TransactionSavingsAccount,
-    tx => tx.targetSavingsAccount
-  )
+  @OneToMany(() => TransactionSavingsAccount, (tx) => tx.targetSavingsAccount)
   targetSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
 
   @AfterLoad()
   setActiveInterest() {
     const now = new Date();
 
-    this.activeInterest = this.interestRelations?.find(rel =>
-      rel.status === 1 &&
-      rel.begin_date instanceof Date &&
-      rel.end_date instanceof Date &&
-      now >= rel.begin_date &&
-      now <= rel.end_date
+    this.activeInterest = this.interestRelations?.find(
+      (rel) =>
+        rel.status === 1 &&
+        rel.begin_date instanceof Date &&
+        rel.end_date instanceof Date &&
+        now >= rel.begin_date &&
+        now <= rel.end_date,
     );
   }
 
@@ -222,7 +185,4 @@ export class SavingsAccount extends BaseEntity {
     act => act.savingsAccount
   )
   activities?: ActivitiesSavingsAccount[]; // Activités du compte*/
-
-
-
 }

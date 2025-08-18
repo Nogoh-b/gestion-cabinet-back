@@ -672,6 +672,7 @@ export class TransactionSavingsAccountService {
         'originSavingsAccount',
         'targetSavingsAccount',
         'targetSavingsAccount.targetSavingsAccountTx',
+        'targetSavingsAccount.customer',
       ],
     });
     if (!entity) throw new NotFoundException(`Transaction ${id} non trouvé`);

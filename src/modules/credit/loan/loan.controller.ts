@@ -245,6 +245,12 @@ export class LoanController {
         message: 'Please make your payment before to get the loan',
       });
     const customer = await this.customersService.findOne(customerId);
+    if (customer.id !== trans.targetSavingsAccount?.customer.id)
+      throw new ForbiddenException({
+        status: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: 'This payment not match',
+      });
     console.log('Document of guaranty', customer);
     if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
       throw new ForbiddenException({
