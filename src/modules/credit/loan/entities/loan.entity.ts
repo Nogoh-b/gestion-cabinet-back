@@ -46,6 +46,11 @@ export class Loan extends BaseEntity {
   })
   comment: string;
   //
+  @Column({
+    type: 'text',
+  })
+  reference: string;
+  //
   @OneToOne(() => User, { nullable: true })
   @JoinColumn()
   approvedBy: User;

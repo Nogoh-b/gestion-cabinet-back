@@ -33,6 +33,12 @@ export class LoanDto {
   })
   @IsString()
   comment: string;
+
+  @ApiProperty({
+    required: true,
+  })
+  @IsString()
+  reference: string;
 }
 
 export class DocumentsLoanDto {

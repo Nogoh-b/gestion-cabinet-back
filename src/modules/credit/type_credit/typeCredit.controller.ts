@@ -85,19 +85,19 @@ export class TypeCreditController {
     return await this.typeCreditService.updateTypeCredit(id, body);
   }
 
-  @Put('change/guaranty/:typeCreditId')
-  async updateTypeGuarantyOfTypeCredit(
+  @Delete('/guaranty/:typeCreditId/:guarantyId')
+  async deleteTypeGuarantyOfTypeCredit(
     @Param('typeCreditId') id: number,
-    @Body() body: GuarantyChangeCreditsDto,
+    @Param('guarantyId') guarantyId: number,
   ) {
     const result = await this.typeCreditService.findOneTypeCredits(id);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
       });
-    return await this.typeCreditService.updateTypeOfGuarantyToTypeCredit(
+    return await this.typeCreditService.deleteTypeOfGuarantyToTypeCredit(
       result as TypeCredit,
-      body,
+      guarantyId,
     );
   }
 
@@ -147,7 +147,7 @@ export class TypeCreditController {
     );
   }
 
-  @Put('set/typeOfdocument/:typeCreditId')
+  @Put('set/type-document/:typeCreditId')
   async setTypeOfDocumentOfTypeCredit(
     @Param('typeCreditId') id: number,
     @Body() body: DocumentsCreditsDto,

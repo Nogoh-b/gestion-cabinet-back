@@ -42,13 +42,11 @@ export class TypeCreditService {
     return true;
   }
 
-  async updateTypeOfGuarantyToTypeCredit(
+  async deleteTypeOfGuarantyToTypeCredit(
     typeCredit: TypeCredit,
-    guaranty: GuarantyChangeCreditsDto,
+    guaranty: number,
   ) {
-    const index = typeCredit.typeGuaranties.findIndex(
-      (g) => g.id === guaranty.from,
-    );
+    const index = typeCredit.typeGuaranties.findIndex((g) => g.id === guaranty);
     if (index === -1)
       return {
         success: false,
@@ -56,7 +54,6 @@ export class TypeCreditService {
         status: HttpStatus.NOT_FOUND,
       };
     typeCredit.typeGuaranties.splice(index, 1);
-    typeCredit.typeGuaranties.push({ id: guaranty.to } as TypeGuaranty);
     await this.typeCreditRepository.save(typeCredit);
     return true;
   }

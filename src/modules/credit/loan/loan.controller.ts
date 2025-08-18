@@ -30,6 +30,9 @@ import { CustomersService } from '../../customer/customer/customer.service';
 import { dayTime } from '../../../utils/constantes';
 import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 import { DocumentCustomerService } from '../../documents/document-customer/document-customer.service';
+import {
+  TransactionSavingsAccountService
+} from '../../transaction/transaction_saving_account/transaction_saving_account.service';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -39,6 +42,7 @@ export class LoanController {
     private readonly loanService: LoanService,
     private readonly typeCreditService: TypeCreditService,
     private readonly customersService: CustomersService,
+    private readonly transactionService: TransactionSavingsAccountService,
   ) {}
 
   @Get('/:customerId/all')
@@ -218,11 +222,27 @@ export class LoanController {
         message: 'You have a Loan in processing',
         status: HttpStatus.FORBIDDEN,
       });
+
     const typeCredit =
       await this.typeCreditService.findOneTypeCredits(typeCreditId);
     if (typeCredit.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...typeCredit,
+      });
+    const transaction = await this.transactionService.findOne(body.reference).catch(e=>false);
+    if (!(transaction as boolean))
+      throw new ForbiddenException({
+        status: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: 'Your transaction is not found',
+      });
+    const trans = transaction as TransactionSavingsAccount;
+    const tc = typeCredit as TypeCredit;
+    if (trans.amount !== tc.fee)
+      throw new ForbiddenException({
+        status: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: 'Please make your payment before to get the loan',
       });
     const customer = await this.customersService.findOne(customerId);
     console.log('Document of guaranty', customer);
@@ -235,6 +255,7 @@ export class LoanController {
     return await this.loanService.createLoan(
       {
         ...body,
+        reference: body.reference,
         customer: { id: customerId },
         manageBy: { id: user.userId },
       } as Loan,

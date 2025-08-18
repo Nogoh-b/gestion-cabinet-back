@@ -29,6 +29,7 @@ import { SavingsAccountService } from '../savings-account/savings-account/saving
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 import { DocumentsModule } from '../documents/documents.module';
+import { TransactionModule } from '../transaction/transaction.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { DocumentsModule } from '../documents/documents.module';
     ]),
     CustomerModule,
     DocumentsModule,
+    TransactionModule,
   ],
   controllers: [
     TypeCreditController,

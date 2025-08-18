@@ -30,7 +30,13 @@ export class GuarantyEstimationService {
     return typeGuaranty;
   }
 
-  async findAllGuarantyEstimation(id: number) {
+  async validGuarantyEstimation(id: number) {
+    return await this.guarantyEstimationRepository.find({
+      where: { loan: { id } },
+    });
+  }
+
+  async rejectGuarantyEstimation(id: number) {
     return await this.guarantyEstimationRepository.find({
       where: { loan: { id } },
     });
