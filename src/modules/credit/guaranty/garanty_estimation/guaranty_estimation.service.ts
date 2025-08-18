@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GuarantyEstimation } from './entity/guaranty_estimation.entity';
+import { CREDIT_STATUS } from '../../../../utils/types';
 
 @Injectable()
 export class GuarantyEstimationService {
@@ -31,14 +32,14 @@ export class GuarantyEstimationService {
   }
 
   async validGuarantyEstimation(id: number) {
-    return await this.guarantyEstimationRepository.find({
-      where: { loan: { id } },
+    return await this.guarantyEstimationRepository.update(id, {
+      status: CREDIT_STATUS.APPROVED,
     });
   }
 
   async rejectGuarantyEstimation(id: number) {
-    return await this.guarantyEstimationRepository.find({
-      where: { loan: { id } },
+    return await this.guarantyEstimationRepository.update(id, {
+      status: CREDIT_STATUS.REJECTED,
     });
   }
 }

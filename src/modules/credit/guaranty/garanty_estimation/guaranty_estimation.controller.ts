@@ -37,7 +37,7 @@ export class GuarantyEstimationController {
       throw new ForbiddenException({
         ...result,
       });
-    return await this.typeGuarantyEstimationService.deleteGuarantyEstimation(id);
+    return await this.typeGuarantyEstimationService.validGuarantyEstimation(id);
   }
 
   @Put('reject/:id')
@@ -48,6 +48,6 @@ export class GuarantyEstimationController {
       throw new ForbiddenException({
         ...result,
       });
-    return await this.typeGuarantyEstimationService.deleteGuarantyEstimation(id);
+    return await this.typeGuarantyEstimationService.rejectGuarantyEstimation(id);
   }
 }
