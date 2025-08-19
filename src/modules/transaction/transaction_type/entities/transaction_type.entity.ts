@@ -16,7 +16,11 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColum
 
 
 
+
+
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
+
 
 
 
@@ -72,6 +76,7 @@ export enum TransactionCode {
   OM_WITHDRAW = 'OM_WITHDRAW',
   MIN_BALANCE = 'MIN_BALANCE',
   COMMERCIAL_COMMISSION = 'COMMERCIAL_COMMISSION',
+  BUY_TONTINE = 'BUY_TONTINE',
   PARTNER_COMMISSION = 'PARTNER_COMMISSION',
   COMMISSION_CASH_OM_MFINANCE = 'COMMISSION_CASH_OM_MFINANCE',
   COMMISSION_CASH_MOMO = 'COMMISSION_CASH_MOMO',
@@ -93,6 +98,7 @@ export enum TransactionProvider {
   MOMO = 'MOMO',
   OM = 'OM',
   WALLET = 'WALLET',
+  HYBRID_SAVING = 'HYBRID_SAVING',
 }
 
 @Entity('transaction_type')

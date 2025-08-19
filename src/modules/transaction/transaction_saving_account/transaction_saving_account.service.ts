@@ -53,6 +53,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionChannel, TransactionCode, TransactionProvider, TransactionType } from '../transaction_type/entities/transaction_type.entity';
 import { TransactionTypeService } from '../transaction_type/transaction_type.service';
@@ -60,6 +75,21 @@ import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavings
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -189,7 +219,8 @@ export class TransactionSavingsAccountService {
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
     tx.is_locked = dto.is_locked ?? false;
-    tx.status =  origin && dayBeforeWithdraw === 0 ? 1 :0; 
+    tx.status =  0; 
+    // tx.status =  origin && dayBeforeWithdraw === 0 ? 1 :0; 
     tx.branch_id = dto.branch_id ?? null; 
     tx.channelTransaction = channel;
     tx.provider = provider;
@@ -295,8 +326,20 @@ export class TransactionSavingsAccountService {
   }  
 
   async om_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return await this.perform_transaction(dto, 'OM_DEPOSIT', 'MOBILE', TransactionProvider.OM);
+    return await this.perform_transaction(dto, TransactionCode.OM_DEPOSIT, 'MOBILE', TransactionProvider.OM);
   }
+  async buy_tontine(dto: CreateTransactionSavingsAccountDto) {
+    let saAdmin : SavingsAccount | null = null
+    if(!dto.target_savings_account_code && dto.origin_savings_account_code)
+    {
+      const originSa = await this.savingsAccountService.findOneByCode(dto.origin_savings_account_code)
+      saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
+      dto.target_savings_account_code = saAdmin.number_savings_account
+    }
+    console.log(dto)
+    return await this.perform_transaction(dto, TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+  }
+
 
   async e_wallet_withdrawal(dto: CreateDebitTransactionSavingsAccountDto) {
     return await this.perform_transaction(
@@ -324,6 +367,13 @@ export class TransactionSavingsAccountService {
   ): Promise<ResponseTransactionSavingsAccountDto> {
     // maniere speciale pour virement interne
     const channel_code = dto.branch_id ? 'BRANCH' : 'MOBILE'
+    /*let saAdmin : SavingsAccount | null = null
+    if(!dto.target_savings_account_code && dto.origin_savings_account_code)
+    {
+      const originSa = await this.savingsAccountService.findOneByCode(dto.origin_savings_account_code)
+      saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
+      dto.target_savings_account_code = saAdmin.number_savings_account
+    }*/
     return  await this.perform_transaction(dto, 'INTERNAL_TRANSFER', channel_code, 'SYSTEM');
   }
 
@@ -606,28 +656,7 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
         throw new BadRequestException('Ce compte est inactif ou bloqué.');
       }
 
-      // 2. Vérifier le solde minimum (pour les retraits)
-      /*if (
-        avalaible_balance - amount <
-        account!.type_savings_account.minimum_balance &&
-        !is_credit
-      ) {
-        throw new BadRequestException(
-          `Solde insuffisant. Minimum requis: ${account?.type_savings_account.minimum_balance}`,
-        );
-      }
-
-      // 3. Vérifier la durée de blocage (ex: 6 mois)
-      const accountAgeMonths = this.getAccountAgeMonths(
-        account!.type_savings_account.created_at,
-      );
-      if (
-        accountAgeMonths < account!.type_savings_account.minimum_blocking_duration
-      ) {
-        throw new BadRequestException(
-          `Durée de blocage non atteinte (${account!.type_savings_account.minimum_blocking_duration} mois requis)`,
-        );
-      }*/
+      
 
       // 4. Calculer les frais (ex: commission_per_product devenu account_opening_fee)
       const totalFees = account!.type_savings_account.account_opening_fee; // + autres frais si besoin
@@ -640,11 +669,8 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
     return months + today.getMonth() - createdAt.getMonth();
   }
   async isFirstTransaction(target?:SavingsAccount | null){
-   /* const min_blances = await this.findAllByTypeSimple('0','MIN_BALANCE',target?.number_savings_account)
-    console.log(min_blances) 
-    return min_blances.length === 0*/
-    console.log('isFirstTransaction ', target?.targetSavingsAccountTx)
-    if(target?.is_admin){
+
+    if(target?.is_admin || !target ){
       return false
     }
     if(target && (!target.targetSavingsAccountTx  || target?.is_admin))
@@ -693,8 +719,8 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
     let comercial : Personnel| null = new Personnel();
     let partner : Personnel| null = new Personnel()
     let adminSa : SavingsAccount| null = new SavingsAccount()
+    adminSa = await this.savingsAccountService.findOneAdmin(target?.branch_id);
     if(target){
-      adminSa = await this.savingsAccountService.findOneAdmin(target?.branch_id);
     }
 
     let mendoCoSa: SavingsAccount |  null = null;
@@ -714,15 +740,14 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
         tx.status = 1
         console.log('isFirstTx------ ', isFirstTx, ' ', tx.status)
         // Transaction pour le minimum de balance
-
-          const txRepo = entityManager.getRepository(TransactionSavingsAccount);
-          const saRepo = entityManager.getRepository(SavingsAccount);
-          txData.origin = txData.target;
-          txData.originSavingsAccount = txData.targetSavingsAccount;
-          const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
-          const providerMinBalance = await this.providerService.findOne('SYSTEM');
-          txData.target = adminSa?.number_savings_account;
-          txData.targetSavingsAccount = adminSa;
+        const txRepo = entityManager.getRepository(TransactionSavingsAccount);
+        const saRepo = entityManager.getRepository(SavingsAccount);
+        txData.origin = txData.target;
+        txData.originSavingsAccount = txData.targetSavingsAccount;
+        const txTypeMinBalance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
+        const providerMinBalance = await this.providerService.findOne('SYSTEM');
+        txData.target = adminSa?.number_savings_account;
+        txData.targetSavingsAccount = adminSa;
     
 
 
@@ -742,7 +767,6 @@ async findAllTrans(branch_id: number | null): Promise<TransactionSavingsAccount[
 
         await entityManager.save(secondTx)
         // console.log('sauvegarde de la transaction de la balance minimun ',await entityManager.save(secondTx))   
-        ;
 
         // Transaction pour le minimum de frais de creation de compte
         const txTypeOpenProduct = await this.transactionTypeService.findOneByCode('OPENING_FEE');

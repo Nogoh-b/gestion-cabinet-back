@@ -9,9 +9,11 @@ import { Controller, Get, Post, Body, Param, Query, Patch } from '@nestjs/common
 
 import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 
+
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UniqueCheckQueryDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
 
 
 
@@ -71,6 +73,11 @@ export class TransactionSavingAccountController {
 
 
 
+  @Post('buy_tontine')
+  buy_tontine(@Body() dto: CreateTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.buy_tontine(dto);
+  }
+
   @Post('internal_transfer')
   internal_transfer(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.internal_transfer(dto);
@@ -85,6 +92,7 @@ export class TransactionSavingAccountController {
   checkStatusPayment(@Param('reference') reference: string) {
     return this.transactionSavingAccountService.checkStatusPayment(reference);
   }
+
   @Get('check-wthdraw/:reference')
   checkStatuswthdraw(@Param('reference') reference: string) {
     return this.transactionSavingAccountService.checkWthDraw(reference);
