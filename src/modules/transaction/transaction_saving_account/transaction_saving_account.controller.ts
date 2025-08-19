@@ -1,17 +1,24 @@
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
-import { Controller, Get, Post, Body, Param, Query, Patch } from '@nestjs/common';
-
-
-
-
-
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  Patch,
+} from '@nestjs/common';
 
 import { ApiOperation, ApiQuery } from '@nestjs/swagger';
+
+
 
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UniqueCheckQueryDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
+
 
 
 
@@ -71,11 +78,15 @@ export class TransactionSavingAccountController {
 
 
 
+  @Post('buy_tontine')
+  buy_tontine(@Body() dto: CreateTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.buy_tontine(dto);
+  }
+
   @Post('internal_transfer')
   internal_transfer(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.internal_transfer(dto);
   }
-
 
   @Post('get/internal-transfer')
   get_internal_transfer(@Query() query: PaginationQueryTxDto) {
@@ -85,6 +96,7 @@ export class TransactionSavingAccountController {
   checkStatusPayment(@Param('reference') reference: string) {
     return this.transactionSavingAccountService.checkStatusPayment(reference);
   }
+
   @Get('check-wthdraw/:reference')
   checkStatuswthdraw(@Param('reference') reference: string) {
     return this.transactionSavingAccountService.checkWthDraw(reference);
@@ -92,7 +104,8 @@ export class TransactionSavingAccountController {
 
   @Get('unique-check')
   @ApiOperation({
-    summary: 'Vérifie l’unicité (origin,promo_code) et (origin,commercial_code)',
+    summary:
+      'Vérifie l’unicité (origin,promo_code) et (origin,commercial_code)',
     description:
       'Retourne si une transaction existe déjà pour les paires uniques. Utiliser excludeId pour ignorer un enregistrement (cas update).',
   })
@@ -101,75 +114,75 @@ export class TransactionSavingAccountController {
   @ApiQuery({ name: 'commercial_code', required: false, type: String })
   @ApiQuery({ name: 'excludeId', required: false, type: Number })
   async checkUnique(@Query() q: UniqueCheckQueryDto) {
-    const res = await this.transactionSavingAccountService.checkUniquenessPairs({
-      origin: q.origin,
-      promo_code: q.promo_code,
-      commercial_code: q.commercial_code,
-      excludeId: q.excludeId,
-    });
+    const res = await this.transactionSavingAccountService.checkUniquenessPairs(
+      {
+        origin: q.origin,
+        promo_code: q.promo_code,
+        commercial_code: q.commercial_code,
+        excludeId: q.excludeId,
+      },
+    );
 
-    return res
-
-
+    return res;
   }
-
 
   @Get()
   findAll(@Query() query: PaginationQueryTxDto) {
     const { page, limit, term, fields, exact, from, to, type, txType } = query;
     const fieldList = fields ? fields.split(',') : undefined;
-    const isExact = exact ;
-    return this.transactionSavingAccountService.findAllByType(      
+    const isExact = exact;
+    return this.transactionSavingAccountService.findAllByType(
       page ? +page : undefined,
       limit ? +limit : undefined,
       term,
       fieldList,
       isExact,
       from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined,txType,type);
+      to ? new Date(to).toISOString() : undefined,
+      txType,
+      type,
+    );
   }
 
   @Get('momo')
   findAllMomo(@Query() query: PaginationQueryTxDto) {
-    return this.findByTypeParent(query, TransactionProvider.MOMO)
+    return this.findByTypeParent(query, TransactionProvider.MOMO);
   }
 
   @Get('om')
   findAllOM(@Query() query: PaginationQueryTxDto) {
-    return this.findByTypeParent(query, TransactionProvider.OM)
+    return this.findByTypeParent(query, TransactionProvider.OM);
   }
 
   @Get('wallet_deposit')
   findAllWallet(@Query() query: PaginationQueryTxDto) {
-    return this.findByTypeParent(query, TransactionProvider.WALLET)
+    return this.findByTypeParent(query, TransactionProvider.WALLET);
   }
 
   @Get('wallet_withdrawl')
   findAllWalletWin(@Query() query: PaginationQueryTxDto) {
-    return this.findByTypeParent(query, TransactionProvider.WALLET)
+    return this.findByTypeParent(query, TransactionProvider.WALLET);
   }
 
   @Get('by-type')
-  findTransactionByType(){
+  findTransactionByType() {}
 
+  findByTypeParent(query, txTypeCode: string, type: string = '') {
+    const { page, limit, term, fields, exact, from, to } = query;
+    const fieldList = fields ? fields.split(',') : undefined;
+    const isExact = exact;
+    return this.transactionSavingAccountService.findAllByType(
+      page ? +page : undefined,
+      limit ? +limit : undefined,
+      term,
+      fieldList,
+      isExact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined,
+      txTypeCode,
+      type,
+    );
   }
-
-  findByTypeParent(query,
-    txTypeCode: string ,type: string = ''){
-      const { page, limit, term, fields, exact, from, to } = query;
-      const fieldList = fields ? fields.split(',') : undefined;
-      const isExact = exact ;
-      return this.transactionSavingAccountService.findAllByType(      
-        page ? +page : undefined,
-        limit ? +limit : undefined,
-        term,
-        fieldList,
-        isExact,
-        from ? new Date(from).toISOString() : undefined,
-        to ? new Date(to).toISOString() : undefined,
-        txTypeCode, type);
-  }
-
 
   @Get(':id')
   findOne(@Param('id') id: string) {
@@ -178,18 +191,16 @@ export class TransactionSavingAccountController {
 
   @Post(':id/validate')
   validate(
-    @Param('id') id: string, @Body() dto: ValidateTransactionSavingsAccountDto
+    @Param('id') id: string,
+    @Body() dto: ValidateTransactionSavingsAccountDto,
   ) {
-    return this.transactionSavingAccountService.validate(
-      +id
-    );
+    return this.transactionSavingAccountService.validate(+id);
   }
 
   @Get(':id/unlock')
   unlockTransaction(@Param('id') id: string) {
     return this.transactionSavingAccountService.validate(+id);
   }
-
 
   @Patch(':id/update-provider-info')
   updateProviderInfo(

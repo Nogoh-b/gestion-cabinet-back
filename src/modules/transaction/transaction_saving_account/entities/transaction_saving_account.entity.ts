@@ -1,56 +1,24 @@
-
-
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 import { Provider } from 'src/modules/provider/provider/entities/provider.entity';
 
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
-
-
-
-
-
-
-
-
-
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, Index, Unique } from 'typeorm';
-
-
-
-
-
-
-
-
-
-
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+  Unique,
+} from 'typeorm';
 
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 
 export enum TransactionTypeEnum {
   DEBIT = 0,
@@ -63,28 +31,28 @@ export enum TransactionSavingsAccountStatus {
   LOCKED = 3,
 }
 export enum PaymentStatusProvider {
-  PENDING      = 'PENDING',  // transaction initiée, en attente de PIN/OTP
-  SUCCESSFULL  = 'SUCCESSFULL',  // paiement confirmé et exécuté
-  SUCCESSFUL  = 'SUCCESSFULL',  // paiement confirmé et exécuté
-  EXPIRED      = 'EXPIRED',  // délai d’OTP dépassé
-  FAILED       = 'FAILED',  // échec de paiement (intégrateurs tiers)
-  CANCELED     = 'CANCELED',  // utilisateur a annulé/rejeté
-  REJECTED     = 'REJECTED',  // paiement rejeté par le système
-  UNKNOWN      = 'UNKNOWN',   // cas imprévu ou non documenté
-  ISSUE      = 'ISSUE',   // cas imprévu ou non documenté
-  INITIATED      = 'INITIATED'   // cas imprévu ou non documenté
+  PENDING = 'PENDING', // transaction initiée, en attente de PIN/OTP
+  SUCCESSFULL = 'SUCCESSFULL', // paiement confirmé et exécuté
+  SUCCESSFUL = 'SUCCESSFULL', // paiement confirmé et exécuté
+  EXPIRED = 'EXPIRED', // délai d’OTP dépassé
+  FAILED = 'FAILED', // échec de paiement (intégrateurs tiers)
+  CANCELED = 'CANCELED', // utilisateur a annulé/rejeté
+  REJECTED = 'REJECTED', // paiement rejeté par le système
+  UNKNOWN = 'UNKNOWN', // cas imprévu ou non documenté
+  ISSUE = 'ISSUE', // cas imprévu ou non documenté
+  INITIATED = 'INITIATED', // cas imprévu ou non documenté
 }
 
 export enum PaymentStatus {
-  PENDING      = 0,  // transaction initiée, en attente de PIN/OTP
-  SUCCESSFULL  = 1,  // paiement confirmé et exécuté
-  EXPIRED      = 2,  // délai d’OTP dépassé
-  FAILED       = 3,  // échec de paiement (intégrateurs tiers)
-  CANCELED     = 4,  // utilisateur a annulé/rejeté
-  REJECTED     = 5,  // paiement rejeté par le système
-  UNKNOWN      = 6,   // cas imprévu ou non documenté
-  ISSUE        = 7,   // cas imprévu ou non documenté
-  INITIATED    = 8   // cas imprévu ou non documenté
+  PENDING = 0, // transaction initiée, en attente de PIN/OTP
+  SUCCESSFULL = 1, // paiement confirmé et exécuté
+  EXPIRED = 2, // délai d’OTP dépassé
+  FAILED = 3, // échec de paiement (intégrateurs tiers)
+  CANCELED = 4, // utilisateur a annulé/rejeté
+  REJECTED = 5, // paiement rejeté par le système
+  UNKNOWN = 6, // cas imprévu ou non documenté
+  ISSUE = 7, // cas imprévu ou non documenté
+  INITIATED = 8, // cas imprévu ou non documenté
 }
 
 export class PaymentsType {
@@ -104,9 +72,8 @@ export enum TransactionProvider {
   OM = 'OM',
   SAVINGS_ACCOUNT = 'SAVINGS_ACCOUNT',
   SYSTEM = 'SYSTEM',
-  WALLET = 'WALLET'
+  WALLET = 'WALLET',
 }
-
 
 export class Payment {
   id: string;
@@ -139,10 +106,10 @@ export class TransactionSavingsAccount {
   @PrimaryGeneratedColumn()
   id: number; // Identifiant unique
 
-  @Column({ type: 'int'})
+  @Column({ type: 'int' })
   amount: number; // Montant de la transaction
 
-  @Column({ type: 'tinyint', default : 0 })
+  @Column({ type: 'tinyint', default: 0 })
   status: number; // Statut : 0=En attente,1=Confirmée,2=Échouée
 
   // @Column({ length: 45, nullable: true, default: 'code : mobile money' })
@@ -151,7 +118,7 @@ export class TransactionSavingsAccount {
   @Column({ length: 45, nullable: true })
   external_activities_id: string; // ID de l'activité externe
 
-  @Column({ default:false })
+  @Column({ default: false })
   is_locked: boolean; // Numéro de compte externe
 
   @Index()
@@ -164,25 +131,24 @@ export class TransactionSavingsAccount {
 
   @Index()
   @Column({ length: 100 })
-  payment_code: string; 
-  
+  payment_code: string;
+
   @Index()
   @Column({ length: 100 })
-  token: string; 
+  token: string;
 
   @Index()
   @Column({ length: 100 })
   payment_token_provider: string;
-  
+
   @Index()
   @Column({ length: 100 })
-  origin: string; 
+  origin: string;
 
   @Index()
   @Column({ length: 100 })
   target: string;
 
-  
   @Column({ name: 'status_provider', nullable: true })
   status_provider?: string;
   /*@Index()
@@ -193,7 +159,6 @@ export class TransactionSavingsAccount {
   @Column({ length: 100 })
   targetType: string;*/
 
-
   @Index()
   @Column({ length: 100 })
   reference: string; // Code du provider
@@ -202,13 +167,17 @@ export class TransactionSavingsAccount {
   @Column()
   transaction_type_id: number; // Référence du type de transaction
 
-  @Column({nullable: true, default: null})
-  personnel_id: number; 
+  @Column({ nullable: true, default: null })
+  personnel_id: number;
 
   @Column({ type: 'int', nullable: true })
   tx_parent_id: number; // Référence du type de transaction
 
-  @Column({ nullable: true, type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })  
+  @Column({
+    nullable: true,
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   date_for_withdraw: Date;
 
   @CreateDateColumn()
@@ -220,41 +189,48 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'tx_parent_id', referencedColumnName: 'id' })
   tx_parent?: TransactionSavingsAccount | null;
 
-  @ManyToOne(() => SavingsAccount, acc => acc.originSavingsAccountTx, {eager: true  })
+  @ManyToOne(() => SavingsAccount, (acc) => acc.originSavingsAccountTx, {
+    eager: true,
+  })
   @JoinColumn({ name: 'origin_savings_account_id', referencedColumnName: 'id' })
-  originSavingsAccount?: SavingsAccount | null;; // Relation vers SavingsAccount
+  originSavingsAccount?: SavingsAccount | null; // Relation vers SavingsAccount
 
-  @ManyToOne(() => Ressource, acc => acc.savings_account, {eager: true  })
+  @ManyToOne(() => Ressource, (acc) => acc.savings_account, { eager: true })
   @JoinColumn({ name: 'ressource_id', referencedColumnName: 'id' })
-  ressource?: Ressource | null;; // Relation vers SavingsAccount
+  ressource?: Ressource | null; // Relation vers SavingsAccount
 
-  @ManyToOne(() => Personnel, acc => acc.savings_account, {eager: true,nullable: true })
+  @ManyToOne(() => Personnel, (acc) => acc.savings_account, {
+    eager: true,
+    nullable: true,
+  })
   @JoinColumn({ name: 'personnel_id', referencedColumnName: 'id' })
-  personnel?: Personnel | null;; // Relation vers SavingsAccount
+  personnel?: Personnel | null; // Relation vers SavingsAccount
 
-  @ManyToOne(() => SavingsAccount, acc => acc.targetSavingsAccountTx, {eager: true  })
+  @ManyToOne(() => SavingsAccount, (acc) => acc.targetSavingsAccountTx, {
+    eager: true,
+  })
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
-  targetSavingsAccount: SavingsAccount | null;; // Relation vers SavingsAccount
+  targetSavingsAccount: SavingsAccount | null; // Relation vers SavingsAccount
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) 
+  @Column({ type: 'varchar', length: 10, nullable: true })
   promo_code: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) 
+  @Column({ type: 'varchar', length: 10, nullable: true })
   commercial_code: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true }) 
+  @Column({ type: 'varchar', length: 10, nullable: true })
   commission: number | null;
 
-  @Column({type: 'int', nullable: true }) 
-  branch_id: number ;
+  @Column({ type: 'int', nullable: true })
+  branch_id: number;
 
   @ManyToOne(() => Personnel)
   @JoinColumn({ name: 'promo_code', referencedColumnName: 'code' })
-  partner: Personnel | null;; // Relation vers SavingsAccount
+  partner: Personnel | null; // Relation vers SavingsAccount
 
   @ManyToOne(() => Personnel)
   @JoinColumn({ name: 'commercial_code', referencedColumnName: 'code' })
-  commercial: Personnel | null;; // Relation vers SavingsAccount
+  commercial: Personnel | null; // Relation vers SavingsAccount
 
   /*@ManyToOne(() => Partner, acc => acc.transactions, {eager: true  })
   @JoinColumn({ name: 'partner_id', referencedColumnName: 'promo_code' })
@@ -264,15 +240,19 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'comercial_id', referencedColumnName: 'id' })
   comercial: Commercial | null;; // Relation vers SavingsAccount*/
 
-  @ManyToOne(() => ChannelTransaction, ch => ch.transactions, {eager: true})
-  @JoinColumn({ name: 'channels_transaction_id', referencedColumnName: 'id' }) 
+  @ManyToOne(() => ChannelTransaction, (ch) => ch.transactions, { eager: true })
+  @JoinColumn({ name: 'channels_transaction_id', referencedColumnName: 'id' })
   channelTransaction: ChannelTransaction; // Relation vers ChannelsTransaction
 
-  @ManyToOne(() => Provider, prov => prov.transactions)
+  @ManyToOne(() => Provider, (prov) => prov.transactions)
   @JoinColumn({ name: 'provider_code', referencedColumnName: 'code' })
   provider: Provider; // Relation vers Provider
 
-  @ManyToOne(() => TransactionType, tt => tt.transactions, {eager: true})
+  @ManyToOne(() => Loan, (type) => type.transactions, { nullable: true })
+  @JoinColumn()
+  loan: Loan; // Relation vers Provider
+
+  @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true })
   @JoinColumn({ name: 'transaction_type_id', referencedColumnName: 'id' })
   transactionType: TransactionType; // Relation vers TransactionType
 }

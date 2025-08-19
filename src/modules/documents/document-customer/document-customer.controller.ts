@@ -17,39 +17,24 @@ import {
 
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
-
-
-
-
-
-
-
-
-
-
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiConsumes,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 
 import { DocumentCustomerService } from './document-customer.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 
-
-
-
-
-
-
-
-
-
-
-
 @ApiTags('Customer Documents')
 @ApiConsumes('multipart/form-data')
 @Controller('customers/:customer_id')
-@ApiBearerAuth() 
-
+@ApiBearerAuth()
 export class DocumentCustomerController {
   constructor(private readonly service: DocumentCustomerService) {}
 
@@ -67,13 +52,10 @@ export class DocumentCustomerController {
     @Body() dto: CreateDocumentCustomerDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.create({ ...dto, customer_id, file} );
+    return this.service.create({ ...dto, customer_id, file });
   }
 
   @Get('/validate-document/:document_id')
-
-
-
   @ApiResponse({ status: 201, description: 'Document créé' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
@@ -85,14 +67,11 @@ export class DocumentCustomerController {
     return this.service.validate(document_id);
   }
 
-
-   @Get('/refuse-document/:document_id')
+  @Get('/refuse-document/:document_id')
   @ApiResponse({ status: 201, description: 'Document créé' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
-  async refuse(
-    @Param('document_id') document_id: number,
-  ) {
+  async refuse(@Param('document_id') document_id: number) {
     return this.service.refuse(document_id);
   }
 
@@ -107,26 +86,28 @@ export class DocumentCustomerController {
   // @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async createMany(
     @Param('customer_id') customer_id: number,
-    @Body() dto: {documents : CreateDocumentCustomerDto[]},
+    @Body() dto: { documents: CreateDocumentCustomerDto[] },
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-      if (dto.documents.length !== files.length) {
-        throw new BadRequestException('Mismatch between files and documents metadata.');
-      }
-      const documentsWithFiles  = dto.documents.map((doc, index) => ({
-        ...doc,
-        customer_id,
-        file: files[index]
-      }));
-      const docs : DocumentCustomerResponseDto[] = []
-      for (const document of documentsWithFiles) {
-        document.customer_id = customer_id
-        await validateDto(CreateDocumentCustomerDto, document)
-        docs.push(await this.service.create(document))
-      }
-
-      return docs;
+    if (dto.documents.length !== files.length) {
+      throw new BadRequestException(
+        'Mismatch between files and documents metadata.',
+      );
     }
+    const documentsWithFiles = dto.documents.map((doc, index) => ({
+      ...doc,
+      customer_id,
+      file: files[index],
+    }));
+    const docs: DocumentCustomerResponseDto[] = [];
+    for (const document of documentsWithFiles) {
+      document.customer_id = customer_id;
+      await validateDto(CreateDocumentCustomerDto, document);
+      docs.push(await this.service.create(document));
+    }
+
+    return docs;
+  }
 
   @Get('/get-documents')
   @ApiOperation({ summary: "Lister les documents d'un client" })
@@ -137,7 +118,10 @@ export class DocumentCustomerController {
   @Post('sync-kyc')
   @ApiOperation({ summary: 'Réceptionne les codes clients à synchroniser' })
   @ApiBody({ type: KycSyncDto })
-  async sync(@Param('customer_id') customer_id: number = 1, @Body() dto: KycSyncDto) {
+  async sync(
+    @Param('customer_id') customer_id: number = 1,
+    @Body() dto: KycSyncDto,
+  ) {
     // traite comme tu veux dans le service
     return this.service.sync(dto);
   }

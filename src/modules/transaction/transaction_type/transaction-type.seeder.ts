@@ -128,6 +128,14 @@ export class TransactionTypeSeeder {
         is_credit: 1,
         fee_percentage: 0.0,
         status: 1,
+      },      
+      {
+        code: 'BUY_TONTINE',
+        name: 'Paiement de tontine',
+        description: 'Paiement d\'une tontine dans COTI',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
       },
     ];
 

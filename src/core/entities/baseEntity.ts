@@ -1,4 +1,4 @@
-// core/database/entities/base.entity.ts
+// core/database/entities/base.ts
 import {
   BaseEntity as TypeORMBaseEntity,
   DeleteDateColumn,
