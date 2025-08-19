@@ -1,28 +1,31 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
-
-import { BeforeInsert, Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-
+import {
+  BeforeInsert,
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
+import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
 
-
-
-
-export enum CustomerStatus{
+export enum CustomerStatus {
   ACTIVE = 1,
   INACTIVE = 0,
   DELETED = -1,
   BLOCKED = -2,
   SUSPENDED = -3,
   LOCKED = -4,
-
 }
-export enum CustomerCreatedFrom{
+export enum CustomerCreatedFrom {
   ONLINE = 1,
   AGENCY = 0,
 }
@@ -52,6 +55,9 @@ export class Customer extends BaseEntity {
   @Column({ length: 45, nullable: true, unique: false })
   email: string;
 
+  @Column({ nullable: true, default: 0 })
+  cote: number;
+
   @Column({ name: 'customer_code', length: 45, nullable: false, unique: true })
   customer_code: string;
 
@@ -59,12 +65,11 @@ export class Customer extends BaseEntity {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
+  @OneToMany(() => Loan, (type) => type.customer)
+  loans: Loan[];
 
-  @OneToMany(
-    () => SavingsAccount,
-    (sa) => sa.customer
-  )
-  savings_accounts: SavingsAccount[]; 
+  @OneToMany(() => SavingsAccount, (sa) => sa.customer)
+  savings_accounts: SavingsAccount[];
 
   @ManyToOne(() => TypeCustomer)
   @JoinColumn({ name: 'type_customer_id' })
@@ -74,7 +79,7 @@ export class Customer extends BaseEntity {
   @JoinColumn({ name: 'location_city_id' })
   location_city: LocationCity;
 
-  @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY  })
+  @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY })
   created_from: CustomerCreatedFrom;
 
   // Ajoutez ces propriétés pour accéder directement aux IDs

@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
   Column,
