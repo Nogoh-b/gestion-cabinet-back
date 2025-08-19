@@ -62,7 +62,7 @@ export class TypeCreditService {
     typeCredit: TypeCredit,
     guaranty: TypeGuaranty,
   ) {
-    typeCredit.typeGuaranties = [guaranty];
+    typeCredit.typeGuaranties.push(guaranty);
     await this.typeCreditRepository.save(typeCredit);
     return true;
   }
@@ -71,7 +71,7 @@ export class TypeCreditService {
     typeCredit: TypeCredit,
     doc: DocumentType,
   ) {
-    typeCredit.typeOfDocuments = [doc];
+    typeCredit.typeOfDocuments.push(doc);
     await this.typeCreditRepository.save(typeCredit);
     return true;
   }
