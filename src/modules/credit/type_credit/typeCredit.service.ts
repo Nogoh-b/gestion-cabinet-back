@@ -1,10 +1,14 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { TypeCredit } from './entities/typeCredit.entity';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { GuarantyChangeCreditsDto, TypeCreditDto } from './dto/typeCredit.dto';
-import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
 import { DocumentType } from '../../documents/document-type/entities/document-type.entity';
+import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
+import { TypeCreditDto } from './dto/typeCredit.dto';
+import { TypeCredit } from './entities/typeCredit.entity';
+
+
 
 @Injectable()
 export class TypeCreditService {
@@ -62,7 +66,7 @@ export class TypeCreditService {
     typeCredit: TypeCredit,
     guaranty: TypeGuaranty,
   ) {
-    typeCredit.typeGuaranties = [guaranty];
+    typeCredit.typeGuaranties.push(guaranty);
     await this.typeCreditRepository.save(typeCredit);
     return true;
   }
@@ -71,7 +75,7 @@ export class TypeCreditService {
     typeCredit: TypeCredit,
     doc: DocumentType,
   ) {
-    typeCredit.typeOfDocuments = [doc];
+    typeCredit.typeOfDocuments.push(doc);
     await this.typeCreditRepository.save(typeCredit);
     return true;
   }
