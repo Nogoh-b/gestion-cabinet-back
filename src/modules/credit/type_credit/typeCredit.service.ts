@@ -21,7 +21,7 @@ export class TypeCreditService {
       where: {
         id,
       },
-      relations: { typeGuaranties: true },
+      relations: { typeGuaranties: true, typeOfDocuments: true },
     });
     if (!typeCredit)
       return {
