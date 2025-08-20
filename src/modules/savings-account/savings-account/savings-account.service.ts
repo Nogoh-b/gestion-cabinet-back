@@ -49,6 +49,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -58,6 +60,8 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
 
 
 
@@ -1301,12 +1305,15 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     return ressource;
   }
 
-    async findFirstOnlineByCustomer(customer_id: number): Promise<SavingsAccount | null> {
+  async findFirstOnlineByCustomer(customer_id: number): Promise<SavingsAccount | null> {
     return this.repo.findOne({
       where: {
         customer: { id: customer_id },
-        created_online: 1,
+        type_savings_account: {
+          canCreateOnline: 1
+        }
       },
+      relations: ['type_savings_account'], 
       order: { id: 'ASC' },
     });
   }

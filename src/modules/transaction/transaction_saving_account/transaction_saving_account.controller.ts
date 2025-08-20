@@ -14,9 +14,11 @@ import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 
 
+
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UniqueCheckQueryDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
 
 
 
@@ -81,6 +83,11 @@ export class TransactionSavingAccountController {
   @Post('buy_tontine')
   buy_tontine(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.buy_tontine(dto);
+  }
+
+  @Post('receive_tontine')
+  receive_tontine(@Body() dto: CreateTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.receive_tontine(dto);
   }
 
   @Post('internal_transfer')
