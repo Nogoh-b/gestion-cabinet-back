@@ -66,18 +66,18 @@ export class TypeCreditService {
     typeCredit: TypeCredit,
     guaranty: TypeGuaranty,
   ) {
-    typeCredit.typeGuaranties.push(guaranty);
-    await this.typeCreditRepository.save(typeCredit);
-    return true;
+    typeCredit.typeGuaranties=[...typeCredit.typeGuaranties, guaranty];
+    const { typeGuaranties } = await this.typeCreditRepository.save(typeCredit);
+    return typeGuaranties;
   }
 
   async addTypeOfDocumentsToTypeCredit(
     typeCredit: TypeCredit,
     doc: DocumentType,
   ) {
-    typeCredit.typeOfDocuments.push(doc);
-    await this.typeCreditRepository.save(typeCredit);
-    return true;
+    typeCredit.typeOfDocuments=[...typeCredit.typeOfDocuments, doc];
+    const { typeOfDocuments } = await this.typeCreditRepository.save(typeCredit);
+    return typeOfDocuments;
   }
 
   async deleteTypeCredit(id: number) {
