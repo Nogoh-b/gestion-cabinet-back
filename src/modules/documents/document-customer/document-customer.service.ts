@@ -37,11 +37,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
 
 
 
@@ -302,7 +304,8 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
           r.push(docs) 
           for (const doc of docs) {
             console.log('doc ' ,doc.document_type_id , process.env[`DOC_${doc.document_type_id}`] )
-            const code_cash = await this.mcotiService.uploadKycToCoti(data.personne_id,{document_type_name : process.env[`DOC_${doc.document_type_id}`] , bank_system_idbank_system : 1 },doc.file_url);
+            if(process.env[`DOC_${doc.document_type_id}`])
+              await this.mcotiService.uploadKycToCoti(data.personne_id,{document_type_name : process.env[`DOC_${doc.document_type_id}`] , bank_system_idbank_system : 1 },doc.file_url);
           }
 
         }
