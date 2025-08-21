@@ -1,22 +1,24 @@
+import { In, Repository } from 'typeorm';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Loan } from './entities/loan.entity';
-import { In, Repository } from 'typeorm';
-import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
-import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
-import { User } from '../../iam/user/entities/user.entity';
-import { DocumentType } from '../../documents/document-type/entities/document-type.entity';
-import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
-import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
+
+import { UPLOAD_DOCS_PATH } from '../../../core/common/constants/constants';
+import { FilesUtil } from '../../../core/shared/utils/file.util';
 import { dayTime } from '../../../utils/constantes';
-import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaranty_estimation.service';
+import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
 import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from '../../documents/document-customer/entities/document-customer.entity';
-import { FilesUtil } from '../../../core/shared/utils/file.util';
-import { UPLOAD_DOCS_PATH } from '../../../core/common/constants/constants';
 import { DocumentTypeService } from '../../documents/document-type/document-type.service';
+import { User } from '../../iam/user/entities/user.entity';
+import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
+import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaranty_estimation.service';
+import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
+import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
+import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
+import { Loan } from './entities/loan.entity';
+
 
 @Injectable()
 export class LoanService {
@@ -136,10 +138,15 @@ export class LoanService {
   }
 
   async getLoanInProcessing(id: number) {
-    const loan = await this.loanRepository.findOneBy({
-      customer: { id },
-      state: In([CREDIT_STATE.IN_PROCESSING, CREDIT_STATE.ACTIVE]),
-      status: In([CREDIT_STATUS.APPROVED, CREDIT_STATUS.PENDING]),
+    const loan = await this.loanRepository.findOne({
+      relations: {
+        typeCredit: { typeGuaranties: true, typeOfDocuments: true },
+      },
+      where: {
+        customer: { id },
+        state: In([CREDIT_STATE.IN_PROCESSING, CREDIT_STATE.ACTIVE]),
+        status: In([CREDIT_STATUS.APPROVED, CREDIT_STATUS.PENDING]),
+      },
     });
     if (!loan)
       return {
@@ -156,36 +163,35 @@ export class LoanService {
     guaranty: GuarantyDocumentLoanDto,
   ) {
     // create guaranties list
-    // const { typeGuaranty, file, typeOfDocument, ...result } = guaranty;
-    // const docType = await this.documentTypeService.findOne(typeOfDocument);
-    // const uploadedFile = await FilesUtil.uploadFile(
-    //   file,
-    //   UPLOAD_DOCS_PATH,
-    //   docType.mimetype,
-    //   {
-    //     maxSizeKB: 1024 * 1024 * 2,
-    //     width: 1024,
-    //   },
-    // );
-    //
-    // const currentDoc = this.documentCustomerRepository.create({
-    //   loan,
-    //   document_type: docType,
-    //   customer: { id: customerId },
-    //   file_path: uploadedFile.fileName,
-    //   file_size: uploadedFile.fileSize,
-    //   name: docType.name,
-    //   status: DocumentCustomerStatus.PENDING,
-    // });
-    // const document = await this.documentCustomerRepository.save(currentDoc);
-    // return await this.guarantyEstimationService.addGuarantyEstimation({
-    //   ...result,
-    //   typeGuaranty: { id: typeGuaranty },
-    //   document,
-    //   status: CREDIT_STATUS.PENDING,
-    //   loan,
-    // } as GuarantyEstimation);
-    return;
+    const { typeGuaranty, file, typeOfDocument, ...result } = guaranty;
+    const docType = await this.documentTypeService.findOne(typeOfDocument);
+    const uploadedFile = await FilesUtil.uploadFile(
+      file,
+      UPLOAD_DOCS_PATH,
+      docType.mimetype,
+      {
+        maxSizeKB: 1024 * 1024 * 2,
+        width: 1024,
+      },
+    );
+
+    const currentDoc = this.documentCustomerRepository.create({
+      loan,
+      document_type: docType,
+      customer: { id: customerId },
+      file_path: uploadedFile.fileName,
+      file_size: uploadedFile.fileSize,
+      name: docType.name,
+      status: DocumentCustomerStatus.PENDING,
+    });
+    const documents = await this.documentCustomerRepository.save(currentDoc);
+    return await this.guarantyEstimationService.addGuarantyEstimation({
+      value: result.value,
+      typeGuaranty: { id: typeGuaranty } as TypeGuaranty,
+      documents,
+      status: CREDIT_STATUS.PENDING,
+      loan,
+    } as GuarantyEstimation);
   }
 
   async setTypeDocumentsToLoan(
@@ -194,29 +200,28 @@ export class LoanService {
     body: DocumentLoanDto,
   ) {
     // create document list
-    // const { file } = body;
-    // const docType = await this.documentTypeService.findOne(body.typeOfDocument);
-    // const uploadedFile = await FilesUtil.uploadFile(
-    //   file,
-    //   UPLOAD_DOCS_PATH,
-    //   docType.mimetype,
-    //   {
-    //     maxSizeKB: 1024 * 1024 * 2,
-    //     width: 1024,
-    //   },
-    // );
-    //
-    // const currentDoc = this.documentCustomerRepository.create({
-    //   loan,
-    //   document_type: docType,
-    //   customer: { id: customerId },
-    //   file_path: uploadedFile.fileName,
-    //   file_size: uploadedFile.fileSize,
-    //   name: docType.name,
-    //   status: DocumentCustomerStatus.PENDING,
-    // });
-    // return await this.documentCustomerRepository.save(currentDoc);
-    return;
+    const { file } = body;
+    const docType = await this.documentTypeService.findOne(body.typeOfDocument);
+    const uploadedFile = await FilesUtil.uploadFile(
+      file,
+      UPLOAD_DOCS_PATH,
+      docType.mimetype,
+      {
+        maxSizeKB: 1024 * 1024 * 2,
+        width: 1024,
+      },
+    );
+
+    const currentDoc = this.documentCustomerRepository.create({
+      loan,
+      document_type: docType,
+      customer: { id: customerId },
+      file_path: uploadedFile.fileName,
+      file_size: uploadedFile.fileSize,
+      name: docType.name,
+      status: DocumentCustomerStatus.PENDING,
+    });
+    return await this.documentCustomerRepository.save(currentDoc);
   }
 
   async createLoan(data: Loan, typeCredit: TypeCredit) {
