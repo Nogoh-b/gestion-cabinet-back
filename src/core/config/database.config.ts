@@ -1,8 +1,8 @@
 /* eslint-disable prettier/prettier */
 // src/core/config/database.config.ts
-import { join } from 'path';
+import { SavingsAccountSubscriber } from 'src/modules/savings-account/savings-account/savings-account.subscriber';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
-
+import { join } from 'path';
 
 
 
@@ -22,7 +22,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     entities: [join(__dirname, '../../**/*.entity{.ts,.js}')],
     logging: ["error",],
     // logging: ["query", "error", "schema"], 
-    logger: "advanced-console"  
+    logger: "advanced-console" 
 
   },
 });
