@@ -16,9 +16,11 @@ import {
   Unique,
 } from 'typeorm';
 
+
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
-import { Loan } from '../../../credit/loan/entities/loan.entity';
+
 
 export enum TransactionTypeEnum {
   DEBIT = 0,
@@ -252,7 +254,7 @@ export class TransactionSavingsAccount {
   @JoinColumn()
   loan: Loan; // Relation vers Provider
 
-  @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true })
+  @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true }) 
   @JoinColumn({ name: 'transaction_type_id', referencedColumnName: 'id' })
   transactionType: TransactionType; // Relation vers TransactionType
 }
