@@ -10,10 +10,10 @@ import {
   Post,
   Put,
   Query,
-  Req,
-  UseGuards,
+  Req, UploadedFile,
+  UseGuards, UseInterceptors,
 } from '@nestjs/common';
-import { DocumentsLoanDto, DocumentLoanDto, LoanDto } from './dto/loan.dto';
+import { DocumentLoanDto, GuarantyDocumentLoanDto, LoanDto } from './dto/loan.dto';
 import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
 import { LoanService } from './loan.service';
 import { ResponseApi } from '../../../utils/interfaces';
@@ -33,6 +33,7 @@ import { DocumentCustomerService } from '../../documents/document-customer/docum
 import {
   TransactionSavingsAccountService
 } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
+import { CreateDocumentCustomerDto } from '../../documents/document-customer/dto/create-document-customer.dto';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -164,10 +165,17 @@ export class LoanController {
   }
 
   @Post('guaranty/:customerId/:loanId')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Upload document',
+    type: GuarantyDocumentLoanDto,
+  })
   async setGuarantyLoanDocumentById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
-    @Body() body: DocumentLoanDto,
+    @Body() body: GuarantyDocumentLoanDto,
+    @UploadedFile() file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.findOneLoanByCustomerId(
@@ -178,15 +186,27 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
+    body.file = file;
     const loan = result as Loan;
-    return await this.loanService.setGuarantiesDocumentsToLoan(loan, body);
+    return await this.loanService.setGuarantiesDocumentsToLoan(
+      customerId,
+      loan,
+      body,
+    );
   }
 
   @Post('doc/:customerId/:loanId')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Upload document',
+    type: DocumentLoanDto,
+  })
   async setDocumentLoanById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
-    @Body() body: DocumentsLoanDto,
+    @Body() body: DocumentLoanDto,
+    @UploadedFile() file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.getLoanInProcessing(customerId);
@@ -194,10 +214,15 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    const loan = { ...result, documents: [{ id: body.documentId }] } as Loan;
-    console.log('Document of guaranty');
 
-    return await this.loanService.setTypeDocumentsToLoan(loan);
+    console.log('Document of guaranty');
+    body.file = file;
+    const loan = result as Loan;
+    return await this.loanService.setTypeDocumentsToLoan(
+      customerId,
+      loan,
+      body,
+    );
   }
 
   @Post('/:customerId/:typeCreditId')

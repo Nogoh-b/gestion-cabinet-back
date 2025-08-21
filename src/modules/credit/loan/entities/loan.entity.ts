@@ -1,6 +1,7 @@
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { TypeCredit } from 'src/modules/credit/type_credit/entities/typeCredit.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { CREDIT_STATE, CREDIT_STATUS } from 'src/utils/types';
 import {
   Entity,
   Column,
@@ -9,12 +10,14 @@ import {
   OneToMany,
   OneToOne, JoinColumn,
 } from 'typeorm';
-import { CREDIT_STATE, CREDIT_STATUS } from 'src/utils/types';
-import { DocumentType } from '../../../documents/document-type/entities/document-type.entity';
-import { User } from '../../../iam/user/entities/user.entity';
-import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
-import { TransactionSavingsAccount } from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
+
 import { DocumentCustomer } from '../../../documents/document-customer/entities/document-customer.entity';
+import { User } from '../../../iam/user/entities/user.entity';
+import { TransactionSavingsAccount } from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
+
+
 
 @Entity()
 export class Loan extends BaseEntity {
@@ -71,11 +74,13 @@ export class Loan extends BaseEntity {
   @ManyToOne(() => Customer, (type) => type.loans)
   customer: Customer;
 
-  @OneToMany(() => DocumentCustomer, (type) => type.loan)
+  @OneToMany(() => DocumentCustomer, (type) => type.loan, { 
+    nullable: true 
+  })
   documents: DocumentCustomer[];
 
   @OneToMany(() => TransactionSavingsAccount, (type) => type.loan)
-  transactions: TransactionSavingsAccount[];
+  transactions: TransactionSavingsAccount[]; 
 
   @OneToMany(() => GuarantyEstimation, (type) => type.loan)
   guaranties: GuarantyEstimation[];

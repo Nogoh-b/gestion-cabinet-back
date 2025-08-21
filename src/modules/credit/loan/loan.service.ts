@@ -3,14 +3,20 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Loan } from './entities/loan.entity';
 import { In, Repository } from 'typeorm';
 import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
-import { DocumentLoanDto } from './dto/loan.dto';
+import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { User } from '../../iam/user/entities/user.entity';
 import { DocumentType } from '../../documents/document-type/entities/document-type.entity';
 import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { dayTime } from '../../../utils/constantes';
 import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaranty_estimation.service';
-import { DocumentCustomer } from '../../documents/document-customer/entities/document-customer.entity';
+import {
+  DocumentCustomer,
+  DocumentCustomerStatus,
+} from '../../documents/document-customer/entities/document-customer.entity';
+import { FilesUtil } from '../../../core/shared/utils/file.util';
+import { UPLOAD_DOCS_PATH } from '../../../core/common/constants/constants';
+import { DocumentTypeService } from '../../documents/document-type/document-type.service';
 
 @Injectable()
 export class LoanService {
@@ -19,6 +25,7 @@ export class LoanService {
     private readonly loanRepository: Repository<Loan>,
     @InjectRepository(DocumentCustomer)
     private readonly documentCustomerRepository: Repository<DocumentCustomer>,
+    private readonly documentTypeService: DocumentTypeService,
     private readonly guarantyEstimationService: GuarantyEstimationService,
   ) {}
 
@@ -143,24 +150,73 @@ export class LoanService {
     return loan;
   }
 
-  async setGuarantiesDocumentsToLoan(loan: Loan, guaranty: DocumentLoanDto) {
+  async setGuarantiesDocumentsToLoan(
+    customerId: number,
+    loan: Loan,
+    guaranty: GuarantyDocumentLoanDto,
+  ) {
     // create guaranties list
-    const { documentId, typeGuaranty, ...result } = guaranty;
-    const doc = await this.documentCustomerRepository.findOneBy({
-      id: documentId,
-    });
-    return await this.guarantyEstimationService.addGuarantyEstimation({
-      ...result,
-      typeGuaranty: { id: typeGuaranty },
-      documents: doc,
-      status: CREDIT_STATUS.PENDING,
-      loan,
-    } as GuarantyEstimation);
+    // const { typeGuaranty, file, typeOfDocument, ...result } = guaranty;
+    // const docType = await this.documentTypeService.findOne(typeOfDocument);
+    // const uploadedFile = await FilesUtil.uploadFile(
+    //   file,
+    //   UPLOAD_DOCS_PATH,
+    //   docType.mimetype,
+    //   {
+    //     maxSizeKB: 1024 * 1024 * 2,
+    //     width: 1024,
+    //   },
+    // );
+    //
+    // const currentDoc = this.documentCustomerRepository.create({
+    //   loan,
+    //   document_type: docType,
+    //   customer: { id: customerId },
+    //   file_path: uploadedFile.fileName,
+    //   file_size: uploadedFile.fileSize,
+    //   name: docType.name,
+    //   status: DocumentCustomerStatus.PENDING,
+    // });
+    // const document = await this.documentCustomerRepository.save(currentDoc);
+    // return await this.guarantyEstimationService.addGuarantyEstimation({
+    //   ...result,
+    //   typeGuaranty: { id: typeGuaranty },
+    //   document,
+    //   status: CREDIT_STATUS.PENDING,
+    //   loan,
+    // } as GuarantyEstimation);
+    return;
   }
 
-  async setTypeDocumentsToLoan(loan: Loan) {
+  async setTypeDocumentsToLoan(
+    customerId: number,
+    loan: Loan,
+    body: DocumentLoanDto,
+  ) {
     // create document list
-    return await this.loanRepository.save(loan);
+    // const { file } = body;
+    // const docType = await this.documentTypeService.findOne(body.typeOfDocument);
+    // const uploadedFile = await FilesUtil.uploadFile(
+    //   file,
+    //   UPLOAD_DOCS_PATH,
+    //   docType.mimetype,
+    //   {
+    //     maxSizeKB: 1024 * 1024 * 2,
+    //     width: 1024,
+    //   },
+    // );
+    //
+    // const currentDoc = this.documentCustomerRepository.create({
+    //   loan,
+    //   document_type: docType,
+    //   customer: { id: customerId },
+    //   file_path: uploadedFile.fileName,
+    //   file_size: uploadedFile.fileSize,
+    //   name: docType.name,
+    //   status: DocumentCustomerStatus.PENDING,
+    // });
+    // return await this.documentCustomerRepository.save(currentDoc);
+    return;
   }
 
   async createLoan(data: Loan, typeCredit: TypeCredit) {

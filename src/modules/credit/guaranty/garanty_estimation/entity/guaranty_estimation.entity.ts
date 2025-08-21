@@ -34,5 +34,5 @@ export class GuarantyEstimation extends BaseEntity {
 
   @OneToOne(() => DocumentCustomer)
   @JoinColumn()
-  documents: DocumentCustomer;
+  document: DocumentCustomer;
 }
