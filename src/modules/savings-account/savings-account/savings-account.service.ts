@@ -51,6 +51,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -60,6 +61,7 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
 
 
 
@@ -280,7 +282,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
-  async findOneAdmin(branch_id: number = 1): Promise<SavingsAccount> {
+  async findOneAdmin(branch_id: number = 3): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE) , branch_id },
       relations: [
