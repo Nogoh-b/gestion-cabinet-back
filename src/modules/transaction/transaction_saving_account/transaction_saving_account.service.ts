@@ -71,6 +71,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -88,6 +89,7 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -897,7 +899,7 @@ export class TransactionSavingsAccountService {
     let comercial : Personnel| null = new Personnel();
     let partner : Personnel| null = new Personnel()
     let adminSa : SavingsAccount| null = new SavingsAccount()
-    adminSa = await this.savingsAccountService.findOneAdmin(target?.branch_id);
+    adminSa = await this.savingsAccountService.findOneAdmin(tx.targetSavingsAccount? target?.branch_id : tx.originSavingsAccount?.branch_id);
     if(target){
     }
 
