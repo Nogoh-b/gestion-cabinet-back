@@ -6,17 +6,23 @@ import {
   Get,
   HttpStatus,
   Param,
+  ParseFilePipeBuilder,
   ParseIntPipe,
   Post,
   Put,
   Query,
-  Req, UploadedFile,
-  UseGuards, UseInterceptors,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { DocumentsLoanDto, DocumentLoanDto, LoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
-import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
+import {
+  DocumentLoanDto,
+  GuarantyDocumentLoanDto,
+  LoanDto,
+} from './dto/loan.dto';
+import { CREDIT_STATE } from '../../../utils/types';
 import { LoanService } from './loan.service';
-import { ResponseApi } from '../../../utils/interfaces';
 import { Loan } from './entities/loan.entity';
 import { User } from '../../iam/user/entities/user.entity';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -28,11 +34,7 @@ import { TypeCreditService } from '../type_credit/typeCredit.service';
 import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { CustomersService } from '../../customer/customer/customer.service';
 import { dayTime } from '../../../utils/constantes';
-import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
-import { DocumentCustomerService } from '../../documents/document-customer/document-customer.service';
-import {
-  TransactionSavingsAccountService
-} from '../../transaction/transaction_saving_account/transaction_saving_account.service';
+import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -174,19 +176,50 @@ export class LoanController {
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
     @Body() body: GuarantyDocumentLoanDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /(jpg|jpeg|png|gif|pdf)$/ })
+        .addMaxSizeValidator({ maxSize: 1024 * 1024 * 2 })
+        .build({ errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY }),
+    )
+    file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
-    const result = await this.loanService.findOneLoanByCustomerId(
-      id,
-      customerId,
-    );
+    const result = await this.loanService.getLoanInProcessing(customerId);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
       });
+    console.log('Document of guaranty', body);
     body.file = file;
     const loan = result as Loan;
+    const typeCredit =
+      await this.typeCreditService.findOneTypeCredits(loan.typeCredit.id);
+    if (typeCredit.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...typeCredit,
+      });
+    const typedoc = (typeCredit as TypeCredit).typeGuaranties.find(
+      (t) => t.typeOfDocument.id === id,
+    );
+    if (!typedoc)
+      throw new ForbiddenException({
+        success: false,
+        message: 'Document type is not match of this guaranty',
+        status: HttpStatus.FORBIDDEN,
+      });
+    if (!loan.typeCredit)
+      throw new ForbiddenException({
+        message: 'We cannot access to typeCredit of this loan',
+        status: HttpStatus.FORBIDDEN,
+        success: false,
+      });
+    else if (loan.typeCredit && !loan.typeCredit.typeGuaranties.length)
+      throw new ForbiddenException({
+        message: 'This loan not required a guaranty!',
+        status: HttpStatus.FORBIDDEN,
+        success: false,
+      });
     return await this.loanService.setGuarantiesDocumentsToLoan(
       customerId,
       loan,
@@ -205,7 +238,13 @@ export class LoanController {
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
     @Body() body: DocumentLoanDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({ fileType: /(jpg|jpeg|png|gif|pdf)$/ })
+        .addMaxSizeValidator({ maxSize: 1024 * 1024 * 2 })
+        .build({ errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY }),
+    )
+    file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.getLoanInProcessing(customerId);
@@ -214,9 +253,36 @@ export class LoanController {
         ...result,
       });
 
-    console.log('Document of guaranty');
+    console.log('Document of guaranty', body);
     body.file = file;
     const loan = result as Loan;
+    const typeCredit =
+      await this.typeCreditService.findOneTypeCredits(loan.typeCredit.id);
+    if (typeCredit.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...typeCredit,
+      });
+    const typedoc = (typeCredit as TypeCredit).typeOfDocuments.find(
+      (t) => t.id === id,
+    );
+    if (!typedoc)
+      throw new ForbiddenException({
+        success: false,
+        message: 'Document type is not match of this loan',
+        status: HttpStatus.FORBIDDEN,
+      });
+    if (!loan.typeCredit)
+      throw new ForbiddenException({
+        message: 'We cannot access to typeCredit of this loan',
+        status: HttpStatus.FORBIDDEN,
+        success: false,
+      });
+    else if (loan.typeCredit && !loan.typeCredit.typeOfDocuments.length)
+      throw new ForbiddenException({
+        message: 'This loan not required a document!',
+        status: HttpStatus.FORBIDDEN,
+        success: false,
+      });
     return await this.loanService.setTypeDocumentsToLoan(
       customerId,
       loan,
@@ -253,35 +319,37 @@ export class LoanController {
       throw new ForbiddenException({
         ...typeCredit,
       });
-    const transaction = await this.transactionService.findOne(body.reference).catch(e=>false);
-    if (!(transaction as boolean))
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'Your transaction is not found',
-      });
-    const trans = transaction as TransactionSavingsAccount;
-    const tc = typeCredit as TypeCredit;
-    if (trans.amount !== tc.fee)
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'Please make your payment before to get the loan',
-      });
+    // const transaction = await this.transactionService
+    //   .findOne(body.reference)
+    //   .catch((e) => false);
+    // if (!(transaction as boolean))
+    //   throw new ForbiddenException({
+    //     status: HttpStatus.NOT_ACCEPTABLE,
+    //     success: false,
+    //     message: 'Your transaction is not found',
+    //   });
+    // const trans = transaction as TransactionSavingsAccount;
+    // const tc = typeCredit as TypeCredit;
+    // if (trans.amount !== tc.fee)
+    //   throw new ForbiddenException({
+    //     status: HttpStatus.NOT_ACCEPTABLE,
+    //     success: false,
+    //     message: 'Please make your payment before to get the loan',
+    //   });
     const customer = await this.customersService.findOne(customerId);
-    if (customer.id !== trans.targetSavingsAccount?.customer.id)
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'This payment not match',
-      });
+    // if (customer.id !== trans.targetSavingsAccount?.customer.id)
+    //   throw new ForbiddenException({
+    //     status: HttpStatus.NOT_ACCEPTABLE,
+    //     success: false,
+    //     message: 'This payment not match',
+    //   });
     console.log('Document of guaranty', customer);
-    if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
-      throw new ForbiddenException({
-        success: false,
-        message: "You don't have eligibility rating",
-        status: HttpStatus.FORBIDDEN,
-      });
+    // if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
+    //   throw new ForbiddenException({
+    //     success: false,
+    //     message: "You don't have eligibility rating",
+    //     status: HttpStatus.FORBIDDEN,
+    //   });
     return await this.loanService.createLoan(
       {
         ...body,

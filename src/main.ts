@@ -68,7 +68,7 @@ async function bootstrap() {
     await providerSeeder.seed();
     await typePersonnelSeeder.seed();
     // Configuration Swagger
-    if(process.env.ENV){
+    if(process.env.NODE_ENV === 'development') {
       const document = SwaggerModule.createDocument(app, swaggerConfig);
       SwaggerModule.setup('api-docs', app, document, {
         swaggerOptions: {
