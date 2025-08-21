@@ -1,19 +1,76 @@
 import { plainToInstance } from 'class-transformer';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
 import { Repository } from 'typeorm';
-import { BadRequestException, ConflictException, NotAcceptableException, NotFoundException } from '@nestjs/common';
+
+import { BadRequestException, ConflictException, forwardRef, Inject, NotAcceptableException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
-import { CreateDocumentFromCotiDto } from './dto/create-document-from-coti.dto';
+import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
@@ -23,20 +80,28 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     private docTypeRepository: Repository<DocumentType>,    
 
     @InjectRepository(Customer)
-    private customerRepository: Repository<Customer>
+    private customerRepository: Repository<Customer>,
+    @Inject(forwardRef(() => CustomersService))
+    private customerService: CustomersService,
+    private mcotiService: McotiService,
   ) {    
     super();
+    console.log(forwardRef)
   }
 
   async create(dto: CreateDocumentCustomerDto, customer_id = null): Promise<any> {
     const file = dto.file!
     const docType = await this.docTypeRepository.findOneBy({ id: dto.document_type_id });
     if (!docType) {
+      if(!dto.strict)
+        return
       throw new NotFoundException('Type document non trouvé');
     }    
     const customer  = await this.customerRepository.findOne({ where: { id: dto.customer_id }, relations: ['type_customer', 'type_customer.requiredDocuments'] });
 
     if (!customer) {
+      if(!dto.strict)
+        return
       throw new NotFoundException(`client ${dto.customer_id} non trouvé`);
     }
     const requiredDocument = customer?.type_customer?.requiredDocuments.find(
@@ -47,7 +112,9 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     customer?.type_customer?.requiredDocuments.forEach(doc => {
       console.log('doc.id:', doc.id, 'vs', 'dto:', dto.document_type_id);
     });
-    if(!requiredDocument){
+    if(!requiredDocument ){
+      if(!dto.strict)
+        return
       throw new NotAcceptableException(`vous ne pouvez pas soumettre ce type de document `);
     }
     const getSimilarDocs : DocumentCustomer[] = await this.searchWithJoinsAdvanced({
@@ -79,18 +146,26 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       ],
     });
     if (getSimilarDocs.length > 0) {
+      if(!dto.strict)
+        return
       throw new ConflictException(`Document : ${getSimilarDocs[0].name} deja soumis ou validé`);
     } 
 
     if (!file) {
+      if(!dto.strict)
+        return
       throw new BadRequestException('Aucun fichier uploadé');
     }
 
     if (!file.mimetype.startsWith(docType.mimetype)) {
+      if(!dto.strict)
+        return
       throw new BadRequestException(`le fichier doit être de type : ${docType.mimetype}`);
     }
 
     if (file.size > 1024 * 1024 * 3) { 
+      if(!dto.strict)
+        return
       throw new BadRequestException('Le fichier est trop volumineux (max 1MB)');
     }
     
@@ -113,7 +188,12 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
       name: docType.name,
       status: DocumentCustomerStatus.PENDING,
     });
-    return plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
+    const doc = await  plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
+    console.log('DOC--- ',doc)
+    if(dto.status){ 
+      this.validate(doc.id)
+    }
+    return doc
   }
 
 
@@ -143,6 +223,13 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     });
   }
 
+  async findByCustomerCode(customer_code: string, accepted = false, strict = true): Promise<any[]> {
+    const customer = await this.customerService.findOneByCode(customer_code,strict)
+    if(customer)
+      return await this.findByCustomer(customer?.id, accepted)
+    return []
+  }
+
   async findByType(typeCode: string): Promise<DocumentCustomer | null> {
     let where = {name: typeCode }
     return this.docRepository.findOne({
@@ -163,6 +250,7 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     
     if(!doc)
       throw new  NotFoundException("Document non trouvé");
+      console.log('doccccc ', doc)
     if(doc.status !== DocumentCustomerStatus.PENDING)
       throw new  NotFoundException("Document déja traité");
 
@@ -205,4 +293,22 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
   getRepository(): Repository<DocumentCustomer> {
     return this.docRepository;
   }
+
+  async sync(dto : KycSyncDto){
+    let r : any  = []
+    for (const data of dto.items) {
+        const docs = plainToInstance(DocumentCustomerResponseDto , await this.findByCustomerCode(data.code_customer,true, false))
+        if(docs && docs.length > 0){
+          r.push(docs) 
+          for (const doc of docs) {
+            console.log('doc ' ,doc.document_type_id , process.env[`DOC_${doc.document_type_id}`] )
+            const code_cash = await this.mcotiService.uploadKycToCoti(data.personne_id,{document_type_name : process.env[`DOC_${doc.document_type_id}`] , bank_system_idbank_system : 1 },doc.file_url);
+          }
+
+        }
+    }
+    return r
+  }
+
+  
 }

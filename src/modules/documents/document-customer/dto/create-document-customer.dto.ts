@@ -1,6 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsNotEmpty, IsDate, IsOptional, IsNumber } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+
 
 export class CreateDocumentCustomerDto {
 
@@ -14,6 +16,9 @@ export class CreateDocumentCustomerDto {
 
   customer_id: number;
 
+  status : number
+
+  strict : boolean = true
  
 
   @IsOptional()

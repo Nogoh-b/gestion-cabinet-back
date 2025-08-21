@@ -1,3 +1,6 @@
+import axios from 'axios';
+import * as FormData from 'form-data';
+import * as path from 'node:path';
 import { firstValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
 import { Injectable, NotFoundException } from '@nestjs/common';
@@ -10,30 +13,7 @@ import { ConfigService } from '@nestjs/config';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export type KycType = 'front_cni' | 'back_cni' | 'selfie';
 
 
 @Injectable()
@@ -44,34 +24,95 @@ export class McotiService {
   ) {}
   private readonly PAYMENT_STATUS_SUCCESS = 'SUCCESS'; // Define your status constant
 
-async callMcotiEndpoint(
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH', 
-  endpoint: string,
-  payload?: any,
-  params?: Record<string, any>
-) {
-  const url = `${this.configService.get('ENDPOINT_MCOTI')}/${endpoint}`;
-  const config = {
-    headers: { 'Content-Type': 'application/json' },
-    params,
-  };
+  async callMcotiEndpoint(
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH', 
+    endpoint: string,
+    payload?: any,
+    params?: Record<string, any>
+  ) {
+    const url = `${this.configService.get('ENDPOINT_MCOTI')}/${endpoint}`;
+    const config = {
+      headers: { 'Content-Type': 'application/json' },
+      params,
+    };
 
-  let response;
-  switch (method) {
-    case 'GET':
-      response = await firstValueFrom(this.httpService.get(url, config));
-      break;
-    case 'POST':
-      response = await firstValueFrom(this.httpService.post(url, payload, config));
-      break;
-    // … PUT, PATCH …
-    default:
-      throw new Error(`Méthode HTTP non supportée: ${method}`);
+    let response;
+    switch (method) {
+      case 'GET':
+        response = await firstValueFrom(this.httpService.get(url, config));
+        break;
+      case 'POST':
+        response = await firstValueFrom(this.httpService.post(url, payload, config));
+        break;
+      // … PUT, PATCH …
+      default:
+        throw new Error(`Méthode HTTP non supportée: ${method}`);
+    }
+
+    return response.data;
   }
 
-  return response.data;
-}
 
+  async callMcotiEndpointV1(
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH',
+    endpoint: string,
+    payload?: any,                            // peut être FormData
+    params?: Record<string, any>
+  ) {
+    const url = `${this.configService.get('ENDPOINT_MCOTI')}/${endpoint}`;
+
+    // headers par défaut (JSON)
+    const headers =
+        payload instanceof FormData
+          ? { ...payload.getHeaders() }
+          : { 'Content-Type': 'application/json' };
+
+      const config = {
+        headers,
+        params,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      };
+
+    switch (method) {
+      case 'GET':  return (await firstValueFrom(this.httpService.get(url, config))).data;
+      case 'POST': return (await firstValueFrom(this.httpService.post(url, payload, config))).data;
+      case 'PUT':  return (await firstValueFrom(this.httpService.put(url, payload, config))).data;
+      case 'PATCH':return (await firstValueFrom(this.httpService.patch(url, payload, config))).data;
+      default:     throw new Error(`Méthode HTTP non supportée: ${method}`);
+    }
+  }
+
+
+  async uploadKycToCoti(
+    personneId: number,
+    dto: { document_type_name ?: any; bank_system_idbank_system: number },
+    fileUrl: string,
+  ) {
+    let resp;
+    try {
+      resp = await axios.get(fileUrl, { responseType: 'stream' });
+    } catch (e) {
+      console.error(`❌ Impossible de télécharger le fichier KYC (URL: ${fileUrl})`);
+      return null
+      //throw new BadRequestException('Fichier KYC introuvable ou inaccessible');
+    }
+
+    const contentType = resp.headers['content-type'] || 'application/octet-stream';
+    const filename = path.basename(new URL(fileUrl).pathname) || 'file';
+
+    const form = new FormData();
+    form.append('document_type_name', dto.document_type_name);
+    form.append('bank_system_idbank_system', String(dto.bank_system_idbank_system));
+    form.append('force', '1');
+    form.append('file', resp.data, { filename, contentType });
+
+    return this.callMcotiEndpointV1(
+      'POST',
+      `member/${personneId}/kyc/upload`,
+      form,
+    );
+  }
 
 
 

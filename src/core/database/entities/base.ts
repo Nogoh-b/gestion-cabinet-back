@@ -1,17 +1,17 @@
-// core/database/entities/base.entity.ts
+// core/database/entities/base.ts
 import {
-    PrimaryGeneratedColumn,
-    CreateDateColumn,
-    UpdateDateColumn,
-    DeleteDateColumn,
-    BaseEntity as TypeORMBaseEntity,
-    BeforeInsert,
-    BeforeUpdate,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+  BaseEntity as TypeORMBaseEntity,
+  BeforeInsert,
+  BeforeUpdate,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { validateOrReject } from 'class-validator';
 
-export abstract class BaseEntity extends TypeORMBaseEntity {
+export abstract class Base extends TypeORMBaseEntity {
   @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
   @PrimaryGeneratedColumn('uuid')
   id: string;

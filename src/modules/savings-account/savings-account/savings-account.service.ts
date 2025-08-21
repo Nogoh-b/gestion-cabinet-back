@@ -44,48 +44,7 @@ import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException 
 
 
 
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -101,52 +60,6 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1081,7 +994,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
         }
         if (originNum === acctNum) {
           // envoi / débit
-          console.log('credit ',sum ,' ', tx.amount)
+          console.log('loan ',sum ,' ', tx.amount)
           return sum - tx.amount;
         }
         // si la transaction n'implique pas ce compte, on l'ignore
@@ -1175,6 +1088,8 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if(tx.originSavingsAccount?.number_savings_account == acctNum ){
         // commission = tx.commission || 0;
       }
+      // if(tx.is_locked)
+        // return sum
       // console.log(commission)
       // 1. Filtrage selon le type de balance
       switch (options.balanceType) {
@@ -1390,12 +1305,15 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     return ressource;
   }
 
-    async findFirstOnlineByCustomer(customer_id: number): Promise<SavingsAccount | null> {
+  async findFirstOnlineByCustomer(customer_id: number): Promise<SavingsAccount | null> {
     return this.repo.findOne({
       where: {
         customer: { id: customer_id },
-        created_online: 1,
+        type_savings_account: {
+          canCreateOnline: 1
+        }
       },
+      relations: ['type_savings_account'], 
       order: { id: 'ASC' },
     });
   }

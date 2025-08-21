@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Entity, Column, OneToMany } from 'typeorm';
 import { SavingsAccountHasInterest } from '../../savings-account/entities/account-has-interest.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
