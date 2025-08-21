@@ -10,7 +10,7 @@ export class TypeGuarantyService {
     @InjectRepository(TypeGuaranty)
     private readonly typeGuarantyRepository: Repository<TypeGuaranty>,
   ) {}
-  async addTypeGuaranty(data: TypeGuarantyDto) {
+  async addTypeGuaranty(data: TypeGuaranty) {
     const guaranty = this.typeGuarantyRepository.create(data);
     return await this.typeGuarantyRepository.save(guaranty);
   }
