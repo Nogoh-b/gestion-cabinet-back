@@ -10,10 +10,10 @@ import {
   Post,
   Put,
   Query,
-  Req,
-  UseGuards,
+  Req, UploadedFile,
+  UseGuards, UseInterceptors,
 } from '@nestjs/common';
-import { DocumentsLoanDto, DocumentLoanDto, LoanDto } from './dto/loan.dto';
+import { DocumentsLoanDto, DocumentLoanDto, LoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
 import { LoanService } from './loan.service';
 import { ResponseApi } from '../../../utils/interfaces';
@@ -164,10 +164,17 @@ export class LoanController {
   }
 
   @Post('guaranty/:customerId/:loanId')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Upload document',
+    type: GuarantyDocumentLoanDto,
+  })
   async setGuarantyLoanDocumentById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
-    @Body() body: DocumentLoanDto,
+    @Body() body: GuarantyDocumentLoanDto,
+    @UploadedFile() file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.findOneLoanByCustomerId(
@@ -178,15 +185,27 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
+    body.file = file;
     const loan = result as Loan;
-    return await this.loanService.setGuarantiesDocumentsToLoan(loan, body);
+    return await this.loanService.setGuarantiesDocumentsToLoan(
+      customerId,
+      loan,
+      body,
+    );
   }
 
   @Post('doc/:customerId/:loanId')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Upload document',
+    type: DocumentLoanDto,
+  })
   async setDocumentLoanById(
     @Param('customerId') customerId: number,
     @Param('loanId') id: number,
-    @Body() body: DocumentsLoanDto,
+    @Body() body: DocumentLoanDto,
+    @UploadedFile() file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
     const result = await this.loanService.getLoanInProcessing(customerId);
@@ -194,10 +213,15 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    const loan = { ...result, documents: [{ id: body.documentId }] } as Loan;
-    console.log('Document of guaranty');
 
-    return await this.loanService.setTypeDocumentsToLoan(loan);
+    console.log('Document of guaranty');
+    body.file = file;
+    const loan = result as Loan;
+    return await this.loanService.setTypeDocumentsToLoan(
+      customerId,
+      loan,
+      body,
+    );
   }
 
   @Post('/:customerId/:typeCreditId')
