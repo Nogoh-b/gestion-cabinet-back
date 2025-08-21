@@ -1,5 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { ApiProperty, PartialType } from '@nestjs/swagger';
+import { IsNumber, IsString } from 'class-validator';
+import { TypeCreditDto } from '../../../type_credit/dto/typeCredit.dto';
 
 export class TypeGuarantyDto {
   @ApiProperty()
@@ -10,3 +11,5 @@ export class TypeGuarantyDto {
   @IsString()
   description: string;
 }
+
+export class UpdateTypeGuaranty extends PartialType(TypeGuarantyDto) {}
