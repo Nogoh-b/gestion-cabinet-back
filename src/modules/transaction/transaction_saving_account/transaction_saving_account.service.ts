@@ -24,7 +24,7 @@ import {
 } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-import { Not, Repository } from 'typeorm';
+import { Not, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -36,6 +36,12 @@ import {
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
 
 
 
@@ -89,6 +95,12 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
 
 
 
@@ -861,7 +873,7 @@ export class TransactionSavingsAccountService {
     // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
   }
 
-  async validate(
+  async validate_v0(
     id: number,
     isFirstTx = false,
     force = false,
@@ -1270,6 +1282,119 @@ export class TransactionSavingsAccountService {
     }
     return tx;
   }
+  async validate(
+    id: number,
+    isFirstTx = false,
+    force = false,
+  ): Promise<TransactionSavingsAccount> {
+    const entity = await this.findOne(id);
+
+    // 1) Marquer la tx principale "SUCCESSFULL" et MAJ opérateur si mobile
+    if (entity.status == 0) {
+      entity.status = 1;
+      entity.status_provider = 'SUCCESSFULL';
+      await this.update_bank_operator_sold_if_mobile(entity);
+    }
+
+    // 2) Sauvegarde de la tx principale
+    let target: SavingsAccount | null = null;
+    const tx = await this.repo.save(entity);
+
+    // 3) Résolution du compte cible & compte admin
+    if (tx.targetSavingsAccount) {
+      target = plainToInstance(
+        SavingsAccount,
+        await this.savingsAccountService.findOneByCode(
+          tx.targetSavingsAccount.number_savings_account,
+        ),
+      );
+    }
+
+    let comercial: Personnel | null = new Personnel();
+    let partner: Personnel | null = new Personnel();
+    const admin_sa = await this.get_admin_sa_for_tx(tx);
+
+    // 4) Compte mendoCo (si défini)
+    const mendo_co_sa = await this.get_mendo_co_sa_from_env();
+
+    let personnels: Personnel[] = [];
+
+    // 5) Exécuter toutes les sous-transactions dans une transaction DB
+    await this.repo.manager.transaction(async (entity_manager) => {
+      const { id, commission, ...tx_data } = tx;
+      const chanel_open_product = await this.get_api_channel();
+
+      // 5.1) Ouverture de compte : MIN_BALANCE + OPENING_FEE + commissions commerciales/partenaires + au personnel
+      if (target && (isFirstTx || force)) {
+        tx.status = 1;
+
+        // a) Minimum de solde
+        await this.create_tx_min_balance(
+          entity_manager,
+          tx_data,
+          target,
+          admin_sa,
+          chanel_open_product,
+        );
+
+        // b) Frais d'ouverture
+        await this.create_tx_opening_fee(
+          entity_manager,
+          tx_data,
+          target,
+          admin_sa,
+          chanel_open_product,
+        );
+
+        // c) Commission commercial (si conditions)
+        ({ comercial } = await this.maybe_create_tx_commercial_commission(
+          entity_manager,
+          tx_data,
+          tx,
+          target,
+          admin_sa,
+          chanel_open_product,
+        ));
+
+        // d) Commission partenaire (promo_code)
+        ({ partner } = await this.maybe_create_tx_partner_commission(
+          entity_manager,
+          tx_data,
+          tx,
+          target,
+          admin_sa,
+          chanel_open_product,
+        ));
+
+        // e) Commissions du personnel (boucle interne)
+        personnels = await this.create_tx_personnel_commissions(
+          entity_manager,
+          tx_data,
+          tx,
+          target,
+          admin_sa,
+          chanel_open_product,
+        );
+
+        // f) Validation du compte cible
+        this.savingsAccountService.validateAccount(target.id);
+      }
+
+      // 5.2) Commission CASH (provider) + commission “MFINANCE”
+      await this.maybe_create_tx_commission_cash_pair(
+        entity_manager,
+        tx,
+        admin_sa,
+        mendo_co_sa,
+      );
+    });
+
+    // 6) Mise à jour des soldes des comptes impactés
+    await this.update_balances_after_validate(tx, admin_sa, comercial, partner, personnels);
+
+    return tx;
+  }
+
 
   async unlockTransaction(id: number): Promise<TransactionSavingsAccount> {
     const entity = await this.findOne(id);
@@ -1444,19 +1569,18 @@ export class TransactionSavingsAccountService {
     tx.payment_token_provider = dto.payToken;
     const channel_code = tx.channelTransaction.code;
     const txType = tx.transactionType;
-    if (txType.is_credit) {
+    if (tx.targetSavingsAccount) {
       tx.origin = dto.phoneNumber;
     } else {
       tx.target = dto.phoneNumber;
     }
     if (tx.originSavingsAccount)
       tx.status_provider = PaymentStatusProvider.SUCCESSFULL;
-    tx.payment_token_provider =
-      dto.payment_token_provider ?? this.generateUniquePaymentTokenProvider();
+    tx.payment_token_provider = dto.payment_token_provider ?? this.generateUniquePaymentTokenProvider();
     tx.payment_code = dto.payment_code ?? this.generateUniquePaymentCode();
     this.repo.save(tx);
     // const isFirstTx = await  this.isFirstTransaction(tx.targetSavingsAccount)
-    if (channel_code === 'MOBILE' && Boolean(txType.is_credit)) {
+    if (channel_code === 'MOBILE' && tx.targetSavingsAccount) {
       let isFirstTx = false;
       // if(tx.targetSavingsAccount){
 
@@ -1486,9 +1610,8 @@ export class TransactionSavingsAccountService {
         tx.payment_token_provider = dataPayment.payToken;
         tx.status_provider = dataPayment.paymentStatus;
         tx.commission = dataPayment.amountHT - tx.amount;
-        tx.status =
-          PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
-        if (txType.is_credit) {
+        tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
+        if (tx.targetSavingsAccount) {
           tx.origin = dataPayment.ref;
         } else {
           tx.target = dataPayment.ref;
@@ -1499,11 +1622,7 @@ export class TransactionSavingsAccountService {
         console.log('is_credit ', dataPayment.ref);
 
         // this.repo.save(tx);
-        console.log(
-          dataPayment.paymentStatus,
-          ' === ',
-          PaymentStatusProvider.PENDING,
-        );
+        console.log(dataPayment.paymentStatus, ' === ', PaymentStatusProvider.PENDING,);
         // Si le paiment est a pending e=on lance un job
         if (dataPayment.paymentStatus === PaymentStatusProvider.PENDING)
           await this.queueService.addTaskCheckPayment(tx.id);
@@ -1570,6 +1689,475 @@ export class TransactionSavingsAccountService {
       promoId: promoHit?.id ?? null,
       commercialConflict: !!commercialHit,
       txId: commercialHit?.id ?? null,
+    };
+  }
+
+
+
+    /**
+  * Met à jour le sold côté COTI pour les providers mobiles.
+  */
+  private async update_bank_operator_sold_if_mobile(entity: TransactionSavingsAccount): Promise<void> {
+    if (
+      entity.provider_code == TransactionProvider.OM ||
+      entity.provider_code == TransactionProvider.MOMO
+    ) {
+      const updated_sold = await this.mcotiService.callMcotiEndpoint(
+        'POST',
+        `epargne/bank/operator/update-sold`,
+        {
+          provider: 'OM', // tu avais déjà 'OM' en dur ici
+          isCredit: entity.originSavingsAccount ? 0 : 1,
+          amount: Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)),
+        },
+      );
+      // console.log('sold provider updated', entity.amount + (entity.commission ?? 0));
+    }
+  }
+
+  /**
+  * Retourne le SavingsAccount admin (branche du target si présent sinon de l’origin).
+  */
+  private async get_admin_sa_for_tx(
+    tx: TransactionSavingsAccount
+  ): Promise<SavingsAccount | null> {
+    return this.savingsAccountService.findOneAdmin(
+      tx.targetSavingsAccount ? tx.targetSavingsAccount?.branch_id : tx.originSavingsAccount?.branch_id,
+    );
+  }
+
+  /**
+  * Retourne le compte MendoCo depuis la variable d’environnement si disponible.
+  */
+  private async get_mendo_co_sa_from_env(): Promise<SavingsAccount | null> {
+    if (!process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT) return null;
+    return plainToInstance(
+      SavingsAccount,
+      await this.savingsAccountService.findOneByCode(process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT),
+    );
+  }
+
+  /**
+  * Récupère le channel 'API' (si existe).
+  */
+  private async get_api_channel() {
+    return this.channelRepo.findOne({ where: { code: 'API' } });
+  }
+
+  /**
+  * Crée la transaction de solde minimum (MIN_BALANCE) vers le compte admin.
+  */
+  private async create_tx_min_balance(
+    entity_manager,
+    tx_data: TransactionSavingsAccount | any,
+    target: SavingsAccount,
+    admin_sa: SavingsAccount | null,
+    chanel_open_product: any,
+  ): Promise<TransactionSavingsAccount> {
+    const tx_repo = entity_manager.getRepository(TransactionSavingsAccount);
+
+    // on prélève depuis le compte cible vers admin
+    const tx_type_min_balance = await this.transactionTypeService.findOneByCode('MIN_BALANCE');
+    const provider_min_balance = await this.providerService.findOne('SYSTEM');
+
+    const tx_min = new TransactionSavingsAccount();
+    Object.assign(tx_min, {
+      ...tx_data,
+      origin: tx_data.target,
+      originSavingsAccount: tx_data.targetSavingsAccount,
+      target: admin_sa?.number_savings_account,
+      targetSavingsAccount: admin_sa,
+      amount: target.type_savings_account.minimum_balance,
+      transactionType: tx_type_min_balance,
+      provider: provider_min_balance,
+      is_locked: false,
+      status: TransactionSavingsAccountStatus.VALIDATE,
+      status_provider: 'SUCCESSFULL',
+    });
+
+    if (chanel_open_product) tx_min.channelTransaction = chanel_open_product;
+
+    return tx_repo.save(tx_min);
+  }
+
+  /**
+  * Crée la transaction de frais d’ouverture (OPENING_FEE) vers le compte admin.
+  */
+  private async create_tx_opening_fee(
+    entity_manager,
+    tx_data: TransactionSavingsAccount | any,
+    target: SavingsAccount,
+    admin_sa: SavingsAccount | null,
+    chanel_open_product: any,
+  ): Promise<TransactionSavingsAccount> {
+    const tx_repo = entity_manager.getRepository(TransactionSavingsAccount);
+
+    const tx_type_open_product = await this.transactionTypeService.findOneByCode('OPENING_FEE');
+    const provider_open_product = await this.providerService.findOne('SYSTEM');
+
+    const tx_fee = new TransactionSavingsAccount();
+    Object.assign(tx_fee, {
+      ...tx_data,
+      origin: tx_data.target,
+      originSavingsAccount: tx_data.targetSavingsAccount,
+      target: admin_sa?.number_savings_account,
+      targetSavingsAccount: admin_sa,
+      amount: target.type_savings_account.account_opening_fee,
+      transactionType: tx_type_open_product,
+      provider: provider_open_product,
+      is_locked: false,
+      status: TransactionSavingsAccountStatus.VALIDATE,
+      status_provider: 'SUCCESSFULL',
+    });
+
+    if (chanel_open_product) tx_fee.channelTransaction = chanel_open_product;
+
+    return tx_repo.save(tx_fee);
+  }
+
+  /**
+  * Crée la commission commerciale si éligible.
+  * Retourne { comercial } pour conserver ta variable.
+  */
+  private async maybe_create_tx_commercial_commission(
+    entity_manager,
+    tx_data: TransactionSavingsAccount | any,
+    tx_parent: TransactionSavingsAccount,
+    target: SavingsAccount,
+    admin_sa: SavingsAccount | null,
+    chanel_open_product: any,
+  ): Promise<{ comercial: Personnel | null }> {
+    let comercial: Personnel | null = null;
+
+    if (!target.commercial_code) return { comercial };
+
+    comercial = await this.personnelService.findOneByCode(target.commercial_code);
+    const unicity = await this.checkUniquenessPairs({
+      commercial_code: comercial?.code,
+      origin: tx_parent.targetSavingsAccount?.number_savings_account ?? 'SYSTEM',
+    });
+
+    const nb_created = comercial
+      ? (await this.savingsAccountService.accountCreatedByCommercial(comercial.code)).length
+      : 0;
+
+    const eligible =
+      comercial &&
+      comercial.savings_account &&
+      !unicity.commercialConflict &&
+      ((comercial.is_intern && nb_created > 10) || !comercial.is_intern);
+
+    if (!eligible) return { comercial };
+
+    const tx_type_partner = await this.transactionTypeService.findOneByCode(
+      TransactionCode.COMMERCIAL_COMMISSION,
+    );
+    const provider_open_product = await this.providerService.findOne('SYSTEM');
+
+    const fifth_tx = new TransactionSavingsAccount();
+    Object.assign(fifth_tx, {
+      ...tx_data,
+      amount: Math.floor(
+        (target.type_savings_account.minimum_balance *
+          target.type_savings_account.commission_per_product) / 100,
+      ),
+      transactionType: tx_type_partner,
+      provider: provider_open_product,
+      targetSavingsAccount: comercial?.savings_account,
+      target: comercial?.savings_account.number_savings_account,
+      originSavingsAccount: admin_sa,
+      origin: tx_parent.targetSavingsAccount?.number_savings_account ?? 'SYSTEM',
+      commercial_code: target.commercial_code,
+      payment_code: await this.generateUniquePaymentCode(),
+      payment_token_provider: await this.generateUniquePaymentTokenProvider(),
+      reference: await this.formatTransactionReference(tx_type_partner, provider_open_product.code),
+      is_locked: true,
+      personnel: comercial,
+      status: TransactionSavingsAccountStatus.VALIDATE,
+      status_provider: PaymentStatusProvider.SUCCESSFULL,
+    });
+
+    if (chanel_open_product) fifth_tx.channelTransaction = chanel_open_product;
+
+    await entity_manager.save(fifth_tx);
+    return { comercial };
+  }
+
+  /**
+  * Crée la commission partenaire (promo_code) si éligible.
+  * Retourne { partner } pour conserver ta variable.
+  */
+  private async maybe_create_tx_partner_commission(
+    entity_manager,
+    tx_data: TransactionSavingsAccount | any,
+    tx_parent: TransactionSavingsAccount,
+    target: SavingsAccount,
+    admin_sa: SavingsAccount | null,
+    chanel_open_product: any,
+  ): Promise<{ partner: Personnel | null }> {
+    let partner: Personnel | null = null;
+
+    if (!target.promo_code) return { partner };
+
+    partner = await this.personnelService.findOneByCode(target.promo_code, false);
+    const unicity = await this.checkUniquenessPairs({
+      promo_code: partner?.code,
+      origin: tx_parent.targetSavingsAccount?.number_savings_account ?? 'SYSTEM',
+    });
+
+    const eligible = partner && partner.savings_account && !unicity.promoConflict;
+    if (!eligible) return { partner };
+
+    const tx_type_partner = await this.transactionTypeService.findOneByCode(
+      TransactionCode.PARTNER_COMMISSION,
+    );
+    const provider_open_product = await this.providerService.findOne('SYSTEM');
+
+    const fourth_tx = new TransactionSavingsAccount();
+    Object.assign(fourth_tx, {
+      ...tx_data,
+      amount: Math.ceil(
+        (target.type_savings_account.minimum_balance * target.type_savings_account.promo_code_fee) /
+          100,
+      ),
+      transactionType: tx_type_partner,
+      provider: provider_open_product,
+      targetSavingsAccount: partner?.savings_account,
+      target: partner?.savings_account.number_savings_account,
+      originSavingsAccount: admin_sa,
+      origin: tx_parent.targetSavingsAccount?.number_savings_account ?? 'SYSTEM',
+      promo_code: target.promo_code,
+      payment_code: await this.generateUniquePaymentCode(),
+      payment_token_provider: await this.generateUniquePaymentTokenProvider(),
+      reference: await this.formatTransactionReference(tx_type_partner, provider_open_product.code),
+      status: TransactionSavingsAccountStatus.VALIDATE,
+      personnel: partner,
+      is_locked: true,
+      status_provider: PaymentStatusProvider.SUCCESSFULL,
+    });
+
+    if (chanel_open_product) fourth_tx.channelTransaction = chanel_open_product;
+
+    await entity_manager.save(fourth_tx);
+    return { partner };
+  }
+
+  /**
+  * Crée les commissions pour le personnel (boucle).
+  * Retourne la liste des personnels impactés (pour MAJ soldes).
+  */
+  private async create_tx_personnel_commissions(
+    entity_manager,
+    tx_data: TransactionSavingsAccount | any,
+    tx_parent: TransactionSavingsAccount,
+    target: SavingsAccount,
+    admin_sa: SavingsAccount | null,
+    chanel_open_product: any,
+  ): Promise<Personnel[]> {
+    const personnels = await this.personnelService.findAllExceptCommercialAndPartner();
+    const tx_type_partner = await this.transactionTypeService.findOneByCode(
+      TransactionCode.COMMISSION_PERSONNEL,
+    );
+    const provider = await this.providerService.findOne('SYSTEM');
+
+    for (const personnel of personnels) {
+      if (!personnel.savings_account || !target) continue;
+
+      let amount = Math.round(
+        (target.type_savings_account.minimum_balance *
+          target.type_savings_account[
+            `commission_${personnel.type_personnel.code.toLocaleLowerCase()}`
+          ]) /
+          100,
+      );
+
+      if (personnel.type_personnel.code === PersonnelTypeCode.MEMBRE) {
+        amount = Math.round(amount / (await this.personnelService.findAllMembersLength(personnels)));
+      }
+
+      const personnel_tx = new TransactionSavingsAccount();
+      Object.assign(personnel_tx, {
+        ...tx_data,
+        amount,
+        transactionType: tx_type_partner,
+        provider,
+        targetSavingsAccount: personnel.savings_account,
+        target: personnel.savings_account.number_savings_account,
+        originSavingsAccount: personnel.savings_account,
+        origin: admin_sa?.number_savings_account,
+        commercial_code: null,
+        payment_code: await this.generateUniquePaymentCode(),
+        payment_token_provider: await this.generateUniquePaymentTokenProvider(),
+        reference: await this.formatTransactionReference(tx_type_partner, provider.code),
+        is_locked: true,
+        tx_parent_id: tx_parent.id,
+        personnel,
+        status: TransactionSavingsAccountStatus.VALIDATE,
+        status_provider: PaymentStatusProvider.SUCCESSFULL,
+      });
+
+      if (chanel_open_product) personnel_tx.channelTransaction = chanel_open_product;
+
+      await entity_manager.save(personnel_tx);
+    }
+
+    return personnels;
+  }
+
+  /**
+  * Crée les deux transactions de commission CASH (provider + MFINANCE) si conditions remplies.
+  */
+  private async maybe_create_tx_commission_cash_pair(
+    entity_manager,
+    tx: TransactionSavingsAccount,
+    admin_sa: SavingsAccount | null,
+    mendo_co_sa: SavingsAccount | null,
+  ): Promise<void> {
+    if (
+      !tx.commission ||
+      tx.commission <= 0 ||
+      tx.channelTransaction.code != TransactionChannel.MOBILE ||
+      tx.transactionType.code == TransactionCode.INTERNAL_TRANSFER
+    ) {
+      return;
+    }
+
+    // 1) Commission cash (provider) vers admin
+    const commission_cash = await this.transactionTypeService.findOneByCode(
+      tx.provider.code === TransactionProvider.MOMO
+        ? TransactionCode.COMMISSION_CASH_MOMO
+        : TransactionCode.COMMISSION_CASH_OM,
+    );
+    const provider_system = await this.providerService.findOne('SYSTEM');
+
+    const commission_tx = new TransactionSavingsAccount();
+    Object.assign(commission_tx, {
+      ...tx,
+      id: undefined, // s'assure de créer une nouvelle entité
+      amount: tx.commission,
+      transactionType: commission_cash,
+      provider: provider_system,
+      targetSavingsAccount: admin_sa,
+      target: admin_sa?.number_savings_account,
+      originSavingsAccount: null,
+      origin: 'SYSTEM',
+      promo_code: null,
+      payment_code: await this.generateUniquePaymentCode(),
+      payment_token_provider: await this.generateUniquePaymentTokenProvider(),
+      reference: await this.formatTransactionReference(commission_cash, provider_system.code),
+      status: TransactionSavingsAccountStatus.VALIDATE,
+      is_locked: false,
+      tx_parent_id: tx.id,
+      status_provider: PaymentStatusProvider.SUCCESSFULL,
+    });
+
+    const r = await this.repo.save(commission_tx);
+
+    // 2) Commission cash “finance” vers mendoCo (si défini)
+    const commission_cash_finance = await this.transactionTypeService.findOneByCode(
+      tx.provider.code === TransactionProvider.OM
+        ? TransactionCode.COMMISSION_CASH_OM_MFINANCE
+        : TransactionCode.COMMISSION_CASH_MOMO_MFINANCE,
+    );
+
+    const commission_tx_mc = new TransactionSavingsAccount();
+    Object.assign(commission_tx_mc, {
+      ...r,
+      id: undefined,
+      transactionType: commission_cash_finance,
+      targetSavingsAccount: mendo_co_sa ?? null,
+      target: mendo_co_sa?.number_savings_account ?? null,
+      originSavingsAccount: admin_sa,
+      origin: admin_sa?.number_savings_account,
+      payment_code: await this.generateUniquePaymentCode(),
+      amount: 4, // inchangé par rapport à ton code
+      payment_token_provider: await this.generateUniquePaymentTokenProvider(),
+      reference: await this.formatTransactionReference(commission_cash_finance, provider_system.code),
+    });
+
+    await this.repo.save(commission_tx_mc);
+  }
+
+  /**
+  * Met à jour tous les soldes nécessaires à la fin du process.
+  */
+  private async update_balances_after_validate(
+    tx: TransactionSavingsAccount,
+    admin_sa: SavingsAccount | null,
+    comercial: Personnel | null,
+    partner: Personnel | null,
+    personnels: Personnel[],
+  ): Promise<void> {
+    console.log('entity.entity.provider_code', tx.channelTransaction.code);
+
+    if (admin_sa && admin_sa.id) {
+      await this.savingsAccountService.updateBalance(admin_sa.id);
+    }
+    if (comercial && comercial.savings_account) {
+      console.log('update solde commercial');
+      await this.savingsAccountService.updateBalance(comercial.savings_account.id);
+    }
+    if (partner && partner.savings_account) {
+      console.log('update solde partner');
+      await this.savingsAccountService.updateBalance(partner.savings_account.id);
+    }
+    if (tx.targetSavingsAccount) {
+      console.log('update solde target');
+      await this.savingsAccountService.updateBalance(tx.targetSavingsAccount.id);
+    }
+    if (tx.originSavingsAccount) {
+      console.log('update solde origin');
+      await this.savingsAccountService.updateBalance(tx.originSavingsAccount.id);
+    }
+    for (const p of personnels) {
+      await this.savingsAccountService.updateBalance(p.savings_account.id);
+    }
+  }
+
+
+
+  /**
+   * Récupère les retraits dont la commission n'a pas encore été matérialisée
+   * par une sous-transaction de type '...COMMISSION_CASH...'.
+   * - retrait => transaction_type.is_credit = 0
+   * - commission prévue => transaction_type.fee_percentage > 0
+   * - origin non null, target null
+   * - pas de sous-tx (child) avec ttype.code LIKE '%COMMISSION_CASH%'
+   */
+  async find_withdrawals_without_commission(page?: number, limit?: number) {
+    const take = limit && limit > 0 ? limit : 50;
+    const skip = page && page > 0 ? (page - 1) * take : 0;
+
+    const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
+      .createQueryBuilder('tx')
+      .innerJoin('tx.transactionType', 'tt')
+      .where('tt.is_credit = :is_credit', { is_credit: 0 })
+      .andWhere('tx.commission > 0')
+      .andWhere('tx.origin_savings_account_id IS NOT NULL')
+      .andWhere('tx.target_savings_account_id IS NULL')
+      // NOT EXISTS sous-transactions "commission cash"
+      .andWhere(`
+        NOT EXISTS (
+          SELECT 1
+          FROM transaction_savings_account txc
+          INNER JOIN transaction_type ttc 
+            ON ttc.id = txc.transaction_type_id
+          WHERE txc.tx_parent_id = tx.id
+            AND tt.code LIKE :commission_code
+        )
+      `, { commission_code: '%COMMISSION_CASH%' })
+      .orderBy('tx.created_at', 'DESC')
+      .skip(skip)
+      .take(take);
+
+    const [rows, total] = await qb.getManyAndCount();
+
+    // réponse simple paginée
+    return {
+      total,
+      page: page ?? 1,
+      limit: take,
+      data: rows,
     };
   }
 }
