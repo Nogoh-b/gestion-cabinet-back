@@ -143,24 +143,73 @@ export class LoanService {
     return loan;
   }
 
-  async setGuarantiesDocumentsToLoan(loan: Loan, guaranty: DocumentLoanDto) {
+  async setGuarantiesDocumentsToLoan(
+    customerId: number,
+    loan: Loan,
+    guaranty: GuarantyDocumentLoanDto,
+  ) {
     // create guaranties list
-    const { documentId, typeGuaranty, ...result } = guaranty;
-    const doc = await this.documentCustomerRepository.findOneBy({
-      id: documentId,
-    });
-    return await this.guarantyEstimationService.addGuarantyEstimation({
-      ...result,
-      typeGuaranty: { id: typeGuaranty },
-      documents: doc,
-      status: CREDIT_STATUS.PENDING,
-      loan,
-    } as GuarantyEstimation);
+    // const { typeGuaranty, file, typeOfDocument, ...result } = guaranty;
+    // const docType = await this.documentTypeService.findOne(typeOfDocument);
+    // const uploadedFile = await FilesUtil.uploadFile(
+    //   file,
+    //   UPLOAD_DOCS_PATH,
+    //   docType.mimetype,
+    //   {
+    //     maxSizeKB: 1024 * 1024 * 2,
+    //     width: 1024,
+    //   },
+    // );
+    //
+    // const currentDoc = this.documentCustomerRepository.create({
+    //   loan,
+    //   document_type: docType,
+    //   customer: { id: customerId },
+    //   file_path: uploadedFile.fileName,
+    //   file_size: uploadedFile.fileSize,
+    //   name: docType.name,
+    //   status: DocumentCustomerStatus.PENDING,
+    // });
+    // const document = await this.documentCustomerRepository.save(currentDoc);
+    // return await this.guarantyEstimationService.addGuarantyEstimation({
+    //   ...result,
+    //   typeGuaranty: { id: typeGuaranty },
+    //   document,
+    //   status: CREDIT_STATUS.PENDING,
+    //   loan,
+    // } as GuarantyEstimation);
+    return;
   }
 
-  async setTypeDocumentsToLoan(loan: Loan) {
+  async setTypeDocumentsToLoan(
+    customerId: number,
+    loan: Loan,
+    body: DocumentLoanDto,
+  ) {
     // create document list
-    return await this.loanRepository.save(loan);
+    // const { file } = body;
+    // const docType = await this.documentTypeService.findOne(body.typeOfDocument);
+    // const uploadedFile = await FilesUtil.uploadFile(
+    //   file,
+    //   UPLOAD_DOCS_PATH,
+    //   docType.mimetype,
+    //   {
+    //     maxSizeKB: 1024 * 1024 * 2,
+    //     width: 1024,
+    //   },
+    // );
+    //
+    // const currentDoc = this.documentCustomerRepository.create({
+    //   loan,
+    //   document_type: docType,
+    //   customer: { id: customerId },
+    //   file_path: uploadedFile.fileName,
+    //   file_size: uploadedFile.fileSize,
+    //   name: docType.name,
+    //   status: DocumentCustomerStatus.PENDING,
+    // });
+    // return await this.documentCustomerRepository.save(currentDoc);
+    return;
   }
 
   async createLoan(data: Loan, typeCredit: TypeCredit) {
