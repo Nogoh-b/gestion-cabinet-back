@@ -12,6 +12,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 
 
 
+
 import { AppModule } from './app.module';
 import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
@@ -19,6 +20,7 @@ import { SuperAdminSeeder } from './core/database/seeders/super-admin.seeder';
 import { TypePersonnelSeeder } from './modules/personnel/type_personnel/seed-type-personnel';
 import { ProviderSeeder } from './modules/provider/provider/provider.seeder';
 import { TransactionTypeSeeder } from './modules/transaction/transaction_type/transaction-type.seeder';
+
 
 
 
@@ -68,7 +70,7 @@ async function bootstrap() {
     await providerSeeder.seed();
     await typePersonnelSeeder.seed();
     // Configuration Swagger
-    if(process.env.ENV){
+    if(process.env.NODE_ENV){
       const document = SwaggerModule.createDocument(app, swaggerConfig);
       SwaggerModule.setup('api-docs', app, document, {
         swaggerOptions: {

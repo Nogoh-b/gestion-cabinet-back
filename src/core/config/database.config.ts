@@ -10,6 +10,7 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 
 
+
  
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
@@ -19,7 +20,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     username: process.env.DB_USER ?? 'mendo', 
     password: process.env.DB_PASSWORD ?? 'mendo',
     database: process.env.DB_NAME ??  'core_banking',  
-    synchronize: true,
+    synchronize: false,
     subscribers: [join(__dirname, '../../**/*.subscriber{.ts,.js}')],
     entities: [join(__dirname, '../../**/*.entity{.ts,.js}')],
     logging: ["error",],

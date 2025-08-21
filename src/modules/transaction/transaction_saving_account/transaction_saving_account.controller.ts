@@ -16,9 +16,11 @@ import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 
 
+
 import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
 import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UniqueCheckQueryDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
+
 
 
 
@@ -161,6 +163,7 @@ export class TransactionSavingAccountController {
    * GET /transaction-savings-account/withdrawals/without-commission
    * Exemple: /transaction-savings-account/withdrawals/without-commission?page=1&limit=50
    */
+
   @Get('withdrawals/without-commission')
   async get_withdrawals_without_commission(
     @Query('page') page?: string,
@@ -169,6 +172,12 @@ export class TransactionSavingAccountController {
     const page_num = page ? parseInt(page, 10) : undefined;
     const limit_num = limit ? parseInt(limit, 10) : undefined;
     return this.transactionSavingAccountService.find_withdrawals_without_commission(page_num, limit_num);
+  } 
+
+  @Get('withdrawals/process-commission')
+  async process_withdrawals_without_commission() 
+  {
+    return this.transactionSavingAccountService.validate_withdrawals_without_commission();
   }
 
   @Get('om')

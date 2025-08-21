@@ -78,6 +78,33 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -95,6 +122,33 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -894,7 +948,7 @@ export class TransactionSavingsAccountService {
           {
             provider: 'OM',
             isCredit: entity.origin ? 0 : 1,
-            amount: entity.amount + (entity.commission ?? 0),
+            amount: entity.origin ? entity.amount  : entity.amount + (entity.commission ?? 0) ,
           },
         );
         console.log('sold provider updated', updated_sold);
@@ -1721,6 +1775,8 @@ export class TransactionSavingsAccountService {
   private async get_admin_sa_for_tx(
     tx: TransactionSavingsAccount
   ): Promise<SavingsAccount | null> {
+
+    console.log(tx.id , ' ',tx.originSavingsAccount?.branch_id , ' ',tx.targetSavingsAccount?.branch_id)
     return this.savingsAccountService.findOneAdmin(
       tx.targetSavingsAccount ? tx.targetSavingsAccount?.branch_id : tx.originSavingsAccount?.branch_id,
     );
@@ -2039,9 +2095,10 @@ export class TransactionSavingsAccountService {
       provider: provider_system,
       targetSavingsAccount: admin_sa,
       target: admin_sa?.number_savings_account,
-      originSavingsAccount: null,
-      origin: 'SYSTEM',
-      promo_code: null,
+      // originSavingsAccount: null,
+      commission : 0,
+      // origin: 'SYSTEM',
+      // promo_code: null,
       payment_code: await this.generateUniquePaymentCode(),
       payment_token_provider: await this.generateUniquePaymentTokenProvider(),
       reference: await this.formatTransactionReference(commission_cash, provider_system.code),
@@ -2087,12 +2144,14 @@ export class TransactionSavingsAccountService {
     comercial: Personnel | null,
     partner: Personnel | null,
     personnels: Personnel[],
+    mendo_co_sa?: SavingsAccount | null,
   ): Promise<void> {
     console.log('entity.entity.provider_code', tx.channelTransaction.code);
 
     if (admin_sa && admin_sa.id) {
       await this.savingsAccountService.updateBalance(admin_sa.id);
     }
+
     if (comercial && comercial.savings_account) {
       console.log('update solde commercial');
       await this.savingsAccountService.updateBalance(comercial.savings_account.id);
@@ -2112,6 +2171,9 @@ export class TransactionSavingsAccountService {
     for (const p of personnels) {
       await this.savingsAccountService.updateBalance(p.savings_account.id);
     }
+    if (mendo_co_sa && mendo_co_sa.id) {
+      await this.savingsAccountService.updateBalance(mendo_co_sa.id);
+    }
   }
 
 
@@ -2124,40 +2186,90 @@ export class TransactionSavingsAccountService {
    * - origin non null, target null
    * - pas de sous-tx (child) avec ttype.code LIKE '%COMMISSION_CASH%'
    */
+
   async find_withdrawals_without_commission(page?: number, limit?: number) {
     const take = limit && limit > 0 ? limit : 50;
     const skip = page && page > 0 ? (page - 1) * take : 0;
 
     const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
       .createQueryBuilder('tx')
-      .innerJoin('tx.transactionType', 'tt')
-      .where('tt.is_credit = :is_credit', { is_credit: 0 })
+      .leftJoinAndSelect('tx.transactionType', 'tt')
+      .leftJoinAndSelect('tx.channelTransaction', 'ct')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'osa')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'tsa')
+
+      // retrait
+      // commission prévue sur la tx parente
       .andWhere('tx.commission > 0')
+      // origin non null, target null
       .andWhere('tx.origin_savings_account_id IS NOT NULL')
       .andWhere('tx.target_savings_account_id IS NULL')
-      // NOT EXISTS sous-transactions "commission cash"
-      .andWhere(`
-        NOT EXISTS (
-          SELECT 1
-          FROM transaction_savings_account txc
-          INNER JOIN transaction_type ttc 
-            ON ttc.id = txc.transaction_type_id
-          WHERE txc.tx_parent_id = tx.id
-            AND tt.code LIKE :commission_code
-        )
-      `, { commission_code: '%COMMISSION_CASH%' })
+      // Aucune sous-transaction "commission cash"
+      .andWhere(qb2 => {
+        const sub = qb2.subQuery()
+          .select('1')
+          .from(TransactionSavingsAccount, 'txc')
+          .leftJoinAndSelect('txc.transactionType', 'ttc')
+          .where('txc.tx_parent_id = tx.id')
+          .andWhere('ttc.code LIKE :commission_code')
+          .getQuery();
+        return `NOT EXISTS ${sub}`;
+      }, { commission_code: '%COMMISSION_CASH%' })
       .orderBy('tx.created_at', 'DESC')
       .skip(skip)
       .take(take);
 
     const [rows, total] = await qb.getManyAndCount();
+    return { total, page: page ?? 1, limit: take, data: rows };
+  }   
+  async validate_withdrawals_without_commission() {
 
-    // réponse simple paginée
-    return {
-      total,
-      page: page ?? 1,
-      limit: take,
-      data: rows,
-    };
+    const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.transactionType', 'tt')
+      .leftJoinAndSelect('tx.channelTransaction', 'ct')
+      .leftJoinAndSelect('tx.provider', 'p')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'osa')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'tsa')
+      // retrait
+      // commission prévue sur la tx parente
+      .andWhere('tx.commission > 0')
+      // origin non null, target null
+      .andWhere('tx.origin_savings_account_id IS NOT NULL')
+      .andWhere('tx.target_savings_account_id IS NULL')
+      // Aucune sous-transaction "commission cash"
+      .andWhere(qb2 => {
+        const sub = qb2.subQuery()
+          .select('1')
+          .from(TransactionSavingsAccount, 'txc')
+          .leftJoinAndSelect('txc.transactionType', 'ttc')
+          .where('txc.tx_parent_id = tx.id')
+          .andWhere('ttc.code LIKE :commission_code')
+          .getQuery();
+        return `NOT EXISTS ${sub}`;
+      }, { commission_code: '%COMMISSION_CASH%' })
+      .orderBy('tx.created_at', 'DESC')
+      const [rows, total] = await qb.getManyAndCount();
+      const mendo_co_sa = await this.get_mendo_co_sa_from_env();
+
+      await this.repo.manager.transaction(async (entity_manager) => {
+        for (const tx of rows) {
+          console.log('tx.id ',tx.id)
+          const { id, commission, ...tx_data } = tx;
+          const chanel_open_product = await this.get_api_channel();
+          const admin_sa = await this.get_admin_sa_for_tx(tx);
+          await this.maybe_create_tx_commission_cash_pair(
+            entity_manager,
+            tx,
+            admin_sa,
+            mendo_co_sa,
+          );  
+          await this.update_balances_after_validate(tx, admin_sa, null, null, [], mendo_co_sa);
+        }
+      })
+
+
+    return rows;
   }
+
 }
