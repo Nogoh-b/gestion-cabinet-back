@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 

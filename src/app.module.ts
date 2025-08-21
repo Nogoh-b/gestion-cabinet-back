@@ -8,11 +8,12 @@ import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ServeStaticModule } from '@nestjs/serve-static';
 
-
-
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from './core/common/constants/constants';
+import {
+  UPLOAD_FOLDER_NAME,
+  UPLOAD_PATH,
+} from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
@@ -25,10 +26,7 @@ import { QueueModule } from './modules/queue/queue.module';
 import { RessourceModule } from './modules/ressource/ressource.module';
 import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
 import { TransactionModule } from './modules/transaction/transaction.module';
-
-
-
-
+import { CreditModule } from './modules/credit/credit.module';
 
 dotenv.config();
 
@@ -50,7 +48,7 @@ dotenv.config();
     MailerModule.forRoot({
       transport: {
         host: 'vshp3.clo.xelgrp.com',
-        port: 465 ,
+        port: 465,
         secure: true, // true pour le port 465
         auth: {
           user: 'mendo-temp@xelgrp.com',
@@ -69,19 +67,19 @@ dotenv.config();
           host: 'localhost',
           port: 3003, // port du microservice cible
         },
-      },  
+      },
     ]),
 
     BullModule.forRoot({
-          redis: {
-            host: process.env.BULL_REDIS_HOST,
-            port: parseInt(process.env.BULL_REDIS_PORT || '6379', 10),
-            db: parseInt(process.env.BULL_REDIS_DB || '0' , 10),
-          },
-          prefix: process.env.BULL_QUEUE_PREFIX || 'core-server-dev',
-        }),
+      redis: {
+        host: process.env.BULL_REDIS_HOST,
+        port: parseInt(process.env.BULL_REDIS_PORT || '6379', 10),
+        db: parseInt(process.env.BULL_REDIS_DB || '0', 10),
+      },
+      prefix: process.env.BULL_QUEUE_PREFIX || 'core-server-dev',
+    }),
     BullModule.registerQueue({
-        name: 'maintenance',
+      name: 'maintenance',
     }),
     BullBoardModule.forRoot({
       route: '/admin/queues',
@@ -95,11 +93,12 @@ dotenv.config();
     // PartnerModule,
     // CommercialModule,
     RessourceModule,
-    PersonnelModule
+    PersonnelModule,
+    CreditModule,
   ],
   controllers: [AppController],
   providers: [AppService],
-  exports:[MailerModule]
+  exports: [MailerModule],
 })
 export class AppModule {
   /*configure(consumer: MiddlewareConsumer) {

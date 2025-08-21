@@ -15,6 +15,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -38,6 +39,7 @@ export class CreateTransactionSavingsAccountDto {
   branch_id: number;
 
   token?: string;
+  tx_parent_id?: number;
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
   @IsString()

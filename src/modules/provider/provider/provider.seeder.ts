@@ -2,7 +2,9 @@ import { Repository } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+
 import { Provider } from './entities/provider.entity';
+
 
 
 
@@ -22,9 +24,17 @@ export class ProviderSeeder {
         name: 'Dépôt MOMO',
         status: 1,
       },
+
+
       {
         code: 'OM',
         name: 'Dépôt OM',
+        status: 1,
+      },
+      
+      {
+        code: 'HYBRID_SAVING',
+        name: 'HYBRID SAVING ACCOUNT',
         status: 1,
       }
     ];

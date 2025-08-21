@@ -1,8 +1,14 @@
 // document-customer-response.dto.ts
 import { Expose, Transform, Type } from 'class-transformer';
 import { UPLOAD_DOCS_FOLDER_NAME, UPLOAD_FOLDER_NAME } from 'src/core/common/constants/constants';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { ApiProperty } from '@nestjs/swagger';
+
+import { DocumentType } from '../../document-type/entities/document-type.entity';
+
+
+
 
 
 export class DocumentCustomerResponseDto {
@@ -20,12 +26,7 @@ export class DocumentCustomerResponseDto {
   })
   name: string;
 
-  @Expose()
-  @ApiProperty({
-    example: 2,
-    description: 'ID du type de document référencé'
-  })
-  document_type_id: number;
+
 
   @Expose()
   @ApiProperty({ 
@@ -36,7 +37,7 @@ export class DocumentCustomerResponseDto {
   status: number;
 
   @Expose()
-  @Transform(({ obj }) => `http://${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${obj.file_path}`)
+  @Transform(({ obj }) => `${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${obj.file_path}`)
   @ApiProperty({
     example: 'http://localhost:3000/uploads/abc123-passeport.pdf',
     description: 'URL complète de téléchargement'
@@ -91,11 +92,35 @@ export class DocumentCustomerResponseDto {
   updated_at: Date;
 
   @Expose()
-  @ApiProperty({
-    example: 456,
-    description: 'ID du client associé'
-  })
+  @Transform(({ obj }) => obj.document_type?.id) // Récupère seulement l'ID si besoin
+  @ApiProperty({ example: 2, description: 'ID du type de document' })
+  document_type_id: number;
+
+  // Option 1: Exposer l'entité DocumentType complète (si nécessaire)
+  @Expose()
+  @Type(() => DocumentType)
+  @ApiProperty({ type: DocumentType, description: 'Détails du type de document' })
+  document_type: DocumentType;
+
+  @Expose()
+  @Transform(({ obj }) => obj.customer?.id) // Récupère seulement l'ID si besoin
+  @ApiProperty({ example: 456, description: 'ID du client associé' })
   customer_id: number;
 
-  savings_account : SavingsAccount;
+  // Option 2: Exposer l'entité Customer complète (si nécessaire)
+  @Expose()
+  @Type(() => Customer)
+  @ApiProperty({ type: Customer, description: 'Détails du client' })
+  customer: Customer;
+  @Expose()
+
+  @Transform(({ obj }) => obj.savings_account?.id) // Récupère seulement l'ID si besoin
+  @ApiProperty({ example: 456, description: 'ID du client associé' })
+  savings_account_id: number;
+
+  @Expose()
+  @Type(() => SavingsAccount)
+  @ApiProperty({ type: SavingsAccount, description: 'Détails du client' })
+  savings_account: SavingsAccount;
+
 }

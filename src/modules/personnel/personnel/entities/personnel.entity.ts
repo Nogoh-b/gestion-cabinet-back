@@ -1,14 +1,18 @@
-import { BaseEntity } from 'src/core/entities/base.entity';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, BeforeInsert } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
+  BeforeInsert,
+} from 'typeorm';
 
 import { ApiProperty } from '@nestjs/swagger';
 
-
-
 import { TypePersonnel } from '../../type_personnel/entities/type_personnel.entity';
-
 
 @Entity('personnel')
 export class Personnel extends BaseEntity {
@@ -16,7 +20,7 @@ export class Personnel extends BaseEntity {
   @ApiProperty()
   id: number;
 
-  @ManyToOne(() => TypePersonnel, type => type.personnels, { eager: true })
+  @ManyToOne(() => TypePersonnel, (type) => type.personnels, { eager: true })
   @JoinColumn({ name: 'type_personnel_id' })
   @ApiProperty({ type: () => TypePersonnel })
   type_personnel: TypePersonnel;
@@ -31,22 +35,20 @@ export class Personnel extends BaseEntity {
   @ApiProperty({ type: () => SavingsAccount })
   savings_account: SavingsAccount;
 
-  
-  @Column({ length: 20,  nullable: true })
-  name: string ;
-  
+  @Column({ length: 20, nullable: true })
+  name: string;
+
   @Column({ type: 'boolean', nullable: true, default: false })
   is_intern: boolean | null;
-  
+
   @Column({ length: 20, unique: true, nullable: true })
-  code: string; 
+  code: string;
 
   @Column({ nullable: false })
   status: number;
 
-
   @BeforeInsert()
   setDefaultHireDate() {
-    this.status  = 1
+    this.status = 1;
   }
 }

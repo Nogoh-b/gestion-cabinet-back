@@ -6,7 +6,7 @@ import chokidar from 'chokidar';
 
 // Chemin vers vos entités et votre data-source
 const ENTITIES_GLOB = 'src/**/*.entity.{ts,js}';
-const DATA_SOURCE   = 'src/data-source.ts';
+const DATA_SOURCE   = 'src/dataSource.ts';
 
 const watcher = chokidar.watch(ENTITIES_GLOB, {
   ignoreInitial: true,
