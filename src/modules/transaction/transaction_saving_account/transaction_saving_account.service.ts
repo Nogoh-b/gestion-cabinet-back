@@ -105,6 +105,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -122,6 +123,7 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -946,7 +948,7 @@ export class TransactionSavingsAccountService {
           'POST',
           `epargne/bank/operator/update-sold`,
           {
-            provider: 'OM',
+            provider: entity.provider_code,
             isCredit: entity.origin ? 0 : 1,
             amount: entity.origin ? entity.amount  : entity.amount + (entity.commission ?? 0) ,
           },
@@ -1760,9 +1762,9 @@ export class TransactionSavingsAccountService {
         'POST',
         `epargne/bank/operator/update-sold`,
         {
-          provider: 'OM', // tu avais déjà 'OM' en dur ici
+          provider: entity.provider_code, 
           isCredit: entity.originSavingsAccount ? 0 : 1,
-          amount: Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)),
+          amount: entity.origin ? Number(entity.amount)  : Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)) ,
         },
       );
       // console.log('sold provider updated', entity.amount + (entity.commission ?? 0));
