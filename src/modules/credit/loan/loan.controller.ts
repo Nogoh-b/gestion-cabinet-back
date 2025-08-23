@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   HttpStatus,
+  NotAcceptableException,
   Param,
   ParseFilePipeBuilder,
   ParseIntPipe,
@@ -21,7 +22,7 @@ import {
   GuarantyDocumentLoanDto,
   LoanDto,
 } from './dto/loan.dto';
-import { CREDIT_STATE } from '../../../utils/types';
+import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
 import { LoanService } from './loan.service';
 import { Loan } from './entities/loan.entity';
 import { User } from '../../iam/user/entities/user.entity';
@@ -29,7 +30,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../core/common/guards/permissions.guard';
-import { TransactionSavingsAccount } from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TypeCreditService } from '../type_credit/typeCredit.service';
 import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { CustomersService } from '../../customer/customer/customer.service';
@@ -155,7 +155,7 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    const isDelete = await this.loanService.deleteCreditByCustomerId(
+    const isDelete = await this.loanService.deleteLoanByCustomerId(
       result as Loan,
     );
     if ((isDelete as any).hasOwnProperty('success'))
@@ -163,6 +163,65 @@ export class LoanController {
         ...(isDelete as any),
       });
     return isDelete;
+  }
+
+  @Put('doc/valid/:documentId/:customerId')
+  async validDocLoan(
+    @Param('documentId') documentId: number,
+    @Param('customerId') id: number,
+  ) {
+    // Implementation for valid a doc to loan
+    const result = await this.loanService.getLoanInProcessing(id);
+    if (result.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...result,
+      });
+    const loan = result as Loan;
+    const document = loan.documents.find((doc) => doc.id === documentId);
+    if (!document)
+      throw new ForbiddenException({
+        success: false,
+        status: HttpStatus.FORBIDDEN,
+        message: 'Document not found.',
+      });
+    return await this.loanService.validDocByCustomerId(document);
+  }
+
+  @Put('doc/reject/:documentId/:customerId')
+  async rejectDocLoan(
+    @Param('documentId') documentId: number,
+    @Param('loanId') id: number,
+  ) {
+    // Implementation for deleting a loan
+    const result = await this.loanService.getLoanInProcessing(id);
+    if (result.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...result,
+      });
+    const loan = result as Loan;
+    const document = loan.documents.find((doc) => doc.id === documentId);
+    if (!document)
+      throw new ForbiddenException({
+        success: false,
+        status: HttpStatus.FORBIDDEN,
+        message: 'Document not found.',
+      });
+    return await this.loanService.rejectDocByCustomerId(document);
+  }
+
+  @Put('submit/:customerId')
+  async submitDocLoan(
+    @Param('customerId') id: number,
+    @Req() { user }: { user: User },
+  ) {
+    // Implementation for deleting a loan
+    const result = await this.loanService.getLoanInProcessing(id);
+    if (result.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...result,
+      });
+    const loan = result as Loan;
+    return await this.loanService.submitLoan(loan, user);
   }
 
   @Post('guaranty/:customerId/:loanId')
@@ -174,7 +233,6 @@ export class LoanController {
   })
   async setGuarantyLoanDocumentById(
     @Param('customerId') customerId: number,
-    @Param('loanId') id: number,
     @Body() body: GuarantyDocumentLoanDto,
     @UploadedFile(
       new ParseFilePipeBuilder()
@@ -193,41 +251,47 @@ export class LoanController {
     console.log('Document of guaranty', body);
     body.file = file;
     const loan = result as Loan;
-    const typeCredit =
-      await this.typeCreditService.findOneTypeCredits(loan.typeCredit.id);
-    if (typeCredit.hasOwnProperty('success'))
+    console.log(loan.typeCredit);
+    // check if loan is in processing
+    const is_not_in_processing = loan.status !== CREDIT_STATUS.PENDING;
+    if (is_not_in_processing)
       throw new ForbiddenException({
-        ...typeCredit,
+        success: false,
+        status: HttpStatus.FORBIDDEN,
+        message:
+          'Loan has approved or rejected, you cannot send document now. Please contact the administrator.',
       });
-    const typedoc = (typeCredit as TypeCredit).typeGuaranties.find(
-      (t) => t.typeOfDocument.id === id,
+    const { typeCredit } = loan;
+    if (!typeCredit)
+      throw new NotAcceptableException({
+        success: false,
+        message: "This loan don't associated any type of credit!",
+        status: HttpStatus.NOT_ACCEPTABLE,
+      });
+    if (!typeCredit.typeGuaranties.length)
+      throw new ForbiddenException({
+        success: false,
+        message: "This type of credit don't accept any type of guaranty!",
+        status: HttpStatus.FORBIDDEN,
+      });
+    const typeGuaranty = typeCredit.typeGuaranties.find(
+      (t) => t.id === Number(body.typeGuaranty),
     );
-    if (!typedoc)
+    if (!typeGuaranty)
       throw new ForbiddenException({
         success: false,
-        message: 'Document type is not match of this guaranty',
+        message: 'Guaranty type is not match of this loan!',
         status: HttpStatus.FORBIDDEN,
-      });
-    if (!loan.typeCredit)
-      throw new ForbiddenException({
-        message: 'We cannot access to typeCredit of this loan',
-        status: HttpStatus.FORBIDDEN,
-        success: false,
-      });
-    else if (loan.typeCredit && !loan.typeCredit.typeGuaranties.length)
-      throw new ForbiddenException({
-        message: 'This loan not required a guaranty!',
-        status: HttpStatus.FORBIDDEN,
-        success: false,
       });
     return await this.loanService.setGuarantiesDocumentsToLoan(
       customerId,
-      loan,
+      loan.id,
+      typeGuaranty.typeOfDocument.id,
       body,
     );
   }
 
-  @Post('doc/:customerId/:loanId')
+  @Post('doc/:customerId')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -236,7 +300,6 @@ export class LoanController {
   })
   async setDocumentLoanById(
     @Param('customerId') customerId: number,
-    @Param('loanId') id: number,
     @Body() body: DocumentLoanDto,
     @UploadedFile(
       new ParseFilePipeBuilder()
@@ -256,14 +319,29 @@ export class LoanController {
     console.log('Document of guaranty', body);
     body.file = file;
     const loan = result as Loan;
-    const typeCredit =
-      await this.typeCreditService.findOneTypeCredits(loan.typeCredit.id);
-    if (typeCredit.hasOwnProperty('success'))
+    const is_not_in_processing = loan.status !== CREDIT_STATUS.PENDING;
+    if (is_not_in_processing)
       throw new ForbiddenException({
-        ...typeCredit,
+        success: false,
+        status: HttpStatus.FORBIDDEN,
+        message:
+          'Loan has approved or rejected, you cannot send document now. Please contact the administrator.',
       });
-    const typedoc = (typeCredit as TypeCredit).typeOfDocuments.find(
-      (t) => t.id === id,
+    const { typeCredit } = loan;
+    if (!typeCredit)
+      throw new NotAcceptableException({
+        success: false,
+        message: "This loan don't associated any type of credit!",
+        status: HttpStatus.NOT_ACCEPTABLE,
+      });
+    if (!typeCredit.typeOfDocuments.length)
+      throw new ForbiddenException({
+        message: 'This loan not required a document!',
+        status: HttpStatus.FORBIDDEN,
+        success: false,
+      });
+    const typedoc = typeCredit.typeOfDocuments.find(
+      (t) => t.id === Number(body.typeOfDocument),
     );
     if (!typedoc)
       throw new ForbiddenException({
@@ -271,21 +349,9 @@ export class LoanController {
         message: 'Document type is not match of this loan',
         status: HttpStatus.FORBIDDEN,
       });
-    if (!loan.typeCredit)
-      throw new ForbiddenException({
-        message: 'We cannot access to typeCredit of this loan',
-        status: HttpStatus.FORBIDDEN,
-        success: false,
-      });
-    else if (loan.typeCredit && !loan.typeCredit.typeOfDocuments.length)
-      throw new ForbiddenException({
-        message: 'This loan not required a document!',
-        status: HttpStatus.FORBIDDEN,
-        success: false,
-      });
     return await this.loanService.setTypeDocumentsToLoan(
       customerId,
-      loan,
+      loan.id,
       body,
     );
   }
@@ -312,7 +378,7 @@ export class LoanController {
         message: 'You have a Loan in processing',
         status: HttpStatus.FORBIDDEN,
       });
-
+    console.log('Document of guaranty', body);
     const typeCredit =
       await this.typeCreditService.findOneTypeCredits(typeCreditId);
     if (typeCredit.hasOwnProperty('success'))
@@ -355,7 +421,7 @@ export class LoanController {
         ...body,
         reference: body.reference,
         customer: { id: customerId },
-        manageBy: { id: user.userId },
+        manageBy: { id: user.userId as number },
       } as Loan,
       typeCredit as TypeCredit,
     );

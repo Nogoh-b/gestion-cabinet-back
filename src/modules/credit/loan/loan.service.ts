@@ -125,7 +125,7 @@ export class LoanService {
     return true;
   }
 
-  async deleteCreditByCustomerId(loan: Loan) {
+  async deleteLoanByCustomerId(loan: Loan) {
     if (loan.approvedBy)
       return {
         success: false,
@@ -139,11 +139,18 @@ export class LoanService {
   async getLoanInProcessing(id: number) {
     const loan = await this.loanRepository.findOne({
       relations: {
-        typeCredit: { typeGuaranties: true, typeOfDocuments: true },
+        typeCredit: {
+          typeGuaranties: { typeOfDocument: true },
+          typeOfDocuments: true,
+        },
       },
       where: {
         customer: { id },
-        state: In([CREDIT_STATE.IN_PROCESSING, CREDIT_STATE.ACTIVE]),
+        state: In([
+          CREDIT_STATE.IN_PROCESSING,
+          CREDIT_STATE.ACTIVE,
+          CREDIT_STATE.END_PROCESSING,
+        ]),
         status: In([CREDIT_STATUS.APPROVED, CREDIT_STATUS.PENDING]),
       },
     });
@@ -156,13 +163,50 @@ export class LoanService {
     return loan;
   }
 
+  async validDocByCustomerId(doc: DocumentCustomer) {
+    await this.documentCustomerRepository.update(doc.id, { status: 1 });
+    return true;
+  }
+
+  async rejectDocByCustomerId(doc: DocumentCustomer) {
+    await this.documentCustomerRepository.update(doc.id, { status: -1 });
+    return true;
+  }
+
+  async submitLoan(loan: Loan, user: any) {
+    // check if docs has validated
+    const isDocsValid = loan.documents.find((doc) => !doc.status);
+    if (isDocsValid)
+      return {
+        success: false,
+        message: 'Please valid all documents specified',
+        status: HttpStatus.FORBIDDEN,
+      };
+    //check if guaranties has validated
+    const isGuarantyValid = loan.guaranties.find(
+      (guaranty) => !guaranty.status && !guaranty.documents.status,
+    );
+    if (isGuarantyValid)
+      return {
+        success: false,
+        message: 'Please valid all guaranties specified',
+        status: HttpStatus.FORBIDDEN,
+      };
+    await this.loanRepository.update(loan.id, {
+      manageBy: { id: user.userId as number },
+      state: CREDIT_STATE.END_PROCESSING,
+    });
+    return true;
+  }
+
   async setGuarantiesDocumentsToLoan(
     customerId: number,
-    loan: Loan,
+    id: number,
+    typeOfDocument: number,
     guaranty: GuarantyDocumentLoanDto,
   ) {
     // create guaranties list
-    const { typeGuaranty, file, typeOfDocument, ...result } = guaranty;
+    const { typeGuaranty, file, ...result } = guaranty;
     const docType = await this.documentTypeService.findOne(typeOfDocument);
     const uploadedFile = await FilesUtil.uploadFile(
       file,
@@ -175,7 +219,6 @@ export class LoanService {
     );
 
     const currentDoc = this.documentCustomerRepository.create({
-      loan,
       document_type: docType,
       customer: { id: customerId },
       file_path: uploadedFile.fileName,
@@ -185,17 +228,17 @@ export class LoanService {
     });
     const documents = await this.documentCustomerRepository.save(currentDoc);
     return await this.guarantyEstimationService.addGuarantyEstimation({
-      value: result.value,
+      value: Number(result.value),
       typeGuaranty: { id: typeGuaranty } as TypeGuaranty,
       documents,
       status: CREDIT_STATUS.PENDING,
-      loan,
+      loan: { id },
     } as GuarantyEstimation);
   }
 
   async setTypeDocumentsToLoan(
     customerId: number,
-    loan: Loan,
+    id: number,
     body: DocumentLoanDto,
   ) {
     // create document list
@@ -212,7 +255,7 @@ export class LoanService {
     );
 
     const currentDoc = this.documentCustomerRepository.create({
-      loan,
+      loan: { id },
       document_type: docType,
       customer: { id: customerId },
       file_path: uploadedFile.fileName,

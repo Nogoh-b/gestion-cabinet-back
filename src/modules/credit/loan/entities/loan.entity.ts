@@ -53,6 +53,10 @@ export class Loan extends BaseEntity {
   //
   @OneToOne(() => User, { nullable: true })
   @JoinColumn()
+  initiated: User;
+
+  @OneToOne(() => User, { nullable: true })
+  @JoinColumn()
   approvedBy: User;
   //
   @OneToOne(() => User, { nullable: true })
