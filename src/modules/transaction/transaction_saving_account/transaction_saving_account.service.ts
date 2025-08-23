@@ -106,6 +106,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -123,6 +124,7 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -868,9 +870,9 @@ export class TransactionSavingsAccountService {
       : 0;
 
     if (
-      account != null &&
+      (account != null &&
       avalaible_balance < amount &&
-      this.can_refuse_transaction_type_for_debit(txTypeCode)
+      this.can_refuse_transaction_type_for_debit(txTypeCode)) || amount < 0
     ) {
       throw new BadRequestException(
         `Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
