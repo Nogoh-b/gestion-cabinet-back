@@ -60,7 +60,7 @@ export class DocumentLoanDto extends DocumentFileLoanDto {
   typeOfDocument: number;
 }
 
-export class GuarantyDocumentLoanDto extends DocumentLoanDto {
+export class GuarantyDocumentLoanDto extends DocumentFileLoanDto {
   @ApiProperty({
     required: true,
   })
@@ -73,6 +73,7 @@ export class GuarantyDocumentLoanDto extends DocumentLoanDto {
   @IsNumber()
   typeGuaranty: number;
 }
+
 export class SubmitLoanDto {
   @ApiProperty({
     required: true,
