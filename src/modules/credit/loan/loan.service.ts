@@ -39,8 +39,12 @@ export class LoanService {
   }
 
   async findAllLoansByCustomerId(customerId: number) {
-    return await this.loanRepository.findBy({
-      customer: { id: customerId },
+    return await this.loanRepository.find({
+      relations: {
+        customer: true,
+        typeCredit: true,
+      },
+      where: { customer: { id: customerId } },
     });
     //.map((loan) => ({ ...loan, customer: { id: customerId } }));
   }
