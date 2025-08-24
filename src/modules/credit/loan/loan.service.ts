@@ -153,7 +153,7 @@ export class LoanService {
         },
         documents: true,
         transactions: true,
-        guaranties: true,
+        guaranties: { documents: true },
         customer: { branch: true },
         credit_account: true,
         approvedBy: { employee: { branch: true } },
