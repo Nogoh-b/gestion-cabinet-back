@@ -72,6 +72,12 @@ export class Loan extends BaseEntity {
   nextDatePrevalent: Date;
   //
   @Column()
+  remainTotalPaymentNumber: number;
+  //
+  @Column()
+  remainTotalAmount: number;
+  //
+  @Column()
   remainPaymentNumber: number;
   //
   @ManyToOne(() => Customer, (type) => type.loans)

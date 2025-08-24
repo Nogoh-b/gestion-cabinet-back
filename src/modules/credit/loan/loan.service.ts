@@ -299,12 +299,15 @@ export class LoanService {
     const remainPaymentNumber = Math.ceil(
       data.duringMax / data.typeCredit.reimbursement_period,
     );
+    const amountTotal = data.amount + (data.amount * data.typeCredit.interest) / 100;
     console.log('Credit loan', remainPaymentNumber);
     const loan = this.loanRepository.create({
       ...data,
+      remainTotalAmount: amountTotal,
+      remainTotalPaymentNumber: remainPaymentNumber,
       remainPaymentNumber,
       reimbursement_amount: this.simulationReimbursementAmount(
-        data.amount + (data.amount * data.typeCredit.interest) / 100,
+        amountTotal,
         remainPaymentNumber,
       ),
       status: CREDIT_STATUS.PENDING,
