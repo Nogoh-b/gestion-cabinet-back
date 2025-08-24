@@ -5,62 +5,21 @@ import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
 
 import { User } from 'src/modules/iam/user/entities/user.entity';
 
-
-
-
-
 import { UsersService } from 'src/modules/iam/user/user.service';
 
 import { Repository } from 'typeorm';
 
-
 import { Injectable, NotFoundException } from '@nestjs/common';
 
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
 
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee } from './entities/employee.entity';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 @Injectable()
 export class EmployeeService {
-    constructor(
+  constructor(
     @InjectRepository(Branch)
     private branchRepository: Repository<Branch>,
     @InjectRepository(Employee)
@@ -70,54 +29,71 @@ export class EmployeeService {
     private mailerService: EmailService,
     private userService: UsersService,
   ) {}
-  async createEmployee(dto: CreateUserDto, is_strict = true): Promise<EmployeeResponseDto> {
-
+  async createEmployee(
+    dto: CreateUserDto,
+    is_strict = true,
+  ): Promise<EmployeeResponseDto> {
     const branch = await this.branchRepository.findOne({
       where: { id: dto.branch_id, status: 1 },
     });
-    if ((!branch || branch.status !== 1) && dto.branch_id)  {
+    if ((!branch || branch.status !== 1) && dto.branch_id) {
       throw new NotFoundException('Branche non trouvée ou inactive');
     }
-    const user = await this.userService.create(dto,is_strict)
+    const user = await this.userService.create(dto, is_strict);
 
     /*const user = await this.userService.findOne(id);
     if (!user || user.status !== 1) {
       throw new NotFoundException('Utilisateur non trouvé ou inactif');
     }*/
 
-
-
     const employee = await this.employeeRepository.save(
       this.employeeRepository.create({
         hireDate: dto.hire_date || new Date(), // Date actuelle par défaut
         status: 1, // Statut actif par défaut
         user,
-        branch : branch ?? new Branch(), 
+        branch: branch ?? new Branch(),
       }),
     );
     return plainToInstance(EmployeeResponseDto, employee);
   }
 
-  async findAllEmployees(branch_id: number  = 0): Promise<EmployeeResponseDto[]> {
+  async findAllEmployees(
+    branch_id: number = 0,
+  ): Promise<EmployeeResponseDto[]> {
     const employees = await this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('user.customer', 'customer')
-      .leftJoinAndSelect('user.roleAssignments', 'roleAssignment', 'roleAssignment.status = 1')
+      .leftJoinAndSelect(
+        'user.roleAssignments',
+        'roleAssignment',
+        'roleAssignment.status = 1',
+      )
       .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
-      .innerJoinAndSelect('employee.branch', 'branch', branch_id != 0 ? 'branch.id = :branch_id' : '', { branch_id })
+      .innerJoinAndSelect(
+        'employee.branch',
+        'branch',
+        branch_id != 0 ? 'branch.id = :branch_id' : '',
+        { branch_id },
+      )
       .where('user.status = 1')
       .getMany();
     return plainToInstance(EmployeeResponseDto, employees);
   }
 
-
-  async findOneByUsername(username: string , is_strict = true): Promise<EmployeeResponseDto> {
+  async findOneByUsername(
+    username: string,
+    is_strict = true,
+  ): Promise<EmployeeResponseDto> {
     const employee = await this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('user.customer', 'customer')
-      .leftJoinAndSelect('user.roleAssignments', 'roleAssignment', 'roleAssignment.status = 1')
+      .leftJoinAndSelect(
+        'user.roleAssignments',
+        'roleAssignment',
+        'roleAssignment.status = 1',
+      )
       .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
       .leftJoinAndSelect('employee.branch', 'branch')
       .where('user.username = :username', { username })
@@ -125,16 +101,18 @@ export class EmployeeService {
       .getOne();
 
     if (!employee && is_strict) {
-      throw new NotFoundException(`Employee with username ${username} not found`);
+      throw new NotFoundException(
+        `Employee with username ${username} not found`,
+      );
     }
 
     return plainToInstance(EmployeeResponseDto, employee);
   }
 
-
-    // Génère un mot de passe temporaire (alphanum + caractères spéciaux)
+  // Génère un mot de passe temporaire (alphanum + caractères spéciaux)
   private generate_temp_password(length = 12): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*?';
+    const chars =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*?';
     let pwd = '';
     for (let i = 0; i < length; i++) {
       pwd += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -143,25 +121,30 @@ export class EmployeeService {
   }
 
   /**
-  * Réinitialise le mot de passe d'un utilisateur et envoie le nouveau par email.
-  * - On accepte soit un id, soit un email pour identifier l'utilisateur.
-  * - Le mot de passe est hashé en base et le clair est envoyé par email.
-  * - À utiliser comme mot de passe temporaire (l'utilisateur devra le changer après connexion).
-  */
-  async send_new_password(params: { id: number; email?: string }): Promise<any> {
+   * Réinitialise le mot de passe d'un utilisateur et envoie le nouveau par email.
+   * - On accepte soit un id, soit un email pour identifier l'utilisateur.
+   * - Le mot de passe est hashé en base et le clair est envoyé par email.
+   * - À utiliser comme mot de passe temporaire (l'utilisateur devra le changer après connexion).
+   */
+  async send_new_password(params: {
+    id: number;
+    email?: string;
+  }): Promise<any> {
     // 1) Vérifications de base
     if (!params?.id && !params?.email) {
-      throw new NotFoundException('Veuillez fournir un identifiant (id) ou un email utilisateur.');
+      throw new NotFoundException(
+        'Veuillez fournir un identifiant (id) ou un email utilisateur.',
+      );
     }
 
     // 2) Récupération utilisateur
     // Si vous voulez être explicite :
-    const user =  await this.userService.findOne(params.id);
+    const user = await this.userService.findOne(params.id);
     if (!user) {
-      throw new NotFoundException('Utilisateur introuvable'); 
+      throw new NotFoundException('Utilisateur introuvable');
     }
     if (!user.email) {
-      throw new NotFoundException("L'utilisateur n'a pas d'email renseigné"); 
+      throw new NotFoundException("L'utilisateur n'a pas d'email renseigné");
     }
 
     // 3) Génération + hash
@@ -171,13 +154,12 @@ export class EmployeeService {
     // 4) Sauvegarde en base
     await this.userService.update(user.id, { password: hashed_password });
 
-    const html =
-    `<p>Bonjour,</p>
+    const html = `<p>Bonjour,</p>
     <p>Votre mot de passe a été réinitialisé.</p>
     <p><strong>Nouveau mot de passe temporaire :</strong> ${plain_password}</p>
     <p>Par mesure de sécurité, merci de le changer dès votre prochaine connexion.</p>
-    <p>— Support</p>`
-    await this.mailerService.sendPasswordResetEmail(user.email, html)
+    <p>— Support</p>`;
+    await this.mailerService.sendPasswordResetEmail(user.email, html);
     /*await this.mailerService.sendMail({
       to: user.email,
       subject: 'Votre nouveau mot de passe',
@@ -202,13 +184,16 @@ export class EmployeeService {
     return { message: 'Mot de passe réinitialisé et envoyé par email.' };
   }
 
-/*
-  
-  async findOne(id: number): Promise<UserResponseDto> {
-    return await this.userService.findOne
+  async findOne(id: number) {
+    return await this.employeeRepository.findOne({
+      relations: { user: true, branch: true },
+      where: {
+        user: { id },
+      },
+    });
   }
-  
-  async findByUsername(username: string): Promise<any | null> {
+
+  /* async findByUsername(username: string): Promise<any | null> {
     const user = await this.userRepository.findOne({
       where: { username },
       relations: ['customer', 'roleAssignments.role'],

@@ -15,6 +15,7 @@ import { SavingsAccount } from '../../../savings-account/savings-account/entitie
 import { CreateCreditTransactionSavingsAccountDto } from '../../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { JobsService } from '../../../../core/scheduler/jobs.service';
 import { getCronTime } from '../../../../utils/utils';
+import { EmployeeService } from '../../../agencies/employee/employee.service';
 
 @Injectable()
 @EventSubscriber()
@@ -22,6 +23,7 @@ export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
   constructor(
     private readonly transactionSavingAccountService: TransactionSavingsAccountService,
     private readonly jobsService: JobsService,
+    private readonly employeeService: EmployeeService,
   ) {}
   listenTo() {
     return Loan;
@@ -31,10 +33,16 @@ export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
 
   async afterUpdate(event: UpdateEvent<Loan>) {
     console.log('-> transfers the system to account');
-    const { entity, manager } = event;
+    const { entity } = event;
     const loan = entity as Loan;
-    console.log('-> transfers the system to account', loan);
-    const agency = loan.approvedBy?.employee?.branch;
+    const employee = await this.employeeService.findOne(loan.approvedBy.id);
+    if (!employee)
+      throw new BadRequestException({
+        success: false,
+        message: 'This user is not a employee, please contact administrator',
+        status: HttpStatus.BAD_REQUEST,
+      });
+    const agency = employee.branch;
     if (!agency)
       throw new BadRequestException({
         success: false,

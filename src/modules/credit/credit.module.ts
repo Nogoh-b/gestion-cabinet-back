@@ -33,6 +33,7 @@ import { TransactionModule } from '../transaction/transaction.module';
 import { SavingsAccount } from '../savings-account/savings-account/entities/savings-account.entity';
 import { LoanSubscriber } from './loan/subscribers/loan.subscriber';
 import { JobsService } from '../../core/scheduler/jobs.service';
+import { AgenciesModule } from '../agencies/agencies.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { JobsService } from '../../core/scheduler/jobs.service';
     CustomerModule,
     DocumentsModule,
     TransactionModule,
+    AgenciesModule,
   ],
   controllers: [
     TypeCreditController,

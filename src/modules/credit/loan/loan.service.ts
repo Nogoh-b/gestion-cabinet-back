@@ -94,13 +94,13 @@ export class LoanService {
     return transactions;
   }
 
-  async setApprovedLoanByCustomerId(loan: Loan, user: User) {
+  async setApprovedLoanByCustomerId(loan: Loan, user: any) {
     return await this.updateLoanByCustomerId(
       loan,
       {
         state: CREDIT_STATE.ACTIVE,
         status: CREDIT_STATUS.APPROVED,
-        approvedBy: user,
+        approvedBy: { id: user.userId as number } as User,
       },
       true,
     );
