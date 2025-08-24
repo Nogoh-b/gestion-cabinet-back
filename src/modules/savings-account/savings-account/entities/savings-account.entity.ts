@@ -17,6 +17,7 @@ import {
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -161,6 +162,9 @@ export class SavingsAccount extends BaseEntity {
 
   @OneToMany(() => TransactionSavingsAccount, (tx) => tx.originSavingsAccount)
   originSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
+
+  @OneToMany(() => Loan, (type) => type.credit_account)
+  loans?: Loan[]; // Transactions liées au compte
 
   @OneToMany(() => TransactionSavingsAccount, (tx) => tx.targetSavingsAccount)
   targetSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte

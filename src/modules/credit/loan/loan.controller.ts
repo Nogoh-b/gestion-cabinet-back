@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   ForbiddenException,
   Get,
   HttpStatus,
-  NotAcceptableException,
+  NotAcceptableException, NotFoundException,
   Param,
   ParseFilePipeBuilder,
   ParseIntPipe,
@@ -35,6 +36,10 @@ import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { CustomersService } from '../../customer/customer/customer.service';
 import { dayTime } from '../../../utils/constantes';
 import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
+import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { SavingsAccount } from '../../savings-account/savings-account/entities/savings-account.entity';
+import { Repository } from 'typeorm';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -45,6 +50,8 @@ export class LoanController {
     private readonly typeCreditService: TypeCreditService,
     private readonly customersService: CustomersService,
     private readonly transactionService: TransactionSavingsAccountService,
+    @InjectRepository(SavingsAccount)
+    private readonly savingAccountRepository: Repository<SavingsAccount>,
   ) {}
 
   @Get('/:customerId/all')
@@ -360,10 +367,19 @@ export class LoanController {
   async createLoan(
     @Param('typeCreditId') typeCreditId: number,
     @Param('customerId') customerId: number,
-    @Body() body: LoanDto,
+    @Body() { credit_account_id, ...body }: LoanDto,
     @Req() { user }: { user: any },
   ) {
     // Implementation for creating a loan
+    const creditAccount = await this.savingAccountRepository.findOneBy({
+      id: credit_account_id,
+    });
+    if (!creditAccount)
+      throw new BadRequestException({
+        status: HttpStatus.BAD_REQUEST,
+        success: false,
+        message: 'Credit account not found. Please contact the administrator.',
+      });
     if (!body.amount)
       throw new ForbiddenException({
         status: HttpStatus.NOT_ACCEPTABLE,
@@ -422,6 +438,7 @@ export class LoanController {
         reference: body.reference,
         customer: { id: customerId },
         manageBy: { id: user.userId as number },
+        credit_account: { id: creditAccount.id },
       } as Loan,
       typeCredit as TypeCredit,
     );

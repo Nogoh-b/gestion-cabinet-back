@@ -16,6 +16,7 @@ import { DocumentCustomer } from '../../../documents/document-customer/entities/
 import { User } from '../../../iam/user/entities/user.entity';
 import { TransactionSavingsAccount } from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
+import { SavingsAccount } from '../../../savings-account/savings-account/entities/savings-account.entity';
 
 
 
@@ -78,13 +79,16 @@ export class Loan extends BaseEntity {
   @ManyToOne(() => Customer, (type) => type.loans)
   customer: Customer;
 
-  @OneToMany(() => DocumentCustomer, (type) => type.loan, { 
-    nullable: true 
+  @ManyToOne(() => SavingsAccount, (type) => type.loans)
+  credit_account: SavingsAccount;
+
+  @OneToMany(() => DocumentCustomer, (type) => type.loan, {
+    nullable: true,
   })
   documents: DocumentCustomer[];
 
   @OneToMany(() => TransactionSavingsAccount, (type) => type.loan)
-  transactions: TransactionSavingsAccount[]; 
+  transactions: TransactionSavingsAccount[];
 
   @OneToMany(() => GuarantyEstimation, (type) => type.loan)
   guaranties: GuarantyEstimation[];

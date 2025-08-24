@@ -1,4 +1,4 @@
-import { IsArray, IsNumber, IsString } from 'class-validator';
+import { IsArray, IsNotEmpty, IsNumber, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 
@@ -39,6 +39,13 @@ export class LoanDto {
   })
   @IsString()
   reference: string;
+
+  @ApiProperty({
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  credit_account_id: number;
 }
 
 export class DocumentFileLoanDto {

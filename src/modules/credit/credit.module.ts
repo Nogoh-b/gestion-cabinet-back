@@ -30,6 +30,7 @@ import { CustomerModule } from '../customer/customer.module';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 import { DocumentsModule } from '../documents/documents.module';
 import { TransactionModule } from '../transaction/transaction.module';
+import { SavingsAccount } from '../savings-account/savings-account/entities/savings-account.entity';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { TransactionModule } from '../transaction/transaction.module';
       DocumentType,
       DocumentCustomer,
       TypeCustomer,
+      SavingsAccount,
     ]),
     CustomerModule,
     DocumentsModule,
