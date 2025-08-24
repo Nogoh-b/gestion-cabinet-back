@@ -57,7 +57,7 @@ export class LoanService {
           typeGuaranties: { typeOfDocument: true },
           typeOfDocuments: true,
         },
-        guaranties: true,
+        guaranties: { documents: true },
         documents: true,
       },
       where: {
