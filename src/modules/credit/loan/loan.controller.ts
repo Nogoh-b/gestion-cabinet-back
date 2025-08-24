@@ -120,7 +120,7 @@ export class LoanController {
         ...result,
       });
     const loan = result as Loan;
-    console.log("validation");
+    console.log("validation", loan);
     const guaranties = loan.typeCredit.typeGuaranties;
     const typeOfDocument = loan.typeCredit.typeOfDocuments;
     if (loan.status !== CREDIT_STATUS.PENDING)
@@ -140,7 +140,7 @@ export class LoanController {
         success: false,
       });
     const valid = await this.loanService.setApprovedLoanByCustomerId(
-      result as Loan,
+      loan,
       user,
     );
     if ((valid as any).hasOwnProperty('success'))
