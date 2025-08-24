@@ -191,6 +191,7 @@ export class LoanService {
 
   async submitLoan(loan: Loan, user: any) {
     // check if docs has validated
+    console.log(loan);
     const typeCredit = loan.typeCredit;
     const isDocsValid =
       typeCredit.typeOfDocuments.length &&

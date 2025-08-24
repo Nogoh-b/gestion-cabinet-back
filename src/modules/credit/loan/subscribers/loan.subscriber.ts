@@ -13,12 +13,15 @@ import { BranchService } from '../../../agencies/branch/branch.service';
 import { SavingsAccountService } from '../../../savings-account/savings-account/savings-account.service';
 import { SavingsAccount } from '../../../savings-account/savings-account/entities/savings-account.entity';
 import { CreateCreditTransactionSavingsAccountDto } from '../../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
+import { JobsService } from '../../../../core/scheduler/jobs.service';
+import { getCronTime } from '../../../../utils/utils';
 
 @Injectable()
 @EventSubscriber()
 export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
   constructor(
     private readonly transactionSavingAccountService: TransactionSavingsAccountService,
+    private readonly jobsService: JobsService,
   ) {}
   listenTo() {
     return Loan;
@@ -45,6 +48,12 @@ export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
         origin_savings_account_code: agency.code,
         target_savings_account_code: creditAccount.number_savings_account,
       } as any);
-
+    const time = getCronTime(
+      transaction.created_at,
+      loan.typeCredit.reimbursement_period,
+    );
+    this.jobsService.addCronJob('jobs-' + transaction.id, time, () => {
+      console.log('retrieve trait loan');
+    });
   }
 }

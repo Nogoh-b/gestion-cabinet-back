@@ -6,16 +6,11 @@ import { CronJob } from 'cron';
 export class JobsService {
   constructor(private schedulerRegistry: SchedulerRegistry) {}
 
-  addCronJob(name: string, seconds: string) {
-    const job = new CronJob(`${seconds} * * * * *`, () => {
-      console.log(`time (${seconds}) for job ${name} to run!`);
-    });
-
+  addCronJob(name: string, time: string, callback: any) {
+    const job = new CronJob(`${time} * * * * *`, callback);
     // @ts-ignore
     this.schedulerRegistry.addCronJob(name, job);
     job.start();
-
-    console.log(`job ${name} added for each minute at ${seconds} seconds!`);
   }
 
   getCrons() {

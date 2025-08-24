@@ -32,6 +32,7 @@ import { DocumentsModule } from '../documents/documents.module';
 import { TransactionModule } from '../transaction/transaction.module';
 import { SavingsAccount } from '../savings-account/savings-account/entities/savings-account.entity';
 import { LoanSubscriber } from './loan/subscribers/loan.subscriber';
+import { JobsService } from '../../core/scheduler/jobs.service';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { LoanSubscriber } from './loan/subscribers/loan.subscriber';
     RolePermissionService,
     PermissionsService,
     LoanSubscriber,
+    JobsService,
   ],
 })
 export class CreditModule {}
