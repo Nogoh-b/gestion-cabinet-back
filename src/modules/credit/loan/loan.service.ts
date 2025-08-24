@@ -228,7 +228,7 @@ export class LoanService {
         managedBy: { id: user.userId as number } as User,
         state: CREDIT_STATE.END_PROCESSING,
       },
-      true,
+      false,
     );
   }
 
