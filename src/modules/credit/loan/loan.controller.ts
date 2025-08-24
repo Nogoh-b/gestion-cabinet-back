@@ -104,7 +104,7 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    return true;
+    return result;
   }
 
   @Put('valid/:customerId/')
