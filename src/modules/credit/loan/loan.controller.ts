@@ -6,7 +6,7 @@ import {
   ForbiddenException,
   Get,
   HttpStatus,
-  NotAcceptableException, NotFoundException,
+  NotAcceptableException,
   Param,
   ParseFilePipeBuilder,
   ParseIntPipe,
@@ -36,7 +36,6 @@ import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { CustomersService } from '../../customer/customer/customer.service';
 import { dayTime } from '../../../utils/constantes';
 import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
-import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SavingsAccount } from '../../savings-account/savings-account/entities/savings-account.entity';
 import { Repository } from 'typeorm';
@@ -109,11 +108,18 @@ export class LoanController {
       throw new ForbiddenException({
         ...result,
       });
-    const loan = await this.loanService.setApprovedLoanByCustomerId(
+    const loan = result as Loan;
+    if (loan.status !== CREDIT_STATUS.PENDING)
+      throw new ForbiddenException({
+        message: 'Operation failed',
+        status: HttpStatus.FORBIDDEN,
+        success: false,
+      })
+    const valid = await this.loanService.setApprovedLoanByCustomerId(
       result as Loan,
       user,
     );
-    if ((loan as any).hasOwnProperty('success'))
+    if ((valid as any).hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
       });

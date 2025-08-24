@@ -1,7 +1,6 @@
 import { IsArray, IsNotEmpty, IsNumber, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-
 export class LoanDto {
   @ApiProperty({
     description: 'Amount of loan',
