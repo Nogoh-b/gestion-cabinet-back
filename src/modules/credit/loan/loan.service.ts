@@ -204,6 +204,7 @@ export class LoanService {
         message: 'Please valid all documents specified',
         status: HttpStatus.FORBIDDEN,
       };
+    console.log('===> step 2 valid doc')
     //check if guaranties has validated
     const isGuarantyValid =
       typeCredit.typeGuaranties.length &&
@@ -220,6 +221,7 @@ export class LoanService {
         message: 'Please valid one guaranty specified',
         status: HttpStatus.FORBIDDEN,
       };
+    console.log('===> step 3 valid guaranty')
     return await this.updateLoanByCustomerId(
       loan,
       {
