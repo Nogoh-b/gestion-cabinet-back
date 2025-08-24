@@ -252,8 +252,12 @@ export class LoanController {
         ...result,
       });
     const loan = result as Loan;
-    console.log(loan)
-    return await this.loanService.submitLoan(loan, user);
+    const submit = await this.loanService.submitLoan(loan, user);
+    if ((submit as any).hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...(submit as any),
+      });
+    return submit;
   }
 
   @Post('guaranty/:customerId/:loanId')
@@ -314,6 +318,12 @@ export class LoanController {
       throw new ForbiddenException({
         success: false,
         message: 'Guaranty type is not match of this loan!',
+        status: HttpStatus.FORBIDDEN,
+      });
+    if (!typeGuaranty.typeOfDocument)
+      throw new ForbiddenException({
+        success: false,
+        message: "This guaranty doesn't link to a type of document, operation failed!",
         status: HttpStatus.FORBIDDEN,
       });
     return await this.loanService.setGuarantiesDocumentsToLoan(
