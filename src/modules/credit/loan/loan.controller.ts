@@ -114,7 +114,7 @@ export class LoanController {
         message: 'Operation failed',
         status: HttpStatus.FORBIDDEN,
         success: false,
-      })
+      });
     const valid = await this.loanService.setApprovedLoanByCustomerId(
       result as Loan,
       user,
@@ -444,16 +444,14 @@ export class LoanController {
     //     message: "You don't have eligibility rating",
     //     status: HttpStatus.FORBIDDEN,
     //   });
-    return await this.loanService.createLoan(
-      {
-        ...body,
-        reference: body.reference,
-        customer: { id: customerId },
-        manageBy: { id: user.userId as number },
-        credit_account: { id: creditAccount.id },
-      } as Loan,
-      typeCredit as TypeCredit,
-    );
+    return await this.loanService.createLoan({
+      ...body,
+      reference: body.reference,
+      customer: { id: customerId },
+      initiated: { id: user.userId as number },
+      credit_account: { id: creditAccount.id },
+      typeCredit,
+    } as Loan);
   }
 
   @Get('simulate/:typeCreditId')

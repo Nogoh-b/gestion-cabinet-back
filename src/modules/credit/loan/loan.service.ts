@@ -267,13 +267,12 @@ export class LoanService {
     return await this.documentCustomerRepository.save(currentDoc);
   }
 
-  async createLoan(data: Loan, typeCredit: TypeCredit) {
+  async createLoan(data: Loan) {
     const remainPaymentNumber = Math.ceil(
-      data.duringMax / dayTime[typeCredit.reimbursement_period],
+      data.duringMax / dayTime[data.typeCredit.reimbursement_period],
     );
     const loan = this.loanRepository.create({
       ...data,
-      typeCredit,
       remainPaymentNumber,
       reimbursement_amount: this.simulationReimbursementAmount(
         data.amount,
