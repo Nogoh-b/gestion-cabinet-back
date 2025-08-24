@@ -51,6 +51,15 @@ export class LoanService {
 
   async findOneLoanByCustomerId(id: number, customerId: number) {
     const loan = await this.loanRepository.findOne({
+      relations: {
+        customer: true,
+        typeCredit: {
+          typeGuaranties: { typeOfDocument: true },
+          typeOfDocuments: true,
+        },
+        guaranties: true,
+        documents: true,
+      },
       where: {
         id,
         customer: { id: customerId },
