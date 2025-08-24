@@ -34,7 +34,6 @@ import { PermissionsGuard } from '../../../core/common/guards/permissions.guard'
 import { TypeCreditService } from '../type_credit/typeCredit.service';
 import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { CustomersService } from '../../customer/customer/customer.service';
-import { dayTime } from '../../../utils/constantes';
 import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SavingsAccount } from '../../savings-account/savings-account/entities/savings-account.entity';
@@ -479,7 +478,7 @@ export class LoanController {
     return await this.loanService.createLoan({
       ...body,
       customer: { id: customerId },
-      initiated: { id: user.userId as number },
+      initiated: { id: user.userId as number } as User,
       credit_account: { id: creditAccount.id },
       typeCredit,
     } as Loan);

@@ -29,7 +29,12 @@ export class LoanService {
   ) {}
 
   async findAllLoans() {
-    return await this.loanRepository.find();
+    return await this.loanRepository.find({
+      relations: {
+        customer: true,
+        typeCredit: true,
+      },
+    });
     //.map((loan) => ({ ...loan, customer: { id: customerId } }));
   }
 
@@ -136,7 +141,11 @@ export class LoanService {
         documents: true,
         transactions: true,
         guaranties: true,
-        customer: true,
+        customer: { branch: true },
+        credit_account: true,
+        approvedBy: { employee: { branch: true } },
+        managedBy: { employee: { branch: true } },
+        initiated: { employee: { branch: true } },
       },
       where: {
         customer: { id },
@@ -195,10 +204,14 @@ export class LoanService {
         message: 'Please valid one guaranty specified',
         status: HttpStatus.FORBIDDEN,
       };
-    await this.loanRepository.update(loan.id, {
-      manageBy: { id: user.userId as number },
-      state: CREDIT_STATE.END_PROCESSING,
-    });
+    return await this.updateLoanByCustomerId(
+      loan,
+      {
+        managedBy: { id: user.userId as number } as User,
+        state: CREDIT_STATE.END_PROCESSING,
+      },
+      true,
+    );
     return true;
   }
 

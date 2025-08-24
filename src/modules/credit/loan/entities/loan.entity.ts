@@ -63,7 +63,7 @@ export class Loan extends BaseEntity {
   //
   @OneToOne(() => User, { nullable: true })
   @JoinColumn()
-  manageBy: User;
+  managedBy: User;
   //
   @ManyToOne(() => TypeCredit, (type) => type.loans)
   typeCredit: TypeCredit;

@@ -6,10 +6,17 @@ import {
   UpdateEvent,
 } from 'typeorm';
 import { Loan } from '../entities/loan.entity';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
 import {
   TransactionSavingsAccountService
 } from '../../../transaction/transaction_saving_account/transaction_saving_account.service';
+import { Branch } from '../../../agencies/branch/entities/branch.entity';
+import { BranchService } from '../../../agencies/branch/branch.service';
+import { SavingsAccountService } from '../../../savings-account/savings-account/savings-account.service';
+import { SavingsAccount } from '../../../savings-account/savings-account/entities/savings-account.entity';
+import {
+  CreateCreditTransactionSavingsAccountDto
+} from '../../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
 @Injectable()
 @EventSubscriber()
@@ -25,5 +32,21 @@ export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
 
   async afterUpdate(event: UpdateEvent<Loan>) {
     console.log('-> transfers the system to account');
+    const { entity, manager } = event;
+    const loan = entity as Loan;
+    const agency = loan.approvedBy?.employee?.branch;
+    if (!agency)
+      throw new BadRequestException({
+        success: false,
+        message: 'No system to approve, branch not identify',
+        status: HttpStatus.BAD_REQUEST,
+      });
+    const creditAccount = loan.credit_account;
+    await this.transactionSavingAccountService.deposit_loan_to_account({
+      amount: loan.amount,
+      branch_id: agency.id,
+      origin_savings_account_code: agency.code,
+      target_savings_account_code: creditAccount.number_savings_account,
+    } as any);
   }
 }

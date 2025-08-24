@@ -424,6 +424,7 @@ export class TransactionSavingsAccountService {
       provider,
     );
   }
+
   async deposit_cash(dto: CreateCreditTransactionSavingsAccountDto) {
     /*const code_cash = await this.mcotiService.callMcotiEndpoint(
             'POST',
@@ -436,6 +437,51 @@ export class TransactionSavingsAccountService {
       'CASH_DEPOSIT',
       'BRANCH',
       'CASH',
+    );
+  }
+
+  async deposit_loan_to_account(dto: CreateCreditTransactionSavingsAccountDto) {
+    /*const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'POST',
+            `epargne/bank/operator/update-sold`,{provider:'OM', isCredit:1,  amount:175,}
+        );
+        console.log('sold updated', code_cash)
+    return new TransactionSavingsAccount*/
+    return await this.perform_transaction(
+      dto,
+      'LOAN_DISBURSEMENT',
+      'BRANCH',
+      'SYSTEM',
+    );
+  }
+
+  async retrieve_penality_account(dto: CreateCreditTransactionSavingsAccountDto) {
+    /*const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'POST',
+            `epargne/bank/operator/update-sold`,{provider:'OM', isCredit:1,  amount:175,}
+        );
+        console.log('sold updated', code_cash)
+    return new TransactionSavingsAccount*/
+    return await this.perform_transaction(
+      dto,
+      'LOAN_PENALITIES_PAYMENT',
+      'BRANCH',
+      'SYSTEM',
+    );
+  }
+
+  async retrieve_trait_to_account(dto: CreateCreditTransactionSavingsAccountDto) {
+    /*const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'POST',
+            `epargne/bank/operator/update-sold`,{provider:'OM', isCredit:1,  amount:175,}
+        );
+        console.log('sold updated', code_cash)
+    return new TransactionSavingsAccount*/
+    return await this.perform_transaction(
+      dto,
+      'LOAN_PRINCIPAL_REPAYMENT',
+      'BRANCH',
+      'SYSTEM',
     );
   }
 
