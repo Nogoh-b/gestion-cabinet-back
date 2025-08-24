@@ -282,7 +282,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
-  async findOneAdmin(branch_id: number = 3): Promise<SavingsAccount> {
+  async findOneAdmin(branch_id: number = 3, withBalnce = false): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE) , branch_id },
       relations: [
@@ -295,10 +295,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       ],
     }); 
     if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id}`);
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if(withBalnce){
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
     return account;
   }
 
@@ -327,6 +329,23 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     account.avalaible_balance = soldes.avalaible_balance
     account.balance = await soldes.balance
     account.avalaible_balance_online = await soldes.avalaible_balance_online
+    return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
+  }
+  async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+    const relations = [
+      'customer',
+      'type_savings_account',
+      'type_savings_account.required_documents',
+      'branch',
+      'documents',
+    ];
+
+    const account = await this.repo.findOne({
+      where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
+      relations,
+    });
+    console.log('okkkkkkkkkk')
+    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 

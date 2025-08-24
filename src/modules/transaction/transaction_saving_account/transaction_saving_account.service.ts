@@ -236,7 +236,7 @@ export class TransactionSavingsAccountService {
     ) {
       origin = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           (dto as CreateTransactionSavingsAccountDto)
             .origin_savings_account_code,
         ),
@@ -248,6 +248,7 @@ export class TransactionSavingsAccountService {
     ) {
       origin = await this.savingsAccountService.findOneAdmin(dto.branch_id);
     }
+
     if (
       !origin &&
       (dto as CreateTransactionSavingsAccountDto).origin_savings_account_code
@@ -262,10 +263,11 @@ export class TransactionSavingsAccountService {
     if (dto.target_savings_account_code) {
       target = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           dto.target_savings_account_code ?? '0',
         ),
       );
+      console.log('isFirstTx111oo1 ', dto.target_savings_account_code ?? '0');
     } else if (!dto.target_savings_account_code) {
       // target = await this.savingsAccountService.findOneAdmin(dto.branch_id)
     }
@@ -509,9 +511,9 @@ export class TransactionSavingsAccountService {
     let saAdmin : SavingsAccount | null = null
     if(!dto.target_savings_account_code && dto.origin_savings_account_code)
     {
-      const originSa = await this.savingsAccountService.findOneByCode(dto.origin_savings_account_code)
-      saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
-      dto.target_savings_account_code = saAdmin.number_savings_account
+      const originSa = await this.savingsAccountService.findOneByCodeV1(dto.origin_savings_account_code)
+      // saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
+      dto.target_savings_account_code = 'A100002'//saAdmin.number_savings_account
     }
     console.log(dto)
     return await this.perform_transaction(dto, TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
@@ -521,7 +523,7 @@ export class TransactionSavingsAccountService {
     let saAdmin : SavingsAccount | null = null
     if(dto.target_savings_account_code && !dto.origin_savings_account_code)
     {
-      const originSa = await this.savingsAccountService.findOneByCode(dto.target_savings_account_code)
+      const originSa = await this.savingsAccountService.findOneByCodeV1(dto.target_savings_account_code)
       saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
       dto.origin_savings_account_code = saAdmin.number_savings_account
     }
@@ -561,7 +563,7 @@ export class TransactionSavingsAccountService {
     /*let saAdmin : SavingsAccount | null = null
     if(!dto.target_savings_account_code && dto.origin_savings_account_code)
     {
-      const originSa = await this.savingsAccountService.findOneByCode(dto.origin_savings_account_code)
+      const originSa = await this.savingsAccountService.findOneByCodeV1(dto.origin_savings_account_code)
       saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
       dto.target_savings_account_code = saAdmin.number_savings_account
     }*/
@@ -586,7 +588,7 @@ export class TransactionSavingsAccountService {
         'targetSavingsAccount.targetSavingsAccountTx',
       ],
     });
-    const sa = await this.savingsAccountService.findOneByCode(
+    const sa = await this.savingsAccountService.findOneByCodeV1(
       tx?.targetSavingsAccount?.number_savings_account ?? '',
     );
 
@@ -946,7 +948,7 @@ export class TransactionSavingsAccountService {
           'POST',
           `epargne/bank/operator/update-sold`,
           {
-            provider: 'OM',
+            provider: entity.provider_code,
             isCredit: entity.origin ? 0 : 1,
             amount: entity.origin ? entity.amount  : entity.amount + (entity.commission ?? 0) ,
           },
@@ -959,7 +961,7 @@ export class TransactionSavingsAccountService {
 
     console.log('payment suscessful----- ', isFirstTx, '-----', tx.id , ' ', tx.status_provider)
     if(tx.targetSavingsAccount)
-      target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(
+      target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCodeV1(
         tx.targetSavingsAccount.number_savings_account,
     ));
     let comercial : Personnel| null = new Personnel();
@@ -973,7 +975,7 @@ export class TransactionSavingsAccountService {
     if (process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT) {
       mendoCoSa = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT,
         ),
       );
@@ -1358,7 +1360,7 @@ export class TransactionSavingsAccountService {
     if (tx.targetSavingsAccount) {
       target = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           tx.targetSavingsAccount.number_savings_account,
         ),
       );
@@ -1638,7 +1640,7 @@ export class TransactionSavingsAccountService {
       let isFirstTx = false;
       // if(tx.targetSavingsAccount){
 
-      const sa = await this.savingsAccountService.findOneByCode(
+      const sa = await this.savingsAccountService.findOneByCodeV1(
         tx.targetSavingsAccount?.number_savings_account ?? '',
       );
       isFirstTx = await this.isFirstTransaction(
@@ -1760,9 +1762,9 @@ export class TransactionSavingsAccountService {
         'POST',
         `epargne/bank/operator/update-sold`,
         {
-          provider: 'OM', // tu avais déjà 'OM' en dur ici
+          provider: entity.provider_code, 
           isCredit: entity.originSavingsAccount ? 0 : 1,
-          amount: Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)),
+          amount: entity.origin ? Number(entity.amount)  : Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)) ,
         },
       );
       // console.log('sold provider updated', entity.amount + (entity.commission ?? 0));
@@ -1789,7 +1791,7 @@ export class TransactionSavingsAccountService {
     if (!process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT) return null;
     return plainToInstance(
       SavingsAccount,
-      await this.savingsAccountService.findOneByCode(process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT),
+      await this.savingsAccountService.findOneByCodeV1(process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT),
     );
   }
 
