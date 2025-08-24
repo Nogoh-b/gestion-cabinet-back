@@ -33,3 +33,5 @@ export enum TYPE_STATUS {
   PENDING = 0,
   DISABLE = -1,
 }
+
+export const CREDIT_CODE = 'CD0001';

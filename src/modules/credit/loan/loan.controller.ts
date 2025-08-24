@@ -23,7 +23,7 @@ import {
   GuarantyDocumentLoanDto,
   LoanDto,
 } from './dto/loan.dto';
-import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
+import { CREDIT_CODE, CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
 import { LoanService } from './loan.service';
 import { Loan } from './entities/loan.entity';
 import { User } from '../../iam/user/entities/user.entity';
@@ -371,8 +371,14 @@ export class LoanController {
     @Req() { user }: { user: any },
   ) {
     // Implementation for creating a loan
-    const creditAccount = await this.savingAccountRepository.findOneBy({
-      id: credit_account_id,
+    const creditAccount = await this.savingAccountRepository.findOne({
+      where: {
+        id: credit_account_id,
+        customer: { id: customerId },
+        type_savings_account: {
+          code: CREDIT_CODE,
+        },
+      },
     });
     if (!creditAccount)
       throw new BadRequestException({
