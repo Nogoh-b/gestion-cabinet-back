@@ -38,7 +38,7 @@ export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
     if (!agency)
       throw new BadRequestException({
         success: false,
-        message: 'No system to approve, branch not identify',
+        message: 'No system to approve, branch not identify in this user, please contact administrator',
         status: HttpStatus.BAD_REQUEST,
       });
     const creditAccount = loan.credit_account;
