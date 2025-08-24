@@ -4,7 +4,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { UPLOAD_DOCS_PATH } from '../../../core/common/constants/constants';
 import { FilesUtil } from '../../../core/shared/utils/file.util';
-import { dayTime } from '../../../utils/constantes';
 import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
 import {
   DocumentCustomer,
@@ -15,10 +14,8 @@ import { User } from '../../iam/user/entities/user.entity';
 import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaranty_estimation.service';
 import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
-import { TypeCredit } from '../type_credit/entities/typeCredit.entity';
 import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { Loan } from './entities/loan.entity';
-
 
 @Injectable()
 export class LoanService {
@@ -30,6 +27,11 @@ export class LoanService {
     private readonly documentTypeService: DocumentTypeService,
     private readonly guarantyEstimationService: GuarantyEstimationService,
   ) {}
+
+  async findAllLoans() {
+    return await this.loanRepository.find();
+    //.map((loan) => ({ ...loan, customer: { id: customerId } }));
+  }
 
   async findAllLoansByCustomerId(customerId: number) {
     return await this.loanRepository.findBy({
@@ -75,30 +77,10 @@ export class LoanService {
   }
 
   async setApprovedLoanByCustomerId(loan: Loan, user: User) {
-    console.log(loan);
-    const docs = loan.documents
-      .map((next) => next.status === 1)
-      .filter((t) => !t);
-    // check if all docs are ok
-    if (docs.length)
-      return {
-        success: false,
-        message: 'Please active all documents',
-        status: HttpStatus.FORBIDDEN,
-      };
-    // check if all guaranties are ok
-    const guaranties = loan.guaranties
-      .map((guaranty) => guaranty.status === CREDIT_STATUS.APPROVED)
-      .filter((t) => !t);
-    if (guaranties.length)
-      return {
-        success: false,
-        message: 'Please active all guaranties',
-        status: HttpStatus.FORBIDDEN,
-      };
     return await this.updateLoanByCustomerId(
       loan,
       {
+        state: CREDIT_STATE.ACTIVE,
         status: CREDIT_STATUS.APPROVED,
         approvedBy: user,
       },
@@ -122,7 +104,16 @@ export class LoanService {
     data: Partial<Loan>,
     listen: boolean,
   ) {
-    await this.loanRepository.save(loan, { listeners: listen });
+    const current = await this.loanRepository.preload(
+      { id: loan.id, ...data },
+    );
+    if (!current)
+      return {
+        success: false,
+        message: 'No Loan Found, update failed',
+        status: HttpStatus.NOT_FOUND,
+      };
+    await this.loanRepository.save(current, { listeners: listen });
     return true;
   }
 
@@ -137,13 +128,17 @@ export class LoanService {
     return true;
   }
 
-  async getLoanInProcessing(id: number) {
+  async getLoanInProcessingOrActive(id: number) {
     const loan = await this.loanRepository.findOne({
       relations: {
         typeCredit: {
           typeGuaranties: { typeOfDocument: true },
           typeOfDocuments: true,
         },
+        documents: true,
+        transactions: true,
+        guaranties: true,
+        customer: true,
       },
       where: {
         customer: { id },
@@ -176,7 +171,10 @@ export class LoanService {
 
   async submitLoan(loan: Loan, user: any) {
     // check if docs has validated
-    const isDocsValid = loan.documents.find((doc) => !doc.status);
+    const typeCredit = loan.typeCredit;
+    const isDocsValid =
+      typeCredit.typeOfDocuments.length &&
+      loan.documents.find((doc) => !doc.status);
     if (isDocsValid)
       return {
         success: false,
@@ -184,9 +182,11 @@ export class LoanService {
         status: HttpStatus.FORBIDDEN,
       };
     //check if guaranties has validated
-    const isGuarantyValid = loan.guaranties.find(
-      (guaranty) => !guaranty.status && !guaranty.documents.status,
-    );
+    const isGuarantyValid =
+      typeCredit.typeGuaranties.length &&
+      loan.guaranties.find(
+        (guaranty) => !guaranty.status && !guaranty.documents.status,
+      );
     if (isGuarantyValid)
       return {
         success: false,

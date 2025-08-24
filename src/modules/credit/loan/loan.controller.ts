@@ -39,6 +39,9 @@ import { TransactionSavingsAccountService } from '../../transaction/transaction_
 import { InjectRepository } from '@nestjs/typeorm';
 import { SavingsAccount } from '../../savings-account/savings-account/entities/savings-account.entity';
 import { Repository } from 'typeorm';
+import {
+  TransactionSavingsAccount
+} from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -54,9 +57,17 @@ export class LoanController {
   ) {}
 
   @Get('/:customerId/all')
-  async findAllLoans(@Param('customerId', ParseIntPipe) customerId: number) {
+  async findAllLoansByCustomerId(
+    @Param('customerId', ParseIntPipe) customerId: number,
+  ) {
     // Implementation for finding a loan by ID
     return await this.loanService.findAllLoansByCustomerId(customerId);
+  }
+
+  @Get('/all')
+  async findAllLoans() {
+    // Implementation for finding a loan by ID
+    return await this.loanService.findAllLoans();
   }
 
   @Get('one/:customerId/:loanId')
@@ -93,25 +104,35 @@ export class LoanController {
     return true;
   }
 
-  @Put('valid/:customerId/:loanId')
+  @Put('valid/:customerId/')
   async updateLoanStatusToValid(
     @Param('customerId') customerId: number,
-    @Param('loanId') id: number,
     @Req() { user }: { user: User },
   ) {
     // Implementation for updating a loan
-    const result = await this.loanService.findOneLoanByCustomerId(
-      id,
-      customerId,
-    );
+    const result =
+      await this.loanService.getLoanInProcessingOrActive(customerId);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
       });
     const loan = result as Loan;
+    console.log("validation");
+    const guaranties = loan.typeCredit.typeGuaranties;
+    const typeOfDocument = loan.typeCredit.typeOfDocuments;
     if (loan.status !== CREDIT_STATUS.PENDING)
       throw new ForbiddenException({
         message: 'Operation failed',
+        status: HttpStatus.FORBIDDEN,
+        success: false,
+      });
+    else if (loan.state !== CREDIT_STATE.END_PROCESSING)
+      throw new ForbiddenException({
+        message: `You must valid documents and guaranties before continue.
+        * Type of guaranty
+        ${guaranties.length ? guaranties.map((s) => `- ${s.name}`).join('\n') : '- Nothing guaranties required'}
+        * Type of document
+        ${typeOfDocument.length ? typeOfDocument.map((s) => `- ${s.name}`).join('\n') : '- Nothing documents required'}`,
         status: HttpStatus.FORBIDDEN,
         success: false,
       });
@@ -145,14 +166,7 @@ export class LoanController {
     return await this.loanService.setRevokedLoanByCustomerId(loan, user);
   }
 
-  @Put('/:customerId/:loanId')
-  async updateLoanState(
-    @Param('customerId') id: string,
-    @Param('loanId') loanId: string,
-    @Query('status') state: CREDIT_STATE,
-  ) {
-    // Implementation for updating a loan
-  }
+
 
   @Delete('/:customerId/:loanId')
   async deleteLoan(
@@ -184,7 +198,7 @@ export class LoanController {
     @Param('customerId') id: number,
   ) {
     // Implementation for valid a doc to loan
-    const result = await this.loanService.getLoanInProcessing(id);
+    const result = await this.loanService.getLoanInProcessingOrActive(id);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
@@ -206,7 +220,7 @@ export class LoanController {
     @Param('loanId') id: number,
   ) {
     // Implementation for deleting a loan
-    const result = await this.loanService.getLoanInProcessing(id);
+    const result = await this.loanService.getLoanInProcessingOrActive(id);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
@@ -228,12 +242,13 @@ export class LoanController {
     @Req() { user }: { user: User },
   ) {
     // Implementation for deleting a loan
-    const result = await this.loanService.getLoanInProcessing(id);
+    const result = await this.loanService.getLoanInProcessingOrActive(id);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
       });
     const loan = result as Loan;
+    console.log(loan)
     return await this.loanService.submitLoan(loan, user);
   }
 
@@ -256,7 +271,8 @@ export class LoanController {
     file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
-    const result = await this.loanService.getLoanInProcessing(customerId);
+    const result =
+      await this.loanService.getLoanInProcessingOrActive(customerId);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
@@ -323,7 +339,8 @@ export class LoanController {
     file: Express.Multer.File,
   ) {
     // Implementation for deleting a loan
-    const result = await this.loanService.getLoanInProcessing(customerId);
+    const result =
+      await this.loanService.getLoanInProcessingOrActive(customerId);
     if (result.hasOwnProperty('success'))
       throw new ForbiddenException({
         ...result,
@@ -399,7 +416,8 @@ export class LoanController {
         message: 'Please amount is not null',
       });
     // check if user as loan in processing
-    const result = await this.loanService.getLoanInProcessing(customerId);
+    const result =
+      await this.loanService.getLoanInProcessingOrActive(customerId);
     if (!result.hasOwnProperty('success'))
       throw new ForbiddenException({
         success: false,
@@ -413,37 +431,37 @@ export class LoanController {
       throw new ForbiddenException({
         ...typeCredit,
       });
-    // const transaction = await this.transactionService
-    //   .findOne(body.reference)
-    //   .catch((e) => false);
-    // if (!(transaction as boolean))
-    //   throw new ForbiddenException({
-    //     status: HttpStatus.NOT_ACCEPTABLE,
-    //     success: false,
-    //     message: 'Your transaction is not found',
-    //   });
-    // const trans = transaction as TransactionSavingsAccount;
-    // const tc = typeCredit as TypeCredit;
-    // if (trans.amount !== tc.fee)
-    //   throw new ForbiddenException({
-    //     status: HttpStatus.NOT_ACCEPTABLE,
-    //     success: false,
-    //     message: 'Please make your payment before to get the loan',
-    //   });
+    const transaction = await this.transactionService
+      .findOne(body.reference)
+      .catch((e) => false);
+    if (!(transaction as boolean))
+      throw new ForbiddenException({
+        status: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: 'Your transaction is not found',
+      });
+    const trans = transaction as TransactionSavingsAccount;
+    const tc = typeCredit as TypeCredit;
+    if (trans.amount !== tc.fee)
+      throw new ForbiddenException({
+        status: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: 'Please make your payment before to get the loan',
+      });
     const customer = await this.customersService.findOne(customerId);
-    // if (customer.id !== trans.targetSavingsAccount?.customer.id)
-    //   throw new ForbiddenException({
-    //     status: HttpStatus.NOT_ACCEPTABLE,
-    //     success: false,
-    //     message: 'This payment not match',
-    //   });
+    if (customer.id !== trans.targetSavingsAccount?.customer.id)
+      throw new ForbiddenException({
+        status: HttpStatus.NOT_ACCEPTABLE,
+        success: false,
+        message: 'This payment not match',
+      });
     console.log('Document of guaranty', customer);
-    // if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
-    //   throw new ForbiddenException({
-    //     success: false,
-    //     message: "You don't have eligibility rating",
-    //     status: HttpStatus.FORBIDDEN,
-    //   });
+    if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
+      throw new ForbiddenException({
+        success: false,
+        message: "You don't have eligibility rating",
+        status: HttpStatus.FORBIDDEN,
+      });
     return await this.loanService.createLoan({
       ...body,
       customer: { id: customerId },
