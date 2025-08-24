@@ -52,6 +52,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -61,6 +64,9 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
 
 
 
@@ -304,6 +310,36 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
+  async findOneAdminTontine(branch_id: number | null = null): Promise<SavingsAccount> {
+    const queryBuilder = this.repo
+      .createQueryBuilder('account')
+      .leftJoinAndSelect('account.customer', 'customer')
+      .leftJoinAndSelect('account.type_savings_account', 'type_savings_account')
+      .leftJoinAndSelect('account.branch', 'branch')
+      .leftJoinAndSelect('account.documents', 'documents')
+      .leftJoinAndSelect('account.enrolled_by', 'enrolled_by')
+      .leftJoinAndSelect('account.interestRelations', 'interestRelations')
+      .where('account.is_admin = :isAdmin', { isAdmin: true })
+      .andWhere('account.status != :status', { status: SavingsAccountStatus.DEACTIVATE })
+      .andWhere('type_savings_account.code = :valeur', { valeur: 'T1' }) // Condition sur le sous-élément
+
+    // Ajouter la condition branch_id seulement si elle n'est pas null
+    if (branch_id !== null && branch_id !== undefined) {
+      queryBuilder.andWhere('account.branch_id = :branchId', { branchId: branch_id });
+    }
+
+    const account = await queryBuilder.getOne();
+    
+    if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id ? 'pour la branche ' + branch_id : ''}`);
+    
+    const soldes = await this.updateBalance(account.id)
+    account.avalaible_balance = soldes.avalaible_balance
+    account.balance = await soldes.balance
+    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    
+    return account;
+  }
+
   async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
     const relations = [
       'customer',
@@ -332,6 +368,24 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
   async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+    const relations = [
+      'customer',
+      'type_savings_account',
+      'type_savings_account.required_documents',
+      'branch',
+      'documents',
+    ];
+
+    const account = await this.repo.findOne({
+      where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
+      relations,
+    });
+    console.log('okkkkkkkkkk')
+    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
+    return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
+  }
+
+    async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
     const relations = [
       'customer',
       'type_savings_account',

@@ -105,6 +105,24 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -122,6 +140,24 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -227,8 +263,10 @@ export class TransactionSavingsAccountService {
       (dto as CreateTransactionSavingsAccountDto)
         .origin_savings_account_code === dto.target_savings_account_code
     ) {
-      throw new BadRequestException(`Transfert vers le même compte interdit `);
+      throw new BadRequestException(`Transfert vers le même compte interdit ${(dto as CreateTransactionSavingsAccountDto).origin_savings_account_code} ${dto.target_savings_account_code} `);
     }
+    console.log('isFirstTx111');
+
     // récupération du compte origine
     let origin: SavingsAccount | null = null;
     if (
@@ -342,10 +380,11 @@ export class TransactionSavingsAccountService {
     tx.commission = dto.commission ?? 0;
     tx.transactionType = txType;
     tx.ressource = ressource;
-    tx.origin = origin?.number_savings_account
+    /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
-      : 'SYTEM';
-    tx.target = target?.number_savings_account ?? 'SYSTEM';
+      : 'SYTEM';*/
+    tx.origin = dto.origin ?? origin?.number_savings_account ?? 'SYSTEM';
+    tx.target = dto.target ??  target?.number_savings_account ?? 'SYSTEM';
     tx.originSavingsAccount = origin; //(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
     tx.targetSavingsAccount = target; // (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
     tx.payment_code = paymentCode;
@@ -389,7 +428,9 @@ export class TransactionSavingsAccountService {
       origin != null ||
       (provider.code != TransactionProvider.MOMO &&
         provider.code != TransactionProvider.OM) ||
-      txType.code === TransactionCode.INTERNAL_TRANSFER
+        txType.code === TransactionCode.BUY_TONTINE ||
+        txType.code === TransactionCode.RECEIVE_TONTINE ||
+        txType.code === TransactionCode.INTERNAL_TRANSFER
     ) {
       this.validate(tx.id, isFirstTx);
       tx.status = 1;
@@ -474,61 +515,85 @@ export class TransactionSavingsAccountService {
     );
   }
 
-  async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+  async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
     return await this.perform_transaction(
       dto,
-      'MOMO_DEPOSIT',
+       type_code ?? 'MOMO_DEPOSIT',
       'MOBILE',
       TransactionProvider.MOMO,
     );
   }
 
-  async om_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
+  async om_withdraw(dto: CreateDebitTransactionSavingsAccountDto, type_code : string | null = null) {
     dto.status = PaymentStatus.SUCCESSFULL;
     return await this.perform_transaction(
       dto,
-      'OM_WITHDRAW',
+       type_code ?? 'OM_WITHDRAW',
       'MOBILE',
       TransactionProvider.OM,
     );
   }
 
-  async momo_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
+  async momo_withdraw(dto: CreateDebitTransactionSavingsAccountDto, type_code : string | null = null) {
     dto.status = PaymentStatus.SUCCESSFULL;
     return await this.perform_transaction(
       dto,
-      'MOMO_WITHDRAW',
+       type_code ?? 'MOMO_WITHDRAW',
       'MOBILE',
       TransactionProvider.MOMO,
     );
   }
 
-  async om_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return await this.perform_transaction(dto, TransactionCode.OM_DEPOSIT, 'MOBILE', TransactionProvider.OM);
+  async om_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
+    return await this.perform_transaction(dto, type_code ?? TransactionCode.OM_DEPOSIT, 'MOBILE', TransactionProvider.OM);
   }
 
   async buy_tontine(dto: CreateTransactionSavingsAccountDto) {
     let saAdmin : SavingsAccount | null = null
-    if(!dto.target_savings_account_code && dto.origin_savings_account_code)
+    let branch_id : number | null = null
+
+    if(dto.origin_savings_account_code)
     {
       const originSa = await this.savingsAccountService.findOneByCodeV1(dto.origin_savings_account_code)
-      // saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
-      dto.target_savings_account_code = 'A100002'//saAdmin.number_savings_account
+      if(originSa)
+        branch_id = originSa.branch.id
     }
+      saAdmin = await this.savingsAccountService.findOneAdminTontine(branch_id)
+      dto.target_savings_account_code = saAdmin.number_savings_account
+    
     console.log(dto)
+    if(!dto.origin_savings_account_code)
+      return dto.provider == TransactionProvider.OM ? await this.om_deposit(dto, TransactionCode.BUY_TONTINE) :  await this.momo_deposit(dto, TransactionCode.BUY_TONTINE) ;
     return await this.perform_transaction(dto, TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
   }  
   
   async receive_tontine(dto: CreateTransactionSavingsAccountDto) {
     let saAdmin : SavingsAccount | null = null
-    if(dto.target_savings_account_code && !dto.origin_savings_account_code)
+
+    let branch_id : number | null = null
+
+    if(dto.target_savings_account_code)
+    {
+      const targetSa = await this.savingsAccountService.findOneByCodeV1(dto.target_savings_account_code)
+      if(targetSa)
+        branch_id = targetSa.branch.id
+    }
+    saAdmin = await this.savingsAccountService.findOneAdminTontine(branch_id)
+    dto.origin_savings_account_code = saAdmin.number_savings_account
+    
+    console.log(dto)
+    if(!dto.target_savings_account_code)
+      return dto.provider == TransactionProvider.OM ? await this.om_withdraw(dto, TransactionCode.BUY_TONTINE) :  await this.momo_withdraw(dto, TransactionCode.BUY_TONTINE) ;
+    return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+
+    /*if(dto.target_savings_account_code )
     {
       const originSa = await this.savingsAccountService.findOneByCodeV1(dto.target_savings_account_code)
-      saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
+      saAdmin = await this.savingsAccountService.findOneAdminTontine(originSa.branch.id)
       dto.origin_savings_account_code = saAdmin.number_savings_account
     }
     console.log(dto)
-    return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+    return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);*/
   }
 
 
@@ -868,9 +933,9 @@ export class TransactionSavingsAccountService {
       : 0;
 
     if (
-      account != null &&
+      (account != null &&
       avalaible_balance < amount &&
-      this.can_refuse_transaction_type_for_debit(txTypeCode)
+      this.can_refuse_transaction_type_for_debit(txTypeCode)) || amount < 0
     ) {
       throw new BadRequestException(
         `Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
@@ -1758,6 +1823,11 @@ export class TransactionSavingsAccountService {
       entity.provider_code == TransactionProvider.OM ||
       entity.provider_code == TransactionProvider.MOMO
     ) {
+      console.log(        {
+          provider: entity.provider_code, 
+          isCredit: entity.originSavingsAccount ? 0 : 1,
+          amount: entity.origin ? Number(entity.amount)  : Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)) ,
+        })
       const updated_sold = await this.mcotiService.callMcotiEndpoint(
         'POST',
         `epargne/bank/operator/update-sold`,

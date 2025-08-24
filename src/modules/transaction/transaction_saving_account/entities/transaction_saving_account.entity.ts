@@ -14,12 +14,17 @@ import {
   UpdateDateColumn,
   Index,
   Unique,
+  BeforeInsert
 } from 'typeorm';
+
+
 
 
 import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
+
 
 
 export enum TransactionTypeEnum {
@@ -257,4 +262,12 @@ export class TransactionSavingsAccount {
   @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true }) 
   @JoinColumn({ name: 'transaction_type_id', referencedColumnName: 'id' })
   transactionType: TransactionType; // Relation vers TransactionType
+
+  @BeforeInsert()
+  async setStatusIfOriginExists() {
+    // Vérifier si originSavingsAccount existe et n'est pas null
+    if (this.originSavingsAccount) {
+      this.status_provider = PaymentStatusProvider.SUCCESSFULL; // Mettre le statut à 1
+    }
+  }
 }
