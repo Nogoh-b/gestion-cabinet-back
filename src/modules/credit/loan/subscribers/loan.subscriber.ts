@@ -33,6 +33,7 @@ export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
     console.log('-> transfers the system to account');
     const { entity, manager } = event;
     const loan = entity as Loan;
+    console.log('-> transfers the system to account', loan);
     const agency = loan.approvedBy?.employee?.branch;
     if (!agency)
       throw new BadRequestException({
