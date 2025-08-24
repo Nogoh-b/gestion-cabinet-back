@@ -50,9 +50,7 @@ export class Loan extends BaseEntity {
   })
   comment: string;
   //
-  @Column({
-    type: 'text',
-  })
+  @Column()
   reference: string;
   //
   @OneToOne(() => User, { nullable: true })

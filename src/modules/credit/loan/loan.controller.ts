@@ -446,7 +446,6 @@ export class LoanController {
     //   });
     return await this.loanService.createLoan({
       ...body,
-      reference: body.reference,
       customer: { id: customerId },
       initiated: { id: user.userId as number },
       credit_account: { id: creditAccount.id },
@@ -468,7 +467,7 @@ export class LoanController {
       });
     const typeCredit = result as TypeCredit;
     const remainPaymentNumber = Math.ceil(
-      during / dayTime[typeCredit.reimbursement_period],
+      during / typeCredit.reimbursement_period,
     );
     return this.loanService.simulationReimbursementAmount(
       amount,
