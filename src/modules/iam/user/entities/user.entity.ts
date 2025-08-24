@@ -48,9 +48,9 @@ export class User {
   @JoinColumn() // This side owns the relationship (has the foreign key)
   employee: Employee;
 
-  @ManyToOne(() => Customer)
+  @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: 'customer_id' })
-  customer ?: Customer;
+  customer: Customer;
 
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;
