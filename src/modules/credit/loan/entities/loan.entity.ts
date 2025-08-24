@@ -8,17 +8,15 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   OneToMany,
-  OneToOne, JoinColumn,
+  OneToOne,
+  JoinColumn,
 } from 'typeorm';
-
 
 import { DocumentCustomer } from '../../../documents/document-customer/entities/document-customer.entity';
 import { User } from '../../../iam/user/entities/user.entity';
 import { TransactionSavingsAccount } from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 import { SavingsAccount } from '../../../savings-account/savings-account/entities/savings-account.entity';
-
-
 
 @Entity()
 export class Loan extends BaseEntity {
@@ -53,15 +51,15 @@ export class Loan extends BaseEntity {
   @Column()
   reference: string;
   //
-  @OneToOne(() => User, { nullable: true })
+  @ManyToOne(() => User, (type) => type.loanInit, { nullable: true })
   @JoinColumn()
   initiated: User;
 
-  @OneToOne(() => User, { nullable: true })
+  @ManyToOne(() => User, (type) => type.loanApproved, { nullable: true })
   @JoinColumn()
   approvedBy: User;
   //
-  @OneToOne(() => User, { nullable: true })
+  @ManyToOne(() => User, (type) => type.loanManage, { nullable: true })
   @JoinColumn()
   managedBy: User;
   //

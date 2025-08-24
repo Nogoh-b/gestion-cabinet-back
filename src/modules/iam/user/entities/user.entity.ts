@@ -5,6 +5,7 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany, OneToOne } from 'typeorm';
 
 import { UserRoleAssignment } from '../../user-role-assignment/entities/user-role-assignment.entity';
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 
 
 @Entity('user')
@@ -30,6 +31,15 @@ export class User {
 
   @OneToMany(() => UserRoleAssignment, (assignment) => assignment.user)
   roleAssignments: UserRoleAssignment[];
+
+  @OneToMany(() => Loan, (type) => type.initiated)
+  loanInit: Loan[];
+
+  @OneToMany(() => Loan, (type) => type.managedBy)
+  loanManage: Loan[];
+
+  @OneToMany(() => Loan, (type) => type.approvedBy)
+  loanApproved: Loan[];
 
   @OneToOne(() => Employee, (employee) => employee.user, {
     cascade: true,
