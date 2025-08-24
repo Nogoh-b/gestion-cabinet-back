@@ -104,9 +104,7 @@ export class LoanService {
     data: Partial<Loan>,
     listen: boolean,
   ) {
-    const current = await this.loanRepository.preload(
-      { id: loan.id, ...data },
-    );
+    const current = await this.loanRepository.preload({ id: loan.id, ...data });
     if (!current)
       return {
         success: false,
@@ -174,7 +172,9 @@ export class LoanService {
     const typeCredit = loan.typeCredit;
     const isDocsValid =
       typeCredit.typeOfDocuments.length &&
-      loan.documents.find((doc) => !doc.status);
+      (loan.documents.length
+        ? loan.documents.find((doc) => !doc.status)
+        : true);
     if (isDocsValid)
       return {
         success: false,
@@ -184,13 +184,15 @@ export class LoanService {
     //check if guaranties has validated
     const isGuarantyValid =
       typeCredit.typeGuaranties.length &&
-      loan.guaranties.find(
-        (guaranty) => !guaranty.status && !guaranty.documents.status,
-      );
+      (loan.guaranties.length
+        ? !loan.guaranties.find(
+            (guaranty) => guaranty.status && guaranty.documents.status,
+          )
+        : true);
     if (isGuarantyValid)
       return {
         success: false,
-        message: 'Please valid all guaranties specified',
+        message: 'Please valid one guaranty specified',
         status: HttpStatus.FORBIDDEN,
       };
     await this.loanRepository.update(loan.id, {
@@ -276,13 +278,17 @@ export class LoanService {
       ...data,
       remainPaymentNumber,
       reimbursement_amount: this.simulationReimbursementAmount(
-        data.amount,
+        data.amount + (data.amount * data.typeCredit.interest) / 100,
         remainPaymentNumber,
       ),
       status: CREDIT_STATUS.PENDING,
       state: CREDIT_STATE.IN_PROCESSING,
     });
-    return await this.loanRepository.save(loan);
+    return {
+      ...(await this.loanRepository.save(loan)),
+      amount_remain: loan.amount,
+      amount_total: 0,
+    };
   }
 
   simulationReimbursementAmount(amount: number, during: number) {

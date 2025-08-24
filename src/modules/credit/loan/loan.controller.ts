@@ -42,6 +42,7 @@ import { Repository } from 'typeorm';
 import {
   TransactionSavingsAccount
 } from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { PaginationQueryTxDto } from '../../../core/shared/dto/pagination-query.dto';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -58,14 +59,17 @@ export class LoanController {
 
   @Get('/:customerId/all')
   async findAllLoansByCustomerId(
+    @Query() query: PaginationQueryTxDto,
     @Param('customerId', ParseIntPipe) customerId: number,
   ) {
+    const { page, limit, term, fields, exact, from, to, type, txType } = query;
     // Implementation for finding a loan by ID
     return await this.loanService.findAllLoansByCustomerId(customerId);
   }
 
   @Get('/all')
-  async findAllLoans() {
+  async findAllLoans(@Query() query: PaginationQueryTxDto) {
+    const { page, limit, term, fields, exact, from, to, type, txType } = query;
     // Implementation for finding a loan by ID
     return await this.loanService.findAllLoans();
   }
@@ -122,7 +126,7 @@ export class LoanController {
     const typeOfDocument = loan.typeCredit.typeOfDocuments;
     if (loan.status !== CREDIT_STATUS.PENDING)
       throw new ForbiddenException({
-        message: 'Operation failed',
+        message: 'Operation failed, this loan is already validated',
         status: HttpStatus.FORBIDDEN,
         success: false,
       });
@@ -488,7 +492,7 @@ export class LoanController {
       during / typeCredit.reimbursement_period,
     );
     return this.loanService.simulationReimbursementAmount(
-      amount,
+      amount + (amount * typeCredit.interest) / 100,
       remainPaymentNumber,
     );
   }
