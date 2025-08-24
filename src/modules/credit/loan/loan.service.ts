@@ -208,7 +208,9 @@ export class LoanService {
       typeCredit.typeGuaranties.length &&
       (loan.guaranties.length
         ? !loan.guaranties.find(
-            (guaranty) => guaranty.status && guaranty.documents.status,
+            (guaranty) =>
+              guaranty.status === CREDIT_STATUS.APPROVED &&
+              guaranty.documents.status,
           )
         : true);
     if (isGuarantyValid)
@@ -225,7 +227,6 @@ export class LoanService {
       },
       true,
     );
-    return true;
   }
 
   async setGuarantiesDocumentsToLoan(
@@ -299,7 +300,8 @@ export class LoanService {
     const remainPaymentNumber = Math.ceil(
       data.duringMax / data.typeCredit.reimbursement_period,
     );
-    const amountTotal = data.amount + (data.amount * data.typeCredit.interest) / 100;
+    const amountTotal =
+      data.amount + (data.amount * data.typeCredit.interest) / 100;
     console.log('Credit loan', remainPaymentNumber);
     const loan = this.loanRepository.create({
       ...data,
