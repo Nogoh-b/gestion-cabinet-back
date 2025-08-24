@@ -52,15 +52,12 @@ export class Loan extends BaseEntity {
   reference: string;
   //
   @ManyToOne(() => User, (type) => type.loanInit, { nullable: true })
-  @JoinColumn()
   initiated: User;
 
   @ManyToOne(() => User, (type) => type.loanApproved, { nullable: true })
-  @JoinColumn()
   approvedBy: User;
   //
   @ManyToOne(() => User, (type) => type.loanManage, { nullable: true })
-  @JoinColumn()
   managedBy: User;
   //
   @ManyToOne(() => TypeCredit, (type) => type.loans)
