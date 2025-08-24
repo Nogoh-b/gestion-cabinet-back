@@ -444,30 +444,30 @@ export class LoanController {
       throw new ForbiddenException({
         ...typeCredit,
       });
-    const transaction = await this.transactionService
-      .findOne(body.reference)
-      .catch((e) => false);
-    if (!(transaction as boolean))
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'Your transaction is not found',
-      });
-    const trans = transaction as TransactionSavingsAccount;
+    // const transaction = await this.transactionService
+    //   .findOne(body.reference)
+    //   .catch((e) => false);
+    // if (!(transaction as boolean))
+    //   throw new ForbiddenException({
+    //     status: HttpStatus.NOT_ACCEPTABLE,
+    //     success: false,
+    //     message: 'Your transaction is not found',
+    //   });
+    // const trans = transaction as TransactionSavingsAccount;
     const tc = typeCredit as TypeCredit;
-    if (trans.amount !== tc.fee)
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'Please make your payment before to get the loan',
-      });
+    // if (trans.amount !== tc.fee)
+    //   throw new ForbiddenException({
+    //     status: HttpStatus.NOT_ACCEPTABLE,
+    //     success: false,
+    //     message: 'Please make your payment before to get the loan',
+    //   });
     const customer = await this.customersService.findOne(customerId);
-    if (customer.id !== trans.targetSavingsAccount?.customer.id)
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'This payment not match',
-      });
+    // if (customer.id !== trans.targetSavingsAccount?.customer.id)
+    //   throw new ForbiddenException({
+    //     status: HttpStatus.NOT_ACCEPTABLE,
+    //     success: false,
+    //     message: 'This payment not match',
+    //   });
     console.log('Document of guaranty', customer);
     if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
       throw new ForbiddenException({
