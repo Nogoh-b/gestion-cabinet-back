@@ -926,15 +926,13 @@ export class TransactionSavingsAccountService {
   async findOne(id: number | string): Promise<TransactionSavingsAccount> {
     const entity = await this.repo.findOne({
       where: [{ id: id as number }, { reference: id as string }],
-      relations: [
-        'channelTransaction',
-        'provider',
-        'transactionType',
-        'originSavingsAccount',
-        'targetSavingsAccount',
-        'targetSavingsAccount.targetSavingsAccountTx',
-        'targetSavingsAccount.customer',
-      ],
+      relations: {
+        channelTransaction: true,
+        provider: true,
+        transactionType: true,
+        originSavingsAccount: true,
+        targetSavingsAccount: { targetSavingsAccountTx: true, customer: true },
+      },
     });
     if (!entity) throw new NotFoundException(`Transaction ${id} non trouvé`);
     return entity;
