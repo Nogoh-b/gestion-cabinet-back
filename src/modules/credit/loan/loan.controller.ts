@@ -454,7 +454,7 @@ export class LoanController {
         message: 'Please make your payment before to get the loan',
       });
     const customer = await this.customersService.findOne(customerId);
-    console.log(customer)
+    console.log(customer, transaction)
     if (customer.id !== transaction.targetSavingsAccount?.customer.id)
       throw new ForbiddenException({
         status: HttpStatus.NOT_ACCEPTABLE,
