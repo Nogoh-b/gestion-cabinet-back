@@ -16,12 +16,10 @@ import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaran
 import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
 import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { Loan } from './entities/loan.entity';
-import { removeUndefinedKeys } from '@nestjs/swagger/dist/utils/remove-undefined-keys';
 import { getCronTime } from '../../../utils/utils';
 import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
 import { JobsService } from '../../../core/scheduler/jobs.service';
 import { EmployeeService } from '../../agencies/employee/employee.service';
-import { Employee } from '../../agencies/employee/entities/employee.entity';
 import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
 import { CreateCreditTransactionSavingsAccountDto } from '../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
@@ -155,8 +153,19 @@ export class LoanService {
       loan.typeCredit.reimbursement_period,
     );
     this.jobsService.addCronJob('loan-' + loan.id, `30 * * * * *`, async () => {
-      if (!loan.remainPaymentNumber)
+      if (!loan.remainPaymentNumber) {
+        await this.updateLoanByCustomerId(
+          loan,
+          {
+            state:
+              savingAccount.avalaible_balance >= 0
+                ? CREDIT_STATE.COMPLETED
+                : CREDIT_STATE.INCOMPLETE,
+          },
+          false,
+        );
         this.jobsService.deleteCron('loan-' + loan.id);
+      }
       console.log('retrieve trait loan', savingAccount.avalaible_balance);
       const penalityAmount =
         loan.reimbursement_amount +
@@ -185,6 +194,7 @@ export class LoanService {
           .then((t) =>
             console.log('retrieve ', t.amount, savingAccount.avalaible_balance),
           );
+
     });
     return true;
   }
