@@ -318,11 +318,7 @@ export class LoanService {
       status: CREDIT_STATUS.PENDING,
       state: CREDIT_STATE.IN_PROCESSING,
     });
-    return {
-      ...(await this.loanRepository.save(loan)),
-      amount_remain: loan.amount,
-      amount_total: 0,
-    };
+    return await this.loanRepository.save(loan);
   }
 
   simulationReimbursementAmount(amount: number, during: number) {

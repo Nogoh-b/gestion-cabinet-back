@@ -500,9 +500,15 @@ export class LoanController {
     const remainPaymentNumber = Math.ceil(
       during / typeCredit.reimbursement_period,
     );
-    return this.loanService.simulationReimbursementAmount(
-      amount + (amount * typeCredit.interest) / 100,
-      remainPaymentNumber,
-    );
+    const totalAmount = amount + (amount * typeCredit.interest) / 100;
+    return {
+      amount,
+      total: totalAmount,
+      during,
+      trait: this.loanService.simulationReimbursementAmount(
+        totalAmount,
+        remainPaymentNumber,
+      ),
+    };
   }
 }

@@ -12,7 +12,16 @@ export class TypeGuarantyService {
   ) {}
   async addTypeGuaranty(data: TypeGuaranty) {
     const guaranty = this.typeGuarantyRepository.create(data);
-    return await this.typeGuarantyRepository.save(guaranty);
+    try {
+      return await this.typeGuarantyRepository.save(guaranty);
+    }
+    catch (error) {
+      return {
+        success: false,
+        message: 'This type of document already used or error occured!',
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+      }
+    }
   }
 
   async deleteTypeGuaranty(id: number) {
@@ -43,6 +52,8 @@ export class TypeGuarantyService {
   }
 
   async findAllTypeGuaranty() {
-    return await this.typeGuarantyRepository.find();
+    return await this.typeGuarantyRepository.find({
+      relations: { typeOfDocument: true },
+    });
   }
 }

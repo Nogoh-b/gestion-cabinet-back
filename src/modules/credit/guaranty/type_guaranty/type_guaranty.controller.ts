@@ -28,10 +28,15 @@ export class TypeGuarantyController {
   ) {
     const typeOfDocument =
       await this.documentTypeService.findOne(documentTypeId);
-    return await this.typeGuarantyService.addTypeGuaranty({
+    const typeGuaranty = await this.typeGuarantyService.addTypeGuaranty({
       ...data,
       typeOfDocument,
     } as TypeGuaranty);
+    if (typeGuaranty.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...typeGuaranty,
+      });
+    return typeGuaranty;
   }
 
   @Get('all')
