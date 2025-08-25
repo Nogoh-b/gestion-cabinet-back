@@ -479,6 +479,7 @@ export class LoanController {
       amount: Number(amount),
       object,
       comment,
+      reference,
       customer: { id: customerId },
       initiated: { id: user.userId as number } as User,
       credit_account: { id: creditAccount.id },
