@@ -35,6 +35,7 @@ export class LoanSubscriber implements EntitySubscriberInterface<Loan> {
     console.log('-> transfers the system to account');
     const { entity } = event;
     const loan = entity as Loan;
+    console.log(loan.approvedBy);
     const employee = await this.employeeService.findOne(loan.approvedBy.id);
     if (!employee)
       throw new BadRequestException({
