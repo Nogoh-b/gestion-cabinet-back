@@ -398,6 +398,7 @@ export class LoanService {
   }
 
   async createLoan(data: Loan) {
+    console.log('Credit loan', data);
     const remainPaymentNumber = Math.ceil(
       data.duringMax / data.typeCredit.reimbursement_period,
     );

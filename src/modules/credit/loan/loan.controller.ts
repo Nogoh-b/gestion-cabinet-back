@@ -401,15 +401,23 @@ export class LoanController {
 
   @Post('/:customerId/:typeCreditId')
   async createLoan(
-    @Param('typeCreditId') typeCreditId: number,
-    @Param('customerId') customerId: number,
-    @Body() { credit_account_id, ...body }: LoanDto,
+    @Param('typeCreditId', ParseIntPipe) typeCreditId: number,
+    @Param('customerId', ParseIntPipe) customerId: number,
+    @Body()
+    {
+      credit_account_id,
+      duringMax,
+      amount,
+      reference,
+      object,
+      comment,
+    }: LoanDto,
     @Req() { user }: { user: any },
   ) {
     // Implementation for creating a loan
     const creditAccount = await this.savingAccountRepository.findOne({
       where: {
-        id: credit_account_id,
+        id: Number(credit_account_id),
         customer: { id: customerId },
         type_savings_account: {
           code: CREDIT_CODE,
@@ -422,7 +430,7 @@ export class LoanController {
         success: false,
         message: 'Credit account not found. Please contact the administrator.',
       });
-    if (!body.amount)
+    if (!Number(amount))
       throw new ForbiddenException({
         status: HttpStatus.NOT_ACCEPTABLE,
         success: false,
@@ -437,7 +445,6 @@ export class LoanController {
         message: 'You have a Loan in processing',
         status: HttpStatus.FORBIDDEN,
       });
-    console.log('Document of guaranty', body);
     const typeCredit =
       await this.typeCreditService.findOneTypeCredits(typeCreditId);
     if (typeCredit.hasOwnProperty('success'))
@@ -445,7 +452,7 @@ export class LoanController {
         ...typeCredit,
       });
     const transaction = await this.transactionService
-      .findOne(body.reference);
+      .findOne(reference);
     const tc = typeCredit as TypeCredit;
     if (transaction.amount !== tc.fee)
       throw new ForbiddenException({
@@ -454,7 +461,6 @@ export class LoanController {
         message: 'Please make your payment before to get the loan',
       });
     const customer = await this.customersService.findOne(customerId);
-    console.log(customer, transaction)
     // if (customer.id !== transaction.targetSavingsAccount?.customer.id)
     //   throw new ForbiddenException({
     //     status: HttpStatus.NOT_ACCEPTABLE,
@@ -469,7 +475,10 @@ export class LoanController {
         status: HttpStatus.FORBIDDEN,
       });
     return await this.loanService.createLoan({
-      ...body,
+      duringMax: Number(duringMax),
+      amount: Number(amount),
+      object,
+      comment,
       customer: { id: customerId },
       initiated: { id: user.userId as number } as User,
       credit_account: { id: creditAccount.id },
