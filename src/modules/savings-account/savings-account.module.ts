@@ -1,24 +1,7 @@
 import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
 
-
-
-
 import { TypeOrmModule } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { AgenciesModule } from '../agencies/agencies.module';
 import { CommercialModule } from '../commercial/commercial.module';
@@ -48,21 +31,6 @@ import { TypeSavingsAccount } from './type-savings-account/entities/type-savings
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 @Module({
   imports: [
     DocumentsModule,
@@ -85,30 +53,29 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
       SavingsAccount,
       SavingsAccountHasInterest,
     ]),
-    
   ],
-  controllers :[
-      DocumentSavingAccountController,
-      CommissionController,
-      InterestSavingAccountController,
-      TypeSavingsAccountController,
-      SavingsAccountController
+  controllers: [
+    DocumentSavingAccountController,
+    CommissionController,
+    InterestSavingAccountController,
+    TypeSavingsAccountController,
+    SavingsAccountController,
   ],
   providers: [
-      DocumentSavingAccountService,
-      TypeSavingsAccountService,
-      CommissionService,
-      InterestSavingAccountService,
-      SavingsAccountService, SavingsAccountSubscriber
-      
+    DocumentSavingAccountService,
+    TypeSavingsAccountService,
+    CommissionService,
+    InterestSavingAccountService,
+    SavingsAccountService,
+    SavingsAccountSubscriber,
   ],
   exports: [
-      DocumentSavingAccountService,
-      TypeSavingsAccountService,
-      CommissionService,
-      InterestSavingAccountService,
-      SavingsAccountService,
-      TypeOrmModule
-  ]
+    DocumentSavingAccountService,
+    TypeSavingsAccountService,
+    CommissionService,
+    InterestSavingAccountService,
+    SavingsAccountService,
+    TypeOrmModule,
+  ],
 })
 export class SavingsAccountModule {}

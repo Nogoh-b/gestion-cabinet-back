@@ -7,7 +7,7 @@ export class JobsService {
   constructor(private schedulerRegistry: SchedulerRegistry) {}
 
   addCronJob(name: string, time: string, callback: any) {
-    const job = new CronJob(`${time} * * * * *`, callback);
+    const job = new CronJob(`${time}`, callback);
     // @ts-ignore
     this.schedulerRegistry.addCronJob(name, job);
     job.start();

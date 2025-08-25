@@ -38,9 +38,7 @@ import { TransactionSavingsAccountService } from '../../transaction/transaction_
 import { InjectRepository } from '@nestjs/typeorm';
 import { SavingsAccount } from '../../savings-account/savings-account/entities/savings-account.entity';
 import { Repository } from 'typeorm';
-import {
-  TransactionSavingsAccount
-} from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
 import { PaginationQueryTxDto } from '../../../core/shared/dto/pagination-query.dto';
 
 @Controller('loan')
@@ -131,11 +129,7 @@ export class LoanController {
       });
     else if (loan.state !== CREDIT_STATE.END_PROCESSING)
       throw new ForbiddenException({
-        message: `You must valid documents and guaranties before continue.
-        * Type of guaranty
-        ${guaranties.length ? guaranties.map((s) => `- ${s.name}`).join('\n') : '- Nothing guaranties required'}
-        * Type of document
-        ${typeOfDocument.length ? typeOfDocument.map((s) => `- ${s.name}`).join('\n') : '- Nothing documents required'}`,
+        message: `Please Submit loan before to continue`,
         status: HttpStatus.FORBIDDEN,
         success: false,
       });
