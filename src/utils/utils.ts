@@ -13,6 +13,9 @@ export function getCronTime(date: Date, period: MODE_REIMBURSEMENT_PERIOD) {
     case MODE_REIMBURSEMENT_PERIOD.WEEKLY:
       cronTimeFormat = `0 ${getMinute} ${getHour} * * ${getDay}`;
       break;
+    case MODE_REIMBURSEMENT_PERIOD.BIWEEKLY:
+      cronTimeFormat = `0 ${getMinute} ${getHour} ${getDate} * */2`;
+      break;
     case MODE_REIMBURSEMENT_PERIOD.MONTHLY:
       cronTimeFormat = `0 ${getMinute} ${getHour} ${getDay} * *`;
       break;

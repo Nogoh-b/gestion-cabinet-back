@@ -22,6 +22,7 @@ import { TransactionSavingsAccountService } from '../../transaction/transaction_
 import { JobsService } from '../../../core/scheduler/jobs.service';
 import { EmployeeService } from '../../agencies/employee/employee.service';
 import { Employee } from '../../agencies/employee/entities/employee.entity';
+import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
 
 @Injectable()
 export class LoanService {
@@ -35,6 +36,7 @@ export class LoanService {
     private readonly transactionSavingAccountService: TransactionSavingsAccountService,
     private readonly jobsService: JobsService,
     private readonly employeeService: EmployeeService,
+    private readonly savingAccountService: SavingsAccountService,
   ) {}
 
   async findAllLoans() {
@@ -104,16 +106,7 @@ export class LoanService {
   }
 
   async setApprovedLoanByCustomerId(loan: Loan, user: any) {
-    const valid = await this.updateLoanByCustomerId(
-      loan,
-      {
-        state: CREDIT_STATE.ACTIVE,
-        status: CREDIT_STATUS.APPROVED,
-        approvedBy: { id: user.userId as number } as User,
-      },
-      true,
-    );
-    if (valid.hasOwnProperty('success')) return valid;
+    const creditAccount = loan.credit_account;
     const employee = await this.employeeService.findOne(user.userId as number);
     console.log(employee);
     if (!employee)
@@ -130,21 +123,54 @@ export class LoanService {
           'No system to approve, branch not identify in this user, please contact administrator',
         status: HttpStatus.BAD_REQUEST,
       });
-    const creditAccount = loan.credit_account;
+
+    const valid = await this.updateLoanByCustomerId(
+      loan,
+      {
+        state: CREDIT_STATE.ACTIVE,
+        status: CREDIT_STATUS.APPROVED,
+        approvedBy: { id: user.userId as number } as User,
+      },
+      false,
+    );
+    if (valid.hasOwnProperty('success')) return valid;
+
     const transaction =
       await this.transactionSavingAccountService.deposit_loan_to_account({
         amount: loan.amount,
         branch_id: agency.id,
-        origin_savings_account_code: agency.code,
         target_savings_account_code: creditAccount.number_savings_account,
       } as any);
+    console.log(transaction);
+
     const time = getCronTime(
       transaction.created_at,
       loan.typeCredit.reimbursement_period,
     );
-    this.jobsService.addCronJob('jobs-' + transaction.id, time, () => {
-      console.log('retrieve trait loan');
+    this.jobsService.addCronJob('loan-' + loan.id, `30 * * * * *`, async () => {
+      const savingAccount = await this.savingAccountService.findOneByCustomer(
+        loan.customer.id,
+      );
+      const savingAccountAgency = await this.savingAccountService.findOneAdmin()
+      console.log('retrieve trait loan', savingAccount.balance);
+      if (savingAccount.balance <= 0)
+        await this.transactionSavingAccountService.retrieve_penality_account({
+          amount:
+            loan.reimbursement_amount +
+            (loan.reimbursement_amount * loan.typeCredit.penality) / 100,
+          branch_id: agency.id,
+          origin_savings_account_code: savingAccount.number_savings_account,
+          target_savings_account_code: agency.code,
+        });
+      else
+        await this.transactionSavingAccountService.retrieve_trait_to_account({
+          amount: loan.reimbursement_amount,
+          branch_id: agency.id,
+          origin_savings_account_code: savingAccount.number_savings_account,
+          target_savings_account_code: agency.code,
+        });
     });
+    return true;
   }
 
   async setRevokedLoanByCustomerId(loan: Loan, user: User) {
