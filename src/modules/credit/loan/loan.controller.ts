@@ -166,10 +166,13 @@ export class LoanController {
         ...result,
       });
     const loan = result as Loan;
-    return await this.loanService.setRevokedLoanByCustomerId(loan, user);
+    const valid = await this.loanService.setRevokedLoanByCustomerId(loan, user);
+    if ((valid as any).hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...(valid as any),
+      });
+    return valid;
   }
-
-
 
   @Delete('/:customerId/:loanId')
   async deleteLoan(
