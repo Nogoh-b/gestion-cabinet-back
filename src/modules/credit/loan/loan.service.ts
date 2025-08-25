@@ -167,9 +167,12 @@ export class LoanService {
         this.jobsService.deleteCron('loan-' + loan.id);
       }
       console.log('retrieve trait loan', savingAccount.avalaible_balance);
+      const amountRetrieve =
+        loan.reimbursement_amount <= loan.remainTotalAmount
+          ? loan.reimbursement_amount
+          : loan.remainTotalAmount;
       const penalityAmount =
-        loan.reimbursement_amount +
-        (loan.reimbursement_amount * loan.typeCredit.penality) / 100;
+        amountRetrieve + (amountRetrieve * loan.typeCredit.penality) / 100;
       if (savingAccount.balance < loan.reimbursement_amount)
         await this.transactionSavingAccountService
           .retrieve_penality_account({
@@ -185,7 +188,7 @@ export class LoanService {
       else
         await this.transactionSavingAccountService
           .retrieve_trait_to_account({
-            amount: loan.reimbursement_amount,
+            amount: amountRetrieve,
             branch_id: agency.id,
             origin_savings_account_code: savingAccount.number_savings_account,
             target_savings_account_code:
@@ -194,7 +197,14 @@ export class LoanService {
           .then((t) =>
             console.log('retrieve ', t.amount, savingAccount.avalaible_balance),
           );
-
+      await this.updateLoanByCustomerId(
+        loan,
+        {
+          remainPaymentNumber: --loan.remainPaymentNumber,
+          remainTotalAmount: loan.remainTotalAmount - loan.reimbursement_amount,
+        },
+        false,
+      );
     });
     return true;
   }
