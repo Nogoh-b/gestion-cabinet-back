@@ -445,24 +445,16 @@ export class LoanController {
         ...typeCredit,
       });
     const transaction = await this.transactionService
-      .findOne(body.reference)
-      .catch((e) => false);
-    if (!(transaction as boolean))
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'Your transaction is not found',
-      });
-    const trans = transaction as TransactionSavingsAccount;
+      .findOne(body.reference);
     const tc = typeCredit as TypeCredit;
-    if (trans.amount !== tc.fee)
+    if (transaction.amount !== tc.fee)
       throw new ForbiddenException({
         status: HttpStatus.NOT_ACCEPTABLE,
         success: false,
         message: 'Please make your payment before to get the loan',
       });
     const customer = await this.customersService.findOne(customerId);
-    if (customer.id !== trans.targetSavingsAccount?.customer.id)
+    if (customer.id !== transaction.targetSavingsAccount?.customer.id)
       throw new ForbiddenException({
         status: HttpStatus.NOT_ACCEPTABLE,
         success: false,
