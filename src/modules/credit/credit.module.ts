@@ -34,6 +34,7 @@ import { SavingsAccount } from '../savings-account/savings-account/entities/savi
 import { LoanSubscriber } from './loan/subscribers/loan.subscriber';
 import { JobsService } from '../../core/scheduler/jobs.service';
 import { AgenciesModule } from '../agencies/agencies.module';
+import { EmployeeService } from '../agencies/employee/employee.service';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { AgenciesModule } from '../agencies/agencies.module';
     PermissionsService,
     LoanSubscriber,
     JobsService,
+    EmployeeService,
   ],
 })
 export class CreditModule {}
