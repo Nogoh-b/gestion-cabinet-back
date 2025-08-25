@@ -16,6 +16,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
+
+
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.00, description: 'Montant de la transaction' })
   @IsNumber()
@@ -56,6 +59,8 @@ export class CreateTransactionSavingsAccountDto {
   @IsOptional()
   @IsString()*/
   origin_code_transaction?: string;
+  origin?: string;
+  target?: string;
 
   /*@ApiPropertyOptional({ example: 'EXT_ACT_123', description: 'ID activité externe' })
   @IsOptional()
@@ -68,6 +73,7 @@ export class CreateTransactionSavingsAccountDto {
   external_savings_account_number?: string;*/
 
   status : number 
+  provider?: string;
 
 
   /*@ApiProperty({ example: 2, description: 'ID du canal de transaction' })
@@ -98,6 +104,8 @@ export class CreateCreditTransactionSavingsAccountDto {
 
   status : number 
   
+  origin?: string;
+  target?: string;
   
   @ApiProperty({ example: 1000, description: 'Montant de la commission' })
   @IsNumber()
@@ -106,7 +114,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   commission: number;
                           // true si la transaction est bloquée, false sinon
   token?: string;
-  target?: string;
+  provider?: string;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
@@ -121,6 +129,9 @@ export class CreateDebitTransactionSavingsAccountDto {
   amount: number;
   token?: string;
   commission: number;
+  origin?: string;
+  provider?: string;
+  target?: string;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
