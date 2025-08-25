@@ -97,7 +97,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   @ApiPropertyOptional({ example: '8629891', description: 'Code de destination' })
   @IsString()
   target_savings_account_code?: string;         // code du compte épargne cible (pour INTERNAL_TRANSFER)
-
+  origin_savings_account_code?: string;
   @ApiPropertyOptional({ example: false, description: 'Si la transaction est bloquée ou pas' })
   @IsBoolean()
   is_locked: boolean;  

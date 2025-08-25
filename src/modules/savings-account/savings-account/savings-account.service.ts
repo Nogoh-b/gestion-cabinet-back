@@ -366,7 +366,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
-    async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
     const relations = [
       'customer',
       'type_savings_account',
@@ -389,6 +389,59 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     created_online: number | null = null
   ): Promise<SavingsAccountResponseDto> {
     const whereClause: any = { 
+      customer: { id },
+      status: Not(SavingsAccountStatus.DEACTIVATE)
+    };
+
+    // Ajoute le filtre created_online seulement si la valeur est non-null
+    if (created_online !== null) {
+      whereClause.created_online = created_online;
+    }
+
+    const account = await this.repo.findOne({
+      where: whereClause,
+      relations: [
+        'interestRelations',
+        'customer',
+      ],
+    });
+
+    if (!account) {
+      throw new NotFoundException(`Compte epargne pour customer ${id} introuvable ; created online ${created_online}`);
+    }
+
+    return plainToInstance(SavingsAccountResponseDto, account);
+  }
+
+  async findOneHydridSavingByCustomer(
+    id: number,
+    created_online: number | null = null
+  ): Promise<SavingsAccountResponseDto> {
+
+    const account = await this.repo.findOne({
+      where: {
+        customer: { id },
+        type_savings_account: { canCreateOnline: 1},
+        status: Not(SavingsAccountStatus.DEACTIVATE)
+      },
+      relations: {
+        customer: true,
+        interestRelations: true,
+      },
+    });
+
+    if (!account) {
+      throw new NotFoundException(`Compte epargne pour customer ${id} introuvable ; created online ${created_online}`);
+    }
+
+    return plainToInstance(SavingsAccountResponseDto, account);
+  }
+
+  async findOneCreditSavingByCustomer(
+    id: number,
+    created_online: number | null = null
+  ): Promise<SavingsAccountResponseDto> {
+    const whereClause: any = {
       customer: { id },
       status: Not(SavingsAccountStatus.DEACTIVATE)
     };

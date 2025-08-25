@@ -23,6 +23,7 @@ import { JobsService } from '../../../core/scheduler/jobs.service';
 import { EmployeeService } from '../../agencies/employee/employee.service';
 import { Employee } from '../../agencies/employee/entities/employee.entity';
 import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
+import { CreateCreditTransactionSavingsAccountDto } from '../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
 @Injectable()
 export class LoanService {
@@ -123,7 +124,13 @@ export class LoanService {
           'No system to approve, branch not identify in this user, please contact administrator',
         status: HttpStatus.BAD_REQUEST,
       });
-
+    const savingAccount =
+      await this.savingAccountService.findOneHydridSavingByCustomer(
+        loan.customer.id,
+      );
+    const savingAccountAgency = await this.savingAccountService.findOneAdmin(
+      agency.id,
+    );
     const valid = await this.updateLoanByCustomerId(
       loan,
       {
@@ -148,27 +155,36 @@ export class LoanService {
       loan.typeCredit.reimbursement_period,
     );
     this.jobsService.addCronJob('loan-' + loan.id, `30 * * * * *`, async () => {
-      const savingAccount = await this.savingAccountService.findOneByCustomer(
-        loan.customer.id,
-      );
-      const savingAccountAgency = await this.savingAccountService.findOneAdmin()
-      console.log('retrieve trait loan', savingAccount.balance);
-      if (savingAccount.balance <= 0)
-        await this.transactionSavingAccountService.retrieve_penality_account({
-          amount:
-            loan.reimbursement_amount +
-            (loan.reimbursement_amount * loan.typeCredit.penality) / 100,
-          branch_id: agency.id,
-          origin_savings_account_code: savingAccount.number_savings_account,
-          target_savings_account_code: agency.code,
-        });
+      if (!loan.remainPaymentNumber)
+        this.jobsService.deleteCron('loan-' + loan.id);
+      console.log('retrieve trait loan', savingAccount.avalaible_balance);
+      const penalityAmount =
+        loan.reimbursement_amount +
+        (loan.reimbursement_amount * loan.typeCredit.penality) / 100;
+      if (savingAccount.balance < loan.reimbursement_amount)
+        await this.transactionSavingAccountService
+          .retrieve_penality_account({
+            amount: penalityAmount,
+            branch_id: agency.id,
+            origin_savings_account_code: savingAccount.number_savings_account,
+            target_savings_account_code:
+              savingAccountAgency.number_savings_account,
+          } as CreateCreditTransactionSavingsAccountDto)
+          .then((t) =>
+            console.log('penality ', t.amount, savingAccount.avalaible_balance),
+          );
       else
-        await this.transactionSavingAccountService.retrieve_trait_to_account({
-          amount: loan.reimbursement_amount,
-          branch_id: agency.id,
-          origin_savings_account_code: savingAccount.number_savings_account,
-          target_savings_account_code: agency.code,
-        });
+        await this.transactionSavingAccountService
+          .retrieve_trait_to_account({
+            amount: loan.reimbursement_amount,
+            branch_id: agency.id,
+            origin_savings_account_code: savingAccount.number_savings_account,
+            target_savings_account_code:
+              savingAccountAgency.number_savings_account,
+          } as CreateCreditTransactionSavingsAccountDto)
+          .then((t) =>
+            console.log('retrieve ', t.amount, savingAccount.avalaible_balance),
+          );
     });
     return true;
   }

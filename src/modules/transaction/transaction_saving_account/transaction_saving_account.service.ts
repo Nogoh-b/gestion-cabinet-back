@@ -265,7 +265,6 @@ export class TransactionSavingsAccountService {
     ) {
       throw new BadRequestException(`Transfert vers le même compte interdit ${(dto as CreateTransactionSavingsAccountDto).origin_savings_account_code} ${dto.target_savings_account_code} `);
     }
-    console.log('isFirstTx111');
 
     // récupération du compte origine
     let origin: SavingsAccount | null = null;
@@ -326,7 +325,6 @@ export class TransactionSavingsAccountService {
       );
 
     const isFirstTx = await this.isFirstTransaction(target); //Verifie si c'est la première transaction
-    console.log('isFirstTx111', isFirstTx);
 
     const channel = await this.channelRepo.findOne({
       where: { code: channel_code },
@@ -362,10 +360,6 @@ export class TransactionSavingsAccountService {
     const dayBeforeWithdraw =
       (dto as CreateTransactionSavingsAccountDto).day_before_withdraw ?? 0;
 
-    console.log(
-      'dayBeforeWithdraw',
-      (dto as CreateTransactionSavingsAccountDto).day_before_withdraw,
-    );
     // création de l'entité transaction
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
