@@ -55,6 +55,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -64,6 +72,14 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
 
 
 
@@ -866,7 +882,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // load account with its documents
     const account = await this.repo.findOne({
       where: { id },
-      relations: ['originSavingsAccountTx' , 'targetSavingsAccountTx'],
+      relations: ['originSavingsAccountTx' , 
+      'targetSavingsAccountTx',
+      'originSavingsAccountTx.provider', 
+      'originSavingsAccountTx.channelTransaction',
+      'originSavingsAccountTx.transactionType'
+      ,'targetSavingsAccountTx.provider', 
+      'targetSavingsAccountTx.channelTransaction',
+      'targetSavingsAccountTx.transactionType'],
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
     const combinedTransactions = [
@@ -1366,6 +1389,149 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       inComingAmountOM,
       outgoingAmountOM,
     };
+
+  }
+
+  async statsV1(code: string): Promise<any> {
+  
+      const sa = await this.findOneByCode(code)
+  
+      const id = sa.id
+      const txs = await this.getTransactions(id)
+  
+      let  stats = {
+        online : {
+          om : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+          },
+          momo : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+          },
+          transactionCountIncomming : 0,
+          transactionAmountIncomming : 0,
+          transactionCountOutcomming : 0,
+          transactionAmountOutcomming : 0,
+          balance : 0
+  
+        },
+        agency :{
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+        },
+        global : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+        } 
+      }
+  
+      for (const tx of txs) {
+        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.is_locked)
+          continue
+        // transactions entrantes
+        if(tx.targetSavingsAccount && !tx.originSavingsAccount ){
+          stats.global.transactionAmountIncomming += tx.amount
+          stats.global.transactionCountIncomming++
+          if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+              stats.online.transactionAmountIncomming += tx.amount
+              stats.online.transactionCountIncomming++
+          }else if(tx.branch_id ){
+              stats.agency.transactionAmountIncomming += tx.amount
+              stats.agency.transactionCountIncomming++
+          }
+          if(tx.provider.code === TransactionProvider.MOMO){
+            stats.online.momo.transactionAmountIncomming += tx.amount
+            stats.online.momo.transactionCountIncomming++
+          }else if(tx.provider.code === TransactionProvider.OM){
+            stats.online.om.transactionAmountIncomming += tx.amount
+            stats.online.om.transactionCountIncomming++
+          }
+        }
+        // transactions sortante
+        if(!tx.targetSavingsAccount && tx.originSavingsAccount ){
+          stats.global.transactionAmountOutcomming += tx.amount
+          stats.global.transactionCountOutcomming++
+          console.log('tx.branch_id ', tx.id)
+          if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+              stats.online.transactionAmountOutcomming += tx.amount
+              stats.online.transactionCountOutcomming++
+          }else if(tx.branch_id ){
+              stats.agency.transactionAmountOutcomming += tx.amount
+              stats.agency.transactionCountOutcomming++
+          }
+          if(tx.provider.code === TransactionProvider.MOMO){
+            stats.online.momo.transactionAmountOutcomming += tx.amount
+            stats.online.momo.transactionCountOutcomming++
+          }else if(tx.provider.code === TransactionProvider.OM){
+            stats.online.om.transactionAmountOutcomming += tx.amount
+            stats.online.om.transactionCountOutcomming++
+          }
+        }
+        
+
+
+
+        if(tx.targetSavingsAccount && tx.originSavingsAccount ){
+          if(tx.originSavingsAccount.id == id){
+            stats.global.transactionAmountOutcomming += tx.amount
+            stats.global.transactionCountOutcomming++
+            console.log('tx.branch_id ', tx.id)
+            if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+                stats.online.transactionAmountOutcomming += tx.amount
+                stats.online.transactionCountOutcomming++
+            }else if(tx.branch_id ){
+                stats.agency.transactionAmountOutcomming += tx.amount
+                stats.agency.transactionCountOutcomming++
+            }
+            if(tx.provider.code === TransactionProvider.MOMO){
+              stats.online.momo.transactionAmountOutcomming += tx.amount
+              stats.online.momo.transactionCountOutcomming++
+            }else if(tx.provider.code === TransactionProvider.OM){
+              stats.online.om.transactionAmountOutcomming += tx.amount
+              stats.online.om.transactionCountOutcomming++
+            }
+          }else if(tx.targetSavingsAccount.id == id){
+            stats.global.transactionAmountIncomming += tx.amount
+            stats.global.transactionCountIncomming++
+            if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+                stats.online.transactionAmountIncomming += tx.amount
+                stats.online.transactionCountIncomming++
+            }else if(tx.branch_id ){
+                stats.agency.transactionAmountIncomming += tx.amount
+                stats.agency.transactionCountIncomming++
+            }
+            if(tx.provider.code === TransactionProvider.MOMO){
+              stats.online.momo.transactionAmountIncomming += tx.amount
+              stats.online.momo.transactionCountIncomming++
+            }else if(tx.provider.code === TransactionProvider.OM){
+              stats.online.om.transactionAmountIncomming += tx.amount
+              stats.online.om.transactionCountIncomming++
+            }
+          }
+
+        }
+        stats.agency.balance = stats.agency.transactionAmountIncomming - stats.agency.transactionAmountOutcomming
+        stats.global.balance = stats.global.transactionAmountIncomming - stats.global.transactionAmountOutcomming
+        stats.online.balance = stats.online.transactionAmountIncomming - stats.online.transactionAmountOutcomming
+        stats.online.momo.balance = stats.online.momo.transactionAmountIncomming - stats.online.momo.transactionAmountOutcomming
+        stats.online.om.balance = stats.online.om.transactionAmountIncomming - stats.online.om.transactionAmountOutcomming
+      }
+  
+
+      return stats
 
   }
 
