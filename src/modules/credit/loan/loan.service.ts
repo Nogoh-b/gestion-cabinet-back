@@ -1,32 +1,34 @@
+import { CronJob } from 'cron';
 import { In, Repository } from 'typeorm';
 import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { UPLOAD_DOCS_PATH } from '../../../core/common/constants/constants';
+import { JobsService } from '../../../core/scheduler/jobs.service';
 import { FilesUtil } from '../../../core/shared/utils/file.util';
 import {
   CREDIT_STATE,
   CREDIT_STATUS,
   MODE_REIMBURSEMENT_PERIOD,
 } from '../../../utils/types';
+import { getCronTime } from '../../../utils/utils';
+import { EmployeeService } from '../../agencies/employee/employee.service';
 import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from '../../documents/document-customer/entities/document-customer.entity';
 import { DocumentTypeService } from '../../documents/document-type/document-type.service';
 import { User } from '../../iam/user/entities/user.entity';
+import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
+import { CreateCreditTransactionSavingsAccountDto } from '../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
+import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
 import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaranty_estimation.service';
 import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
 import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { Loan } from './entities/loan.entity';
-import { getCronTime } from '../../../utils/utils';
-import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
-import { JobsService } from '../../../core/scheduler/jobs.service';
-import { EmployeeService } from '../../agencies/employee/employee.service';
-import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
-import { CreateCreditTransactionSavingsAccountDto } from '../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
-import { CronJob } from 'cron';
+
 
 @Injectable()
 export class LoanService {
@@ -153,7 +155,8 @@ export class LoanService {
         amount: loan.amount,
         branch_id: agency.id,
         target_savings_account_code: creditAccount.number_savings_account,
-      } as any);
+        loanId: loan.id,
+      } as CreateCreditTransactionSavingsAccountDto);
     console.log(transaction);
 
     const time = getCronTime(
@@ -208,6 +211,7 @@ export class LoanService {
               origin_savings_account_code: savingAccount.number_savings_account,
               target_savings_account_code:
                 savingAccountAgency.number_savings_account,
+              loanId: loan.id,
             } as CreateCreditTransactionSavingsAccountDto)
             .then((t) =>
               console.log(
@@ -224,6 +228,7 @@ export class LoanService {
               origin_savings_account_code: savingAccount.number_savings_account,
               target_savings_account_code:
                 savingAccountAgency.number_savings_account,
+              loanId: loan.id,
             } as CreateCreditTransactionSavingsAccountDto)
             .then((t) =>
               console.log(

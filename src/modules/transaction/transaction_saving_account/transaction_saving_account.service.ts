@@ -9,26 +9,28 @@ import {
 import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 
+import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
+
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 
 import { PersonnelTypeCode } from 'src/modules/personnel/type_personnel/entities/type_personnel.entity';
-
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { QueueService } from 'src/modules/queue/queue.service';
+
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 
 import {
   SavingsAccount,
   SavingsAccountStatus,
 } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
-
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+
 import { Not, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { v4 as uuidv4 } from 'uuid';
-
 import { InjectQueue } from '@nestjs/bull';
+
 import {
   BadRequestException,
   Injectable,
@@ -36,6 +38,7 @@ import {
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
+
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
@@ -60,6 +63,8 @@ import {
   TransactionSavingsAccount,
   TransactionSavingsAccountStatus,
 } from './entities/transaction_saving_account.entity';
+
+
 
 @Injectable()
 export class TransactionSavingsAccountService {
@@ -91,7 +96,6 @@ export class TransactionSavingsAccountService {
     provider_code: string,
     to_agency = false,
   ): Promise<ResponseTransactionSavingsAccountDto> {
-    // channel_code = dto.branch_id ? 'BRANCH' : 'MOBILE'
 
     if (
       (dto as CreateTransactionSavingsAccountDto)
@@ -158,7 +162,7 @@ export class TransactionSavingsAccountService {
       ressource = await this.savingsAccountService.getByIdAndSavingsAccount(
         (dto as CreateTransactionSavingsAccountDto).ressource_id,
         false,
-      );
+    );
 
     const isFirstTx = await this.isFirstTransaction(target); //Verifie si c'est la première transaction
 
@@ -208,6 +212,7 @@ export class TransactionSavingsAccountService {
     tx.commission = dto.commission ?? 0;
     tx.transactionType = txType;
     tx.ressource = ressource;
+    tx.loan = dto?.loanId ? {id: dto?.loanId} as Loan : null;
     /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
       : 'SYTEM';*/
