@@ -11,28 +11,8 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
 import { TransactionCode } from '../../transaction_type/entities/transaction_type.entity';
 
-<<<<<<< HEAD
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-=======
->>>>>>> 58c711b6b7b7127afe7907d96bbf4cdbf0305c8a
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.0, description: 'Montant de la transaction' })
   @IsNumber()
@@ -114,13 +94,8 @@ export class CreateCreditTransactionSavingsAccountDto {
 
   origin?: string;
   target?: string;
-<<<<<<< HEAD
-  tx_type?: TransactionCode;
-  
-=======
   loanId?: number;
   tx_type?: TransactionCode;
->>>>>>> 58c711b6b7b7127afe7907d96bbf4cdbf0305c8a
   @ApiProperty({ example: 1000, description: 'Montant de la commission' })
   @IsNumber()
   @IsOptional()
@@ -134,7 +109,6 @@ export class CreateCreditTransactionSavingsAccountDto {
   @IsNumber()
   branch_id: number;
   tx_project_id?: number;
-
 }
 
 export class CreateDebitTransactionSavingsAccountDto {
@@ -148,10 +122,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   provider?: string;
   target?: string;
   tx_type?: TransactionCode;
-<<<<<<< HEAD
-=======
   loanId?: number;
->>>>>>> 58c711b6b7b7127afe7907d96bbf4cdbf0305c8a
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
@@ -168,8 +139,8 @@ export class CreateDebitTransactionSavingsAccountDto {
 
   origin_code_transaction?: string;
   tx_project_id?: number;
-
 }
+
 export class ValidateTransactionSavingsAccountDto {
   @ApiProperty({
     example: '999e9a89-49a7-48e5-9f77-1b24aded1861',

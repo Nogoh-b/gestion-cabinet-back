@@ -12,24 +12,19 @@ import {
 
 import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 
-
-
-
-
-
-import { TransactionCode, TransactionProvider } from '../transaction_type/entities/transaction_type.entity';
-import { CreateCreditTransactionSavingsAccountDto, CreateDebitTransactionSavingsAccountDto, CreateTransactionSavingsAccountDto, UniqueCheckQueryDto, UpdateProviderInfoDto, ValidateTransactionSavingsAccountDto } from './dto/create-transaction_saving_account.dto';
+import {
+  TransactionCode,
+  TransactionProvider,
+} from '../transaction_type/entities/transaction_type.entity';
+import {
+  CreateCreditTransactionSavingsAccountDto,
+  CreateDebitTransactionSavingsAccountDto,
+  CreateTransactionSavingsAccountDto,
+  UniqueCheckQueryDto,
+  UpdateProviderInfoDto,
+  ValidateTransactionSavingsAccountDto,
+} from './dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from './transaction_saving_account.service';
-
-
-
-
-
-
-
-
-
-
 
 @Controller('transaction-saving-account')
 export class TransactionSavingAccountController {
@@ -82,13 +77,10 @@ export class TransactionSavingAccountController {
     return this.transactionSavingAccountService.e_wallet_deposit(dto);
   }
 
-
-
   @Post('buy_tontine')
   buy_tontine(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.buy_tontine(dto);
   }
-
 
   @Post('transaction_project')
   transaction_project(@Body() dto: CreateTransactionSavingsAccountDto) {
@@ -165,7 +157,7 @@ export class TransactionSavingAccountController {
   findAllMomo(@Query() query: PaginationQueryTxDto) {
     return this.findByTypeParent(query, TransactionProvider.MOMO);
   }
-    /**
+  /**
    * GET /transaction-savings-account/withdrawals/without-commission
    * Exemple: /transaction-savings-account/withdrawals/without-commission?page=1&limit=50
    */
@@ -177,12 +169,14 @@ export class TransactionSavingAccountController {
   ) {
     const page_num = page ? parseInt(page, 10) : undefined;
     const limit_num = limit ? parseInt(limit, 10) : undefined;
-    return this.transactionSavingAccountService.find_withdrawals_without_commission(page_num, limit_num);
-  } 
+    return this.transactionSavingAccountService.find_withdrawals_without_commission(
+      page_num,
+      limit_num,
+    );
+  }
 
   @Get('withdrawals/process-commission')
-  async process_withdrawals_without_commission() 
-  {
+  async process_withdrawals_without_commission() {
     return this.transactionSavingAccountService.validate_withdrawals_without_commission();
   }
 

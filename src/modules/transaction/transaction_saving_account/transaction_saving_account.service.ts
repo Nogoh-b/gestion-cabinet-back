@@ -33,102 +33,6 @@ import {
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-
-<<<<<<< HEAD
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-=======
->>>>>>> 58c711b6b7b7127afe7907d96bbf4cdbf0305c8a
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -145,8 +49,14 @@ import {
 } from './dto/create-transaction_saving_account.dto';
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
-import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
-
+import {
+  Payment,
+  PaymentStatus,
+  PaymentStatusProvider,
+  TransactionSavingsAccount,
+  TransactionSavingsAccountStatus,
+} from './entities/transaction_saving_account.entity';
+import { Loan } from '../../credit/loan/entities/loan.entity';
 
 @Injectable()
 export class TransactionSavingsAccountService {
@@ -1002,9 +912,10 @@ export class TransactionSavingsAccountService {
           hasFirstDeposit = false;
           break; // Sortie immédiate de la boucle
         }
+      }
+      return hasFirstDeposit;
+      // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
     }
-    return hasFirstDeposit;
-    // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
   }
 
   async validate_v0(
@@ -1742,7 +1653,7 @@ export class TransactionSavingsAccountService {
       );
       isFirstTx = await this.isFirstTransaction(
         plainToInstance(SavingsAccount, sa),
-      );
+      ) as boolean;
       // }
       console.log(tx.token, '  ', tx.provider.code);
       const paymentResult = await new Promise<
