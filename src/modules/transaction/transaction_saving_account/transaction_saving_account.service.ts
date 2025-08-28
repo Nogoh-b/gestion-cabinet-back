@@ -39,6 +39,7 @@ import {
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -62,6 +63,7 @@ import {
   TransactionSavingsAccount,
   TransactionSavingsAccountStatus,
 } from './entities/transaction_saving_account.entity';
+
 
 
 @Injectable()
@@ -162,13 +164,6 @@ export class TransactionSavingsAccountService {
         false,
     );
 
-    let loan: Loan | null = null;
-    if ((dto).lo)
-      ressource = await this.savingsAccountService.getByIdAndSavingsAccount(
-        (dto as CreateTransactionSavingsAccountDto).ressource_id,
-        false,
-    );
-
     const isFirstTx = await this.isFirstTransaction(target); //Verifie si c'est la première transaction
 
     const channel = await this.channelRepo.findOne({
@@ -217,6 +212,7 @@ export class TransactionSavingsAccountService {
     tx.commission = dto.commission ?? 0;
     tx.transactionType = txType;
     tx.ressource = ressource;
+    tx.loan = dto?.loanId ? {id: dto?.loanId} as Loan : null;
     /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
       : 'SYTEM';*/
