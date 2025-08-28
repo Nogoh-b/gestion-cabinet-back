@@ -295,7 +295,7 @@ export class LoanService {
         status: HttpStatus.FORBIDDEN,
         message: 'You cannot delete this loan',
       };
-    await this.loanRepository.delete(loan.id);
+    await this.loanRepository.softDelete(loan.id);
     return true;
   }
 
