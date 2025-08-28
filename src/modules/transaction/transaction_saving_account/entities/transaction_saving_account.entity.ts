@@ -20,9 +20,13 @@ import {
 
 
 
+
+
 import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
+
 
 
 
@@ -195,6 +199,9 @@ export class TransactionSavingsAccount {
 
   @JoinColumn({ name: 'tx_parent_id', referencedColumnName: 'id' })
   tx_parent?: TransactionSavingsAccount | null;
+
+  @Column({ type: 'int', nullable: true })
+  tx_project_id?: number | null;
 
   @ManyToOne(() => SavingsAccount, (acc) => acc.originSavingsAccountTx, {
     eager: true,

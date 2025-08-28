@@ -89,6 +89,12 @@ export class TransactionSavingAccountController {
     return this.transactionSavingAccountService.buy_tontine(dto);
   }
 
+
+  @Post('transaction_project')
+  transaction_project(@Body() dto: CreateTransactionSavingsAccountDto) {
+    return this.transactionSavingAccountService.transaction_project(dto);
+  }
+
   @Post('receive_tontine')
   receive_tontine(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.receive_tontine(dto);

@@ -123,6 +123,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -140,6 +146,12 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
 
 
 
@@ -348,7 +360,7 @@ export class TransactionSavingsAccountService {
         !docStatsTargetAccount.allRequiredValidated ||
         origin.status != SavingsAccountStatus.ACTIVE
       ) {
-        if (this.can_refuse_transaction_type_for_debit(txType.code))
+        if (this.can_refuse_transaction_type_for_debit(txType.code, origin.is_admin))
           throw new NotFoundException(
             `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,
           );
@@ -378,6 +390,7 @@ export class TransactionSavingsAccountService {
     tx.commission = dto.commission ?? 0;
     tx.transactionType = txType;
     tx.ressource = ressource;
+    tx.tx_project_id = dto.tx_project_id ?? null;
     /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
       : 'SYTEM';*/
@@ -439,10 +452,11 @@ export class TransactionSavingsAccountService {
     return plainToInstance(ResponseTransactionSavingsAccountDto, tx);
   }
 
-  can_refuse_transaction_type_for_debit(txTypeCode) {
+  can_refuse_transaction_type_for_debit(txTypeCode?: string, is_admin ?: boolean) {
+    // if(tx.originSavingsAccount?.is_admin)
     return (
       txTypeCode === TransactionCode.INTERNAL_TRANSFER ||
-      txTypeCode?.includes('_WITHDRAW')
+      txTypeCode?.includes('_WITHDRAW') || !is_admin
     );
   }
 
@@ -592,6 +606,11 @@ export class TransactionSavingsAccountService {
     }
     console.log(dto)
     return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);*/
+  }
+
+  async transaction_project(dto: CreateTransactionSavingsAccountDto) {
+    console.log(dto)
+    return await this.perform_transaction(dto, TransactionCode[dto.tx_type ?? TransactionCode.INTERNAL_TRANSFER], 'MOBILE', TransactionProvider.HYBRID_SAVING);
   }
 
 
@@ -933,7 +952,7 @@ export class TransactionSavingsAccountService {
     if (
       (account != null &&
       avalaible_balance < amount &&
-      this.can_refuse_transaction_type_for_debit(txTypeCode)) || amount < 0
+      this.can_refuse_transaction_type_for_debit(txTypeCode , account.is_admin)) || amount < 0
     ) {
       throw new BadRequestException(
         `Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
@@ -975,13 +994,14 @@ export class TransactionSavingsAccountService {
     if(target?.is_admin || !target ){
       return false
     }
-    if(target && (!target.targetSavingsAccountTx  || target?.is_admin))
+    const targetSavingsAccountTx = await this.savingsAccountService.getTransactions(target.id);
+    // console.log('iiiiiiiiiiii ', !targetSavingsAccountTx , ' ',target?.is_admin)
+    if(target && (!targetSavingsAccountTx  || target?.is_admin))
       return true
-      
 
     let hasFirstDeposit = true
     if(target){
-        for (const tx of target.targetSavingsAccountTx || []) {
+        for (const tx of targetSavingsAccountTx || []) {
             if (tx.status === PaymentStatus.SUCCESSFULL) {
                 hasFirstDeposit = false;
                 break; // Sortie immédiate de la boucle 
