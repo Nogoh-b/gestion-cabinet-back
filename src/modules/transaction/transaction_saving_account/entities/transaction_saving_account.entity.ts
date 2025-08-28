@@ -254,7 +254,7 @@ export class TransactionSavingsAccount {
 
   @ManyToOne(() => Loan, (type) => type.transactions, { nullable: true })
   @JoinColumn()
-  loan: Loan; // Relation vers Provider
+  loan: Loan | null; // Relation vers Provider
 
   @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true })
   @JoinColumn({ name: 'transaction_type_id', referencedColumnName: 'id' })
