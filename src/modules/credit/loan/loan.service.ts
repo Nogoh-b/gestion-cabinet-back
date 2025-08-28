@@ -4,7 +4,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { UPLOAD_DOCS_PATH } from '../../../core/common/constants/constants';
 import { FilesUtil } from '../../../core/shared/utils/file.util';
-import { CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
+import {
+  CREDIT_STATE,
+  CREDIT_STATUS,
+  MODE_REIMBURSEMENT_PERIOD,
+} from '../../../utils/types';
 import {
   DocumentCustomer,
   DocumentCustomerStatus,
@@ -22,6 +26,7 @@ import { JobsService } from '../../../core/scheduler/jobs.service';
 import { EmployeeService } from '../../agencies/employee/employee.service';
 import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
 import { CreateCreditTransactionSavingsAccountDto } from '../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
+import { CronJob } from 'cron';
 
 @Injectable()
 export class LoanService {
@@ -106,8 +111,8 @@ export class LoanService {
 
   async setApprovedLoanByCustomerId(loan: Loan, user: any) {
     const creditAccount = loan.credit_account;
+    const typeCredit = loan.typeCredit;
     const employee = await this.employeeService.findOne(user.userId as number);
-    console.log(employee);
     if (!employee)
       throw new BadRequestException({
         success: false,
@@ -135,6 +140,10 @@ export class LoanService {
         state: CREDIT_STATE.ACTIVE,
         status: CREDIT_STATUS.APPROVED,
         approvedBy: { id: user.userId as number } as User,
+        nextDatePrevalent: new Date(
+          loan.created_at.getTime() +
+            typeCredit.reimbursement_period * 10 * 1000,
+        ),
       },
       false,
     );
@@ -150,62 +159,92 @@ export class LoanService {
 
     const time = getCronTime(
       transaction.created_at,
-      loan.typeCredit.reimbursement_period,
+      typeCredit.reimbursement_period,
     );
-    this.jobsService.addCronJob('loan-' + loan.id, `30 * * * * *`, async () => {
-      if (!loan.remainPaymentNumber) {
+    this.jobsService.addCronJob(
+      'loan-' + loan.id,
+      `*/10 * * * * *`,
+      async () => {
+        const periodic = typeCredit.reimbursement_period;
+        const [name, task] = this.jobsService.getCronJob('loan-' + loan.id) as [
+          string,
+          CronJob,
+        ];
+        console.log(task.nextDate());
+        if (
+          periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
+          loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
+        )
+          return;
+        if (!loan.remainPaymentNumber) {
+          await this.updateLoanByCustomerId(
+            loan,
+            {
+              state:
+                savingAccount.avalaible_balance >= 0
+                  ? CREDIT_STATE.COMPLETED
+                  : CREDIT_STATE.INCOMPLETE,
+            },
+            false,
+          );
+          this.jobsService.deleteCron('loan-' + loan.id);
+        }
+        const amountRetrieve =
+          loan.reimbursement_amount <= loan.remainTotalAmount
+            ? loan.reimbursement_amount
+            : loan.remainTotalAmount;
+        const penalityAmount =
+          amountRetrieve + (amountRetrieve * loan.typeCredit.penality) / 100;
+        if (savingAccount.balance < loan.reimbursement_amount)
+          await this.transactionSavingAccountService
+            .retrieve_penality_account({
+              amount: penalityAmount,
+              branch_id: agency.id,
+              origin_savings_account_code: savingAccount.number_savings_account,
+              target_savings_account_code:
+                savingAccountAgency.number_savings_account,
+            } as CreateCreditTransactionSavingsAccountDto)
+            .then((t) =>
+              console.log(
+                'penality ',
+                t.amount,
+                savingAccount.avalaible_balance,
+              ),
+            );
+        else
+          await this.transactionSavingAccountService
+            .retrieve_trait_to_account({
+              amount: amountRetrieve,
+              branch_id: agency.id,
+              origin_savings_account_code: savingAccount.number_savings_account,
+              target_savings_account_code:
+                savingAccountAgency.number_savings_account,
+            } as CreateCreditTransactionSavingsAccountDto)
+            .then((t) =>
+              console.log(
+                'retrieve ',
+                t.amount,
+                savingAccount.avalaible_balance,
+              ),
+            );
         await this.updateLoanByCustomerId(
           loan,
           {
-            state:
-              savingAccount.avalaible_balance >= 0
-                ? CREDIT_STATE.COMPLETED
-                : CREDIT_STATE.INCOMPLETE,
+            nextDatePrevalent:
+              periodic !== MODE_REIMBURSEMENT_PERIOD.BIWEEKLY
+                ? task.nextDate().toJSDate()
+                : new Date(
+                    Date.now() +
+                      typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
+                  ),
+            remainPaymentNumber: --loan.remainPaymentNumber,
+            remainTotalAmount:
+              loan.remainTotalAmount - loan.reimbursement_amount,
           },
           false,
         );
-        this.jobsService.deleteCron('loan-' + loan.id);
-      }
-      console.log('retrieve trait loan', savingAccount.avalaible_balance);
-      const amountRetrieve =
-        loan.reimbursement_amount <= loan.remainTotalAmount
-          ? loan.reimbursement_amount
-          : loan.remainTotalAmount;
-      const penalityAmount =
-        amountRetrieve + (amountRetrieve * loan.typeCredit.penality) / 100;
-      if (savingAccount.balance < loan.reimbursement_amount)
-        await this.transactionSavingAccountService
-          .retrieve_penality_account({
-            amount: penalityAmount,
-            branch_id: agency.id,
-            origin_savings_account_code: savingAccount.number_savings_account,
-            target_savings_account_code:
-              savingAccountAgency.number_savings_account,
-          } as CreateCreditTransactionSavingsAccountDto)
-          .then((t) =>
-            console.log('penality ', t.amount, savingAccount.avalaible_balance),
-          );
-      else
-        await this.transactionSavingAccountService
-          .retrieve_trait_to_account({
-            amount: amountRetrieve,
-            branch_id: agency.id,
-            origin_savings_account_code: savingAccount.number_savings_account,
-            target_savings_account_code:
-              savingAccountAgency.number_savings_account,
-          } as CreateCreditTransactionSavingsAccountDto)
-          .then((t) =>
-            console.log('retrieve ', t.amount, savingAccount.avalaible_balance),
-          );
-      await this.updateLoanByCustomerId(
-        loan,
-        {
-          remainPaymentNumber: --loan.remainPaymentNumber,
-          remainTotalAmount: loan.remainTotalAmount - loan.reimbursement_amount,
-        },
-        false,
-      );
-    });
+      },
+    );
     return true;
   }
 

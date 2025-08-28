@@ -121,7 +121,6 @@ export class LoanController {
         ...result,
       });
     const loan = result as Loan;
-    console.log("validation", loan);
     const guaranties = loan.typeCredit.typeGuaranties;
     const typeOfDocument = loan.typeCredit.typeOfDocuments;
     if (loan.status !== CREDIT_STATUS.PENDING)

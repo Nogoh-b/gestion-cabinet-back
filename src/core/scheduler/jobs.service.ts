@@ -26,6 +26,11 @@ export class JobsService {
     });
   }
 
+  getCronJob(name: string): [string, any] | undefined {
+    const jobs = this.schedulerRegistry.getCronJobs();
+    return Array.from(jobs).find((value) => value[0] === name);
+  }
+
   deleteCron(name: string) {
     this.schedulerRegistry.deleteCronJob(name);
     console.log(`job ${name} deleted!`);
