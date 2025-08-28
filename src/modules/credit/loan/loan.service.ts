@@ -113,6 +113,7 @@ export class LoanService {
 
   async setApprovedLoanByCustomerId(loan: Loan, user: any) {
     const creditAccount = loan.credit_account;
+    const customer = loan.customer;
     const typeCredit = loan.typeCredit;
     const employee = await this.employeeService.findOne(user.userId as number);
     if (!employee)
@@ -157,7 +158,6 @@ export class LoanService {
         target_savings_account_code: creditAccount.number_savings_account,
         loanId: loan.id,
       } as CreateCreditTransactionSavingsAccountDto);
-    console.log(transaction);
 
     const time = getCronTime(
       transaction.created_at,
@@ -167,6 +167,8 @@ export class LoanService {
       'loan-' + loan.id,
       `*/10 * * * * *`,
       async () => {
+        const result = await this.getLoanInProcessingOrActive(customer.id);
+        const loan = result as Loan;
         const periodic = typeCredit.reimbursement_period;
         const [name, task] = this.jobsService.getCronJob('loan-' + loan.id) as [
           string,
@@ -178,8 +180,6 @@ export class LoanService {
           preleventDay: loan.nextDatePrevalent,
           remain: loan.remainPaymentNumber,
           amount: loan.remainTotalAmount,
-          loan,
-          typeCredit,
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
@@ -198,6 +198,7 @@ export class LoanService {
             false,
           );
           this.jobsService.deleteCron('loan-' + loan.id);
+          return;
         }
         const amountRetrieve =
           loan.reimbursement_amount <= loan.remainTotalAmount
