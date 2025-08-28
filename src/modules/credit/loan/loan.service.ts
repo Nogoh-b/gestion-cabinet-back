@@ -170,7 +170,11 @@ export class LoanService {
           string,
           CronJob,
         ];
-        console.log(task.nextDate());
+        console.log({
+          next: task.nextDate(),
+          current: new Date(),
+          prelevantDay: loan.nextDatePrevalent,
+        });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
           loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
