@@ -141,8 +141,7 @@ export class LoanService {
         status: CREDIT_STATUS.APPROVED,
         approvedBy: { id: user.userId as number } as User,
         nextDatePrevalent: new Date(
-          loan.created_at.getTime() +
-            typeCredit.reimbursement_period * 10 * 1000,
+          Date.now() + typeCredit.reimbursement_period * 10 * 1000,
         ),
       },
       false,
@@ -171,9 +170,11 @@ export class LoanService {
           CronJob,
         ];
         console.log({
-          next: task.nextDate(),
+          next: task.nextDate().toJSDate(),
           current: new Date(),
-          prelevantDay: loan.nextDatePrevalent,
+          preleventDay: loan.nextDatePrevalent,
+          remain: loan.remainPaymentNumber,
+          amount: loan.remainTotalAmount,
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
