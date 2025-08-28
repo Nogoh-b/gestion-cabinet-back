@@ -178,6 +178,8 @@ export class LoanService {
           preleventDay: loan.nextDatePrevalent,
           remain: loan.remainPaymentNumber,
           amount: loan.remainTotalAmount,
+          loan,
+          typeCredit,
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
