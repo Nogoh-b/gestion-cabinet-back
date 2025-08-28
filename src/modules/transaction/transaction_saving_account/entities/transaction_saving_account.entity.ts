@@ -14,22 +14,12 @@ import {
   UpdateDateColumn,
   Index,
   Unique,
-  BeforeInsert
+  BeforeInsert,
 } from 'typeorm';
-
-
-
-
-
 
 import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
-
-
-
-
-
 
 export enum TransactionTypeEnum {
   DEBIT = 0,
@@ -266,12 +256,12 @@ export class TransactionSavingsAccount {
   @JoinColumn()
   loan: Loan | null; // Relation vers Provider
 
-  @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true }) 
+  @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true })
   @JoinColumn({ name: 'transaction_type_id', referencedColumnName: 'id' })
   transactionType: TransactionType; // Relation vers TransactionType
 
   @BeforeInsert()
-  async setStatusIfOriginExists() {
+  setStatusIfOriginExists() {
     // Vérifier si originSavingsAccount existe et n'est pas null
     if (this.originSavingsAccount) {
       this.status_provider = PaymentStatusProvider.SUCCESSFULL; // Mettre le statut à 1

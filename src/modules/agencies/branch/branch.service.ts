@@ -17,57 +17,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { EmployeeResponseDto } from '../employee/dto/response-employee.dto';
 import { EmployeeService } from '../employee/employee.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @Injectable()
 export class BranchService {
@@ -332,11 +286,10 @@ export class BranchService {
       stats.global.savings_accounts = branch.savingsAccounts.length;
       stats.global.employees = branch.employees.length;
       for (const sa of branch?.savingsAccounts) {
-        if(sa.created_online == 1){
-          stats.online.savings_accounts++
-        }
-        else{
-          stats.agency.savings_accounts++
+        if (sa.created_online == 1) {
+          stats.online.savings_accounts++;
+        } else {
+          stats.agency.savings_accounts++;
         }
       }
     }
