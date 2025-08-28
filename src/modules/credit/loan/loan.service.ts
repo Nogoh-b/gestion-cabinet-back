@@ -153,7 +153,8 @@ export class LoanService {
         amount: loan.amount,
         branch_id: agency.id,
         target_savings_account_code: creditAccount.number_savings_account,
-      } as any);
+        loanId: loan.id,
+      } as CreateCreditTransactionSavingsAccountDto);
     console.log(transaction);
 
     const time = getCronTime(
@@ -208,6 +209,7 @@ export class LoanService {
               origin_savings_account_code: savingAccount.number_savings_account,
               target_savings_account_code:
                 savingAccountAgency.number_savings_account,
+              loanId: loan.id,
             } as CreateCreditTransactionSavingsAccountDto)
             .then((t) =>
               console.log(
@@ -224,6 +226,7 @@ export class LoanService {
               origin_savings_account_code: savingAccount.number_savings_account,
               target_savings_account_code:
                 savingAccountAgency.number_savings_account,
+              loanId: loan.id,
             } as CreateCreditTransactionSavingsAccountDto)
             .then((t) =>
               console.log(

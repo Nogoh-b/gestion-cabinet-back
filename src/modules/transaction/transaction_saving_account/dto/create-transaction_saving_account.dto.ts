@@ -106,7 +106,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   
   origin?: string;
   target?: string;
-  
+  loanId?: number;
   @ApiProperty({ example: 1000, description: 'Montant de la commission' })
   @IsNumber()
   @IsOptional()
