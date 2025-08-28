@@ -38,11 +38,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
 
 
 
@@ -237,6 +241,19 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     return this.docRepository.findOne({
       where,
       relations: ['document_type'],
+    });
+  }
+  async findByTypeId(id_customer: number , id_type = 3): Promise<DocumentCustomer | null> {
+    return this.docRepository.findOne({
+      where: {
+        document_type: {
+          id: id_type
+        },
+        customer : {
+          id: id_customer
+        }
+      },
+      relations: ['document_type','customer'],
     });
   }
 

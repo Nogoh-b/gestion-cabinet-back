@@ -4,6 +4,8 @@ import { Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+import { TransactionCode } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -44,6 +46,7 @@ export class CreateTransactionSavingsAccountDto {
 
   token?: string;
   tx_parent_id?: number;
+  tx_type?: TransactionCode;
 
   @ApiPropertyOptional({ example: '8629891', description: 'Code d\'origine' })
   @IsString()
@@ -69,8 +72,10 @@ export class CreateTransactionSavingsAccountDto {
   status : number 
   provider?: string;
 
+  tx_project_id?: number;
 
-
+  /*@ApiProperty({ example: 2, description: 'ID du canal de transaction' })
+  @IsInt()*/
   channels_transaction_id: number;
 
 }
@@ -92,7 +97,8 @@ export class CreateCreditTransactionSavingsAccountDto {
   
   origin?: string;
   target?: string;
-  loanId?: number;
+  tx_type?: TransactionCode;
+  
   @ApiProperty({ example: 1000, description: 'Montant de la commission' })
   @IsNumber()
   @IsOptional()
@@ -105,6 +111,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
   branch_id: number;
+  tx_project_id?: number;
 
 }
 
@@ -118,7 +125,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   origin?: string;
   provider?: string;
   target?: string;
-  loanId?: number;
+  tx_type?: TransactionCode;
 
   @ApiProperty({ example: 1, description: '' })
   @IsNumber()
@@ -134,6 +141,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   is_locked: boolean;                           // true si la transaction est bloquée, false sinon
 
   origin_code_transaction?: string;
+  tx_project_id?: number;
 
 }
 export class ValidateTransactionSavingsAccountDto {
