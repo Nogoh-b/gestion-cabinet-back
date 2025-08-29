@@ -29,7 +29,6 @@ import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.ent
 import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { Loan } from './entities/loan.entity';
 
-
 @Injectable()
 export class LoanService {
   constructor(
@@ -200,10 +199,16 @@ export class LoanService {
           this.jobsService.deleteCron('loan-' + loan.id);
           return;
         }
-        const amountRetrieve =
-          loan.reimbursement_amount <= loan.remainTotalAmount
-            ? loan.reimbursement_amount
-            : loan.remainTotalAmount;
+        let amountRetrieve = 0;
+        if (loan.remainPaymentNumber === 1)
+          amountRetrieve =
+            loan.reimbursement_amount <= loan.remainTotalAmount
+              ? loan.reimbursement_amount
+              : loan.remainTotalAmount;
+        else
+          amountRetrieve =
+            loan.totalAmount -
+            (loan.remainTotalPaymentNumber - 1) * loan.reimbursement_amount;
         const penalityAmount =
           amountRetrieve + (amountRetrieve * loan.typeCredit.penality) / 100;
         if (savingAccount.balance < loan.reimbursement_amount)
@@ -470,6 +475,7 @@ export class LoanService {
     const loan = this.loanRepository.create({
       ...data,
       remainTotalAmount: amountTotal,
+      totalAmount: amountTotal,
       remainTotalPaymentNumber: remainPaymentNumber,
       remainPaymentNumber,
       reimbursement_amount: this.simulationReimbursementAmount(

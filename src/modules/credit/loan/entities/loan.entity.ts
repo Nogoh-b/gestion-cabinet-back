@@ -27,6 +27,9 @@ export class Loan extends BaseEntity {
   amount: number;
 
   @Column()
+  totalAmount: number;
+
+  @Column()
   reimbursement_amount: number;
   //
   @Column()
