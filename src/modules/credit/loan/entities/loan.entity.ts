@@ -29,6 +29,16 @@ export class Loan extends BaseEntity {
   @Column()
   totalAmount: number;
 
+  @Column({
+    default: 0,
+  })
+  totalAmountPenality: number;
+
+  @Column({
+    default: 0,
+  })
+  numberOfPenality: number;
+
   @Column()
   reimbursement_amount: number;
   //

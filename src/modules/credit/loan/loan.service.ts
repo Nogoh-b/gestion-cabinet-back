@@ -179,6 +179,7 @@ export class LoanService {
           preleventDay: loan.nextDatePrevalent,
           remain: loan.remainPaymentNumber,
           amount: loan.remainTotalAmount,
+          trait: loan.reimbursement_amount,
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
@@ -199,16 +200,10 @@ export class LoanService {
           this.jobsService.deleteCron('loan-' + loan.id);
           return;
         }
-        let amountRetrieve = 0;
-        if (loan.remainPaymentNumber !== 1)
-          amountRetrieve =
-            loan.reimbursement_amount <= loan.remainTotalAmount
-              ? loan.reimbursement_amount
-              : loan.remainTotalAmount;
-        else
-          amountRetrieve =
-            loan.totalAmount -
-            (loan.remainTotalPaymentNumber - 1) * loan.reimbursement_amount;
+        const amountRetrieve =
+          loan.reimbursement_amount <= loan.remainTotalAmount
+            ? loan.reimbursement_amount
+            : loan.remainTotalAmount;
         const penalityAmount =
           amountRetrieve + (amountRetrieve * loan.typeCredit.penality) / 100;
         if (savingAccount.balance < loan.reimbursement_amount)
@@ -256,8 +251,15 @@ export class LoanService {
                       typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
                   ),
             remainPaymentNumber: --loan.remainPaymentNumber,
-            remainTotalAmount:
-              loan.remainTotalAmount - loan.reimbursement_amount,
+            remainTotalAmount: loan.remainTotalAmount - amountRetrieve,
+            ...(savingAccount.balance < loan.reimbursement_amount
+              ? {
+                  numberOfPenality: ++loan.numberOfPenality,
+                  totalAmountPenality:
+                    loan.totalAmountPenality +
+                    (amountRetrieve * loan.typeCredit.penality) / 100,
+                }
+              : {}),
           },
           false,
         );
