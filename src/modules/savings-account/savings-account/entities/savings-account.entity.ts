@@ -14,10 +14,12 @@ import {
   AfterLoad,
 } from 'typeorm';
 
+
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
-import { Loan } from '../../../credit/loan/entities/loan.entity';
+
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -132,7 +134,7 @@ export class SavingsAccount extends BaseEntity {
   commercial1: Commercial | null;*/
 
   // Relations
-  @ManyToOne(() => Customer)
+  @ManyToOne(() => Customer, { eager: true })
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
