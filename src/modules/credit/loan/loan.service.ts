@@ -183,7 +183,7 @@ export class LoanService {
           amount: loan.remainTotalAmount,
           trait: loan.reimbursement_amount,
           penalityAmount: loan.totalAmountPenality,
-          numberOfPenality: loan.totalAmountPenality,
+          numberOfPenality: loan.numberOfPenality,
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
@@ -210,7 +210,7 @@ export class LoanService {
             : loan.remainTotalAmount;
         const penalityAmount =
           amountRetrieve + (amountRetrieve * loan.typeCredit.penality) / 100;
-        if (savingAccount.balance < loan.reimbursement_amount)
+        if (savingAccount.avalaible_balance < loan.reimbursement_amount)
           await this.transactionSavingAccountService
             .retrieve_penality_account({
               amount: penalityAmount,
@@ -256,7 +256,7 @@ export class LoanService {
                   ),
             remainPaymentNumber: --loan.remainPaymentNumber,
             remainTotalAmount: loan.remainTotalAmount - amountRetrieve,
-            ...(savingAccount.balance < loan.reimbursement_amount
+            ...(savingAccount.avalaible_balance < loan.reimbursement_amount
               ? {
                   numberOfPenality: ++loan.numberOfPenality,
                   totalAmountPenality:
