@@ -8,8 +8,6 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   OneToMany,
-  OneToOne,
-  JoinColumn,
 } from 'typeorm';
 
 import { DocumentCustomer } from '../../../documents/document-customer/entities/document-customer.entity';

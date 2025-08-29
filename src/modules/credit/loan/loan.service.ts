@@ -129,10 +129,7 @@ export class LoanService {
           'No system to approve, branch not identify in this user, please contact administrator',
         status: HttpStatus.BAD_REQUEST,
       });
-    const savingAccount =
-      await this.savingAccountService.findOneHydridSavingByCustomer(
-        loan.customer.id,
-      );
+
     const savingAccountAgency = await this.savingAccountService.findOneAdmin(
       agency.id,
     );
@@ -166,8 +163,13 @@ export class LoanService {
       'loan-' + loan.id,
       `*/10 * * * * *`,
       async () => {
+
         const result = await this.getLoanInProcessingOrActive(customer.id);
         const loan = result as Loan;
+        const savingAccount =
+          await this.savingAccountService.findOneHydridSavingByCustomer(
+            loan.customer.id,
+          );
         const periodic = typeCredit.reimbursement_period;
         const [name, task] = this.jobsService.getCronJob('loan-' + loan.id) as [
           string,
@@ -180,6 +182,8 @@ export class LoanService {
           remain: loan.remainPaymentNumber,
           amount: loan.remainTotalAmount,
           trait: loan.reimbursement_amount,
+          penalityAmount: loan.totalAmountPenality,
+          numberOfPenality: loan.totalAmountPenality,
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
