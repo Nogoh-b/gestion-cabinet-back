@@ -129,6 +129,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -146,6 +147,7 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -360,7 +362,7 @@ export class TransactionSavingsAccountService {
         !docStatsTargetAccount.allRequiredValidated ||
         origin.status != SavingsAccountStatus.ACTIVE
       ) {
-        if (this.can_refuse_transaction_type_for_debit(txType.code, origin.is_admin))
+        if (this.can_refuse_transaction_type_for_debit(txType.code, origin.is_admin || target?.is_admin))
           throw new NotFoundException(
             `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,
           );
@@ -1001,7 +1003,7 @@ export class TransactionSavingsAccountService {
     if (
       (account != null &&
         avalaible_balance < amount &&
-        this.can_refuse_transaction_type_for_debit(txTypeCode , account.is_admin)) || amount < 0
+        this.can_refuse_transaction_type_for_debit(txTypeCode , account.is_admin || target?.is_admin)) || amount < 0
     ) {
       throw new BadRequestException(
         `Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
