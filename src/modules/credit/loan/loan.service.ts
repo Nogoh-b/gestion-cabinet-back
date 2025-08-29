@@ -200,7 +200,7 @@ export class LoanService {
           return;
         }
         let amountRetrieve = 0;
-        if (loan.remainPaymentNumber === 1)
+        if (loan.remainPaymentNumber !== 1)
           amountRetrieve =
             loan.reimbursement_amount <= loan.remainTotalAmount
               ? loan.reimbursement_amount
