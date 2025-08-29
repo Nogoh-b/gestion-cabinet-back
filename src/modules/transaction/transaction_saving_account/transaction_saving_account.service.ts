@@ -9,126 +9,128 @@ import {
 import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 
+import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
+
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 
 import { PersonnelTypeCode } from 'src/modules/personnel/type_personnel/entities/type_personnel.entity';
-
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { QueueService } from 'src/modules/queue/queue.service';
+
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 
 import {
   SavingsAccount,
   SavingsAccountStatus,
 } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
-
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+
 import { Not, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { v4 as uuidv4 } from 'uuid';
-
 import { InjectQueue } from '@nestjs/bull';
+
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
@@ -147,6 +149,7 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -392,6 +395,7 @@ export class TransactionSavingsAccountService {
     tx.commission = dto.commission ?? 0;
     tx.transactionType = txType;
     tx.ressource = ressource;
+    tx.loan = dto.loanId ? {id: dto.loanId} as Loan : null;
     tx.tx_project_id = dto.tx_project_id ?? null;
     /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
