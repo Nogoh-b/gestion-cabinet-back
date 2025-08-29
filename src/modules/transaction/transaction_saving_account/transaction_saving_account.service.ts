@@ -132,6 +132,8 @@ import {
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -149,6 +151,8 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
 
 
 
@@ -2184,7 +2188,7 @@ export class TransactionSavingsAccountService {
         provider,
         targetSavingsAccount: personnel.savings_account,
         target: personnel.savings_account.number_savings_account,
-        originSavingsAccount: personnel.savings_account,
+        originSavingsAccount: admin_sa,
         origin: admin_sa?.number_savings_account,
         commercial_code: null,
         payment_code: await this.generateUniquePaymentCode(),
