@@ -129,10 +129,7 @@ export class LoanService {
           'No system to approve, branch not identify in this user, please contact administrator',
         status: HttpStatus.BAD_REQUEST,
       });
-    const savingAccount =
-      await this.savingAccountService.findOneHydridSavingByCustomer(
-        loan.customer.id,
-      );
+
     const savingAccountAgency = await this.savingAccountService.findOneAdmin(
       agency.id,
     );
@@ -166,8 +163,13 @@ export class LoanService {
       'loan-' + loan.id,
       `*/10 * * * * *`,
       async () => {
+
         const result = await this.getLoanInProcessingOrActive(customer.id);
         const loan = result as Loan;
+        const savingAccount =
+          await this.savingAccountService.findOneHydridSavingByCustomer(
+            loan.customer.id,
+          );
         const periodic = typeCredit.reimbursement_period;
         const [name, task] = this.jobsService.getCronJob('loan-' + loan.id) as [
           string,
@@ -179,6 +181,9 @@ export class LoanService {
           preleventDay: loan.nextDatePrevalent,
           remain: loan.remainPaymentNumber,
           amount: loan.remainTotalAmount,
+          trait: loan.reimbursement_amount,
+          penalityAmount: loan.totalAmountPenality,
+          numberOfPenality: loan.numberOfPenality,
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
@@ -199,19 +204,13 @@ export class LoanService {
           this.jobsService.deleteCron('loan-' + loan.id);
           return;
         }
-        let amountRetrieve = 0;
-        if (loan.remainPaymentNumber === 1)
-          amountRetrieve =
-            loan.reimbursement_amount <= loan.remainTotalAmount
-              ? loan.reimbursement_amount
-              : loan.remainTotalAmount;
-        else
-          amountRetrieve =
-            loan.totalAmount -
-            (loan.remainTotalPaymentNumber - 1) * loan.reimbursement_amount;
+        const amountRetrieve =
+          loan.reimbursement_amount <= loan.remainTotalAmount
+            ? loan.reimbursement_amount
+            : loan.remainTotalAmount;
         const penalityAmount =
           amountRetrieve + (amountRetrieve * loan.typeCredit.penality) / 100;
-        if (savingAccount.balance < loan.reimbursement_amount)
+        if (savingAccount.avalaible_balance < loan.reimbursement_amount)
           await this.transactionSavingAccountService
             .retrieve_penality_account({
               amount: penalityAmount,
@@ -256,8 +255,15 @@ export class LoanService {
                       typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
                   ),
             remainPaymentNumber: --loan.remainPaymentNumber,
-            remainTotalAmount:
-              loan.remainTotalAmount - loan.reimbursement_amount,
+            remainTotalAmount: loan.remainTotalAmount - amountRetrieve,
+            ...(savingAccount.avalaible_balance < loan.reimbursement_amount
+              ? {
+                  numberOfPenality: ++loan.numberOfPenality,
+                  totalAmountPenality:
+                    loan.totalAmountPenality +
+                    (amountRetrieve * loan.typeCredit.penality) / 100,
+                }
+              : {}),
           },
           false,
         );

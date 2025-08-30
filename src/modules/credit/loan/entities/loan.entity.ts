@@ -8,8 +8,6 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   OneToMany,
-  OneToOne,
-  JoinColumn,
 } from 'typeorm';
 
 import { DocumentCustomer } from '../../../documents/document-customer/entities/document-customer.entity';
@@ -28,6 +26,16 @@ export class Loan extends BaseEntity {
 
   @Column()
   totalAmount: number;
+
+  @Column({
+    default: 0,
+  })
+  totalAmountPenality: number;
+
+  @Column({
+    default: 0,
+  })
+  numberOfPenality: number;
 
   @Column()
   reimbursement_amount: number;
