@@ -12,10 +12,9 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
-  Index,
-  Unique,
-  BeforeInsert
+  Index, BeforeInsert
 } from 'typeorm';
+
 
 
 
@@ -25,6 +24,7 @@ import {
 import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -111,8 +111,8 @@ export class Payment {
 }
 
 @Entity('transaction_savings_account')
-@Unique(['origin', 'promo_code'])
-@Unique(['origin', 'commercial_code'])
+// @Unique(['tx_parent_id', 'promo_code'])
+// @Unique(['tx_parent_id', 'commercial_code'])
 export class TransactionSavingsAccount {
   @PrimaryGeneratedColumn()
   id: number; // Identifiant unique

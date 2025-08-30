@@ -63,6 +63,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -72,6 +81,15 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1239,6 +1257,27 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     
     return options.ensureNonNegative ? Math.max(balance, 0) : balance;
   }
+
+
+  async checkInitTransaction(code: string) {
+    const sa = await this.findOneByCode(code, true);
+    const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
+      .filter(tx => tx.status === 0 && 
+        (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
+      );
+
+    await Promise.all(
+      filteredTxs.map(tx => {
+        console.log('checkInitTransaction ', tx.reference);
+        return this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
+      })
+    );
+
+    return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
+  }
+
+
+
 
 async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
   // 1) On récupère le résultat brut
