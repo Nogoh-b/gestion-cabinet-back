@@ -37,100 +37,110 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -151,6 +161,12 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
 
 
 
@@ -749,10 +765,10 @@ export class TransactionSavingsAccountService {
       const isFirstTx = await this.isFirstTransaction(
         plainToInstance(SavingsAccount, sa),
       );
-      console.log('payment', payment);
       tx.status_provider = payment.paymentStatus;
       tx.status = PaymentStatus.PENDING;
       const dataPayment: Payment = payment.data;
+      console.log('payment ' , tx.id , ' ', PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]] , ' ', payment);
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken;
       tx.status_provider = dataPayment.paymentStatus;
@@ -763,6 +779,7 @@ export class TransactionSavingsAccountService {
       } else {
         tx.target = dataPayment.ref;
       }
+      this.repo.save(tx);
       if (tx.status === PaymentStatus.SUCCESSFULL) {
         return await this.validate(tx.id, isFirstTx);
       }
@@ -2027,12 +2044,13 @@ export class TransactionSavingsAccountService {
   private async maybe_create_tx_commercial_commission(
     entity_manager,
     tx_data: TransactionSavingsAccount | any,
-    tx_parent: TransactionSavingsAccount,
+    tx_parent: TransactionSavingsAccount, 
     target: SavingsAccount,
     admin_sa: SavingsAccount | null,
     chanel_open_product: any,
   ): Promise<{ comercial: Personnel | null }> {
     let comercial: Personnel | null = null;
+    // console.log('eligible ', target.commercial_code)
 
     if (!target.commercial_code) return { comercial };
 
