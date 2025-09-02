@@ -22,9 +22,17 @@ import {
 
 
 
+
+
+
+
 import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+
+
+
+
 
 
 
@@ -215,7 +223,7 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'ressource_id', referencedColumnName: 'id' })
   ressource?: Ressource | null; // Relation vers SavingsAccount
 
-  @ManyToOne(() => Personnel, (acc) => acc.savings_account, {
+  @ManyToOne(() => Personnel, (acc) => acc.savings_account, { 
     eager: true,
     nullable: true,
   })
@@ -226,12 +234,12 @@ export class TransactionSavingsAccount {
     eager: true,
   })
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
-  targetSavingsAccount: SavingsAccount | null; // Relation vers SavingsAccount
+  targetSavingsAccount: SavingsAccount | null; // Relation vers SavingsAccount 
 
   @Column({ type: 'varchar', length: 10, nullable: true })
   promo_code: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
   commercial_code: string | null;
 
   @Column({ type: 'varchar', length: 10, nullable: true })
