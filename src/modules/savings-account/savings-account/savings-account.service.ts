@@ -72,6 +72,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -81,6 +92,17 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1474,6 +1496,18 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
             transactionCountOutcomming : 0,
             transactionAmountOutcomming : 0,
             balance : 0
+        }, 
+        salary : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+        }, 
+        tontine : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
         } 
       }
   
@@ -1503,7 +1537,6 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
         if(!tx.targetSavingsAccount && tx.originSavingsAccount ){
           stats.global.transactionAmountOutcomming += tx.amount
           stats.global.transactionCountOutcomming++
-          console.log('tx.branch_id ', tx.id)
           if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
               stats.online.transactionAmountOutcomming += tx.amount
               stats.online.transactionCountOutcomming++
@@ -1527,7 +1560,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
           if(tx.originSavingsAccount.id == id){
             stats.global.transactionAmountOutcomming += tx.amount
             stats.global.transactionCountOutcomming++
-            console.log('tx.branch_id ', tx.id)
+            // console.log('tx.branch_id ', tx.id)
             if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
                 stats.online.transactionAmountOutcomming += tx.amount
                 stats.online.transactionCountOutcomming++
@@ -1562,6 +1595,27 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
           }
 
         }
+        // transaction de tontine
+        /*if(tx.transactionType && tx.transactionType.code === TransactionCode.BUY_TONTINE ){
+          if(tx.targetSavingsAccount && tx.targetSavingsAccount.id === id){
+            stats.tontine.transactionCountIncomming++
+            stats.tontine.transactionAmountIncomming += tx.amount
+          }else if(tx.originSavingsAccount && tx.originSavingsAccount.id === id){
+            stats.tontine.transactionCountOutcomming++
+            stats.tontine.transactionAmountOutcomming += tx.amount
+          }
+        }*/
+
+        if(tx.transactionType && tx.transactionType.code === TransactionCode.BUY_SALARY ){
+          if(tx.targetSavingsAccount && tx.targetSavingsAccount.id === id){
+            stats.salary.transactionCountIncomming++
+            stats.salary.transactionAmountIncomming += tx.amount
+          }else if(tx.originSavingsAccount && tx.originSavingsAccount.id === id){
+            stats.salary.transactionCountOutcomming++
+            stats.salary.transactionAmountOutcomming += tx.amount
+          }
+        }
+
         stats.agency.balance = stats.agency.transactionAmountIncomming - stats.agency.transactionAmountOutcomming
         stats.global.balance = stats.global.transactionAmountIncomming - stats.global.transactionAmountOutcomming
         stats.online.balance = stats.online.transactionAmountIncomming - stats.online.transactionAmountOutcomming
@@ -1573,6 +1627,136 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       return stats
 
   }
+
+
+async statsV1_(code: string): Promise<any> {
+  const sa = await this.findOneByCode(code);
+  const id = sa.id;
+  const txs = await this.getTransactions(id);
+
+  let stats = {
+    online: {
+      om: this.initStats(),
+      momo: this.initStats(),
+      transactionCountIncomming: 0,
+      transactionAmountIncomming: 0,
+      transactionCountOutcomming: 0,
+      transactionAmountOutcomming: 0,
+      balance: 0
+    },
+    agency: this.initStats(),
+    global: {
+      transactionCountIncomming: 0,
+      transactionAmountIncomming: 0,
+      transactionCountOutcomming: 0,
+      transactionCountOutcommingSalary: 0,
+      transactionAmountOutcomming: 0,
+      transactionAmountOutcommingSalary: 0,
+      balance: 0
+    }
+  };
+
+  for (const tx of txs) {
+    if (tx.status !== TransactionSavingsAccountStatus.VALIDATE || tx.is_locked) continue;
+
+    const isIncoming = tx.targetSavingsAccount && !tx.originSavingsAccount;
+    const isOutgoing = !tx.targetSavingsAccount && tx.originSavingsAccount;
+    const isTransfer = tx.targetSavingsAccount && tx.originSavingsAccount;
+
+    if (isIncoming || (isTransfer && tx.targetSavingsAccount?.id === id)) {
+      this.addTransaction(stats, tx, "in");
+    } else if (isOutgoing || (isTransfer && tx.originSavingsAccount?.id === id)) {
+      this.addTransaction(stats, tx, "out");
+    }
+  }
+
+  this.updateBalances(stats);
+  return stats;
+}
+
+// Initialise un bloc
+private initStats() {
+  return {
+    transactionCountIncomming: 0,
+    transactionAmountIncomming: 0,
+    transactionCountOutcomming: 0,
+    transactionAmountOutcomming: 0,
+    balance: 0
+  };
+}
+
+// Ajoute une transaction (entrant ou sortant)
+private addTransaction(stats: any, tx: any, dir: "in" | "out") {
+  const amountKey = dir === "in" ? "transactionAmountIncomming" : "transactionAmountOutcomming";
+  const countKey = dir === "in" ? "transactionCountIncomming" : "transactionCountOutcomming";
+
+  // Global
+  stats.global[amountKey] += tx.amount;
+  stats.global[countKey]++;
+
+  // Agency vs Online
+  if (tx.branch_id) {
+    stats.agency[amountKey] += tx.amount;
+    stats.agency[countKey]++;
+  } else if ([TransactionProvider.MOMO, TransactionProvider.OM].includes(tx.provider.code)) {
+    stats.online[amountKey] += tx.amount;
+    stats.online[countKey]++;
+  }
+
+  // Provider spécifique
+  if (tx.provider.code === TransactionProvider.MOMO) {
+    stats.online.momo[amountKey] += tx.amount;
+    stats.online.momo[countKey]++;
+  } else if (tx.provider.code === TransactionProvider.OM) {
+    stats.online.om[amountKey] += tx.amount;
+    stats.online.om[countKey]++;
+  }
+}
+
+// Recalcule tous les balances
+private updateBalances(stats: any) {
+  const calc = (s: any) => {
+    s.balance = s.transactionAmountIncomming - s.transactionAmountOutcomming;
+  };
+
+  calc(stats.global);
+  calc(stats.agency);
+  calc(stats.online);
+  calc(stats.online.momo);
+  calc(stats.online.om);
+}
+
+
+// 🔹 Mise à jour des stats globales, agency, online et provider (MOMO/OM)
+private updateStats(stats: any, tx: any, direction: "in" | "out") {
+  const amountKey = direction === "in" ? "transactionAmountIncomming" : "transactionAmountOutcomming";
+  const countKey = direction === "in" ? "transactionCountIncomming" : "transactionCountOutcomming";
+
+  // global
+  stats.global[amountKey] += tx.amount;
+  stats.global[countKey]++;
+
+  // agency vs online
+  if (tx.branch_id) {
+    stats.agency[amountKey] += tx.amount;
+    stats.agency[countKey]++;
+  } else if (tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM) {
+    stats.online[amountKey] += tx.amount;
+    stats.online[countKey]++;
+  }
+
+  // provider spécifique
+  if (tx.provider.code === TransactionProvider.MOMO) {
+    stats.online.momo[amountKey] += tx.amount;
+    stats.online.momo[countKey]++;
+  } else if (tx.provider.code === TransactionProvider.OM) {
+    stats.online.om[amountKey] += tx.amount;
+    stats.online.om[countKey]++;
+  }
+}
+
+
+
 
   async requestLink(code){
     console.log(code)

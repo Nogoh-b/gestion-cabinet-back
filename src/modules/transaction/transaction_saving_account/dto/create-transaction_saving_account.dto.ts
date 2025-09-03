@@ -11,7 +11,30 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+
+
+
 import { TransactionCode } from '../../transaction_type/entities/transaction_type.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export class CreateTransactionSavingsAccountDto {
   @ApiProperty({ example: 1000.0, description: 'Montant de la transaction' })
@@ -216,6 +239,7 @@ export class UpdateProviderInfoDto {
 
   phoneNumber: string;
   payToken: string;
+  status?: number;
 
   @IsOptional()
   @IsNumber()
