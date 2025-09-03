@@ -4,7 +4,11 @@ import { Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+
+
 import { TransactionCode } from '../../transaction_type/entities/transaction_type.entity';
+
+
 
 
 
@@ -221,6 +225,7 @@ export class UpdateProviderInfoDto {
 
   phoneNumber: string;
   payToken: string;
+  status?: number;
 
   @IsOptional()
   @IsNumber()

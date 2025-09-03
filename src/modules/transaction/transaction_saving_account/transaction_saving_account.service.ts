@@ -139,6 +139,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -156,6 +161,11 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
 
 
 
@@ -456,7 +466,6 @@ export class TransactionSavingsAccountService {
     // this.validate(tx.id, isFirstTx)
     // console.log('txxxxxxxx11 ', tx.targetSavingsAccount ,' ', tx.status)
     if (
-      origin != null ||
       (provider.code != TransactionProvider.MOMO &&
         provider.code != TransactionProvider.OM) ||
         txType.code === TransactionCode.BUY_TONTINE ||
@@ -1738,6 +1747,16 @@ export class TransactionSavingsAccountService {
       tx.status_provider = PaymentStatusProvider.SUCCESSFULL;
     tx.payment_token_provider = dto.payment_token_provider ?? this.generateUniquePaymentTokenProvider();
     tx.payment_code = dto.payment_code ?? this.generateUniquePaymentCode();
+    if(dto.status_provider)
+    {
+      console.log('Status provider update ', dto.status_provider);
+      tx.status_provider = dto.status_provider;
+      const providerStatus = dto.status_provider as keyof typeof PaymentStatusProvider;
+      const statusKey = PaymentStatusProvider[providerStatus] as keyof typeof PaymentStatus;
+      tx.status = PaymentStatus[statusKey] ?? PaymentStatus.FAILED;
+      this.repo.save(tx);
+      return tx
+    }
     this.repo.save(tx);
     // const isFirstTx = await  this.isFirstTransaction(tx.targetSavingsAccount)
     if (channel_code === 'MOBILE' && tx.targetSavingsAccount) {
