@@ -35,11 +35,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { SavingsAccountResponseDto } from '../savings-account/dto/response-savings-account.dto';
 import { SavingsAccount } from '../savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account.service';
 import { CreateDocumentSavingAccountDto } from './dto/create-document-saving-account.dto';
 import { DocumentSavingAccountResponseDto } from './dto/response-document-saving-account.dto';
+
 
 
 
@@ -205,7 +207,7 @@ export class DocumentSavingAccountService {
     const entity = new DocumentSavingAccount();
     entity.name = docType.name;
     entity.document_type = docType;
-    entity.status = 0;
+    entity.status = dto.status ?? 0;
     entity.file_path = uploadedFile.fileName;
     entity.file_size = uploadedFile.fileSize;
     entity.savings_account = plainToInstance(SavingsAccount,sa);
