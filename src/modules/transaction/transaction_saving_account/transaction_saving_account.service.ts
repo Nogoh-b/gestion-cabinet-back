@@ -977,13 +977,14 @@ export class TransactionSavingsAccountService {
     if(target?.is_admin || !target ){
       return false
     }
-    if(target && (!target.targetSavingsAccountTx  || target?.is_admin))
+    const targetSavingsAccountTx = await this.savingsAccountService.getTransactions(target.id);
+    console.log('iiiiiiiiiiii ', !targetSavingsAccountTx , ' ',target?.is_admin)
+    if(target && (!targetSavingsAccountTx  || target?.is_admin))
       return true
-      
 
     let hasFirstDeposit = true
     if(target){
-        for (const tx of target.targetSavingsAccountTx || []) {
+        for (const tx of targetSavingsAccountTx || []) {
             if (tx.status === PaymentStatus.SUCCESSFULL) {
                 hasFirstDeposit = false;
                 break; // Sortie immédiate de la boucle 
@@ -2111,7 +2112,7 @@ export class TransactionSavingsAccountService {
         provider,
         targetSavingsAccount: personnel.savings_account,
         target: personnel.savings_account.number_savings_account,
-        originSavingsAccount: personnel.savings_account,
+        originSavingsAccount: admin_sa,
         origin: admin_sa?.number_savings_account,
         commercial_code: null,
         payment_code: await this.generateUniquePaymentCode(),

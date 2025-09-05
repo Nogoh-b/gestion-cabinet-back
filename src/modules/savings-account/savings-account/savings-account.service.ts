@@ -367,23 +367,6 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     account.avalaible_balance_online = await soldes.avalaible_balance_online
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
-  async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
-    const relations = [
-      'customer',
-      'type_savings_account',
-      'type_savings_account.required_documents',
-      'branch',
-      'documents',
-    ];
-
-    const account = await this.repo.findOne({
-      where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
-      relations,
-    });
-    console.log('okkkkkkkkkk')
-    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
-    return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
-  }
 
     async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
     const relations = [
