@@ -1,6 +1,5 @@
-import { IsArray, IsNumber, IsString } from 'class-validator';
+import { IsArray, IsNotEmpty, IsNumber, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-
 
 export class LoanDto {
   @ApiProperty({
@@ -39,6 +38,13 @@ export class LoanDto {
   })
   @IsString()
   reference: string;
+
+  @ApiProperty({
+    required: true,
+  })
+  @IsNotEmpty()
+  @IsNumber()
+  credit_account_id: number;
 }
 
 export class DocumentFileLoanDto {
@@ -60,7 +66,7 @@ export class DocumentLoanDto extends DocumentFileLoanDto {
   typeOfDocument: number;
 }
 
-export class GuarantyDocumentLoanDto extends DocumentLoanDto {
+export class GuarantyDocumentLoanDto extends DocumentFileLoanDto {
   @ApiProperty({
     required: true,
   })
@@ -73,6 +79,7 @@ export class GuarantyDocumentLoanDto extends DocumentLoanDto {
   @IsNumber()
   typeGuaranty: number;
 }
+
 export class SubmitLoanDto {
   @ApiProperty({
     required: true,

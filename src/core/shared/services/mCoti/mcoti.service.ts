@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 
 
 
+
 export type KycType = 'front_cni' | 'back_cni' | 'selfie';
 
 
@@ -211,6 +212,7 @@ export class McotiService {
           });
 
       const requestStatusPayment = response.data;
+      return requestStatusPayment
 
       if (requestStatusPayment != null) {
         if (requestStatusPayment.data?.paymentStatus === this.PAYMENT_STATUS_SUCCESS) {

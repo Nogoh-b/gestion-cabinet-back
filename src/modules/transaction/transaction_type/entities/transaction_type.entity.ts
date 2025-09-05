@@ -19,7 +19,9 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColum
 
 
 
+
 import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
+
 
 
 
@@ -88,6 +90,13 @@ export enum TransactionCode {
   COMMISSION_PERSONNEL = 'COMMISSION_PERSONNEL',
   COMMISSION_CASH_DEPOSIT = 'COMMISSION_CASH_DEPOSIT',
   COMMISSION_CASH_DEPOSIT_MFINANCE = 'COMMISSION_CASH_DEPOSIT_MFINANCE',
+  PROJET_DEPOSIT = 'PROJET_DEPOSIT',
+  DEPOSIT_LOANS = 'DEPOSIT_LOANS',
+  LOANS_REPAYMENT = 'LOANS_REPAYMENT',
+  PROJET_STANDARD = 'PROJET_STANDARD',
+  PROJET_TONTINE = 'PROJET_TONTINE',
+  PROJET_SALE = 'PROJET_SALE',
+  BUY_SALARY = 'BUY_SALARY',
 
 }
 export enum TransactionChannel {

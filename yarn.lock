@@ -1425,7 +1425,7 @@
 
 "@nestjs/schedule@^6.0.0":
   version "6.0.0"
-  resolved "https://registry.npmjs.org/@nestjs/schedule/-/schedule-6.0.0.tgz"
+  resolved "https://registry.yarnpkg.com/@nestjs/schedule/-/schedule-6.0.0.tgz#c8069d1f19742e418a617af76311ab853cb48f0a"
   integrity sha512-aQySMw6tw2nhitELXd3EiRacQRgzUKD9mFcUZVOJ7jPLqIBvXOyvRWLsK9SdurGA+jjziAlMef7iB5ZEFFoQpw==
   dependencies:
     cron "4.3.0"

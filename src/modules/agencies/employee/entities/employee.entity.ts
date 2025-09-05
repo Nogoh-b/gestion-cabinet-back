@@ -18,12 +18,12 @@ export class Employee extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number; // sera égal à user.id
 
-  @OneToOne(() => User, user => user.employee)
+  @OneToOne(() => User, (user) => user.employee)
   @JoinColumn({ name: 'user_id' }) // Clé étrangère et clé primaire en même temps
   user: User;
 
   @ManyToOne(() => Branch)
-  @JoinColumn({ name: 'branch_id'})
+  @JoinColumn({ name: 'branch_id' })
   branch?: Branch;
 
   /*@ApiProperty({ enum: EmployeePosition })
@@ -34,12 +34,9 @@ export class Employee extends BaseEntity {
   @Column({ type: 'date', name: 'hire_date' })
   hireDate: Date;
 
-
-
   @ApiProperty({ example: 1 })
   @Column({ type: 'tinyint' })
   status: number;
-
 
   @BeforeInsert()
   setDefaultHireDate() {

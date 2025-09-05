@@ -8,16 +8,13 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   OneToMany,
-  OneToOne, JoinColumn,
 } from 'typeorm';
-
 
 import { DocumentCustomer } from '../../../documents/document-customer/entities/document-customer.entity';
 import { User } from '../../../iam/user/entities/user.entity';
 import { TransactionSavingsAccount } from '../../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { GuarantyEstimation } from '../../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
-
-
+import { SavingsAccount } from '../../../savings-account/savings-account/entities/savings-account.entity';
 
 @Entity()
 export class Loan extends BaseEntity {
@@ -26,6 +23,19 @@ export class Loan extends BaseEntity {
 
   @Column()
   amount: number;
+
+  @Column()
+  totalAmount: number;
+
+  @Column({
+    default: 0,
+  })
+  totalAmountPenality: number;
+
+  @Column({
+    default: 0,
+  })
+  numberOfPenality: number;
 
   @Column()
   reimbursement_amount: number;
@@ -49,18 +59,17 @@ export class Loan extends BaseEntity {
   })
   comment: string;
   //
-  @Column({
-    type: 'text',
-  })
+  @Column()
   reference: string;
   //
-  @OneToOne(() => User, { nullable: true })
-  @JoinColumn()
+  @ManyToOne(() => User, (type) => type.loanInit, { nullable: true })
+  initiated: User;
+
+  @ManyToOne(() => User, (type) => type.loanApproved, { nullable: true })
   approvedBy: User;
   //
-  @OneToOne(() => User, { nullable: true })
-  @JoinColumn()
-  manageBy: User;
+  @ManyToOne(() => User, (type) => type.loanManage, { nullable: true })
+  managedBy: User;
   //
   @ManyToOne(() => TypeCredit, (type) => type.loans)
   typeCredit: TypeCredit;
@@ -69,18 +78,27 @@ export class Loan extends BaseEntity {
   nextDatePrevalent: Date;
   //
   @Column()
+  remainTotalPaymentNumber: number;
+  //
+  @Column()
+  remainTotalAmount: number;
+  //
+  @Column()
   remainPaymentNumber: number;
   //
   @ManyToOne(() => Customer, (type) => type.loans)
   customer: Customer;
 
-  @OneToMany(() => DocumentCustomer, (type) => type.loan, { 
-    nullable: true 
+  @ManyToOne(() => SavingsAccount, (type) => type.loans)
+  credit_account: SavingsAccount;
+
+  @OneToMany(() => DocumentCustomer, (type) => type.loan, {
+    nullable: true,
   })
   documents: DocumentCustomer[];
 
   @OneToMany(() => TransactionSavingsAccount, (type) => type.loan)
-  transactions: TransactionSavingsAccount[]; 
+  transactions: TransactionSavingsAccount[];
 
   @OneToMany(() => GuarantyEstimation, (type) => type.loan)
   guaranties: GuarantyEstimation[];

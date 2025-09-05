@@ -30,6 +30,12 @@ import { CustomerModule } from '../customer/customer.module';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 import { DocumentsModule } from '../documents/documents.module';
 import { TransactionModule } from '../transaction/transaction.module';
+import { SavingsAccount } from '../savings-account/savings-account/entities/savings-account.entity';
+import { LoanSubscriber } from './loan/subscribers/loan.subscriber';
+import { JobsService } from '../../core/scheduler/jobs.service';
+import { AgenciesModule } from '../agencies/agencies.module';
+import { EmployeeService } from '../agencies/employee/employee.service';
+import { SavingsAccountModule } from '../savings-account/savings-account.module';
 
 @Module({
   imports: [
@@ -46,10 +52,13 @@ import { TransactionModule } from '../transaction/transaction.module';
       DocumentType,
       DocumentCustomer,
       TypeCustomer,
+      SavingsAccount,
     ]),
     CustomerModule,
     DocumentsModule,
     TransactionModule,
+    AgenciesModule,
+    SavingsAccountModule,
   ],
   controllers: [
     TypeCreditController,
@@ -66,6 +75,9 @@ import { TransactionModule } from '../transaction/transaction.module';
     UserRolesService,
     RolePermissionService,
     PermissionsService,
+    LoanSubscriber,
+    JobsService,
+    EmployeeService,
   ],
 })
 export class CreditModule {}

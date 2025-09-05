@@ -1,11 +1,11 @@
 export enum MODE_REIMBURSEMENT_PERIOD {
-  DAYLY = 'DAYLY',
-  WEEKLY = 'WEEKLY',
-  BIWEEKLY = 'BIWEEKLY', // 2-week
-  MONTHLY = 'MONTHLY',
-  QUARTERLY_3 = 'QUARTERLY_3', // 3 or 4-month
-  QUARTERLY_4 = 'QUARTERLY_4', // 3 or 4-month
-  YEARLY = 'YEARLY',
+  DAYLY = 1,
+  WEEKLY = 7,
+  BIWEEKLY = 15, // 2-week
+  MONTHLY = 30,
+  QUARTERLY_3 = 90, // 3 or 4-month
+  QUARTERLY_4 = 120, // 3 or 4-month
+  YEARLY = 365,
 }
 
 export enum CREDIT_STATUS {
@@ -33,3 +33,5 @@ export enum TYPE_STATUS {
   PENDING = 0,
   DISABLE = -1,
 }
+
+export const CREDIT_CODE = 'CD001';

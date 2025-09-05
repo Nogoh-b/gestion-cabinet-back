@@ -39,11 +39,7 @@ export class TypeCreditController {
 
   @Get('all')
   async findAllTypeCredits() {
-    return {
-      data: await this.typeCreditService.findAllTypeCredits(),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeCreditService.findAllTypeCredits();
   }
 
   @Get(':typeCreditId')
@@ -53,24 +49,13 @@ export class TypeCreditController {
       throw new ForbiddenException({
         ...result,
       });
-    return {
-      success: true,
-      data: result,
-      status: HttpStatus.OK,
-    };
+    return result;
   }
 
   @Post('add')
   async createTypeCredit(@Body() body: TypeCreditDto) {
-    return {
-      data: await this.typeCreditService.addTypeCredit(body),
-      success: true,
-      status: HttpStatus.OK,
-    };
+    return await this.typeCreditService.addTypeCredit(body);
   }
-
-  @Post(':typeCreditId')
-  async activeTypeCredit(@Body() credit: TypeCreditDto) {}
 
   @Put(':typeCreditId')
   async updateTypeCredit(

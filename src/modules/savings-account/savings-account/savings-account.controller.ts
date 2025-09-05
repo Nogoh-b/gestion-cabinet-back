@@ -5,7 +5,7 @@ import { PaginationQueryDto, PaginationQueryTxDto } from 'src/core/shared/dto/pa
 
 
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
-import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Param, Body, ParseIntPipe, Query, NotFoundException } from '@nestjs/common';
 
 
 
@@ -31,11 +31,29 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from 
 
 
 
+
+
+
+
+
+
+
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -116,6 +134,26 @@ export class SavingsAccountController {
   @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
   getDocumentStatuses(@Param('id', ParseIntPipe) id: number) {
     return this.service.getDocumentStatuses(id)
+  }
+
+    
+  @Get(':id/check-status')
+  @ApiOperation({ summary: 'Verifier si le compte est actif' })
+  @ApiResponse({ status: 201, description: 'Compte créé', type: SavingsAccount })
+  checkStatuts(
+    @Param('id') id: number,
+  ) {
+    return this.service.validateAccount(id);
+  }    
+  @Get(':code/check-status-by-code')
+  @ApiOperation({ summary: 'Verifier si le compte est actif' })
+  @ApiResponse({ status: 201, description: 'Compte créé', type: SavingsAccount })
+  async checkStatutsByCode(
+    @Param('code') code: string,
+  ) {
+    const sa = await this.service.findOneByCodeV1(code)
+    if(!sa) throw new NotFoundException(`Account with code ${code} not found`)
+    return this.service.validateAccount(sa.id);
   }
 
   @Get(':id/transactions')
@@ -263,6 +301,16 @@ export class SavingsAccountController {
   @Get(':id/stats')
   stats( @Param('id', ParseIntPipe) id: number) {
     return this.service.stats(id);
+  }
+
+  @Get(':code/check-init-transaction')
+  checkInitTransaction( @Param('code') code: string) {
+    return this.service.checkInitTransaction(code);
+  }
+
+  @Get(':code/stats-v1')
+  statsV1( @Param('code') code: string) {
+    return this.service.statsV1(code);
   }
 
   
