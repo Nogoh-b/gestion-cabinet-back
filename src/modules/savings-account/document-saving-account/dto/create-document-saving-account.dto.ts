@@ -1,6 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsInt } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+
+import { DocumentSavingAccountStatus } from '../document-saving-account.service';
+
+
 
 export class CreateDocumentSavingAccountDto {
   /*@ApiProperty({ description: 'Nom du document', example: 'CNI recto' })
@@ -20,4 +25,5 @@ export class CreateDocumentSavingAccountDto {
 
   @ApiProperty({ required: false, type: 'string', format: 'binary', example:  '' })
   file?:  Express.Multer.File;
+  status?:  number = DocumentSavingAccountStatus.PENDING;
 }

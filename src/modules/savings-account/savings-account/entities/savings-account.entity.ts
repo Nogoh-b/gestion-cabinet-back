@@ -14,9 +14,12 @@ import {
   AfterLoad,
 } from 'typeorm';
 
+
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+
 
 export enum SavingsAccountStatus {
   PENDING = 0,
@@ -131,7 +134,7 @@ export class SavingsAccount extends BaseEntity {
   commercial1: Commercial | null;*/
 
   // Relations
-  @ManyToOne(() => Customer)
+  @ManyToOne(() => Customer, { eager: true })
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
@@ -161,6 +164,9 @@ export class SavingsAccount extends BaseEntity {
 
   @OneToMany(() => TransactionSavingsAccount, (tx) => tx.originSavingsAccount)
   originSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte
+
+  @OneToMany(() => Loan, (type) => type.credit_account)
+  loans?: Loan[]; // Transactions liées au compte
 
   @OneToMany(() => TransactionSavingsAccount, (tx) => tx.targetSavingsAccount)
   targetSavingsAccountTx?: TransactionSavingsAccount[]; // Transactions liées au compte

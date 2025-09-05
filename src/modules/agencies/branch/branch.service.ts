@@ -2,68 +2,26 @@ import { PaginatedResult } from 'src/core/shared/interfaces/pagination.interface
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 
-
 import { SavingsAccountResponseDto } from 'src/modules/savings-account/savings-account/dto/response-savings-account.dto';
 
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
-
-
-
-
 import { TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 import { Repository } from 'typeorm';
-import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { EmployeeResponseDto } from '../employee/dto/response-employee.dto';
 import { EmployeeService } from '../employee/employee.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @Injectable()
 export class BranchService {
@@ -74,7 +32,9 @@ export class BranchService {
     private savingsAccountService: SavingsAccountService,
     private locationCityService: LocationCitiesService,
     private employeeService: EmployeeService,
-  ) {console.log(forwardRef)}
+  ) {
+    console.log(forwardRef);
+  }
   // Branches
   async createBranch(dto: CreateBranchDto): Promise<Branch> {
     // Vérification de l'existence de la ville
@@ -83,7 +43,7 @@ export class BranchService {
     if (!city) {
       throw new NotFoundException('Ville non trouvée');
     }
-    let code: string = await this.generateNextBranchCode() ;
+    const code: string = await this.generateNextBranchCode();
     /*let attempts = 0;
     do {
       code = GenCOde.randomDigits(3);
@@ -146,15 +106,10 @@ export class BranchService {
   }
 
   async findOne(id: number, all = false): Promise<Branch> {
-    const relations = all ? [
-      'employees',
-      'savingsAccounts',
-      'customers'
-      
-    ] : []
+    const relations = all ? ['employees', 'savingsAccounts', 'customers'] : [];
     const branch = await this.branchRepository.findOne({
       where: { id, status: 1 },
-      relations
+      relations,
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
     return branch;
@@ -163,10 +118,10 @@ export class BranchService {
   async findEmployeesByBranchId(id: number): Promise<EmployeeResponseDto[]> {
     const branch = await this.branchRepository.findOne({
       where: { id, status: 1 },
-      relations: ['employees','employees'],
+      relations: ['employees', 'employees'],
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
-    this.employeeService.findAllEmployees(branch.id)
+    this.employeeService.findAllEmployees(branch.id);
     return await this.employeeService.findAllEmployees(branch.id);
   }
 
@@ -175,7 +130,7 @@ export class BranchService {
       where: { id, status: 0 },
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
-    branch!.status = 1;
+    branch.status = 1;
     branch?.save();
     return branch;
   }
@@ -184,155 +139,167 @@ export class BranchService {
       where: { id, status: 1 },
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
-    branch!.status = 0;
+    branch.status = 0;
     branch?.save();
     return branch;
   }
 
-  
-  async findAllSavingAccounts(branch_id: number  = 0, isDeactivate : boolean = false,    page?: number,
+  async findAllSavingAccounts(
+    branch_id: number = 0,
+    isDeactivate: boolean = false,
+    page?: number,
     limit?: number,
     term?: string,
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string): Promise<PaginatedResult<SavingsAccountResponseDto>> {
-    
-    return await this.savingsAccountService.findAll(false,
+    to?: string,
+  ): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+    return await this.savingsAccountService.findAll(
+      false,
       page ? +page : undefined,
       limit ? +limit : undefined,
       term,
       fields,
       exact,
       from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined);
+      to ? new Date(to).toISOString() : undefined,
+    );
   }
 
   async stats(id: number): Promise<any> {
+    const branch = await this.findOne(id, true);
 
-    const branch = await this.findOne(id,true)
+    const txs = await this.savingsAccountService.findAllTrans(id);
 
-
-    const txs = await this.savingsAccountService.findAllTrans(id)
-
-    let  stats = {
-      online : {
-        om : {
-          transactionCountIncomming : 0,
-          transactionAmountIncomming : 0,
-          transactionCountOutcomming : 0,
-          transactionAmountOutcomming : 0,
-          balance : 0
+    const stats = {
+      online: {
+        om: {
+          transactionCountIncomming: 0,
+          transactionAmountIncomming: 0,
+          transactionCountOutcomming: 0,
+          transactionAmountOutcomming: 0,
+          balance: 0,
         },
-        momo : {
-          transactionCountIncomming : 0,
-          transactionAmountIncomming : 0,
-          transactionCountOutcomming : 0,
-          transactionAmountOutcomming : 0,
-          balance : 0
+        momo: {
+          transactionCountIncomming: 0,
+          transactionAmountIncomming: 0,
+          transactionCountOutcomming: 0,
+          transactionAmountOutcomming: 0,
+          balance: 0,
         },
-        savings_accounts : 0,
-        customer : 0,
-        transactionCountIncomming : 0,
-        transactionAmountIncomming : 0,
-        transactionCountOutcomming : 0,
-        transactionAmountOutcomming : 0,
-        balance : 0
-
+        savings_accounts: 0,
+        customer: 0,
+        transactionCountIncomming: 0,
+        transactionAmountIncomming: 0,
+        transactionCountOutcomming: 0,
+        transactionAmountOutcomming: 0,
+        balance: 0,
       },
-      agency :{
-          transactionCountIncomming : 0,
-          customer : 0,
-          transactionAmountIncomming : 0,
-          transactionCountOutcomming : 0,
-          transactionAmountOutcomming : 0,
-          savings_accounts : 0,
-          balance : 0
+      agency: {
+        transactionCountIncomming: 0,
+        customer: 0,
+        transactionAmountIncomming: 0,
+        transactionCountOutcomming: 0,
+        transactionAmountOutcomming: 0,
+        savings_accounts: 0,
+        balance: 0,
       },
-      global : {
-          customer : 0,
-          savings_accounts : 0,
-          employees :0,
-          transactionCountIncomming : 0,
-          transactionAmountIncomming : 0,
-          transactionCountOutcomming : 0,
-          transactionAmountOutcomming : 0,
-          balance : 0
-      } 
-    }
+      global: {
+        customer: 0,
+        savings_accounts: 0,
+        employees: 0,
+        transactionCountIncomming: 0,
+        transactionAmountIncomming: 0,
+        transactionCountOutcomming: 0,
+        transactionAmountOutcomming: 0,
+        balance: 0,
+      },
+    };
 
     for (const tx of txs) {
-      if(tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.is_locked)
-        continue
+      if (tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.is_locked)
+        continue;
       // transactions entrantes
-      if(tx.targetSavingsAccount && !tx.originSavingsAccount ){
-        stats.global.transactionAmountIncomming += tx.amount
-        stats.global.transactionCountIncomming++
-        if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
-            stats.online.transactionAmountIncomming += tx.amount
-            stats.online.transactionCountIncomming++
-        }else if(tx.branch_id ){
-            stats.agency.transactionAmountIncomming += tx.amount
-            stats.agency.transactionCountIncomming++
+      if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
+        stats.global.transactionAmountIncomming += tx.amount;
+        stats.global.transactionCountIncomming++;
+        if (
+          (!tx.branch_id && tx.provider.code === TransactionProvider.MOMO) ||
+          tx.provider.code === TransactionProvider.OM
+        ) {
+          stats.online.transactionAmountIncomming += tx.amount;
+          stats.online.transactionCountIncomming++;
+        } else if (tx.branch_id) {
+          stats.agency.transactionAmountIncomming += tx.amount;
+          stats.agency.transactionCountIncomming++;
         }
-        if(tx.provider.code === TransactionProvider.MOMO){
-          stats.online.momo.transactionAmountIncomming += tx.amount
-          stats.online.momo.transactionCountIncomming++
-        }else if(tx.provider.code === TransactionProvider.OM){
-          stats.online.om.transactionAmountIncomming += tx.amount
-          stats.online.om.transactionCountIncomming++
+        if (tx.provider.code === TransactionProvider.MOMO) {
+          stats.online.momo.transactionAmountIncomming += tx.amount;
+          stats.online.momo.transactionCountIncomming++;
+        } else if (tx.provider.code === TransactionProvider.OM) {
+          stats.online.om.transactionAmountIncomming += tx.amount;
+          stats.online.om.transactionCountIncomming++;
         }
       }
       // transactions sortante
-      if(!tx.targetSavingsAccount && tx.originSavingsAccount ){
-        stats.global.transactionAmountOutcomming += tx.amount
-        stats.global.transactionCountOutcomming++
-        if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
-            stats.online.transactionAmountOutcomming += tx.amount
-            stats.online.transactionCountOutcomming++
-        }else if(tx.branch_id ){
-            stats.agency.transactionAmountOutcomming += tx.amount
-            stats.agency.transactionCountOutcomming++
+      if (!tx.targetSavingsAccount && tx.originSavingsAccount) {
+        stats.global.transactionAmountOutcomming += tx.amount;
+        stats.global.transactionCountOutcomming++;
+        if (
+          (!tx.branch_id && tx.provider.code === TransactionProvider.MOMO) ||
+          tx.provider.code === TransactionProvider.OM
+        ) {
+          stats.online.transactionAmountOutcomming += tx.amount;
+          stats.online.transactionCountOutcomming++;
+        } else if (tx.branch_id) {
+          stats.agency.transactionAmountOutcomming += tx.amount;
+          stats.agency.transactionCountOutcomming++;
         }
-        if(tx.provider.code === TransactionProvider.MOMO){
-          stats.online.momo.transactionAmountOutcomming += tx.amount
-          stats.online.momo.transactionCountOutcomming++
-        }else if(tx.provider.code === TransactionProvider.OM){
-          stats.online.om.transactionAmountOutcomming += tx.amount
-          stats.online.om.transactionCountOutcomming++
+        if (tx.provider.code === TransactionProvider.MOMO) {
+          stats.online.momo.transactionAmountOutcomming += tx.amount;
+          stats.online.momo.transactionCountOutcomming++;
+        } else if (tx.provider.code === TransactionProvider.OM) {
+          stats.online.om.transactionAmountOutcomming += tx.amount;
+          stats.online.om.transactionCountOutcomming++;
         }
       }
-      stats.agency.balance = stats.agency.transactionAmountIncomming - stats.agency.transactionAmountOutcomming
-      stats.global.balance = stats.global.transactionAmountIncomming - stats.global.transactionAmountOutcomming
-      stats.online.balance = stats.online.transactionAmountIncomming - stats.online.transactionAmountOutcomming
-      stats.online.momo.balance = stats.online.momo.transactionAmountIncomming - stats.online.momo.transactionAmountOutcomming
-      stats.online.om.balance = stats.online.om.transactionAmountIncomming - stats.online.om.transactionAmountOutcomming
+      stats.agency.balance =
+        stats.agency.transactionAmountIncomming -
+        stats.agency.transactionAmountOutcomming;
+      stats.global.balance =
+        stats.global.transactionAmountIncomming -
+        stats.global.transactionAmountOutcomming;
+      stats.online.balance =
+        stats.online.transactionAmountIncomming -
+        stats.online.transactionAmountOutcomming;
+      stats.online.momo.balance =
+        stats.online.momo.transactionAmountIncomming -
+        stats.online.momo.transactionAmountOutcomming;
+      stats.online.om.balance =
+        stats.online.om.transactionAmountIncomming -
+        stats.online.om.transactionAmountOutcomming;
     }
 
     // return branch
-    if(branch){
-
-      stats.global.savings_accounts  = branch.savingsAccounts.length
-      stats.global.employees  = branch.employees.length
+    if (branch) {
+      stats.global.savings_accounts = branch.savingsAccounts.length;
+      stats.global.employees = branch.employees.length;
       for (const sa of branch?.savingsAccounts) {
-        if(sa.created_online = 1){
-          stats.online.savings_accounts++
-          stats.online.savings_accounts++
+        if (sa.created_online == 1) {
+          stats.online.savings_accounts++;
+        } else {
+          stats.agency.savings_accounts++;
         }
-        else{
-          stats.agency.savings_accounts++
-          stats.agency.savings_accounts++
-        }
-
       }
     }
-    return stats
-    
+    return stats;
+
     console.log('stats');
     const branch1 = await this.branchRepository.findOne({
       where: { id, status: 1 },
       relations: [
-        'employees', 
+        'employees',
         'savingsAccounts',
         'savingsAccounts.originSavingsAccountTx', // Transactions sortantes
         'savingsAccounts.targetSavingsAccountTx', // Transactions entrantes
@@ -423,32 +390,30 @@ export class BranchService {
       inComingAmountBranch,
       outgoingAmountBranch,
     };*/
-
   }
-
-
-
 
   /**
- * Génère le prochain code de branche incrémental sur 3 chiffres (000 à 999).
- */
-async generateNextBranchCode(): Promise<string> {
-  // 1) Récupère la valeur max des 3 derniers caractères de `code`
-  const raw = await this.branchRepository
-    .createQueryBuilder('b')
-    .select('MAX(CAST(RIGHT(b.code, 3) AS UNSIGNED))', 'max')
-    .getRawOne<{ max: string }>();
+   * Génère le prochain code de branche incrémental sur 3 chiffres (000 à 999).
+   */
+  async generateNextBranchCode(): Promise<string> {
+    // 1) Récupère la valeur max des 3 derniers caractères de `code`
+    const raw = await this.branchRepository
+      .createQueryBuilder('b')
+      .select('MAX(CAST(RIGHT(b.code, 3) AS UNSIGNED))', 'max')
+      .getRawOne<{ max: string }>();
 
-  // 2) Convertit en number (ou 0 si table vide)
-  const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
+    // 2) Convertit en number (ou 0 si table vide)
+    const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
 
-  // 3) Incrémente, et vérifie qu’on reste sous 1000
-  const next = maxValue + 1;
-  if (next > 999) {
-    throw new Error('Impossible de générer un nouveau code : seuil maximal (999) atteint');
+    // 3) Incrémente, et vérifie qu’on reste sous 1000
+    const next = maxValue + 1;
+    if (next > 999) {
+      throw new Error(
+        'Impossible de générer un nouveau code : seuil maximal (999) atteint',
+      );
+    }
+
+    // 4) Formate sur 3 chiffres
+    return next.toString().padStart(3, '0');
   }
-
-  // 4) Formate sur 3 chiffres
-  return next.toString().padStart(3, '0');
-}
 }

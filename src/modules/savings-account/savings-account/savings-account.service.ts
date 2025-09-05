@@ -52,6 +52,38 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -61,6 +93,38 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -302,6 +366,36 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
+  async findOneAdminTontine(branch_id: number | null = null): Promise<SavingsAccount> {
+    const queryBuilder = this.repo
+      .createQueryBuilder('account')
+      .leftJoinAndSelect('account.customer', 'customer')
+      .leftJoinAndSelect('account.type_savings_account', 'type_savings_account')
+      .leftJoinAndSelect('account.branch', 'branch')
+      .leftJoinAndSelect('account.documents', 'documents')
+      .leftJoinAndSelect('account.enrolled_by', 'enrolled_by')
+      .leftJoinAndSelect('account.interestRelations', 'interestRelations')
+      .where('account.is_admin = :isAdmin', { isAdmin: true })
+      .andWhere('account.status != :status', { status: SavingsAccountStatus.DEACTIVATE })
+      .andWhere('type_savings_account.code = :valeur', { valeur: 'T1' }) // Condition sur le sous-élément
+
+    // Ajouter la condition branch_id seulement si elle n'est pas null
+    if (branch_id !== null && branch_id !== undefined) {
+      queryBuilder.andWhere('account.branch_id = :branchId', { branchId: branch_id });
+    }
+
+    const account = await queryBuilder.getOne();
+    
+    if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id ? 'pour la branche ' + branch_id : ''}`);
+    
+    const soldes = await this.updateBalance(account.id)
+    account.avalaible_balance = soldes.avalaible_balance
+    account.balance = await soldes.balance
+    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    
+    return account;
+  }
+
   async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
     const relations = [
       'customer',
@@ -330,11 +424,82 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
+  async findOneByCodeV1(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+    const relations = [
+      'customer',
+      'type_savings_account',
+      'type_savings_account.required_documents',
+      'branch',
+      'documents',
+    ];
+
+    const account = await this.repo.findOne({
+      where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
+      relations,
+    });
+    console.log('okkkkkkkkkk')
+    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
+    return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
+  }
+
   async findOneByCustomer( 
     id: number,
     created_online: number | null = null
   ): Promise<SavingsAccountResponseDto> {
     const whereClause: any = { 
+      customer: { id },
+      status: Not(SavingsAccountStatus.DEACTIVATE)
+    };
+
+    // Ajoute le filtre created_online seulement si la valeur est non-null
+    if (created_online !== null) {
+      whereClause.created_online = created_online;
+    }
+
+    const account = await this.repo.findOne({
+      where: whereClause,
+      relations: [
+        'interestRelations',
+        'customer',
+      ],
+    });
+
+    if (!account) {
+      throw new NotFoundException(`Compte epargne pour customer ${id} introuvable ; created online ${created_online}`);
+    }
+
+    return plainToInstance(SavingsAccountResponseDto, account);
+  }
+
+  async findOneHydridSavingByCustomer(
+    id: number,
+    created_online: number | null = null
+  ): Promise<SavingsAccountResponseDto> {
+
+    const account = await this.repo.findOne({
+      where: {
+        customer: { id },
+        type_savings_account: { canCreateOnline: 1},
+        status: Not(SavingsAccountStatus.DEACTIVATE)
+      },
+      relations: {
+        customer: true,
+        interestRelations: true,
+      },
+    });
+
+    if (!account) {
+      throw new NotFoundException(`Compte epargne pour customer ${id} introuvable ; created online ${created_online}`);
+    }
+
+    return plainToInstance(SavingsAccountResponseDto, account);
+  }
+
+  async findOneCreditSavingByCustomer(
+    id: number,
+    created_online: number | null = null
+  ): Promise<SavingsAccountResponseDto> {
+    const whereClause: any = {
       customer: { id },
       status: Not(SavingsAccountStatus.DEACTIVATE)
     };
@@ -649,14 +814,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return await this.typeSavingAcount.getRequiredDocuments(sa.type_savings_account.id);
   }
 
-  async validateAccount(id: number): Promise<SavingsAccount> {
+  async validateAccount(id: number): Promise<SavingsAccount | any> {
     const account = await this.repo.findOne({ where: { id } });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
-    if (account.status !== SavingsAccountStatus.PENDING) {
+    if (account.status != SavingsAccountStatus.PENDING) {
       return account;
       // throw new BadRequestException(`Cannot validate account in status ${account.status}`);
     }
-    if((await this.getDocumentStatus(id)).allRequiredValidated === true && (await this.transactionSavingsAccountService.isFirstTransaction(account))){
+    if((await this.getDocumentStatus(id)).allRequiredValidated === true && !(await this.transactionSavingsAccountService.isFirstTransaction(account))){
 
       account.status = SavingsAccountStatus.ACTIVE;
       // await this.mcotiService.callMcotiEndpoint('GET',`epargne/epargne-accounts/${account.number_savings_account}/validate`);
@@ -759,7 +924,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // load account with its documents
     const account = await this.repo.findOne({
       where: { id },
-      relations: ['originSavingsAccountTx' , 'targetSavingsAccountTx'],
+      relations: ['originSavingsAccountTx' , 
+      'targetSavingsAccountTx',
+      'originSavingsAccountTx.provider', 
+      'originSavingsAccountTx.channelTransaction',
+      'originSavingsAccountTx.transactionType'
+      ,'targetSavingsAccountTx.provider', 
+      'targetSavingsAccountTx.channelTransaction',
+      'targetSavingsAccountTx.transactionType'],
     });
     if (!account) throw new NotFoundException(`Account ${id} not found`);
     const combinedTransactions = [
@@ -1163,6 +1335,27 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     return options.ensureNonNegative ? Math.max(balance, 0) : balance;
   }
 
+
+  async checkInitTransaction(code: string) {
+    const sa = await this.findOneByCode(code, true);
+    const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
+      .filter(tx => tx.status === 0 && 
+        (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
+      );
+
+    await Promise.all(
+      filteredTxs.map(tx => {
+        console.log('checkInitTransaction ', tx.reference);
+        return this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
+      })
+    );
+
+    return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
+  }
+
+
+
+
 async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
   // 1) On récupère le résultat brut
   const raw = await this.repo
@@ -1261,6 +1454,311 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     };
 
   }
+
+  async statsV1(code: string): Promise<any> {
+  
+      const sa = await this.findOneByCode(code)
+  
+      const id = sa.id
+      const txs = await this.getTransactions(id)
+  
+      let  stats = {
+        online : {
+          om : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+          },
+          momo : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+          },
+          transactionCountIncomming : 0,
+          transactionAmountIncomming : 0,
+          transactionCountOutcomming : 0,
+          transactionAmountOutcomming : 0,
+          balance : 0
+  
+        },
+        agency :{
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+        },
+        global : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+            balance : 0
+        }, 
+        salary : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+        }, 
+        tontine : {
+            transactionCountIncomming : 0,
+            transactionAmountIncomming : 0,
+            transactionCountOutcomming : 0,
+            transactionAmountOutcomming : 0,
+        } 
+      }
+  
+      for (const tx of txs) {
+        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.is_locked)
+          continue
+        // transactions entrantes
+        if(tx.targetSavingsAccount && !tx.originSavingsAccount ){
+          stats.global.transactionAmountIncomming += tx.amount
+          stats.global.transactionCountIncomming++
+          if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+              stats.online.transactionAmountIncomming += tx.amount
+              stats.online.transactionCountIncomming++
+          }else if(tx.branch_id ){
+              stats.agency.transactionAmountIncomming += tx.amount
+              stats.agency.transactionCountIncomming++
+          }
+          if(tx.provider.code === TransactionProvider.MOMO){
+            stats.online.momo.transactionAmountIncomming += tx.amount
+            stats.online.momo.transactionCountIncomming++
+          }else if(tx.provider.code === TransactionProvider.OM){
+            stats.online.om.transactionAmountIncomming += tx.amount
+            stats.online.om.transactionCountIncomming++
+          }
+        }
+        // transactions sortante
+        if(!tx.targetSavingsAccount && tx.originSavingsAccount ){
+          stats.global.transactionAmountOutcomming += tx.amount
+          stats.global.transactionCountOutcomming++
+          if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+              stats.online.transactionAmountOutcomming += tx.amount
+              stats.online.transactionCountOutcomming++
+          }else if(tx.branch_id ){
+              stats.agency.transactionAmountOutcomming += tx.amount
+              stats.agency.transactionCountOutcomming++
+          }
+          if(tx.provider.code === TransactionProvider.MOMO){
+            stats.online.momo.transactionAmountOutcomming += tx.amount
+            stats.online.momo.transactionCountOutcomming++
+          }else if(tx.provider.code === TransactionProvider.OM){
+            stats.online.om.transactionAmountOutcomming += tx.amount
+            stats.online.om.transactionCountOutcomming++
+          }
+        }
+        
+
+
+
+        if(tx.targetSavingsAccount && tx.originSavingsAccount ){
+          if(tx.originSavingsAccount.id == id){
+            stats.global.transactionAmountOutcomming += tx.amount
+            stats.global.transactionCountOutcomming++
+            // console.log('tx.branch_id ', tx.id)
+            if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+                stats.online.transactionAmountOutcomming += tx.amount
+                stats.online.transactionCountOutcomming++
+            }else if(tx.branch_id ){
+                stats.agency.transactionAmountOutcomming += tx.amount
+                stats.agency.transactionCountOutcomming++
+            }
+            if(tx.provider.code === TransactionProvider.MOMO){
+              stats.online.momo.transactionAmountOutcomming += tx.amount
+              stats.online.momo.transactionCountOutcomming++
+            }else if(tx.provider.code === TransactionProvider.OM){
+              stats.online.om.transactionAmountOutcomming += tx.amount
+              stats.online.om.transactionCountOutcomming++
+            }
+          }else if(tx.targetSavingsAccount.id == id){
+            stats.global.transactionAmountIncomming += tx.amount
+            stats.global.transactionCountIncomming++
+            if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
+                stats.online.transactionAmountIncomming += tx.amount
+                stats.online.transactionCountIncomming++
+            }else if(tx.branch_id ){
+                stats.agency.transactionAmountIncomming += tx.amount
+                stats.agency.transactionCountIncomming++
+            }
+            if(tx.provider.code === TransactionProvider.MOMO){
+              stats.online.momo.transactionAmountIncomming += tx.amount
+              stats.online.momo.transactionCountIncomming++
+            }else if(tx.provider.code === TransactionProvider.OM){
+              stats.online.om.transactionAmountIncomming += tx.amount
+              stats.online.om.transactionCountIncomming++
+            }
+          }
+
+        }
+        // transaction de tontine
+        /*if(tx.transactionType && tx.transactionType.code === TransactionCode.BUY_TONTINE ){
+          if(tx.targetSavingsAccount && tx.targetSavingsAccount.id === id){
+            stats.tontine.transactionCountIncomming++
+            stats.tontine.transactionAmountIncomming += tx.amount
+          }else if(tx.originSavingsAccount && tx.originSavingsAccount.id === id){
+            stats.tontine.transactionCountOutcomming++
+            stats.tontine.transactionAmountOutcomming += tx.amount
+          }
+        }*/
+
+        if(tx.transactionType && tx.transactionType.code === TransactionCode.BUY_SALARY ){
+          if(tx.targetSavingsAccount && tx.targetSavingsAccount.id === id){
+            stats.salary.transactionCountIncomming++
+            stats.salary.transactionAmountIncomming += tx.amount
+          }else if(tx.originSavingsAccount && tx.originSavingsAccount.id === id){
+            stats.salary.transactionCountOutcomming++
+            stats.salary.transactionAmountOutcomming += tx.amount
+          }
+        }
+
+        stats.agency.balance = stats.agency.transactionAmountIncomming - stats.agency.transactionAmountOutcomming
+        stats.global.balance = stats.global.transactionAmountIncomming - stats.global.transactionAmountOutcomming
+        stats.online.balance = stats.online.transactionAmountIncomming - stats.online.transactionAmountOutcomming
+        stats.online.momo.balance = stats.online.momo.transactionAmountIncomming - stats.online.momo.transactionAmountOutcomming
+        stats.online.om.balance = stats.online.om.transactionAmountIncomming - stats.online.om.transactionAmountOutcomming
+      }
+  
+
+      return stats
+
+  }
+
+
+async statsV1_(code: string): Promise<any> {
+  const sa = await this.findOneByCode(code);
+  const id = sa.id;
+  const txs = await this.getTransactions(id);
+
+  let stats = {
+    online: {
+      om: this.initStats(),
+      momo: this.initStats(),
+      transactionCountIncomming: 0,
+      transactionAmountIncomming: 0,
+      transactionCountOutcomming: 0,
+      transactionAmountOutcomming: 0,
+      balance: 0
+    },
+    agency: this.initStats(),
+    global: {
+      transactionCountIncomming: 0,
+      transactionAmountIncomming: 0,
+      transactionCountOutcomming: 0,
+      transactionCountOutcommingSalary: 0,
+      transactionAmountOutcomming: 0,
+      transactionAmountOutcommingSalary: 0,
+      balance: 0
+    }
+  };
+
+  for (const tx of txs) {
+    if (tx.status !== TransactionSavingsAccountStatus.VALIDATE || tx.is_locked) continue;
+
+    const isIncoming = tx.targetSavingsAccount && !tx.originSavingsAccount;
+    const isOutgoing = !tx.targetSavingsAccount && tx.originSavingsAccount;
+    const isTransfer = tx.targetSavingsAccount && tx.originSavingsAccount;
+
+    if (isIncoming || (isTransfer && tx.targetSavingsAccount?.id === id)) {
+      this.addTransaction(stats, tx, "in");
+    } else if (isOutgoing || (isTransfer && tx.originSavingsAccount?.id === id)) {
+      this.addTransaction(stats, tx, "out");
+    }
+  }
+
+  this.updateBalances(stats);
+  return stats;
+}
+
+// Initialise un bloc
+private initStats() {
+  return {
+    transactionCountIncomming: 0,
+    transactionAmountIncomming: 0,
+    transactionCountOutcomming: 0,
+    transactionAmountOutcomming: 0,
+    balance: 0
+  };
+}
+
+// Ajoute une transaction (entrant ou sortant)
+private addTransaction(stats: any, tx: any, dir: "in" | "out") {
+  const amountKey = dir === "in" ? "transactionAmountIncomming" : "transactionAmountOutcomming";
+  const countKey = dir === "in" ? "transactionCountIncomming" : "transactionCountOutcomming";
+
+  // Global
+  stats.global[amountKey] += tx.amount;
+  stats.global[countKey]++;
+
+  // Agency vs Online
+  if (tx.branch_id) {
+    stats.agency[amountKey] += tx.amount;
+    stats.agency[countKey]++;
+  } else if ([TransactionProvider.MOMO, TransactionProvider.OM].includes(tx.provider.code)) {
+    stats.online[amountKey] += tx.amount;
+    stats.online[countKey]++;
+  }
+
+  // Provider spécifique
+  if (tx.provider.code === TransactionProvider.MOMO) {
+    stats.online.momo[amountKey] += tx.amount;
+    stats.online.momo[countKey]++;
+  } else if (tx.provider.code === TransactionProvider.OM) {
+    stats.online.om[amountKey] += tx.amount;
+    stats.online.om[countKey]++;
+  }
+}
+
+// Recalcule tous les balances
+private updateBalances(stats: any) {
+  const calc = (s: any) => {
+    s.balance = s.transactionAmountIncomming - s.transactionAmountOutcomming;
+  };
+
+  calc(stats.global);
+  calc(stats.agency);
+  calc(stats.online);
+  calc(stats.online.momo);
+  calc(stats.online.om);
+}
+
+
+// 🔹 Mise à jour des stats globales, agency, online et provider (MOMO/OM)
+private updateStats(stats: any, tx: any, direction: "in" | "out") {
+  const amountKey = direction === "in" ? "transactionAmountIncomming" : "transactionAmountOutcomming";
+  const countKey = direction === "in" ? "transactionCountIncomming" : "transactionCountOutcomming";
+
+  // global
+  stats.global[amountKey] += tx.amount;
+  stats.global[countKey]++;
+
+  // agency vs online
+  if (tx.branch_id) {
+    stats.agency[amountKey] += tx.amount;
+    stats.agency[countKey]++;
+  } else if (tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM) {
+    stats.online[amountKey] += tx.amount;
+    stats.online[countKey]++;
+  }
+
+  // provider spécifique
+  if (tx.provider.code === TransactionProvider.MOMO) {
+    stats.online.momo[amountKey] += tx.amount;
+    stats.online.momo[countKey]++;
+  } else if (tx.provider.code === TransactionProvider.OM) {
+    stats.online.om[amountKey] += tx.amount;
+    stats.online.om[countKey]++;
+  }
+}
+
+
+
 
   async requestLink(code){
     console.log(code)

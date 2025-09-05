@@ -1,15 +1,42 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpStatus, Param, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  HttpStatus,
+  Param, ParseIntPipe,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { TypeCredit } from '../../type_credit/entities/typeCredit.entity';
 import { TypeGuaranty } from './entity/type_guaranty.entity';
 import { TypeGuarantyService } from './type_guaranty.service';
-import { TypeGuarantyDto } from './dto/type_guaranty.dto';
+import { TypeGuarantyDto, UpdateTypeGuaranty } from './dto/type_guaranty.dto';
+import { DocumentTypeService } from '../../../documents/document-type/document-type.service';
 
 @Controller('type-guaranty')
 export class TypeGuarantyController {
-  constructor(private readonly typeGuarantyService: TypeGuarantyService) {}
-  @Post('')
-  async create(@Body() data: TypeGuarantyDto) {
-    return await this.typeGuarantyService.addTypeGuaranty(data);
+  constructor(
+    private readonly typeGuarantyService: TypeGuarantyService,
+    private readonly documentTypeService: DocumentTypeService,
+  ) {}
+  @Post(':documentTypeId')
+  async create(
+    @Param('documentTypeId', ParseIntPipe) documentTypeId: number,
+    @Body() data: TypeGuarantyDto,
+  ) {
+    const typeOfDocument =
+      await this.documentTypeService.findOne(documentTypeId);
+    const typeGuaranty = await this.typeGuarantyService.addTypeGuaranty({
+      ...data,
+      typeOfDocument,
+    } as TypeGuaranty);
+    if (typeGuaranty.hasOwnProperty('success'))
+      throw new ForbiddenException({
+        ...typeGuaranty,
+      });
+    return typeGuaranty;
   }
 
   @Get('all')
@@ -30,7 +57,7 @@ export class TypeGuarantyController {
   @Put(':id')
   async updateTypeOfGuaranty(
     @Param('id') id: number,
-    @Body() data: Partial<TypeGuarantyDto>,
+    @Body() data: UpdateTypeGuaranty,
   ) {
     const result = await this.typeGuarantyService.findOneTypeGuaranty(id);
     if (result.hasOwnProperty('success'))

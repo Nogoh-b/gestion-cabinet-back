@@ -9,26 +9,28 @@ import {
 import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 
+import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
+
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 
 import { PersonnelTypeCode } from 'src/modules/personnel/type_personnel/entities/type_personnel.entity';
-
 import { ProviderService } from 'src/modules/provider/provider/provider.service';
 import { QueueService } from 'src/modules/queue/queue.service';
+
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
 
 import {
   SavingsAccount,
   SavingsAccountStatus,
 } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
-
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+
 import { Not, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { v4 as uuidv4 } from 'uuid';
-
 import { InjectQueue } from '@nestjs/bull';
+
 import {
   BadRequestException,
   Injectable,
@@ -36,6 +38,76 @@ import {
 } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -137,6 +209,44 @@ import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccoun
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @Injectable()
 export class TransactionSavingsAccountService {
   constructor(
@@ -173,8 +283,10 @@ export class TransactionSavingsAccountService {
       (dto as CreateTransactionSavingsAccountDto)
         .origin_savings_account_code === dto.target_savings_account_code
     ) {
-      throw new BadRequestException(`Transfert vers le même compte interdit `);
+      throw new BadRequestException(`Transfert vers le même compte interdit ${(dto as CreateTransactionSavingsAccountDto).origin_savings_account_code} ${dto.target_savings_account_code} `);
     }
+    console.log('isFirstTx111');
+
     // récupération du compte origine
     let origin: SavingsAccount | null = null;
     if (
@@ -182,7 +294,7 @@ export class TransactionSavingsAccountService {
     ) {
       origin = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           (dto as CreateTransactionSavingsAccountDto)
             .origin_savings_account_code,
         ),
@@ -208,7 +320,7 @@ export class TransactionSavingsAccountService {
     if (dto.target_savings_account_code) {
       target = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           dto.target_savings_account_code ?? '0',
         ),
       );
@@ -256,7 +368,7 @@ export class TransactionSavingsAccountService {
         !docStatsTargetAccount.allRequiredValidated ||
         origin.status != SavingsAccountStatus.ACTIVE
       ) {
-        if (this.can_refuse_transaction_type_for_debit(txType.code))
+        if (this.can_refuse_transaction_type_for_debit(txType.code, origin.is_admin || target?.is_admin))
           throw new NotFoundException(
             `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,
           );
@@ -278,18 +390,21 @@ export class TransactionSavingsAccountService {
     const tx = new TransactionSavingsAccount();
     tx.amount = dto.amount;
     tx.is_locked = dto.is_locked ?? false;
-    tx.status =  0; 
-    // tx.status =  origin && dayBeforeWithdraw === 0 ? 1 :0; 
-    tx.branch_id = dto.branch_id ?? null; 
+    tx.status =  0;
+    // tx.status =  origin && dayBeforeWithdraw === 0 ? 1 :0;
+    tx.branch_id = dto.branch_id ?? null;
     tx.channelTransaction = channel;
     tx.provider = provider;
     tx.commission = dto.commission ?? 0;
     tx.transactionType = txType;
     tx.ressource = ressource;
-    tx.origin = origin?.number_savings_account
+    tx.loan = dto.loanId ? {id: dto.loanId} as Loan : null;
+    tx.tx_project_id = dto.tx_project_id ?? null;
+    /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
-      : 'SYTEM';
-    tx.target = target?.number_savings_account ?? 'SYSTEM';
+      : 'SYTEM';*/
+    tx.origin = dto.origin ?? origin?.number_savings_account ?? 'SYSTEM';
+    tx.target = dto.target ??  target?.number_savings_account ?? 'SYSTEM';
     tx.originSavingsAccount = origin; //(dto  as CreateTransactionSavingsAccountDto).origin_savings_account_code ? origin : null;
     tx.targetSavingsAccount = target; // (dto  as CreateTransactionSavingsAccountDto).target_savings_account_code  ? target : null;
     tx.payment_code = paymentCode;
@@ -324,15 +439,16 @@ export class TransactionSavingsAccountService {
       );
       await entityManager.save(tx);
     });
-    /*if(!Boolean(txType.is_credit) || 
-    (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) || 
+    /*if(!Boolean(txType.is_credit) ||
+    (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) ||
     txType.code === TransactionCode.INTERNAL_TRANSFER  ){    */
     // this.validate(tx.id, isFirstTx)
     // console.log('txxxxxxxx11 ', tx.targetSavingsAccount ,' ', tx.status)
-    if (
-      origin != null ||
+    if (origin != null ||
       (provider.code != TransactionProvider.MOMO &&
         provider.code != TransactionProvider.OM) ||
+      txType.code === TransactionCode.BUY_TONTINE ||
+      txType.code === TransactionCode.RECEIVE_TONTINE ||
       txType.code === TransactionCode.INTERNAL_TRANSFER
     ) {
       this.validate(tx.id, isFirstTx);
@@ -344,10 +460,60 @@ export class TransactionSavingsAccountService {
     return plainToInstance(ResponseTransactionSavingsAccountDto, tx);
   }
 
-  can_refuse_transaction_type_for_debit(txTypeCode) {
+  async deposit_loan_to_account(dto: CreateCreditTransactionSavingsAccountDto) {
+    /*const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'POST',
+            `epargne/bank/operator/update-sold`,{provider:'OM', isCredit:1,  amount:175,}
+        );
+        console.log('sold updated', code_cash)
+    return new TransactionSavingsAccount*/
+    return await this.perform_transaction(
+      dto,
+      'LOAN_DISBURSEMENT',
+      'BRANCH',
+      'SYSTEM',
+    );
+  }
+
+  async retrieve_penality_account(
+    dto: CreateCreditTransactionSavingsAccountDto,
+  ) {
+    /*const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'POST',
+            `epargne/bank/operator/update-sold`,{provider:'OM', isCredit:1,  amount:175,}
+        );
+        console.log('sold updated', code_cash)
+    return new TransactionSavingsAccount*/
+    return await this.perform_transaction(
+      dto,
+      'LOAN_PENALITIES_PAYMENT',
+      'BRANCH',
+      'SYSTEM',
+    );
+  }
+
+  async retrieve_trait_to_account(
+    dto: CreateCreditTransactionSavingsAccountDto,
+  ) {
+    /*const code_cash = await this.mcotiService.callMcotiEndpoint(
+            'POST',
+            `epargne/bank/operator/update-sold`,{provider:'OM', isCredit:1,  amount:175,}
+        );
+        console.log('sold updated', code_cash)
+    return new TransactionSavingsAccount*/
+    return await this.perform_transaction(
+      dto,
+      'LOAN_PRINCIPAL_REPAYMENT',
+      'BRANCH',
+      'SYSTEM',
+    );
+  }
+
+  can_refuse_transaction_type_for_debit(txTypeCode?: string, is_admin ?: boolean) {
+    // if(tx.originSavingsAccount?.is_admin)
     return (
       txTypeCode === TransactionCode.INTERNAL_TRANSFER ||
-      txTypeCode?.includes('_WITHDRAW')
+      txTypeCode?.includes('_WITHDRAW') || !is_admin
     );
   }
 
@@ -418,61 +584,90 @@ export class TransactionSavingsAccountService {
     );
   }
 
-  async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
+  async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
     return await this.perform_transaction(
       dto,
-      'MOMO_DEPOSIT',
+      type_code ?? 'MOMO_DEPOSIT',
       'MOBILE',
       TransactionProvider.MOMO,
     );
   }
 
-  async om_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
+  async om_withdraw(dto: CreateDebitTransactionSavingsAccountDto, type_code : string | null = null) {
     dto.status = PaymentStatus.SUCCESSFULL;
     return await this.perform_transaction(
       dto,
-      'OM_WITHDRAW',
+      type_code ?? 'OM_WITHDRAW',
       'MOBILE',
       TransactionProvider.OM,
     );
   }
 
-  async momo_withdraw(dto: CreateDebitTransactionSavingsAccountDto) {
+  async momo_withdraw(dto: CreateDebitTransactionSavingsAccountDto, type_code : string | null = null) {
     dto.status = PaymentStatus.SUCCESSFULL;
     return await this.perform_transaction(
       dto,
-      'MOMO_WITHDRAW',
+      type_code ?? 'MOMO_WITHDRAW',
       'MOBILE',
       TransactionProvider.MOMO,
     );
   }
 
-  async om_deposit(dto: CreateCreditTransactionSavingsAccountDto) {
-    return await this.perform_transaction(dto, TransactionCode.OM_DEPOSIT, 'MOBILE', TransactionProvider.OM);
+  async om_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
+    return await this.perform_transaction(dto, type_code ?? TransactionCode.OM_DEPOSIT, 'MOBILE', TransactionProvider.OM);
   }
 
   async buy_tontine(dto: CreateTransactionSavingsAccountDto) {
     let saAdmin : SavingsAccount | null = null
-    if(!dto.target_savings_account_code && dto.origin_savings_account_code)
+    let branch_id : number | null = null
+
+    if(dto.origin_savings_account_code)
     {
-      const originSa = await this.savingsAccountService.findOneByCode(dto.origin_savings_account_code)
-      saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
-      dto.target_savings_account_code = saAdmin.number_savings_account
+      const originSa = await this.savingsAccountService.findOneByCodeV1(dto.origin_savings_account_code)
+      if(originSa)
+        branch_id = originSa.branch.id
     }
+    saAdmin = await this.savingsAccountService.findOneAdminTontine(branch_id)
+    dto.target_savings_account_code = saAdmin.number_savings_account
+
     console.log(dto)
+    if(!dto.origin_savings_account_code)
+      return dto.provider == TransactionProvider.OM ? await this.om_deposit(dto, TransactionCode.BUY_TONTINE) :  await this.momo_deposit(dto, TransactionCode.BUY_TONTINE) ;
     return await this.perform_transaction(dto, TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
-  }  
-  
+  }
+
   async receive_tontine(dto: CreateTransactionSavingsAccountDto) {
     let saAdmin : SavingsAccount | null = null
-    if(dto.target_savings_account_code && !dto.origin_savings_account_code)
+
+    let branch_id : number | null = null
+
+    if(dto.target_savings_account_code)
     {
-      const originSa = await this.savingsAccountService.findOneByCode(dto.target_savings_account_code)
-      saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
+      const targetSa = await this.savingsAccountService.findOneByCodeV1(dto.target_savings_account_code)
+      if(targetSa)
+        branch_id = targetSa.branch.id
+    }
+    saAdmin = await this.savingsAccountService.findOneAdminTontine(branch_id)
+    dto.origin_savings_account_code = saAdmin.number_savings_account
+
+    console.log(dto)
+    if(!dto.target_savings_account_code)
+      return dto.provider == TransactionProvider.OM ? await this.om_withdraw(dto, TransactionCode.BUY_TONTINE) :  await this.momo_withdraw(dto, TransactionCode.BUY_TONTINE) ;
+    return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+
+    /*if(dto.target_savings_account_code )
+    {
+      const originSa = await this.savingsAccountService.findOneByCodeV1(dto.target_savings_account_code)
+      saAdmin = await this.savingsAccountService.findOneAdminTontine(originSa.branch.id)
       dto.origin_savings_account_code = saAdmin.number_savings_account
     }
     console.log(dto)
-    return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+    return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);*/
+  }
+
+  async transaction_project(dto: CreateTransactionSavingsAccountDto) {
+    console.log(dto)
+    return await this.perform_transaction(dto, TransactionCode[dto.tx_type ?? TransactionCode.INTERNAL_TRANSFER], 'MOBILE', TransactionProvider.HYBRID_SAVING);
   }
 
 
@@ -507,7 +702,7 @@ export class TransactionSavingsAccountService {
     /*let saAdmin : SavingsAccount | null = null
     if(!dto.target_savings_account_code && dto.origin_savings_account_code)
     {
-      const originSa = await this.savingsAccountService.findOneByCode(dto.origin_savings_account_code)
+      const originSa = await this.savingsAccountService.findOneByCodeV1(dto.origin_savings_account_code)
       saAdmin = await this.savingsAccountService.findOneAdmin(originSa.branch.id)
       dto.target_savings_account_code = saAdmin.number_savings_account
     }*/
@@ -524,15 +719,15 @@ export class TransactionSavingsAccountService {
         'channelTransaction',
         'provider',
         'transactionType',
-        'originSavingsAccount',
-        'originSavingsAccount.originSavingsAccountTx',
-        'originSavingsAccount.targetSavingsAccountTx',
+        'originSavingsAccount', 
+        // 'originSavingsAccount.originSavingsAccountTx',
+        // 'originSavingsAccount.targetSavingsAccountTx',
         'targetSavingsAccount',
-        'targetSavingsAccount.originSavingsAccountTx',
-        'targetSavingsAccount.targetSavingsAccountTx',
+        // 'targetSavingsAccount.originSavingsAccountTx',
+        // 'targetSavingsAccount.targetSavingsAccountTx',
       ],
     });
-    const sa = await this.savingsAccountService.findOneByCode(
+    const sa = await this.savingsAccountService.findOneByCodeV1(
       tx?.targetSavingsAccount?.number_savings_account ?? '',
     );
 
@@ -552,10 +747,10 @@ export class TransactionSavingsAccountService {
       const isFirstTx = await this.isFirstTransaction(
         plainToInstance(SavingsAccount, sa),
       );
-      console.log('payment', payment);
       tx.status_provider = payment.paymentStatus;
       tx.status = PaymentStatus.PENDING;
       const dataPayment: Payment = payment.data;
+      console.log('payment ' , tx.id , ' ', PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]] , ' ', payment);
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken;
       tx.status_provider = dataPayment.paymentStatus;
@@ -566,6 +761,7 @@ export class TransactionSavingsAccountService {
       } else {
         tx.target = dataPayment.ref;
       }
+      this.repo.save(tx);
       if (tx.status === PaymentStatus.SUCCESSFULL) {
         return await this.validate(tx.id, isFirstTx);
       }
@@ -812,9 +1008,9 @@ export class TransactionSavingsAccountService {
       : 0;
 
     if (
-      account != null &&
-      avalaible_balance < amount &&
-      this.can_refuse_transaction_type_for_debit(txTypeCode)
+      (account != null &&
+        avalaible_balance < amount &&
+        this.can_refuse_transaction_type_for_debit(txTypeCode , account.is_admin || target?.is_admin)) || amount < 0
     ) {
       throw new BadRequestException(
         `Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
@@ -839,7 +1035,7 @@ export class TransactionSavingsAccountService {
       throw new BadRequestException('Ce compte est inactif ou bloqué.');
     }
 
-      
+
 
     // 4. Calculer les frais (ex: commission_per_product devenu account_opening_fee)
     const totalFees = account.type_savings_account.account_opening_fee; // + autres frais si besoin
@@ -856,18 +1052,19 @@ export class TransactionSavingsAccountService {
     if(target?.is_admin || !target ){
       return false
     }
-    if(target && (!target.targetSavingsAccountTx  || target?.is_admin))
+    const targetSavingsAccountTx = await this.savingsAccountService.getTransactions(target.id);
+    // console.log('iiiiiiiiiiii ', !targetSavingsAccountTx , ' ',target?.is_admin)
+    if(target && (!targetSavingsAccountTx  || target?.is_admin))
       return true
-      
 
     let hasFirstDeposit = true
     if(target){
-        for (const tx of target.targetSavingsAccountTx || []) {
-            if (tx.status === PaymentStatus.SUCCESSFULL) {
-                hasFirstDeposit = false;
-                break; // Sortie immédiate de la boucle 
-            }
+      for (const tx of targetSavingsAccountTx || []) {
+        if (tx.status === PaymentStatus.SUCCESSFULL) {
+          hasFirstDeposit = false;
+          break; // Sortie immédiate de la boucle
         }
+      }
     }
     return hasFirstDeposit;
     // return target && target.status === SavingsAccountStatus.PENDING && !!tx.transactionType.is_credit && hasFirstDeposit
@@ -892,9 +1089,9 @@ export class TransactionSavingsAccountService {
           'POST',
           `epargne/bank/operator/update-sold`,
           {
-            provider: 'OM',
+            provider: entity.provider_code,
             isCredit: entity.origin ? 0 : 1,
-            amount: entity.amount + (entity.commission ?? 0),
+            amount: entity.origin ? entity.amount  : entity.amount + (entity.commission ?? 0) ,
           },
         );
         console.log('sold provider updated', updated_sold);
@@ -905,9 +1102,9 @@ export class TransactionSavingsAccountService {
 
     console.log('payment suscessful----- ', isFirstTx, '-----', tx.id , ' ', tx.status_provider)
     if(tx.targetSavingsAccount)
-      target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCode(
+      target  = plainToInstance(SavingsAccount, await this.savingsAccountService.findOneByCodeV1(
         tx.targetSavingsAccount.number_savings_account,
-    ));
+      ));
     let comercial : Personnel| null = new Personnel();
     let partner : Personnel| null = new Personnel()
     let adminSa : SavingsAccount| null = new SavingsAccount()
@@ -919,7 +1116,7 @@ export class TransactionSavingsAccountService {
     if (process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT) {
       mendoCoSa = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT,
         ),
       );
@@ -944,7 +1141,7 @@ export class TransactionSavingsAccountService {
         const providerMinBalance = await this.providerService.findOne('SYSTEM');
         txData.target = adminSa?.number_savings_account;
         txData.targetSavingsAccount = adminSa;
-    
+
 
 
 
@@ -962,7 +1159,7 @@ export class TransactionSavingsAccountService {
         }
 
         await entityManager.save(secondTx)
-        // console.log('sauvegarde de la transaction de la balance minimun ',await entityManager.save(secondTx))   
+        // console.log('sauvegarde de la transaction de la balance minimun ',await entityManager.save(secondTx))
 
         // Transaction pour le minimum de frais de creation de compte
         const txTypeOpenProduct =
@@ -1035,7 +1232,7 @@ export class TransactionSavingsAccountService {
               fifthTx.amount = Math.floor(
                 (target.type_savings_account.minimum_balance *
                   target.type_savings_account.commission_per_product) /
-                  100,
+                100,
               );
               console.log('fifthTx.amount) ', fifthTx.amount);
 
@@ -1091,7 +1288,7 @@ export class TransactionSavingsAccountService {
             fourthTx.amount = Math.ceil(
               (target.type_savings_account.minimum_balance *
                 target.type_savings_account.promo_code_fee) /
-                100,
+              100,
             );
             fourthTx.transactionType = txTypePartner;
             fourthTx.provider = providerOpenProduct;
@@ -1138,13 +1335,13 @@ export class TransactionSavingsAccountService {
             (target.type_savings_account.minimum_balance *
               target.type_savings_account[
                 `commission_${personnel.type_personnel.code.toLocaleLowerCase()}`
-              ]) /
-              100,
+                ]) /
+            100,
           );
           if (personnel.type_personnel.code === PersonnelTypeCode.MEMBRE)
             amount = Math.round(
               amount /
-                (await this.personnelService.findAllMembersLength(personnels)),
+              (await this.personnelService.findAllMembersLength(personnels)),
             );
           // console.log('personnelTx.amount) ', personnelTx.amount)
 
@@ -1304,7 +1501,7 @@ export class TransactionSavingsAccountService {
     if (tx.targetSavingsAccount) {
       target = plainToInstance(
         SavingsAccount,
-        await this.savingsAccountService.findOneByCode(
+        await this.savingsAccountService.findOneByCodeV1(
           tx.targetSavingsAccount.number_savings_account,
         ),
       );
@@ -1578,13 +1775,23 @@ export class TransactionSavingsAccountService {
       tx.status_provider = PaymentStatusProvider.SUCCESSFULL;
     tx.payment_token_provider = dto.payment_token_provider ?? this.generateUniquePaymentTokenProvider();
     tx.payment_code = dto.payment_code ?? this.generateUniquePaymentCode();
+    if(dto.status_provider)
+    {
+      console.log('Status provider update ', dto.status_provider);
+      tx.status_provider = dto.status_provider;
+      const providerStatus = dto.status_provider as keyof typeof PaymentStatusProvider;
+      const statusKey = PaymentStatusProvider[providerStatus] as keyof typeof PaymentStatus;
+      tx.status = PaymentStatus[statusKey] ?? PaymentStatus.FAILED;
+      this.repo.save(tx);
+      return tx
+    }
     this.repo.save(tx);
     // const isFirstTx = await  this.isFirstTransaction(tx.targetSavingsAccount)
     if (channel_code === 'MOBILE' && tx.targetSavingsAccount) {
       let isFirstTx = false;
       // if(tx.targetSavingsAccount){
 
-      const sa = await this.savingsAccountService.findOneByCode(
+      const sa = await this.savingsAccountService.findOneByCodeV1(
         tx.targetSavingsAccount?.number_savings_account ?? '',
       );
       isFirstTx = await this.isFirstTransaction(
@@ -1659,10 +1866,10 @@ export class TransactionSavingsAccountService {
 
     const whereCommercial = commercial_code
       ? {
-          origin,
-          commercial_code,
-          ...(excludeId ? { id: Not(excludeId) } : {}),
-        }
+        origin,
+        commercial_code,
+        ...(excludeId ? { id: Not(excludeId) } : {}),
+      }
       : null;
 
     // aucune paire fournie → pas de conflit
@@ -1694,21 +1901,26 @@ export class TransactionSavingsAccountService {
 
 
 
-    /**
-  * Met à jour le sold côté COTI pour les providers mobiles.
-  */
+  /**
+   * Met à jour le sold côté COTI pour les providers mobiles.
+   */
   private async update_bank_operator_sold_if_mobile(entity: TransactionSavingsAccount): Promise<void> {
     if (
       entity.provider_code == TransactionProvider.OM ||
       entity.provider_code == TransactionProvider.MOMO
     ) {
+      console.log(        {
+        provider: entity.provider_code,
+        isCredit: entity.originSavingsAccount ? 0 : 1,
+        amount: entity.origin ? Number(entity.amount)  : Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)) ,
+      })
       const updated_sold = await this.mcotiService.callMcotiEndpoint(
         'POST',
         `epargne/bank/operator/update-sold`,
         {
-          provider: 'OM', // tu avais déjà 'OM' en dur ici
+          provider: entity.provider_code,
           isCredit: entity.originSavingsAccount ? 0 : 1,
-          amount: Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)),
+          amount: entity.origin ? Number(entity.amount)  : Math.trunc(Number(entity.amount) + Number(entity.commission ?? 0)) ,
         },
       );
       // console.log('sold provider updated', entity.amount + (entity.commission ?? 0));
@@ -1716,37 +1928,39 @@ export class TransactionSavingsAccountService {
   }
 
   /**
-  * Retourne le SavingsAccount admin (branche du target si présent sinon de l’origin).
-  */
+   * Retourne le SavingsAccount admin (branche du target si présent sinon de l’origin).
+   */
   private async get_admin_sa_for_tx(
     tx: TransactionSavingsAccount
   ): Promise<SavingsAccount | null> {
+
+    console.log(tx.id , ' ',tx.originSavingsAccount?.branch_id , ' ',tx.targetSavingsAccount?.branch_id)
     return this.savingsAccountService.findOneAdmin(
       tx.targetSavingsAccount ? tx.targetSavingsAccount?.branch_id : tx.originSavingsAccount?.branch_id,
     );
   }
 
   /**
-  * Retourne le compte MendoCo depuis la variable d’environnement si disponible.
-  */
+   * Retourne le compte MendoCo depuis la variable d’environnement si disponible.
+   */
   private async get_mendo_co_sa_from_env(): Promise<SavingsAccount | null> {
     if (!process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT) return null;
     return plainToInstance(
       SavingsAccount,
-      await this.savingsAccountService.findOneByCode(process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT),
+      await this.savingsAccountService.findOneByCodeV1(process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT),
     );
   }
 
   /**
-  * Récupère le channel 'API' (si existe).
-  */
+   * Récupère le channel 'API' (si existe).
+   */
   private async get_api_channel() {
     return this.channelRepo.findOne({ where: { code: 'API' } });
   }
 
   /**
-  * Crée la transaction de solde minimum (MIN_BALANCE) vers le compte admin.
-  */
+   * Crée la transaction de solde minimum (MIN_BALANCE) vers le compte admin.
+   */
   private async create_tx_min_balance(
     entity_manager,
     tx_data: TransactionSavingsAccount | any,
@@ -1781,8 +1995,8 @@ export class TransactionSavingsAccountService {
   }
 
   /**
-  * Crée la transaction de frais d’ouverture (OPENING_FEE) vers le compte admin.
-  */
+   * Crée la transaction de frais d’ouverture (OPENING_FEE) vers le compte admin.
+   */
   private async create_tx_opening_fee(
     entity_manager,
     tx_data: TransactionSavingsAccount | any,
@@ -1816,18 +2030,19 @@ export class TransactionSavingsAccountService {
   }
 
   /**
-  * Crée la commission commerciale si éligible.
-  * Retourne { comercial } pour conserver ta variable.
-  */
+   * Crée la commission commerciale si éligible.
+   * Retourne { comercial } pour conserver ta variable.
+   */
   private async maybe_create_tx_commercial_commission(
     entity_manager,
     tx_data: TransactionSavingsAccount | any,
-    tx_parent: TransactionSavingsAccount,
+    tx_parent: TransactionSavingsAccount, 
     target: SavingsAccount,
     admin_sa: SavingsAccount | null,
     chanel_open_product: any,
   ): Promise<{ comercial: Personnel | null }> {
     let comercial: Personnel | null = null;
+    // console.log('eligible ', target.commercial_code)
 
     if (!target.commercial_code) return { comercial };
 
@@ -1884,9 +2099,9 @@ export class TransactionSavingsAccountService {
   }
 
   /**
-  * Crée la commission partenaire (promo_code) si éligible.
-  * Retourne { partner } pour conserver ta variable.
-  */
+   * Crée la commission partenaire (promo_code) si éligible.
+   * Retourne { partner } pour conserver ta variable.
+   */
   private async maybe_create_tx_partner_commission(
     entity_manager,
     tx_data: TransactionSavingsAccount | any,
@@ -1918,7 +2133,7 @@ export class TransactionSavingsAccountService {
       ...tx_data,
       amount: Math.ceil(
         (target.type_savings_account.minimum_balance * target.type_savings_account.promo_code_fee) /
-          100,
+        100,
       ),
       transactionType: tx_type_partner,
       provider: provider_open_product,
@@ -1943,9 +2158,9 @@ export class TransactionSavingsAccountService {
   }
 
   /**
-  * Crée les commissions pour le personnel (boucle).
-  * Retourne la liste des personnels impactés (pour MAJ soldes).
-  */
+   * Crée les commissions pour le personnel (boucle).
+   * Retourne la liste des personnels impactés (pour MAJ soldes).
+   */
   private async create_tx_personnel_commissions(
     entity_manager,
     tx_data: TransactionSavingsAccount | any,
@@ -1967,8 +2182,8 @@ export class TransactionSavingsAccountService {
         (target.type_savings_account.minimum_balance *
           target.type_savings_account[
             `commission_${personnel.type_personnel.code.toLocaleLowerCase()}`
-          ]) /
-          100,
+            ]) /
+        100,
       );
 
       if (personnel.type_personnel.code === PersonnelTypeCode.MEMBRE) {
@@ -1983,7 +2198,7 @@ export class TransactionSavingsAccountService {
         provider,
         targetSavingsAccount: personnel.savings_account,
         target: personnel.savings_account.number_savings_account,
-        originSavingsAccount: personnel.savings_account,
+        originSavingsAccount: admin_sa,
         origin: admin_sa?.number_savings_account,
         commercial_code: null,
         payment_code: await this.generateUniquePaymentCode(),
@@ -2005,8 +2220,8 @@ export class TransactionSavingsAccountService {
   }
 
   /**
-  * Crée les deux transactions de commission CASH (provider + MFINANCE) si conditions remplies.
-  */
+   * Crée les deux transactions de commission CASH (provider + MFINANCE) si conditions remplies.
+   */
   private async maybe_create_tx_commission_cash_pair(
     entity_manager,
     tx: TransactionSavingsAccount,
@@ -2039,9 +2254,10 @@ export class TransactionSavingsAccountService {
       provider: provider_system,
       targetSavingsAccount: admin_sa,
       target: admin_sa?.number_savings_account,
-      originSavingsAccount: null,
-      origin: 'SYSTEM',
-      promo_code: null,
+      // originSavingsAccount: null,
+      commission : 0,
+      // origin: 'SYSTEM',
+      // promo_code: null,
       payment_code: await this.generateUniquePaymentCode(),
       payment_token_provider: await this.generateUniquePaymentTokenProvider(),
       reference: await this.formatTransactionReference(commission_cash, provider_system.code),
@@ -2079,20 +2295,22 @@ export class TransactionSavingsAccountService {
   }
 
   /**
-  * Met à jour tous les soldes nécessaires à la fin du process.
-  */
+   * Met à jour tous les soldes nécessaires à la fin du process.
+   */
   private async update_balances_after_validate(
     tx: TransactionSavingsAccount,
     admin_sa: SavingsAccount | null,
     comercial: Personnel | null,
     partner: Personnel | null,
     personnels: Personnel[],
+    mendo_co_sa?: SavingsAccount | null,
   ): Promise<void> {
     console.log('entity.entity.provider_code', tx.channelTransaction.code);
 
     if (admin_sa && admin_sa.id) {
       await this.savingsAccountService.updateBalance(admin_sa.id);
     }
+
     if (comercial && comercial.savings_account) {
       console.log('update solde commercial');
       await this.savingsAccountService.updateBalance(comercial.savings_account.id);
@@ -2112,6 +2330,9 @@ export class TransactionSavingsAccountService {
     for (const p of personnels) {
       await this.savingsAccountService.updateBalance(p.savings_account.id);
     }
+    if (mendo_co_sa && mendo_co_sa.id) {
+      await this.savingsAccountService.updateBalance(mendo_co_sa.id);
+    }
   }
 
 
@@ -2124,40 +2345,90 @@ export class TransactionSavingsAccountService {
    * - origin non null, target null
    * - pas de sous-tx (child) avec ttype.code LIKE '%COMMISSION_CASH%'
    */
+
   async find_withdrawals_without_commission(page?: number, limit?: number) {
     const take = limit && limit > 0 ? limit : 50;
     const skip = page && page > 0 ? (page - 1) * take : 0;
 
     const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
       .createQueryBuilder('tx')
-      .innerJoin('tx.transactionType', 'tt')
-      .where('tt.is_credit = :is_credit', { is_credit: 0 })
+      .leftJoinAndSelect('tx.transactionType', 'tt')
+      .leftJoinAndSelect('tx.channelTransaction', 'ct')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'osa')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'tsa')
+
+      // retrait
+      // commission prévue sur la tx parente
       .andWhere('tx.commission > 0')
+      // origin non null, target null
       .andWhere('tx.origin_savings_account_id IS NOT NULL')
       .andWhere('tx.target_savings_account_id IS NULL')
-      // NOT EXISTS sous-transactions "commission cash"
-      .andWhere(`
-        NOT EXISTS (
-          SELECT 1
-          FROM transaction_savings_account txc
-          INNER JOIN transaction_type ttc 
-            ON ttc.id = txc.transaction_type_id
-          WHERE txc.tx_parent_id = tx.id
-            AND tt.code LIKE :commission_code
-        )
-      `, { commission_code: '%COMMISSION_CASH%' })
+      // Aucune sous-transaction "commission cash"
+      .andWhere(qb2 => {
+        const sub = qb2.subQuery()
+          .select('1')
+          .from(TransactionSavingsAccount, 'txc')
+          .leftJoinAndSelect('txc.transactionType', 'ttc')
+          .where('txc.tx_parent_id = tx.id')
+          .andWhere('ttc.code LIKE :commission_code')
+          .getQuery();
+        return `NOT EXISTS ${sub}`;
+      }, { commission_code: '%COMMISSION_CASH%' })
       .orderBy('tx.created_at', 'DESC')
       .skip(skip)
       .take(take);
 
     const [rows, total] = await qb.getManyAndCount();
-
-    // réponse simple paginée
-    return {
-      total,
-      page: page ?? 1,
-      limit: take,
-      data: rows,
-    };
+    return { total, page: page ?? 1, limit: take, data: rows };
   }
+  async validate_withdrawals_without_commission() {
+
+    const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.transactionType', 'tt')
+      .leftJoinAndSelect('tx.channelTransaction', 'ct')
+      .leftJoinAndSelect('tx.provider', 'p')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'osa')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'tsa')
+      // retrait
+      // commission prévue sur la tx parente
+      .andWhere('tx.commission > 0')
+      // origin non null, target null
+      .andWhere('tx.origin_savings_account_id IS NOT NULL')
+      .andWhere('tx.target_savings_account_id IS NULL')
+      // Aucune sous-transaction "commission cash"
+      .andWhere(qb2 => {
+        const sub = qb2.subQuery()
+          .select('1')
+          .from(TransactionSavingsAccount, 'txc')
+          .leftJoinAndSelect('txc.transactionType', 'ttc')
+          .where('txc.tx_parent_id = tx.id')
+          .andWhere('ttc.code LIKE :commission_code')
+          .getQuery();
+        return `NOT EXISTS ${sub}`;
+      }, { commission_code: '%COMMISSION_CASH%' })
+      .orderBy('tx.created_at', 'DESC')
+    const [rows, total] = await qb.getManyAndCount();
+    const mendo_co_sa = await this.get_mendo_co_sa_from_env();
+
+    await this.repo.manager.transaction(async (entity_manager) => {
+      for (const tx of rows) {
+        console.log('tx.id ',tx.id)
+        const { id, commission, ...tx_data } = tx;
+        const chanel_open_product = await this.get_api_channel();
+        const admin_sa = await this.get_admin_sa_for_tx(tx);
+        await this.maybe_create_tx_commission_cash_pair(
+          entity_manager,
+          tx,
+          admin_sa,
+          mendo_co_sa,
+        );
+        await this.update_balances_after_validate(tx, admin_sa, null, null, [], mendo_co_sa);
+      }
+    })
+
+
+    return rows;
+  }
+
 }

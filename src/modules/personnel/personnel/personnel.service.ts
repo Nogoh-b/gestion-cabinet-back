@@ -1,48 +1,52 @@
 import { plainToInstance } from 'class-transformer';
+import { UPLOAD_DOCS_FOLDER_NAME, UPLOAD_FOLDER_NAME } from 'src/core/common/constants/constants';
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
+
+
+
+
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
-
-
-
-
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
+
+
+
+
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
 
 
 
 
+
+
+
+
+
+
+
+
+
 import { Repository } from 'typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
 
 
 import { PersonnelTypeCode } from '../type_personnel/entities/type_personnel.entity';
@@ -50,6 +54,9 @@ import { TypePersonnelService } from '../type_personnel/type_personnel.service';
 import { CreatePersonnelDto } from './dto/create-personnel.dto';
 import { UpdatePersonnelDto } from './dto/update-personnel.dto';
 import { Personnel } from './entities/personnel.entity';
+
+
+
 
 
 
@@ -329,11 +336,11 @@ export class PersonnelService extends BaseService<Personnel> {
     if (personnel && personnel.type_personnel.code == type_personnel && personnel.status == 0) {
       throw new NotFoundException(`${type_personnel} ${code} desactivé`);
     }
-    const doc = await this.documentCustomerService.findByType('PHOTO 4X4')
+    const doc = await this.documentCustomerService.findByTypeId(personnel.customer.id)
     const {name} = personnel
     let  file_path = ''
     if(doc)
-      file_path = doc.file_path
+      file_path = `${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${doc.file_path}` 
       let promo_code_reduction 
       console.log('type_personnel', personnel.savings_account.type_savings_account)
       if(type_personnel === PersonnelTypeCode.PARTNER)

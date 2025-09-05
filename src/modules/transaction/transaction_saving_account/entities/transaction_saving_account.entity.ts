@@ -12,13 +12,34 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
-  Index,
-  Unique,
+  Index, BeforeInsert
 } from 'typeorm';
 
+
+
+
+
+
+
+
+
+
+
+
+import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
-import { Loan } from '../../../credit/loan/entities/loan.entity';
+
+
+
+
+
+
+
+
+
+
+
 
 export enum TransactionTypeEnum {
   DEBIT = 0,
@@ -100,8 +121,8 @@ export class Payment {
 }
 
 @Entity('transaction_savings_account')
-@Unique(['origin', 'promo_code'])
-@Unique(['origin', 'commercial_code'])
+// @Unique(['tx_parent_id', 'promo_code'])
+// @Unique(['tx_parent_id', 'commercial_code'])
 export class TransactionSavingsAccount {
   @PrimaryGeneratedColumn()
   id: number; // Identifiant unique
@@ -189,6 +210,9 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'tx_parent_id', referencedColumnName: 'id' })
   tx_parent?: TransactionSavingsAccount | null;
 
+  @Column({ type: 'int', nullable: true })
+  tx_project_id?: number | null;
+
   @ManyToOne(() => SavingsAccount, (acc) => acc.originSavingsAccountTx, {
     eager: true,
   })
@@ -199,7 +223,7 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'ressource_id', referencedColumnName: 'id' })
   ressource?: Ressource | null; // Relation vers SavingsAccount
 
-  @ManyToOne(() => Personnel, (acc) => acc.savings_account, {
+  @ManyToOne(() => Personnel, (acc) => acc.savings_account, { 
     eager: true,
     nullable: true,
   })
@@ -210,12 +234,12 @@ export class TransactionSavingsAccount {
     eager: true,
   })
   @JoinColumn({ name: 'target_savings_account_id', referencedColumnName: 'id' })
-  targetSavingsAccount: SavingsAccount | null; // Relation vers SavingsAccount
+  targetSavingsAccount: SavingsAccount | null; // Relation vers SavingsAccount 
 
   @Column({ type: 'varchar', length: 10, nullable: true })
   promo_code: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true }) 
   commercial_code: string | null;
 
   @Column({ type: 'varchar', length: 10, nullable: true })
@@ -250,9 +274,17 @@ export class TransactionSavingsAccount {
 
   @ManyToOne(() => Loan, (type) => type.transactions, { nullable: true })
   @JoinColumn()
-  loan: Loan; // Relation vers Provider
+  loan: Loan | null; // Relation vers Provider
 
   @ManyToOne(() => TransactionType, (tt) => tt.transactions, { eager: true })
   @JoinColumn({ name: 'transaction_type_id', referencedColumnName: 'id' })
   transactionType: TransactionType; // Relation vers TransactionType
+
+  @BeforeInsert()
+  setStatusIfOriginExists() {
+    // Vérifier si originSavingsAccount existe et n'est pas null
+    if (this.originSavingsAccount) {
+      this.status_provider = PaymentStatusProvider.SUCCESSFULL; // Mettre le statut à 1
+    }
+  }
 }

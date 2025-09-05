@@ -9,6 +9,7 @@ import {
   Post, Put,
 } from '@nestjs/common';
 import { GuarantyEstimationService } from './guaranty_estimation.service';
+import { GuarantyEstimation } from './entity/guaranty_estimation.entity';
 
 @Controller('guaranty-estimation')
 export class GuarantyEstimationController {
@@ -37,7 +38,8 @@ export class GuarantyEstimationController {
       throw new ForbiddenException({
         ...result,
       });
-    return await this.typeGuarantyEstimationService.validGuarantyEstimation(id);
+    const guaranty = result as GuarantyEstimation;
+    return await this.typeGuarantyEstimationService.validGuarantyEstimation(guaranty);
   }
 
   @Put('reject/:id')

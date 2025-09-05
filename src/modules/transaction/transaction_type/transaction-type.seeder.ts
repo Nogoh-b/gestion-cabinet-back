@@ -14,6 +14,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -149,6 +151,66 @@ export class TransactionTypeSeeder {
         fee_percentage: 0.0,
         status: 1,
       },
+
+      {
+        "code": "PROJET_DEPOSIT",
+        "name": "Dépôt sur projet",
+        "description": "Dépôt effectué dans un projet via COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      {
+        "code": "DEPOSIT_LOANS",
+        "name": "Prêt de projet",
+        "description": "Prêt accordé dans le cadre d’un projet via COTI",
+        "is_credit": 0,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+
+      {
+        "code": "LOANS_REPAYMENT",
+        "name": "Remboursement de prêt de projet",
+        "description": "Remboursement effectué pour un prêt de projet",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      }, 
+
+      {
+        "code": "BUY_SALARY",
+        "name": "Paiement de salaire",
+        "description": "Paiement de salaire via COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      /*{
+        "code": "PROJET_STANDARD",
+        "name": "Projet standard",
+        "description": "Transaction standard dans le cadre d’un projet",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      {
+        "code": "PROJET_TONTINE",
+        "name": "Projet tontine",
+        "description": "Transaction liée à une tontine dans un projet via COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      {
+        "code": "PROJET_SALE",
+        "name": "Vente de projet",
+        "description": "Vente réalisée dans le cadre d’un projet",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      }*/
+
     ];
 
     for (const type of types) {

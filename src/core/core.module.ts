@@ -41,6 +41,7 @@ import { KeyGeneratorService } from './shared/services/key-generator/key-generat
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
 import { PaginationService } from './shared/services/pagination/pagination.service';
+import { ScheduleModule } from '@nestjs/schedule';
 
 
 
@@ -81,6 +82,7 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
     ]),
     PassportModule,
     SeedersModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AuthController, OtpController],
   providers: [
