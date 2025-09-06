@@ -34,4 +34,4 @@ export enum TYPE_STATUS {
   DISABLE = -1,
 }
 
-export const CREDIT_CODE = 'CD001';
+export const CREDIT_CODE = 'C2';
