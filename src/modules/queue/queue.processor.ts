@@ -7,11 +7,15 @@ import { Processor, Process } from '@nestjs/bull';
 
 
 
+
+
 import { SavingsAccount, SavingsAccountStatus } from '../savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
 import { CreateDebitTransactionSavingsAccountDto } from '../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { Payment, PaymentStatus, PaymentStatusProvider } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
+
+
 
 
 
@@ -47,15 +51,18 @@ export class QueueProcessor {
       // console.log('payment ',tx.provider.code)
       const isFirstTx = await this.txService.isFirstTransaction(plainToInstance(SavingsAccount,sa))
       const repeatOpts = job.opts.repeat;
+      const old_status = tx.status;
       tx.payment_code = dataPayment.id;
       tx.payment_token_provider = dataPayment.payToken
       tx.status_provider = dataPayment.paymentStatus;
       tx.commission = dataPayment.amountHT -tx.amount
       tx.status = PaymentStatus[PaymentStatusProvider[dataPayment.paymentStatus]];
       this.txService.update(tx)
-      if(tx.status === PaymentStatus.SUCCESSFULL){
+      if(tx.status === PaymentStatus.SUCCESSFULL && old_status === PaymentStatus.PENDING ){
         console.log('payment suscessfulllll ', isFirstTx, '-----', tx.id , ' ', tx.status_provider)
         tx =  await this.txService.validate(tx.id, isFirstTx);
+        if (repeatOpts ) await job.queue.removeRepeatable('check-payment', repeatOpts);
+
       }
       if (repeatOpts ) {
          await job.queue.removeRepeatable('check-payment', repeatOpts);
