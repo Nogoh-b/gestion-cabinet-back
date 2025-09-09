@@ -140,7 +140,7 @@ export class LoanService {
         status: CREDIT_STATUS.APPROVED,
         approvedBy: { id: user.userId as number } as User,
         nextDatePrevalent: new Date(
-          Date.now() + typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
+          Date.now() + typeCredit.reimbursement_period * 10 * 1000,
         ),
       },
       false,
@@ -161,7 +161,7 @@ export class LoanService {
     );
     this.jobsService.addCronJob(
       'loan-' + loan.id,
-      time,
+      `*/10 * * * * *`,
       async () => {
 
         const result = await this.getLoanInProcessingOrActive(customer.id);
@@ -170,12 +170,14 @@ export class LoanService {
           await this.savingAccountService.findOneHydridSavingByCustomer(
             loan.customer.id,
           );
-        const periodic = typeCredit.reimbursement_period;
+        const periodic = loan.typeCredit.reimbursement_period;
         const [name, task] = this.jobsService.getCronJob('loan-' + loan.id) as [
           string,
           CronJob,
         ];
         console.log({
+		id: name,
+		periodic,
           next: task.nextDate().toJSDate(),
           current: new Date(),
           preleventDay: loan.nextDatePrevalent,
@@ -187,7 +189,7 @@ export class LoanService {
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
-          loan.nextDatePrevalent.getDate() !== new Date().getDate()
+          loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
         )
           return;
         if (!loan.remainPaymentNumber) {
@@ -252,7 +254,7 @@ export class LoanService {
                 ? task.nextDate().toJSDate()
                 : new Date(
                     Date.now() +
-                      typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
+                      periodic * 10 * 1000,
                   ),
             remainPaymentNumber: --loan.remainPaymentNumber,
             remainTotalAmount: loan.remainTotalAmount - amountRetrieve,
