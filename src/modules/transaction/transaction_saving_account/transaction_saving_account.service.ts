@@ -161,6 +161,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -178,6 +181,9 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
 
 
 
@@ -642,6 +648,7 @@ export class TransactionSavingsAccountService {
   async buy_tontine(dto: CreateTransactionSavingsAccountDto) {
     let saAdmin : SavingsAccount | null = null
     let branch_id : number | null = null
+    console.log(dto)
 
     if(dto.origin_savings_account_code)
     {
@@ -649,10 +656,11 @@ export class TransactionSavingsAccountService {
       if(originSa)
         branch_id = originSa.branch.id
     }
-    saAdmin = await this.savingsAccountService.findOneAdminTontine(branch_id)
-    dto.target_savings_account_code = saAdmin.number_savings_account
+    if(!dto.target_savings_account_code){
+      saAdmin = await this.savingsAccountService.findOneAdminTontine(branch_id)
+      dto.target_savings_account_code = saAdmin.number_savings_account
+    }
 
-    console.log(dto)
     if(!dto.origin_savings_account_code)
       return dto.provider == TransactionProvider.OM ? await this.om_deposit(dto, TransactionCode.BUY_TONTINE) :  await this.momo_deposit(dto, TransactionCode.BUY_TONTINE) ;
     return await this.perform_transaction(dto, TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
