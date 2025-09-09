@@ -31,7 +31,7 @@ import { RessourceService } from 'src/modules/ressource/ressource/ressource.serv
 
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
-import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { PaymentStatus, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
@@ -91,15 +91,35 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountService } from '../type-savings-account/type-savings-account.service';
-import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
+import { AssignInterestRangeDto, CheckInitTxParamDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1350,10 +1370,11 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
   }
 
 
-  async checkInitTransaction(code: string) {
+  async checkInitTransaction(code: string, query? : CheckInitTxParamDto | null) {
     const sa = await this.findOneByCode(code, true);
     const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
-      .filter(tx => tx.status === 0 && 
+      .filter(
+        tx => tx.status === 0 && 
         (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
       );
 
@@ -1365,6 +1386,33 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     );
 
     return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
+  }
+
+  async checkInitTransactionProjetEpargne(code: string, query? : CheckInitTxParamDto | null) {
+    let has_init_tx = false
+    const sa = await this.findOneByCode(code, true);
+    const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
+      .filter(
+        tx => {
+          return tx.transactionType.code === TransactionCode.BUY_SAVING_PROJECT &&  Number(tx.tx_project_id) === Number(query?.tx_project_id)&&
+          // tx => tx.transactionType.code === query?.txType &&  tx.tx_project_id === query.tx_project_id &&
+          (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
+        }
+      );
+
+      await Promise.all(
+        filteredTxs.map(async (tx) => {
+          console.log('checkInitTransaction ', tx.reference);
+          const tx1 = await this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
+          if (tx1.status === PaymentStatus.SUCCESSFULL) {
+            has_init_tx = true;
+          }
+          return tx1;
+        })
+      );
+
+
+    return has_init_tx;
   }
 
 

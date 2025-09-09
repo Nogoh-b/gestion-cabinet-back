@@ -1,5 +1,11 @@
-import { IsOptional, IsInt, IsISO8601, IsNumber, IsDateString, IsString } from 'class-validator';
+import { IsOptional, IsInt, IsISO8601, IsNumber, IsDateString, IsString, IsBoolean, IsIn } from 'class-validator';
+import { TransactionCode } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+
+
+
+
 
 
 
@@ -131,4 +137,23 @@ export class GetAccountParamDto {
   })
   @IsString()
   number_savings_account: string;
+}
+
+export class CheckInitTxParamDto {
+  @ApiPropertyOptional({
+    description: 'Filtrer uniquement les transactions de crédit',
+    enum: ['MOMO', 'OM', 'INTERNAL', 'SAVING_PROJECT'],         // Swagger affichera un select true/false
+  })
+  @IsOptional()
+  @IsBoolean()
+  @IsIn(Object.values(TransactionCode))
+  txType?: string; // Pour txTypeCode
+
+  @ApiProperty({
+    description: 'Projet ID (Numérique)',
+    example: 1,
+    type: Number,
+  })
+  @IsNumber()
+  tx_project_id?: number | null;
 }

@@ -49,11 +49,15 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from 
 
 
 
-import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
+
+
+import { AssignInterestRangeDto, CheckInitTxParamDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
 
 
 
@@ -332,8 +336,13 @@ export class SavingsAccountController {
   }
 
   @Get(':code/check-init-transaction')
-  checkInitTransaction( @Param('code') code: string) {
-    return this.service.checkInitTransaction(code);
+  checkInitTransaction( @Param('code') code: string, @Query() query: CheckInitTxParamDto) {
+    return this.service.checkInitTransaction(code, query);
+  }
+
+  @Get(':code/check-init-transaction-projet-epargne')
+  checkInitTransactionProjetEpargne( @Param('code') code: string, @Query() query: CheckInitTxParamDto) {
+    return this.service.checkInitTransactionProjetEpargne(code, query);
   }
 
   @Get(':code/stats-v1')
