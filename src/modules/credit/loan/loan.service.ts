@@ -140,7 +140,7 @@ export class LoanService {
         status: CREDIT_STATUS.APPROVED,
         approvedBy: { id: user.userId as number } as User,
         nextDatePrevalent: new Date(
-          Date.now() + typeCredit.reimbursement_period * 10 * 1000,
+          Date.now() + typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
         ),
       },
       false,
@@ -161,7 +161,7 @@ export class LoanService {
     );
     this.jobsService.addCronJob(
       'loan-' + loan.id,
-      `*/10 * * * * *`,
+      time,
       async () => {
 
         const result = await this.getLoanInProcessingOrActive(customer.id);
@@ -187,7 +187,7 @@ export class LoanService {
         });
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
-          loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
+          loan.nextDatePrevalent.getDate() !== new Date().getDate()
         )
           return;
         if (!loan.remainPaymentNumber) {
