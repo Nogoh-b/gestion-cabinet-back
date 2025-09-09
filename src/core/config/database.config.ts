@@ -5,6 +5,9 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
 
 
+
+
+
  
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
@@ -19,7 +22,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     entities: [join(__dirname, '../../**/*.entity{.ts,.js}')],
     logging: ["error",],
     // logging: ["query", "error", "schema"], 
-    logger: "advanced-console" 
+    logger: "advanced-console"  
 
   },
 });

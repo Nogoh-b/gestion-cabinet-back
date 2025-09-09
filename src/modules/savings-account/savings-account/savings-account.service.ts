@@ -84,6 +84,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -93,6 +100,13 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+
+
+
+
+
+
+
 
 
 
@@ -947,7 +961,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     exact?: boolean,
     from?: string,
     to?: string, txTypeCode?: string,
-    type?: string,branch_id = 0): Promise<PaginatedResult<TransactionSavingsAccount>> {
+    type?: string,branch_id = 0,status?: number): Promise<PaginatedResult<TransactionSavingsAccount>> {
       return this.transactionSavingsAccountService.findAllByType(
                                                   page,
                                                   limit,
@@ -955,7 +969,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
                                                   fields,
                                                   exact,
                                                   from,
-                                                  to,txTypeCode,type,id)
+                                                  to,txTypeCode,type,id,status)
       if (!this.txRepo) {
         throw new Error('Transaction repository is not available');
       }

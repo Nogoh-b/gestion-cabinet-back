@@ -150,6 +150,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -167,6 +178,17 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -587,7 +609,7 @@ export class TransactionSavingsAccountService {
   async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
     return await this.perform_transaction(
       dto,
-      type_code ?? 'MOMO_DEPOSIT',
+      dto.tx_type ?? 'MOMO_DEPOSIT',
       'MOBILE',
       TransactionProvider.MOMO,
     );
@@ -614,7 +636,7 @@ export class TransactionSavingsAccountService {
   }
 
   async om_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
-    return await this.perform_transaction(dto, type_code ?? TransactionCode.OM_DEPOSIT, 'MOBILE', TransactionProvider.OM);
+    return await this.perform_transaction(dto, dto.tx_type ?? TransactionCode.OM_DEPOSIT, 'MOBILE', TransactionProvider.OM);
   }
 
   async buy_tontine(dto: CreateTransactionSavingsAccountDto) {
@@ -634,6 +656,11 @@ export class TransactionSavingsAccountService {
     if(!dto.origin_savings_account_code)
       return dto.provider == TransactionProvider.OM ? await this.om_deposit(dto, TransactionCode.BUY_TONTINE) :  await this.momo_deposit(dto, TransactionCode.BUY_TONTINE) ;
     return await this.perform_transaction(dto, TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+  }
+
+  async buy_saving_project(dto: CreateTransactionSavingsAccountDto) {
+
+    return await this.perform_transaction(dto, TransactionCode.BUY_SAVING_PROJECT, 'MOBILE', TransactionProvider.HYBRID_SAVING);
   }
 
   async receive_tontine(dto: CreateTransactionSavingsAccountDto) {
@@ -856,6 +883,7 @@ export class TransactionSavingsAccountService {
     txTypeCode?: string,
     type?: string,
     id?: number,
+    status?: number,
     promo_code?: string,
     commercial_code?: number,
   ): Promise<PaginatedResult<TransactionSavingsAccount>> {
@@ -869,28 +897,33 @@ export class TransactionSavingsAccountService {
       .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
       .leftJoinAndSelect('targetSavingsAccount.customer', 'targetCustomer');
     if (id !== undefined) {
-      // Ou une autre condition selon votre DTO
-      if (type !== undefined) {
-        type === '1'
-          ? qb.andWhere('targetSavingsAccount.id = :id', { id })
-          : qb.andWhere('originSavingsAccount.id = :id', { id });
-      } else
+      if (type === '1') {
+        qb.andWhere('targetSavingsAccount.id = :id', { id });
+      } else if (type === '0') {
+        qb.andWhere('originSavingsAccount.id = :id', { id });
+      } else {
         qb.andWhere(
-          'originSavingsAccount.id = :id OR targetSavingsAccount.id = :id',
+          '(originSavingsAccount.id = :id OR targetSavingsAccount.id = :id)',
           { id },
         );
+      }
     }
 
     qb.orderBy('tx.created_at', 'DESC');
 
     if (txTypeCode !== undefined) {
+      console.log('txTypeCode ', txTypeCode);
       qb.andWhere('transactionType.code LIKE :txTypeCode', {
         txTypeCode: `${txTypeCode}%`,
       });
     }
+    console.log('status ', status);
+    if (status !== undefined) {
+      qb.andWhere('tx.status = :status', { status });
+    }
     // Filtre conditionnel pour IS_CREDIT (seulement si isCredit est fourni)
     console.log(type);
-    if (type !== undefined) {
+    /*if (type !== undefined) {
       // Ou une autre condition selon votre DTO
       qb.andWhere('transactionType.is_credit = :isCredit', {
         isCredit: type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
@@ -907,7 +940,7 @@ export class TransactionSavingsAccountService {
       qb.andWhere('transactionType.is_credit = :isCredit', {
         isCredit: type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
       });
-    }
+    }*/
     qb.andWhere('transactionType.id IS NOT NULL');
 
     const options: PaginationOptions & {

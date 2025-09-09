@@ -1,5 +1,6 @@
-import { IsOptional, IsInt, IsISO8601, IsNumber, IsDateString } from 'class-validator';
+import { IsOptional, IsInt, IsISO8601, IsNumber, IsDateString, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 
 
 
@@ -120,3 +121,14 @@ export class AssignInterestRangeDto {
 }
 
 
+
+
+export class GetAccountParamDto {
+  @ApiProperty({
+    description: 'Code unique du compte (alphanumérique)',
+    example: 'A11',
+    type: String,
+  })
+  @IsString()
+  number_savings_account: string;
+}

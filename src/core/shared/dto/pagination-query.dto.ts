@@ -19,6 +19,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export class PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Numéro de page', example: 1 })
   @IsOptional()
@@ -102,10 +103,10 @@ export class PaginationQueryTxDto extends PaginationQueryDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer uniquement les transactions de crédit',
-    enum: ['MOMO', 'OM', 'INTERNAL'],         // Swagger affichera un select true/false
+    enum: ['MOMO', 'OM', 'INTERNAL', 'SAVING_PROJECT'],         // Swagger affichera un select true/false
   })
   @IsOptional()
   @IsBoolean()
-  @IsIn(['MOMO', 'OM', 'INTERNAL'])
+  @IsIn(['MOMO', 'OM', 'INTERNAL', 'SAVING_PROJECT'])
   txType?: string; // Pour txTypeCode
 }

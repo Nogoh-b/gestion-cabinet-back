@@ -40,11 +40,29 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiQuery } from 
 
 
 
+
+
+
+
+
+
+
+
+
 import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { UpdateCodeCahOfSavingAccountDto, UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount } from './entities/savings-account.entity';
 import { SavingsAccountService } from './savings-account.service';
+
+
+
+
+
+
+
+
+
 
 
 
@@ -113,7 +131,9 @@ export class SavingsAccountController {
   @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
   findAllDeactivate() {
     return this.service.findAll(true);
-  }  
+  } 
+  
+   
   @Get('find_all_acccount_not_have_init_trans')
   @ApiOperation({ summary: '' })
   @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
@@ -161,14 +181,22 @@ export class SavingsAccountController {
   @ApiParam({ name: 'id', description: 'Savings account ID', type: Number })
   // @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
   getTransactionsPaginate(@Param('id', ParseIntPipe) id: number, @Query() query: PaginationQueryTxDto) {
-    const { page, limit, term, fields, exact, from, to, type,txType } = query;
+    const { page, limit, term, fields, exact, from, to, type,txType, status } = query;
     const fieldList = fields ? fields.split(',') : undefined;
     const isExact = exact ;
     return this.service.getTransactionsPaginate(id,+page, +limit,       term,
       fieldList,
       isExact,
       from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined,txType,type);
+      to ? new Date(to).toISOString() : undefined,txType,type,undefined,status);
+  }
+  @Get(':code/transactions-by-code')
+  @ApiOperation({ summary: 'Get all transactions savings account By code' })
+  @ApiParam({ name: 'code', description: 'Savings account ID', type: String })
+  // @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentId: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
+  async getTransactionsPaginateByCode(@Param('code') code: string, @Query() query: PaginationQueryTxDto) {
+    const sa = await this.service.findOneByCodeV1(code)
+    return this.getTransactionsPaginate(sa.id,query)
   }
 
   @Get(':id/required-documents')
