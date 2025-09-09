@@ -346,7 +346,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
-  async findOneAdmin(branch_id: number = 3): Promise<SavingsAccount> {
+  async findOneAdmin(branch_id: number = 3, withBalnce = false): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE) , branch_id },
       relations: [
@@ -359,10 +359,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       ],
     }); 
     if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id}`);
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if(withBalnce){
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
     return account;
   }
 
