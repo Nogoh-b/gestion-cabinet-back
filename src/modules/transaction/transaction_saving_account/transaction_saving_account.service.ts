@@ -152,6 +152,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -169,6 +170,7 @@ import {
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
 import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
+
 
 
 
@@ -453,7 +455,7 @@ export class TransactionSavingsAccountService {
         provider.code != TransactionProvider.OM) ||
       txType.code === TransactionCode.BUY_TONTINE ||
       txType.code === TransactionCode.RECEIVE_TONTINE ||
-      txType.code === TransactionCode.INTERNAL_TRANSFER
+      txType.code === TransactionCode.INTERNAL_TRANSFER || dto.force_validate
     ) {
       this.validate(tx.id, isFirstTx);
       tx.status = 1;

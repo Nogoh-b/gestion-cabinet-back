@@ -15,7 +15,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 import { TransactionCode } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -88,7 +90,7 @@ export class CreateTransactionSavingsAccountDto {
   provider?: string;
 
   tx_project_id?: number;
-
+  force_validate?: boolean;
   /*@ApiProperty({ example: 2, description: 'ID du canal de transaction' })
   @IsInt()*/
   channels_transaction_id: number;
@@ -112,6 +114,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   })
   @IsBoolean()
   is_locked: boolean;
+  force_validate?: boolean;
 
   status: number;
 
@@ -151,6 +154,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   @IsNumber()
   branch_id: number;
   status: number;
+  force_validate?: boolean;
 
   @ApiPropertyOptional({ example: '8629891', description: "Code d'origine" })
   @IsString()
