@@ -188,21 +188,6 @@ export class LoanService {
           penalityAmount: loan.totalAmountPenality,
           numberOfPenality: loan.numberOfPenality,
         });
-        if (!loan.remainPaymentNumber) {
-          await this.updateLoanByCustomerId(
-            loan,
-            {
-              state:
-                savingAccount.avalaible_balance >= 0
-                  ? CREDIT_STATE.COMPLETED
-                  : CREDIT_STATE.INCOMPLETE,
-            },
-            false,
-          );
-          task.stop();
-          this.jobsService.deleteCron('loan-' + loan.id);
-          return;
-        }
         if (
           periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
           loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
@@ -266,6 +251,21 @@ export class LoanService {
           },
           false,
         );
+        if (!loan.remainPaymentNumber) {
+          await this.updateLoanByCustomerId(
+            loan,
+            {
+              state:
+                savingAccount.avalaible_balance >= 0
+                  ? CREDIT_STATE.COMPLETED
+                  : CREDIT_STATE.INCOMPLETE,
+            },
+            false,
+          );
+          task.stop();
+          this.jobsService.deleteCron('loan-' + loan.id);
+          return;
+        }
       },
     );
     return true;

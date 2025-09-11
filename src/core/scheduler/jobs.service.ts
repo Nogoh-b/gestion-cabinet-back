@@ -4,18 +4,7 @@ import { CronJob } from 'cron';
 
 @Injectable()
 export class JobsService {
-  static lock: boolean = false;
   constructor(private schedulerRegistry: SchedulerRegistry) {}
-
-  setLock() {
-    if (JobsService.lock) {
-      return console.log('JobsService is already lock');
-    }
-    JobsService.lock = true;
-  }
-  setUnlock() {
-    JobsService.lock = false;
-  }
 
   addCronJob(name: string, time: string, callback: any) {
     const job = new CronJob(`${time}`, callback);
