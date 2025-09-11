@@ -10,7 +10,7 @@ module.exports = {
       watch: false,
       instances: 3,
       env: {
-        NODE_ENV:'production',
+        NODE_ENV:'development',
         PORT: 3004,
       },
     },
