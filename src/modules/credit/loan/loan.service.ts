@@ -163,7 +163,6 @@ export class LoanService {
       'loan-' + loan.id,
       `*/10 * * * * *`,
       async () => {
-
         const result = await this.getLoanInProcessingOrActive(customer.id);
         const loan = result as Loan;
         const savingAccount =
@@ -176,8 +175,8 @@ export class LoanService {
           CronJob,
         ];
         console.log({
-		id: name,
-		periodic,
+          id: name,
+          periodic,
           next: task.nextDate().toJSDate(),
           current: new Date(),
           preleventDay: loan.nextDatePrevalent,
@@ -187,11 +186,6 @@ export class LoanService {
           penalityAmount: loan.totalAmountPenality,
           numberOfPenality: loan.numberOfPenality,
         });
-        if (
-          periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
-          loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
-        )
-          return;
         if (!loan.remainPaymentNumber) {
           await this.updateLoanByCustomerId(
             loan,
@@ -203,7 +197,14 @@ export class LoanService {
             },
             false,
           );
+          task.stop();
           this.jobsService.deleteCron('loan-' + loan.id);
+          return;
+        }
+        if (
+          periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
+          loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
+        ) {
           return;
         }
         const amountRetrieve =
@@ -249,13 +250,7 @@ export class LoanService {
         await this.updateLoanByCustomerId(
           loan,
           {
-            nextDatePrevalent:
-              periodic !== MODE_REIMBURSEMENT_PERIOD.BIWEEKLY
-                ? task.nextDate().toJSDate()
-                : new Date(
-                    Date.now() +
-                      periodic * 10 * 1000,
-                  ),
+            nextDatePrevalent: new Date(Date.now() + periodic * 10 * 1000),
             remainPaymentNumber: --loan.remainPaymentNumber,
             remainTotalAmount: loan.remainTotalAmount - amountRetrieve,
             ...(savingAccount.avalaible_balance < loan.reimbursement_amount

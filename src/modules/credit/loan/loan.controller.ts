@@ -41,9 +41,7 @@ import { SavingsAccountService } from '../../savings-account/savings-account/sav
 import { Repository } from 'typeorm';
 
 import { PaginationQueryTxDto } from '../../../core/shared/dto/pagination-query.dto';
-import {
-  TransactionSavingsAccount
-} from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { TransactionSavingsAccount } from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -323,7 +321,8 @@ export class LoanController {
     if (!typeGuaranty.typeOfDocument)
       throw new ForbiddenException({
         success: false,
-        message: "This guaranty doesn't link to a type of document, operation failed!",
+        message:
+          "This guaranty doesn't link to a type of document, operation failed!",
         status: HttpStatus.FORBIDDEN,
       });
     return await this.loanService.setGuarantiesDocumentsToLoan(
@@ -416,13 +415,14 @@ export class LoanController {
     @Req() { user }: { user: any },
   ) {
     // Implementation for creating a loan
-const savingAccount = await this.savingAccountService.findOneHydridSavingByCustomer(customerId);
-if (savingAccount.avalaible_balance < 0)
-	throw new ForbiddenException({
-	    success: false,
-message: 'You have a Loan in processing',
-status: HttpStatus.FORBIDDEN,
-	});
+    const savingAccount =
+      await this.savingAccountService.findOneHydridSavingByCustomer(customerId);
+    if (savingAccount.avalaible_balance < 0)
+      throw new ForbiddenException({
+        success: false,
+        message: 'You have a Loan in processing',
+        status: HttpStatus.FORBIDDEN,
+      });
     const creditAccount = await this.savingAccountRepository.findOne({
       where: {
         id: Number(credit_account_id),
@@ -459,8 +459,7 @@ status: HttpStatus.FORBIDDEN,
       throw new ForbiddenException({
         ...typeCredit,
       });
-    const transaction = await this.transactionService
-      .findOne(reference);
+    const transaction = await this.transactionService.findOne(reference);
     const tc = typeCredit as TypeCredit;
     if (transaction.amount !== tc.fee)
       throw new ForbiddenException({
