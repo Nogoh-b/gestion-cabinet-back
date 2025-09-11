@@ -37,6 +37,7 @@ import { CustomersService } from '../../customer/customer/customer.service';
 import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SavingsAccount } from '../../savings-account/savings-account/entities/savings-account.entity';
+import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
 
 import { PaginationQueryTxDto } from '../../../core/shared/dto/pagination-query.dto';
@@ -51,6 +52,7 @@ export class LoanController {
   constructor(
     private readonly loanService: LoanService,
     private readonly typeCreditService: TypeCreditService,
+    private readonly savingAccountService: SavingsAccountService,
     private readonly customersService: CustomersService,
     private readonly transactionService: TransactionSavingsAccountService,
     @InjectRepository(SavingsAccount)
@@ -414,6 +416,13 @@ export class LoanController {
     @Req() { user }: { user: any },
   ) {
     // Implementation for creating a loan
+const savingAccount = await this.savingAccountService.findOneHydridSavingByCustomer(customerId);
+if (savingAccount.avalaible_balance < 0)
+	throw new ForbiddenException({
+	    success: false,
+message: 'You have a Loan in processing',
+status: HttpStatus.FORBIDDEN,
+	});
     const creditAccount = await this.savingAccountRepository.findOne({
       where: {
         id: Number(credit_account_id),

@@ -342,7 +342,6 @@ export class LoanService {
           CREDIT_STATE.IN_PROCESSING,
           CREDIT_STATE.ACTIVE,
           CREDIT_STATE.END_PROCESSING,
-	  CREDIT_STATE.INCOMPLETE,
         ]),
         status: In([CREDIT_STATUS.APPROVED, CREDIT_STATUS.PENDING]),
       },
