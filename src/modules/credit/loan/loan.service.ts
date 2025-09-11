@@ -42,7 +42,9 @@ export class LoanService {
     private readonly jobsService: JobsService,
     private readonly employeeService: EmployeeService,
     private readonly savingAccountService: SavingsAccountService,
-  ) {}
+  ) {
+    jobsService.setLock();
+  }
 
   async findAllLoans() {
     return await this.loanRepository.find({
