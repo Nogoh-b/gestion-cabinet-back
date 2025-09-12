@@ -19,6 +19,11 @@ export class TransactionSubscriber
     event: UpdateEvent<TransactionSavingsAccount>,
   ): Promise<void> {
     const { entity } = event;
+    //get transaction
+    //get loan in processing and check it
+    //if no ok return
+    //else check balance >= 0 and loan.state === Incomplete
+    //update loan.state to completed and save
     console.log('transaction subscriber updated', entity);
   }
 }
