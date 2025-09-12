@@ -140,7 +140,7 @@ export class LoanService {
         status: CREDIT_STATUS.APPROVED,
         approvedBy: { id: user.userId as number } as User,
         nextDatePrevalent: new Date(
-          Date.now() + typeCredit.reimbursement_period * 10 * 1000,
+          Date.now() + typeCredit.reimbursement_period * 20 * 1000,
         ),
       },
       false,
@@ -161,7 +161,7 @@ export class LoanService {
     );
     this.jobsService.addCronJob(
       'loan-' + loan.id,
-      `*/10 * * * * *`,
+      `*/20 * * * * *`,
       async () => {
         const result = await this.getLoanInProcessingOrActive(customer.id);
         const loan = result as Loan;
@@ -235,7 +235,7 @@ export class LoanService {
         await this.updateLoanByCustomerId(
           loan,
           {
-            nextDatePrevalent: new Date(Date.now() + periodic * 10 * 1000),
+            nextDatePrevalent: new Date(Date.now() + periodic * 20 * 1000),
             remainPaymentNumber: --loan.remainPaymentNumber,
             remainTotalAmount: loan.remainTotalAmount - amountRetrieve,
             ...(savingAccount.avalaible_balance < loan.reimbursement_amount
@@ -337,6 +337,7 @@ export class LoanService {
           CREDIT_STATE.IN_PROCESSING,
           CREDIT_STATE.ACTIVE,
           CREDIT_STATE.END_PROCESSING,
+          CREDIT_STATE.INCOMPLETE,
         ]),
         status: In([CREDIT_STATUS.APPROVED, CREDIT_STATUS.PENDING]),
       },

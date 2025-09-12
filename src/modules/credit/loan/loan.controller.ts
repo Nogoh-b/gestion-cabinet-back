@@ -23,7 +23,11 @@ import {
   GuarantyDocumentLoanDto,
   LoanDto,
 } from './dto/loan.dto';
-import { CREDIT_CODE, CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
+import {
+  SAVING_ACCOUNT_CODE,
+  CREDIT_STATE,
+  CREDIT_STATUS,
+} from '../../../utils/types';
 import { LoanService } from './loan.service';
 import { Loan } from './entities/loan.entity';
 import { User } from '../../iam/user/entities/user.entity';
@@ -415,20 +419,12 @@ export class LoanController {
     @Req() { user }: { user: any },
   ) {
     // Implementation for creating a loan
-    const savingAccount =
-      await this.savingAccountService.findOneHydridSavingByCustomer(customerId);
-    if (savingAccount.avalaible_balance < 0)
-      throw new ForbiddenException({
-        success: false,
-        message: 'You have a Loan in processing',
-        status: HttpStatus.FORBIDDEN,
-      });
     const creditAccount = await this.savingAccountRepository.findOne({
       where: {
         id: Number(credit_account_id),
         customer: { id: customerId },
         type_savings_account: {
-          code: CREDIT_CODE,
+          code: SAVING_ACCOUNT_CODE.CREDIT,
         },
       },
     });
@@ -450,7 +446,7 @@ export class LoanController {
     if (!result.hasOwnProperty('success'))
       throw new ForbiddenException({
         success: false,
-        message: 'You have a Loan in processing',
+        message: 'You have a Loan in processing or incomplete',
         status: HttpStatus.FORBIDDEN,
       });
     const typeCredit =
@@ -461,19 +457,17 @@ export class LoanController {
       });
     const transaction = await this.transactionService.findOne(reference);
     const tc = typeCredit as TypeCredit;
-    if (transaction.amount !== tc.fee)
+    if (
+      transaction.amount !== tc.fee ||
+      transaction.targetSavingsAccount?.number_savings_account !==
+        SAVING_ACCOUNT_CODE.PRODUCT
+    )
       throw new ForbiddenException({
         status: HttpStatus.NOT_ACCEPTABLE,
         success: false,
         message: 'Please make your payment before to get the loan',
       });
     const customer = await this.customersService.findOne(customerId);
-    if (customer.id !== transaction.targetSavingsAccount?.customer.id)
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'This payment not match',
-      });
     console.log('Document of guaranty', customer);
     if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
       throw new ForbiddenException({

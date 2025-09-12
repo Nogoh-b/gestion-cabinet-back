@@ -34,4 +34,7 @@ export enum TYPE_STATUS {
   DISABLE = -1,
 }
 
-export const CREDIT_CODE = 'C2';
+export enum SAVING_ACCOUNT_CODE {
+  CREDIT = 'C2',
+  PRODUCT = 'E100038',
+}
