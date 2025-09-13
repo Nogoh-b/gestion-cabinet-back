@@ -142,7 +142,10 @@ export class LoanService {
         status: CREDIT_STATUS.APPROVED,
         approvedBy: { id: user.userId as number } as User,
         nextDatePrevalent: new Date(
-          Date.now() + typeCredit.reimbursement_period * 20 * 1000,
+          process.env.NODE_ENV === 'development'
+            ? Date.now() + typeCredit.reimbursement_period * 20 * 1000
+            : Date.now() +
+              typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
         ),
       },
       false,
@@ -195,9 +198,10 @@ export class LoanService {
           periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_4 ||
           periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_5 ||
           periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_6;
-        const isDay = process.env.NODE_ENV
-          ? loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
-          : loan.nextDatePrevalent.getDate() !== new Date().getDate();
+        const isDay =
+          process.env.NODE_ENV === 'development'
+            ? loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
+            : loan.nextDatePrevalent.getDate() !== new Date().getDate();
         if (in_Period && isDay) {
           return;
         }
@@ -244,7 +248,12 @@ export class LoanService {
         await this.updateLoanByCustomerId(
           loan,
           {
-            nextDatePrevalent: new Date(Date.now() + periodic * 20 * 1000),
+            nextDatePrevalent: new Date(
+              process.env.NODE_ENV === 'development'
+                ? Date.now() + typeCredit.reimbursement_period * 20 * 1000
+                : Date.now() +
+                  typeCredit.reimbursement_period * 24 * 60 * 60 * 1000,
+            ),
             remainPaymentNumber: --loan.remainPaymentNumber,
             remainTotalAmount: loan.remainTotalAmount - amountRetrieve,
             ...(savingAccount.avalaible_balance < loan.reimbursement_amount
