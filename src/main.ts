@@ -84,7 +84,10 @@ async function bootstrap() {
   app.use('/admin/queues', serverAdapter.getRouter());
   await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()]).then(
     () => {
-      console.log('Microservices are listening (http) 3004 => (TPC) 3002');
+      console.log(
+        'Microservices are listening (http) =>',
+        process.env.PORT ?? 3004,
+      );
     },
   );
 }

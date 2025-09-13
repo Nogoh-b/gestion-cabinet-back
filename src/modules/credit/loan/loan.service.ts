@@ -28,6 +28,8 @@ import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaran
 import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
 import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { Loan } from './entities/loan.entity';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 @Injectable()
 export class LoanService {
@@ -161,7 +163,7 @@ export class LoanService {
     );
     this.jobsService.addCronJob(
       'loan-' + loan.id,
-      `*/20 * * * * *`,
+      process.env.NODE_ENV === 'development' ? `*/20 * * * * *` : time,
       async () => {
         const result = await this.getLoanInProcessingOrActive(customer.id);
         const loan = result as Loan;
@@ -186,8 +188,15 @@ export class LoanService {
           penalityAmount: loan.totalAmountPenality,
           numberOfPenality: loan.numberOfPenality,
         });
+        const in_Period =
+          periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY ||
+          periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_2 ||
+          periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_3 ||
+          periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_4 ||
+          periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_5 ||
+          periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_6;
         if (
-          periodic === MODE_REIMBURSEMENT_PERIOD.BIWEEKLY &&
+          in_Period &&
           loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
         ) {
           return;
@@ -469,26 +478,34 @@ export class LoanService {
 
   async createLoan(data: Loan) {
     console.log('Credit loan', data);
-    const remainPaymentNumber = Math.ceil(
-      data.duringMax / data.typeCredit.reimbursement_period,
-    );
-    const amountTotal =
-      data.amount + (data.amount * data.typeCredit.interest) / 100;
-    console.log('Credit loan', remainPaymentNumber);
-    const loan = this.loanRepository.create({
-      ...data,
-      remainTotalAmount: amountTotal,
-      totalAmount: amountTotal,
-      remainTotalPaymentNumber: remainPaymentNumber,
-      remainPaymentNumber,
-      reimbursement_amount: this.simulationReimbursementAmount(
-        amountTotal,
+    try {
+      const remainPaymentNumber = Math.ceil(
+        data.duringMax / data.typeCredit.reimbursement_period,
+      );
+      const amountTotal =
+        data.amount + (data.amount * data.typeCredit.interest) / 100;
+      console.log('Credit loan', remainPaymentNumber);
+      const loan = this.loanRepository.create({
+        ...data,
+        remainTotalAmount: amountTotal,
+        totalAmount: amountTotal,
+        remainTotalPaymentNumber: remainPaymentNumber,
         remainPaymentNumber,
-      ),
-      status: CREDIT_STATUS.PENDING,
-      state: CREDIT_STATE.IN_PROCESSING,
-    });
-    return await this.loanRepository.save(loan);
+        reimbursement_amount: this.simulationReimbursementAmount(
+          amountTotal,
+          remainPaymentNumber,
+        ),
+        status: CREDIT_STATUS.PENDING,
+        state: CREDIT_STATE.IN_PROCESSING,
+      });
+      return await this.loanRepository.save(loan);
+    } catch (e) {
+      return {
+        success: false,
+        message: 'Reference already used or error database',
+        status: HttpStatus.NOT_ACCEPTABLE,
+      };
+    }
   }
 
   simulationReimbursementAmount(amount: number, during: number) {

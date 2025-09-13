@@ -1,11 +1,16 @@
 export enum MODE_REIMBURSEMENT_PERIOD {
-  DAYLY = 1,
+  DAILY = 1,
   WEEKLY = 7,
   BIWEEKLY = 15, // 2-week
   MONTHLY = 30,
   QUARTERLY_3 = 90, // 3 or 4-month
   QUARTERLY_4 = 120, // 3 or 4-month
   YEARLY = 365,
+  DAILY_2 = 2,
+  DAILY_3 = 3,
+  DAILY_4 = 4,
+  DAILY_5 = 5,
+  DAILY_6 = 6,
 }
 
 export enum CREDIT_STATUS {

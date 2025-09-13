@@ -475,7 +475,7 @@ export class LoanController {
         message: "You don't have eligibility rating",
         status: HttpStatus.FORBIDDEN,
       });
-    return await this.loanService.createLoan({
+    const loan = await this.loanService.createLoan({
       duringMax: Number(duringMax),
       amount: Number(amount),
       object,
@@ -486,6 +486,11 @@ export class LoanController {
       credit_account: { id: creditAccount.id },
       typeCredit,
     } as Loan);
+    if (loan.hasOwnProperty('success'))
+      throw new NotAcceptableException({
+        ...loan,
+      });
+    return loan;
   }
 
   @Get('simulate/:typeCreditId')
