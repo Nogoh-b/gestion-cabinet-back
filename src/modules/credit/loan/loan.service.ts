@@ -195,10 +195,10 @@ export class LoanService {
           periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_4 ||
           periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_5 ||
           periodic === MODE_REIMBURSEMENT_PERIOD.DAILY_6;
-        if (
-          in_Period &&
-          loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
-        ) {
+        const isDay = process.env.NODE_ENV
+          ? loan.nextDatePrevalent.getMinutes() !== new Date().getMinutes()
+          : loan.nextDatePrevalent.getDate() !== new Date().getDate();
+        if (in_Period && isDay) {
           return;
         }
         const amountRetrieve =
