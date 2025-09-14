@@ -16,7 +16,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
-import { TransactionCode } from '../../transaction_type/entities/transaction_type.entity';
+
 
 
 
@@ -62,7 +62,7 @@ export class CreateTransactionSavingsAccountDto {
 
   token?: string;
   tx_parent_id?: number;
-  tx_type?: TransactionCode;
+  tx_type?: string;
 
   @ApiPropertyOptional({ example: '8629891', description: "Code d'origine" })
   @IsString()
@@ -121,7 +121,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   origin?: string;
   target?: string;
   loanId?: number;
-  tx_type?: TransactionCode;
+  tx_type?: string;
   @ApiProperty({ example: 1000, description: 'Montant de la commission' })
   @IsNumber()
   @IsOptional()
@@ -147,7 +147,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   origin?: string;
   provider?: string;
   target?: string;
-  tx_type?: TransactionCode;
+  tx_type?: string;
   loanId?: number;
 
   @ApiProperty({ example: 1, description: '' })

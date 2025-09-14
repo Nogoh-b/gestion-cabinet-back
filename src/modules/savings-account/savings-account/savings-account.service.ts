@@ -31,7 +31,7 @@ import { RessourceService } from 'src/modules/ressource/ressource/ressource.serv
 
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
-import { TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { FilterTxOptions, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
@@ -947,7 +947,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     exact?: boolean,
     from?: string,
     to?: string, txTypeCode?: string,
-    type?: string,branch_id = 0): Promise<PaginatedResult<TransactionSavingsAccount>> {
+    type?: string): Promise<PaginatedResult<TransactionSavingsAccount>> {
       return this.transactionSavingsAccountService.findAllByType(
                                                   page,
                                                   limit,
@@ -999,6 +999,22 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // 4️⃣ Retour dans le même format pour account + transactions paginées
     return result;*/
   } 
+
+    async getTransactionsPaginateV2(id: number, page = 1, limit = 10,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string, dto ?: FilterTxOptions): Promise<PaginatedResult<TransactionSavingsAccount>> {
+      return this.transactionSavingsAccountService.findAllByTypeV2(
+                                                  page,
+                                                  limit,
+                                                  term,
+                                                  fields,
+                                                  exact,
+                                                  from,
+                                                  to,dto)
+    }
 
   async assign_interest_range(
     account_id: number,
