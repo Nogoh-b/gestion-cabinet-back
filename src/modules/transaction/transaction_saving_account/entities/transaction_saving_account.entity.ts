@@ -38,6 +38,16 @@ import { TransactionType } from '../../transaction_type/entities/transaction_typ
 
 
 
+export type FilterTxOptions = {
+  txTypeCode?: string;
+  tx_project_id?: number;
+  step_saving_project?: number;
+  tx_type?: string;
+  type?: string;
+  id?: number;
+  promo_code?: string;
+  commercial_code?: number;
+};
 
 
 

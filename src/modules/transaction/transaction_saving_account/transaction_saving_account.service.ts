@@ -160,11 +160,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
-
-
-
-
 import { ChannelTransaction } from '../chanel-transaction/entities/channel-transaction.entity';
 import {
   TransactionChannel,
@@ -181,12 +176,7 @@ import {
 } from './dto/create-transaction_saving_account.dto';
 import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction_saving_account.dto';
 import { Sequence } from './entities/sequence.entity';
-import { Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
-
-
-
-
-
+import { FilterTxOptions, Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
 
 
 
@@ -479,13 +469,13 @@ export class TransactionSavingsAccountService {
         provider.code != TransactionProvider.OM) ||
       txType.code === TransactionCode.BUY_TONTINE ||
       txType.code === TransactionCode.RECEIVE_TONTINE ||
-      txType.code === TransactionCode.INTERNAL_TRANSFER
+      txType.code === TransactionCode.INTERNAL_TRANSFER || dto.force_validate
     ) {
       this.validate(tx.id, isFirstTx);
       tx.status = 1;
     }
     const tx1 = await this.repo.save(tx);
-    console.log('txxxxxxxx ', tx1.id, ' ', tx1.channelTransaction.code);
+    console.log('txxxxxxxx111 ', tx1.id, ' ',        txType.code  );
 
     return plainToInstance(ResponseTransactionSavingsAccountDto, tx);
   }
@@ -664,9 +654,11 @@ export class TransactionSavingsAccountService {
     }
 
     if(!dto.origin_savings_account_code)
-      return dto.provider == TransactionProvider.OM ? await this.om_deposit(dto, TransactionCode.BUY_TONTINE) :  await this.momo_deposit(dto, TransactionCode.BUY_TONTINE) ;
-    return await this.perform_transaction(dto, TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+      return dto.provider == TransactionProvider.OM ? await this.om_deposit(dto, dto.tx_type ?? TransactionCode.BUY_TONTINE) :  await this.momo_deposit(dto, TransactionCode.BUY_TONTINE) ;
+    return await this.perform_transaction(dto, dto.tx_type ?? TransactionCode.BUY_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
   }
+
+
 
   async buy_saving_project(dto: CreateTransactionSavingsAccountDto) {
 
@@ -690,7 +682,7 @@ export class TransactionSavingsAccountService {
     console.log(dto)
     if(!dto.target_savings_account_code)
       return dto.provider == TransactionProvider.OM ? await this.om_withdraw(dto, TransactionCode.BUY_TONTINE) :  await this.momo_withdraw(dto, TransactionCode.BUY_TONTINE) ;
-    return await this.perform_transaction(dto, TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
+    return await this.perform_transaction(dto, dto.tx_type ?? TransactionCode.RECEIVE_TONTINE, 'MOBILE', TransactionProvider.HYBRID_SAVING);
 
     /*if(dto.target_savings_account_code )
     {
@@ -951,6 +943,87 @@ export class TransactionSavingsAccountService {
         isCredit: type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
       });
     }*/
+    qb.andWhere('transactionType.id IS NOT NULL');
+
+    const options: PaginationOptions & {
+      search?: SearchOptions;
+      dateRange?: DateRange;
+    } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to)
+      options.dateRange = {
+        from: from ? new Date(from) : undefined,
+        to: to ? new Date(to) : undefined,
+      };
+    console.log('------options---- ', options);
+    return this.paginationService.paginate(qb, options);
+  }
+  findAllByTypeV2(
+    page?: number,
+    limit?: number,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string,
+    dto?: FilterTxOptions
+  ): Promise<PaginatedResult<TransactionSavingsAccount>> {
+    const qb = this.repo
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.channelTransaction', 'channelTransaction')
+      .leftJoinAndSelect('tx.provider', 'provider')
+      .leftJoinAndSelect('tx.transactionType', 'transactionType')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'originSavingsAccount')
+      .leftJoinAndSelect('originSavingsAccount.customer', 'originCustomer')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
+      .leftJoinAndSelect('targetSavingsAccount.customer', 'targetCustomer');
+    /*if (dto?.id !== undefined) {
+      // Ou une autre condition selon votre DTO
+      if (dto?.type !== undefined) {
+        dto?.type === '1'
+          ? qb.andWhere('targetSavingsAccount.id = :id', { id: dto?.id })
+          : qb.andWhere('originSavingsAccount.id = :id', { id: dto?.id });
+      } else
+        qb.andWhere(
+          'originSavingsAccount.id = :id OR targetSavingsAccount.id = :id',
+          { id : dto?.id },
+        );
+    }*/
+
+    qb.orderBy('tx.created_at', 'DESC');
+
+    if (dto?.tx_type !== undefined) {
+      qb.andWhere('transactionType.code LIKE :txTypeCode', {
+        txTypeCode: `${dto?.tx_type}%`,
+      });
+      qb.andWhere('transactionType.code IS NOT NULL');
+
+    }
+    // Filtre conditionnel pour IS_CREDIT (seulement si isCredit est fourni)
+    if (dto?.type !== undefined) {
+      // Ou une autre condition selon votre DTO
+      qb.andWhere('transactionType.is_credit = :isCredit', {
+        isCredit: dto?.type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
+      });
+    }
+    // Filtre conditionnel pour IS_CREDIT (seulement si isCredit est fourni)
+    if (dto?.tx_project_id !== undefined) {
+      qb.andWhere('tx.tx_project_id = :tx_project_id', {
+        tx_project_id: dto.tx_project_id,
+      });
+    }
+    if (dto?.type !== undefined) {
+      // Ou une autre condition selon votre DTO
+      qb.andWhere('transactionType.is_credit = :isCredit', {
+        isCredit: dto?.type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
+      });
+    }
+    if (dto?.type !== undefined) {
+      // Ou une autre condition selon votre DTO
+      qb.andWhere('transactionType.is_credit = :isCredit', {
+        isCredit: dto?.type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
+      });
+    }
     qb.andWhere('transactionType.id IS NOT NULL');
 
     const options: PaginationOptions & {
@@ -1449,7 +1522,7 @@ export class TransactionSavingsAccountService {
         commissionTx.payment_token_provider =
           await this.generateUniquePaymentTokenProvider();
         commissionTx.reference = await this.formatTransactionReference(
-          commissionTx.transactionType,
+          commissionTx.transactionType, 
           providerOpenProduct.code,
         );
         commissionTx.status = TransactionSavingsAccountStatus.VALIDATE;
