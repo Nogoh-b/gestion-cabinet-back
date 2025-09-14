@@ -31,7 +31,7 @@ import { RessourceService } from 'src/modules/ressource/ressource/ressource.serv
 
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
-import { FilterTxOptions, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { FilterTxOptions, PaymentStatus, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
@@ -110,6 +110,7 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
 
 
@@ -981,7 +982,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     exact?: boolean,
     from?: string,
     to?: string, txTypeCode?: string,
-    type?: string): Promise<PaginatedResult<TransactionSavingsAccount>> {
+    type?: string,branch_id = 0,status?: number): Promise<PaginatedResult<TransactionSavingsAccount>> {
       return this.transactionSavingsAccountService.findAllByType(
                                                   page,
                                                   limit,
@@ -1410,7 +1411,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
       .filter(
         tx => {
-          return tx.transactionType.code === TransactionCode.BUY_SAVING_PROJECT &&  Number(tx.tx_project_id) === Number(query?.tx_project_id)&&
+          return tx.transactionType.code === TransactionCode.BUY_SAVING_PROJECT && tx.status == PaymentStatus.SUCCESSFULL && Number(tx.tx_project_id) === Number(query?.tx_project_id)&&
           // tx => tx.transactionType.code === query?.txType &&  tx.tx_project_id === query.tx_project_id &&
           (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
         }
@@ -1533,13 +1534,13 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
 
   }
 
-  async statsV1(code: string): Promise<any> {
+  async statsV1(code: string, query : PaginationQueryTxDto): Promise<any> {
   
       const sa = await this.findOneByCode(code)
   
       const id = sa.id
-      const txs = await this.getTransactions(id)
-  
+      query.id = id
+      const txs = await this.transactionSavingsAccountService.findAllByTypeV2(undefined,undefined,undefined,undefined,undefined,undefined,undefined,query)
       let  stats = {
         online : {
           om : {
@@ -1592,7 +1593,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       }
   
       for (const tx of txs) {
-        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.is_locked)
+        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || (tx.is_locked && !query.countLockeckTx))
           continue
         // transactions entrantes
         if(tx.targetSavingsAccount && !tx.originSavingsAccount ){

@@ -129,6 +129,7 @@ export class PaginationQueryTxDto extends PaginationQueryDto {
   step_saving_project?: number;
   tx_type?: string;
   id?: number;
+  countLockeckTx?: boolean;
   promo_code?: string;
   commercial_code?: number;
 }

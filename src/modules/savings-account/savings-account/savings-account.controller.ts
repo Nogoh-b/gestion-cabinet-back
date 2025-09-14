@@ -366,8 +366,8 @@ export class SavingsAccountController {
   }
 
   @Get(':code/stats-v1')
-  statsV1( @Param('code') code: string) {
-    return this.service.statsV1(code);
+  statsV1( @Param('code') code: string, @Query() query: PaginationQueryTxDto) {
+    return this.service.statsV1(code, query);
   }
 
   

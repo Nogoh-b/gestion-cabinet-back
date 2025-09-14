@@ -26,7 +26,7 @@ import {
 } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 
-import { Not, Repository, SelectQueryBuilder } from 'typeorm';
+import { Brackets, Not, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { v4 as uuidv4 } from 'uuid';
 import { InjectQueue } from '@nestjs/bull';
@@ -958,7 +958,7 @@ export class TransactionSavingsAccountService {
     console.log('------options---- ', options);
     return this.paginationService.paginate(qb, options);
   }
-  findAllByTypeV2(
+  async findAllByTypeV2(
     page?: number,
     limit?: number,
     term?: string,
@@ -967,7 +967,7 @@ export class TransactionSavingsAccountService {
     from?: string,
     to?: string,
     dto?: FilterTxOptions
-  ): Promise<PaginatedResult<TransactionSavingsAccount>> {
+  ): Promise<PaginatedResult<TransactionSavingsAccount> | any> {
     const qb = this.repo
       .createQueryBuilder('tx')
       .leftJoinAndSelect('tx.channelTransaction', 'channelTransaction')
@@ -977,54 +977,44 @@ export class TransactionSavingsAccountService {
       .leftJoinAndSelect('originSavingsAccount.customer', 'originCustomer')
       .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSavingsAccount')
       .leftJoinAndSelect('targetSavingsAccount.customer', 'targetCustomer');
-    /*if (dto?.id !== undefined) {
-      // Ou une autre condition selon votre DTO
+    if (dto?.id !== undefined) {
       if (dto?.type !== undefined) {
         dto?.type === '1'
-          ? qb.andWhere('targetSavingsAccount.id = :id', { id: dto?.id })
-          : qb.andWhere('originSavingsAccount.id = :id', { id: dto?.id });
-      } else
-        qb.andWhere(
-          'originSavingsAccount.id = :id OR targetSavingsAccount.id = :id',
-          { id : dto?.id },
-        );
-    }*/
+          ? qb.andWhere('targetSavingsAccount.id = :id', { id: dto.id })
+          : qb.andWhere('originSavingsAccount.id = :id', { id: dto.id });
+      } else {
+        qb.andWhere(new Brackets(qb1 => {
+          qb1.where('originSavingsAccount.id = :id', { id: dto.id })
+            .orWhere('targetSavingsAccount.id = :id', { id: dto.id });
+        }));
+      }
+    }
+
 
     qb.orderBy('tx.created_at', 'DESC');
 
-    if (dto?.tx_type !== undefined) {
-      qb.andWhere('transactionType.code LIKE :txTypeCode', {
-        txTypeCode: `${dto?.tx_type}%`,
-      });
-      qb.andWhere('transactionType.code IS NOT NULL');
+const filters : any = [];
 
-    }
-    // Filtre conditionnel pour IS_CREDIT (seulement si isCredit est fourni)
-    if (dto?.type !== undefined) {
-      // Ou une autre condition selon votre DTO
-      qb.andWhere('transactionType.is_credit = :isCredit', {
-        isCredit: dto?.type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
-      });
-    }
-    // Filtre conditionnel pour IS_CREDIT (seulement si isCredit est fourni)
-    if (dto?.tx_project_id !== undefined) {
-      qb.andWhere('tx.tx_project_id = :tx_project_id', {
-        tx_project_id: dto.tx_project_id,
-      });
-    }
-    if (dto?.type !== undefined) {
-      // Ou une autre condition selon votre DTO
-      qb.andWhere('transactionType.is_credit = :isCredit', {
-        isCredit: dto?.type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
-      });
-    }
-    if (dto?.type !== undefined) {
-      // Ou une autre condition selon votre DTO
-      qb.andWhere('transactionType.is_credit = :isCredit', {
-        isCredit: dto?.type === '1' ? 1 : 0, // Adaptez selon le type en base (boolean/entier)
-      });
-    }
-    qb.andWhere('transactionType.id IS NOT NULL');
+if (dto?.tx_type) {
+  filters.push({ sql: 'transactionType.code = :txTypeCode', params: { txTypeCode: dto.tx_type } });
+}
+
+if (dto?.type) {
+  filters.push({ sql: 'transactionType.is_credit = :isCredit', params: { isCredit: dto.type === '1' ? 1 : 0 } });
+}
+
+if (dto?.tx_project_id) {
+  filters.push({ sql: 'tx.tx_project_id = :tx_project_id', params: { tx_project_id: dto.tx_project_id } });
+}
+
+if (dto?.step_saving_project) {
+  filters.push({ sql: 'tx.step_saving_projet = :step_saving_projet', params: { step_saving_projet: dto.step_saving_project } });
+}
+
+filters.forEach(f => qb.andWhere(f.sql, f.params));
+
+qb.andWhere('transactionType.id IS NOT NULL');
+
 
     const options: PaginationOptions & {
       search?: SearchOptions;
@@ -1037,7 +1027,7 @@ export class TransactionSavingsAccountService {
         to: to ? new Date(to) : undefined,
       };
     console.log('------options---- ', options);
-    return this.paginationService.paginate(qb, options);
+    return page ? this.paginationService.paginate(qb, options) : await qb.getMany();
   }
 
   async findAllByTypeSimple(
