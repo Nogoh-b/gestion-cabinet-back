@@ -14,17 +14,20 @@ import { PassportModule } from '@nestjs/passport';
 
 
 
+import { ScheduleModule } from '@nestjs/schedule';
+
+
+
+
+
 import { TypeOrmModule } from '@nestjs/typeorm';
-
-
-
 
 
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
-import { PermissionSeeder } from './auth/seeders/permission.seeder';
 // import { swaggerConfig } from './config/swagger.config';
+import { PermissionSeeder } from './auth/seeders/permission.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
@@ -35,13 +38,15 @@ import { OtpCode, OtpOnlineLink } from './entities/otp-code.entity';
 import { InitService } from './init/init.service';
 import { OtpController } from './shared/controlers/otp.controller';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
+import { QueryLoggingInterceptor } from './shared/interceptors/query-logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 import { EmailService } from './shared/services/email/email.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
 import { PaginationService } from './shared/services/pagination/pagination.service';
-import { ScheduleModule } from '@nestjs/schedule';
+
+
 
 
 
@@ -98,6 +103,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
     { provide: APP_FILTER,     useClass: TypeOrmExceptionFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
+    { provide: 'APP_INTERCEPTOR', useClass: QueryLoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
     KeyGeneratorService,

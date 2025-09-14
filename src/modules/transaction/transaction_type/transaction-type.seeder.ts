@@ -16,6 +16,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 @Injectable()
 export class TransactionTypeSeeder {
   constructor(
@@ -150,8 +151,63 @@ export class TransactionTypeSeeder {
         is_credit: 1,
         fee_percentage: 0.0,
         status: 1,
+      },         
+      {
+        code: 'BUY_SAVING_PROJECT',
+        name: 'Paiement pour un projet d\'épargne',
+        description: 'Paiement d\'une épargne dans le cadre d\'un projet',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
+      },         
+      {
+        code: 'BUY_PENALITY_SAVING_PROJECT',
+        name: 'Paiement de penalité pour un projet d\'épargne',
+        description: 'Paiement d\'une pénalité dans le cadre d\'un projet',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
       },
-
+      {
+        "code": "PROJECT_DEPOSIT",
+        "name": "Dépôt de projet",
+        "description": "Création d'un dépôt dans COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      {
+        "code": "PROJECT_LOANS",
+        "name": "Prêt de projet",
+        "description": "Demande ou gestion d'un prêt dans COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      {
+        "code": "PROJECT_STANDARD",
+        "name": "Projet standard",
+        "description": "Gestion d'un projet standard dans COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      {
+        "code": "PROJECT_TONTINE",
+        "name": "Tontine",
+        "description": "Gestion d'une tontine dans COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
+      {
+        "code": "PROJECT_SALE",
+        "name": "Vente de projet",
+        "description": "Gestion de la vente d'un projet dans COTI",
+        "is_credit": 1,
+        "fee_percentage": 0.0,
+        "status": 1
+      },
       {
         "code": "PROJET_DEPOSIT",
         "name": "Dépôt sur projet",
