@@ -1,27 +1,7 @@
 import { CoreModule } from 'src/core/core.module';
 import { BullModule } from '@nestjs/bull';
-
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { CommercialModule } from '../commercial/commercial.module';
 import { PartnerModule } from '../partner/partner.module';
 import { PersonnelModule } from '../personnel/personnel.module';
@@ -38,14 +18,7 @@ import { TransactionType } from './transaction_type/entities/transaction_type.en
 import { TransactionTypeController } from './transaction_type/transaction_type.controller';
 import { TransactionTypeService } from './transaction_type/transaction_type.service';
 import { TransactionTypeSeeder } from './transaction_type/transaction-type.seeder';
-
-
-
-
-
-
-
-
+import { TransactionSavingsAccountSubscriber } from './transaction_saving_account/transaction_saving_account.subscriber';
 
 
 @Module({
@@ -71,7 +44,13 @@ import { TransactionTypeSeeder } from './transaction_type/transaction-type.seede
   forwardRef(() => PersonnelModule),
   ProviderModule],
   controllers: [TransactionSavingAccountController, TransactionTypeController],
-  providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor ,  TransactionTypeSeeder,   ],
+  providers: [
+    TransactionSavingsAccountService,
+    TransactionTypeService, 
+    MaintenanceProcessor ,  
+    TransactionTypeSeeder, 
+    TransactionSavingsAccountSubscriber  
+  ],
   exports: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor , TypeOrmModule, BullModule],
   
 })

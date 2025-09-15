@@ -1946,8 +1946,23 @@ qb.andWhere('transactionType.id IS NOT NULL');
 
     return this.repo.save(tx);
   }
-  async checkWthDraw(t) {
-    return await this.mcotiService.checkStatusPaymentWithDraw(t);
+  async checkWthDraw(reference) {
+      const tx  = await this.repo.findOne({
+      where: { reference },
+      relations: [
+        'channelTransaction',
+        'provider',
+        'transactionType',
+        'originSavingsAccount', 
+        // 'originSavingsAccount.originSavingsAccountTx',
+        // 'originSavingsAccount.targetSavingsAccountTx',
+        'targetSavingsAccount',
+        // 'targetSavingsAccount.originSavingsAccountTx',
+        // 'targetSavingsAccount.targetSavingsAccountTx',
+      ],
+    });
+    return await this.mcotiService.checkStatusPaymentWithDraw(tx?.payment_code);
+    return tx
   }
 
   async checkUniquenessPairs(params: {
@@ -2536,5 +2551,18 @@ qb.andWhere('transactionType.id IS NOT NULL');
 
     return rows;
   }
+
+  repeatEvery(seconds: number, times: number, task: () => void) {
+  let count = 0;
+
+  const run = () => {
+    if (times > 0 && count >= times) return; 
+    task();
+    count++;
+    setTimeout(run, seconds * 1000);
+  };
+
+  run();
+}
 
 }
