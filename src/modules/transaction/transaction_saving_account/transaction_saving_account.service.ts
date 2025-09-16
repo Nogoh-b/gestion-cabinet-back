@@ -2548,5 +2548,16 @@ export class TransactionSavingsAccountService {
 
     return rows;
   }
+  repeatEvery(seconds: number, times: number, task: () => void) {
+  let count = 0;
 
+  const run = () => {
+    if (times > 0 && count >= times) return; 
+    task();
+    count++;
+    setTimeout(run, seconds * 1000);
+  };
+
+  run();
+}
 }

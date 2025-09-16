@@ -38,6 +38,7 @@ import { TransactionType } from './transaction_type/entities/transaction_type.en
 import { TransactionTypeController } from './transaction_type/transaction_type.controller';
 import { TransactionTypeService } from './transaction_type/transaction_type.service';
 import { TransactionTypeSeeder } from './transaction_type/transaction-type.seeder';
+import { TransactionSavingsAccountSubscriber } from './transaction_saving_account/transaction_saving_account.subscriber';
 
 
 
