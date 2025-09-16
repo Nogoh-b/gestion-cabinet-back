@@ -1943,8 +1943,23 @@ export class TransactionSavingsAccountService {
 
     return this.repo.save(tx);
   }
-  async checkWthDraw(t) {
-    return await this.mcotiService.checkStatusPaymentWithDraw(t);
+  async checkWthDraw(reference) {
+      const tx  = await this.repo.findOne({
+      where: { reference },
+      relations: [
+        'channelTransaction',
+        'provider',
+        'transactionType',
+        'originSavingsAccount', 
+        // 'originSavingsAccount.originSavingsAccountTx',
+        // 'originSavingsAccount.targetSavingsAccountTx',
+        'targetSavingsAccount',
+        // 'targetSavingsAccount.originSavingsAccountTx',
+        // 'targetSavingsAccount.targetSavingsAccountTx',
+      ],
+    });
+    return await this.mcotiService.checkStatusPaymentWithDraw(tx?.payment_code);
+    return tx
   }
 
   async checkUniquenessPairs(params: {

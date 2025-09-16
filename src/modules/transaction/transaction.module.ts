@@ -71,7 +71,8 @@ import { TransactionTypeSeeder } from './transaction_type/transaction-type.seede
   forwardRef(() => PersonnelModule),
   ProviderModule],
   controllers: [TransactionSavingAccountController, TransactionTypeController],
-  providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor ,  TransactionTypeSeeder,   ],
+  providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor ,  TransactionTypeSeeder, 
+    TransactionSavingsAccountSubscriber  ,   ],
   exports: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor , TypeOrmModule, BullModule],
   
 })
