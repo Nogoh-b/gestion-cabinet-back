@@ -4,103 +4,22 @@ import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'sr
 import { OtpService } from 'src/core/shared/services/otp/otp.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
-
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
-
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-
-
-
-
-
-
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
-
-
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
-
-
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
-
-
 import { RessourceService } from 'src/modules/ressource/ressource/ressource.service';
-
-
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
-
 import { FilterTxOptions, PaymentStatus, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
-
-
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
-
-
 import { Not, Repository } from 'typeorm';
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -111,59 +30,6 @@ import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @Injectable()

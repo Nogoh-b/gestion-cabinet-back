@@ -7,13 +7,13 @@ import {
 } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { SavingsAccount } from './entities/savings-account.entity';
-import { SavingsAccountService } from './savings-account.service';
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
+import { TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
+import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 
 @EventSubscriber()
 @Injectable()
-export class SavingsAccountSubscriber implements EntitySubscriberInterface<SavingsAccount> {
+export class TransactionSavingsAccountSubscriber implements EntitySubscriberInterface<TransactionSavingsAccount> {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -25,14 +25,27 @@ export class SavingsAccountSubscriber implements EntitySubscriberInterface<Savin
   }
 
   listenTo() {
-    return SavingsAccount;
+    return TransactionSavingsAccount;
   }
 
-  async afterInsert(event: InsertEvent<SavingsAccount>) {
+  async afterInsert(event: InsertEvent<TransactionSavingsAccount>) {
     console.log('afterInsert111 ', event.entity.id);
     
-      const tx = await this.transactionSavingsAccountService.findOne(211);
-      console.log('Found account:', tx);
+      this.transactionSavingsAccountService.repeatEvery(5, 3, async () => {
+        console.log('Tâche exécutée à', new Date().toISOString());
+        const tx = await this.transactionSavingsAccountService.findOne(event.entity.id);
+        console.log('Found via service:', tx);
+      });
+      setImmediate(async () => {
+        try {
+        } catch (e) {
+          console.error('Erreur service après insert:', e);
+        }
+      });
+
+
+    
+
     try {
       // Utilisation du service injecté
 

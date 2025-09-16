@@ -189,7 +189,8 @@ export class McotiService {
 
 
 
-  public async checkStatusPaymentWithDraw(codePaymentCash: string): Promise<any> {
+  public async checkStatusPaymentWithDraw(codePaymentCash?: string): Promise<any> {
+    codePaymentCash = '88784acd-44f7-4feb-979f-bd92d6e8ea3b'
     try {
       // Get token first
       const dataToken = await this.getTokenDisbursement();
