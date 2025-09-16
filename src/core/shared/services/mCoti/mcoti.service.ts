@@ -225,8 +225,16 @@ export class McotiService {
         }
       }
     } catch (error) {
+      if (error.message?.includes('403')) {
+        return null
+      }
       throw new NotFoundException(error.message);
-      this.handleApiError(error);
+      return null/* {
+              "data": null,
+              "message": "Not Found",
+              "statusCode": 404
+            }*/
+      // this.handleApiError(error);
     }
   }
 

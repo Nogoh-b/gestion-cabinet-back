@@ -346,7 +346,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
-  async findOneAdmin(branch_id: number = 3): Promise<SavingsAccount> {
+  async findOneAdmin(branch_id: number = 3, withBalance =true): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE) , branch_id },
       relations: [
@@ -359,10 +359,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       ],
     }); 
     if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id}`);
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if(withBalance){
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
     return account;
   }
 
@@ -1324,7 +1326,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
         return sum + ((tx.amount | 0) + (commission | 0));
       } else if(!tx.targetSavingsAccount && tx.originSavingsAccount) {
-        if (options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') {
+        if ((options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') || (tx.has_issue && tx.is_resolved)) {
           return sum;
         }
         return sum - ((tx.amount | 0) + (commission | 0));
@@ -1414,7 +1416,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     let outgoingAmountOM = 0
     if (sa.originSavingsAccountTx) {
         sa.originSavingsAccountTx?.forEach((tx) => {
-          if(tx.status == 1){
+          if(tx.status == 1 && !(tx.has_issue && tx.is_resolved)){
             outgoingTransactions.push(tx);
             outgoingAmount += tx.amount
             if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
@@ -1434,7 +1436,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     }
     if (sa.targetSavingsAccountTx) {
       sa.targetSavingsAccountTx?.forEach((tx) => {
-          if(tx.status == 1){
+          if(tx.status == 1 && !(tx.has_issue && tx.is_resolved)){
             incomingTransactions.push(tx);
             inComingAmount += tx.amount
             if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){

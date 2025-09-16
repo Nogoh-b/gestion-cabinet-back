@@ -31,9 +31,9 @@ export class TransactionSavingsAccountSubscriber implements EntitySubscriberInte
   async afterInsert(event: InsertEvent<TransactionSavingsAccount>) {
     console.log('afterInsert111 ', event.entity.id);
     
-      this.transactionSavingsAccountService.repeatEvery(5, 3, async () => {
-        console.log('Tâche exécutée à', new Date().toISOString());
-        const tx = await this.transactionSavingsAccountService.findOne(event.entity.id);
+      /*this.transactionSavingsAccountService.repeatEvery(5, 3, async () => {
+        console.log('Tâche exécutée à', event.entity.payment_code);
+        const tx = await this.transactionSavingsAccountService.checkWthDraw(event.entity.payment_code);
         console.log('Found via service:', tx);
       });
       setImmediate(async () => {
@@ -41,27 +41,11 @@ export class TransactionSavingsAccountSubscriber implements EntitySubscriberInte
         } catch (e) {
           console.error('Erreur service après insert:', e);
         }
-      });
+      });*/
 
 
     
 
-    try {
-      // Utilisation du service injecté
-
-      /*if (event.entity.created_online && !event.entity.code_cash) {
-        const sa = await this.savingsAccountService.updateCodeCash(event.entity.id);
-        
-        if (sa?.code_cash) {
-          await event.manager.update(
-            SavingsAccount,
-            event.entity.id,
-            { code_cash: sa.code_cash }
-          );
-        }
-      }*/
-    } catch (error) {
-      console.error('Error in afterInsert:', error);
-    }
   }
+
 }
