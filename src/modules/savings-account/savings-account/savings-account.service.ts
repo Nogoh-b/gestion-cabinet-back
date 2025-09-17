@@ -30,6 +30,7 @@ import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
 import { DisputeStatus } from 'src/modules/transaction/transaction-dispute/entities/transaction-dispute.entity';
+import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
 
 
