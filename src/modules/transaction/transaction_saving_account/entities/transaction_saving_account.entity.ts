@@ -30,6 +30,7 @@ import {
 import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+import { DisputeStatus } from '../../transaction-dispute/entities/transaction-dispute.entity';
 
 
 
@@ -160,6 +161,12 @@ export class TransactionSavingsAccount {
   @Column({ default: false })
   is_resolved: boolean; // Numéro de compte externe
 
+  @Column({
+    type: 'enum',
+    enum: DisputeStatus,
+    default: DisputeStatus.OPEN
+  })
+  status_issue: DisputeStatus;
   @Index()
   @Column()
   channels_transaction_id: number; // Référence du canal de transaction

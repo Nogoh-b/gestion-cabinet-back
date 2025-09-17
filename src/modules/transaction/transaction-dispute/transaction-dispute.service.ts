@@ -48,7 +48,7 @@ export class TransactionDisputeService {
 
   private calculateSeverity(amount: number): DisputeSeverity {
     if (amount <= 10000) return DisputeSeverity.LOW;
-    if (amount <= 50000) return DisputeSeverity.MEDIUM;
+    if (amount <= 20000) return DisputeSeverity.MEDIUM;
     if (amount <= 200000) return DisputeSeverity.HIGH;
     return DisputeSeverity.CRITICAL;
   }
@@ -61,8 +61,9 @@ export class TransactionDisputeService {
     dispute.resolution_date = new Date();
     dispute.closed_at = new Date();
     let tx = await this.transactionSavingsAccountService.findOne(dispute.transaction_id)
-    tx.has_issue = dispute.status != DisputeStatus.REJECTED
+    // tx.has_issue = dispute.status != DisputeStatus.REJECTED
     tx.is_resolved = dispute.status === DisputeStatus.RESOLVED
+    tx.status_issue = dispute.status
     await this.transactionSavingsAccountService.update(tx);
 
 
@@ -86,7 +87,7 @@ export class TransactionDisputeService {
     return this.disputeRepository.save(dispute);
   }
 
-  async findAll(query: SearchDisputeQueryDto): Promise<PaginatedResult<TransactionDisputeDto>> {
+  async findAll(query: SearchDisputeQueryDto): Promise<PaginatedResult<TransactionDispute>> {
     const {
       page = 1,
       limit = 10,
@@ -144,8 +145,9 @@ export class TransactionDisputeService {
     qb.orderBy('dispute.created_at', 'DESC');
 
     const paginated = await this.paginationService.paginate(qb, options);
+    return paginated
 
-    const mappedItems: TransactionDisputeDto[] = paginated.data.map(d => ({
+    /*const mappedItems: TransactionDisputeDto[] = paginated.data.map(d => ({
       id: d.id,
       status: d.status,
       severity: d.severity,
@@ -171,7 +173,7 @@ export class TransactionDisputeService {
       return {
         ...paginated,
         data: mappedItems,
-      };
+      };*/
   }
 
 
