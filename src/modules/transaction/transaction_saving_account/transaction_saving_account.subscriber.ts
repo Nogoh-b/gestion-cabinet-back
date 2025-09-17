@@ -4,12 +4,16 @@ import {
   InsertEvent,
   DataSource,
   EventSubscriber,
+  UpdateEvent,
 } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 import { TransactionProvider, TransactionSavingsAccount } from './entities/transaction_saving_account.entity';
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
+import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
+import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
+import { CREDIT_STATE } from 'src/utils/types';
 
 @EventSubscriber()
 @Injectable()
@@ -52,6 +56,34 @@ export class TransactionSavingsAccountSubscriber implements EntitySubscriberInte
 
     
 
+  }
+
+  async afterUpdate(
+    event: UpdateEvent<TransactionSavingsAccount>,
+  ): Promise<void> {
+    console.log('transaction subscriber updated 11 ');
+    const { entity, manager } = event;
+    //get transaction
+    const transaction = entity as TransactionSavingsAccount;
+    const savingAccount = await manager
+      .getRepository(SavingsAccount)
+      .findOneBy({
+        id: transaction.targetSavingsAccount?.id as number,
+      });
+    if (!savingAccount) return;
+    else if (savingAccount.avalaible_balance >= 0) {
+      //get loan in processing and check it
+      const loan = await manager
+        .getRepository(Loan)
+        .findOneBy({ state: CREDIT_STATE.INCOMPLETE });
+      if (!loan) return;
+      await manager
+        .getRepository(Loan)
+        .update(loan.id, { state: CREDIT_STATE.COMPLETED });
+      console.log('loan updated to completed');
+    }
+
+    console.log('transaction subscriber updated');
   }
 
 }

@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { DisputeStatus, DisputeSeverity } from '../entities/transaction-dispute.entity';
+import { TransactionSavingsAccount } from '../../transaction_saving_account/entities/transaction_saving_account.entity';
 
 class TransactionLiteDto {
   @ApiProperty()
@@ -53,5 +54,5 @@ export class TransactionDisputeDto {
   closed_at?: Date;
 
   @ApiProperty({ type: TransactionLiteDto })
-  transaction?: TransactionLiteDto;
+  transaction?: TransactionSavingsAccount;
 }
