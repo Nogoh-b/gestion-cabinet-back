@@ -190,7 +190,6 @@ export class McotiService {
 
 
   public async checkStatusPaymentWithDraw(codePaymentCash?: string): Promise<any> {
-    codePaymentCash = '88784acd-44f7-4feb-979f-bd92d6e8ea3b'
     try {
       // Get token first
       const dataToken = await this.getTokenDisbursement();
@@ -226,8 +225,16 @@ export class McotiService {
         }
       }
     } catch (error) {
+      if (error.message?.includes('403')) {
+        return null
+      }
       throw new NotFoundException(error.message);
-      this.handleApiError(error);
+      return null/* {
+              "data": null,
+              "message": "Not Found",
+              "statusCode": 404
+            }*/
+      // this.handleApiError(error);
     }
   }
 

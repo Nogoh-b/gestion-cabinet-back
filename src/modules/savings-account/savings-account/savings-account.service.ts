@@ -29,7 +29,44 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+import { DisputeStatus } from 'src/modules/transaction/transaction-dispute/entities/transaction-dispute.entity';
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @Injectable()
@@ -247,7 +284,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
-  async findOneAdmin(branch_id: number = 3): Promise<SavingsAccount> {
+  async findOneAdmin(branch_id: number = 3, withBalance =true): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE) , branch_id },
       relations: [
@@ -260,10 +297,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       ],
     }); 
     if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id}`);
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if(withBalance){
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
     return account;
   }
 
@@ -1225,7 +1264,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
         return sum + ((tx.amount | 0) + (commission | 0));
       } else if(!tx.targetSavingsAccount && tx.originSavingsAccount) {
-        if (options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') {
+        if ((options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') || (tx.has_issue && tx.status_issue != DisputeStatus.RESOLVED)) {
           return sum;
         }
         return sum - ((tx.amount | 0) + (commission | 0));
@@ -1343,7 +1382,8 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     let outgoingAmountOM = 0
     if (sa.originSavingsAccountTx) {
         sa.originSavingsAccountTx?.forEach((tx) => {
-          if(tx.status == 1){
+          // console.log('oucouming ', tx.id, ' ', tx.has_issue , ' ',tx.status_issue, ' ', (tx.status == 1  && tx.has_issue && tx.status_issue === DisputeStatus.REJECTED))
+          if((tx.status == 1 && !tx.has_issue) || (tx.status == 1  && tx.has_issue && tx.status_issue === DisputeStatus.REJECTED)){
             outgoingTransactions.push(tx);
             outgoingAmount += tx.amount
             if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
@@ -1373,7 +1413,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
                 incomingTransactionsMOMO.push(tx);
                 inComingAmountMOMO += tx.amount;
               }
-              else if(tx.provider.code === TransactionProvider.OM){
+              else if(tx.provider.code === TransactionProvider.OM){ 
                 incomingTransactionsOM.push(tx);
                 inComingAmountOM += tx.amount;
               }
@@ -1482,6 +1522,8 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
         }
         // transactions sortante
         if(!tx.targetSavingsAccount && tx.originSavingsAccount ){
+          if((tx.has_issue && tx.status_issue === DisputeStatus.RESOLVED))
+            continue
           stats.global.transactionAmountOutcomming += tx.amount
           stats.global.transactionCountOutcomming++
           if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){

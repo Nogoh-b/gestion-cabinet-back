@@ -30,6 +30,7 @@ import {
 import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { ChannelTransaction } from '../../chanel-transaction/entities/channel-transaction.entity';
 import { TransactionType } from '../../transaction_type/entities/transaction_type.entity';
+import { DisputeStatus } from '../../transaction-dispute/entities/transaction-dispute.entity';
 
 
 
@@ -144,6 +145,8 @@ export class TransactionSavingsAccount {
 
   @Column({ type: 'tinyint', default: 0 })
   status: number; // Statut : 0=En attente,1=Confirmée,2=Échouée
+  
+
 
   // @Column({ length: 45, nullable: true, default: 'code : mobile money' })
   // origin_code_transaction: string; // Code d'origine de la transaction
@@ -153,7 +156,17 @@ export class TransactionSavingsAccount {
 
   @Column({ default: false })
   is_locked: boolean; // Numéro de compte externe
+  @Column({ default: false })
+  has_issue: boolean; // Numéro de compte externe
+  @Column({ default: false })
+  is_resolved: boolean; // Numéro de compte externe
 
+  @Column({
+    type: 'enum',
+    enum: DisputeStatus,
+    default: DisputeStatus.OPEN
+  })
+  status_issue: DisputeStatus;
   @Index()
   @Column()
   channels_transaction_id: number; // Référence du canal de transaction

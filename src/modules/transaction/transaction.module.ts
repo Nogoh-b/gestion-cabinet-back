@@ -19,6 +19,17 @@ import { TransactionTypeController } from './transaction_type/transaction_type.c
 import { TransactionTypeService } from './transaction_type/transaction_type.service';
 import { TransactionTypeSeeder } from './transaction_type/transaction-type.seeder';
 import { TransactionSavingsAccountSubscriber } from './transaction_saving_account/transaction_saving_account.subscriber';
+import { TransactionDisputeController } from './transaction-dispute/transaction-dispute.controller';
+import { TransactionDisputeService } from './transaction-dispute/transaction-dispute.service';
+import { TransactionDispute } from './transaction-dispute/entities/transaction-dispute.entity';
+
+
+
+
+
+
+
+
 
 
 @Module({
@@ -29,6 +40,7 @@ import { TransactionSavingsAccountSubscriber } from './transaction_saving_accoun
   ,TypeOrmModule.forFeature([
     TransactionSavingsAccount,
     TransactionType,
+    TransactionDispute,
     ChannelTransaction,
     Sequence,
     
@@ -43,15 +55,10 @@ import { TransactionSavingsAccountSubscriber } from './transaction_saving_accoun
   forwardRef(() => CommercialModule),
   forwardRef(() => PersonnelModule),
   ProviderModule],
-  controllers: [TransactionSavingAccountController, TransactionTypeController],
-  providers: [
-    TransactionSavingsAccountService,
-    TransactionTypeService, 
-    MaintenanceProcessor ,  
-    TransactionTypeSeeder, 
-    TransactionSavingsAccountSubscriber  
-  ],
-  exports: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor , TypeOrmModule, BullModule],
+  controllers: [TransactionSavingAccountController, TransactionTypeController, TransactionDisputeController],
+  providers: [TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor ,  TransactionTypeSeeder, 
+    TransactionSavingsAccountSubscriber  , TransactionDisputeService  ],
+  exports: [TransactionDisputeService ,TransactionSavingsAccountService,TransactionTypeService, MaintenanceProcessor , TypeOrmModule, BullModule  ],
   
 })
 export class TransactionModule {}

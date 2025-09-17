@@ -23,7 +23,11 @@ import {
   GuarantyDocumentLoanDto,
   LoanDto,
 } from './dto/loan.dto';
-import { CREDIT_CODE, CREDIT_STATE, CREDIT_STATUS } from '../../../utils/types';
+import {
+  SAVING_ACCOUNT_CODE,
+  CREDIT_STATE,
+  CREDIT_STATUS,
+} from '../../../utils/types';
 import { LoanService } from './loan.service';
 import { Loan } from './entities/loan.entity';
 import { User } from '../../iam/user/entities/user.entity';
@@ -37,12 +41,11 @@ import { CustomersService } from '../../customer/customer/customer.service';
 import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SavingsAccount } from '../../savings-account/savings-account/entities/savings-account.entity';
+import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
 import { Repository } from 'typeorm';
 
 import { PaginationQueryTxDto } from '../../../core/shared/dto/pagination-query.dto';
-import {
-  TransactionSavingsAccount
-} from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { TransactionSavingsAccount } from '../../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 @Controller('loan')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -51,6 +54,7 @@ export class LoanController {
   constructor(
     private readonly loanService: LoanService,
     private readonly typeCreditService: TypeCreditService,
+    private readonly savingAccountService: SavingsAccountService,
     private readonly customersService: CustomersService,
     private readonly transactionService: TransactionSavingsAccountService,
     @InjectRepository(SavingsAccount)
@@ -321,7 +325,8 @@ export class LoanController {
     if (!typeGuaranty.typeOfDocument)
       throw new ForbiddenException({
         success: false,
-        message: "This guaranty doesn't link to a type of document, operation failed!",
+        message:
+          "This guaranty doesn't link to a type of document, operation failed!",
         status: HttpStatus.FORBIDDEN,
       });
     return await this.loanService.setGuarantiesDocumentsToLoan(
@@ -419,7 +424,7 @@ export class LoanController {
         id: Number(credit_account_id),
         customer: { id: customerId },
         type_savings_account: {
-          code: CREDIT_CODE,
+          code: SAVING_ACCOUNT_CODE.CREDIT,
         },
       },
     });
@@ -441,7 +446,7 @@ export class LoanController {
     if (!result.hasOwnProperty('success'))
       throw new ForbiddenException({
         success: false,
-        message: 'You have a Loan in processing',
+        message: 'You have a Loan in processing or incomplete',
         status: HttpStatus.FORBIDDEN,
       });
     const typeCredit =
@@ -450,22 +455,19 @@ export class LoanController {
       throw new ForbiddenException({
         ...typeCredit,
       });
-    const transaction = await this.transactionService
-      .findOne(reference);
+    const transaction = await this.transactionService.findOne(reference);
     const tc = typeCredit as TypeCredit;
-    if (transaction.amount !== tc.fee)
+    if (
+      transaction.amount !== tc.fee ||
+      transaction.targetSavingsAccount?.number_savings_account !==
+        SAVING_ACCOUNT_CODE.PRODUCT
+    )
       throw new ForbiddenException({
         status: HttpStatus.NOT_ACCEPTABLE,
         success: false,
         message: 'Please make your payment before to get the loan',
       });
     const customer = await this.customersService.findOne(customerId);
-    if (customer.id !== transaction.targetSavingsAccount?.customer.id)
-      throw new ForbiddenException({
-        status: HttpStatus.NOT_ACCEPTABLE,
-        success: false,
-        message: 'This payment not match',
-      });
     console.log('Document of guaranty', customer);
     if (customer.cote < (typeCredit as TypeCredit).eligibility_rating)
       throw new ForbiddenException({
@@ -473,7 +475,7 @@ export class LoanController {
         message: "You don't have eligibility rating",
         status: HttpStatus.FORBIDDEN,
       });
-    return await this.loanService.createLoan({
+    const loan = await this.loanService.createLoan({
       duringMax: Number(duringMax),
       amount: Number(amount),
       object,
@@ -484,6 +486,11 @@ export class LoanController {
       credit_account: { id: creditAccount.id },
       typeCredit,
     } as Loan);
+    if (loan.hasOwnProperty('success'))
+      throw new NotAcceptableException({
+        ...loan,
+      });
+    return loan;
   }
 
   @Get('simulate/:typeCreditId')

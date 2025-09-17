@@ -4,7 +4,7 @@ import { PaginatedResult } from 'src/core/shared/interfaces/pagination.interface
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { DocumentType, DocumentTypeStatus } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { DocumentSavingAccount } from 'src/modules/savings-account/document-saving-account/entities/document-saving-account.entity';
 
 
@@ -210,10 +210,13 @@ export class DocumentSavingAccountService {
     entity.status = dto.status ?? 0;
     entity.file_path = uploadedFile.fileName;
     entity.file_size = uploadedFile.fileSize;
-    entity.savings_account = plainToInstance(SavingsAccount,sa);
+    entity.savings_account = plainToInstance(SavingsAccount,sa); 
     entity.status = DocumentSavingAccountStatus.PENDING;
 
-    return this.repo.save(entity);
+    const doc = await  this.repo.save(entity);
+    await this.validateDocument(doc.id)
+    doc.status = DocumentTypeStatus.ACCEPTED
+    return doc
   }
 
 
