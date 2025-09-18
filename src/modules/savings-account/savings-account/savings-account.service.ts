@@ -1327,7 +1327,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
         return sum + ((tx.amount | 0) + (commission | 0));
       } else if(!tx.targetSavingsAccount && tx.originSavingsAccount) {
-        if ((options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') || (tx.has_issue && tx.status_issue != DisputeStatus.RESOLVED)) {
+        if ((options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') || (tx.has_issue && tx.status_issue === DisputeStatus.RESOLVED)) {
           return sum;
         }
         return sum - ((tx.amount | 0) + (commission | 0));
