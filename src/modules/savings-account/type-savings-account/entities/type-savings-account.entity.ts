@@ -58,6 +58,9 @@ export class TypeSavingsAccount extends BaseEntity {
   @Column({ type: 'double', nullable: true })
   commission_dg: number;
 
+  @Column({ type: 'double', nullable: true, default: 20.0 })
+  commission_sub_commercial: number;
+
   @Column({ type: 'double', nullable: true })
   commission_pca: number;
 

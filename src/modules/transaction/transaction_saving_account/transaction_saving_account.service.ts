@@ -2023,19 +2023,33 @@ qb.andWhere('transactionType.id IS NOT NULL');
     );
     const provider_open_product = await this.providerService.findOne('SYSTEM');
 
+
+    let amount = Math.floor(
+        (target.type_savings_account.minimum_balance *
+          target.type_savings_account.commission_per_product) / 100,
+      )
+    let sub_amount = 0
+    console.log('commercial_commission ', comercial)
+    if(comercial?.sub_code){
+      sub_amount = Math.floor((amount * target.type_savings_account.commission_sub_commercial) / 100)
+      amount -= sub_amount
+    }else{
+      amount = Math.floor(
+        (target.type_savings_account.minimum_balance *
+          target.type_savings_account.commission_per_product) / 100,
+      )
+    }
+
     const fifth_tx = new TransactionSavingsAccount();
     Object.assign(fifth_tx, {
       ...tx_data,
-      amount: Math.floor(
-        (target.type_savings_account.minimum_balance *
-          target.type_savings_account.commission_per_product) / 100,
-      ),
+      amount,
       transactionType: tx_type_partner,
       provider: provider_open_product,
       targetSavingsAccount: comercial?.savings_account,
       target: comercial?.savings_account.number_savings_account,
       originSavingsAccount: admin_sa,
-      origin: tx_parent.targetSavingsAccount?.number_savings_account ?? 'SYSTEM',
+      origin: admin_sa?.number_savings_account ?? 'SYSTEM',
       commercial_code: target.commercial_code,
       payment_code: await this.generateUniquePaymentCode(),
       payment_token_provider: await this.generateUniquePaymentTokenProvider(),
@@ -2045,10 +2059,51 @@ qb.andWhere('transactionType.id IS NOT NULL');
       status: TransactionSavingsAccountStatus.VALIDATE,
       status_provider: PaymentStatusProvider.SUCCESSFULL,
     });
-
     if (chanel_open_product) fifth_tx.channelTransaction = chanel_open_product;
 
     await entity_manager.save(fifth_tx);
+    if(comercial?.sub_code){
+      console.log('commercial_sub_commission ', comercial)
+      const sub_comercial = await this.personnelService.findOneByCode(comercial?.sub_code, false)
+      const unicity = await this.checkUniquenessPairs({
+        commercial_code: sub_comercial?.code,
+        origin: tx_parent.targetSavingsAccount?.number_savings_account ?? 'SYSTEM',
+      });
+
+      const nb_created = sub_comercial
+        ? (await this.savingsAccountService.accountCreatedByCommercial(sub_comercial.code)).length
+        : 0;
+
+      const eligible =
+        sub_comercial &&
+        sub_comercial.savings_account &&
+        !unicity.commercialConflict &&
+        ((sub_comercial.is_intern && nb_created > 10) || !sub_comercial.is_intern);
+
+      if (!eligible) return { comercial :sub_comercial };
+
+      const { 
+        id, 
+        ...restTxData 
+      } = tx_data;
+
+      const fifth_tx_copy = new TransactionSavingsAccount();
+      Object.assign(fifth_tx_copy, {
+        ...restTxData,
+        amount:sub_amount,
+        targetSavingsAccount :sub_comercial.savings_account, 
+        target: sub_comercial.savings_account.number_savings_account, 
+        commercial_code : comercial.sub_code, 
+        payment_code: await this.generateUniquePaymentCode(),
+        payment_token_provider: await this.generateUniquePaymentTokenProvider(),
+        reference: await this.formatTransactionReference(tx_type_partner, provider_open_product.code),
+        personnel: sub_comercial,
+      });
+      await entity_manager.save(fifth_tx_copy);
+
+    }
+
+
     return { comercial };
   }
 

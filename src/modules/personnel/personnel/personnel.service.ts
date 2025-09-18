@@ -122,6 +122,10 @@ export class PersonnelService extends BaseService<Personnel> {
     if (!savings_account) throw new NotFoundException('Associated savings account online not found');
 
     let code: any = null;
+    if(dto.sub_code){
+      if(type.code != PersonnelTypeCode.COMMERCIAL)
+        dto.sub_code = null
+    }
 
     if (type.code === PersonnelTypeCode.COMMERCIAL) {
       const max = await this.personnel_repository

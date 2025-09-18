@@ -36,7 +36,7 @@ export class TransactionSavingsAccountSubscriber implements EntitySubscriberInte
       const tx = event.entity
         console.log('afterInsert111 ', tx.provider_code === TransactionProvider.OM);
         if((tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM) && !tx.has_issue ){
-          this.transactionSavingsAccountService.repeatEvery(15, 3, async () => {
+          this.transactionSavingsAccountService.repeatEvery(30, 3, async () => {
                 console.log('Tâche exécutée à', event.entity.channelTransaction.code , ' ', event.entity.originSavingsAccount ,  ' ',event.entity.targetSavingsAccount);
                 try {
                   const tx1 = await this.transactionSavingsAccountService.checkWthDraw(event.entity.reference);
