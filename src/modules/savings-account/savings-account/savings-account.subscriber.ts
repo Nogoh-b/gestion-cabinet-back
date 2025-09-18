@@ -31,8 +31,8 @@ export class SavingsAccountSubscriber implements EntitySubscriberInterface<Savin
   async afterInsert(event: InsertEvent<SavingsAccount>) {
     console.log('afterInsert111 ', event.entity.id);
     
-      const tx = await this.transactionSavingsAccountService.findOne(211);
-      console.log('Found account:', tx);
+     /* const tx = await this.transactionSavingsAccountService.findOne(211);
+      console.log('Found account:', tx);*/
     try {
       // Utilisation du service injecté
 
