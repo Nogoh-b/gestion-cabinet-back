@@ -31,40 +31,7 @@ import { SavingsAccountHasInterest } from './entities/account-has-interest.entit
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
 import { DisputeStatus } from 'src/modules/transaction/transaction-dispute/entities/transaction-dispute.entity';
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { AccountOverdraftService } from '../account-overdraft/account-overdraft.service';
 
 
 
@@ -91,6 +58,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @InjectRepository(SavingsAccountHasInterest)
     private readonly interestRepo: Repository<SavingsAccountHasInterest>, 
     private typeSavingAcount : TypeSavingsAccountService,
+    private accountOverdraftService : AccountOverdraftService,
     @Inject(forwardRef(() => TransactionSavingsAccountService))
     private transactionSavingsAccountService : TransactionSavingsAccountService,
     private paginationService: PaginationService,
@@ -2005,9 +1973,13 @@ async accountCreatedByCommercial(commercial_code: string): Promise<SavingsAccoun
       return true
   }
 
-    findAllTrans(branch_id: number | null): 
+  findAllTrans(branch_id: number | null): 
     Promise<TransactionSavingsAccount[]> {
   
       return this.transactionSavingsAccountService.findAllTrans(branch_id)
-    }
+  }
+
+  async getCurrentOverdraft(accountId: number): Promise<number> {
+    return this.accountOverdraftService.getCurrentOverdraft(accountId)
+  }
 }
