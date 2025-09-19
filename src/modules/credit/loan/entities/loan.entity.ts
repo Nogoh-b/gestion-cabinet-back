@@ -59,7 +59,9 @@ export class Loan extends BaseEntity {
   })
   comment: string;
   //
-  @Column()
+  @Column({
+    unique: true,
+  })
   reference: string;
   //
   @ManyToOne(() => User, (type) => type.loanInit, { nullable: true })

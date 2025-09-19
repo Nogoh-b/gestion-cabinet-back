@@ -107,7 +107,7 @@ export class PaginationQueryTxDto extends PaginationQueryDto {
 
   @ApiPropertyOptional({
     description: 'Filtrer uniquement les transactions de crédit',
-    enum: ['MOMO', 'OM', 'INTERNAL'],         // Swagger affichera un select true/false
+    enum: ['MOMO', 'OM', 'INTERNAL', 'SAVING_PROJECT'],         // Swagger affichera un select true/false
   })
 
   @IsOptional()
@@ -129,6 +129,7 @@ export class PaginationQueryTxDto extends PaginationQueryDto {
   step_saving_project?: number;
   tx_type?: string;
   id?: number;
+  countLockeckTx?: boolean;
   promo_code?: string;
   commercial_code?: number;
 }

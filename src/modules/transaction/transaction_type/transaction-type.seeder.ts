@@ -151,6 +151,22 @@ export class TransactionTypeSeeder {
         is_credit: 1,
         fee_percentage: 0.0,
         status: 1,
+      },         
+      {
+        code: 'BUY_SAVING_PROJECT',
+        name: 'Paiement pour un projet d\'épargne',
+        description: 'Paiement d\'une épargne dans le cadre d\'un projet',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
+      },         
+      {
+        code: 'BUY_PENALITY_SAVING_PROJECT',
+        name: 'Paiement de penalité pour un projet d\'épargne',
+        description: 'Paiement d\'une pénalité dans le cadre d\'un projet',
+        is_credit: 1,
+        fee_percentage: 0.0,
+        status: 1,
       },
       {
         "code": "PROJECT_DEPOSIT",

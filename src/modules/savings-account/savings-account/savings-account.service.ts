@@ -4,59 +4,33 @@ import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'sr
 import { OtpService } from 'src/core/shared/services/otp/otp.service';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { BaseService } from 'src/core/shared/services/search/base.service';
-
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
-
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-
-
-
-
-
-
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
-
-
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
-
-
 import { Ressource } from 'src/modules/ressource/ressource/entities/ressource.entity';
-
-
 import { RessourceService } from 'src/modules/ressource/ressource/ressource.service';
-
-
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
-
-import { FilterTxOptions, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-
+import { FilterTxOptions, PaymentStatus, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
-
-
 import { TransactionChannel, TransactionCode, TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
-
-
 import { Not, Repository } from 'typeorm';
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountService } from '../type-savings-account/type-savings-account.service';
-import { AssignInterestRangeDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
+import { AssignInterestRangeDto, CheckInitTxParamDto, CreateSavingsAccountDto } from './dto/create-savings-account.dto';
 import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
+import { DisputeStatus } from 'src/modules/transaction/transaction-dispute/entities/transaction-dispute.entity';
+import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 import { AccountOverdraftService } from '../account-overdraft/account-overdraft.service';
 
 
@@ -278,7 +252,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
-  async findOneAdmin(branch_id: number = 3): Promise<SavingsAccount> {
+  async findOneAdmin(branch_id: number = 3, withBalance =true): Promise<SavingsAccount> {
     const account = await this.repo.findOne({
       where: { is_admin : true , status : Not(SavingsAccountStatus.DEACTIVATE) , branch_id },
       relations: [
@@ -291,10 +265,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       ],
     }); 
     if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id}`);
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if(withBalance){
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
     return account;
   }
 
@@ -879,7 +855,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     exact?: boolean,
     from?: string,
     to?: string, txTypeCode?: string,
-    type?: string): Promise<PaginatedResult<TransactionSavingsAccount>> {
+    type?: string,branch_id = 0,status?: number): Promise<PaginatedResult<TransactionSavingsAccount>> {
       return this.transactionSavingsAccountService.findAllByType(
                                                   page,
                                                   limit,
@@ -887,7 +863,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
                                                   fields,
                                                   exact,
                                                   from,
-                                                  to,txTypeCode,type,id)
+                                                  to,txTypeCode,type,id,status)
       if (!this.txRepo) {
         throw new Error('Transaction repository is not available');
       }
@@ -1256,7 +1232,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
         return sum + ((tx.amount | 0) + (commission | 0));
       } else if(!tx.targetSavingsAccount && tx.originSavingsAccount) {
-        if (options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') {
+        if ((options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') || (tx.has_issue && tx.status_issue === DisputeStatus.RESOLVED)) {
           return sum;
         }
         return sum - ((tx.amount | 0) + (commission | 0));
@@ -1284,10 +1260,11 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
   }
 
 
-  async checkInitTransaction(code: string) {
+  async checkInitTransaction(code: string, query? : CheckInitTxParamDto | null) {
     const sa = await this.findOneByCode(code, true);
     const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
-      .filter(tx => tx.status === 0 && 
+      .filter(
+        tx => tx.status === 0 && 
         (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
       );
 
@@ -1299,6 +1276,33 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     );
 
     return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
+  }
+
+  async checkInitTransactionProjetEpargne(code: string, query? : CheckInitTxParamDto | null) {
+    let has_init_tx = false
+    const sa = await this.findOneByCode(code, true);
+    const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
+      .filter(
+        tx => {
+          return tx.transactionType.code === TransactionCode.BUY_SAVING_PROJECT && tx.status == PaymentStatus.SUCCESSFULL && Number(tx.tx_project_id) === Number(query?.tx_project_id)&&
+          // tx => tx.transactionType.code === query?.txType &&  tx.tx_project_id === query.tx_project_id &&
+          (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
+        }
+      );
+
+      await Promise.all(
+        filteredTxs.map(async (tx) => {
+          console.log('checkInitTransaction ', tx.reference);
+          const tx1 = await this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
+          if (tx1.status === PaymentStatus.SUCCESSFULL) {
+            has_init_tx = true;
+          }
+          return tx1;
+        })
+      );
+
+
+    return has_init_tx;
   }
 
 
@@ -1346,7 +1350,8 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
     let outgoingAmountOM = 0
     if (sa.originSavingsAccountTx) {
         sa.originSavingsAccountTx?.forEach((tx) => {
-          if(tx.status == 1){
+          // console.log('oucouming ', tx.id, ' ', tx.has_issue , ' ',tx.status_issue, ' ', (tx.status == 1  && tx.has_issue && tx.status_issue === DisputeStatus.REJECTED))
+          if((tx.status == 1 && !tx.has_issue) || (tx.status == 1  && tx.has_issue && tx.status_issue === DisputeStatus.REJECTED)){
             outgoingTransactions.push(tx);
             outgoingAmount += tx.amount
             if(tx.transactionType.code === TransactionCode.INTERNAL_TRANSFER ){
@@ -1376,7 +1381,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
                 incomingTransactionsMOMO.push(tx);
                 inComingAmountMOMO += tx.amount;
               }
-              else if(tx.provider.code === TransactionProvider.OM){
+              else if(tx.provider.code === TransactionProvider.OM){ 
                 incomingTransactionsOM.push(tx);
                 inComingAmountOM += tx.amount;
               }
@@ -1403,13 +1408,13 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
 
   }
 
-  async statsV1(code: string): Promise<any> {
+  async statsV1(code: string, query : PaginationQueryTxDto): Promise<any> {
   
       const sa = await this.findOneByCode(code)
   
       const id = sa.id
-      const txs = await this.getTransactions(id)
-  
+      query.id = id
+      const txs = await this.transactionSavingsAccountService.findAllByTypeV2(undefined,undefined,undefined,undefined,undefined,undefined,undefined,query)
       let  stats = {
         online : {
           om : {
@@ -1462,7 +1467,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       }
   
       for (const tx of txs) {
-        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.is_locked)
+        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || (tx.is_locked && !query.countLockeckTx))
           continue
         // transactions entrantes
         if(tx.targetSavingsAccount && !tx.originSavingsAccount ){
@@ -1485,6 +1490,8 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
         }
         // transactions sortante
         if(!tx.targetSavingsAccount && tx.originSavingsAccount ){
+          if((tx.has_issue && tx.status_issue === DisputeStatus.RESOLVED))
+            continue
           stats.global.transactionAmountOutcomming += tx.amount
           stats.global.transactionCountOutcomming++
           if(!tx.branch_id && tx.provider.code === TransactionProvider.MOMO || tx.provider.code === TransactionProvider.OM ){
