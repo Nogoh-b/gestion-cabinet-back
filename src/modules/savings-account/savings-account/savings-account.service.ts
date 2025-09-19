@@ -48,42 +48,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { DocumentSavingAccountStatus } from '../document-saving-account/document-saving-account.service';
 import { InterestSavingAccount } from '../interest-saving-account/entities/interest-saving-account.entity';
 import { TypeSavingsAccount } from '../type-savings-account/entities/type-savings-account.entity';
@@ -93,40 +57,7 @@ import { SavingsAccountResponseDto } from './dto/response-savings-account.dto';
 import { UpdateSavingsAccountDto } from './dto/update-savings-account.dto';
 import { SavingsAccountHasInterest } from './entities/account-has-interest.entity';
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { AccountOverdraftService } from '../account-overdraft/account-overdraft.service';
 
 
 
@@ -153,6 +84,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @InjectRepository(SavingsAccountHasInterest)
     private readonly interestRepo: Repository<SavingsAccountHasInterest>, 
     private typeSavingAcount : TypeSavingsAccountService,
+    private accountOverdraftService : AccountOverdraftService,
     @Inject(forwardRef(() => TransactionSavingsAccountService))
     private transactionSavingsAccountService : TransactionSavingsAccountService,
     private paginationService: PaginationService,
@@ -2034,9 +1966,13 @@ async accountCreatedByCommercial(commercial_code: string): Promise<SavingsAccoun
       return true
   }
 
-    findAllTrans(branch_id: number | null): 
+  findAllTrans(branch_id: number | null): 
     Promise<TransactionSavingsAccount[]> {
   
       return this.transactionSavingsAccountService.findAllTrans(branch_id)
-    }
+  }
+
+  async getCurrentOverdraft(accountId: number): Promise<number> {
+    return this.accountOverdraftService.getCurrentOverdraft(accountId)
+  }
 }
