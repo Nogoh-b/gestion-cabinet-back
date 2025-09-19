@@ -912,16 +912,16 @@ qb.andWhere('transactionType.id IS NOT NULL');
     const avalaible_balance = account
       ? await this.savingsAccountService.avalaibleBalance(account.id)
       : 0;
-
+    const overdraftBalance = await this.savingsAccountService.getCurrentOverdraft(account.id)
     if (
       (account != null &&
-        avalaible_balance < amount &&
-        this.can_refuse_transaction_type_for_debit(txTypeCode , target?.is_admin)) || amount < await this.savingsAccountService.getCurrentOverdraft(account.id)
+        avalaible_balance  - overdraftBalance < amount &&
+        this.can_refuse_transaction_type_for_debit(txTypeCode , target?.is_admin)) || amount < overdraftBalance
     ) {
       throw new BadRequestException(
-        `Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
-      );
-    }
+        `Solde insuffisant vous avez uniquement ${avalaible_balance  - overdraftBalance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
+      );  
+    }  
 
     // On suppose que `account.activeInterest` a déjà été calculé via @AfterLoad()
     const active = account?.activeInterest;

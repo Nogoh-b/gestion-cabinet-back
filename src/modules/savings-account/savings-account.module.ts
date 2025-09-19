@@ -32,6 +32,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
 import { AccountOverdraftController } from './account-overdraft/account-overdraft.controller';
 import { AccountOverdraftService } from './account-overdraft/account-overdraft.service';
 import { AccountOverdraft } from './account-overdraft/entities/account-overdraft.entity';
+import { SavingsAccountSubscriber } from './savings-account/savings-account.subscriber';
 
 @Module({
   imports: [
