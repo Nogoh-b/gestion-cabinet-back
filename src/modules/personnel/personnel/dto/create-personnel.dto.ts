@@ -1,4 +1,4 @@
-import { IsInt, Length } from 'class-validator';
+import { IsInt, IsOptional, Length } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 
@@ -24,6 +24,11 @@ export class CreatePersonnelDto {
   @Length(1, 20)
   @ApiProperty({ example: 'PROMO2025CODEX' })
   code: string;
+
+  @Length(1, 20)
+  @IsOptional()
+  @ApiProperty({ example: 'PROMO2025CODEX' })
+  sub_code?: string | null;
 
   status : number
 }
