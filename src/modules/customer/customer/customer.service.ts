@@ -42,6 +42,8 @@ import {
   CustomerCreatedFrom,
   CustomerStatus,
 } from './entities/customer.entity';
+import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
+import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 
 @Injectable()
 export class CustomersService extends BaseService<Customer> {
@@ -60,6 +62,7 @@ export class CustomersService extends BaseService<Customer> {
     private documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => BranchService))
     private branchService: BranchService,
+    private paginationService: PaginationService,
     private readonly dataSource: DataSource,
   ) {
     console.log(forwardRef);
@@ -184,6 +187,47 @@ export class CustomersService extends BaseService<Customer> {
       relations: ['type_customer', 'location_city'],
     });
     return plainToInstance(CustomerResponseDto, customers);
+  }
+
+  async findAllV2(page = 1, limit = 10,
+    term?: string,
+    fields?: string[],
+    exact?: boolean,
+    from?: string,
+    to?: string): Promise<PaginatedResult<CustomerResponseDto>>  {
+
+    const qb = this.customerRepository
+      .createQueryBuilder('c')
+      .leftJoinAndSelect('c.branch', 'branch')
+      .leftJoinAndSelect('c.loans', 'loans')
+      .leftJoinAndSelect('c.type_customer', 'type_customer')
+      .leftJoinAndSelect('c.location_city', 'location_city')
+
+      const options: PaginationOptions & {
+        search?: SearchOptions;
+        dateRange?: DateRange;
+      } = { page, limit };
+      if (term) options.search = { term, fields, exact };
+      if (from || to)
+        options.dateRange = {
+          from: from ? new Date(from) : undefined,
+          to: to ? new Date(to) : undefined,
+        };
+      console.log('------options---- ', options);
+      const result = await this.paginationService.paginate(qb, options);
+
+      // transformer chaque item en DTO
+      return {
+        ...result,
+        data: result.data.map((customer) =>
+          plainToInstance(CustomerResponseDto, customer, { excludeExtraneousValues: true })
+        ),
+      };
+
+    /*const customers = await this.customerRepository.find({
+      relations: ['type_customer', 'location_city'],
+    });
+    return plainToInstance(CustomerResponseDto, customers);*/
   }
 
   async findOne(id: number): Promise<CustomerResponseDto> {
@@ -338,7 +382,15 @@ export class CustomersService extends BaseService<Customer> {
   }
 
   // ...
+  async emailExists(email: string): Promise<boolean> {
+    if (!email) return false; // sécurité si email est vide
+    
+    const customer = await this.customerRepository.findOne({
+      where: { email },
+    });
 
+    return !!customer; // true si trouvé, false sinon
+  }
   async findCustomersWithMissingKyc() {
     return await this.customerRepository
       .createQueryBuilder('c')
