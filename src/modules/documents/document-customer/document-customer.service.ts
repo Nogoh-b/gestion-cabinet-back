@@ -45,6 +45,7 @@ import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
 
 
 
@@ -212,6 +213,13 @@ export class DocumentCustomerService extends BaseService<DocumentCustomer> {
     return savedDocs
 
 
+  }
+
+
+
+
+  async findCustomerByCode(code: string): Promise<CustomerResponseDto> {
+    return await  this.customerService.findOneByCode(code)
   }
 
 
