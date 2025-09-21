@@ -45,6 +45,7 @@ export class DocumentCustomerController {
     description: 'Upload document',
     type: CreateDocumentCustomerDto,
   })
+  
   @ApiResponse({ status: 201, description: 'Document créé' })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async create(
@@ -53,6 +54,27 @@ export class DocumentCustomerController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.service.create({ ...dto, customer_id, file });
+  }
+
+
+  @Post('/add-document/by-code')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Upload document',
+    type: CreateDocumentCustomerDto,
+  })
+  
+  @ApiResponse({ status: 201, description: 'Document créé' })
+  @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  async createByCode(
+    @Param('code') code: string,
+    @Param('customer_id') customer_id: string,
+    @Body() dto: CreateDocumentCustomerDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const customer  = await this.service.findCustomerByCode(code)
+    return this.create(customer.id, dto, file);
   }
 
   @Get('/validate-document/:document_id')

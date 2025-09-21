@@ -94,7 +94,7 @@ dotenv.config();
     // CommercialModule,
     RessourceModule,
     PersonnelModule,
-    CreditModule,
+    CreditModule
   ],
   controllers: [AppController],
   providers: [AppService],

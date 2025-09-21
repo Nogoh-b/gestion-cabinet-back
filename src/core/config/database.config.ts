@@ -20,6 +20,7 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     database: process.env.DB_NAME ??  'core_banking',  
     synchronize: false,
     // subscribers: [join(__dirname, '../../**/*.subscriber{.ts,.js}')],
+    // subscribers: [join(__dirname, '../../**/*.subscriber{.ts,.js}')],
     entities: [join(__dirname, '../../**/*.entity{.ts,.js}')],
     logging: ["error",], 
     // logging: ["query", "error", "schema"], 

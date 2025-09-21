@@ -31,40 +31,7 @@ import { SavingsAccountHasInterest } from './entities/account-has-interest.entit
 import { SavingsAccount, SavingsAccountStatus } from './entities/savings-account.entity';
 import { DisputeStatus } from 'src/modules/transaction/transaction-dispute/entities/transaction-dispute.entity';
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { AccountOverdraftService } from '../account-overdraft/account-overdraft.service';
 
 
 
@@ -91,6 +58,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     @InjectRepository(SavingsAccountHasInterest)
     private readonly interestRepo: Repository<SavingsAccountHasInterest>, 
     private typeSavingAcount : TypeSavingsAccountService,
+    private accountOverdraftService : AccountOverdraftService,
     @Inject(forwardRef(() => TransactionSavingsAccountService))
     private transactionSavingsAccountService : TransactionSavingsAccountService,
     private paginationService: PaginationService,
@@ -1264,7 +1232,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
         return sum + ((tx.amount | 0) + (commission | 0));
       } else if(!tx.targetSavingsAccount && tx.originSavingsAccount) {
-        if ((options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') || (tx.has_issue && tx.status_issue != DisputeStatus.RESOLVED)) {
+        if ((options.balanceType === 'total' && tx.transactionType?.code === 'MIN_BALANCE') || (tx.has_issue && tx.status_issue === DisputeStatus.RESOLVED)) {
           return sum;
         }
         return sum - ((tx.amount | 0) + (commission | 0));
@@ -2005,9 +1973,13 @@ async accountCreatedByCommercial(commercial_code: string): Promise<SavingsAccoun
       return true
   }
 
-    findAllTrans(branch_id: number | null): 
+  findAllTrans(branch_id: number | null): 
     Promise<TransactionSavingsAccount[]> {
   
       return this.transactionSavingsAccountService.findAllTrans(branch_id)
-    }
+  }
+
+  async getCurrentOverdraft(accountId: number): Promise<number> {
+    return this.accountOverdraftService.getCurrentOverdraft(accountId)
+  }
 }
