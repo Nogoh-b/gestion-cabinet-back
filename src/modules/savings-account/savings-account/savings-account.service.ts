@@ -221,7 +221,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     data,
   };
   }
-  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount | any> {
         const relations = [
       'customer',
       'type_savings_account',
