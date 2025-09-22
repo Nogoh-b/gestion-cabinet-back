@@ -41,7 +41,7 @@ export class Personnel extends BaseEntity {
   @Column({ type: 'boolean', nullable: true, default: false })
   is_intern: boolean | null;
 
-  @Column({ length: 20, unique: true, nullable: true })
+  @Column({ length: 150, unique: true, nullable: true })
   code: string;
 
   @Column({ nullable: false })
