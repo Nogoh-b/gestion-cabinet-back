@@ -326,19 +326,23 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    // if (all) {
+     if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
-    // }
+     }
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations,
     });
-    if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
-    // Mise a jour des soldes
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if (all) {
+      if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
+      // Mise a jour des soldes
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
+
+
 
     /*const sa = await this.updateCodeCash(account.id)
     if(sa && sa.code_cash)
