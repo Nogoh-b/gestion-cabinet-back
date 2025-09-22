@@ -252,9 +252,9 @@ export class TransactionSavingsAccount {
   @JoinColumn({ name: 'promo_code', referencedColumnName: 'code' })
   partner: Personnel | null; // Relation vers SavingsAccount
 
-  @ManyToOne(() => Personnel)
+  /*@ManyToOne(() => Personnel)
   @JoinColumn({ name: 'commercial_code', referencedColumnName: 'code' })
-  commercial: Personnel | null; // Relation vers SavingsAccount
+  commercial: Personnel | null; // Relation vers SavingsAccount*/
 
   /*@ManyToOne(() => Partner, acc => acc.transactions, {eager: true  })
   @JoinColumn({ name: 'partner_id', referencedColumnName: 'promo_code' })
