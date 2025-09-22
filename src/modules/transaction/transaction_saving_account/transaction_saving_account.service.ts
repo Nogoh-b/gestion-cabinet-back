@@ -1010,7 +1010,7 @@ export class TransactionSavingsAccountService {
     }
 
     const avalaible_balance = account
-      ? await this.savingsAccountService.avalaibleBalance(account.id)
+      ? account.avalaible_balance//await this.savingsAccountService.avalaibleBalance(account.id)
       : 0;
 
     if (
