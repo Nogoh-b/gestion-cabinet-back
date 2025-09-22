@@ -35,13 +35,13 @@ export class Personnel extends BaseEntity {
   @ApiProperty({ type: () => SavingsAccount })
   savings_account: SavingsAccount;
 
-  @Column({ length: 20, nullable: true })
+  @Column({ length: 150, nullable: true })
   name: string;
 
   @Column({ type: 'boolean', nullable: true, default: false })
   is_intern: boolean | null;
 
-  @Column({ length: 150, unique: true, nullable: true })
+  @Column({ length: 20, unique: true, nullable: true })
   code: string;
 
   @Column({ nullable: false })
