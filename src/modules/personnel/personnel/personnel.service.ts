@@ -120,8 +120,13 @@ export class PersonnelService extends BaseService<Personnel> {
     // Toujours récupérer le compte épargne en ligne
     const savings_account = await this.savings_account_service.findFirstOnlineByCustomer(dto.customer_id);
     if (!savings_account) throw new NotFoundException('Associated savings account online not found');
-
+    console.log(dto)
     let code: any = null;
+    let sub_code: any = dto.sub_code ?? null;
+    if(dto.sub_code){
+      if(type.code != PersonnelTypeCode.COMMERCIAL)
+        sub_code = null
+    }
 
     if (type.code === PersonnelTypeCode.COMMERCIAL) {
       const max = await this.personnel_repository
@@ -158,6 +163,7 @@ export class PersonnelService extends BaseService<Personnel> {
       savings_account,
       type_personnel: type,
       name : dto.name,
+      sub_code,
       status : 1,
       is_intern : dto.is_intern,
     });

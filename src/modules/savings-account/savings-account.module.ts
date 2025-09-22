@@ -25,11 +25,14 @@ import { SavingsAccountHasInterest } from './savings-account/entities/account-ha
 import { SavingsAccount } from './savings-account/entities/savings-account.entity';
 import { SavingsAccountController } from './savings-account/savings-account.controller';
 import { SavingsAccountService } from './savings-account/savings-account.service';
-import { SavingsAccountSubscriber } from './savings-account/savings-account.subscriber';
 import { TypeHasDocument } from './type-savings-account/entities/type-has-document.entity';
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
+import { AccountOverdraftController } from './account-overdraft/account-overdraft.controller';
+import { AccountOverdraftService } from './account-overdraft/account-overdraft.service';
+import { AccountOverdraft } from './account-overdraft/entities/account-overdraft.entity';
+import { SavingsAccountSubscriber } from './savings-account/savings-account.subscriber';
 
 @Module({
   imports: [
@@ -47,6 +50,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,
+      AccountOverdraft,
       TypeHasDocument,
       Commission,
       InterestSavingAccount,
@@ -60,6 +64,7 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
     InterestSavingAccountController,
     TypeSavingsAccountController,
     SavingsAccountController,
+    AccountOverdraftController
   ],
   providers: [
     DocumentSavingAccountService,
@@ -68,14 +73,16 @@ import { TypeSavingsAccountService } from './type-savings-account/type-savings-a
     InterestSavingAccountService,
     SavingsAccountService,
     SavingsAccountSubscriber,
+    AccountOverdraftService
   ],
   exports: [
-    DocumentSavingAccountService,
     TypeSavingsAccountService,
+    SavingsAccountService,
+    DocumentSavingAccountService,
     CommissionService,
     InterestSavingAccountService,
-    SavingsAccountService,
     TypeOrmModule,
+    AccountOverdraftService
   ],
 })
 export class SavingsAccountModule {}
