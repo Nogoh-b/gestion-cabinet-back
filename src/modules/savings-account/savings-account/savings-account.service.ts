@@ -315,7 +315,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     data,
   };
   }
-  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount | any> {
         const relations = [
       'customer',
       'type_savings_account',
@@ -400,7 +400,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
-  async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount | any> {
     const relations = [
       'customer',
       'type_savings_account',
@@ -411,20 +411,24 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    // if (all) {
+     if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx'); 
-    // }
+     }
 
 
     const account = await this.repo.findOne({
       where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
       relations,
     });
-    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if (all) {
+      if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
+
+
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
