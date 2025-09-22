@@ -735,6 +735,21 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     // return await this.calculateAvailableBalance(account,tx) ;
   }
 
+  async avalaibleBalanceByCodeV2(number_savings_account: string, query: PaginationQueryTxDto): Promise<any> {
+    console.log("avalaibleBalanceByCodeV2_dto ", query)
+    const account = await this.repo.findOne({
+      where: { number_savings_account },
+      relations: ['type_savings_account'],
+    });
+    if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
+    const txs = await this.getTransactionsPaginateV2(account.id,undefined,100,undefined,undefined,false,undefined,undefined, query)
+    return  await this.calculateBalance(account, txs, {
+      balanceType: 'available',
+      countLockedTx :query.countLockeckTx
+    });
+    // return await this.calculateAvailableBalance(account,tx) ;
+  }
+
   async avalaibleBalanceByCodeOnline(number_savings_account: string): Promise<any> {
     const account = await this.repo.findOne({
       where: { number_savings_account },
@@ -940,12 +955,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return result;*/
   } 
 
-    async getTransactionsPaginateV2(id: number, page = 1, limit = 10,
+    async getTransactionsPaginateV2(id: number, page: number | undefined = 1, limit = 10,
     term?: string,
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string, dto ?: FilterTxOptions): Promise<PaginatedResult<TransactionSavingsAccount>> {
+    to?: string, dto ?: FilterTxOptions): Promise<PaginatedResult<TransactionSavingsAccount> | any> {
       return this.transactionSavingsAccountService.findAllByTypeV2(
                                                   page,
                                                   limit,
@@ -1207,6 +1222,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     options: {
       balanceType: 'total' | 'available' | 'online';
       ensureNonNegative?: boolean;
+      countLockedTx?: boolean;
     }
   ): Promise<number> {
     if (!transactions?.length) return 0;
@@ -1224,13 +1240,14 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       // 1. Filtrage selon le type de balance
       switch (options.balanceType) {
         case 'available':
-          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE  || (tx.is_locked && tx?.targetSavingsAccount?.number_savings_account === acctNum)) {
+          console.log('tx_locked ', tx , ' ' ,!options.countLockedTx)
+          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE  || (tx.is_locked && !options.countLockedTx && tx?.targetSavingsAccount?.number_savings_account === acctNum)) {
             return sum;
           }
           break;
           
         case 'online':
-          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE || tx.branch_id || (tx.is_locked && tx?.targetSavingsAccount?.number_savings_account === acctNum)) {
+          if (tx.status !== TransactionSavingsAccountStatus.VALIDATE || tx.branch_id || (tx.is_locked && !options.countLockedTx  && tx?.targetSavingsAccount?.number_savings_account === acctNum)) {
             return sum;
           }
           break;

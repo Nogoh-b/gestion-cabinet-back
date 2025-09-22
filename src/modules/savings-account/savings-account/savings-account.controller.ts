@@ -409,6 +409,11 @@ export class SavingsAccountController {
   balanceByCode( @Param('code') code: string) {
     return this.service.avalaibleBalanceByCode(code);
   }
+
+  @Get('by-code/:code/avalaible-balance-v2')
+  balanceByCodeV2( @Param('code') code: string, @Query() query: PaginationQueryTxDto) {
+    return this.service.avalaibleBalanceByCodeV2(code , query);
+  }
   @Get('by-code/:code/avalaible-balance-online')
   balanceByCodeOnline( @Param('code') code: string) {
     return this.service.avalaibleBalanceByCodeOnline(code);

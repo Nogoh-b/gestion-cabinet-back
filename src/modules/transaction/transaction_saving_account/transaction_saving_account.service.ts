@@ -216,6 +216,7 @@ export class TransactionSavingsAccountService {
     tx.ressource = ressource;
     tx.loan = dto.loanId ? {id: dto.loanId} as Loan : null;
     tx.tx_project_id = dto.tx_project_id ?? null;
+    tx.step_saving_projet = dto.step_saving_projet ?? null;
     /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
       : 'SYTEM';*/
@@ -401,6 +402,8 @@ export class TransactionSavingsAccountService {
   }
 
   async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
+    console.log('momo_deposit_dto ' , dto)
+    
     return await this.perform_transaction(
       dto,
       dto.tx_type ?? 'MOMO_DEPOSIT',
@@ -436,7 +439,7 @@ export class TransactionSavingsAccountService {
   async buy_tontine(dto: CreateTransactionSavingsAccountDto) {
     let saAdmin : SavingsAccount | null = null
     let branch_id : number | null = null
-    console.log(dto)
+    console.log('buy_tontine_dto ' , dto)
 
     if(dto.origin_savings_account_code)
     {
