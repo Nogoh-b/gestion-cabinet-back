@@ -423,7 +423,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
     if (all) {
 
-      const soldes = await this.updateBalance(account.id)
+      const soldes = await this.updateBalanceV1(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
@@ -1506,19 +1506,25 @@ async calculateBalanceV1(
 
   async checkInitTransaction(code: string) {
     const sa = await this.findOneByCode(code, true);
+    let has_init_trans = false
     const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
       .filter(tx => tx.status === 0 && 
         (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
       );
+      try {
+        const results = await Promise.all(
+          filteredTxs.map(async (tx) => {
+            const r = await this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
+            if(r && r.status === 1)
+              sa.status = 1
+            return { tx, r };
+          })
+        );
+      } catch (error) {
+        
+      }
 
-    await Promise.all(
-      filteredTxs.map(tx => {
-        console.log('checkInitTransaction ', tx.reference);
-        return this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
-      })
-    );
-
-    return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
+    return plainToInstance(SavingsAccountResponseDto, sa);
   }
 
 
