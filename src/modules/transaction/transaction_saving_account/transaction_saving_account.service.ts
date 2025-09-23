@@ -459,6 +459,7 @@ export class TransactionSavingsAccountService {
       );
       await entityManager.save(tx);
     });
+
     /*if(!Boolean(txType.is_credit) ||
     (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) ||
     txType.code === TransactionCode.INTERNAL_TRANSFER  ){    */
@@ -471,11 +472,11 @@ export class TransactionSavingsAccountService {
       txType.code === TransactionCode.RECEIVE_TONTINE ||
       txType.code === TransactionCode.INTERNAL_TRANSFER || dto.force_validate
     ) {
+      console.log('txxxxxxxx111--  ', tx.id, ' ',        txType.code  );
       this.validate(tx.id, isFirstTx);
       tx.status = 1;
     }
     const tx1 = await this.repo.save(tx);
-    console.log('txxxxxxxx111 ', tx1.id, ' ',        txType.code  );
 
     return plainToInstance(ResponseTransactionSavingsAccountDto, tx);
   }
@@ -1107,7 +1108,7 @@ export class TransactionSavingsAccountService {
     }
 
     const avalaible_balance = account
-      ? await this.savingsAccountService.avalaibleBalance(account.id)
+      ? await this.savingsAccountService.avalaibleBalanceV1(account.id)
       : 0;
 
     if (
@@ -1618,7 +1619,7 @@ export class TransactionSavingsAccountService {
     const mendo_co_sa = await this.get_mendo_co_sa_from_env();
 
     let personnels: Personnel[] = [];
-
+    console.log('checkkkkkkkkkkkkkk ')
     // 5) Exécuter toutes les sous-transactions dans une transaction DB
     await this.repo.manager.transaction(async (entity_manager) => {
       const { id, commission, ...tx_data } = tx;
@@ -2408,33 +2409,33 @@ export class TransactionSavingsAccountService {
     personnels: Personnel[],
     mendo_co_sa?: SavingsAccount | null,
   ): Promise<void> {
-    console.log('entity.entity.provider_code', tx.channelTransaction.code);
 
     if (admin_sa && admin_sa.id) {
-      await this.savingsAccountService.updateBalance(admin_sa.id);
+      console.log('entity.entity.provider_code', tx.channelTransaction.code);
+      await this.savingsAccountService.updateBalanceV1(admin_sa.id);
     }
 
     if (comercial && comercial.savings_account) {
       console.log('update solde commercial');
-      await this.savingsAccountService.updateBalance(comercial.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(comercial.savings_account.id);
     }
     if (partner && partner.savings_account) {
       console.log('update solde partner');
-      await this.savingsAccountService.updateBalance(partner.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(partner.savings_account.id);
     }
     if (tx.targetSavingsAccount) {
       console.log('update solde target');
-      await this.savingsAccountService.updateBalance(tx.targetSavingsAccount.id);
+      await this.savingsAccountService.updateBalanceV1(tx.targetSavingsAccount.id);
     }
     if (tx.originSavingsAccount) {
       console.log('update solde origin');
-      await this.savingsAccountService.updateBalance(tx.originSavingsAccount.id);
+      await this.savingsAccountService.updateBalanceV1(tx.originSavingsAccount.id);
     }
     for (const p of personnels) {
-      await this.savingsAccountService.updateBalance(p.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(p.savings_account.id);
     }
     if (mendo_co_sa && mendo_co_sa.id) {
-      await this.savingsAccountService.updateBalance(mendo_co_sa.id);
+      await this.savingsAccountService.updateBalanceV1(mendo_co_sa.id);
     }
   }
 

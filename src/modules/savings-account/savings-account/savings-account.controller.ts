@@ -158,7 +158,7 @@ export class SavingsAccountController {
 
   @Get(':code/transactions-v2')
   @ApiOperation({ summary: 'Get all transactions savings account' })
-  @ApiParam({ name: 'code', description: 'Savings account code', type: Number })
+  @ApiParam({ name: 'code', description: 'Savings account code', type: String })
   // @ApiResponse({ status: 200, description: 'List of document statuses', schema: { type: 'array', items: { type: 'object', properties: { documentcode: { type: 'number' }, name: { type: 'string' }, status: { type: 'number' } } } } })
   async getTransactionsPaginateV2(@Param('code') code: string, @Query() query: PaginationQueryTxDto) {
     const { page, limit, term, fields, exact, from, to, type,txType } = query;
@@ -352,29 +352,43 @@ export class SavingsAccountController {
   }
 
   
+  @Get(':id/balances')
+  async avalaibleBalances( @Param('id', ParseIntPipe) id: number) {
+    return (await this.service.balanceV1(id));
+  }
+  
   @Get(':id/balance')
-  avalaibleBalance( @Param('id', ParseIntPipe) id: number) {
-    return this.service.balance(id);
+  async avalaibleBalance( @Param('id', ParseIntPipe) id: number) {
+    return (await this.service.balanceV1(id)).total;
   }
 
   @Get(':id/avalaible-balance')
   balance( @Param('id', ParseIntPipe) id: number) {
-    return this.service.avalaibleBalance(id);
+    return this.service.avalaibleBalanceV1(id);
   }
 
   
   @Get('by-code/:code/balance')
-  avalaibleBalanceByCode( @Param('code') code: string) {
-    return this.service.balanceByCode(code);
+  async balanceByCode( @Param('code') code: string) {
+    const sa = await this.findOneByCode(code)
+    return (await this.service.balanceV1(sa.id)).total;
+  }  
+
+  @Get('by-code/:code/balances')
+  async balancesByCode( @Param('code') code: string) {
+    const sa = await this.findOneByCode(code)
+    return (await this.service.balanceV1(sa.id));
   }
 
   @Get('by-code/:code/avalaible-balance')
-  balanceByCode( @Param('code') code: string) {
-    return this.service.avalaibleBalanceByCode(code);
+  async avalaibleBalanceByCode( @Param('code') code: string) {
+    const sa = await this.findOneByCode(code)
+    return (await this.service.balanceV1(sa.id)).available;
   }
   @Get('by-code/:code/avalaible-balance-online')
-  balanceByCodeOnline( @Param('code') code: string) {
-    return this.service.avalaibleBalanceByCodeOnline(code);
+  async balanceByCodeOnline( @Param('code') code: string) {
+    const sa = await this.findOneByCode(code)
+    return (await this.service.balanceV1(sa.id)).online;
   }
 
   @Post(':id/interest-range')
