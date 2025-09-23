@@ -315,7 +315,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     data,
   };
   }
-  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount | any> {
         const relations = [
       'customer',
       'type_savings_account',
@@ -327,7 +327,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     ];
 
     if (all) {
+    if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
+    }
     }
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
@@ -398,7 +400,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
-  async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount | any> {
     const relations = [
       'customer',
       'type_savings_account',
