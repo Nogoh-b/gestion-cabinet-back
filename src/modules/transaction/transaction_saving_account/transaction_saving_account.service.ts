@@ -1411,6 +1411,12 @@ qb.andWhere('transactionType.id IS NOT NULL');
           tx.targetSavingsAccount.number_savings_account,
         ),
       );
+      try {
+        target.has_init_transaction = true
+        this.savingsAccountService.save(target)
+      } catch (error) {
+        
+      }
       // console.log('tx_exist ', await this.transactionTypeAlreadyExistForAccount(TransactionCode.MIN_BALANCE, tx.originSavingsAccount?.id))
     }
 
