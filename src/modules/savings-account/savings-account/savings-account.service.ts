@@ -232,21 +232,24 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    if (all) {
+     if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
-    }
+     }
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations,
     });
-    if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
-    if(all){
+    if (all) {
+      if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
       // Mise a jour des soldes
       const soldes = await this.updateBalance(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
     }
+
+
+
     /*const sa = await this.updateCodeCash(account.id)
     if(sa && sa.code_cash)
       account.code_cash = sa.code_cash;*/
@@ -316,22 +319,23 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    // if (all) {
+     if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx'); 
-    // }
+     }
 
 
     const account = await this.repo.findOne({
       where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
       relations,
     });
-    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
     if (all) {
-      const soldes = await this.updateBalanceV1(account.id)
+      if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
+      const soldes = await this.updateBalance(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
     }
+
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
