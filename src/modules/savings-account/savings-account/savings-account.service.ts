@@ -650,7 +650,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
   }
 
-  async save(sa_s : SavingsAccount[]): Promise<any> {
+  async save(sa_s : SavingsAccount): Promise<any> {
     await this.repo.save(sa_s);
     return sa_s;
   }
@@ -1517,6 +1517,7 @@ async calculateBalanceV1(
             const r = await this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
             if(r && r.status === 1)
               sa.status = 1
+              sa.has_init_transaction = true
             return { tx, r };
           })
         );

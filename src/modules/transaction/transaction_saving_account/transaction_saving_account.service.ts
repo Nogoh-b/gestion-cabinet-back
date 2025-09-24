@@ -1609,6 +1609,12 @@ export class TransactionSavingsAccountService {
           tx.targetSavingsAccount.number_savings_account,
         ),
       );
+      try {
+        target.has_init_transaction = true
+        this.savingsAccountService.save(target)
+      } catch (error) {
+        
+      }
     }
 
     let comercial: Personnel | null = new Personnel();
