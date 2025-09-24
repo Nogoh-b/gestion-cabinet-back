@@ -112,6 +112,8 @@ export class SavingsAccountResponseDto {
   @Transform(({ obj }) => {
     //sconsole.log('obj.targetSavingsAccountTx', obj.targetSavingsAccountTx);
     // 1) On récupère uniquement les tx à status = 1
+    if(obj.status === 1)
+      return true
     const filteredTxs: TransactionSavingsAccount[] = (obj.targetSavingsAccountTx ?? [])
       .filter(tx => tx.status === 1);
 

@@ -2321,30 +2321,30 @@ qb.andWhere('transactionType.id IS NOT NULL');
     console.log('entity.entity.provider_code', tx.channelTransaction.code);
 
     if (admin_sa && admin_sa.id) {
-      await this.savingsAccountService.updateBalance(admin_sa.id);
+      await this.savingsAccountService.updateBalanceV1(admin_sa.id);
     }
 
     if (comercial && comercial.savings_account) {
       console.log('update solde commercial');
-      await this.savingsAccountService.updateBalance(comercial.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(comercial.savings_account.id);
     }
     if (partner && partner.savings_account) {
       console.log('update solde partner');
-      await this.savingsAccountService.updateBalance(partner.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(partner.savings_account.id);
     }
     if (tx.targetSavingsAccount) {
       console.log('update solde target');
-      await this.savingsAccountService.updateBalance(tx.targetSavingsAccount.id);
+      await this.savingsAccountService.updateBalanceV1(tx.targetSavingsAccount.id);
     }
     if (tx.originSavingsAccount) {
       console.log('update solde origin');
-      await this.savingsAccountService.updateBalance(tx.originSavingsAccount.id);
+      await this.savingsAccountService.updateBalanceV1(tx.originSavingsAccount.id);
     }
     for (const p of personnels) {
-      await this.savingsAccountService.updateBalance(p.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(p.savings_account.id);
     }
     if (mendo_co_sa && mendo_co_sa.id) {
-      await this.savingsAccountService.updateBalance(mendo_co_sa.id);
+      await this.savingsAccountService.updateBalanceV1(mendo_co_sa.id);
     }
   }
 

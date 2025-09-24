@@ -109,6 +109,14 @@ export class SavingsAccount extends BaseEntity {
   })
   is_admin?: boolean;
 
+  @Column({
+    name: 'has_init_transaction',
+    type: 'boolean',
+    default: false,
+    nullable: true,
+  })
+  has_init_transaction?: boolean | null;
+
   @Column({ type: 'varchar', length: 4, nullable: true }) // Doit correspondre au type de Partner.promo_code
   partner_id: string | null;
 

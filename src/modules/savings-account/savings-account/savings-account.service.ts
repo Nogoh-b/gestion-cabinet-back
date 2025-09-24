@@ -7,7 +7,7 @@ import { BaseService } from 'src/core/shared/services/search/base.service';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { DocumentType, DocumentTypeCode } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
@@ -221,7 +221,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     data,
   };
   }
-  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOne(id: number, all = true): Promise<SavingsAccountResponseDto | SavingsAccount | any> {
         const relations = [
       'customer',
       'type_savings_account',
@@ -232,20 +232,21 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    // if (all) {
+    if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
-    // }
+    }
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations,
     });
     if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
-    // Mise a jour des soldes
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
-
+    if(all){
+      // Mise a jour des soldes
+      const soldes = await this.updateBalance(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
     /*const sa = await this.updateCodeCash(account.id)
     if(sa && sa.code_cash)
       account.code_cash = sa.code_cash;*/
@@ -266,10 +267,10 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     }); 
     if (!account) throw new NotFoundException(`Compte Admin introuvable ${branch_id}`);
     if(withBalance){
-      const soldes = await this.updateBalance(account.id)
+      /*const soldes = await this.updateBalance(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
-      account.avalaible_balance_online = await soldes.avalaible_balance_online
+      account.avalaible_balance_online = await soldes.avalaible_balance_online*/
     }
     return account;
   }
@@ -304,7 +305,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     return account;
   }
 
-  async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount> {
+  async findOneByCode(number_savings_account: string, all = true): Promise<SavingsAccountResponseDto | SavingsAccount | any> {
     const relations = [
       'customer',
       'type_savings_account',
@@ -325,10 +326,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations,
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
-    const soldes = await this.updateBalance(account.id)
-    account.avalaible_balance = soldes.avalaible_balance
-    account.balance = await soldes.balance
-    account.avalaible_balance_online = await soldes.avalaible_balance_online
+    if (all) {
+      const soldes = await this.updateBalanceV1(account.id)
+      account.avalaible_balance = soldes.avalaible_balance
+      account.balance = await soldes.balance
+      account.avalaible_balance_online = await soldes.avalaible_balance_online
+    }
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
@@ -649,7 +652,16 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     });
     // return await this.calculateTotalBalance(account,txs);
   }
+  async balanceV1(id: number): Promise<{ total: number; available: number; online: number }> {
+    const account = await this.repo.findOne({
+      where: { id },
+    });
+    if (!account) throw new NotFoundException(`Account ${id} not found`);
 
+    return this.calculateBalanceV1(account, {
+      ensureNonNegative: true
+    });
+  }
   async avalaibleBalance(id: number): Promise<any> {
     const account = await this.repo.findOne({
       where: { id },
@@ -661,6 +673,14 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       balanceType: 'available'
     });
     // return await this.calculateAvailableBalance(account,txs) ;
+  }
+
+  async avalaibleBalanceV1(id: number): Promise<any> {
+    return (await this.balanceV1(id)).available ;
+  }  
+  
+  async avalaibleBalanceOnlineV1(id: number): Promise<any> {
+    return (await this.balanceV1(id)).online ;
   }
     async avalaibleBalanceOnline(id: number): Promise<any> {
     const account = await this.repo.findOne({
@@ -786,17 +806,20 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     let rejected = 0;
     let required = 0;
     let allRequiredValidated = true;
-
+    let  localistion_is_validate = false
     // Process each document
     const documentStatuses = account.documents.map((doc) => {
       // Check if document is required
       const isRequired = requiredDocumentIds.includes(doc.document_type.id);
        if(isRequired) {
         required++;
+        console.log(doc.document_type.code , ' ', DocumentTypeCode.PL_LOCALISATION)
         
         // Update status counters
         switch (doc.status) {
           case DocumentSavingAccountStatus.ACCEPTED:
+            if(doc.document_type.code === DocumentTypeCode.SIGNATURE )
+              localistion_is_validate = true
             validated++;
             break;
           case DocumentSavingAccountStatus.PENDING:
@@ -820,11 +843,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
     return {
         total: account.documents.length,
-        required,
+        required : requiredDocumentIds.length,
         validated,
         pending,
         rejected,
-        allRequiredValidated: (required > 0 && required === validated) || required === 0, // Si aucun doc requis, considérer comme validé
+        allRequiredValidated: (requiredDocumentIds.length > 0 && requiredDocumentIds.length === validated) || requiredDocumentIds.length === 0 || localistion_is_validate, // Si aucun doc requis, considérer comme validé
     };
   }
 
@@ -848,7 +871,15 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     ];
     return combinedTransactions;
   } 
-
+  async getTransactionsV1(id: number): Promise<TransactionSavingsAccount[]> {
+    return this.txRepo
+      .createQueryBuilder('tx')
+      .leftJoinAndSelect('tx.originSavingsAccount', 'origin')
+      .leftJoinAndSelect('tx.targetSavingsAccount', 'target')
+      .leftJoinAndSelect('tx.transactionType', 'type')
+      .where('origin.id = :id OR target.id = :id', { id })
+      .getMany();
+  }
   async getTransactionsPaginate(id: number, page = 1, limit = 10,
     term?: string,
     fields?: string[],
@@ -994,7 +1025,24 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
   };
 }
 
-  
+  async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance: number; avalaible_balance_online: number }> {
+    if (!id)
+      return { balance: 0, avalaible_balance: 0, avalaible_balance_online: 0 };
+
+    let dto = new UpdateSavingsAccountDto();
+    const balances = await this.balanceV1(id)
+    dto.balance = balances.total;
+    dto.avalaible_balance = balances.available;
+    dto.avalaible_balance_online = balances.online;
+
+    await this.update(id, dto); // <-- à ne pas oublier de await 
+
+    return {
+      balance: dto.balance ?? 0,
+      avalaible_balance: dto.avalaible_balance ?? 0,
+      avalaible_balance_online: dto.avalaible_balance_online ?? 0,
+    };
+  }
   /**
   * Calcule le solde total du compte en fonction des transactions (crédits et débits)
   * @param transactions Tableau de transactions avec is_credit (1=crédit, 0=débit)
@@ -1259,8 +1307,149 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     return options.ensureNonNegative ? Math.max(balance, 0) : balance;
   }
 
+  async calculateBalanceV1(
+    account: SavingsAccount,
+    options?: { ensureNonNegative?: boolean }
+  ): Promise<{ total: number; available: number; online: number }> {
+    const acctNum = account.number_savings_account;
 
-  async checkInitTransaction(code: string, query? : CheckInitTxParamDto | null) {
+    const result = await this.txRepo
+      .createQueryBuilder('tx')
+      .leftJoin('tx.originSavingsAccount', 'origin')
+      .leftJoin('tx.targetSavingsAccount', 'target')
+      .leftJoin('tx.transactionType', 'tt')
+      .select([
+        // ---- TOTAL ----
+        `SUM(
+          CASE 
+            WHEN tx.status = :validate
+              AND target.number_savings_account = :acctNum
+            THEN tx.amount
+
+            WHEN tx.status = :validate
+              AND origin.number_savings_account = :acctNum
+              AND (tt.code IS NULL OR tt.code <> 'MIN_BALANCE')  -- <-- correction ici
+            THEN -tx.amount
+
+            ELSE 0
+          END
+        ) AS total`,
+
+        // ---- AVAILABLE ----
+        `SUM(
+          CASE 
+            WHEN tx.status = :validate
+              AND target.number_savings_account = :acctNum
+              AND (tx.is_locked IS NULL OR tx.is_locked = 0)
+            THEN tx.amount
+            
+            WHEN tx.status = :validate
+              AND origin.number_savings_account = :acctNum
+              -- ici on compte MIN_BALANCE
+            THEN -tx.amount
+            
+            ELSE 0
+          END
+        ) AS available`,
+
+        // ---- ONLINE ----
+        `SUM(
+          CASE 
+            WHEN tx.status = :validate
+              AND target.number_savings_account = :acctNum
+              AND (tx.is_locked IS NULL OR tx.is_locked = 0)
+              AND tx.branch_id IS NULL
+            THEN tx.amount
+            
+            WHEN tx.status = :validate
+              AND origin.number_savings_account = :acctNum
+              -- ici on compte MIN_BALANCE
+              AND (tx.branch_id IS NULL)
+            THEN -tx.amount
+            
+            ELSE 0
+          END
+        ) AS online`
+      ])
+      .setParameters({
+        validate: TransactionSavingsAccountStatus.VALIDATE,
+        acctNum,
+      })
+      .getRawOne();
+
+    // Extraction
+    let total = Number(result?.total || 0);
+    let available = Number(result?.available || 0);
+    let online = Number(result?.online || 0);
+
+    if (options?.ensureNonNegative) {
+      total = Math.max(total, 0);
+      available = Math.max(available, 0);
+      online = Math.max(online, 0);
+    }
+
+    // Mise à jour du compte
+    account.balance = total;
+    account.avalaible_balance = available;
+    account.avalaible_balance_online = online;
+    await this.repo.save(account);
+
+    return { total, available, online };
+  }
+
+
+  async checkInitTransaction(code: string, query?: CheckInitTxParamDto | null) {
+    const sa = await this.findOneByCode(code, true);
+    if (!sa) throw new NotFoundException(`Savings account ${code} not found`);
+
+    // QueryBuilder pour charger uniquement les transactions qui nous intéressent
+    const qb = this.txRepo
+      .createQueryBuilder("tx")
+      .where("tx.target_savings_account_id = :accountId", { accountId: sa.id })
+      .andWhere("tx.status = :status", { status: 0 })
+      .andWhere("tx.provider_code IN (:...providers)", {
+        providers: [TransactionProvider.MOMO, TransactionProvider.OM],
+      });
+
+    // Appliquer filtres dynamiques depuis query (CheckInitTxParamDto)
+    if (query?.txType) {
+      qb.andWhere("tx.transaction_type_id = :txType", { txType: query.txType });
+    }
+
+    if (query?.tx_project_id) {
+      qb.andWhere("tx.tx_project_id = :txProjectId", {
+        txProjectId: query.tx_project_id,
+      });
+    }
+
+    const filteredTxs = await qb.getMany();
+
+    try {
+      const results = await Promise.all(
+        filteredTxs.map(async (tx) => {
+          const r = await this.transactionSavingsAccountService.checkStatusPayment(
+            tx.reference,
+          );
+
+          if (r && r.status === 1) {
+            sa.status = 1;
+          }
+
+          return { tx, r };
+        }),
+      );
+
+      // Tu peux logguer ou exploiter `results` si besoin
+      console.log("Résultats checkInitTransaction =>", results);
+    } catch (error) {
+      console.error("Erreur checkInitTransaction", error);
+    }
+
+    return plainToInstance(SavingsAccountResponseDto, sa);
+  }
+
+
+  /*async checkInitTransaction(code: string, query? : CheckInitTxParamDto | null) {
     const sa = await this.findOneByCode(code, true);
     const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
       .filter(
@@ -1276,7 +1465,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     );
 
     return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
-  }
+  }*/
 
   async checkInitTransactionProjetEpargne(code: string, query? : CheckInitTxParamDto | null) {
     let has_init_tx = false
@@ -1781,6 +1970,31 @@ private updateStats(stats: any, tx: any, direction: "in" | "out") {
       order: { id: 'ASC' },
     });
   }
+
+async updateAllHasInitTransaction(): Promise<boolean> {
+  const subQuery = this.repo
+    .createQueryBuilder()
+    .subQuery()
+    .select("1")
+    .from("transaction_savings_account", "tx")
+    .where("tx.target_savings_account_id = savings_account.id") 
+    .andWhere("tx.status = :status", { status: PaymentStatus.SUCCESSFULL })
+    .limit(1)
+    .getQuery();
+
+  await this.repo
+    .createQueryBuilder()
+    .update(SavingsAccount)
+    .set({ has_init_transaction: true })
+    .orWhere(`EXISTS ${subQuery}`)
+    .setParameters({ status: PaymentStatus.SUCCESSFULL })
+    .execute();
+
+  return true;
+}
+
+
+
 
 async accountCreatedByCommercial(commercial_code: string): Promise<SavingsAccount[]> {
   return this.repo.createQueryBuilder('sa')
