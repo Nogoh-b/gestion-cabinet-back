@@ -328,8 +328,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       where: { number_savings_account , status: Not(SavingsAccountStatus.DEACTIVATE)},
       relations,
     });
+    if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
     if (all) {
-      if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
       const soldes = await this.updateBalance(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
