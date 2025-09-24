@@ -554,7 +554,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
   }
 
-  async save(sa_s : SavingsAccount[]): Promise<any> {
+  async save(sa_s : SavingsAccount): Promise<any> {
     await this.repo.save(sa_s);
     return sa_s;
   }
@@ -1433,6 +1433,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
 
           if (r && r.status === 1) {
             sa.status = 1;
+            sa.has_init_transaction = true
           }
 
           return { tx, r };
