@@ -9,7 +9,7 @@ import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { DocumentType, DocumentTypeCode } from 'src/modules/documents/document-type/entities/document-type.entity';
 
 
 
@@ -905,6 +905,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     let rejected = 0;
     let required = 0;
     let allRequiredValidated = true;
+    let  localistion_is_validate = false
 
     // Process each document
     const documentStatuses = account.documents.map((doc) => {
@@ -916,6 +917,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
         // Update status counters
         switch (doc.status) {
           case DocumentSavingAccountStatus.ACCEPTED:
+            if(doc.document_type.code === DocumentTypeCode.SIGNATURE )
+              localistion_is_validate = true
             validated++;
             break;
           case DocumentSavingAccountStatus.PENDING:
@@ -939,11 +942,11 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
     return {
         total: account.documents.length,
-        required,
+        required : requiredDocumentIds.length,
         validated,
         pending,
         rejected,
-        allRequiredValidated: (required > 0 && required === validated) || required === 0, // Si aucun doc requis, considérer comme validé
+        allRequiredValidated: (requiredDocumentIds.length > 0 && requiredDocumentIds.length === validated) || requiredDocumentIds.length === 0 || localistion_is_validate, // Si aucun doc requis, considérer comme validé
     };
   }
 
