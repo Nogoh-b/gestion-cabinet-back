@@ -326,12 +326,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations,
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
-    if (all) {
+    // if (all) {
       const soldes = await this.updateBalanceV1(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
-    }
+    // }
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
