@@ -1630,9 +1630,10 @@ export class TransactionSavingsAccountService {
     await this.repo.manager.transaction(async (entity_manager) => {
       const { id, commission, ...tx_data } = tx;
       const chanel_open_product = await this.get_api_channel();
+      const hasInitTrans = await this.transactionTypeAlreadyExistForAccount(TransactionCode.MIN_BALANCE , target?.id)
 
       // 5.1) Ouverture de compte : MIN_BALANCE + OPENING_FEE + commissions commerciales/partenaires + au personnel
-      if (target && (isFirstTx || force)) {
+      if (target && (isFirstTx || force) && !hasInitTrans) {
         tx.status = 1;
 
         // a) Minimum de solde
@@ -1953,7 +1954,23 @@ export class TransactionSavingsAccountService {
   async checkWthDraw(t) {
     return await this.mcotiService.checkStatusPaymentWithDraw(t);
   }
+  async transactionTypeAlreadyExistForAccount(code: string, sa_id?: number): Promise<boolean> {
+    console.log(code ,' ',sa_id)
+    try {
+      const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
+        .createQueryBuilder('tx')
+        .leftJoinAndSelect('tx.transactionType', 'tt')
+        .leftJoinAndSelect('tx.originSavingsAccount', 'osa')
+        .where('tt.code = :code', { code }) // Filtrer par type de transaction
+        .andWhere('(osa.id = :sa_id)', { sa_id }) // Filtrer par compte épargne (origine ou destination)
 
+      const transaction = await qb.getOne();
+      return !!transaction; // Retourne true si une transaction existe, false sinon
+      
+    } catch (error) {
+      return false
+    }
+  }
   async checkUniquenessPairs(params: {
     origin: string;
     promo_code?: string | null;
