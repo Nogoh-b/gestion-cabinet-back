@@ -31,7 +31,7 @@ import { RessourceService } from 'src/modules/ressource/ressource/ressource.serv
 
 import { CreateTransactionSavingsAccountDto } from 'src/modules/transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 
-import { FilterTxOptions, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+import { FilterTxOptions, PaymentStatus, TransactionSavingsAccount, TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 
 import { TransactionSavingsAccountService } from 'src/modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
@@ -421,13 +421,13 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations,
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
-    if (all) {
+    // if (all) {
 
       const soldes = await this.updateBalanceV1(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
-    }
+    // }
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
@@ -2004,7 +2004,27 @@ private updateStats(stats: any, tx: any, direction: "in" | "out") {
       order: { id: 'ASC' },
     });
   }
+  async updateAllHasInitTransaction(): Promise<boolean> {
+    const subQuery = this.repo
+      .createQueryBuilder()
+      .subQuery()
+      .select("1")
+      .from("transaction_savings_account", "tx")
+      .where("tx.target_savings_account_id = savings_account.id") 
+      .andWhere("tx.status = :status", { status: PaymentStatus.SUCCESSFULL })
+      .limit(1)
+      .getQuery();
 
+    await this.repo
+      .createQueryBuilder()
+      .update(SavingsAccount)
+      .set({ has_init_transaction: true })
+      .orWhere(`EXISTS ${subQuery}`)
+      .setParameters({ status: PaymentStatus.SUCCESSFULL })
+      .execute();
+
+    return true;
+  }
 async accountCreatedByCommercial(commercial_code: string): Promise<SavingsAccount[]> {
   return this.repo.createQueryBuilder('sa')
     .where('sa.commercial_code = :commercial_code', { commercial_code })
