@@ -109,9 +109,11 @@ export class SavingsAccountResponseDto {
 
 
   @Expose()
-  @Transform(({ obj }) => {
+  /*@Transform(({ obj }) => {
     //sconsole.log('obj.targetSavingsAccountTx', obj.targetSavingsAccountTx);
     // 1) On récupère uniquement les tx à status = 1
+    if(obj.status === 1)
+      return true
     const filteredTxs: TransactionSavingsAccount[] = (obj.targetSavingsAccountTx ?? [])
       .filter(tx => tx.status === 1);
 
@@ -131,7 +133,7 @@ export class SavingsAccountResponseDto {
     //    (ici donc forcément status === 1)
     return !!oldestStatus1;
   })
-  @Type(() => Boolean)
+  @Type(() => Boolean)*/
   has_init_transaction: boolean;
 
   @Exclude()

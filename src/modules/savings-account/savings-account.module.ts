@@ -29,6 +29,9 @@ import { TypeHasDocument } from './type-savings-account/entities/type-has-docume
 import { TypeSavingsAccount } from './type-savings-account/entities/type-savings-account.entity';
 import { TypeSavingsAccountController } from './type-savings-account/type-savings-account.controller';
 import { TypeSavingsAccountService } from './type-savings-account/type-savings-account.service';
+import { AccountOverdraftController } from './account-overdraft/account-overdraft.controller';
+import { AccountOverdraftService } from './account-overdraft/account-overdraft.service';
+import { AccountOverdraft } from './account-overdraft/entities/account-overdraft.entity';
 import { SavingsAccountSubscriber } from './savings-account/savings-account.subscriber';
 
 @Module({
@@ -47,6 +50,7 @@ import { SavingsAccountSubscriber } from './savings-account/savings-account.subs
     TypeOrmModule.forFeature([
       DocumentSavingAccount,
       TypeSavingsAccount,
+      AccountOverdraft,
       TypeHasDocument,
       Commission,
       InterestSavingAccount,
@@ -60,6 +64,7 @@ import { SavingsAccountSubscriber } from './savings-account/savings-account.subs
     InterestSavingAccountController,
     TypeSavingsAccountController,
     SavingsAccountController,
+    AccountOverdraftController
   ],
   providers: [
     DocumentSavingAccountService,
@@ -68,14 +73,16 @@ import { SavingsAccountSubscriber } from './savings-account/savings-account.subs
     InterestSavingAccountService,
     SavingsAccountService,
     SavingsAccountSubscriber,
+    AccountOverdraftService
   ],
   exports: [
-    DocumentSavingAccountService,
     TypeSavingsAccountService,
+    SavingsAccountService,
+    DocumentSavingAccountService,
     CommissionService,
     InterestSavingAccountService,
-    SavingsAccountService,
     TypeOrmModule,
+    AccountOverdraftService
   ],
 })
 export class SavingsAccountModule {}

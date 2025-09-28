@@ -133,3 +133,12 @@ export class PaginationQueryTxDto extends PaginationQueryDto {
   promo_code?: string;
   commercial_code?: number;
 }
+
+export class PaginationQueryCustomerDto extends PaginationQueryDto {
+  @ApiPropertyOptional({
+    description: 'Code du type de transaction',
+  })
+  @IsOptional()
+  type_code?: string; // Pour txTypeCode
+
+}

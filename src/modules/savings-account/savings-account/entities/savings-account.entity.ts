@@ -19,6 +19,7 @@ import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { DocumentSavingAccount } from '../../document-saving-account/entities/document-saving-account.entity';
 import { TypeSavingsAccount } from '../../type-savings-account/entities/type-savings-account.entity';
 import { SavingsAccountHasInterest } from './account-has-interest.entity';
+import { AccountOverdraft } from '../../account-overdraft/entities/account-overdraft.entity';
 
 
 export enum SavingsAccountStatus {
@@ -108,6 +109,14 @@ export class SavingsAccount extends BaseEntity {
   })
   is_admin?: boolean;
 
+  @Column({
+    name: 'has_init_transaction',
+    type: 'boolean',
+    default: false,
+    nullable: true,
+  })
+  has_init_transaction?: boolean | null;
+
   @Column({ type: 'varchar', length: 4, nullable: true }) // Doit correspondre au type de Partner.promo_code
   partner_id: string | null;
 
@@ -155,6 +164,11 @@ export class SavingsAccount extends BaseEntity {
     (document) => document.savings_account,
   )
   documents: DocumentSavingAccount[];
+  @OneToMany(
+    () => AccountOverdraft,
+    (acc_draft) => acc_draft.savingsAccount,
+  )
+  account_overdraft: DocumentSavingAccount[];
 
   @OneToMany(
     () => SavingsAccountHasInterest,

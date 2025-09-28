@@ -184,10 +184,14 @@ export class TransactionSavingsAccountService {
         !docStatsTargetAccount.allRequiredValidated ||
         origin.status != SavingsAccountStatus.ACTIVE
       ) {
-        if (this.can_refuse_transaction_type_for_debit(txType.code, origin.is_admin || target?.is_admin))
+        throw new NotFoundException(
+          `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,
+        );
+        /*if (this.can_refuse_transaction_type_for_debit(txType.code, origin.is_admin || target?.is_admin))
           throw new NotFoundException(
             `Tout vos documents ne sont pas validé et ou compte non actif : ${origin?.id}`,
-          );
+          ); */         
+
       }
     }
 
@@ -911,16 +915,16 @@ qb.andWhere('transactionType.id IS NOT NULL');
     const avalaible_balance = account
       ? await this.savingsAccountService.avalaibleBalance(account.id)
       : 0;
-
+    const overdraftBalance = await this.savingsAccountService.getCurrentOverdraft(account.id)
     if (
       (account != null &&
-        avalaible_balance < amount &&
-        this.can_refuse_transaction_type_for_debit(txTypeCode , account.is_admin || target?.is_admin)) || amount < 0
+        avalaible_balance  - overdraftBalance < amount &&
+        this.can_refuse_transaction_type_for_debit(txTypeCode , target?.is_admin)) || amount < overdraftBalance
     ) {
       throw new BadRequestException(
-        `Solde insuffisant vous avez uniquement ${avalaible_balance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
-      );
-    }
+        `Solde insuffisant vous avez uniquement ${avalaible_balance  - overdraftBalance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,
+      );  
+    }  
 
     // On suppose que `account.activeInterest` a déjà été calculé via @AfterLoad()
     const active = account?.activeInterest;
@@ -1410,6 +1414,12 @@ qb.andWhere('transactionType.id IS NOT NULL');
           tx.targetSavingsAccount.number_savings_account,
         ),
       );
+      try {
+        target.has_init_transaction = true
+        this.savingsAccountService.save(target)
+      } catch (error) {
+        
+      }
       // console.log('tx_exist ', await this.transactionTypeAlreadyExistForAccount(TransactionCode.MIN_BALANCE, tx.originSavingsAccount?.id))
     }
 
@@ -2320,30 +2330,30 @@ qb.andWhere('transactionType.id IS NOT NULL');
     console.log('entity.entity.provider_code', tx.channelTransaction.code);
 
     if (admin_sa && admin_sa.id) {
-      await this.savingsAccountService.updateBalance(admin_sa.id);
+      await this.savingsAccountService.updateBalanceV1(admin_sa.id);
     }
 
     if (comercial && comercial.savings_account) {
       console.log('update solde commercial');
-      await this.savingsAccountService.updateBalance(comercial.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(comercial.savings_account.id);
     }
     if (partner && partner.savings_account) {
       console.log('update solde partner');
-      await this.savingsAccountService.updateBalance(partner.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(partner.savings_account.id);
     }
     if (tx.targetSavingsAccount) {
       console.log('update solde target');
-      await this.savingsAccountService.updateBalance(tx.targetSavingsAccount.id);
+      await this.savingsAccountService.updateBalanceV1(tx.targetSavingsAccount.id);
     }
     if (tx.originSavingsAccount) {
       console.log('update solde origin');
-      await this.savingsAccountService.updateBalance(tx.originSavingsAccount.id);
+      await this.savingsAccountService.updateBalanceV1(tx.originSavingsAccount.id);
     }
     for (const p of personnels) {
-      await this.savingsAccountService.updateBalance(p.savings_account.id);
+      await this.savingsAccountService.updateBalanceV1(p.savings_account.id);
     }
     if (mendo_co_sa && mendo_co_sa.id) {
-      await this.savingsAccountService.updateBalance(mendo_co_sa.id);
+      await this.savingsAccountService.updateBalanceV1(mendo_co_sa.id);
     }
   }
 
