@@ -15,6 +15,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 
@@ -35,6 +36,7 @@ import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { PaginationQueryCustomerDto } from 'src/core/shared/dto/pagination-query.dto';
 
 
 
@@ -99,6 +101,24 @@ export class CustomerController {
   @RequirePermissions('VIEW_CUSTOMER')
   async findAll(): Promise<CustomerResponseDto[]> {
     return await this.customerService.findAll();
+  }
+
+  @Get("v2")
+  @ApiOperation({ summary: 'Get all customers' })
+  @ApiResponse({ status: 200, description: 'List of customers', type: [CustomerResponseDto] })
+  @RequirePermissions('VIEW_CUSTOMER')
+  async findAllV1( @Query() query: PaginationQueryCustomerDto): Promise<any> {
+    const { page, limit, term, fields, exact, from, to, type_code } = query;
+    const fieldList = fields ? fields.split(',') : undefined;
+    const isExact = exact ;
+    return await this.customerService.findAllV2(      
+      +page, 
+      +limit,       
+      term,
+      fieldList,
+      isExact,
+      from ? new Date(from).toISOString() : undefined,
+      to ? new Date(to).toISOString() : undefined,);
   }
 
   @Get(':id')
@@ -172,7 +192,10 @@ export class CustomerController {
       }
     });
   }
-
+  @Get('kyc/checkEmail')
+  async getCustomersWithMissingKyc1(@Query('email') email: string) {
+    return  await this.customerService.emailExists(email)
+  }
   @Get('kyc/missing')
   async getCustomersWithMissingKyc() {
     return this.customerService.findCustomersWithMissingKyc();
