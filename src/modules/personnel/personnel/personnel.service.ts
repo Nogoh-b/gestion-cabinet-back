@@ -339,7 +339,7 @@ export class PersonnelService extends BaseService<Personnel> {
     const doc = await this.documentCustomerService.findByTypeId(personnel.customer.id)
     let {name} = personnel
     if((!name || name === '') && personnel.customer)
-      name = `${personnel.customer.first_name} ${personnel.customer.first_name}`
+      name = `${personnel.customer.first_name} ${personnel.customer.last_name}`
     let  file_path = ''
     if(doc)
       file_path = `${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${doc.file_path}` 
