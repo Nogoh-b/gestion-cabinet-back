@@ -6,16 +6,28 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToMany,
-  JoinTable,
-  ManyToOne,
+  JoinTable
 } from 'typeorm';
-import { Loan } from '../../../credit/loan/entities/loan.entity';
 import { TypeCredit } from '../../../credit/type_credit/entities/typeCredit.entity';
 
 export enum DocumentTypeStatus {
   PENDING = 0,
   ACCEPTED = 1,
   REFUSED = 2,
+}
+
+export enum DocumentTypeCode {
+  CNI_AVANT = "CNI AVANT",
+  CNI_ARRIERE = "CNI ARRIERE",
+  SELFIE_AVEC_CNI = "SELFIE AVEC CNI",
+  PHOTO_4X4 = "PHOTO 4X4",
+  RCCM = "RCCM",
+  PL_LOCALISATION = "PL LOCALISATION",
+  NIU = "NIU",
+  JDR = "JDR",
+  SIGNATURE = "SIGNATURE",
+  ATTEST_DOMI = "ATTEST DOMI",
+  CAUTION = "CAUTION",
 }
 @Entity('document_type')
 export class DocumentType extends BaseEntity {

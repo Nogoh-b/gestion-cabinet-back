@@ -117,6 +117,13 @@ export class SavingsAccount extends BaseEntity {
   @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
   commercial_code: string | null;
 
+  @Column({
+    name: 'has_init_transaction',
+    type: 'boolean',
+    default: false,
+    nullable: true,
+  })
+  has_init_transaction?: boolean | null;
   /*@ManyToOne(() => Personnel,{ nullable: true })
   @JoinColumn({ name: 'promo_code', referencedColumnName: 'code' })
   partner: Personnel | null;
