@@ -1487,9 +1487,9 @@ async calculateBalanceV1(
   let online = Number(result?.online || 0);
 
   if (options?.ensureNonNegative) {
-    total = Math.max(total, 0);
-    available = Math.max(available, 0);
-    online = Math.max(online, 0);
+    total = Math.max(total, total);
+    available = Math.max(available, available);
+    online = Math.max(online, available);
   }
 
   // Mise à jour du compte
