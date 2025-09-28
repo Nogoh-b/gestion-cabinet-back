@@ -403,7 +403,6 @@ export class SavingsAccountController {
   }
 
   
-    
   @Get(':id/balances')
   async avalaibleBalances( @Param('id', ParseIntPipe) id: number) {
     return (await this.service.balanceV1(id));

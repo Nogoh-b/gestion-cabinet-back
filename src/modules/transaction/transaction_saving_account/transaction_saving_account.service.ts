@@ -259,6 +259,7 @@ export class TransactionSavingsAccountService {
       );
       await entityManager.save(tx);
     });
+
     /*if(!Boolean(txType.is_credit) ||
     (provider.code != TransactionProvider.MOMO && provider.code != TransactionProvider.OM ) ||
     txType.code === TransactionCode.INTERNAL_TRANSFER  ){    */
@@ -271,7 +272,7 @@ export class TransactionSavingsAccountService {
       txType.code === TransactionCode.RECEIVE_TONTINE ||
       txType.code === TransactionCode.INTERNAL_TRANSFER || dto.force_validate
     ) {
-      console.log('txxxxxxxx11122 ',     txType.code  );
+      console.log('txxxxxxxx111--  ', tx.id, ' ',        txType.code  );
       this.validate(tx.id, isFirstTx);
       tx.status = 1;
     }
@@ -910,7 +911,7 @@ qb.andWhere('transactionType.id IS NOT NULL');
     }
 
     const avalaible_balance = account
-      ? await this.savingsAccountService.avalaibleBalance(account.id)
+      ? await this.savingsAccountService.avalaibleBalanceV1(account.id)
       : 0;
     const overdraftBalance = await this.savingsAccountService.getCurrentOverdraft(account.id)
     if (
@@ -1417,7 +1418,6 @@ qb.andWhere('transactionType.id IS NOT NULL');
       } catch (error) {
         
       }
-      // console.log('tx_exist ', await this.transactionTypeAlreadyExistForAccount(TransactionCode.MIN_BALANCE, tx.originSavingsAccount?.id))
     }
 
     let comercial: Personnel | null = new Personnel();
@@ -1429,17 +1429,15 @@ qb.andWhere('transactionType.id IS NOT NULL');
     const mendo_co_sa = await this.get_mendo_co_sa_from_env();
 
     let personnels: Personnel[] = [];
-    
-
+    console.log('checkkkkkkkkkkkkkk ')
     // 5) Exécuter toutes les sous-transactions dans une transaction DB
     await this.repo.manager.transaction(async (entity_manager) => {
       const { id, commission, ...tx_data } = tx;
       const chanel_open_product = await this.get_api_channel();
-      // 5.1) Ouverture de compte : MIN_BALANCE + OPENING_FEE + commissions commerciales/partenaires + au personnel
       const hasInitTrans = await this.transactionTypeAlreadyExistForAccount(TransactionCode.MIN_BALANCE , target?.id)
-      
-      // if (target && (isFirstTx || force)) {
-      if (target && (isFirstTx || force) && !hasInitTrans) { 
+
+      // 5.1) Ouverture de compte : MIN_BALANCE + OPENING_FEE + commissions commerciales/partenaires + au personnel
+      if (target && (isFirstTx || force) && !hasInitTrans) {
         tx.status = 1;
 
         // a) Minimum de solde
@@ -1757,55 +1755,26 @@ qb.andWhere('transactionType.id IS NOT NULL');
 
     return this.repo.save(tx);
   }
-  async checkWthDraw(reference) {
-      let tx  = await this.repo.findOne({
-      where: { reference },
-      relations: [
-        'channelTransaction',
-        'provider',
-        'transactionType',
-        'originSavingsAccount', 
-        // 'originSavingsAccount.originSavingsAccountTx',
-        // 'originSavingsAccount.targetSavingsAccountTx',
-        'targetSavingsAccount',
-        // 'targetSavingsAccount.originSavingsAccountTx',
-        // 'targetSavingsAccount.targetSavingsAccountTx',
-      ],
-    });
-    if(tx){
-      const res = await this.mcotiService.checkStatusPaymentWithDraw(tx?.payment_code);
-      const payment = res
-      if(!payment || (payment.paymentStatus != PaymentStatusProvider.SUCCESSFULL && tx.promo_code == TransactionProvider.OM  )  ){
-        tx.has_issue = true
-        try {
-          await this.transactionDisputeService.createDisputeForProblematicTransaction(tx.id, payment?.paymentStatus ?? '')
-        } catch (error) {
-          
-        }
-      }
-      return tx
-    }
-    return tx
-      
+  async checkWthDraw(t) {
+    return await this.mcotiService.checkStatusPaymentWithDraw(t);
   }
-
-  async personelHasAlreadyCommission(personel_id:number, ty_type: number, ){
-
-  }
-
   async transactionTypeAlreadyExistForAccount(code: string, sa_id?: number): Promise<boolean> {
     console.log(code ,' ',sa_id)
-    const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
-      .createQueryBuilder('tx')
-      .leftJoinAndSelect('tx.transactionType', 'tt')
-      .leftJoinAndSelect('tx.originSavingsAccount', 'osa')
-      .where('tt.code = :code', { code }) // Filtrer par type de transaction
-      .andWhere('(osa.id = :sa_id)', { sa_id }) // Filtrer par compte épargne (origine ou destination)
+    try {
+      const qb: SelectQueryBuilder<TransactionSavingsAccount> = this.repo
+        .createQueryBuilder('tx')
+        .leftJoinAndSelect('tx.transactionType', 'tt')
+        .leftJoinAndSelect('tx.originSavingsAccount', 'osa')
+        .where('tt.code = :code', { code }) // Filtrer par type de transaction
+        .andWhere('(osa.id = :sa_id)', { sa_id }) // Filtrer par compte épargne (origine ou destination)
 
-    const transaction = await qb.getOne();
-    return !!transaction; // Retourne true si une transaction existe, false sinon
+      const transaction = await qb.getOne();
+      return !!transaction; // Retourne true si une transaction existe, false sinon
+      
+    } catch (error) {
+      return false
+    }
   }
-
   async checkUniquenessPairs(params: {
     origin: string;
     promo_code?: string | null;
@@ -2324,9 +2293,9 @@ qb.andWhere('transactionType.id IS NOT NULL');
     personnels: Personnel[],
     mendo_co_sa?: SavingsAccount | null,
   ): Promise<void> {
-    console.log('entity.entity.provider_code', tx.channelTransaction.code);
 
     if (admin_sa && admin_sa.id) {
+      console.log('entity.entity.provider_code', tx.channelTransaction.code);
       await this.savingsAccountService.updateBalanceV1(admin_sa.id);
     }
 

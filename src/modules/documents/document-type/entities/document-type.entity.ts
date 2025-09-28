@@ -29,7 +29,6 @@ export enum DocumentTypeCode {
   ATTEST_DOMI = "ATTEST DOMI",
   CAUTION = "CAUTION",
 }
-
 @Entity('document_type')
 export class DocumentType extends BaseEntity {
   @PrimaryGeneratedColumn()
