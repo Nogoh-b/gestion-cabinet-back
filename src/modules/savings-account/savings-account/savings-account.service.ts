@@ -8,6 +8,12 @@ import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentType, DocumentTypeCode } from 'src/modules/documents/document-type/entities/document-type.entity';
+
+
+
+
+
+
 import { Personnel } from 'src/modules/personnel/personnel/entities/personnel.entity';
 import { PersonnelService } from 'src/modules/personnel/personnel/personnel.service';
 import { CreateRessourceDto } from 'src/modules/ressource/ressource/dto/create-ressource.dto';
@@ -234,21 +240,19 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
      if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
-     }
+    }
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations,
     });
-    if (all) {
-      if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
+    if (!account) throw new NotFoundException(`Compte ${id} introuvable`);
+    if(all){
       // Mise a jour des soldes
       const soldes = await this.updateBalance(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
     }
-
-
 
     /*const sa = await this.updateCodeCash(account.id)
     if(sa && sa.code_cash)
@@ -319,9 +323,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-     if (all) {
+    if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx'); 
-     }
+    }
 
 
     const account = await this.repo.findOne({
@@ -329,13 +333,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations,
     });
     if (!account) throw new NotFoundException(`Compte ${number_savings_account} introuvable`);
-    if (all) {
-      const soldes = await this.updateBalance(account.id)
+    // if (all) {
+      const soldes = await this.updateBalanceV1(account.id)
       account.avalaible_balance = soldes.avalaible_balance
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
-    }
-
+    // }
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
@@ -839,6 +842,8 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
           case DocumentSavingAccountStatus.ACCEPTED:
             if(doc.document_type.code === DocumentTypeCode.SIGNATURE )
               localistion_is_validate = true
+            if(doc.document_type.code === DocumentTypeCode.SIGNATURE )
+              localistion_is_validate = true
             validated++;
             break;
           case DocumentSavingAccountStatus.PENDING:
@@ -1042,9 +1047,28 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     avalaible_balance: dto.avalaible_balance ?? 0,
     avalaible_balance_online: dto.avalaible_balance_online ?? 0,
   };
+}  
+
+async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance: number; avalaible_balance_online: number }> {
+  if (!id)
+    return { balance: 0, avalaible_balance: 0, avalaible_balance_online: 0 };
+
+  let dto = new UpdateSavingsAccountDto();
+  const balances = await this.balanceV1(id)
+  dto.balance = balances.total;
+  dto.avalaible_balance = balances.available;
+  dto.avalaible_balance_online = balances.online;
+
+  await this.update(id, dto); // <-- à ne pas oublier de await 
+
+  return {
+    balance: dto.balance ?? 0,
+    avalaible_balance: dto.avalaible_balance ?? 0,
+    avalaible_balance_online: dto.avalaible_balance_online ?? 0,
+  };
 }
 
-  async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance: number; avalaible_balance_online: number }> {
+  /*async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance: number; avalaible_balance_online: number }> {
     if (!id)
       return { balance: 0, avalaible_balance: 0, avalaible_balance_online: 0 };
 
@@ -1061,7 +1085,7 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
       avalaible_balance: dto.avalaible_balance ?? 0,
       avalaible_balance_online: dto.avalaible_balance_online ?? 0,
     };
-  }
+  }*/
   /**
   * Calcule le solde total du compte en fonction des transactions (crédits et débits)
   * @param transactions Tableau de transactions avec is_credit (1=crédit, 0=débit)
@@ -1404,9 +1428,9 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
     let online = Number(result?.online || 0);
 
     if (options?.ensureNonNegative) {
-      total = Math.max(total, 0);
-      available = Math.max(available, 0);
-      online = Math.max(online, 0);
+      total = Math.max(total, total);
+      available = Math.max(available, available);
+      online = Math.max(online, online);
     }
 
     // Mise à jour du compte
@@ -1473,18 +1497,25 @@ async updateBalance(id: number): Promise<{ balance: number; avalaible_balance: n
 
   /*async checkInitTransaction(code: string, query? : CheckInitTxParamDto | null) {
     const sa = await this.findOneByCode(code, true);
+    let has_init_trans = false
     const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
       .filter(
         tx => tx.status === 0 && 
         (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
       );
-
-    await Promise.all(
-      filteredTxs.map(tx => {
-        console.log('checkInitTransaction ', tx.reference);
-        return this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
-      })
-    );
+      try {
+        const results = await Promise.all(
+          filteredTxs.map(async (tx) => {
+            const r = await this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
+            if(r && r.status === 1)
+              sa.status = 1
+              sa.has_init_transaction = true
+            return { tx, r };
+          })
+        );
+      } catch (error) {
+        
+      }
 
     return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
   }*/

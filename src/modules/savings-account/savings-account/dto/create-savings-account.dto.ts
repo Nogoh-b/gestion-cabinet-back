@@ -149,7 +149,8 @@ export class CheckInitTxParamDto {
   @IsIn(Object.values(TransactionCode))
   txType?: string; // Pour txTypeCode
 
-  @ApiProperty({
+  @IsOptional()
+  @ApiPropertyOptional({
     description: 'Projet ID (Numérique)',
     example: 1,
     type: Number,

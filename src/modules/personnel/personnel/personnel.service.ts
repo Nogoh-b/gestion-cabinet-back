@@ -335,7 +335,7 @@ export class PersonnelService extends BaseService<Personnel> {
   }
 
   async checkCode(code: string, type_personnel : PersonnelTypeCode): Promise<any> {
-    const personnel = await this.personnel_repository.findOne({where: { code }, relations: ['type_personnel','savings_account','savings_account.type_savings_account']});
+    const personnel = await this.personnel_repository.findOne({where: { code }, relations: ['type_personnel','savings_account','savings_account.type_savings_account','customer']});
     if (!personnel || personnel.type_personnel.code !== type_personnel) {
       throw new NotFoundException(`${type_personnel} ${code} introuvable`);
     }
@@ -343,7 +343,9 @@ export class PersonnelService extends BaseService<Personnel> {
       throw new NotFoundException(`${type_personnel} ${code} desactivé`);
     }
     const doc = await this.documentCustomerService.findByTypeId(personnel.customer.id)
-    const {name} = personnel
+    let {name} = personnel
+    if((!name || name === '') && personnel.customer)
+      name = `${personnel.customer.first_name} ${personnel.customer.last_name}`
     let  file_path = ''
     if(doc)
       file_path = `${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${doc.file_path}` 
