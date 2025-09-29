@@ -917,7 +917,7 @@ qb.andWhere('transactionType.id IS NOT NULL');
     if (
       (account != null &&
         avalaible_balance  - overdraftBalance < amount &&
-        this.can_refuse_transaction_type_for_debit(txTypeCode , target?.is_admin)) || amount < overdraftBalance
+        this.can_refuse_transaction_type_for_debit(txTypeCode , target?.is_admin)) || amount < 0
     ) {
       throw new BadRequestException(
         `Solde insuffisant vous avez uniquement ${avalaible_balance  - overdraftBalance}. Minimum Balance: ${account?.type_savings_account.minimum_balance}`,

@@ -124,18 +124,12 @@ export class SavingsAccount extends BaseEntity {
   promo_code: string | null;
 
   @Column({ type: 'varchar', length: 10, nullable: true }) // Doit correspondre au type de Partner.promo_code
-  commercial_code: string | null;
+  commercial_code: string | null; 
 
-  @Column({
-    name: 'has_init_transaction',
-    type: 'boolean',
-    default: false,
-    nullable: true,
-  })
-  has_init_transaction?: boolean | null;
+
   /*@ManyToOne(() => Personnel,{ nullable: true })
   @JoinColumn({ name: 'promo_code', referencedColumnName: 'code' })
-  partner: Personnel | null;
+  partner: Personnel | null; 
 
   @ManyToOne(() => Personnel,{ nullable: true })
   @JoinColumn({ name: 'commercial_code', referencedColumnName: 'code' })  
@@ -146,7 +140,7 @@ export class SavingsAccount extends BaseEntity {
   partner1: Partner | null;
 
   @ManyToOne(() => Commercial)
-  @JoinColumn({ name: 'commercial_code' })
+  @JoinColumn({ name: 'commercial_code' }) 
   commercial1: Commercial | null;*/
 
   // Relations

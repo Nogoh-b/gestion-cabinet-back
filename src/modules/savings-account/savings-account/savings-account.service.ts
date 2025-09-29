@@ -240,7 +240,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
 
      if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx');
-    // }
+    }
     const account = await this.repo.findOne({
       where: { id , status : Not(SavingsAccountStatus.DEACTIVATE)  },
       relations,
@@ -323,9 +323,9 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       'interestRelations',
     ];
 
-    // if (all) {
+    if (all) {
       relations.push('originSavingsAccountTx', 'targetSavingsAccountTx'); 
-    // }
+    }
 
 
     const account = await this.repo.findOne({
@@ -1053,7 +1053,7 @@ async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance:
   };
 }
 
-  async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance: number; avalaible_balance_online: number }> {
+  /*async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance: number; avalaible_balance_online: number }> {
     if (!id)
       return { balance: 0, avalaible_balance: 0, avalaible_balance_online: 0 };
 
@@ -1070,7 +1070,7 @@ async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance:
       avalaible_balance: dto.avalaible_balance ?? 0,
       avalaible_balance_online: dto.avalaible_balance_online ?? 0,
     };
-  }
+  }*/
   /**
   * Calcule le solde total du compte en fonction des transactions (crédits et débits)
   * @param transactions Tableau de transactions avec is_credit (1=crédit, 0=débit)
@@ -1411,9 +1411,9 @@ async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance:
     let online = Number(result?.online || 0);
 
     if (options?.ensureNonNegative) {
-      total = Math.max(total, 0);
-      available = Math.max(available, 0);
-      online = Math.max(online, 0);
+      total = Math.max(total, total);
+      available = Math.max(available, available);
+      online = Math.max(online, online);
     }
 
     // Mise à jour du compte
