@@ -339,6 +339,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       account.balance = await soldes.balance
       account.avalaible_balance_online = await soldes.avalaible_balance_online
     // }
+    // }
     return !all ? plainToInstance(SavingsAccountResponseDto, account) : account;
   }
 
@@ -1427,6 +1428,138 @@ async calculateBalanceV0(
       acctNum,
     })
     .getRawOne();
+
+  // Extraction
+  let total = Number(result?.total || 0);
+  let available = Number(result?.available || 0);
+  let online = Number(result?.online || 0);
+
+  if (options?.ensureNonNegative) {
+    total = Math.max(total, total);
+    available = Math.max(available, available);
+    online = Math.max(online, available);
+  }
+
+  // Mise à jour du compte
+  account.balance = total;
+  account.avalaible_balance = available;
+  account.avalaible_balance_online = online;
+  await this.repo.save(account);
+
+  return { total, available, online };
+}
+
+async calculateBalanceV1(
+  account: SavingsAccount,
+  options?: {
+    ensureNonNegative?: boolean;
+    countLockedTx?: boolean;
+    query?: PaginationQueryTxDto; // <-- ajouté
+  }
+): Promise<{ total: number; available: number; online: number }> {
+  const acctNum = account.number_savings_account;
+
+  // Condition pour locked
+  const lockCondition = options?.query?.countLockedTx
+    ? '1=1'
+    : '(tx.is_locked IS NULL OR tx.is_locked = 0)';
+
+  const qb = this.txRepo
+    .createQueryBuilder('tx')
+    .leftJoin('tx.originSavingsAccount', 'origin')
+    .leftJoin('tx.targetSavingsAccount', 'target')
+    .leftJoin('tx.transactionType', 'tt')
+    .select([
+      // ---- TOTAL ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+          THEN tx.amount
+
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND (tt.code IS NULL OR tt.code <> 'MIN_BALANCE')
+          THEN -tx.amount
+
+          ELSE 0
+        END
+      ) AS total`,
+
+      // ---- AVAILABLE ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+            AND ${lockCondition}
+          THEN tx.amount
+          
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND ${lockCondition}
+          THEN -tx.amount
+          
+          ELSE 0
+        END
+      ) AS available`,
+
+      // ---- ONLINE ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+            AND ${lockCondition}
+            AND tx.branch_id IS NULL
+          THEN tx.amount
+          
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND ${lockCondition}
+            AND tx.branch_id IS NULL
+          THEN -tx.amount
+          
+          ELSE 0
+        END
+      ) AS online`
+    ])
+    .setParameters({
+      validate: TransactionSavingsAccountStatus.VALIDATE,
+      acctNum,
+    });
+
+  // 🔹 Application dynamique des filtres du query
+  if (options?.query) {
+   const { type, txType, tx_type, txTypeCode, tx_project_id, step_saving_project, promo_code, commercial_code } = options.query;
+
+    if (type) {
+      qb.andWhere('tx.type = :type', { type });
+    }
+
+    if (tx_type) {
+      qb.andWhere('tt.code = :tx_type', { tx_type });
+    }
+
+
+
+    if (tx_project_id) {
+      console.log('tx_project_id ', tx_project_id)
+      qb.andWhere('tx.tx_project_id = :tx_project_id', { tx_project_id });
+    }
+
+    if (step_saving_project) {
+      qb.andWhere('tx.step_saving_projet = :step_saving_project', { step_saving_project });
+    }
+
+    if (promo_code) {
+      qb.andWhere('tx.promo_code = :promo_code', { promo_code });
+    }
+
+    if (commercial_code) {
+      qb.andWhere('tx.commercial_code = :commercial_code', { commercial_code });
+    }
+  }
+
+  const result = await qb.getRawOne();
 
   // Extraction
   let total = Number(result?.total || 0);

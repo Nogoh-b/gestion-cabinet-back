@@ -15,7 +15,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   UseGuards,
-  Query,
+  Query
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 
@@ -193,6 +193,10 @@ export class CustomerController {
         message: 'contactDto.message'
       }
     });
+  }
+  @Get('kyc/checkEmail')
+  async getCustomersWithMissingKyc1(@Query('email') email: string) {
+    return  await this.customerService.emailExists(email)
   }
   @Get('kyc/checkEmail')
   async getCustomersWithMissingKyc1(@Query('email') email: string) {
