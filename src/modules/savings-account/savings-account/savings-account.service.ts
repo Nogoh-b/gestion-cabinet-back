@@ -666,7 +666,7 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
     if (!account) throw new NotFoundException(`Account ${id} not found`);
 
     return this.calculateBalanceV1(account, {
-      ensureNonNegative: true
+      ensureNonNegative: false
     });
   }
   async avalaibleBalance(id: number): Promise<any> {
@@ -737,11 +737,12 @@ export class SavingsAccountService extends BaseService<SavingsAccount> {
       relations: ['type_savings_account'],
     });
     if (!account) throw new NotFoundException(`Account ${number_savings_account} not found`);
-    const txs = await this.getTransactionsPaginateV2(account.id,undefined,100,undefined,undefined,false,undefined,undefined, query)
-    return  await this.calculateBalance(account, txs, {
-      balanceType: 'available',
-      countLockedTx :query.countLockeckTx
-    });
+    // const txs = await this.getTransactionsPaginateV2(account.id,undefined,100,undefined,undefined,false,undefined,undefined, query)
+    return  (await this.calculateBalanceV1(account, {
+      ensureNonNegative: false,
+      countLockedTx :query.countLockedTx,
+      query
+    })).available;
     // return await this.calculateAvailableBalance(account,tx) ;
   }
 
@@ -1352,199 +1353,367 @@ async updateBalanceV1(id: number): Promise<{ balance: number; avalaible_balance:
     return options.ensureNonNegative ? Math.max(balance, 0) : balance;
   }
 
-  async calculateBalanceV1(
-    account: SavingsAccount,
-    options?: { ensureNonNegative?: boolean }
-  ): Promise<{ total: number; available: number; online: number }> {
-    const acctNum = account.number_savings_account;
+async calculateBalanceV0(
+  account: SavingsAccount,
+  options?: { ensureNonNegative?: boolean; countLockedTx?: boolean }
+): Promise<{ total: number; available: number; online: number }> {
+  const acctNum = account.number_savings_account;
 
-    const result = await this.txRepo
-      .createQueryBuilder('tx')
-      .leftJoin('tx.originSavingsAccount', 'origin')
-      .leftJoin('tx.targetSavingsAccount', 'target')
-      .leftJoin('tx.transactionType', 'tt')
-      .select([
-        // ---- TOTAL ----
-        `SUM(
-          CASE 
-            WHEN tx.status = :validate
-              AND target.number_savings_account = :acctNum
-            THEN tx.amount
+  // Condition sur les transactions bloquées
+  const lockCondition = options?.countLockedTx
+    ? '1=1' // on inclut tout, même les locked
+    : '(tx.is_locked IS NULL OR tx.is_locked = 0)';
 
-            WHEN tx.status = :validate
-              AND origin.number_savings_account = :acctNum
-              AND (tt.code IS NULL OR tt.code <> 'MIN_BALANCE')  -- <-- correction ici
-            THEN -tx.amount
+  const result = await this.txRepo
+    .createQueryBuilder('tx')
+    .leftJoin('tx.originSavingsAccount', 'origin')
+    .leftJoin('tx.targetSavingsAccount', 'target')
+    .leftJoin('tx.transactionType', 'tt')
+    .select([
+      // ---- TOTAL ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+          THEN tx.amount
 
-            ELSE 0
-          END
-        ) AS total`,
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND (tt.code IS NULL OR tt.code <> 'MIN_BALANCE')
+          THEN -tx.amount
 
-        // ---- AVAILABLE ----
-        `SUM(
-          CASE 
-            WHEN tx.status = :validate
-              AND target.number_savings_account = :acctNum
-              AND (tx.is_locked IS NULL OR tx.is_locked = 0)
-            THEN tx.amount
-            
-            WHEN tx.status = :validate
-              AND origin.number_savings_account = :acctNum
-              -- ici on compte MIN_BALANCE
-            THEN -tx.amount
-            
-            ELSE 0
-          END
-        ) AS available`,
+          ELSE 0
+        END
+      ) AS total`,
 
-        // ---- ONLINE ----
-        `SUM(
-          CASE 
-            WHEN tx.status = :validate
-              AND target.number_savings_account = :acctNum
-              AND (tx.is_locked IS NULL OR tx.is_locked = 0)
-              AND tx.branch_id IS NULL
-            THEN tx.amount
-            
-            WHEN tx.status = :validate
-              AND origin.number_savings_account = :acctNum
-              -- ici on compte MIN_BALANCE
-              AND (tx.branch_id IS NULL)
-            THEN -tx.amount
-            
-            ELSE 0
-          END
-        ) AS online`
-      ])
-      .setParameters({
-        validate: TransactionSavingsAccountStatus.VALIDATE,
-        acctNum,
-      })
-      .getRawOne();
+      // ---- AVAILABLE ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+            AND ${lockCondition}
+          THEN tx.amount
+          
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND ${lockCondition}
+          THEN -tx.amount
+          
+          ELSE 0
+        END
+      ) AS available`,
 
-    // Extraction
-    let total = Number(result?.total || 0);
-    let available = Number(result?.available || 0);
-    let online = Number(result?.online || 0);
+      // ---- ONLINE ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+            AND ${lockCondition}
+            AND tx.branch_id IS NULL
+          THEN tx.amount
+          
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND ${lockCondition}
+            AND tx.branch_id IS NULL
+          THEN -tx.amount
+          
+          ELSE 0
+        END
+      ) AS online`
+    ])
+    .setParameters({
+      validate: TransactionSavingsAccountStatus.VALIDATE,
+      acctNum,
+    })
+    .getRawOne();
 
-    if (options?.ensureNonNegative) {
-      total = Math.max(total, total);
-      available = Math.max(available, available);
-      online = Math.max(online, online);
-    }
+  // Extraction
+  let total = Number(result?.total || 0);
+  let available = Number(result?.available || 0);
+  let online = Number(result?.online || 0);
 
-    // Mise à jour du compte
-    account.balance = total;
-    account.avalaible_balance = available;
-    account.avalaible_balance_online = online;
-    await this.repo.save(account);
-
-    return { total, available, online };
+  if (options?.ensureNonNegative) {
+    total = Math.max(total, 0);
+    available = Math.max(available, 0);
+    online = Math.max(online, 0);
   }
 
+  // Mise à jour du compte
+  account.balance = total;
+  account.avalaible_balance = available;
+  account.avalaible_balance_online = online;
+  await this.repo.save(account);
 
-  async checkInitTransaction(code: string, query?: CheckInitTxParamDto | null) {
-    const sa = await this.findOneByCode(code, true);
-    if (!sa) throw new NotFoundException(`Savings account ${code} not found`);
+  return { total, available, online };
+}
 
-    // QueryBuilder pour charger uniquement les transactions qui nous intéressent
-    const qb = this.txRepo
-      .createQueryBuilder("tx")
-      .where("tx.target_savings_account_id = :accountId", { accountId: sa.id })
-      .andWhere("tx.status = :status", { status: 0 })
-      .andWhere("tx.provider_code IN (:...providers)", {
-        providers: [TransactionProvider.MOMO, TransactionProvider.OM],
-      });
+async calculateBalanceV1(
+  account: SavingsAccount,
+  options?: {
+    ensureNonNegative?: boolean;
+    countLockedTx?: boolean;
+    query?: PaginationQueryTxDto; // <-- ajouté
+  }
+): Promise<{ total: number; available: number; online: number }> {
+  const acctNum = account.number_savings_account;
 
-    // Appliquer filtres dynamiques depuis query (CheckInitTxParamDto)
-    if (query?.txType) {
-      qb.andWhere("tx.transaction_type_id = :txType", { txType: query.txType });
+  // Condition pour locked
+  const lockCondition = options?.query?.countLockedTx
+    ? '1=1'
+    : '(tx.is_locked IS NULL OR tx.is_locked = 0)';
+
+  const qb = this.txRepo
+    .createQueryBuilder('tx')
+    .leftJoin('tx.originSavingsAccount', 'origin')
+    .leftJoin('tx.targetSavingsAccount', 'target')
+    .leftJoin('tx.transactionType', 'tt')
+    .select([
+      // ---- TOTAL ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+          THEN tx.amount
+
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND (tt.code IS NULL OR tt.code <> 'MIN_BALANCE')
+          THEN -tx.amount
+
+          ELSE 0
+        END
+      ) AS total`,
+
+      // ---- AVAILABLE ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+            AND ${lockCondition}
+          THEN tx.amount
+          
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND ${lockCondition}
+          THEN -tx.amount
+          
+          ELSE 0
+        END
+      ) AS available`,
+
+      // ---- ONLINE ----
+      `SUM(
+        CASE 
+          WHEN tx.status = :validate
+            AND target.number_savings_account = :acctNum
+            AND ${lockCondition}
+            AND tx.branch_id IS NULL
+          THEN tx.amount
+          
+          WHEN tx.status = :validate
+            AND origin.number_savings_account = :acctNum
+            AND ${lockCondition}
+            AND tx.branch_id IS NULL
+          THEN -tx.amount
+          
+          ELSE 0
+        END
+      ) AS online`
+    ])
+    .setParameters({
+      validate: TransactionSavingsAccountStatus.VALIDATE,
+      acctNum,
+    });
+
+  // 🔹 Application dynamique des filtres du query
+  if (options?.query) {
+   const { type, txType, tx_type, txTypeCode, tx_project_id, step_saving_project, promo_code, commercial_code } = options.query;
+
+    if (type) {
+      qb.andWhere('tx.type = :type', { type });
     }
 
-    if (query?.tx_project_id) {
-      qb.andWhere("tx.tx_project_id = :txProjectId", {
-        txProjectId: query.tx_project_id,
-      });
+    if (tx_type) {
+      qb.andWhere('tt.code = :tx_type', { tx_type });
     }
 
-    const filteredTxs = await qb.getMany();
 
-    try {
-      const results = await Promise.all(
-        filteredTxs.map(async (tx) => {
-          const r = await this.transactionSavingsAccountService.checkStatusPayment(
-            tx.reference,
-          );
 
-          if (r && r.status === 1) {
-            sa.status = 1;
-            sa.has_init_transaction = true
-          }
-
-          return { tx, r };
-        }),
-      );
-
-      // Tu peux logguer ou exploiter `results` si besoin
-      console.log("Résultats checkInitTransaction =>", results);
-    } catch (error) {
-      console.error("Erreur checkInitTransaction", error);
+    if (tx_project_id) {
+      console.log('tx_project_id ', tx_project_id)
+      qb.andWhere('tx.tx_project_id = :tx_project_id', { tx_project_id });
     }
 
-    return plainToInstance(SavingsAccountResponseDto, sa);
+    if (step_saving_project) {
+      qb.andWhere('tx.step_saving_projet = :step_saving_project', { step_saving_project });
+    }
+
+    if (promo_code) {
+      qb.andWhere('tx.promo_code = :promo_code', { promo_code });
+    }
+
+    if (commercial_code) {
+      qb.andWhere('tx.commercial_code = :commercial_code', { commercial_code });
+    }
   }
 
+  const result = await qb.getRawOne();
 
-  /*async checkInitTransaction(code: string, query? : CheckInitTxParamDto | null) {
-    const sa = await this.findOneByCode(code, true);
-    let has_init_trans = false
-    const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
-      .filter(
-        tx => tx.status === 0 && 
-        (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
-      );
-      try {
-        const results = await Promise.all(
-          filteredTxs.map(async (tx) => {
-            const r = await this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
-            if(r && r.status === 1)
-              sa.status = 1
-              sa.has_init_transaction = true
-            return { tx, r };
-          })
+  // Extraction
+  let total = Number(result?.total || 0);
+  let available = Number(result?.available || 0);
+  let online = Number(result?.online || 0);
+
+  if (options?.ensureNonNegative) {
+    total = Math.max(total, 0);
+    available = Math.max(available, 0);
+    online = Math.max(online, 0);
+  }
+
+  // Mise à jour du compte
+  account.balance = total;
+  account.avalaible_balance = available;
+  account.avalaible_balance_online = online;
+  await this.repo.save(account);
+
+  return { total, available, online };
+}
+
+
+
+async checkInitTransaction(code: string, query?: CheckInitTxParamDto | null) {
+  const sa = await this.findOneByCode(code, true);
+  if (!sa) throw new NotFoundException(`Savings account ${code} not found`);
+
+  // QueryBuilder pour charger uniquement les transactions qui nous intéressent
+  const qb = this.txRepo
+    .createQueryBuilder("tx")
+    .where("tx.target_savings_account_id = :accountId", { accountId: sa.id })
+    .andWhere("tx.status = :status", { status: 0 })
+    .andWhere("tx.provider_code IN (:...providers)", {
+      providers: [TransactionProvider.MOMO, TransactionProvider.OM],
+    });
+
+  // Appliquer filtres dynamiques depuis query (CheckInitTxParamDto)
+  if (query?.tx_type) {
+    qb.andWhere("tx.transaction_type_id = :tx_type", { tx_type: query.tx_type });
+  }
+
+  if (query?.tx_project_id) {
+    qb.andWhere("tx.tx_project_id = :txProjectId", {
+      txProjectId: query.tx_project_id,
+    });
+  }
+  
+  if (query?.step_saving_project) {
+    qb.andWhere("tx.step_saving_project = :step_saving_project", {
+      step_saving_project: query.step_saving_project,
+    });
+  }
+
+  const filteredTxs = await qb.getMany();
+
+  try {
+    const results = await Promise.all(
+      filteredTxs.map(async (tx) => {
+        const r = await this.transactionSavingsAccountService.checkStatusPayment(
+          tx.reference,
         );
-      } catch (error) {
-        
-      }
 
-    return plainToInstance(SavingsAccountResponseDto, await this.findOneByCode(code, true));
-  }*/
+        if (r && r.status === 1) {
+          sa.status = 1;
+          sa.has_init_transaction = true
+        }
+
+        return { tx, r };
+      }),
+    );
+
+    // Tu peux logguer ou exploiter `results` si besoin
+    console.log("Résultats checkInitTransaction =>", results);
+  } catch (error) {
+    console.error("Erreur checkInitTransaction", error);
+  }
+
+  return plainToInstance(SavingsAccountResponseDto, sa);
+}
+async checkInitTransactionV1(
+  query?: CheckInitTxParamDto | null
+) {
+  let sa: SavingsAccount | null = null;
+  let has_init_trans =false
+  // Si un code est fourni, on récupère le compte par code
+  if (query?.number_savings_account) {
+    sa = await this.findOneByCode(query?.number_savings_account, true);
+    if (!sa) throw new NotFoundException(`Savings account ${query?.number_savings_account} not found`);
+  }
+
+  // QueryBuilder pour charger uniquement les transactions qui nous intéressent
+  const qb = this.txRepo.createQueryBuilder("tx");
+
+  // Si on a un compte, on filtre par target_savings_account_id
+  if (sa) {
+    qb.where("tx.target_savings_account_id = :accountId", { accountId: sa.id });
+  } else {
+    qb.where("1 = 1"); // Pas de compte => on part de toutes les transactions
+  }
+
+  qb.andWhere("tx.status = :status", { status: 0 })
+    .andWhere("tx.provider_code IN (:...providers)", {
+      providers: [TransactionProvider.MOMO, TransactionProvider.OM],
+    });
+
+  // Appliquer filtres dynamiques depuis query (CheckInitTxParamDto)
+  if (query?.tx_type) {
+     qb.innerJoin('tx.transactionType', 'tt')
+    .andWhere('tt.code = :txTypeCode', { txTypeCode: query.tx_type });
+  }
+
+  if (query?.tx_project_id) {
+    qb.andWhere("tx.tx_project_id = :txProjectId", {
+      txProjectId: query.tx_project_id, 
+    });
+  }
+
+  if (query?.step_saving_project) {
+    qb.andWhere("tx.step_saving_projet = :step_saving_project", {
+      step_saving_project: query.step_saving_project,
+    });
+  }
+
+  const filteredTxs = await qb.getMany();
+
+  try {
+    const results = await Promise.all(
+      filteredTxs.map(async (tx) => {
+        const r = await this.transactionSavingsAccountService.checkStatusPayment(
+          tx.reference,
+        );
+
+        if (r && r.status === 1) {
+          has_init_trans = true;
+        }
+        if(sa)
+          sa.status = 1;
+
+        return { tx, r };
+      }),
+    );
+
+    console.log("Résultats checkInitTransaction =>", filteredTxs);
+  } catch (error) {
+    console.error("Erreur checkInitTransaction", error);
+  }
+
+  // Si aucun code fourni, on ne renvoie pas de compte spécifique
+  return has_init_trans;
+}
+
+
 
   async checkInitTransactionProjetEpargne(code: string, query? : CheckInitTxParamDto | null) {
-    let has_init_tx = false
-    const sa = await this.findOneByCode(code, true);
-    const filteredTxs: TransactionSavingsAccount[] = (sa.targetSavingsAccountTx ?? [])
-      .filter(
-        tx => {
-          return tx.transactionType.code === TransactionCode.BUY_SAVING_PROJECT && tx.status == PaymentStatus.SUCCESSFULL && Number(tx.tx_project_id) === Number(query?.tx_project_id)&&
-          // tx => tx.transactionType.code === query?.txType &&  tx.tx_project_id === query.tx_project_id &&
-          (tx.provider_code === TransactionProvider.MOMO || tx.provider_code === TransactionProvider.OM)
-        }
-      );
-
-      await Promise.all(
-        filteredTxs.map(async (tx) => {
-          console.log('checkInitTransaction ', tx.reference);
-          const tx1 = await this.transactionSavingsAccountService.checkStatusPayment(tx.reference);
-          if (tx1.status === PaymentStatus.SUCCESSFULL) {
-            has_init_tx = true;
-          }
-          return tx1;
-        })
-      );
-
-
-    return has_init_tx;
+   return  await this.checkInitTransactionV1(query)
   }
 
 
@@ -1709,7 +1878,7 @@ async generateNextAccountNumber(type_sa: TypeSavingsAccount): Promise<string> {
       }
   
       for (const tx of txs) {
-        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || (tx.is_locked && !query.countLockeckTx))
+        if(tx.status != TransactionSavingsAccountStatus.VALIDATE || (tx.is_locked && !query.countLockedTx))
           continue
         // transactions entrantes
         if(tx.targetSavingsAccount && !tx.originSavingsAccount ){
