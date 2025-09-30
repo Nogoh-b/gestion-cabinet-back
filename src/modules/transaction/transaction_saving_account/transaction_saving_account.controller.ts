@@ -82,7 +82,7 @@ export class TransactionSavingAccountController {
     return this.transactionSavingAccountService.buy_tontine(dto);
   }
 
-  @Post('buy_tontine')
+  @Post('buy_saving_project')
   buy_saving_project(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.buy_saving_project(dto);
   }
@@ -101,7 +101,10 @@ export class TransactionSavingAccountController {
   internal_transfer(@Body() dto: CreateTransactionSavingsAccountDto) {
     return this.transactionSavingAccountService.internal_transfer(dto);
   }
-
+  @Get('unlock-transactions')
+  unlockTransactions(@Query() query: PaginationQueryTxDto) {
+    return this.transactionSavingAccountService.unlockTransactions(query);
+  }
   @Post('get/internal-transfer')
   get_internal_transfer(@Query() query: PaginationQueryTxDto) {
     return this.findByTypeParent(query, TransactionCode.INTERNAL_TRANSFER);
@@ -237,6 +240,8 @@ export class TransactionSavingAccountController {
   unlockTransaction(@Param('id') id: string) {
     return this.transactionSavingAccountService.validate(+id);
   }
+
+
 
   @Patch(':id/update-provider-info')
   updateProviderInfo(

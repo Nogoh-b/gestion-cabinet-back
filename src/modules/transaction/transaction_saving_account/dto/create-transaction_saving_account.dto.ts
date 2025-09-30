@@ -63,6 +63,7 @@ export class CreateTransactionSavingsAccountDto {
   token?: string;
   tx_parent_id?: number;
   tx_type?: string;
+  step_saving_projet?: number;
 
   @ApiPropertyOptional({ example: '8629891', description: "Code d'origine" })
   @IsString()
@@ -122,6 +123,7 @@ export class CreateCreditTransactionSavingsAccountDto {
   target?: string;
   loanId?: number;
   tx_type?: string;
+  step_saving_projet?: number;
   @ApiProperty({ example: 1000, description: 'Montant de la commission' })
   @IsNumber()
   @IsOptional()
@@ -148,6 +150,7 @@ export class CreateDebitTransactionSavingsAccountDto {
   provider?: string;
   target?: string;
   tx_type?: string;
+  step_saving_projet?: number;
   loanId?: number;
 
   @ApiProperty({ example: 1, description: '' })

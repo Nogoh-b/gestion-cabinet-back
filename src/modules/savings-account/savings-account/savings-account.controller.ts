@@ -436,6 +436,11 @@ export class SavingsAccountController {
     const sa = await this.findOneByCode(code)
     return (await this.service.balanceV1(sa.id)).available;
   }
+
+  @Get('by-code/:code/avalaible-balance-v2')
+  balanceByCodeV2( @Param('code') code: string, @Query() query: PaginationQueryTxDto) {
+    return this.service.avalaibleBalanceByCodeV2(code , query);
+  }
   @Get('by-code/:code/avalaible-balance-online')
   async balanceByCodeOnline( @Param('code') code: string) {
     const sa = await this.findOneByCode(code)

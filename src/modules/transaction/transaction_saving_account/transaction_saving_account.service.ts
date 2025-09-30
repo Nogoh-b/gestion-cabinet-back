@@ -58,6 +58,7 @@ import { ResponseTransactionSavingsAccountDto } from './dto/response-transaction
 import { Sequence } from './entities/sequence.entity';
 import { FilterTxOptions, Payment, PaymentStatus, PaymentStatusProvider, TransactionSavingsAccount, TransactionSavingsAccountStatus } from './entities/transaction_saving_account.entity';
 import { TransactionDisputeService } from '../transaction-dispute/transaction-dispute.service';
+import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 
 
 @Injectable()
@@ -220,6 +221,7 @@ export class TransactionSavingsAccountService {
     tx.ressource = ressource;
     tx.loan = dto.loanId ? {id: dto.loanId} as Loan : null;
     tx.tx_project_id = dto.tx_project_id ?? null;
+    tx.step_saving_projet = dto.step_saving_projet ?? null;
     /*tx.origin = origin?.number_savings_account
       ? origin?.number_savings_account
       : 'SYTEM';*/
@@ -406,6 +408,8 @@ export class TransactionSavingsAccountService {
   }
 
   async momo_deposit(dto: CreateCreditTransactionSavingsAccountDto, type_code : string | null = null) {
+    console.log('momo_deposit_dto ' , dto)
+    
     return await this.perform_transaction(
       dto,
       dto.tx_type ?? 'MOMO_DEPOSIT',
@@ -441,7 +445,7 @@ export class TransactionSavingsAccountService {
   async buy_tontine(dto: CreateTransactionSavingsAccountDto) {
     let saAdmin : SavingsAccount | null = null
     let branch_id : number | null = null
-    console.log(dto)
+    console.log('buy_tontine_dto ' , dto)
 
     if(dto.origin_savings_account_code)
     {
@@ -1513,6 +1517,96 @@ qb.andWhere('transactionType.id IS NOT NULL');
     entity.is_locked = false;
     return this.repo.save(entity);
   }
+
+async unlockTransactions(query: PaginationQueryTxDto): Promise<any> {
+  console.log('Début du déblocage des transactions avec les critères:', query);
+  const qb = this.repo.createQueryBuilder('tx')
+    .leftJoinAndSelect('tx.originSavingsAccount', 'originSa')
+    .leftJoinAndSelect('originSa.customer', 'originCustomer')
+    .leftJoinAndSelect('tx.targetSavingsAccount', 'targetSa')
+    .leftJoinAndSelect('targetSa.customer', 'targetCustomer');
+  // --- Appliquer les filtres dynamiques ---
+  if (query.promo_code) {
+    qb.andWhere('tx.promo_code = :promo_code', { promo_code: query.promo_code });
+  }
+
+  if (query.commercial_code) {
+    qb.andWhere('tx.commercial_code = :commercial_code', { commercial_code: query.commercial_code });
+  }
+
+  if (query.id) {
+    qb.andWhere('tx.id = :id', { id: query.id });
+  }
+
+  if (query.tx_project_id) {
+    qb.andWhere('tx.tx_project_id = :tx_project_id', { tx_project_id: query.tx_project_id });
+  }
+
+  if (query.step_saving_project) {
+    qb.andWhere('tx.step_saving_projet = :step_saving_projet', { step_saving_projet: query.step_saving_project });
+  }
+
+  if (query.tx_type) {
+    qb.innerJoin('tx.transactionType', 'tt')
+      .andWhere('tt.code = :txTypeCode', { txTypeCode: query.tx_type });
+  }
+
+
+  if (query.type) {
+    qb.andWhere('tx.type = :type', { type: query.type });
+  }
+
+  // --- Récupérer les transactions concernées ---
+  const transactions = await qb.getMany();
+
+  if (!transactions.length) {
+    return false; // Rien à débloquer
+  }
+
+  // --- Débloquer toutes les transactions trouvées ---
+  await this.repo
+    .createQueryBuilder()
+    .update(TransactionSavingsAccount)
+    .set({ is_locked: false })
+    .whereInIds(transactions.map(t => t.id))
+    .execute();
+
+  // --- Mettre à jour les soldes des comptes liés ---
+  const accountIds = [
+    ...new Set(
+      transactions
+        .map(t => [
+          t.originSavingsAccount?.id,
+          t.targetSavingsAccount?.id
+        ])
+        .flat()
+        .filter(Boolean) // enlève les undefined/null
+    ),
+  ];
+  if( 
+    (query.commission )&& 
+      query.tx_type === TransactionCode.BUY_SAVING_PROJECT && 
+      transactions[0].targetSavingsAccount?.number_savings_account
+    ){
+    const result = await qb
+      .select('SUM(tx.amount)', 'sum')
+      .getRawOne<{ sum: string }>();
+    const totalAmount = result ? Number(result.sum) : 0;
+    let dto = new CreateTransactionSavingsAccountDto();
+    dto.amount =  ((totalAmount * query.commission )/ 100)   ;
+    console.log('totalAmount ', totalAmount , ' commission ', query.commission , ' dto.amount ', dto.amount)
+    dto.target_savings_account_code = process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT || 'MENDOCO';
+    dto.origin_savings_account_code = transactions[0].targetSavingsAccount?.number_savings_account ;
+    await this.perform_transaction(dto,  query.commission ?   TransactionCode.SAVING_PROJECT_COMMISSION : TransactionCode.BUY_PENALITY_SAVING_PROJECT, TransactionChannel.MOBILE, TransactionProvider.HYBRID_SAVING);
+  }
+  for (const idSa of accountIds) {
+    if(idSa)
+      await this.savingsAccountService.updateBalanceV1(idSa);
+  }
+
+  return true;
+}
+
 
   async unlockTransactionByPartner(promo_code, idSa): Promise<any> {
     this.repo.update({ promo_code }, { is_locked: false });
