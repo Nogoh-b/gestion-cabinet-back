@@ -63,7 +63,6 @@ export class CustomersService extends BaseService<Customer> {
     @Inject(forwardRef(() => BranchService))
     private branchService: BranchService,
     private paginationService: PaginationService,
-    private paginationService: PaginationService,
     private readonly dataSource: DataSource,
   ) {
     console.log(forwardRef);
@@ -240,46 +239,6 @@ export class CustomersService extends BaseService<Customer> {
     return plainToInstance(CustomerResponseDto, customer);
   }
 
-    async findAllV2(page = 1, limit = 10,
-    term?: string,
-    fields?: string[],
-    exact?: boolean,
-    from?: string,
-    to?: string): Promise<PaginatedResult<CustomerResponseDto>>  {
-
-    const qb = this.customerRepository
-      .createQueryBuilder('c')
-      .leftJoinAndSelect('c.branch', 'branch')
-      .leftJoinAndSelect('c.loans', 'loans')
-      .leftJoinAndSelect('c.type_customer', 'type_customer')
-      .leftJoinAndSelect('c.location_city', 'location_city')
-
-      const options: PaginationOptions & {
-        search?: SearchOptions;
-        dateRange?: DateRange;
-      } = { page, limit };
-      if (term) options.search = { term, fields, exact };
-      if (from || to)
-        options.dateRange = {
-          from: from ? new Date(from) : undefined,
-          to: to ? new Date(to) : undefined,
-        };
-      console.log('------options---- ', options);
-      const result = await this.paginationService.paginate(qb, options);
-
-      // transformer chaque item en DTO
-      return {
-        ...result,
-        data: result.data.map((customer) =>
-          plainToInstance(CustomerResponseDto, customer, { excludeExtraneousValues: true })
-        ),
-      };
-
-    /*const customers = await this.customerRepository.find({
-      relations: ['type_customer', 'location_city'],
-    });
-    return plainToInstance(CustomerResponseDto, customers);*/
-  }
   async findOneByCode(
     customer_code: string,
     strict = true,

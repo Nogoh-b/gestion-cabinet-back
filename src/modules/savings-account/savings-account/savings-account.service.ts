@@ -1581,7 +1581,7 @@ async calculateBalanceV1(
   return { total, available, online };
 }
 
-async calculateBalanceV1(
+/*async calculateBalanceV1(
   account: SavingsAccount,
   options?: {
     ensureNonNegative?: boolean;
@@ -1711,7 +1711,7 @@ async calculateBalanceV1(
   await this.repo.save(account);
 
   return { total, available, online };
-}
+}*/
 
 
 

@@ -198,10 +198,7 @@ export class CustomerController {
   async getCustomersWithMissingKyc1(@Query('email') email: string) {
     return  await this.customerService.emailExists(email)
   }
-  @Get('kyc/checkEmail')
-  async getCustomersWithMissingKyc1(@Query('email') email: string) {
-    return  await this.customerService.emailExists(email)
-  }
+
   @Get('kyc/missing')
   async getCustomersWithMissingKyc() {
     return this.customerService.findCustomersWithMissingKyc();

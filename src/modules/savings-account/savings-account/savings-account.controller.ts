@@ -352,12 +352,7 @@ export class SavingsAccountController {
     return this.service.remove(id);
   }
 
-  @Get('update-has-init-all')
-  @ApiOperation({ summary: 'Met ajour les has_init' })
-  @ApiResponse({ status: 200, description: 'Liste des comptes', type: [SavingsAccount] })
-  updateAllHasInitTransaction() {
-    return this.service.updateAllHasInitTransaction();
-  } 
+
 
   @Get(':code/request-link')
   requestLink( @Param('code') code: string) {
