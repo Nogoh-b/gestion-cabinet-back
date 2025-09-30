@@ -378,7 +378,7 @@ export class SavingsAccountController {
 
   @Get(':code/check-init-transaction-projet-epargne')
   checkInitTransactionProjetEpargne( @Param('code') code: string, @Query() query: CheckInitTxParamDto) {
-    return this.service.checkInitTransactionProjetEpargne(code, query);
+    return this.service.checkInitTransactionV1( query);
   }
 
   @Get(':code/stats-v1')

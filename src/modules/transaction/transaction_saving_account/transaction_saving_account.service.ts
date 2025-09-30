@@ -1589,15 +1589,21 @@ async unlockTransactions(query: PaginationQueryTxDto): Promise<any> {
       transactions[0].targetSavingsAccount?.number_savings_account
     ){
     const result = await qb
+      .andWhere('tx.status = :status', { status: 1 })
       .select('SUM(tx.amount)', 'sum')
       .getRawOne<{ sum: string }>();
-    const totalAmount = result ? Number(result.sum) : 0;
+
+    const totalAmount = result?.sum ? Number(result.sum) : 0;
+
     let dto = new CreateTransactionSavingsAccountDto();
     dto.amount =  ((totalAmount * query.commission )/ 100)   ;
     console.log('totalAmount ', totalAmount , ' commission ', query.commission , ' dto.amount ', dto.amount)
     dto.target_savings_account_code = process.env.MENDO_CO_CODE_SAVINGS_ACCOUNT || 'MENDOCO';
     dto.origin_savings_account_code = transactions[0].targetSavingsAccount?.number_savings_account ;
-    await this.perform_transaction(dto,  query.commission ?   TransactionCode.SAVING_PROJECT_COMMISSION : TransactionCode.BUY_PENALITY_SAVING_PROJECT, TransactionChannel.MOBILE, TransactionProvider.HYBRID_SAVING);
+    dto.tx_project_id = query.tx_project_id;
+    dto.step_saving_projet = query.step_saving_project;
+    dto.origin_savings_account_code = transactions[0].targetSavingsAccount?.number_savings_account ;
+    await this.perform_transaction(dto,  !query.apply_fee ?   TransactionCode.SAVING_PROJECT_COMMISSION : TransactionCode.BUY_PENALITY_SAVING_PROJECT, TransactionChannel.MOBILE, TransactionProvider.HYBRID_SAVING);
   }
   for (const idSa of accountIds) {
     if(idSa)

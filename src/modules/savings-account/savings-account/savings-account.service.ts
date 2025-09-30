@@ -1817,9 +1817,9 @@ async checkInitTransactionV1(
 
   const filteredTxs = await qb.getMany();
 
-  try {
-    const results = await Promise.all(
-      filteredTxs.map(async (tx) => {
+  const results = await Promise.all(
+    filteredTxs.map(async (tx) => {
+      try {
         const r = await this.transactionSavingsAccountService.checkStatusPayment(
           tx.reference,
         );
@@ -1830,14 +1830,13 @@ async checkInitTransactionV1(
         if(sa)
           sa.status = 1;
 
-        return { tx, r };
-      }),
-    );
-
-    console.log("Résultats checkInitTransaction =>", filteredTxs);
-  } catch (error) {
-    console.error("Erreur checkInitTransaction", error);
-  }
+        return { tx, r, error: null };
+      } catch (err) {
+        console.error(`Erreur checkStatusPayment pour tx=${tx.id}`, err);
+        return { tx, r: null, error: err };
+      }
+    }),
+  );
 
   // Si aucun code fourni, on ne renvoie pas de compte spécifique
   return has_init_trans;

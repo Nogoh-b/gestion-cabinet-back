@@ -162,7 +162,7 @@ export class TransactionTypeSeeder {
       },        
       {
         code: 'SAVING_PROJECT_COMMISSION',
-        name: 'Paiement pour un projet d\'épargne (commision Mendo Finance)',
+        name: 'Paiement pour un projet d\'épargne (commision)',
         description: 'Paiement de commission d\'un projet épargne a ca cloture',
         is_credit: 1,
         fee_percentage: 0.0,
