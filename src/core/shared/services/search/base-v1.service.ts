@@ -9,7 +9,9 @@ import {
   ObjectLiteral,
   FindOptionsOrder,
   DeepPartial,
-  FindManyOptions
+  FindManyOptions,
+  MoreThanOrEqual,
+  LessThanOrEqual,
 } from 'typeorm';
 import { PaginatedResult, PaginationService } from '../pagination/paginations.service';
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
@@ -46,7 +48,6 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     
     const whereConditions = this.buildWhereConditionsV1(criteria, searchOptions);
     
-    // ✅ CORRECTION : Utiliser paginate au lieu de paginateWithTransformer
     return this.paginationService.paginate(
       this.repository,
       paginationParams || new PaginationParamsDto(),
@@ -108,39 +109,74 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   /**
    * Construit les conditions WHERE complexes avec support des relations
    */
+/**
+ * Construit les conditions WHERE complexes avec support des relations - VERSION CORRIGÉE
+ */
+/**
+ * Construit les conditions WHERE complexes avec support des relations - VERSION CORRIGÉE
+ */
+/**
+ * Construit les conditions WHERE complexes avec support des relations - VERSION ROBUSTE
+ */
   protected buildWhereConditionsV1(
     criteria: SearchCriteria,
     searchOptions?: SearchOptions
   ): FindOptionsWhere<T> | FindOptionsWhere<T>[] {
-    const conditions: FindOptionsWhere<T>[] = [];
     const defaultOptions = this.getDefaultSearchOptions();
-
     const options = { ...defaultOptions, ...searchOptions };
 
-    // Traitement de la recherche globale (champ 'search')
-    if (criteria.search) {
-      const entityMetadata = this.repository.metadata;
-      
-      // ✅ Si searchFields n’est pas défini, on prend tous les champs simples
-      const fieldsToSearch = options?.searchFields?.length
-        ? options.searchFields
-        : entityMetadata.columns.map(col => col.propertyName);
+    // ✅ CORRECTION : Utiliser des Sets pour éviter les doublons
+    const searchFieldsSet = new Set<string>();
+    const dateFieldsSet = new Set<string>();
 
+    // Identifier tous les champs utilisés
+    if (criteria.search && options.searchFields) {
+      options.searchFields.forEach(field => searchFieldsSet.add(field));
+    }
+
+    if (options.dateRangeFields) {
+      options.dateRangeFields.forEach(field => dateFieldsSet.add(field));
+    }
+
+    // ✅ CORRECTION : Exclure les champs de date de la recherche texte
+    const searchOnlyFields = Array.from(searchFieldsSet).filter(field => 
+      !dateFieldsSet.has(field) && 
+      field !== 'created_at' && 
+      field !== 'updated_at'
+    );
+
+    const conditions: FindOptionsWhere<T>[] = [];
+
+    // 1. Conditions de recherche texte (OR)
+    if (criteria.search && searchOnlyFields.length > 0) {
       const searchConditions = this.buildSearchConditions(
         criteria.search.toString(),
-        fieldsToSearch
+        searchOnlyFields
       );
       conditions.push(...searchConditions);
     }
 
+    // 2. Conditions AND (dates + autres critères)
+    const andConditions: any = {};
 
-    // Traitement des critères spécifiques
-    const specificConditions = this.buildSpecificConditions(criteria, options);
-    if (Object.keys(specificConditions).length > 0) {
-      conditions.push(specificConditions);
+    // Dates
+    const dateConditions = this.buildDateRangeConditions(criteria, options);
+    if (dateConditions) {
+      Object.assign(andConditions, dateConditions);
     }
 
-    return conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : conditions) : {};
+    // Autres critères spécifiques
+    const specificConditions = this.buildSpecificConditions(criteria, options);
+    if (Object.keys(specificConditions).length > 0) {
+      Object.assign(andConditions, specificConditions);
+    }
+
+    // Ajouter les conditions AND seulement si elles ne contiennent pas de conflits
+    if (Object.keys(andConditions).length > 0) {
+      conditions.push(andConditions);
+    }
+
+    return conditions.length > 0 ? conditions : {};
   }
 
   /**
@@ -163,6 +199,81 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
         return { [field]: ILike(`%${searchTerm}%`) } as FindOptionsWhere<T>;
       }
     });
+  }
+
+  /**
+   * Construit les conditions pour les intervalles date_from/date_to
+   */
+  private buildDateRangeConditions(
+    criteria: SearchCriteria,
+    options: SearchOptions
+  ): FindOptionsWhere<T> | null {
+    const conditions: any = {};
+    let hasDateConditions = false;
+
+    // Gestion de date_from/date_to pour created_at
+    if (criteria.date_from || criteria.date_to) {
+      const dateFrom = criteria.date_from ? new Date(criteria.date_from) : undefined;
+      const dateTo = criteria.date_to ? new Date(criteria.date_to) : undefined;
+      
+      if (dateFrom && dateTo) {
+        conditions.created_at = Between(dateFrom, dateTo);
+      } else if (dateFrom) {
+        conditions.created_at = MoreThanOrEqual(dateFrom);
+      } else if (dateTo) {
+        conditions.created_at = LessThanOrEqual(dateTo);
+      }
+      
+      hasDateConditions = true;
+    }
+
+    // Gestion générique pour tous les champs de date
+    const dateFields = options.dateRangeFields || ['created_at', 'updated_at'];
+    
+    dateFields.forEach(field => {
+      const fromKey = `${field}_from`;
+      const toKey = `${field}_to`;
+      
+      if (criteria[fromKey] || criteria[toKey]) {
+        const fromValue = criteria[fromKey] ? new Date(criteria[fromKey]) : undefined;
+        const toValue = criteria[toKey] ? new Date(criteria[toKey]) : undefined;
+        
+        let dateCondition: any;
+        
+        if (fromValue && toValue) {
+          dateCondition = Between(fromValue, toValue);
+        } else if (fromValue) {
+          dateCondition = MoreThanOrEqual(fromValue);
+        } else if (toValue) {
+          dateCondition = LessThanOrEqual(toValue);
+        }
+        
+        if (dateCondition) {
+          // Si le champ contient un point (relation), on construit une condition nested
+          if (field.includes('.')) {
+            const parts = field.split('.');
+            let nestedCondition: any = {};
+            
+            const buildNestedDate = (parts: string[], current: any, condition: any): any => {
+              if (parts.length === 1) {
+                current[parts[0]] = condition;
+              } else {
+                current[parts[0]] = buildNestedDate(parts.slice(1), {}, condition);
+              }
+              return current;
+            };
+            
+            Object.assign(conditions, buildNestedDate(parts, {}, dateCondition));
+          } else {
+            conditions[field] = dateCondition;
+          }
+          
+          hasDateConditions = true;
+        }
+      }
+    });
+
+    return hasDateConditions ? conditions : null;
   }
 
   /**
@@ -194,9 +305,23 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   ): FindOptionsWhere<T> {
     const conditions: any = {};
 
+    // Liste complète des champs à exclure
+    const excludedFields = new Set([
+      'search', 'page', 'limit', 'sort_by', 'sort_desc', 'sort_direction',
+      'date_from', 'date_to'
+    ]);
+
+    // Ajouter tous les champs date_* à exclure
+    if (options.dateRangeFields) {
+      options.dateRangeFields.forEach(field => {
+        excludedFields.add(`${field}_from`);
+        excludedFields.add(`${field}_to`);
+      });
+    }
+
     for (const [key, value] of Object.entries(criteria)) {
-      // Ignorer les champs spéciaux
-      if (['search', 'page', 'limit', 'sort_by', 'sort_desc', 'sort_direction','date_from','date_to'].includes(key)) {
+      // Vérifier dans le Set des champs exclus
+      if (excludedFields.has(key) || key.endsWith('_from') || key.endsWith('_to')) {
         continue;
       }
 
@@ -209,7 +334,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
         else if (options.exactMatchFields?.includes(key)) {
           conditions[key] = value;
         }
-        // Champ de date range
+        // Champ de date range (format tableau) - garder pour compatibilité
         else if (options.dateRangeFields?.includes(key) && Array.isArray(value)) {
           conditions[key] = Between(value[0], value[1]);
         }
@@ -266,7 +391,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   }
 
   async updateV1(id: string | number, data: DeepPartial<T>): Promise<T> {
-    await this.repository.update(id, data  as QueryDeepPartialEntity<T>);
+    await this.repository.update(id, data as QueryDeepPartialEntity<T>);
     const result = await this.findOneV1(id);
     if (!result) {
       throw new Error(`Entity with id ${id} not found after update`);
@@ -275,7 +400,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   }
 
   async updateManyV1(criteria: FindOptionsWhere<T>, data: DeepPartial<T>): Promise<void> {
-    await this.repository.update(criteria, data  as QueryDeepPartialEntity<T>);
+    await this.repository.update(criteria, data as QueryDeepPartialEntity<T>);
   }
 
   async removeV1(id: string | number): Promise<void> {
@@ -312,5 +437,27 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
       where: whereConditions,
       relations,
     });
+  }
+
+  /**
+   * Méthode de débogage pour vérifier les conditions construites
+   */
+  protected debugConditions(
+    criteria: SearchCriteria,
+    searchOptions: SearchOptions
+  ): void {
+    console.log('=== DEBUG BUILD WHERE CONDITIONS ===');
+    console.log('Criteria reçu:', criteria);
+    
+    const dateConditions = this.buildDateRangeConditions(criteria, searchOptions);
+    console.log('Date conditions construites:', dateConditions);
+    
+    const specificConditions = this.buildSpecificConditions(criteria, searchOptions);
+    console.log('Specific conditions construites:', specificConditions);
+    
+    const finalConditions = this.buildWhereConditionsV1(criteria, searchOptions);
+    console.log('Conditions finales:', finalConditions);
+    
+    console.log('====================================');
   }
 }

@@ -96,6 +96,18 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'appeal_deadline', type: 'date', nullable: true })
   appeal_deadline: Date;
 
+  @Column({ name: 'client_id', type: 'date', nullable: true })
+  client_id: Date;
+
+  @Column({ name: 'lawyer_id', type: 'date', nullable: true })
+  lawyer_id: Date;
+
+  @Column({ name: 'procedure_type_id', type: 'date', nullable: true })
+  procedure_type_id: Date;
+
+  @Column({ name: 'procedure_subtype_id', type: 'date', nullable: true })
+  procedure_subtype_id: Date;
+
   // Relations principales (obligatoires selon R1)
   @ManyToOne(() => Customer, { nullable: false })
   @JoinColumn({ name: 'client_id' })

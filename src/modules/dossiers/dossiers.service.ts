@@ -68,12 +68,12 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       ],
       
       // Champs pour ranges de dates
-      dateRangeFields: [
+      /*dateRangeFields: [
         'created_at',
         'updated_at',
         'opening_date',
         'closing_date'
-      ],
+      ],*/
       
       // Champs de relations pour filtrage
       relationFields: [
@@ -96,6 +96,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     //   ...criteria,
     //   'client.first_name': 'nogoh' // Recherche dans la relation
     // };
+    this.debugConditions(criteria,paginationParams);
+
     return this.search(criteria, undefined, paginationParams, relations);
   }
 
