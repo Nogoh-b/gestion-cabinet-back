@@ -20,13 +20,11 @@ import { AgenciesModule } from './modules/agencies/agencies.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { IamModule } from './modules/iam/iam.module';
-import { PersonnelModule } from './modules/personnel/personnel.module';
-import { ProviderModule } from './modules/provider/provider.module';
 import { QueueModule } from './modules/queue/queue.module';
-import { RessourceModule } from './modules/ressource/ressource.module';
-import { SavingsAccountModule } from './modules/savings-account/savings-account.module';
-import { TransactionModule } from './modules/transaction/transaction.module';
-import { CreditModule } from './modules/credit/credit.module';
+import { AudiencesModule } from './modules/audiences/audiences.module';
+import { DossiersModule } from './modules/dossiers/dossiers.module';
+import { FinancesModule } from './modules/finances/finances.module';
+import { ProceduresModule } from './modules/procedures/procedures.module';
 
 dotenv.config();
 
@@ -85,16 +83,20 @@ dotenv.config();
       route: '/admin/queues',
       adapter: ExpressAdapter,
     }),
-    SavingsAccountModule,
-    ProviderModule,
-    TransactionModule,
+    // SavingsAccountModule,
+    // ProviderModule,
+    // TransactionModule,
     ActivitiesModule,
     QueueModule,
     // PartnerModule,
     // CommercialModule,
-    RessourceModule,
-    PersonnelModule,
-    CreditModule
+    // RessourceModule,
+    // PersonnelModule,
+    // CreditModule,
+    DossiersModule,
+    AudiencesModule,
+    FinancesModule,
+    ProceduresModule
   ],
   controllers: [AppController],
   providers: [AppService],

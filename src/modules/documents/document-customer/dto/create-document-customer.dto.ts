@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsNotEmpty, IsDate, IsOptional, IsNumber } from 'class-validator';
+import { IsNotEmpty, IsDate, IsOptional, IsNumber, IsBoolean, IsEnum } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { DocumentCategory } from 'src/core/enums/document-category.enum';
 
 
 
@@ -19,7 +20,29 @@ export class CreateDocumentCustomerDto {
   status : number
 
   strict : boolean = true
- 
+  @IsNotEmpty()
+  dossier_id: number;
+
+
+
+  @IsEnum(DocumentCategory)
+  category: DocumentCategory;
+
+  @IsOptional()
+  audience_id?: string;
+
+  @IsOptional()
+  description?: string;
+
+  @IsOptional()
+  document_date?: Date;
+   @IsOptional()
+  @IsBoolean()
+  autoValidate?: boolean = false;
+
+  @IsOptional()
+  @IsBoolean()
+  allowMultiple?: boolean = false;
 
   @IsOptional()
   @ApiProperty({example:'05/02/2025'})

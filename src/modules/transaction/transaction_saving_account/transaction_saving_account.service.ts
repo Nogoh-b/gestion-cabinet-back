@@ -33,6 +33,8 @@ import { InjectQueue } from '@nestjs/bull';
 
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -68,6 +70,7 @@ export class TransactionSavingsAccountService {
     private readonly repo: Repository<TransactionSavingsAccount>,
     @InjectRepository(ChannelTransaction)
     private readonly channelRepo: Repository<ChannelTransaction>,
+    @Inject(forwardRef(() => SavingsAccountService))
     private readonly savingsAccountService: SavingsAccountService,
     private readonly providerService: ProviderService,
     private readonly transactionTypeService: TransactionTypeService,
@@ -76,6 +79,7 @@ export class TransactionSavingsAccountService {
     public transactionDisputeService: TransactionDisputeService,
     // public partnerService: PartnerService,
     // public commissionService: CommercialService,
+    @Inject(forwardRef(() => PersonnelService))
     public personnelService: PersonnelService,
     @InjectQueue('maintenance')
     private readonly maintenanceQueue: Queue,

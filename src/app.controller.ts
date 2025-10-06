@@ -9,7 +9,6 @@ import { ApiBody } from '@nestjs/swagger';
 
 import { AppService } from './app.service';
 import { QueueService } from './modules/queue/queue.service';
-import { TransactionSavingsAccountService } from './modules/transaction/transaction_saving_account/transaction_saving_account.service';
 
 
 
@@ -29,7 +28,7 @@ export class AppController {
     private readonly dataSource: DataSource,
     private readonly appService: AppService,
     private readonly queueService: QueueService,
-    private readonly txService: TransactionSavingsAccountService,
+    // private readonly txService: TransactionSavingsAccountService,
 
     @Inject('USER_SERVICE') private readonly client: ClientProxy,
   ) {

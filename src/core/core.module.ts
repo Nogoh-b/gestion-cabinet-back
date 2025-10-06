@@ -25,7 +25,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 // import { swaggerConfig } from './config/swagger.config';
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
@@ -44,7 +43,8 @@ import { EmailService } from './shared/services/email/email.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
-import { PaginationService } from './shared/services/pagination/pagination.service';
+import { PaginationService as MyPaginationService } from './shared/services/pagination/pagination.service';
+import { PaginationService } from './shared/services/pagination/paginations.service';
 
 
 
@@ -99,7 +99,7 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
     OtpService,
     // RolesGuard,
     PermissionsGuard,
-    JwtAuthGuard,
+    // JwtAuthGuard,
     // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
     { provide: APP_FILTER,     useClass: TypeOrmExceptionFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
@@ -107,6 +107,7 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
     KeyGeneratorService,
+    MyPaginationService,
     PaginationService,
     EmailService,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
@@ -123,8 +124,9 @@ import { PaginationService } from './shared/services/pagination/pagination.servi
     McotiService,
     PermissionSeeder,
     PermissionsGuard,
+    MyPaginationService,
     PaginationService,
-    JwtAuthGuard,
+    // JwtAuthGuard,
     KeyGeneratorService,
   ],
 })

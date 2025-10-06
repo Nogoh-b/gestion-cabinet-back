@@ -9,13 +9,14 @@ import { UsersService } from 'src/modules/iam/user/user.service';
 
 import { Repository } from 'typeorm';
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
-import { Employee } from './entities/employee.entity';
+import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
+import { UserRole } from 'src/core/enums/user-role.enum';
 
 @Injectable()
 export class EmployeeService {
@@ -29,33 +30,91 @@ export class EmployeeService {
     private mailerService: EmailService,
     private userService: UsersService,
   ) {}
-  async createEmployee(
-    dto: CreateUserDto,
-    is_strict = true,
-  ): Promise<EmployeeResponseDto> {
-    const branch = await this.branchRepository.findOne({
-      where: { id: dto.branch_id, status: 1 },
-    });
-    if ((!branch || branch.status !== 1) && dto.branch_id) {
-      throw new NotFoundException('Branche non trouvée ou inactive');
-    }
-    const user = await this.userService.create(dto, is_strict);
 
-    /*const user = await this.userService.findOne(id);
-    if (!user || user.status !== 1) {
-      throw new NotFoundException('Utilisateur non trouvé ou inactif');
-    }*/
 
-    const employee = await this.employeeRepository.save(
-      this.employeeRepository.create({
-        hireDate: dto.hire_date || new Date(), // Date actuelle par défaut
-        status: 1, // Statut actif par défaut
-        user,
-        branch: branch ?? new Branch(),
-      }),
-    );
-    return plainToInstance(EmployeeResponseDto, employee);
+async createEmployee(
+  dto: CreateUserDto,
+  is_strict = true,
+): Promise<EmployeeResponseDto> {
+  // Vérification de la branche
+  const branch = await this.branchRepository.findOne({
+    where: { id: dto.branch_id, status: 1 },
+  });
+  
+  if ((!branch || branch.status !== 1) && dto.branch_id) {
+    throw new NotFoundException('Branche non trouvée ou inactive');
   }
+
+  // Vérification des doublons d'email
+  const existingUser = await this.userRepo.findOne({
+    where: { email: dto.email }
+  });
+
+  if (existingUser && is_strict) {
+    throw new ConflictException('Un utilisateur avec cet email existe déjà');
+  }
+
+  // Création de l'utilisateur
+  const user = this.userRepo.create({
+    first_name: dto.first_name,
+    last_name: dto.last_name,
+    email: dto.email,
+    password: await bcrypt.hash(dto.password, 12),
+    // phoneNumber: dto.phone_number,
+    role: this.getUserRoleFromPosition(dto.position),
+    // isActive: true,
+  });
+
+  const savedUser = await this.userRepo.save(user);
+
+  // Création de l'employé avec tous les champs
+  const employeeData: Partial<Employee> = {
+    user: savedUser[0],
+    branch: branch || undefined,
+    position: dto.position,
+    hireDate: dto.hire_date ? new Date(dto.hire_date) : new Date(),
+    status: EmployeeStatus.ACTIVE,
+    specialization: dto.specialization,
+    bar_association_number: dto.bar_association_number,
+    bar_association_city: dto.bar_association_city,
+    years_of_experience: dto.years_of_experience,
+    hourly_rate: dto.hourly_rate,
+    is_available: dto.is_available ?? true,
+    max_dossiers: dto.max_dossiers ?? 50,
+    bio: dto.bio,
+    languages: dto.languages,
+    expertise_areas: dto.expertise_areas,
+    birth_date: dto.birth_date ? new Date(dto.birth_date) : undefined,
+    professional_address: dto.professional_address,
+    professional_phone: dto.professional_phone,
+    siret_number: dto.siret_number,
+    tva_number: dto.tva_number,
+  };
+
+  const employee = await this.employeeRepository.save(
+    this.employeeRepository.create(employeeData)
+  );
+
+  return plainToInstance(EmployeeResponseDto, employee);
+}
+
+// Méthode helper pour déterminer le rôle utilisateur
+private getUserRoleFromPosition(position: EmployeePosition): UserRole {
+  switch (position) {
+    case EmployeePosition.AVOCAT:
+      return UserRole.AVOCAT;
+    case EmployeePosition.SECRETAIRE:
+    case EmployeePosition.ASSISTANT:
+    case EmployeePosition.ADMINISTRATIF:
+      return UserRole.SECRETAIRE;
+    case EmployeePosition.HUISSIER:
+      return UserRole.HUISSIER;
+    case EmployeePosition.STAGIAIRE:
+      return UserRole.STAGIAIRE;
+    default:
+      return UserRole.SECRETAIRE;
+  }
+}
 
   async findAllEmployees(
     branch_id: number = 0,
@@ -103,6 +162,33 @@ export class EmployeeService {
     if (!employee && is_strict) {
       throw new NotFoundException(
         `Employee with username ${username} not found`,
+      );
+    }
+
+    return plainToInstance(EmployeeResponseDto, employee);
+  }
+  async findByEmail(
+    email: string,
+    is_strict = true,
+  ): Promise<EmployeeResponseDto> {
+    const employee = await this.employeeRepository
+      .createQueryBuilder('employee')
+      .leftJoinAndSelect('employee.user', 'user')
+      .leftJoinAndSelect('user.customer', 'customer')
+      .leftJoinAndSelect(
+        'user.roleAssignments',
+        'roleAssignment',
+        'roleAssignment.status = 1',
+      )
+      .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
+      .leftJoinAndSelect('employee.branch', 'branch')
+      .where('user.email = :email', { email })
+      .andWhere('user.status = 1')
+      .getOne();
+
+    if (!employee && is_strict) {
+      throw new NotFoundException(
+        `Employee with email ${email} not found`,
       );
     }
 

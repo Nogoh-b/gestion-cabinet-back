@@ -15,17 +15,14 @@ import {
 import { getCronTime } from '../../../utils/utils';
 import { EmployeeService } from '../../agencies/employee/employee.service';
 import {
-  DocumentCustomer,
-  DocumentCustomerStatus,
+  DocumentCustomer
 } from '../../documents/document-customer/entities/document-customer.entity';
 import { DocumentTypeService } from '../../documents/document-type/document-type.service';
 import { User } from '../../iam/user/entities/user.entity';
 import { SavingsAccountService } from '../../savings-account/savings-account/savings-account.service';
 import { CreateCreditTransactionSavingsAccountDto } from '../../transaction/transaction_saving_account/dto/create-transaction_saving_account.dto';
 import { TransactionSavingsAccountService } from '../../transaction/transaction_saving_account/transaction_saving_account.service';
-import { GuarantyEstimation } from '../guaranty/garanty_estimation/entity/guaranty_estimation.entity';
 import { GuarantyEstimationService } from '../guaranty/garanty_estimation/guaranty_estimation.service';
-import { TypeGuaranty } from '../guaranty/type_guaranty/entity/type_guaranty.entity';
 import { DocumentLoanDto, GuarantyDocumentLoanDto } from './dto/loan.dto';
 import { Loan } from './entities/loan.entity';
 import * as dotenv from 'dotenv';
@@ -374,7 +371,7 @@ export class LoanService {
   }
 
   async rejectDocByCustomerId(doc: DocumentCustomer) {
-    await this.documentCustomerRepository.update(doc.id, { status: -1 });
+    // await this.documentCustomerRepository.update(doc.id, { status: -1 });
     return true;
   }
 
@@ -437,7 +434,7 @@ export class LoanService {
       },
     );
 
-    const currentDoc = this.documentCustomerRepository.create({
+    /*const currentDoc = this.documentCustomerRepository.create({
       document_type: docType,
       customer: { id: customerId },
       file_path: uploadedFile.fileName,
@@ -445,14 +442,14 @@ export class LoanService {
       name: docType.name,
       status: DocumentCustomerStatus.PENDING,
     });
-    const documents = await this.documentCustomerRepository.save(currentDoc);
-    return await this.guarantyEstimationService.addGuarantyEstimation({
+    const documents = await this.documentCustomerRepository.save(currentDoc);*/
+    return null/*await this.guarantyEstimationService.addGuarantyEstimation({
       value: Number(result.value),
       typeGuaranty: { id: typeGuaranty } as TypeGuaranty,
       documents,
       status: CREDIT_STATUS.PENDING,
       loan: { id },
-    } as GuarantyEstimation);
+    } as GuarantyEstimation);*/
   }
 
   async setTypeDocumentsToLoan(
@@ -473,7 +470,7 @@ export class LoanService {
       },
     );
 
-    const currentDoc = this.documentCustomerRepository.create({
+    /*const currentDoc = this.documentCustomerRepository.create({
       loan: { id },
       document_type: docType,
       customer: { id: customerId },
@@ -481,8 +478,8 @@ export class LoanService {
       file_size: uploadedFile.fileSize,
       name: docType.name,
       status: DocumentCustomerStatus.PENDING,
-    });
-    return await this.documentCustomerRepository.save(currentDoc);
+    });*/
+    return null//await this.documentCustomerRepository.save(currentDoc);
   }
 
   async createLoan(data: Loan) {

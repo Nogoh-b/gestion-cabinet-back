@@ -76,6 +76,7 @@
     "sharp": "^0.34.1",
     "toml": "^3.0.0",
     "typeorm": "^0.3.25",
+    "typeorm-extension": "^3.7.1",
     "uuid": "^9.0.1",
     "winston": "^3.13.0",
     "winston-daily-rotate-file": "^5.0.0"

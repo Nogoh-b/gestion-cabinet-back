@@ -1,6 +1,7 @@
 import { createWriteStream } from 'fs';
 import { join } from 'path';
 import * as sharp from 'sharp';
+import { BUSINESS_RULES } from '../interfaces/business-rules.constants';
 
 export class FilesUtil {
   /**
@@ -99,5 +100,24 @@ export class FilesUtil {
     }
 
     return compressedBuffer;
+  }
+
+    static isValidMimeType(mimeType: string): boolean {
+    return BUSINESS_RULES.DOCUMENT.ALLOWED_MIME_TYPES.includes(mimeType);
+  }
+
+  static isValidFileSize(size: number): boolean {
+    return size <= BUSINESS_RULES.DOCUMENT.MAX_FILE_SIZE;
+  }
+
+  static getFileExtension(filename: string): string {
+    return filename.split('.').pop()?.toLowerCase() || '';
+  }
+
+  static generateUniqueFilename(originalName: string): string {
+    const ext = this.getFileExtension(originalName);
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 15);
+    return `${timestamp}-${random}.${ext}`;
   }
 }

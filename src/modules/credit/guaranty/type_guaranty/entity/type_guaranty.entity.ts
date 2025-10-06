@@ -13,7 +13,7 @@ import { GuarantyEstimation } from '../../garanty_estimation/entity/guaranty_est
 import { DocumentType } from '../../../../documents/document-type/entities/document-type.entity';
 
 @Entity()
-export class TypeGuaranty extends BaseEntity {
+export class TypeGuaranty extends BaseEntity { 
   @PrimaryGeneratedColumn()
   id: number;
 

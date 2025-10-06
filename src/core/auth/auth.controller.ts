@@ -1,14 +1,16 @@
-import { Controller, Post, UseGuards, HttpCode, Req, HttpStatus, Request } from '@nestjs/common';
+import { Controller, Post, UseGuards, HttpCode, Req, HttpStatus, Request, Get } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger'; // Ajouter
+import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'; // Ajouter
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { Public } from '../decorators/public.decorator';
 import { LocalAuthGuard } from './guards/local-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
+@ApiBearerAuth() 
 export class AuthController {
   constructor(private authService: AuthService) {}
 
@@ -35,6 +37,16 @@ export class AuthController {
     return this.authService.login(req.user);
   }
 
+  // @UseGuards(LocalAuthGuard)
+  @ApiBearerAuth('access_token') // même nom que plus haut
+  @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  getProfile(@Request() req) {
+    console.log('req.user', req.user);
+    // req.user contient le payload du JWT
+    return req.user;
+  }
+  
   @Public()
   @UseGuards(AuthGuard('refresh'))
   @Post('refresh')

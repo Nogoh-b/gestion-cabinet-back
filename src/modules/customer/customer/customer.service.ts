@@ -173,7 +173,7 @@ export class CustomersService extends BaseService<Customer> {
     return {
       customer,
       documents:
-        await this.documentCustomerService.createMany(documentsWithFiles),
+        await this.documentCustomerService.createMany(documentsWithFiles, 1),
     };
     return documentsWithFiles;
   }
@@ -220,7 +220,7 @@ export class CustomersService extends BaseService<Customer> {
       return {
         ...result,
         data: result.data.map((customer) =>
-          plainToInstance(CustomerResponseDto, customer, { excludeExtraneousValues: true })
+          plainToInstance(CustomerResponseDto, customer)
         ),
       };
 

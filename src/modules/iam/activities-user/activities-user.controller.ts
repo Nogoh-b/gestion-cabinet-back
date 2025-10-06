@@ -12,7 +12,7 @@ export class ActivitiesUserController {
   @Post()
   @ApiOperation({ summary: 'Log user activity' })
   create(@Body() dto: CreateActivitiesUserDto) {
-    return this.activitiesService.createActivity(dto);
+    // return this.activitiesService.createActivity(dto);
   }
 
   @Get(':userId')

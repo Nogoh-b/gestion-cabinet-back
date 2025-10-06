@@ -23,7 +23,7 @@ export class AuthService {
   ) {}
 
     async validateUser(username: string, pass: string): Promise<any> {
-      const user = await this.usersService.findByUsername(username);
+      const user = await this.usersService.findByEmail(username);
       
       if (!user || !user.password) {
           throw new UnauthorizedException('Utilisateur inexistant');
@@ -41,7 +41,7 @@ export class AuthService {
 
   async login(data: any) {
     // console.log('data ', data)
-    const user : EmployeeResponseDto | null  = await this.employeeService.findOneByUsername(data.username);
+    const user : EmployeeResponseDto | null  = await this.employeeService.findByEmail(data.email);
     if (!user) {
         throw new UnauthorizedException('Utilisateur inexistant');
     }
@@ -49,7 +49,7 @@ export class AuthService {
 
     const payload: JwtPayload = { 
       sub: user.id,
-      username: user.username,
+      username: user.email,
       role : role
     };
     

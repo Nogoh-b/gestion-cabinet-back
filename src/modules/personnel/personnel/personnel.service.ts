@@ -1,5 +1,4 @@
 import { plainToInstance } from 'class-transformer';
-import { UPLOAD_DOCS_FOLDER_NAME, UPLOAD_FOLDER_NAME } from 'src/core/common/constants/constants';
 import { PaginationQueryTxDto } from 'src/core/shared/dto/pagination-query.dto';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
@@ -348,7 +347,7 @@ export class PersonnelService extends BaseService<Personnel> {
       name = `${personnel.customer.first_name} ${personnel.customer.last_name}`
     let  file_path = ''
     if(doc)
-      file_path = `${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${doc.file_path}` 
+      file_path = ''//`${process.env.API_HOST || 'localhost:3004'}/${UPLOAD_FOLDER_NAME}/${UPLOAD_DOCS_FOLDER_NAME}/${doc.file_path}` 
       let promo_code_reduction 
       console.log('type_personnel', personnel.savings_account.type_savings_account)
       if(type_personnel === PersonnelTypeCode.PARTNER)

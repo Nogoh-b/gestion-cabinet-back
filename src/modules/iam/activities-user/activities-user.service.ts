@@ -14,14 +14,14 @@ export class ActivitiesUserService {
     private usersService: UsersService,
   ) {}
 
-  async createActivity(dto: CreateActivitiesUserDto): Promise<ActivitiesUser> {
-    const user = await this.usersService.findOne(dto.userId);
+  async createActivity(dto: CreateActivitiesUserDto): Promise<ActivitiesUser | void> {
+    /*const user = await this.usersService.findOne(dto.userId);
     const activity = this.activitiesRepository.create({
       typeActivities: dto.typeActivities,
       user
     });
     
-    return this.activitiesRepository.save(activity);
+    return this.activitiesRepository.save(activity);*/
   }
 
   async getUserActivities(userId: number): Promise<ActivitiesUser[]> {

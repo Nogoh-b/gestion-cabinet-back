@@ -53,7 +53,7 @@ export class DocumentCustomerController {
     @Body() dto: CreateDocumentCustomerDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.create({ ...dto, customer_id, file });
+    return this.service.create({ ...dto, customer_id, file },1);
   }
 
 
@@ -125,7 +125,7 @@ export class DocumentCustomerController {
     for (const document of documentsWithFiles) {
       document.customer_id = customer_id;
       await validateDto(CreateDocumentCustomerDto, document);
-      docs.push(await this.service.create(document));
+      docs.push(await this.service.create(document,1));
     }
 
     return docs;
