@@ -52,7 +52,6 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'opposing_party_name',
         'opposing_party_lawyer',
         'opposing_party_contact',
-        // Recherche dans les relations
         'client.first_name',
         'client.last_name',
         'client.email'
@@ -79,7 +78,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       relationFields: [
         'client',
         'lawyer',
-        'procedure_type'
+        'procedure_type',
+        'procedure_subtype',
       ]
     };
   }
@@ -90,7 +90,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
   async searhDosiers(
     criteria: any,
     paginationParams?: any,
-    relations: string[] = ['client', 'lawyer', 'procedure_type']
+    relations: string[] = ['client', 'lawyer', 'procedure_type', 'procedure_subtype']
   ) {
     // const searchCriteria = {
     //   ...criteria,

@@ -172,11 +172,29 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     }
 
     // Ajouter les conditions AND seulement si elles ne contiennent pas de conflits
-    if (Object.keys(andConditions).length > 0) {
-      conditions.push(andConditions);
-    }
+   // Si on a à la fois une recherche globale (OR) et des conditions AND
+  if (criteria.search && searchOnlyFields.length > 0 && Object.keys(andConditions).length > 0) {
+    const combinedConditions = searchOnlyFields.map(field => {
+      const orCondition = field.includes('.')
+        ? this.buildNestedCondition(field, criteria.search)
+        : { [field]: ILike(`%${criteria.search}%`) };
+      return { ...andConditions, ...orCondition };
+    });
+    return combinedConditions;
+  }
 
-    return conditions.length > 0 ? conditions : {};
+  // Si seulement la recherche globale
+  if (criteria.search && searchOnlyFields.length > 0) {
+    return this.buildSearchConditions(criteria.search.toString(), searchOnlyFields);
+  }
+
+  // Si seulement des conditions spécifiques
+  if (Object.keys(andConditions).length > 0) {
+    return andConditions;
+  }
+
+  return {};
+
   }
 
   /**
