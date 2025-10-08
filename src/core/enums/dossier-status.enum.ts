@@ -8,3 +8,10 @@ export enum DossierStatus {
   CLOSED = 5,       // Clôturé
   ARCHIVED = 6    // Archivé
 }
+
+export enum PriorityLevel {
+  LOW = 0,
+  MEDIUM = 1,
+  HIGH = 2,
+  URGENT = 3,
+}

@@ -65,8 +65,8 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'confidentiality_level', length: 50, default: 'normal' })
   confidentiality_level: string;
 
-  @Column({ name: 'priority_level', length: 20, default: 'medium' })
-  priority_level: string;
+  @Column({ name: 'priority_level', type: 'int', default: 0 })
+  priority_level: number;
 
   @Column({ name: 'budget_estimate', type: 'decimal', precision: 10, scale: 2, nullable: true })
   budget_estimate: number;
@@ -96,17 +96,17 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'appeal_deadline', type: 'date', nullable: true })
   appeal_deadline: Date;
 
-  @Column({ name: 'client_id', type: 'date', nullable: true })
-  client_id: Date;
+  @Column({ name: 'client_id', type: 'int', nullable: true })
+  client_id?: number;
 
-  @Column({ name: 'lawyer_id', type: 'date', nullable: true })
-  lawyer_id: Date;
+  @Column({ name: 'lawyer_id', type: 'int', nullable: true })
+  lawyer_id?: number;
 
-  @Column({ name: 'procedure_type_id', type: 'date', nullable: true })
-  procedure_type_id: Date;
+  @Column({ name: 'procedure_type_id', type: 'int', nullable: true })
+  procedure_type_id?: number;
 
-  @Column({ name: 'procedure_subtype_id', type: 'date', nullable: true })
-  procedure_subtype_id: Date;
+  @Column({ name: 'procedure_subtype_id', type: 'int', nullable: true })
+  procedure_subtype_id?: number;
 
   // Relations principales (obligatoires selon R1)
   @ManyToOne(() => Customer, { nullable: false })

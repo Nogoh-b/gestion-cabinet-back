@@ -1,17 +1,19 @@
 // src/modules/dossiers/dto/create-dossier.dto.ts
 import {
-    IsNotEmpty,
-    IsString,
-    IsUUID, IsOptional,
-    IsDateString,
-    IsNumber,
-    Min,
-    Max,
-    IsArray,
-    IsBoolean,
-    ValidateIf
+  IsNotEmpty,
+  IsString,
+  IsUUID, IsOptional,
+  IsDateString,
+  IsNumber,
+  Min,
+  Max,
+  IsArray,
+  IsBoolean,
+  ValidateIf,
+  IsEnum
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PriorityLevel } from 'src/core/enums/dossier-status.enum';
 
 export class CreateDossierDto {
   @ApiProperty({
@@ -160,16 +162,9 @@ export class CreateDossierDto {
   @IsString()
   confidentiality_level?: string;
 
-  @ApiPropertyOptional({
-    description: 'Niveau de priorité',
-    example: 'high',
-    enum: ['low', 'medium', 'high', 'urgent'],
-    default: 'medium'
-  })
   @IsOptional()
-  @IsString()
-  priority_level?: string;
-
+  @IsEnum(PriorityLevel, { message: 'priority_level doit être une des valeurs : low, medium, high, urgent' })
+  priority_level?: PriorityLevel;
   @ApiPropertyOptional({
     description: 'Budget estimé en euros',
     example: 15000.00,

@@ -2,6 +2,7 @@
 import { Injectable } from '@nestjs/common';
 import { Repository, FindOptionsWhere, ObjectLiteral, FindManyOptions } from 'typeorm';
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
+import { plainToInstance } from 'class-transformer';
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -24,9 +25,9 @@ export class PaginationService {
     relations: string[] = [],
     additionalOptions: FindManyOptions<T> = {}
   ): Promise<PaginatedResult<T>> {
-    const page = paginationParams.page ?? 1;
-    const limit = paginationParams.limit ?? 10;
-
+    const page = Number(paginationParams.page) ?? 1;
+    const limit = Number(paginationParams.limit )?? 10;
+    console.log('Pagination params11:', page ,'*', limit);
     const [data, total] = await repository.findAndCount({
       where,
       relations,
@@ -53,23 +54,34 @@ export class PaginationService {
     };
   }
 
+  /**
+   * ✅ Version corrigée : applique automatiquement le DTO si fourni
+   */
   async paginateWithTransformer<T extends ObjectLiteral, R>(
     repository: Repository<T>,
     paginationParams: PaginationParamsDto,
     transformer: (data: T[]) => Promise<R[]> | R[],
     where?: FindOptionsWhere<T> | FindOptionsWhere<T>[],
     relations: string[] = [],
-    additionalOptions: FindManyOptions<T> = {}
+    additionalOptions: FindManyOptions<T> = {},
+    dtoClass?: new (...args: any[]) => R, // <-- DTO optionnel
   ): Promise<PaginatedResult<R>> {
     const result = await this.paginate(
       repository,
       paginationParams,
       where,
       relations,
-      additionalOptions
+      additionalOptions,
     );
 
-    const transformedData = await transformer(result.data);
+    let transformedData = await transformer(result.data);
+
+    // ✅ Si un DTO est passé, appliquer class-transformer proprement
+    if (dtoClass) {
+      transformedData = plainToInstance(dtoClass, transformedData, {
+        excludeExtraneousValues: false,
+      });
+    }
 
     return {
       data: transformedData,

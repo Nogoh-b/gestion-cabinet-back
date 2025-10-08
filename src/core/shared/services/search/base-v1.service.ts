@@ -47,14 +47,52 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   ): Promise<PaginatedResult<T>> {
     
     const whereConditions = this.buildWhereConditionsV1(criteria, searchOptions);
+    // ✅ MODIFICATION : Intégrer le tri depuis paginationParams
+    const finalOrder = this.buildFinalOrder(order, paginationParams);
     
     return this.paginationService.paginate(
       this.repository,
       paginationParams || new PaginationParamsDto(),
       whereConditions,
       relations,
-      { order }
+      { order: finalOrder }
     );
+  }
+
+   // 🔥 NOUVELLE MÉTHODE PRIVÉE À AJOUTER :
+  /**
+   * Construit l'ordre final en priorisant paginationParams.sort_by/sort_direction
+   */
+  private buildFinalOrder<T>(
+    defaultOrder: FindOptionsOrder<T>,
+    paginationParams?: PaginationParamsDto
+  ): FindOptionsOrder<T> {
+    // Si pas de tri spécifié dans paginationParams, utiliser l'ordre par défaut
+    if (!paginationParams?.sort_by) {
+      return defaultOrder;
+    }
+
+    const sortDirection = paginationParams.sort_direction || 'ASC';
+    const finalOrder: FindOptionsOrder<T> = {} as FindOptionsOrder<T>;
+    
+    // Gestion des tris sur les relations (ex: "user.name")
+    if (paginationParams.sort_by.includes('.')) {
+      const parts = paginationParams.sort_by.split('.');
+      let currentLevel: any = finalOrder;
+      
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentLevel[parts[i]] = currentLevel[parts[i]] || {};
+        currentLevel = currentLevel[parts[i]];
+      }
+      
+      currentLevel[parts[parts.length - 1]] = sortDirection;
+    } else {
+      // Tri simple
+      finalOrder[paginationParams.sort_by as keyof FindOptionsOrder<T>] = 
+      sortDirection as any;
+    }
+    
+    return finalOrder;
   }
 
   /**
@@ -63,13 +101,12 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   async searchWithTransformer<R>(
     criteria: SearchCriteria,
     transformer: (data: T[]) => Promise<R[]> | R[],
-    searchOptions?: SearchOptions,
     paginationParams?: PaginationParamsDto,
     relations: string[] = [],
     order: FindOptionsOrder<T> = { created_at: 'DESC' } as unknown as FindOptionsOrder<T>
   ): Promise<PaginatedResult<R>> {
     
-    const whereConditions = this.buildWhereConditionsV1(criteria, searchOptions);
+    const whereConditions = this.buildWhereConditionsV1(criteria, {});
     
     return this.paginationService.paginateWithTransformer(
       this.repository,
@@ -326,7 +363,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     // Liste complète des champs à exclure
     const excludedFields = new Set([
       'search', 'page', 'limit', 'sort_by', 'sort_desc', 'sort_direction',
-      'date_from', 'date_to'
+      'date_from', 'date_to', 'date_range'
     ]);
 
     // Ajouter tous les champs date_* à exclure

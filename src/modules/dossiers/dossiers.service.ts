@@ -54,6 +54,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'opposing_party_contact',
         'client.first_name',
         'client.last_name',
+        'procedure_type.name',
+        'procedure_subtype.name',
         'client.email'
       ],
       
@@ -87,20 +89,174 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
   /**
    * Recherche avancée des clients avec relations
    */
-  async searhDosiers(
-    criteria: any,
-    paginationParams?: any,
-    relations: string[] = ['client', 'lawyer', 'procedure_type', 'procedure_subtype']
-  ) {
-    // const searchCriteria = {
-    //   ...criteria,
-    //   'client.first_name': 'nogoh' // Recherche dans la relation
-    // };
-    this.debugConditions(criteria,paginationParams);
+async searhDosiers(
+  criteria: any,
+  paginationParams?: any,
+  relations: string[] = ['client', 'lawyer', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
+) {
+  this.debugConditions(criteria, paginationParams);
 
-    return this.search(criteria, undefined, paginationParams, relations);
+  const paginatedResult = await this.searchWithTransformer(
+    criteria,
+    async (data: Dossier[]) => {
+      // ✅ Transformer manuellement chaque Dossier en DossierResponseDto
+      return data.map(dossier => this.transformDossierToResponseDto(dossier));
+    },
+    paginationParams,
+    relations
+  );
+
+  return paginatedResult;
+}
+
+  /**
+  * Transformer personnalisé de Dossier vers DossierResponseDto
+  */
+  private transformDossierToResponseDto(dossier: Dossier): DossierResponseDto {
+    const dto = new DossierResponseDto();
+    
+    // Propriétés directes
+    dto.id = dossier.id;
+    dto.dossier_number = dossier.dossier_number;
+    dto.object = dossier.object;
+    dto.jurisdiction = dossier.jurisdiction;
+    dto.court_name = dossier.court_name;
+    dto.case_number = dossier.case_number;
+    dto.opposing_party_name = dossier.opposing_party_name;
+    dto.opposing_party_lawyer = dossier.opposing_party_lawyer;
+    dto.opposing_party_contact = dossier.opposing_party_contact;
+    dto.third_parties = dossier.third_parties;
+    dto.description = dossier.description;
+    dto.status = dossier.status;
+    dto.opening_date = dossier.opening_date;
+    dto.closing_date = dossier.closing_date;
+    dto.estimated_duration = dossier.estimated_duration;
+    dto.confidentiality_level = dossier.confidentiality_level;
+    dto.priority_level = dossier.priority_level;
+    dto.budget_estimate = dossier.budget_estimate;
+    dto.actual_costs = dossier.actual_costs;
+    dto.success_probability = dossier.success_probability;
+    dto.key_dates = dossier.key_dates;
+    dto.next_steps = dossier.next_steps;
+    dto.final_decision = dossier.final_decision;
+    dto.appeal_possibility = dossier.appeal_possibility;
+    dto.appeal_deadline = dossier.appeal_deadline;
+    dto.created_at = dossier.created_at;
+    dto.updated_at = dossier.updated_at;
+
+    // Client
+    if (dossier.client) {
+      dto.client = {
+        id: dossier.client.id,
+        full_name: dossier.client.full_name,
+        email: dossier.client.email,
+        company_name: dossier.client.company_name,
+        billing_type: dossier.client.billing_type,
+        professional_phone: dossier.client.professional_phone,
+      };
+    }
+
+    // Lawyer
+    if (dossier.lawyer) {
+      dto.lawyer = {
+        id: dossier.lawyer.id,
+        full_name: dossier.lawyer.full_name,
+        email: dossier.lawyer.email,
+        specialization: dossier.lawyer.specialization || 'Empty',
+      };
+    }
+
+    // Procedure type
+    if (dossier.procedure_type) {
+      dto.procedure_type = {
+        id: dossier.procedure_type.id,
+        name: dossier.procedure_type.name,
+        code: dossier.procedure_type.code,
+        description: dossier.procedure_type.description,
+      };
+    }
+
+    // Procedure subtype
+    if (dossier.procedure_subtype) {
+      dto.procedure_subtype = {
+        id: dossier.procedure_subtype.id,
+        name: dossier.procedure_subtype.name,
+        code: dossier.procedure_subtype.code,
+      };
+    }
+
+    // Documents
+    // if (dossier.documents && dossier.documents.length > 0) {
+    //   dto.documents = dossier.documents.map(doc => ({
+    //     id: doc.id,
+    //     name: doc.name,
+    //     category: doc.category,
+    //     document_type: doc.document_type,
+    //     status: doc.status,
+    //     version: doc.version,
+    //     uploaded_by: doc.customer.id,
+    //     created_at: doc.created_at,
+    //   }));
+    // }
+
+    // Audiences
+    if (dossier.audiences && dossier.audiences.length > 0) {
+      dto.audiences = dossier.audiences.map(audience => ({
+        id: audience.id,
+        audience_date: audience.audience_date,
+        audience_time: audience.audience_time,
+        jurisdiction: audience.jurisdiction,
+        status: audience.status,
+        decision: audience.decision,
+        outcome: audience.outcome,
+        is_upcoming: audience.is_upcoming,
+      }));
+    }
+
+    // Factures
+    if (dossier.factures && dossier.factures.length > 0) {
+      dto.factures = dossier.factures.map(facture => ({
+        id: facture.id,
+        invoice_number: facture.invoice_number,
+        invoice_date: facture.invoice_date,
+        due_date: facture.due_date,
+        amount_ttc: facture.amount_ttc,
+        status: facture.status,
+        remaining_amount: facture.remaining_amount,
+        is_paid: facture.is_paid,
+      }));
+    }
+
+    // Collaborators
+    if (dossier.collaborators && dossier.collaborators.length > 0) {
+      dto.collaborators = dossier.collaborators.map(collab => ({
+        id: collab.id,
+        full_name: collab.full_name,
+        email: collab.email,
+        role: collab.role,
+      }));
+    }
+
+    // Propriétés calculées (getters)
+    dto.document_count = dossier.document_count;
+    dto.audience_count = dossier.audience_count;
+    dto.facture_count = dossier.factures?.length || 0;
+    dto.total_factures_amount = dossier.total_factures_amount;
+    dto.paid_factures_amount = dossier.paid_factures_amount;
+    dto.is_active = dossier.is_active;
+    dto.is_closed = dossier.is_closed;
+    dto.is_archived = dossier.is_archived;
+    dto.next_audience = dossier.next_audience ? {
+      id: dossier.next_audience.id,
+      audience_date: dossier.next_audience.audience_date,
+      audience_time: dossier.next_audience.audience_time,
+      jurisdiction: dossier.next_audience.jurisdiction,
+      room: dossier.next_audience.room,
+    } : null;
+
+    return dto;
   }
-
+  
   async create(createDossierDto: CreateDossierDto, createdBy: User): Promise<DossierResponseDto> {
     // console.log(createDossierDto, createdBy);
     // Validation de la paire type/sous-type (R8)
