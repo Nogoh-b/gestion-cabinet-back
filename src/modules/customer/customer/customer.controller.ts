@@ -1,32 +1,38 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { PaginationQueryCustomerDto } from 'src/core/shared/dto/pagination-query.dto';
 import { EmailService } from 'src/core/shared/services/email/email.service';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+
+
+
+
+
+
 import { KycSyncDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+
+
+
+
+
+
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseInterceptors,
-  UploadedFiles,
-  UseGuards,
-  Query
+    Controller,
+    Get,
+    Post,
+    Body,
+    Patch,
+    Param,
+    Delete,
+    UseInterceptors,
+    UploadedFiles,
+    UseGuards,
+    Query
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
-
-
-
-
-
-
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
-
-
 
 
 
@@ -35,8 +41,12 @@ import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
+import { CustomerSearchDto } from './dto/search-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { PaginationQueryCustomerDto } from 'src/core/shared/dto/pagination-query.dto';
+
+
+
+
 
 
 
@@ -67,17 +77,18 @@ export class CustomerController {
     return await this.customerService.create(createCustomerDto);
   }
 
-  @Post('/search')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Get('/search')
+  // @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_CUSTOMER')
   @ApiOperation({ summary: 'Rechercher customer' })
-  @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
+  @ApiResponse({ status: 201, description: 'Liste' , type: [CustomerResponseDto] })
 
-  async search(
-    @Body() searchDto: AdvancedSearchOptionsDto,
-    ): Promise<any[]> {
-    
-     return await this.customerService.search(searchDto);
+ async search(
+
+    @Query() searchParams?: CustomerSearchDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.customerService.searchWithTransformer(searchParams as SearchCriteria, CustomerResponseDto , paginationParams);
   }
 
 

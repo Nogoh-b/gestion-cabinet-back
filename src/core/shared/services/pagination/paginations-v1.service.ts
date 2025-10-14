@@ -1,8 +1,10 @@
 // src/common/pagination/paginations.service.ts
-import { Injectable } from '@nestjs/common';
-import { Repository, FindOptionsWhere, ObjectLiteral, FindManyOptions } from 'typeorm';
-import { PaginationParamsDto } from '../../dto/pagination-params.dto';
 import { plainToInstance } from 'class-transformer';
+import { Repository, FindOptionsWhere, ObjectLiteral, FindManyOptions } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+
+import { PaginationParamsDto } from '../../dto/pagination-params.dto';
+
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -17,7 +19,7 @@ export interface PaginatedResult<T> {
 }
 
 @Injectable()
-export class PaginationService {
+export class PaginationServiceV1 {
   async paginate<T extends ObjectLiteral>(
     repository: Repository<T>,
     paginationParams: PaginationParamsDto,

@@ -1,5 +1,5 @@
 // src/common/services/base.service.ts
-import { Injectable } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
 import {
   Repository,
   FindOptionsWhere,
@@ -13,9 +13,14 @@ import {
   MoreThanOrEqual,
   LessThanOrEqual,
 } from 'typeorm';
-import { PaginatedResult, PaginationService } from '../pagination/paginations.service';
-import { PaginationParamsDto } from '../../dto/pagination-params.dto';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
+import { Injectable } from '@nestjs/common';
+
+
+import { PaginationParamsDto } from '../../dto/pagination-params.dto';
+import { PaginatedResult, PaginationServiceV1 } from '../pagination/paginations-v1.service';
+
+
 
 export interface SearchCriteria {
   [key: string]: any;
@@ -32,7 +37,7 @@ export interface SearchOptions {
 export abstract class BaseServiceV1<T extends ObjectLiteral> {
   constructor(
     protected readonly repository: Repository<T>,
-    protected readonly paginationService: PaginationService,
+    protected readonly paginationService: PaginationServiceV1,
   ) {}
 
   /**
@@ -98,25 +103,43 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   /**
    * Recherche avec transformation des données (si besoin)
    */
+  // Dans BaseServiceV1
+  // Dans BaseServiceV1
   async searchWithTransformer<R>(
     criteria: SearchCriteria,
-    transformer: (data: T[]) => Promise<R[]> | R[],
+    dtoClass: new (...args: any[]) => R,
     paginationParams?: PaginationParamsDto,
-    relations: string[] = [],
-    order: FindOptionsOrder<T> = { created_at: 'DESC' } as unknown as FindOptionsOrder<T>
+    relations?: string[] | null,
+    order?: FindOptionsOrder<T>
   ): Promise<PaginatedResult<R>> {
     
     const whereConditions = this.buildWhereConditionsV1(criteria, {});
-    
+
+    // ⚙️ Construire dynamiquement l’ordre à partir du PaginationParamsDto
+    const finalOrder: FindOptionsOrder<T> = order ?? {
+      [paginationParams?.sort_by ?? 'created_at']: (paginationParams?.sort_direction ?? 'ASC') as any,
+    } as FindOptionsOrder<T>;
+
+    const transformer = (data: T[]) =>
+      plainToInstance(dtoClass, data, {
+        excludeExtraneousValues: false,
+        enableImplicitConversion: true,
+      });
+
+    relations = relations || this.getDefaultSearchOptions().relationFields;
+
     return this.paginationService.paginateWithTransformer(
       this.repository,
       paginationParams || new PaginationParamsDto(),
       transformer,
       whereConditions,
       relations,
-      { order }
+      { order: finalOrder },
+      dtoClass
     );
   }
+
+
 
   /**
    * Recherche simple (sans pagination)

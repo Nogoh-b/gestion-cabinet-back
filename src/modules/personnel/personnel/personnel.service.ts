@@ -158,7 +158,7 @@ export class PersonnelService extends BaseService<Personnel> {
     }
 
     const entity = this.personnel_repository.create({
-      customer,
+      customer : customer as any,
       savings_account,
       type_personnel: type,
       name : dto.name,
@@ -267,7 +267,7 @@ export class PersonnelService extends BaseService<Personnel> {
       code: dto.code ? next_code : undefined,
       is_intern: dto.is_intern,
       status: dto.status,
-      customer: await this.customer_service.findOne(dto.customer_id ?? entity.customer.id),
+      customer: await this.customer_service.findOne(dto.customer_id ?? entity.customer.id) as any,
       type_personnel: await this.type_personnel_service.findOne(dto.type_personnel_id ?? entity.type_personnel.id),
     });
     return this.personnel_repository.save(merged);

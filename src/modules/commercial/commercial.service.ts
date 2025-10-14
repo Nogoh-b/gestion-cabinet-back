@@ -51,7 +51,7 @@ export class CommercialService extends BaseService<Commercial> {
    * Crée un nouveau partenaire
    */
   async createCommercial(dto: CreateCommercialDto): Promise<Commercial> {
-    const customer = await this.customerService.findOne(dto.customer_id);
+    const customer = await this.customerService.findOne(dto.customer_id) as any;
     const partnerExisting = await this.getBycustomerId(customer.id)
     if(partnerExisting){
         if(partnerExisting.status === CustomerStatus.ACTIVE)

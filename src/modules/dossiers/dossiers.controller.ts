@@ -25,6 +25,7 @@ import { Roles } from 'src/core/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
 @ApiTags('dossiers')
 @ApiBearerAuth()
@@ -49,15 +50,13 @@ export class DossiersController {
 
   @Get('search')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
-  @ApiResponse({ status: 200, description: 'Résultats de recherche' })
+  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [DossierResponseDto]  })
   async search(
 
     @Query() searchParams?: DossierSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
- 
-
-    return this.dossiersService.searhDosiers(searchParams, paginationParams);
+    return this.dossiersService.searchWithTransformer(searchParams as SearchCriteria, DossierResponseDto , paginationParams);
   }
 
   @Get()

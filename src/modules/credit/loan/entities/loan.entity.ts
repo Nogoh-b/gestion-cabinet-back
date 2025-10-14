@@ -88,7 +88,7 @@ export class Loan extends BaseEntity {
   @Column()
   remainPaymentNumber: number;
   //
-  @ManyToOne(() => Customer, (type) => type.loans)
+  @ManyToOne(() => Customer,)
   customer: Customer;
 
   @ManyToOne(() => SavingsAccount, (type) => type.loans)

@@ -8,7 +8,9 @@ import {
   UpdateDateColumn,
   ManyToMany,
   JoinTable,
+  OneToMany,
 } from 'typeorm';
+import { Customer } from '../../customer/entities/customer.entity';
 
 @Entity('type_customer')
 export class TypeCustomer {
@@ -28,6 +30,9 @@ export class TypeCustomer {
     inverseJoinColumn: { name: 'document_type_id' },
   })
   requiredDocuments: DocumentType[];
+
+  @OneToMany(() => Customer, (c:Customer) => c.type_customer)
+  customers: Customer[];
 
   @CreateDateColumn({ name: 'created_at' })
   create_at: Date;

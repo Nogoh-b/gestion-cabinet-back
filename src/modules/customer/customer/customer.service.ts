@@ -1,7 +1,9 @@
 import { plainToInstance } from 'class-transformer';
-import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
+import { DateRange, PaginatedResult, PaginationOptions, SearchOptions as SearchOptionV1 } from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { BaseService } from 'src/core/shared/services/search/base.service';
+import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
@@ -10,16 +12,18 @@ import {
   DocTypeNameOnline,
   KycSyncDto,
 } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+
 import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
+
 import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-
 import { DataSource, Repository } from 'typeorm';
-
 import {
   BadRequestException,
   ConflictException,
@@ -28,8 +32,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
@@ -42,11 +50,15 @@ import {
   CustomerCreatedFrom,
   CustomerStatus,
 } from './entities/customer.entity';
-import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
-import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
+
+
+
+
+
+
 
 @Injectable()
-export class CustomersService extends BaseService<Customer> {
+export class CustomersService extends BaseServiceV1<Customer> {
   constructor(
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
@@ -62,12 +74,60 @@ export class CustomersService extends BaseService<Customer> {
     private documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => BranchService))
     private branchService: BranchService,
-    private paginationService: PaginationService,
+    protected readonly oldPaginationService: PaginationService,
+    protected readonly paginationServiceV1: PaginationServiceV1,
     private readonly dataSource: DataSource,
   ) {
     console.log(forwardRef);
-    super();
+    super(customerRepository, paginationServiceV1);
   }
+
+  protected getDefaultSearchOptions(): SearchOptions {
+      return {
+        // Champs pour la recherche globale
+        searchFields: [
+          'last_name',
+          'first_name',
+          'company_name',
+          'address',
+          'postal_code',
+          'country',
+          'billing_type',
+          'professional_phone',
+          'fax',
+          'siret',
+          'tva_number',
+          'legal_form',
+          'reference',
+          'number_phone_1',
+          'number_phone_2',
+          'email',
+          'customer_code',
+          'type_customer.name',
+          'location_city.name',
+          'nui',
+          'rccm',
+          'birthday',
+        ],
+        
+        // Champs pour recherche exacte
+        exactMatchFields: [
+          'type_customer.name',
+          'location_city.name',
+        ],
+        
+        // Champs pour ranges de dates
+        /*dateRangeFields: [
+          'created_at',
+          'updated_at',
+          'opening_date',
+          'closing_date'
+        ],*/
+        
+        // Champs de relations pour filtrage
+        relationFields: ['type_customer', 'location_city']
+      };
+    }
 
   async create(createCustomerDto: CreateCustomerDto): Promise<any> {
     return await this.dataSource.transaction(async (manager) => {
@@ -102,7 +162,7 @@ export class CustomersService extends BaseService<Customer> {
 
       const customer = this.customerRepository.create({
         ...createCustomerDto,
-        first_name: createCustomerDto.first_name ?? createCustomerDto.firt_name,
+        first_name: createCustomerDto.first_name ?? createCustomerDto.first_name,
         type_customer,
         location_city,
       });
@@ -178,9 +238,9 @@ export class CustomersService extends BaseService<Customer> {
     return documentsWithFiles;
   }
 
-  async search(params: AdvancedSearchOptionsDto) {
-    return this.enhancedSearch(params);
-  }
+  // async search(params: AdvancedSearchOptionsDto) {
+  //   return null// this.enhancedSearch(params);
+  // }
 
   async findAll(): Promise<CustomerResponseDto[]> {
     const customers = await this.customerRepository.find({
@@ -204,7 +264,7 @@ export class CustomersService extends BaseService<Customer> {
       .leftJoinAndSelect('c.location_city', 'location_city')
 
       const options: PaginationOptions & {
-        search?: SearchOptions;
+        search?: SearchOptionV1;
         dateRange?: DateRange;
       } = { page, limit };
       if (term) options.search = { term, fields, exact };
@@ -214,7 +274,7 @@ export class CustomersService extends BaseService<Customer> {
           to: to ? new Date(to) : undefined,
         };
       console.log('------options---- ', options);
-      const result = await this.paginationService.paginate(qb, options);
+      const result = await this.oldPaginationService.paginate(qb, options);
 
       // transformer chaque item en DTO
       return {
@@ -269,7 +329,7 @@ export class CustomersService extends BaseService<Customer> {
     id: number,
     dto: UpdateCustomerDto,
   ): Promise<CustomerResponseDto> {
-    const customer = await this.findOne(id);
+    const customer = (await this.findOne(id)) as any;
 
     if (dto.email && dto.email !== customer.email) {
       const emailExists = await this.customerRepository.findOneBy({
@@ -340,40 +400,9 @@ export class CustomersService extends BaseService<Customer> {
     if (!customer) throw new NotFoundException(`Compte ${id} introuvable`);
 
     const stats = {
-      outgoingTransactionsTotal: 0,
-      incomingTransactionsTotal: 0,
-      outgoingTransactionsMOMOTotal: 0,
-      incomingTransactionsMOMOTotal: 0,
-      outgoingTransactionsOMTotal: 0,
-      incomingTransactionsOMTotal: 0,
-      inComingAmount: 0,
-      outgoingAmount: 0,
-      inComingAmountMOMO: 0,
-      outgoingAmountMOMO: 0,
-      inComingAmountOM: 0,
-      outgoingAmountOM: 0,
-      savingAccountTotal: customer.savings_accounts.length,
     };
 
-    if (customer.savings_accounts) {
-      for (const sa of customer.savings_accounts) {
-        const stat = await this.savingsAccountService.stats(sa.id);
-        stats.outgoingTransactionsTotal += stat.outgoingTransactionsTotal;
-        stats.incomingTransactionsTotal += stat.incomingTransactionsTotal;
-        stats.outgoingTransactionsMOMOTotal +=
-          stat.outgoingTransactionsMOMOTotal;
-        stats.incomingTransactionsMOMOTotal +=
-          stat.incomingTransactionsMOMOTotal;
-        stats.outgoingTransactionsOMTotal += stat.outgoingTransactionsOMTotal;
-        stats.incomingTransactionsOMTotal += stat.incomingTransactionsOMTotal;
-        stats.inComingAmount += stat.inComingAmount;
-        stats.outgoingAmount += stat.outgoingAmount;
-        stats.inComingAmountMOMO += stat.inComingAmountMOMO;
-        stats.outgoingAmountMOMO += stat.outgoingAmountMOMO;
-        stats.inComingAmountOM += stat.inComingAmountOM;
-        stats.outgoingAmountOM += stat.outgoingAmountOM;
-      }
-    }
+
 
     return stats;
   }

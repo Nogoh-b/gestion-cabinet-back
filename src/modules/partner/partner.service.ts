@@ -50,7 +50,7 @@ export class PartnerService extends BaseService<Partner> {
    * Crée un nouveau partenaire
    */
   async createPartner(dto: CreatePartnerDto): Promise<Partner> {
-    const customer = await this.customerService.findOne(dto.customer_id);
+    const customer = await this.customerService.findOne(dto.customer_id) as any;
     const partnerExisting = await this.getBycustomerId(customer.id)
     if(partnerExisting){
         if(partnerExisting.status === CustomerStatus.ACTIVE)

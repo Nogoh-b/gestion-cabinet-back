@@ -7,17 +7,22 @@ import { TypeCustomer } from './entities/type_customer.entity';
 import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { AssignDocumentsToTypeDto } from 'src/modules/documents/shared/assign-documents-to-type.dto';
+import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
 @Injectable()
-export class TypeCustomersService {
+export class TypeCustomersService extends BaseServiceV1<TypeCustomer>  {
   constructor(
     @InjectRepository(TypeCustomer)
-    private repository: Repository<TypeCustomer>,
+    protected repository: Repository<TypeCustomer>,
     @InjectRepository(TypeCustomer)
     private typeCustomerRepository: Repository<TypeCustomer>,
+    protected readonly paginationService: PaginationServiceV1,
     @InjectRepository(DocumentType)
     private document_typeRepository: Repository<DocumentType>
-  ) {}
+  ) {    
+    super(repository, paginationService);
+  }
 
   create(dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
     return this.repository.save(dto);

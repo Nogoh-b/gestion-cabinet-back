@@ -39,7 +39,7 @@ async function bootstrap() {
   const core = await NestFactory.createMicroservice(AppModule, {
     transport: Transport.TCP,
     options: {
-      port: 3003,
+      port: 2999,
       tlsOptions: {
         key: SSL_KEY_PATH,
         cert: SSL_CERTIFICATE_PATH,

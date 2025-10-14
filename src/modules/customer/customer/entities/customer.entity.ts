@@ -2,7 +2,6 @@ import { BaseEntity } from 'src/core/entities/baseEntity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
 import {
   BeforeInsert,
   Column,
@@ -13,8 +12,9 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
-import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+import { Facture } from 'src/modules/finances/entities/facture.entity';
 // import { Dossier } from 'src/modules/dossiers/entities/dossier.entity'; // ✅ Ajout
 
 export enum CustomerStatus {
@@ -106,12 +106,6 @@ export class Customer extends BaseEntity {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
-  @OneToMany(() => Loan, (type) => type.customer)
-  loans: Loan[];
-
-  @OneToMany(() => SavingsAccount, (sa) => sa.customer)
-  savings_accounts: SavingsAccount[];
-
   // ✅ TypeCustomer gère maintenant le segment
   @ManyToOne(() => TypeCustomer, { eager: true }) // eager loading pour accès facile
   @JoinColumn({ name: 'type_customer_id' })
@@ -139,6 +133,12 @@ export class Customer extends BaseEntity {
   // ✅ Relation avec les dossiers juridiques
   @OneToMany(() => Dossier, (dossier) => dossier.client)
   dossiers: Dossier[];
+
+  @OneToMany(() => DocumentCustomer, (document) => document.customer)
+  documents: DocumentCustomer[];
+
+  @OneToMany(() => Facture, (facture) => facture.client)
+  factures: Facture[];
 
   // ✅ GETTERS améliorés
   get fullName(): string {

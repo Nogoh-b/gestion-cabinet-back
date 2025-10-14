@@ -1,23 +1,28 @@
 // src/modules/dossiers/dossiers.service.ts
+import { plainToInstance } from 'class-transformer';
+import { randomUUID } from 'crypto';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { UserRole } from 'src/core/enums/user-role.enum';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { PaginatedResult, PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
+import { Repository, In, Like, Between, FindOptionsWhere } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Like, Between, FindOptionsWhere } from 'typeorm';
-import { Dossier } from './entities/dossier.entity';
-import { CreateDossierDto } from './dto/create-dossier.dto';
-import { UpdateDossierDto } from './dto/update-dossier.dto';
-import { DossierSearchDto } from './dto/dossier-search.dto';
-import { ChangeStatusDto } from './dto/change-status.dto';
-import { DossierResponseDto } from './dto/dossier-response.dto';
-import { plainToInstance } from 'class-transformer';
+
+
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { User } from '../iam/user/entities/user.entity';
 import { ProcedureType } from '../procedures/entities/procedure.entity';
-import { DossierStatus } from 'src/core/enums/dossier-status.enum';
-import { PaginatedResult, PaginationService } from 'src/core/shared/services/pagination/paginations.service';
-import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-import { UserRole } from 'src/core/enums/user-role.enum';
-import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { ChangeStatusDto } from './dto/change-status.dto';
+import { CreateDossierDto } from './dto/create-dossier.dto';
+import { DossierResponseDto } from './dto/dossier-response.dto';
+import { DossierSearchDto } from './dto/dossier-search.dto';
+import { UpdateDossierDto } from './dto/update-dossier.dto';
+import { Dossier } from './entities/dossier.entity';
+
+
 
 @Injectable()
 export class DossiersService  extends BaseServiceV1<Dossier>  {
@@ -30,7 +35,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     private readonly userRepository: Repository<User>,
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepository: Repository<ProcedureType>,
-    protected readonly paginationService: PaginationService,
+    protected readonly paginationService: PaginationServiceV1,
 
   ) {
     super(dossierRepository, paginationService);
@@ -77,36 +82,26 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       ],*/
       
       // Champs de relations pour filtrage
-      relationFields: [
-        'client',
-        'lawyer',
-        'procedure_type',
-        'procedure_subtype',
-      ]
+      relationFields: ['client', 'lawyer', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
     };
   }
 
   /**
    * Recherche avancée des clients avec relations
    */
+// Dans votre DossierService
 async searhDosiers(
   criteria: any,
   paginationParams?: any,
   relations: string[] = ['client', 'lawyer', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
 ) {
-  const paginatedResult = await this.searchWithTransformer(
+  return this.searchWithTransformer(
     criteria,
-    async (data: Dossier[]) => {
-      return plainToInstance(DossierResponseDto, data, {
-        excludeExtraneousValues: false,
-        enableImplicitConversion: true,
-      });
-    },
+    DossierResponseDto, // ✅ Juste passer la classe DTO
     paginationParams,
-    relations
+    relations,
+    { created_at: 'DESC' } as any
   );
-
-  return paginatedResult;
 }
 
 
@@ -505,7 +500,7 @@ async searhDosiers(
     });
     
     const sequence = (count + 1).toString().padStart(4, '0');
-    return `DOS-${year}-${sequence}`;
+    return `DOS-${year}-${sequence}-${randomUUID().slice(0, 4).toUpperCase()}`; 
   }
 
   private async validateProcedureTypeSubtype(typeId: number, subtypeId: number): Promise<boolean | null> {

@@ -1,14 +1,17 @@
 // type-customers.controller.ts
-import { Controller, Get, Post, Body, Param, Put, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, UseGuards, Query } from '@nestjs/common';
 import { TypeCustomersService } from './type-customer.service';
 import { TypeCustomer } from './entities/type_customer.entity';
 import { CreateTypeCustomerDto } from './dto/create-type_customer.dto';
 import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AssignDocumentsToTypeDto } from 'src/modules/documents/shared/assign-documents-to-type.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { TypeCustomerListResponseDto } from './dto/response-type_customer.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 @Controller('type-customers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -21,6 +24,18 @@ export class TypeCustomersController {
   create(@Body() dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
     return this.service.create(dto);
   }
+
+  @Post('/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('VIEW_CUSTOMER')
+  @ApiOperation({ summary: 'Rechercher customer' })
+  @ApiResponse({ status: 201, description: 'Liste' , type: [TypeCustomerListResponseDto] })
+   async search(
+  
+      @Query() paginationParams?: PaginationParamsDto,
+    ) {
+      return this.service.searchWithTransformer({} as SearchCriteria, TypeCustomerListResponseDto , paginationParams);
+    }
 
   @Get()
   @RequirePermissions('GET_TYPE_CUSTOMER')

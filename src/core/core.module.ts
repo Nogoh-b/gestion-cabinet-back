@@ -43,8 +43,8 @@ import { EmailService } from './shared/services/email/email.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
-import { PaginationService as MyPaginationService } from './shared/services/pagination/pagination.service';
-import { PaginationService } from './shared/services/pagination/paginations.service';
+import { PaginationService as MyPaginationService, PaginationService } from './shared/services/pagination/pagination.service';
+import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
 
 
 
@@ -109,6 +109,7 @@ import { PaginationService } from './shared/services/pagination/paginations.serv
     KeyGeneratorService,
     MyPaginationService,
     PaginationService,
+    PaginationServiceV1,
     EmailService,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
@@ -126,6 +127,7 @@ import { PaginationService } from './shared/services/pagination/paginations.serv
     PermissionsGuard,
     MyPaginationService,
     PaginationService,
+    PaginationServiceV1,
     // JwtAuthGuard,
     KeyGeneratorService,
   ],
