@@ -13,9 +13,11 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 
 
 
+
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+
 
 
 
@@ -70,23 +72,7 @@ export class BranchController {
     return this.branchService.findEmployeesByBranchId(id);
   }
 
-  @Get(':id/savings-accounts')
-  @ApiOperation({ summary: 'Get All Employees of a Branch' })
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
-  findAllSavingAccounts(@Param('id') id: number,     @Query() query: PaginationQueryDto) {
-    const { page, limit, term, fields, exact, from, to } = query;
-    const fieldList = fields ? fields.split(',') : undefined;
-    const isExact = exact ;
-    return this.branchService.findAllSavingAccounts(id,false,
-      page ? +page : undefined,
-      limit ? +limit : undefined,
-      term,
-      fieldList,
-      isExact,
-      from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined);
-  }
+
 
   @Put(':id')
   @ApiOperation({ summary: 'Update branch' })

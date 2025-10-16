@@ -1,10 +1,12 @@
 // src/modules/dossiers/dto/dossier-response.dto.ts
-import { ApiProperty } from "@nestjs/swagger";
 import { Expose, Transform } from "class-transformer";
 import { DossierStatus } from "src/core/enums/dossier-status.enum";
 import { AudienceStatus } from "src/modules/audiences/entities/audience.entity";
+import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
 import { FactureStatus } from "src/modules/finances/entities/facture.entity";
-import { DocumentCategory, DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
+import { ApiProperty } from "@nestjs/swagger";
+
+
 
 export class DossierResponseDto {
   @ApiProperty({ example: 1 })
@@ -194,7 +196,7 @@ export class DossierResponseDto {
   procedure_subtype: { id: number; name: string; code: string };
 
   // ---------------- DOCUMENTS ----------------
-  @ApiProperty({
+  /*@ApiProperty({
     type: [Object],
     example: [
       {
@@ -208,7 +210,7 @@ export class DossierResponseDto {
         created_at: "2025-01-20",
       },
     ],
-  })
+  })*/
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.documents) return undefined;
@@ -226,7 +228,7 @@ export class DossierResponseDto {
   documents?: {
     id: number;
     name: string;
-    category: DocumentCategory;
+    // category: DocumentCategory;
     document_type: string;
     status: DocumentCustomerStatus;
     version: number;

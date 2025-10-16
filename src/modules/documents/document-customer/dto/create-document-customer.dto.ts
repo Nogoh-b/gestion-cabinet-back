@@ -1,54 +1,79 @@
-import { Type } from 'class-transformer';
-import { IsNotEmpty, IsDate, IsOptional, IsNumber, IsBoolean, IsEnum } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { DocumentCategory } from 'src/core/enums/document-category.enum';
+import { Transform } from 'class-transformer';
+import { IsNotEmpty, IsNumber, IsOptional, IsBoolean, IsEnum, IsString, IsJSON } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+import { DocumentCategory, DocumentCustomerStatus } from '../entities/document-customer.entity';
 
 
 export class CreateDocumentCustomerDto {
-
-
-  @IsNumber()
-  @Type(() => Number)
-  @ApiProperty({example: 1})
+  @ApiProperty({ description: 'ID du type de document' })
   @IsNotEmpty()
+  @IsNumber()
+  @Transform(({ value }) => parseInt(value))
   document_type_id: number;
 
-
-  customer_id: number;
-
-  status : number
-
-  strict : boolean = true
+  @ApiProperty({ description: 'ID du dossier' })
   @IsNotEmpty()
+  @IsNumber()
+  @Transform(({ value }) => parseInt(value))
   dossier_id: number;
 
+  @ApiProperty({ description: 'ID du client' })
+  @IsNotEmpty()
+  @IsNumber()
+  @Transform(({ value }) => parseInt(value))
+  customer_id: number;
 
-
-  @IsEnum(DocumentCategory)
-  category: DocumentCategory;
-
+  @ApiPropertyOptional({ description: 'ID du prêt associé' })
   @IsOptional()
-  audience_id?: string;
+  @IsNumber()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  loan_id?: number;
 
+  @ApiPropertyOptional({ description: 'Description du document' })
   @IsOptional()
+  @IsString()
   description?: string;
 
+  @ApiPropertyOptional({ 
+    enum: DocumentCategory,
+    description: 'Catégorie du document' 
+  })
   @IsOptional()
-  document_date?: Date;
-   @IsOptional()
+  @IsEnum(DocumentCategory)
+  category?: DocumentCategory;
+
+  @ApiPropertyOptional({ 
+    enum: DocumentCustomerStatus,
+    description: 'Statut du document' 
+  })
+  @IsOptional()
+  @IsEnum(DocumentCustomerStatus)
+  status?: DocumentCustomerStatus;
+
+  @ApiPropertyOptional({ description: 'Document requis pour une audience' })
+  @IsOptional()
   @IsBoolean()
-  autoValidate?: boolean = false;
+  @Transform(({ value }) => value === 'true' || value === true)
+  required_for_hearing?: boolean;
 
+  @ApiPropertyOptional({ description: 'Document confidentiel' })
   @IsOptional()
   @IsBoolean()
-  allowMultiple?: boolean = false;
+  @Transform(({ value }) => value === 'true' || value === true)
+  is_confidential?: boolean;
 
+  @ApiPropertyOptional({ description: 'Métadonnées du document' })
   @IsOptional()
-  @ApiProperty({example:'05/02/2025'})
-  @IsDate()
-  date_expired?: Date;
+  @IsJSON()
+  metadata?: string;
 
-  @ApiProperty({ required: false, type: 'string', format: 'binary', example:  '{"fieldname":"documents[0][files]","originalname":"create-customer.dto.ts","encoding":"7bit","mimetype":"video/mp2t","buffer":{"type":"Buffer","data":[47,47,32,99,114,101,97,116,101,45,99,117,115,116,111,109,101,114,46,100,116,111,46,116,115,13,10,105,109,112,111,114,116,32,123,32,65,112,105,80,114,111,112,101,114,116,121,32,108,101,58,32,49,32,125,41,13,10,32,32,116,121,112,101,95,99,117,115,116,111,109,101,114,95,105,100,58,32,110,117,109,98,101,114,59,13,10,125,13,10]},"size":1660},"customer_id":20}' })
-  file?:  Express.Multer.File;
+  @ApiPropertyOptional({ description: 'Mode strict (lève des exceptions)' })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  strict?: boolean = true;
+
+  @ApiProperty({ type: 'string', format: 'binary', description: 'Fichier à uploader' })
+  file: Express.Multer.File;
 }

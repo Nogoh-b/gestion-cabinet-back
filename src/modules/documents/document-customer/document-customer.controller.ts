@@ -1,7 +1,13 @@
+import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+
 import {
   Controller,
   Post,
@@ -13,9 +19,12 @@ import {
   BadRequestException,
   UploadedFiles,
   UseGuards,
+  Query,
 } from '@nestjs/common';
-
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
+
+
+
 
 import {
   ApiTags,
@@ -26,19 +35,38 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 
+
 import { DocumentCustomerService } from './document-customer.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
+import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
+
+
+
+
+
+
 
 @ApiTags('Customer Documents')
 @ApiConsumes('multipart/form-data')
-@Controller('customers/:customer_id')
+@Controller('documents')
 @ApiBearerAuth()
 export class DocumentCustomerController {
   constructor(private readonly service: DocumentCustomerService) {}
 
-  @Post('/add-document')
+
+  @Get('search')
+  @ApiOperation({ summary: 'Recherche texte avec relations' })
+  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [DocumentCustomerResponseDto]  })
+  async search(
+
+    @Query() searchParams?: SearchDocumentCustomerDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.service.searchWithTransformer(searchParams as SearchCriteria, DocumentCustomerResponseDto , paginationParams);
+  }
+  @Post()
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -53,7 +81,7 @@ export class DocumentCustomerController {
     @Body() dto: CreateDocumentCustomerDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.create({ ...dto, customer_id, file },1);
+    return this.service.create({ ...dto, customer_id, file });
   }
 
 
@@ -125,7 +153,7 @@ export class DocumentCustomerController {
     for (const document of documentsWithFiles) {
       document.customer_id = customer_id;
       await validateDto(CreateDocumentCustomerDto, document);
-      docs.push(await this.service.create(document,1));
+      docs.push(await this.service.create(document));
     }
 
     return docs;
@@ -135,7 +163,7 @@ export class DocumentCustomerController {
   @ApiOperation({ summary: "Lister les documents d'un client" })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async findAll(@Param('customer_id') customer_id: number) {
-    return this.service.findByCustomer(customer_id);
+    return plainToInstance(DocumentCustomerResponseDto,this.service.findByCustomer(customer_id));
   }
   @Post('sync-kyc')
   @ApiOperation({ summary: 'Réceptionne les codes clients à synchroniser' })

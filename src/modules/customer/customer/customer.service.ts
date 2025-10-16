@@ -22,7 +22,6 @@ import { DocumentType } from 'src/modules/documents/document-type/entities/docum
 
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 
-import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
 import { DataSource, Repository } from 'typeorm';
 import {
   BadRequestException,
@@ -33,6 +32,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
 
 
 
@@ -57,6 +63,13 @@ import {
 
 
 
+
+
+
+
+
+
+
 @Injectable()
 export class CustomersService extends BaseServiceV1<Customer> {
   constructor(
@@ -68,8 +81,6 @@ export class CustomersService extends BaseServiceV1<Customer> {
     @InjectRepository(TypeCustomer)
     private typeCustomerRepository: Repository<TypeCustomer>,
     private typeCustomerService: TypeCustomersService,
-    @Inject(forwardRef(() => SavingsAccountService))
-    private savingsAccountService: SavingsAccountService,
     private locationcityService: LocationCitiesService,
     private documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => BranchService))
@@ -128,22 +139,26 @@ export class CustomersService extends BaseServiceV1<Customer> {
         relationFields: ['type_customer', 'location_city']
       };
     }
-
+ toNumberOrNull(value: any): number | null {
+  const num = Number(value);
+  return isNaN(num) ? null : num;
+}
   async create(createCustomerDto: CreateCustomerDto): Promise<any> {
     return await this.dataSource.transaction(async (manager) => {
       // const customerRes = new CustomerResponseDto()
       // customerRes.customer_code = GenCOde.generateCode(10)
       // return customerRes
-      const errors = await validateDto(CreateCustomerDto, createCustomerDto);
+      // const errors = await validateDto(CreateCustomerDto, createCustomerDto);
+      console.log(createCustomerDto)
 
       // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
       // if (existing) throw new ConflictException('Numero deja attribué à un compte');
       const type_customer = await this.typeCustomerService.findOne(
-        createCustomerDto.type_customer_id,
+        Number(createCustomerDto.type_customer_id),
       );
       // return new CustomerResponseDto()
       const location_city = await this.locationcityService.findOne(
-        createCustomerDto.location_city_id,
+        Number(createCustomerDto.location_city_id),
       );
       if (!type_customer || !location_city)
         throw new NotFoundException(
@@ -151,7 +166,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
         );
 
       const branch = await this.branchService.findOne(
-        createCustomerDto.branch_id,
+        Number(createCustomerDto.branch_id),
       );
       if (!branch) throw new NotFoundException('Branche invalide');
 
@@ -232,8 +247,8 @@ export class CustomersService extends BaseServiceV1<Customer> {
 
     return {
       customer,
-      documents:
-        await this.documentCustomerService.createMany(documentsWithFiles, 1),
+      // documents:
+      //   await this.documentCustomerService.createMany(documentsWithFiles, 1),
     };
     return documentsWithFiles;
   }

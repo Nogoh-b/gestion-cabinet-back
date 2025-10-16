@@ -2,7 +2,18 @@ import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+
+
+
+
+
+
+
+
+
+
 import { CustomerModule } from '../customer/customer.module';
+import { DossiersModule } from '../dossiers/dossiers.module';
 import { IamModule } from '../iam/iam.module';
 import { DocumentCustomerController } from './document-customer/document-customer.controller';
 import { DocumentCustomerService } from './document-customer/document-customer.service';
@@ -12,12 +23,23 @@ import { DocumentTypeService } from './document-type/document-type.service';
 import { DocumentType } from './document-type/entities/document-type.entity';
 
 
+
+
+
+
+
+
+
+
+
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocumentType, DocumentCustomer]),
+    CoreModule,
     forwardRef(() => CustomerModule),
+    forwardRef(() => DossiersModule),
     
-    forwardRef(() => CoreModule),
     forwardRef(() => IamModule),
     
 

@@ -1,4 +1,11 @@
 // src/modules/dossiers/dossiers.controller.ts
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/core/auth/guards/roles.guard';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { Roles } from 'src/core/decorators/roles.decorator';
+import { UserRole } from 'src/core/enums/user-role.enum';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import {
   Controller,
   Get,
@@ -11,21 +18,16 @@ import {
   UseGuards,
   ParseIntPipe
 } from '@nestjs/common';
-import { DossiersService } from './dossiers.service';
-import { CreateDossierDto } from './dto/create-dossier.dto';
-import { UpdateDossierDto } from './dto/update-dossier.dto';
-import { DossierSearchDto } from './dto/dossier-search.dto';
-import { ChangeStatusDto } from './dto/change-status.dto';
-import { DossierResponseDto } from './dto/dossier-response.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+
 import { User } from '../iam/user/entities/user.entity';
-import { UserRole } from 'src/core/enums/user-role.enum';
-import { Roles } from 'src/core/decorators/roles.decorator';
-import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/core/auth/guards/roles.guard';
-import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { DossiersService } from './dossiers.service';
+import { ChangeStatusDto } from './dto/change-status.dto';
+import { CreateDossierDto } from './dto/create-dossier.dto';
+import { DossierResponseDto } from './dto/dossier-response.dto';
+import { DossierSearchDto } from './dto/dossier-search.dto';
+import { UpdateDossierDto } from './dto/update-dossier.dto';
+
 
 @ApiTags('dossiers')
 @ApiBearerAuth()
@@ -65,7 +67,7 @@ export class DossiersController {
   findAll(
     @Query() searchDto: DossierSearchDto,
     @CurrentUser() user: User
-  ): Promise<{ data: DossierResponseDto[], total: number }> {
+  ): Promise<any[]> {
     return this.dossiersService.findAll(searchDto, user);
   }
 

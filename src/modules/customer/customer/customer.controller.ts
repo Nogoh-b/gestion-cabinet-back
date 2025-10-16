@@ -19,20 +19,21 @@ import { KycSyncDto } from 'src/modules/documents/document-customer/dto/create-d
 
 
 import {
-    Controller,
-    Get,
-    Post,
-    Body,
-    Patch,
-    Param,
-    Delete,
-    UseInterceptors,
-    UploadedFiles,
-    UseGuards,
-    Query
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseInterceptors,
+  UploadedFiles,
+  UseGuards,
+  Query
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+
 
 
 
@@ -43,6 +44,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CustomerSearchDto } from './dto/search-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+
 
 
 
@@ -74,6 +76,7 @@ export class CustomerController {
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
   @RequirePermissions('CREATE_CUSTOMER')
   async create(@Body() createCustomerDto: CreateCustomerDto): Promise<any> {
+    console.log(createCustomerDto)
     return await this.customerService.create(createCustomerDto);
   }
 

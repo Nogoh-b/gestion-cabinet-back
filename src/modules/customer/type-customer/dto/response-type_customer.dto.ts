@@ -1,6 +1,7 @@
 // src/modules/customer/type-customer/dto/type-customer-response.dto.ts
-import { ApiProperty } from "@nestjs/swagger";
 import { Expose, Transform } from "class-transformer";
+import { ApiProperty } from "@nestjs/swagger";
+
 
 export class TypeCustomerResponseDto {
   @ApiProperty({ example: 1 })
@@ -21,12 +22,12 @@ export class TypeCustomerResponseDto {
 
   @ApiProperty({ example: "2025-01-15T08:00:00Z" })
   @Expose()
-  @Transform(({ obj }) => obj.create_at)
+  @Transform(({ obj }) => obj.created_at)
   created_at: Date;
 
   @ApiProperty({ example: "2025-04-10T10:00:00Z" })
   @Expose()
-  @Transform(({ obj }) => obj.update_at)
+  @Transform(({ obj }) => obj.updated_at)
   updated_at: Date;
 
   // ---------------- DOCUMENTS REQUIS ----------------
@@ -213,6 +214,6 @@ export class TypeCustomerListResponseDto {
 
   @ApiProperty({ example: "2025-01-15T08:00:00Z" })
   @Expose()
-  @Transform(({ obj }) => obj.create_at)
+  @Transform(({ obj }) => obj.created_at)
   created_at: Date;
 }

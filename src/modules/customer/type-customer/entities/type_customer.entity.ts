@@ -10,7 +10,9 @@ import {
   JoinTable,
   OneToMany,
 } from 'typeorm';
+
 import { Customer } from '../../customer/entities/customer.entity';
+
 
 @Entity('type_customer')
 export class TypeCustomer {
@@ -35,10 +37,10 @@ export class TypeCustomer {
   customers: Customer[];
 
   @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
+  created_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
+  updated_at: Date;
 
   @Column({ type: 'tinyint', nullable: true, default: 1 })
   status: number;

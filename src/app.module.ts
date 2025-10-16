@@ -8,6 +8,13 @@ import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ServeStaticModule } from '@nestjs/serve-static';
 
+
+
+
+
+
+
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import {
@@ -17,24 +24,41 @@ import {
 import { CoreModule } from './core/core.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
+import { AudiencesModule } from './modules/audiences/audiences.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
-import { IamModule } from './modules/iam/iam.module';
-import { QueueModule } from './modules/queue/queue.module';
-import { AudiencesModule } from './modules/audiences/audiences.module';
 import { DossiersModule } from './modules/dossiers/dossiers.module';
 import { FinancesModule } from './modules/finances/finances.module';
+import { GeographyModule } from './modules/geography/geography.module';
+import { IamModule } from './modules/iam/iam.module';
 import { ProceduresModule } from './modules/procedures/procedures.module';
+
+
+
+
+
+
+
 
 dotenv.config();
 
 @Module({
   imports: [
-    CoreModule,
+     CoreModule,
+    
+    // 2. Modules indépendants
     IamModule,
-    AgenciesModule,
+    GeographyModule,
+    
+    // 3. Modules avec dépendances simples
+    AgenciesModule, 
     DocumentsModule,
+    DossiersModule,
+    // 4. Modules avec dépendances complexes (utilisent forwardRef)
     CustomerModule,
+    
+    // 5. Autres modules
+    ActivitiesModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env'],
@@ -87,13 +111,11 @@ dotenv.config();
     // ProviderModule,
     // TransactionModule,
     ActivitiesModule,
-    QueueModule,
     // PartnerModule,
     // CommercialModule,
     // RessourceModule,
     // PersonnelModule,
     // CreditModule,
-    DossiersModule,
     AudiencesModule,
     FinancesModule,
     ProceduresModule

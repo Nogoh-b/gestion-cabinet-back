@@ -1,37 +1,48 @@
+import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
-  JoinColumn
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
-import { DocumentType } from '../../document-type/entities/document-type.entity';
-import { BaseEntity } from 'src/core/entities/baseEntity';
-import { Loan } from '../../../credit/loan/entities/loan.entity';
-import { User } from 'src/modules/iam/user/entities/user.entity';
-import { Audience } from 'src/modules/audiences/entities/audience.entity';
-import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-// import { Dossier } from '../../../dossiers/entities/dossier.entity';
-// import { Audience } from '../../../audiences/entities/audience.entity';
 
-export enum DocumentCustomerStatus  {
-  PENDING = 0,      // En attente
-  VALIDATED = 1,  // Validé
-  REJECTED = 2,    // Rejeté
-  EXPIRED = 3,      // Expiré
-  ARCHIVED = 4,    // Archivé
+
+
+
+
+
+import { DocumentType } from '../../document-type/entities/document-type.entity';
+
+
+
+
+
+
+// import { Hearing } from 'src/modules/hearings/entities/hearing.entity';
+// import { User } from 'src/modules/users/entities/user.entity';
+// import { Comment } from 'src/modules/comments/entities/comment.entity';
+
+export enum DocumentCustomerStatus {
+  PENDING = 0,
   ACCEPTED = 1,
   REFUSED = 2,
+  EXPIRED = 3,
+  ARCHIVED = 4,
 }
 
 export enum DocumentCategory {
-  PROCEDURE = 'procedure',      // Actes de procédure
-  CLIENT = 'client',           // Documents client
-  INTERNE = 'interne',         // Documents internes
-  FACTURE = 'facture',         // Factures
-  AUDIENCE = 'audience',       // Documents d'audience
-  DECISION = 'decision',       // Décisions de justice
+  PROCEDURAL = 'procedural', // Actes de procédure officiels
+  CLIENT = 'client', // Documents transmis par le client
+  INTERNAL = 'internal', // Documents internes/annexes
+  FINANCIAL = 'financial', // Documents financiers
+  DECISION = 'decision', // Décisions de justice
 }
 
 @Entity('document_customer')
@@ -39,141 +50,135 @@ export class DocumentCustomer extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ nullable: false })
-  filename: string;
+  @Column()
+  name: string;
+  @Column()
+  document_type_id: string;
+  @Column()
+  customer_id: string;
+  @Column()
+  dossier_id: string;
+  @Column()
+  uploaded_by_id: string;
 
-  @Column({ name: 'original_name', nullable: false })
-  originalName: string;
+  @Column({ type: 'text', nullable: true })
+  description: string;
+
+  @ManyToOne(() => DocumentType)
+  @JoinColumn({ name: 'document_type_id' })
+  document_type: DocumentType;
+
+  @ManyToOne(() => Customer)
+  @JoinColumn({ name: 'customer_id' })
+  customer: Customer;
+  
+  @Column({
+    type: 'enum',
+    enum: DocumentCategory,
+    default: DocumentCategory.CLIENT
+  })
+  category: DocumentCategory;
+
+  @Column({ 
+    type: 'enum',
+    enum: DocumentCustomerStatus,
+    default: DocumentCustomerStatus.PENDING
+  })
+  status: DocumentCustomerStatus;
 
   @Column({ name: 'file_path', nullable: true })
   file_path: string;
 
   @Column({ name: 'file_size', nullable: true })
-  fileSize: number;
+  file_size: number;
 
-  @Column({ name: 'mime_type', nullable: true })
-  mimeType: string;
+  @Column({ name: 'file_mimetype', nullable: true })
+  file_mimetype: string;
 
-  // ✅ CATEGORIE selon les specs
-  @Column({ 
-    type: 'enum', 
-    enum: DocumentCategory, 
-    default: DocumentCategory.CLIENT 
-  })
-  category: DocumentCategory;
-
-  // ✅ TYPE de document (relation existante conservée)
-  @ManyToOne(() => DocumentType, { eager: true })
-  @JoinColumn({ name: 'document_type_id' })
-  document_type: DocumentType;
-
-  // ✅ STATUT amélioré
-  @Column({ 
-    type: 'enum', 
-    enum: DocumentCustomerStatus, 
-    default: DocumentCustomerStatus.PENDING 
-  })
-  status: DocumentCustomerStatus;
-  @Column()
-  name: string;
-  // ✅ RELATION avec DOSSIER (obligatoire selon specs)
-  @ManyToOne(() => Dossier, (dossier) => dossier.documents)
-  @JoinColumn({ name: 'dossier_id' })
-  dossier: Dossier;
-  @Column({ name: 'date_ejected', nullable: true })
-  date_ejected: Date;
-  @Column({ name: 'date_validation', nullable: true })
-  date_validation: Date;
-  // ✅ RELATION avec CLIENT (optionnel - peut être lié via le dossier)
-  @ManyToOne(() => Customer, { nullable: true }) 
-  @JoinColumn({ name: 'customer_id' })
-  customer: Customer;
-
-  // ✅ RELATION avec UTILISATEUR (qui a uploadé le document)
-  @ManyToOne(() => User, { nullable: false })
-  @JoinColumn({ name: 'uploaded_by_id' })
-  uploadedBy: User;
-
-  // ✅ RELATION avec AUDIENCE (si document lié à une audience)
-  @ManyToOne(() => Audience, { nullable: true })
-  @JoinColumn({ name: 'audience_id' })
-  audience: Audience;
-
-  // ✅ VERSIONNING selon specs R6
-  @Column({ default: 1 })
+  @Column({ name: 'version', default: 1 })
   version: number;
 
-  @Column({ name: 'previous_version_id', nullable: true })
-  previousVersionId: number;
+  @Column({ name: 'is_current_version', default: true })
+  is_current_version: boolean;
 
-  // ✅ METADONNEES selon specs
-  @Column({ type: 'text', nullable: true })
-  description: string;
+  @ManyToOne(() => DocumentCustomer, { nullable: true })
+  @JoinColumn({ name: 'previous_version_id' })
+  previous_version: DocumentCustomer;
 
-  @Column({ name: 'keywords', type: 'text', nullable: true })
-  keywords: string; // Mots-clés pour la recherche
 
-  @Column({ name: 'document_date', type: 'date', nullable: true })
-  documentDate: Date; // Date du document (différent de created_at)
 
-  // ✅ DATES de gestion
-  @Column({ name: 'validation_date', nullable: true })
-  validationDate: Date;
+  @ManyToOne(() => Dossier, { nullable: false })
+  @JoinColumn({ name: 'dossier_id' })
+  dossier: Dossier;
 
-  @Column({ name: 'rejection_date', nullable: true })
-  rejectionDate: Date;
+  // @ManyToOne(() => Hearing, { nullable: true })
+  // @JoinColumn({ name: 'hearing_id' })
+  // related_hearing: Hearing;
 
-  @Column({ name: 'expiration_date', nullable: true })
-  expirationDate: Date;
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'uploaded_by_id' })
+  uploaded_by: User;
 
-  @Column({ name: 'archival_date', nullable: true })
-  archivalDate: Date;
+  @Column({ name: 'uploaded_at', type: 'timestamp' })
+  @CreateDateColumn()
+  uploaded_at: Date;
 
-  // ✅ RAISON du rejet si applicable
-  @Column({ name: 'rejection_reason', type: 'text', nullable: true })
-  rejectionReason: string;
+  @Column({ name: 'last_modified', type: 'timestamp' })
+  @UpdateDateColumn()
+  last_modified: Date;
 
-  // ✅ RELATIONS existantes conservées (si toujours nécessaires)
-  @ManyToOne(() => Loan, (loan) => loan.documents, { nullable: true })
-  loan: Loan;
+  @Column({ name: 'date_validation', nullable: true })
+  date_validation: Date;
 
-  // ✅ GETTERS utilitaires
-  get isPending(): boolean {
-    return this.status === DocumentCustomerStatus.PENDING;
+  @Column({ name: 'date_ejected', nullable: true })
+  date_ejected: Date;
+
+  @Column({ name: 'date_expired', nullable: true })
+  date_expired: Date;
+
+  @Column({ name: 'required_for_hearing', default: false })
+  required_for_hearing: boolean;
+
+  @Column({ name: 'is_confidential', default: false })
+  is_confidential: boolean;
+
+  @Column({ name: 'metadata', type: 'json', nullable: true })
+  metadata: {
+    keywords?: string[];
+    page_count?: number;
+    language?: string;
+    original_filename?: string;
+    audit_trail?: Array<{
+      action: string;
+      user_id: number;
+      timestamp: Date;
+      details?: string;
+    }>;
+  };
+
+ 
+  // @OneToMany(() => Comment, (comment) => comment.document)
+  // comments: Comment[];
+
+  // Méthodes utilitaires
+  public isProceduralDocument(): boolean {
+    return this.category === DocumentCategory.PROCEDURAL;
   }
 
-  get isValidated(): boolean {
-    return this.status === DocumentCustomerStatus.VALIDATED;
+  public isClientDocument(): boolean {
+    return this.category === DocumentCategory.CLIENT;
   }
 
-  get isRejected(): boolean {
-    return this.status === DocumentCustomerStatus.REJECTED;
+  public isInternalDocument(): boolean {
+    return this.category === DocumentCategory.INTERNAL;
   }
 
-  get isExpired(): boolean {
-    return this.status === DocumentCustomerStatus.EXPIRED;
+  public canBeModified(): boolean {
+    return this.status !== DocumentCustomerStatus.ARCHIVED && 
+           this.dossier.status != 5;
   }
 
-  get canBeDownloaded(): boolean {
-    return this.status !== DocumentCustomerStatus.PENDING;
-  }
-
-  // ✅ Méthode pour créer une nouvelle version
-  createNewVersion(newFilePath: string, newFileName: string): Partial<DocumentCustomer> {
-    return {
-      filename: newFileName,
-      originalName: newFileName,
-      file_path: newFilePath,
-      fileSize: this.fileSize,
-      mimeType: this.mimeType,
-      version: this.version + 1,
-      previousVersionId: this.id,
-      status: DocumentCustomerStatus.PENDING, // Nouvelle version à valider
-      uploadedBy: this.uploadedBy,
-      // dossier: this.dossier,
-      customer: this.customer,
-      document_type: this.document_type,
-      category: this.category,
-    };
+  public requiresValidation(): boolean {
+    return this.isProceduralDocument() || this.isClientDocument();
   }
 }

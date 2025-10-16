@@ -1,6 +1,9 @@
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { Facture } from 'src/modules/finances/entities/facture.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import {
   BeforeInsert,
@@ -11,10 +14,11 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
+
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
-import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
-import { Facture } from 'src/modules/finances/entities/facture.entity';
+
+
 // import { Dossier } from 'src/modules/dossiers/entities/dossier.entity'; // ✅ Ajout
 
 export enum CustomerStatus {
@@ -134,7 +138,9 @@ export class Customer extends BaseEntity {
   @OneToMany(() => Dossier, (dossier) => dossier.client)
   dossiers: Dossier[];
 
-  @OneToMany(() => DocumentCustomer, (document) => document.customer)
+  @OneToMany(() => DocumentCustomer, (document) => document.customer, {
+    nullable: true,
+  })
   documents: DocumentCustomer[];
 
   @OneToMany(() => Facture, (facture) => facture.client)
@@ -170,6 +176,7 @@ export class Customer extends BaseEntity {
       this.public_key = 'publicKey';
       this.private_key = 'encryptedPrivateKey';
     }
+    this.status = 1
     
     if (!this.customer_code) {
       this.customer_code = this.generateCustomerCode();

@@ -14,10 +14,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CustomersService } from '../customer/customer/customer.service';
 import { CustomerStatus } from '../customer/customer/entities/customer.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
-import { SavingsAccountResponseDto } from '../savings-account/savings-account/dto/response-savings-account.dto';
-import { SavingsAccountService } from '../savings-account/savings-account/savings-account.service';
-import { TransactionSavingsAccount } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-import { TransactionSavingsAccountService } from '../transaction/transaction_saving_account/transaction_saving_account.service';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { Partner } from './entities/partner.entity';
 
@@ -33,10 +29,6 @@ export class PartnerService extends BaseService<Partner> {
     private paginationService: PaginationService,
     @Inject(forwardRef(() => CustomersService))
     private customerService: CustomersService,
-    @Inject(forwardRef(() => SavingsAccountService))
-    private savingsAccountService: SavingsAccountService,
-    @Inject(forwardRef(() => TransactionSavingsAccountService))
-    private readonly transactionService: TransactionSavingsAccountService,
     private readonly documentCustomerService: DocumentCustomerService,
   ) {
     super();console.log(forwardRef)
@@ -59,7 +51,6 @@ export class PartnerService extends BaseService<Partner> {
         dto.status = CustomerStatus.ACTIVE
     }
     console.log('customer', dto);
-    const saving_account = await this.savingsAccountService.findOneByCustomer(customer.id,1)
     // const savingsAccount = await 
     dto.name = customer.first_name + ' ' + customer.last_name;
     const partner = this.partnerRepository.create({...dto, customer  });
@@ -152,7 +143,6 @@ export class PartnerService extends BaseService<Partner> {
   }
   async buyAll(promo_code: string = "F6XH"): Promise<any> {
     const prt = await this.getByCode(promo_code);
-    return await this.transactionService.unlockTransactionByPartner(promo_code, prt?.saving_account?.id );
   }
   async getSavingsAccountsByPartner(
       page?: number,
@@ -161,18 +151,9 @@ export class PartnerService extends BaseService<Partner> {
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string,promo_code = 0): Promise<PaginatedResult<SavingsAccountResponseDto>> {
+    to?: string,promo_code = 0): Promise<any> {
       console.log('getSavingsAccountsByPartner ', promo_code)
-    return this.savingsAccountService.findAllPartnerCommisionHasCreated(
-      undefined,    
-      page,
-      limit,
-      term,
-      fields,
-      exact,
-      from,
-      to,0,{promo_code}
-    );
+
   }
 
     async getTransactionsByCode(    page?: number,
@@ -181,14 +162,8 @@ export class PartnerService extends BaseService<Partner> {
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string, promo_code?: string): Promise<PaginatedResult<TransactionSavingsAccount>> {
-    return await this.transactionService.findAll(page,
-      limit,
-      term,
-      fields,
-      exact,
-      from,
-      to, {promo_code})
+    to?: string, promo_code?: string) {
+
   }
   
 

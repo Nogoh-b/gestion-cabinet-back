@@ -7,11 +7,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
-import { SavingsAccountModule } from '../savings-account/savings-account.module';
-import { TransactionModule } from '../transaction/transaction.module';
 import { Partner } from './entities/partner.entity';
+
 
 
 
@@ -23,8 +23,6 @@ import { Partner } from './entities/partner.entity';
   imports: [    
       forwardRef(() => CustomerModule),
       forwardRef(() => CoreModule),
-      forwardRef(() => SavingsAccountModule),
-      forwardRef(() => TransactionModule),
       forwardRef(() => DocumentsModule),
       
     TypeOrmModule.forFeature([

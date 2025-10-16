@@ -2,7 +2,7 @@
 import { Type } from 'class-transformer';
 import { IsOptional, IsInt, IsBoolean, IsString, IsDateString, IsIn } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { FilterTxOptions } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
+
 
 
 
@@ -119,10 +119,7 @@ export class PaginationQueryTxDto extends PaginationQueryDto {
   @IsIn(['MOMO', 'OM', 'INTERNAL'])
   txType1?: string; // Pour txTypeCode  
 
-  @IsOptional()
-  @IsBoolean()
-  @IsIn(['MOMO', 'OM', 'INTERNAL'])
-  fieldsTx?: FilterTxOptions; // Pour txTypeCode
+
   
   txTypeCode?: string;
   tx_project_id?: number;

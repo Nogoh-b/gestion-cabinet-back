@@ -7,8 +7,9 @@ import { ClientProxy } from '@nestjs/microservices';
 import { ApiBody } from '@nestjs/swagger';
 
 
+
 import { AppService } from './app.service';
-import { QueueService } from './modules/queue/queue.service';
+
 
 
 
@@ -27,7 +28,6 @@ export class AppController {
   constructor(
     private readonly dataSource: DataSource,
     private readonly appService: AppService,
-    private readonly queueService: QueueService,
     // private readonly txService: TransactionSavingsAccountService,
 
     @Inject('USER_SERVICE') private readonly client: ClientProxy,
@@ -40,8 +40,7 @@ export class AppController {
   async addJob(@Body() data: AddJobDto) {
 
 
-    const job = await this.queueService.addTaskBuyInterest(2);
-    return { jobId: job.id };
+    const job = null //await this.queueService.addTaskBuyInterest(2);
   }
   @Post('test_cron_maintenance1')
   @ApiBody({ type: AddJobDto })
@@ -61,8 +60,8 @@ export class AppController {
       const day = now.getDate();
       // opts.repeat = { cron: `0 0 ${day} * *` };
       opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
-    const job = await this.queueService.addTaskCheckPayment(data.accountId);
-    return { jobId: job.id };
+    // const job = await this.queueService.addTaskCheckPayment(data.accountId);
+    // return { jobId: job.id };
   }
   /*@Get('typeorm-error')
   async throwTypeormError(): Promise<void> {

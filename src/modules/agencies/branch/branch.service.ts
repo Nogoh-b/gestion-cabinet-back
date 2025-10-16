@@ -1,21 +1,11 @@
-import { PaginatedResult } from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 
-import { SavingsAccountResponseDto } from 'src/modules/savings-account/savings-account/dto/response-savings-account.dto';
-
-import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-import { TransactionSavingsAccountStatus } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
-
-import { TransactionProvider } from 'src/modules/transaction/transaction_type/entities/transaction_type.entity';
 import { Repository } from 'typeorm';
-import {
-  forwardRef,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { forwardRef, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
 
 import { EmployeeResponseDto } from '../employee/dto/response-employee.dto';
 import { EmployeeService } from '../employee/employee.service';
@@ -23,13 +13,13 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
 
+
+
 @Injectable()
 export class BranchService {
   constructor(
     @InjectRepository(Branch)
     private branchRepository: Repository<Branch>,
-    @Inject(forwardRef(() => SavingsAccountService))
-    private savingsAccountService: SavingsAccountService,
     private locationCityService: LocationCitiesService,
     private employeeService: EmployeeService,
   ) {
@@ -144,33 +134,11 @@ export class BranchService {
     return branch;
   }
 
-  async findAllSavingAccounts(
-    branch_id: number = 0,
-    isDeactivate: boolean = false,
-    page?: number,
-    limit?: number,
-    term?: string,
-    fields?: string[],
-    exact?: boolean,
-    from?: string,
-    to?: string,
-  ): Promise<PaginatedResult<SavingsAccountResponseDto>> {
-    return await this.savingsAccountService.findAll(
-      false,
-      page ? +page : undefined,
-      limit ? +limit : undefined,
-      term,
-      fields,
-      exact,
-      from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined,
-    );
-  }
+
 
   async stats(id: number): Promise<any> {
     const branch = await this.findOne(id, true);
 
-    const txs = await this.savingsAccountService.findAllTrans(id);
 
     const stats = {
       online: {
@@ -217,81 +185,11 @@ export class BranchService {
       },
     };
 
-    for (const tx of txs) {
-      if (tx.status != TransactionSavingsAccountStatus.VALIDATE || tx.is_locked)
-        continue;
-      // transactions entrantes
-      if (tx.targetSavingsAccount && !tx.originSavingsAccount) {
-        stats.global.transactionAmountIncomming += tx.amount;
-        stats.global.transactionCountIncomming++;
-        if (
-          (!tx.branch_id && tx.provider.code === TransactionProvider.MOMO) ||
-          tx.provider.code === TransactionProvider.OM
-        ) {
-          stats.online.transactionAmountIncomming += tx.amount;
-          stats.online.transactionCountIncomming++;
-        } else if (tx.branch_id) {
-          stats.agency.transactionAmountIncomming += tx.amount;
-          stats.agency.transactionCountIncomming++;
-        }
-        if (tx.provider.code === TransactionProvider.MOMO) {
-          stats.online.momo.transactionAmountIncomming += tx.amount;
-          stats.online.momo.transactionCountIncomming++;
-        } else if (tx.provider.code === TransactionProvider.OM) {
-          stats.online.om.transactionAmountIncomming += tx.amount;
-          stats.online.om.transactionCountIncomming++;
-        }
-      }
-      // transactions sortante
-      if (!tx.targetSavingsAccount && tx.originSavingsAccount) {
-        stats.global.transactionAmountOutcomming += tx.amount;
-        stats.global.transactionCountOutcomming++;
-        if (
-          (!tx.branch_id && tx.provider.code === TransactionProvider.MOMO) ||
-          tx.provider.code === TransactionProvider.OM
-        ) {
-          stats.online.transactionAmountOutcomming += tx.amount;
-          stats.online.transactionCountOutcomming++;
-        } else if (tx.branch_id) {
-          stats.agency.transactionAmountOutcomming += tx.amount;
-          stats.agency.transactionCountOutcomming++;
-        }
-        if (tx.provider.code === TransactionProvider.MOMO) {
-          stats.online.momo.transactionAmountOutcomming += tx.amount;
-          stats.online.momo.transactionCountOutcomming++;
-        } else if (tx.provider.code === TransactionProvider.OM) {
-          stats.online.om.transactionAmountOutcomming += tx.amount;
-          stats.online.om.transactionCountOutcomming++;
-        }
-      }
-      stats.agency.balance =
-        stats.agency.transactionAmountIncomming -
-        stats.agency.transactionAmountOutcomming;
-      stats.global.balance =
-        stats.global.transactionAmountIncomming -
-        stats.global.transactionAmountOutcomming;
-      stats.online.balance =
-        stats.online.transactionAmountIncomming -
-        stats.online.transactionAmountOutcomming;
-      stats.online.momo.balance =
-        stats.online.momo.transactionAmountIncomming -
-        stats.online.momo.transactionAmountOutcomming;
-      stats.online.om.balance =
-        stats.online.om.transactionAmountIncomming -
-        stats.online.om.transactionAmountOutcomming;
-    }
+
 
     // return branch
     if (branch) {
-      stats.global.savings_accounts = branch.savingsAccounts.length;
-      stats.global.employees = branch.employees.length;
-      for (const sa of branch?.savingsAccounts) {
-        if (sa.created_online == 1) {
-          stats.online.savings_accounts++;
-        } else {
-          stats.agency.savings_accounts++;
-        }
-      }
+
     }
     return stats;
 

@@ -17,8 +17,10 @@ import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity
 import { Injectable } from '@nestjs/common';
 
 
+
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
 import { PaginatedResult, PaginationServiceV1 } from '../pagination/paginations-v1.service';
+
 
 
 
@@ -115,10 +117,11 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     
     const whereConditions = this.buildWhereConditionsV1(criteria, {});
 
-    // ⚙️ Construire dynamiquement l’ordre à partir du PaginationParamsDto
-    const finalOrder: FindOptionsOrder<T> = order ?? {
-      [paginationParams?.sort_by ?? 'created_at']: (paginationParams?.sort_direction ?? 'ASC') as any,
-    } as FindOptionsOrder<T>;
+    // ⚙️ Construire dynamiquement l'ordre en prenant en compte les relations
+    const finalOrder = order ?? this.buildOrderWithRelations(
+      paginationParams?.sort_by, 
+      paginationParams?.sort_direction
+    );
 
     const transformer = (data: T[]) =>
       plainToInstance(dtoClass, data, {
@@ -139,6 +142,32 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     );
   }
 
+
+  private buildOrderWithRelations(
+    sortBy?: string, 
+    sortDirection?: string
+  ): FindOptionsOrder<any> {
+    if (!sortBy) {
+      return { created_at: 'ASC' } as FindOptionsOrder<any>;
+    }
+
+    // Vérifier si le tri concerne une relation (contient un point)
+    if (sortBy.includes('.')) {
+      const [relation, field] = sortBy.split('.');
+      
+      // Pour les relations, TypeORM nécessite une structure spécifique
+      return {
+        [relation]: {
+          [field]: (sortDirection || 'ASC').toUpperCase()
+        }
+      } as FindOptionsOrder<any>;
+    }
+
+    // Tri simple sur un champ direct
+    return {
+      [sortBy]: (sortDirection || 'ASC').toUpperCase()
+    } as FindOptionsOrder<any>;
+  }
 
 
   /**

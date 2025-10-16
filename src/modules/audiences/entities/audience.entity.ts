@@ -1,8 +1,8 @@
 // src/modules/audiences/entities/audience.entity.ts
 import { BaseEntity } from 'src/core/entities/baseEntity';
-import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+
 
 export enum AudienceStatus {
   SCHEDULED = 0,
@@ -78,8 +78,8 @@ export class Audience extends BaseEntity {
   @JoinColumn({ name: 'dossier_id' })
   dossier: Dossier;
 
-  @OneToMany(() => DocumentCustomer, (document) => document.audience)
-  documents: DocumentCustomer[];
+  // @OneToMany(() => DocumentCustomer, (document) => document.audience)
+  // documents: DocumentCustomer[];
 
   // Getters
   get is_past(): boolean {

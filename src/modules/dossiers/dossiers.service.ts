@@ -7,9 +7,15 @@ import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginatedResult, PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
-import { Repository, In, Like, Between, FindOptionsWhere } from 'typeorm';
+import { Repository, In, Between, FindOptionsWhere } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
 
 
 import { Customer } from '../customer/customer/entities/customer.entity';
@@ -21,6 +27,12 @@ import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { Dossier } from './entities/dossier.entity';
+
+
+
+
+
+
 
 
 
@@ -164,54 +176,9 @@ async searhDosiers(
     return this.mapToResponseDto(savedDossier);
   }
 
-  async findAll(searchDto: DossierSearchDto, user: User): Promise<{ data: DossierResponseDto[], total: number }> {
-    const where: FindOptionsWhere<Dossier> = {};
+  async findAll(searchDto: DossierSearchDto, user: User): Promise<any[]> {
 
-    // Filtrage par rôle utilisateur
-    /*if (user.role === UserRole.AVOCAT) {
-      where.lawyer = { id: user.id };
-    } else if (user.role === 'client') {
-      where.client = { id: user.id }; // Si un client peut accéder à ses dossiers
-    }*/
-
-    // Filtres de recherche
-    if (searchDto.search) {
-      where.object = Like(`%${searchDto.search}%`);
-    }
-
-    if (searchDto.status) {
-      where.status = searchDto.status;
-    }
-
-    if (searchDto.client_id) {
-      where.client = { id: Number(searchDto.client_id) };
-    }
-
-    if (searchDto.lawyer_id) {
-      where.lawyer = { id: Number(searchDto.lawyer_id) };
-    }
-
-    if (searchDto.procedure_type_id) {
-      where.procedure_type = { id: searchDto.procedure_type_id };
-    }
-
-    if (searchDto.procedure_subtype_id) {
-      where.procedure_subtype = { id: searchDto.procedure_subtype_id };
-    }
-
-    if (searchDto.jurisdiction) {
-      where.jurisdiction = Like(`%${searchDto.jurisdiction}%`);
-    }
-
-    // Filtre par date
-    if (searchDto.date_from || searchDto.date_to) {
-      const dateFrom = searchDto.date_from ? new Date(searchDto.date_from) : new Date('2000-01-01');
-      const dateTo = searchDto.date_to ? new Date(searchDto.date_to) : new Date();
-      where.created_at = Between(dateFrom, dateTo);
-    }
-
-    const [dossiers, total] = await this.dossierRepository.findAndCount({
-      where,
+    const dossiers = await this.dossierRepository.find({
       relations: [
         'client',
         'lawyer',
@@ -221,18 +188,11 @@ async searhDosiers(
         'audiences',
         'factures',
         'collaborators'
-      ],
-      order: { [(searchDto.sort_by || 'created_at') as string]: searchDto.sort_desc ? 'DESC' : 'ASC' },
-      // skip: searchDto.offset,
-      take: searchDto.limit,
+      ]
     });
 
-    const responseDtos = dossiers.map(dossier => this.mapToResponseDto(dossier));
     
-    return {
-      data: responseDtos,
-      total
-    };
+    return dossiers
   }
 
   async findAllPaginated(
@@ -295,7 +255,9 @@ async searhDosiers(
     return conditions;
   }
 
-  async findOne(id: number, user: User): Promise<DossierResponseDto> {
+  async findOne(id: number, user?: User): Promise<DossierResponseDto> {
+    console.log(id)
+
     const dossier = await this.dossierRepository.findOne({
       where: { id },
       relations: [
@@ -317,7 +279,7 @@ async searhDosiers(
     }
 
     // Vérification des droits d'accès
-    this.checkDossierAccess(dossier, user);
+    // this.checkDossierAccess(dossier, user);
 
     return this.mapToResponseDto(dossier);
   }

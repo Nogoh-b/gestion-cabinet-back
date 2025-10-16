@@ -1,13 +1,16 @@
 // user.entity.ts
 import { Exclude } from 'class-transformer';
+import { UserRole } from 'src/core/enums/user-role.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany, OneToOne, ManyToMany } from 'typeorm';
 
+
 import { UserRoleAssignment } from '../../user-role-assignment/entities/user-role-assignment.entity';
-import { Loan } from '../../../credit/loan/entities/loan.entity';
-import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { UserRole } from 'src/core/enums/user-role.enum';
+
+
 
 
 @Entity('user')
@@ -39,16 +42,14 @@ export class User {
     enum: UserRole, 
     default: UserRole.AVOCAT 
   })
+ @Column({ 
+    type: 'enum', 
+    enum: UserRole, 
+    default: UserRole.AVOCAT 
+  })
 
   role: UserRole; // ✅ Propriété role ajoutée
-  @OneToMany(() => Loan, (type) => type.initiated)
-  loanInit: Loan[];
-
-  @OneToMany(() => Loan, (type) => type.managedBy)
-  loanManage: Loan[];
-
-  @OneToMany(() => Loan, (type) => type.approvedBy)
-  loanApproved: Loan[];
+ 
 
   @OneToOne(() => Employee, (employee) => employee.user, {
     cascade: true,
