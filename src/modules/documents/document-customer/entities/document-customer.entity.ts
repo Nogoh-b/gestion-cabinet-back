@@ -52,14 +52,18 @@ export class DocumentCustomer extends BaseEntity {
 
   @Column()
   name: string;
-  @Column()
-  document_type_id: string;
-  @Column()
-  customer_id: string;
-  @Column()
-  dossier_id: string;
-  @Column()
-  uploaded_by_id: string;
+  @Column({ type: 'int', nullable: true })
+  document_type_id?: number;
+
+  @Column({ type: 'int', nullable: true })
+  customer_id?: number;
+
+  @Column({ type: 'int', nullable: true })
+  dossier_id?: number;
+
+  @Column({ type: 'int', nullable: true })
+  uploaded_by_id?: number;
+
 
   @Column({ type: 'text', nullable: true })
   description: string;

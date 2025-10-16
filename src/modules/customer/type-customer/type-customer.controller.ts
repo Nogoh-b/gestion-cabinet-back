@@ -1,24 +1,17 @@
 // type-customers.controller.ts
+import { Controller, Get, Post, Body, Param, Put, UseGuards, Query } from '@nestjs/common';
+import { TypeCustomersService } from './type-customer.service';
+import { TypeCustomer } from './entities/type_customer.entity';
+import { CreateTypeCustomerDto } from './dto/create-type_customer.dto';
+import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { AssignDocumentsToTypeDto } from 'src/modules/documents/shared/assign-documents-to-type.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-import { AssignDocumentsToTypeDto } from 'src/modules/documents/shared/assign-documents-to-type.dto';
-import { Controller, Get, Post, Body, Param, Put, UseGuards, Query } from '@nestjs/common';
-
-
-import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-
-import { CreateTypeCustomerDto } from './dto/create-type_customer.dto';
 import { TypeCustomerListResponseDto } from './dto/response-type_customer.dto';
-import { TypeCustomerSearchDto } from './dto/type-customer-search.dto';
-import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
-import { TypeCustomer } from './entities/type_customer.entity';
-import { TypeCustomersService } from './type-customer.service';
-
-
-
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 @Controller('type-customers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -32,17 +25,16 @@ export class TypeCustomersController {
     return this.service.create(dto);
   }
 
-  @Get('/search')
+  @Post('/search')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_CUSTOMER')
-  @ApiOperation({ summary: 'Rechercher customer' })
+  // @RequirePermissions('VIEW_CUSTOMER')
+  @ApiOperation({ summary: 'Rechercher Type de customer' })
   @ApiResponse({ status: 201, description: 'Liste' , type: [TypeCustomerListResponseDto] })
    async search(
-      @Query() searchParams?: TypeCustomerSearchDto,
   
       @Query() paginationParams?: PaginationParamsDto,
     ) {
-      return this.service.searchWithTransformer(searchParams as SearchCriteria, TypeCustomerListResponseDto , paginationParams);
+      return this.service.searchWithTransformer({} as SearchCriteria, TypeCustomerListResponseDto , paginationParams);
     }
 
   @Get()

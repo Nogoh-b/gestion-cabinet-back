@@ -35,6 +35,11 @@ export class CreateDocumentCustomerDto {
   @IsString()
   description?: string;
 
+  @ApiPropertyOptional({ description: 'Nom du document' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
   @ApiPropertyOptional({ 
     enum: DocumentCategory,
     description: 'Catégorie du document' 

@@ -11,98 +11,148 @@ export class FilesUtil {
   static async uploadFile(
     file: Express.Multer.File,
     FILE_PATH: string,
-    mimetype,
+    mimetype: string,
     options?: { 
       maxSizeKB?: number;
       width?: number;
       quality?: number;
     }
   ): Promise<{fileName: string, fileSize: number}> {
-    const fileName = `${Date.now()}-${file.originalname}`;
+    const fileName = FilesUtil.generateUniqueFilename(file.originalname);
     const filePath = join(FILE_PATH, fileName);
+    let finalBuffer: Buffer;
     let finalSize: number;
 
-    if (file.mimetype.startsWith(mimetype)) {
+    // Vérifier si c'est une image et si on doit la traiter
+    const isImage = file.mimetype.startsWith('image/');
+    const shouldProcessImage = isImage && (options?.maxSizeKB || options?.quality || options?.width);
+
+    if (shouldProcessImage) {
       // Traitement des images avec compression
-      let outputBuffer = file.buffer;
+      let sharpInstance = sharp(file.buffer);
+
+      // Appliquer le redimensionnement si demandé
+      if (options?.width) {
+        sharpInstance = sharpInstance.resize(options.width, null, {
+          withoutEnlargement: true,
+          fit: 'inside'
+        });
+      }
+
+      // Déterminer le format de sortie
+      const outputFormat = file.mimetype === 'image/png' ? 'png' : 'jpeg';
+      
+      // Options de compression
+      const compressOptions = {
+        [outputFormat]: {
+          quality: options?.quality || 80,
+          ...(outputFormat === 'png' && { compressionLevel: 9 })
+        }
+      };
 
       if (options?.maxSizeKB) {
-        outputBuffer = await this.compressToMaxSize(
+        finalBuffer = await this.compressToMaxSize(
           file.buffer,
-          options.maxSizeKB * 1024
+          options.maxSizeKB * 1024,
+          options.width,
+          outputFormat
         );
-      } else if (options?.quality || options?.width) {
-        outputBuffer = await sharp(file.buffer)
-          .resize(options?.width)
-          .jpeg({ quality: options?.quality })
-          .png({ quality: options?.quality })
+      } else {
+        finalBuffer = await sharpInstance
+          .toFormat(outputFormat, compressOptions[outputFormat])
           .toBuffer();
       }
 
-      finalSize = outputBuffer.length;
-      await sharp(outputBuffer).toFile(filePath);
+      finalSize = finalBuffer.length;
+      
+      // Écrire le fichier traité
+      await sharp(finalBuffer).toFile(filePath);
+
     } else {
-      // Traitement des fichiers non-images
+      // Traitement des fichiers non-images ou images sans traitement
+      finalBuffer = file.buffer;
       finalSize = file.size;
+      
       await new Promise<void>((resolve, reject) => {
         const stream = createWriteStream(filePath);
         stream.on('finish', () => resolve());
         stream.on('error', (err) => reject(err));
-        stream.end(file.buffer);
+        stream.end(finalBuffer);
       });
     }
 
+    // Vérification de la taille réelle du fichier écrit
+    const actualFileSize = await this.getActualFileSize(filePath);
+    
+    console.log(`Debug - Taille originale: ${file.size} bytes`);
+    console.log(`Debug - Taille calculée: ${finalSize} bytes`);
+    console.log(`Debug - Taille réelle sur disque: ${actualFileSize} bytes`);
+
     return {
       fileName,
-      fileSize: finalSize
+      fileSize: actualFileSize // Retourner la taille réelle
     };
   }
 
   /**
-   * Méthode pour obtenir seulement la taille d'un fichier après traitement
-   * (Utile si vous voulez une méthode dédiée)
+   * Méthode pour obtenir la taille réelle d'un fichier sur le disque
    */
-  static async getFileSize(
-    file: Express.Multer.File,
-    options?: { 
-      maxSizeKB?: number;
-      quality?: number;
-    }
-  ): Promise<number> {
-    if (!file.mimetype.startsWith('image/') || !options) {
-      return file.size;
-    }
-
-    const compressedBuffer = options.maxSizeKB
-      ? await this.compressToMaxSize(file.buffer, options.maxSizeKB * 1024)
-      : await sharp(file.buffer)
-          .jpeg({ quality: options?.quality })
-          .toBuffer();
-
-    return compressedBuffer.length;
+  private static async getActualFileSize(filePath: string): Promise<number> {
+    const fs = await import('fs/promises');
+    const stats = await fs.stat(filePath);
+    return stats.size;
   }
 
+  /**
+   * Compression avec contrôle de taille maximale - version améliorée
+   */
   private static async compressToMaxSize(
     buffer: Buffer,
     maxSizeInBytes: number,
-    step = 5
+    width?: number,
+    format: 'jpeg' | 'png' = 'jpeg'
   ): Promise<Buffer> {
     let quality = 90;
-    let compressedBuffer = buffer;
+    let compressedBuffer: Buffer;
 
-    while (quality > 10) {
-      compressedBuffer = await sharp(buffer)
-        .jpeg({ quality })
-        .toBuffer();
-
-      if (compressedBuffer.length <= maxSizeInBytes) break;
-      quality -= step;
+    // Si le fichier est déjà en dessous de la taille max, retourner tel quel
+    if (buffer.length <= maxSizeInBytes) {
+      return buffer;
     }
 
-    return compressedBuffer;
+    for (let q = quality; q >= 10; q -= 5) {
+      let sharpInstance = sharp(buffer);
+
+      // Appliquer le redimensionnement si demandé
+      if (width) {
+        sharpInstance = sharpInstance.resize(width, null, {
+          withoutEnlargement: true,
+          fit: 'inside'
+        });
+      }
+
+      // Compression selon le format
+      const compressOptions = format === 'png' 
+        ? { compressionLevel: Math.floor((100 - q) / 10) }
+        : { quality: q };
+
+      compressedBuffer = await sharpInstance
+        .toFormat(format, compressOptions)
+        .toBuffer();
+
+      // Vérifier si on a atteint la taille cible
+      if (compressedBuffer.length <= maxSizeInBytes) {
+        console.log(`Compression réussie: ${compressedBuffer.length} bytes (qualité: ${q})`);
+        return compressedBuffer;
+      }
+    }
+
+    // Si on arrive ici, retourner la plus petite version obtenue
+    console.log(`Compression minimale: ${compressedBuffer!.length} bytes`);
+    return compressedBuffer!;
   }
 
-    static isValidMimeType(mimeType: string): boolean {
+  static isValidMimeType(mimeType: string): boolean {
     return BUSINESS_RULES.DOCUMENT.ALLOWED_MIME_TYPES.includes(mimeType);
   }
 

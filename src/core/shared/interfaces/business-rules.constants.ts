@@ -11,7 +11,7 @@ export const BUSINESS_RULES = {
   },
   
   DOCUMENT: {
-    MAX_FILE_SIZE: 50 * 1024 * 1024, // 50MB
+    MAX_FILE_SIZE: 3 * 1024 * 1024, // 50MB
     ALLOWED_MIME_TYPES: [
       'application/pdf',
       'image/jpeg',

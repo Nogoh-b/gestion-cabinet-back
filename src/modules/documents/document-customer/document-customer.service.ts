@@ -284,7 +284,7 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
    */
   async create(
     createDto: CreateDocumentCustomerDto & { file: Express.Multer.File },
-    uploadedByUserId?: number
+    uploadedByUserId?: number 
   ): Promise<DocumentCustomerResponseDto | any> {
     const {
       document_type_id,
@@ -476,8 +476,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     try {
       console.log(UPLOAD_DOCS_PATH)
       return await FilesUtil.uploadFile(file, UPLOAD_DOCS_PATH, docType.mimetype, {
-        maxSizeKB: 3 * 1024, // 3MB
-        width: 1024,
+        maxSizeKB: 300, // 3MB
+        quality: 70,
       });
     } catch (error) {
       throw new InternalServerErrorException(
@@ -496,6 +496,7 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     uploadedFile: { fileName: string; fileSize: number };
     uploadedByUserId?: number;
     description?: string;
+    name?: string;
     category?: DocumentCategory;
     status?: DocumentCustomerStatus;
     required_for_hearing?: boolean;
@@ -514,9 +515,9 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     const documentData: Partial<any> = {
       ...restParams,
       document_type,
-      customer,
+      // customer,
       dossier,
-      name: document_type.name,
+      name: restParams.name ?? document_type.name,
       file_path: uploadedFile.fileName,
       file_size: uploadedFile.fileSize,
       file_mimetype: document_type.mimetype,

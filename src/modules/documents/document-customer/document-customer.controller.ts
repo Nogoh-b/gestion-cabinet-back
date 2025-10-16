@@ -41,6 +41,8 @@ import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 
 
 
@@ -79,9 +81,10 @@ export class DocumentCustomerController {
   async create(
     @Param('customer_id') customer_id: number,
     @Body() dto: CreateDocumentCustomerDto,
+    @CurrentUser() user: User,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.create({ ...dto, customer_id, file });
+    return this.service.create({ ...dto, customer_id, file }, user? user.id : 1);
   }
 
 
@@ -98,11 +101,12 @@ export class DocumentCustomerController {
   async createByCode(
     @Param('code') code: string,
     @Param('customer_id') customer_id: string,
+    @CurrentUser() user: User,
     @Body() dto: CreateDocumentCustomerDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
     const customer  = await this.service.findCustomerByCode(code)
-    return this.create(customer.id, dto, file);
+    return this.create(customer.id, dto, user, file);
   }
 
   @Get('/validate-document/:document_id')
