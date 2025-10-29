@@ -18,6 +18,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { User } from '../iam/user/entities/user.entity';
 import { ProcedureType } from '../procedures/entities/procedure.entity';
@@ -36,6 +43,12 @@ import { Dossier } from './entities/dossier.entity';
 
 
 
+
+
+
+
+
+
 @Injectable()
 export class DossiersService  extends BaseServiceV1<Dossier>  {
   constructor(
@@ -44,7 +57,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     @InjectRepository(Customer)
     private readonly clientRepository: Repository<Customer>,
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    private readonly userRepository: Repository<Employee>,
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepository: Repository<ProcedureType>,
     protected readonly paginationService: PaginationServiceV1,
@@ -152,7 +165,9 @@ async searhDosiers(
 
     // Génération du numéro de dossier
     const dossierNumber = await this.generateDossierNumber();
-
+    if(!createDossierDto.dossier_number){
+      createDossierDto.dossier_number = dossierNumber
+    } 
     const dossier = this.dossierRepository.create({
       ...createDossierDto,
       dossier_number: dossierNumber,
@@ -262,12 +277,15 @@ async searhDosiers(
       where: { id },
       relations: [
         'client',
+        'client.location_city',
         'lawyer',
+        'lawyer.user',
         'procedure_type',
         'procedure_subtype',
         'documents',
         'audiences',
         'factures',
+        'steps',
         'collaborators',
         // 'comments',
         // 'comments.user'
@@ -281,7 +299,7 @@ async searhDosiers(
     // Vérification des droits d'accès
     // this.checkDossierAccess(dossier, user);
 
-    return this.mapToResponseDto(dossier);
+    return plainToInstance(DossierResponseDto,dossier);
   }
 
   async update(id: number, updateDossierDto: UpdateDossierDto, user: User): Promise<DossierResponseDto> {
@@ -407,7 +425,7 @@ async searhDosiers(
     this.checkDossierAccess(dossier, user);
 
     // Vérifier que toutes les factures sont payées (R5)
-    const unpaidFactures = dossier.factures.filter(facture => !facture.is_paid);
+    const unpaidFactures = dossier.factures.filter(facture => facture.montantPaye <= 0);
     if (unpaidFactures.length > 0) {
       throw new BadRequestException('Impossible d\'archiver le dossier: des factures sont impayées');
     }

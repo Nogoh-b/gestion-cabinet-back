@@ -3,7 +3,6 @@ import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Facture } from 'src/modules/finances/entities/facture.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import {
   BeforeInsert,
@@ -17,6 +16,8 @@ import {
 
 
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
+import { CustomerCommunication } from './customer-communication.entity';
+import { Facture } from 'src/modules/facture/entities/facture.entity';
 
 
 // import { Dossier } from 'src/modules/dossiers/entities/dossier.entity'; // ✅ Ajout
@@ -146,6 +147,23 @@ export class Customer extends BaseEntity {
   @OneToMany(() => Facture, (facture) => facture.client)
   factures: Facture[];
 
+  // src/modules/customer/customer/entities/customer.entity.ts
+
+  // Ajoutez cette relation pour les communications
+  @OneToMany(() => CustomerCommunication, (communication) => communication.customer)
+  communications: CustomerCommunication[];
+
+
+
+  // Corrigez les getters
+  get isProfessional(): boolean {
+    return this.type_customer?.code === 'PRO' || this.type_customer?.name === 'Professionnel';
+  }
+
+  get isParticulier(): boolean {
+    return this.type_customer?.code === 'PART' || this.type_customer?.name === 'Particulier';
+}
+
   // ✅ GETTERS améliorés
   get fullName(): string {
     if (this.company_name && this.isProfessional) {  
@@ -154,13 +172,8 @@ export class Customer extends BaseEntity {
     return `${this.first_name} ${this.last_name}`.trim(); 
   }
 
-  // ✅ Utilise TypeCustomer pour déterminer le segment
-  get isProfessional(): boolean {
-    return false;
-  }
-
-  get isParticulier(): boolean {
-    return  false;
+  get city_full_address(): string {
+    return this.location_city?.full_address ?? '';
   }
 
   get hasValidContact(): boolean {

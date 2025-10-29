@@ -42,7 +42,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   getProfile(@Request() req) {
-    console.log('req.user', req.user);
+    // console.log('req.user', req.user);
     // req.user contient le payload du JWT
     return req.user;
   }

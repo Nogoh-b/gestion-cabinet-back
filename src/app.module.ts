@@ -6,14 +6,16 @@ import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { MulterModule } from '@nestjs/platform-express';
+
+
+
+
+
+
+
+
 import { ServeStaticModule } from '@nestjs/serve-static';
-
-
-
-
-
-
-
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -32,6 +34,10 @@ import { FinancesModule } from './modules/finances/finances.module';
 import { GeographyModule } from './modules/geography/geography.module';
 import { IamModule } from './modules/iam/iam.module';
 import { ProceduresModule } from './modules/procedures/procedures.module';
+import { StepModule } from './modules/step/step.module';
+import { FactureModule } from './modules/facture/facture.module';
+import { PaiementModule } from './modules/paiement/paiement.module';
+
 
 
 
@@ -44,6 +50,11 @@ dotenv.config();
 
 @Module({
   imports: [
+    MulterModule.register({
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB
+      },
+    }),
      CoreModule,
     
     // 2. Modules indépendants
@@ -118,7 +129,10 @@ dotenv.config();
     // CreditModule,
     AudiencesModule,
     FinancesModule,
-    ProceduresModule
+    ProceduresModule,
+    StepModule,
+    FactureModule,
+    PaiementModule
   ],
   controllers: [AppController],
   providers: [AppService],

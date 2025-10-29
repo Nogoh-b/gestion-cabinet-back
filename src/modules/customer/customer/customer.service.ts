@@ -308,7 +308,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
   async findOne(id: number): Promise<CustomerResponseDto> {
     const customer = await this.customerRepository.findOne({
       where: { id },
-      relations: ['type_customer', 'location_city'],
+      relations: ['type_customer', 'location_city' , 'dossiers' , 'documents', 'factures', 'communications'],
     });
     if (!customer) throw new NotFoundException();
     return plainToInstance(CustomerResponseDto, customer);

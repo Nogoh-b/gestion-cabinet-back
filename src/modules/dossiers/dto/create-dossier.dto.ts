@@ -82,7 +82,7 @@ export class CreateDossierDto {
   })
   @IsOptional()
   @IsString()
-  case_number?: string;
+  dossier_number?: string;
 
   @ApiPropertyOptional({
     description: 'Nom de la partie adverse',

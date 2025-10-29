@@ -1,5 +1,5 @@
 // create-customer.dto.ts
-import { Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import {
   IsString,
   IsInt,
@@ -13,6 +13,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { CustomerCreatedFrom, CustomerStatus } from '../entities/customer.entity';
+import { CommunicationStatus, CommunicationType } from '../entities/customer-communication.entity';
 
 
 export class CreateCustomerDto {
@@ -174,6 +175,129 @@ export class CreateCustomerDto {
   @IsOptional()
   @ApiPropertyOptional({ description: 'Customer code (auto-generated if not provided)' })
   customer_code?: string;
+ // ---------------- COMMUNICATIONS ----------------
+  @ApiProperty({
+    type: [Object],
+    example: [
+      {
+        id: 1,
+        type: 'email',
+        subject: 'Confirmation de rendez-vous',
+        date: '2024-01-15T10:30:00Z',
+        status: 'sent',
+        content: 'Bonjour, je confirme notre rendez-vous...'
+      }
+    ]
+  })
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.communications) return undefined;
+    return obj.communications.map((comm: any) => ({
+      id: comm.id,
+      type: comm.type,
+      subject: comm.subject,
+      date: comm.date,
+      status: comm.status,
+      content: comm.content,
+      duration: comm.duration
+    }));
+  })
+  communications?: {
+    id: number;
+    type: CommunicationType;
+    subject: string;
+    date: Date;
+    status: CommunicationStatus;
+    content?: string;
+    duration?: number;
+  }[];
 
+  // ---------------- DOCUMENTS ----------------
+  @ApiProperty({
+    type: [Object],
+    example: [
+      {
+        id: 1,
+        name: 'contrat_signature.pdf',
+        document_type_name: 'Contrat',
+        created_at: '2024-01-15',
+        file_size_formatted: '2.4 MB'
+      }
+    ]
+  })
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.documents) return undefined;
+    return obj.documents.map((doc: any) => ({
+      id: doc.id,
+      name: doc.name,
+      document_type_name: doc.document_type?.name || 'Document',
+      created_at: doc.created_at,
+      file_size_formatted: doc.file_size_formatted || '0 KB'
+    }));
+  })
+  documents?: {
+    id: number;
+    name: string;
+    document_type_name: string;
+    created_at: Date;
+    file_size_formatted: string;
+  }[];
+
+  // ---------------- STATISTIQUES AMÉLIORÉES ----------------
+  @ApiProperty({ example: 5, description: "Nombre total de documents" })
+  @Expose()
+  @Transform(({ obj }) => obj.documents?.length || 0)
+  document_count: number;
+
+  @ApiProperty({ example: 3, description: "Nombre de communications" })
+  @Expose()
+  @Transform(({ obj }) => obj.communications?.length || 0)
+  communication_count: number;
+
+  // ---------------- INFORMATIONS DE CONTACT COMPLÈTES ----------------
+  @ApiProperty({ 
+    example: "M", 
+    description: "Civilité du client",
+    required: false 
+  })
+  @Expose()
+  civilite?: string; // Vous devrez ajouter ce champ dans l'entité
+
+  @ApiProperty({ 
+    example: "1985-05-15", 
+    description: "Date de naissance",
+    required: false 
+  })
+
+  // ---------------- CALCULS DE STATISTIQUES ----------------
+  @ApiProperty({ 
+    example: 2, 
+    description: "Nombre de dossiers en cours" 
+  })
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.dossiers) return 0;
+    return obj.dossiers.filter((d: any) => 
+      d.status !== 'closed' && d.is_active
+    ).length;
+  })
+  dossiers_en_cours: number;
+
+  @ApiProperty({ 
+    example: 12500, 
+    description: "Chiffre d'affaires total" 
+  })
+  @Expose()
+  @Transform(({ obj }) => obj.total_factures_amount || 0)
+  chiffre_affaires: number;
+
+  @ApiProperty({ 
+    example: 5700, 
+    description: "Solde en cours" 
+  })
+  @Expose()
+  @Transform(({ obj }) => obj.outstanding_balance || 0)
+  solde_en_cours: number;
   // Note: public_key and private_key are auto-generated and should not be in DTO
 }

@@ -1,12 +1,18 @@
 import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+
+
+
 
 import {
   Controller,
@@ -21,11 +27,9 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
+
+
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
-
-
-
-
 import {
   ApiTags,
   ApiOperation,
@@ -41,8 +45,8 @@ import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
-import { User } from 'src/modules/iam/user/entities/user.entity';
-import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+
+
 
 
 
@@ -57,6 +61,12 @@ import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 export class DocumentCustomerController {
   constructor(private readonly service: DocumentCustomerService) {}
 
+  @Get('get/:id')
+  @ApiOperation({ summary: 'Récupérer un document client par ID' })
+  @ApiResponse({ status: 200, type: DocumentCustomerResponseDto })
+  async findOne(@Param('id') id: number): Promise<DocumentCustomerResponseDto> {
+    return this.service.findOne(id);
+  }
 
   @Get('search')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
@@ -69,7 +79,11 @@ export class DocumentCustomerController {
     return this.service.searchWithTransformer(searchParams as SearchCriteria, DocumentCustomerResponseDto , paginationParams);
   }
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB
+    },
+  }))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Upload document',

@@ -9,6 +9,7 @@ import {
   BeforeInsert,
   PrimaryGeneratedColumn,
   OneToMany,
+  ManyToMany,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Branch } from '../../branch/entities/branch.entity';
@@ -36,7 +37,7 @@ export class Employee extends BaseEntity {
   id: number; // sera égal à user.id
 
   @OneToOne(() => User, (user) => user.employee)
-  @JoinColumn({ name: 'user_id' }) // Clé étrangère et clé primaire en même temps
+  @JoinColumn({ name: 'id' }) // Clé étrangère et clé primaire en même temps
   user: User;
 
   @ManyToOne(() => Branch)
@@ -123,6 +124,9 @@ export class Employee extends BaseEntity {
   // Relations
   @OneToMany(() => Dossier, (dossier) => dossier.lawyer)
   managed_dossiers: Dossier[];
+
+  @ManyToMany(() => Dossier, dossier => dossier.collaborators)
+  collaborating_dossiers: Dossier[];
 
   @BeforeInsert()
   setDefaultHireDate() {

@@ -12,6 +12,7 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { TypeCustomerListResponseDto } from './dto/response-type_customer.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { TypeCustomerSearchDto } from './dto/type-customer-search.dto';
 
 @Controller('type-customers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -25,16 +26,17 @@ export class TypeCustomersController {
     return this.service.create(dto);
   }
 
-  @Post('/search')
+  @Get('/search')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   // @RequirePermissions('VIEW_CUSTOMER')
   @ApiOperation({ summary: 'Rechercher Type de customer' })
   @ApiResponse({ status: 201, description: 'Liste' , type: [TypeCustomerListResponseDto] })
    async search(
   
+      @Query() typeCustomerSearchDto?: TypeCustomerSearchDto,
       @Query() paginationParams?: PaginationParamsDto,
     ) {
-      return this.service.searchWithTransformer({} as SearchCriteria, TypeCustomerListResponseDto , paginationParams);
+      return this.service.searchWithTransformer(typeCustomerSearchDto as SearchCriteria, TypeCustomerListResponseDto , paginationParams);
     }
 
   @Get()

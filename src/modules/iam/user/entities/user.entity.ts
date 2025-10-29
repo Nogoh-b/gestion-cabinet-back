@@ -5,7 +5,7 @@ import { Employee } from 'src/modules/agencies/employee/entities/employee.entity
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany, OneToOne, ManyToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany, OneToOne } from 'typeorm';
 
 
 import { UserRoleAssignment } from '../../user-role-assignment/entities/user-role-assignment.entity';
@@ -73,8 +73,6 @@ export class User {
   @OneToMany(() => Dossier, (dossier) => dossier.lawyer)
   managed_dossiers: Dossier[];
 
-  @ManyToMany(() => Dossier, dossier => dossier.collaborators)
-  collaborating_dossiers: Dossier[];
 
   @UpdateDateColumn({ name: 'updated_at' })
   update_at: Date;

@@ -15,10 +15,19 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 
 
+
+
+
+
 import { AudiencesService } from './audiences.service';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceListResponseDto, AudienceResponseDto } from './dto/response-audience.dto';
+import { AudienceSearchDto } from './dto/search-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
+
+
+
+
 
 
 
@@ -34,6 +43,8 @@ export class AudiencesController {
   @ApiOperation({ summary: 'Créer une audience' })
   @ApiResponse({ status: 201, type: AudienceResponseDto })
   async create(@Body() createAudienceDto: CreateAudienceDto) {
+    console.log('-------dto ', createAudienceDto)
+
     return await this.audiencesService.create(createAudienceDto);
   }
 
@@ -42,7 +53,7 @@ export class AudiencesController {
   @ApiOperation({ summary: 'Rechercher des audiences avec filtres' })
   @ApiResponse({ status: 200, type: [AudienceListResponseDto] })
   async search(
-    @Query() searchParams?: Record<string, any>,
+    @Query() searchParams?: AudienceSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
     return await this.audiencesService.searchWithTransformer(
@@ -61,7 +72,7 @@ export class AudiencesController {
   }
 
   // ✅ GET BY ID - GET /audiences/:id
-  @Get(':id')
+  @Get('get/:id')
   @ApiOperation({ summary: 'Obtenir une audience par ID' })
   @ApiResponse({ status: 200, type: AudienceResponseDto })
   async findOne(@Param('id') id: string) {

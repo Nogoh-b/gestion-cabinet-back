@@ -1,7 +1,9 @@
 // src/modules/audiences/entities/audience.entity.ts
 import { BaseEntity } from 'src/core/entities/baseEntity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+
 
 
 export enum AudienceStatus {
@@ -25,6 +27,9 @@ export class Audience extends BaseEntity {
 
   @Column({ name: 'audience_date', type: 'date', nullable: false }) // ✅ Changé en 'date'
   audience_date: Date;
+
+  @Column({ name: 'dossier_id', type: 'int', nullable: true }) // ✅ Changé en 'date'
+  dossier_id: Date;
 
   @Column({ name: 'audience_time', length: 10, nullable: false })
   audience_time: string;
@@ -77,6 +82,16 @@ export class Audience extends BaseEntity {
   @ManyToOne(() => Dossier, (dossier) => dossier.audiences, { nullable: false })
   @JoinColumn({ name: 'dossier_id' })
   dossier: Dossier;
+
+  @ManyToMany(() => DocumentCustomer, (document) => document.audiences, {
+    cascade: true, // facultatif, selon si tu veux créer les documents via audience
+  })
+  @JoinTable({
+    name: 'audience_documents', // nom de la table pivot
+    joinColumn: { name: 'audience_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
+  })
+  documents: DocumentCustomer[];
 
   // @OneToMany(() => DocumentCustomer, (document) => document.audience)
   // documents: DocumentCustomer[];

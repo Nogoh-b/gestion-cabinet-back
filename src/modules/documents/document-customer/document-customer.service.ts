@@ -35,11 +35,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCategory, DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
 
 
 
@@ -83,11 +89,9 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
         'description',
         'document_type.name',
         'document_type.code',
-        'customer.full_name',
         'customer.customer_code',
         'customer.company_name',
-        'dossier.reference',
-        'dossier.objet',
+        'dossier.object',
         'uploaded_by.first_name',
         'uploaded_by.last_name',
         'metadata.keywords'
@@ -132,6 +136,20 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     };
   }
 
+
+async findOne(id: number): Promise<DocumentCustomerResponseDto> {
+    const document = await this.repository.findOne({
+      where: { id },
+      relations: ['customer', 'document_type', 'uploaded_by', 'dossier'], // si tu veux inclure les relations
+    });
+
+    if (!document) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
+    }
+
+
+    return plainToInstance(DocumentCustomerResponseDto, document);
+  }
   /*async create(dto: CreateDocumentCustomerDto, customer_id = null): Promise<any> {
     const file = dto.file!
     const docType = await this.docTypeRepository.findOneBy({ id: dto.document_type_id });
@@ -602,6 +620,11 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
       },
       relations: ['document_type','customer'],
     });
+  }
+
+  async findByIds(documentIds: number[]){
+      const documents = await this.repository.findByIds(documentIds);
+      return documents
   }
 
 

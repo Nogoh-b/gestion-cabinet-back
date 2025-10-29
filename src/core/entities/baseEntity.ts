@@ -10,11 +10,11 @@ import { ApiProperty } from '@nestjs/swagger';
 export abstract class BaseEntity extends TypeORMBaseEntity {
 
   @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
-  @CreateDateColumn({ type: 'timestamp',  name: 'created_at' })
+  @CreateDateColumn({ type: 'timestamp',  name: 'created_at', nullable: false, default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
 
   @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
-  @UpdateDateColumn({ type: 'timestamp',  name: 'updated_at' })
+  @UpdateDateColumn({ type: 'timestamp',  name: 'updated_at', nullable: false, default: () => 'CURRENT_TIMESTAMP' })
   updated_at: Date;
   @ApiProperty({ example: '2023-01-01T00:00:00.000Z', nullable: true })
   @DeleteDateColumn({ type: 'timestamp',  name: 'deleted_at' })

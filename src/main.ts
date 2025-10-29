@@ -3,9 +3,9 @@ import * as tls from 'tls';
 import { ExpressAdapter } from '@bull-board/express';
 import { NestFactory } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
+
+
 import { SwaggerModule } from '@nestjs/swagger';
-
-
 
 
 import { AppModule } from './app.module';
@@ -65,6 +65,8 @@ async function bootstrap() {
   serverAdapter.setBasePath('/admin/queues');
 
   app.use('/admin/queues', serverAdapter.getRouter());
+  // app.use(json({limit : '10mb'}))
+  // app.use(urlencoded({extended : true , limit : '10mb'}))
   await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()]).then(
     () => {
       console.log(

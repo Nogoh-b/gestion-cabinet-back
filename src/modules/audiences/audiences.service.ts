@@ -13,10 +13,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DossiersService } from '../dossiers/dossiers.service';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, AudienceType } from './entities/audience.entity';
+import { plainToInstance } from 'class-transformer';
+import { AudienceResponseDto } from './dto/response-audience.dto';
+import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
+
+
 
 
 
@@ -34,6 +41,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     protected readonly repository: Repository<Audience>,
     protected readonly paginationService: PaginationServiceV1,
     private readonly dossierService: DossiersService,
+    private readonly documentCustomerService: DocumentCustomerService,
   ) {
     super(repository, paginationService);
   }
@@ -54,7 +62,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    * ➕ Création d'une audience
    */
   async create(dto: CreateAudienceDto): Promise<Audience> {
-    console.log(dto.dossier_id ,' ', typeof dto.dossier_id)
+    console.log('-------dto ', dto)
     const dossier = await this.dossierService.findOne(dto.dossier_id);
 
     if (!dossier) {
@@ -91,7 +99,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   /**
    * 🔎 Trouver une audience par ID
    */
-  async findOne(id: number): Promise<Audience> {
+  async findOne(id: number): Promise<AudienceResponseDto> {
     const audience = await this.repository.findOne({
       where: { id },
       relations: ['dossier', 'dossier.client', 'documents'],
@@ -101,14 +109,14 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       throw new NotFoundException(`Audience avec ID ${id} introuvable`);
     }
 
-    return audience;
+    return plainToInstance(AudienceResponseDto,audience);
   }
 
   /**
    * ✏️ Mise à jour d'une audience
    */
   async update(id: number, dto: UpdateAudienceDto): Promise<Audience> {
-    const audience = await this.findOne(id);
+    const audience = plainToInstance(Audience,await this.findOne(id));
     Object.assign(audience, dto);
     return this.repository.save(audience);
   }
@@ -118,7 +126,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   async remove(id: number): Promise<void> {
     const audience = await this.findOne(id);
-    await this.repository.remove(audience);
+    await this.repository.remove(plainToInstance(Audience,audience));
   }
 
   /**
@@ -126,8 +134,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   async postpone(id: number, newDate: Date, reason?: string): Promise<Audience> {
     const audience = await this.findOne(id);
-    audience.postpone(newDate, reason);
-    return this.repository.save(audience);
+    (plainToInstance(Audience , audience)).postpone(newDate, reason);
+    return this.repository.save((plainToInstance(Audience , audience)));
   }
 
   /**
@@ -135,8 +143,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   async markAsHeld(id: number, decision?: string, outcome?: string): Promise<Audience> {
     const audience = await this.findOne(id);
-    audience.mark_as_held(decision, outcome);
-    return this.repository.save(audience);
+    (plainToInstance(Audience , audience)).mark_as_held(decision, outcome);
+    return this.repository.save((plainToInstance(Audience , audience)));
   }
 
   /**
@@ -144,8 +152,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   async cancel(id: number, reason?: string): Promise<Audience> {
     const audience = await this.findOne(id);
-    audience.cancel(reason);
-    return this.repository.save(audience);
+    (plainToInstance(Audience , audience)).cancel(reason);
+    return this.repository.save((plainToInstance(Audience , audience)));
   }
 
   /**
@@ -178,9 +186,25 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   async markReminderSent(id: number): Promise<Audience> {
     const audience = await this.findOne(id);
     audience.reminder_sent = true;
-    audience.reminder_sent_at = new Date();
-    return this.repository.save(audience);
+    (plainToInstance(Audience , audience)).reminder_sent_at = new Date();
+    return this.repository.save((plainToInstance(Audience , audience)));
   }
+
+
+// audiences.service.ts
+async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
+  const audience = await this.repository.findOne({
+    where: { id: audienceId },
+    relations: ['documents'],
+  });
+
+  if (!audience) throw new NotFoundException('Audience non trouvée');
+
+  const documents = await this.documentCustomerService.findByIds(documentIds);
+
+  audience.documents = [...(audience.documents || []), ...documents];
+  return await this.repository.save(audience);
+}
 
 
 }

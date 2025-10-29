@@ -1,13 +1,17 @@
 // src/modules/dossiers/entities/dossier.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
-import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
-import { Facture, FactureStatus } from 'src/modules/finances/entities/facture.entity';
-import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { User } from 'src/modules/iam/user/entities/user.entity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
+import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
+import { Step, StepStatus } from 'src/modules/step/entities/step.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+
+
 @Entity('dossiers')
 export class Dossier extends BaseEntity {
   @PrimaryGeneratedColumn()
@@ -113,9 +117,9 @@ export class Dossier extends BaseEntity {
   @JoinColumn({ name: 'client_id' })
   client: Customer;
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne(() => Employee, { nullable: false })
   @JoinColumn({ name: 'lawyer_id' })
-  lawyer: User;
+  lawyer: Employee;
 
   @ManyToOne(() => ProcedureType, { nullable: false })
   @JoinColumn({ name: 'procedure_type_id' })
@@ -139,13 +143,25 @@ export class Dossier extends BaseEntity {
 //   comments: Comment[];
 
   // Collaborateurs supplémentaires (autres avocats, secrétaires)
-  @ManyToMany(() => User, user => user.collaborating_dossiers)
+  @ManyToMany(() => Employee, user => user.collaborating_dossiers)
   @JoinTable({
     name: 'dossier_collaborators',
     joinColumn: { name: 'dossier_id', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' }
   })
-  collaborators: User[];
+  collaborators: Employee[];
+
+
+  @OneToMany(() => Step, step => step.dossier)
+  steps: Step[];
+
+  // Méthode utilitaire pour récupérer l'étape courante
+  getCurrentStep(): Step | null {
+    if (!this.steps) return null;
+    return this.steps.find(step => 
+      step.status === StepStatus.IN_PROGRESS
+    ) || null;
+  }
 
   // Getters
   get is_closed(): boolean {
@@ -174,14 +190,14 @@ export class Dossier extends BaseEntity {
 
   get total_factures_amount(): number {
     if (!this.factures) return 0;
-    return this.factures.reduce((total, facture) => total + parseFloat(facture.amount_ttc.toString()), 0);
+    return this.factures.reduce((total, facture) => total + parseFloat(facture.montantTTC.toString()), 0);
   }
 
   get paid_factures_amount(): number {
     if (!this.factures) return 0;
     return this.factures
-      .filter(facture => facture.status === FactureStatus.PAID)
-      .reduce((total, facture) => total + parseFloat(facture.amount_ttc.toString()), 0);
+      .filter(facture => facture.status === StatutFacture.PAYEE)
+      .reduce((total, facture) => total + parseFloat(facture.montantTTC.toString()), 0);
   }
 
 

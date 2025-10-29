@@ -3,8 +3,16 @@ import { Expose, Transform } from "class-transformer";
 import { DossierStatus } from "src/core/enums/dossier-status.enum";
 import { AudienceStatus } from "src/modules/audiences/entities/audience.entity";
 import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
-import { FactureStatus } from "src/modules/finances/entities/facture.entity";
+import { StatutFacture } from "src/modules/facture/dto/create-facture.dto";
 import { ApiProperty } from "@nestjs/swagger";
+
+
+
+
+
+
+
+
 
 
 
@@ -139,6 +147,8 @@ export class DossierResponseDto {
       id: obj.client.id,
       full_name: obj.client.full_name,
       email: obj.client.email,
+      number_phone_1: obj.client.number_phone_1,
+      adress: obj.client.city_full_address,
       company_name: obj.client.company_name,
       billing_type: obj.client.billing_type,
       professional_phone: obj.client.professional_phone,
@@ -151,6 +161,8 @@ export class DossierResponseDto {
     company_name?: string;
     billing_type?: string;
     professional_phone?: string;
+    adress?: string;
+    number_phone_1?: string;
   };
 
   // ---------------- AVOCAT ----------------
@@ -261,6 +273,9 @@ export class DossierResponseDto {
       audience_time: audience.audience_time,
       jurisdiction: audience.jurisdiction,
       status: audience.status,
+      judge_name: audience.judge_name,
+      room: audience.room,
+      type: audience.type,
       decision: audience.decision,
       outcome: audience.outcome,
       is_upcoming: audience.is_upcoming,
@@ -287,7 +302,7 @@ export class DossierResponseDto {
         invoice_date: "2025-01-25",
         due_date: "2025-02-25",
         amount_ttc: 150000,
-        status: FactureStatus.PAID,
+        status: StatutFacture.PAYEE,
         remaining_amount: 0,
         is_paid: true,
       },
@@ -313,7 +328,7 @@ export class DossierResponseDto {
     invoice_date: Date;
     due_date: Date;
     amount_ttc: number;
-    status: FactureStatus;
+    status: StatutFacture;
     remaining_amount: number;
     is_paid: boolean;
   }[];
@@ -412,7 +427,7 @@ export class DossierResponseDto {
   @Transform(({ obj }) => {
     if (!obj.factures) return 0;
     return obj.factures
-      .filter((facture: any) => facture.status === FactureStatus.PAID)
+      .filter((facture: any) => facture.status === StatutFacture.PAYEE)
       .reduce((total: number, facture: any) => 
         total + parseFloat(facture.amount_ttc?.toString() || '0'), 0);
   })

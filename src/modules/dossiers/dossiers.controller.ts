@@ -47,6 +47,7 @@ export class DossiersController {
     @CurrentUser() user: User
   )/*: Promise<DossierResponseDto | any>*/ {
     // return user;
+    console.log(createDossierDto)
     return this.dossiersService.create(createDossierDto, user);
   }
 
