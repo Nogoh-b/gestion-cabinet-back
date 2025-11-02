@@ -27,6 +27,9 @@ export class User {
   @Column({ length: 45, nullable: true })
   email: string;
 
+  @Column({ length: 100, nullable: true })
+  fcmToken: string;
+
   @Column({ length: 200, nullable: true })
   refreshToken: string;
 
@@ -50,7 +53,6 @@ export class User {
 
   role: UserRole; // ✅ Propriété role ajoutée
  
-
   @OneToOne(() => Employee, (employee) => employee.user, {
     cascade: true,
     eager: true,

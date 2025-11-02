@@ -1,4 +1,6 @@
 // src/facture/facture.controller.ts
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import {
   Controller,
   Get,
@@ -11,12 +13,17 @@ import {
   HttpStatus,
   ParseUUIDPipe
 } from '@nestjs/common';
+
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
-import { FactureService } from './facture.service';
+
 import { CreateFactureDto } from './dto/create-facture.dto';
-import { UpdateFactureDto } from './dto/update-facture.dto';
-import { SearchFactureDto } from './dto/search-facture.dto';
 import { FactureResponseDto } from './dto/facture-response.dto';
+import { SearchFactureDto } from './dto/search-facture.dto';
+import { UpdateFactureDto } from './dto/update-facture.dto';
+import { FactureService } from './facture.service';
+import { plainToInstance } from 'class-transformer';
+
+
 
 @ApiTags('factures')
 @Controller('factures')
@@ -30,10 +37,23 @@ export class FactureController {
     return this.factureService.createFacture(createFactureDto);
   }
 
+  
+    @Get('search')
+    @ApiOperation({ summary: 'Recherche texte avec relations' })
+    @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [FactureResponseDto]  })
+    async search(
+  
+      @Query() searchParams?: SearchFactureDto,
+      @Query() paginationParams?: PaginationParamsDto,
+    ) {
+      return this.factureService.searchWithTransformer(searchParams as SearchCriteria, FactureResponseDto , paginationParams);
+    }
+  
+
   @Get()
   @ApiOperation({ summary: 'Rechercher des factures' })
   @ApiResponse({ status: HttpStatus.OK, type: [FactureResponseDto] })
-  async search(@Query() searchDto: SearchFactureDto) {
+  async search1(@Query() searchDto: SearchFactureDto) {
     return this.factureService.searchFactures(searchDto);
   }
 
@@ -42,7 +62,7 @@ export class FactureController {
   @ApiResponse({ status: HttpStatus.OK, type: FactureResponseDto })
   @ApiParam({ name: 'id', type: String })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.factureService.findOneV1(id, ['paiements']);
+    return plainToInstance(FactureResponseDto,this.factureService.findOneV1(id, ['paiements', 'dossier', 'client']));
   }
 
   @Patch(':id')

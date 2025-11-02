@@ -19,7 +19,7 @@ export enum StatutPaiement {
   REJETE = 2,
   ANNULE = 3
 }
-
+ 
 export class CreatePaiementDto {
   @ApiProperty({
     description: 'ID de la facture associée',

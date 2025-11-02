@@ -1,15 +1,19 @@
 // src/paiement/paiement.service.ts
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { Paiement } from './entities/paiement.entity';
+
+
 import { Facture } from '../facture/entities/facture.entity';
 import { CreatePaiementDto, StatutPaiement } from './dto/create-paiement.dto';
-import { UpdatePaiementDto } from './dto/update-paiement.dto';
-import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
+import { SearchPaiementDto } from './dto/search-paiement.dto';
+import { UpdatePaiementDto } from './dto/update-paiement.dto';
+import { Paiement } from './entities/paiement.entity';
+
+
 
 @Injectable()
 export class PaiementService extends BaseServiceV1<Paiement> {
@@ -28,14 +32,14 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       searchFields: ['reference', 'numeroCheque', 'banque', 'titulaire', 'notes'],
       exactMatchFields: ['id', 'factureId', 'mode', 'statut', 'reference'],
       dateRangeFields: ['datePaiement', 'dateValeur', 'created_at', 'updated_at'],
-      relationFields: ['facture']
+      relationFields: ['facture', 'client', 'dossier']
     };
   }
 
   async createPaiement(createDto: CreatePaiementDto): Promise<Paiement> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
-      where: { id: createDto.factureId }
+      where: { id: String(createDto.factureId)  }
     });
 
     if (!facture) {
@@ -43,8 +47,8 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
 
     // Vérifier que le montant ne dépasse pas le reste à payer
-    const resteAPayer = facture.montantTTC - facture.montantPaye;
-    if (createDto.montant > resteAPayer) {
+    const resteAPayer = Number(facture.montantTTC) - Number(facture.montantPaye);
+    if (Number(createDto.montant )> Number(resteAPayer)) {
       throw new BadRequestException(
         `Le montant du paiement (${createDto.montant}) dépasse le reste à payer (${resteAPayer})`
       );
@@ -55,6 +59,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     const paiementSauvegarde = await this.repository.save(paiement);
 
     // Mettre à jour la facture
+    console.log(createDto.montant)
     facture.ajouterPaiement(createDto.montant);
     await this.factureRepository.save(facture);
 
@@ -133,7 +138,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       throw new NotFoundException(`Paiement avec l'ID ${id} non trouvé`);
     }
 
-    paiement.statut = StatutPaiement.VALIDE;
+    paiement.status = StatutPaiement.VALIDE;
     return this.repository.save(paiement);
   }
 
@@ -144,14 +149,14 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
 
     // Si le paiement était déjà validé, retirer le montant de la facture
-    if (paiement.statut === StatutPaiement.VALIDE) {
+    if (paiement.status === StatutPaiement.VALIDE) {
       const facture = paiement.facture;
       facture.montantPaye -= paiement.montant;
       facture.calculerResteAPayer();
       await this.factureRepository.save(facture);
     }
 
-    paiement.statut = StatutPaiement.REJETE;
+    paiement.status = StatutPaiement.REJETE;
     paiement.notes = raison + (paiement.notes ? `\n${paiement.notes}` : '');
     
     return this.repository.save(paiement);

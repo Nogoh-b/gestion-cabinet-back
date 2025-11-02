@@ -37,6 +37,8 @@ import { ProceduresModule } from './modules/procedures/procedures.module';
 import { StepModule } from './modules/step/step.module';
 import { FactureModule } from './modules/facture/facture.module';
 import { PaiementModule } from './modules/paiement/paiement.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { NotificationModule } from './modules/notification/notification.module';
 
 
 
@@ -132,7 +134,9 @@ dotenv.config();
     ProceduresModule,
     StepModule,
     FactureModule,
-    PaiementModule
+    PaiementModule,
+    ChatModule,
+    NotificationModule
   ],
   controllers: [AppController],
   providers: [AppService],

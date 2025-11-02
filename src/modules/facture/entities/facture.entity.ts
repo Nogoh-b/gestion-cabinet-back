@@ -1,35 +1,27 @@
 // src/facture/entities/facture.entity.ts
+
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-
-
-
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    OneToMany,
-    ManyToOne,
-    JoinColumn
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+  ManyToOne,
+  JoinColumn
 } from 'typeorm';
-
 
 
 import { Paiement } from '../../paiement/entities/paiement.entity';
 import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
 
 
-
-
-
-
-
 @Entity('factures')
 export class Facture {
   @PrimaryGeneratedColumn('uuid')
-  id: number;
+  id: string;
 
   @Column({ name: 'dossier_id' })
   dossier_id: number;
@@ -65,13 +57,13 @@ export class Facture {
   @Column({ name: 'montant_ttc', type: 'decimal', precision: 10, scale: 2 })
   montantTTC: number;
 
-  @Column({ name: 'montant_paye', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ name: 'montant_paye', type: 'int' })
   montantPaye: number;
 
   @Column({ name: 'reste_a_payer', type: 'decimal', precision: 10, scale: 2 })
   resteAPayer: number;
-
-  @Column({ type: 'text', nullable: true })
+ 
+  @Column({ type: 'text', nullable: true }) 
   description: string;
 
   @Column({
@@ -99,17 +91,43 @@ export class Facture {
   dossier: Dossier;
 
   @ManyToOne(() => Customer, { nullable: true })
-  @JoinColumn({ name: 'clientId' })
+  @JoinColumn({ name: 'client_id' }) // correction: correspond à la colonne réelle
   client: Customer;
 
-  // Méthodes utilitaires
+  // ---------- 🧮 Getters calculés ----------
+
+  /**
+   * Nombre de jours de retard par rapport à la date d'échéance.
+   * Retourne 0 si la facture n'est pas encore échue.
+   */
+  get jours_retard(): number {
+    if (!this.dateEcheance) return 0;
+
+    const aujourdHui = new Date();
+    const diff = aujourdHui.getTime() - new Date(this.dateEcheance).getTime();
+    const jours = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    return jours > 0 ? jours : 0;
+  }
+
+  /**
+   * Indique si la facture est en retard.
+   * Une facture est considérée "en retard" si la date d'échéance est passée
+   * et qu'il reste un montant à payer.
+   */
+  get is_en_retard(): boolean {
+    return this.jours_retard > 0 && this.resteAPayer > 0;
+  }
+
+  // ---------- 🧾 Méthodes utilitaires ----------
+
   calculerResteAPayer(): void {
     this.resteAPayer = this.montantTTC - this.montantPaye;
     this.mettreAJourStatut();
   }
 
   ajouterPaiement(montant: number): void {
-    this.montantPaye += montant;
+    this.montantPaye += Number(montant);
     this.calculerResteAPayer();
   }
 

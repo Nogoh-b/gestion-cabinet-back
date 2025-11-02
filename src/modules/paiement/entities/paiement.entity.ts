@@ -1,12 +1,12 @@
 // src/paiement/entities/paiement.entity.ts
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    ManyToOne,
-    JoinColumn
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn
 } from 'typeorm';
 
 import { Facture } from '../../facture/entities/facture.entity';
@@ -44,16 +44,17 @@ export class Paiement {
 
   @Column({ nullable: true })
   banque: string;
-
+ 
   @Column({ nullable: true })
   titulaire: string;
 
   @Column({
     type: 'enum',
     enum: StatutPaiement,
-    default: StatutPaiement.EN_ATTENTE
+    default: StatutPaiement.EN_ATTENTE 
   })
-  statut: StatutPaiement;
+  status: StatutPaiement;
+
 
   @Column({ type: 'text', nullable: true })
   notes: string;

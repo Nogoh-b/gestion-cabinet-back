@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DossiersService } from '../dossiers/dossiers.service';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { CreateFactureDto, StatutFacture } from './dto/create-facture.dto';
@@ -17,6 +18,7 @@ import { FactureResponseDto } from './dto/facture-response.dto';
 import { SearchFactureDto } from './dto/search-facture.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { Facture } from './entities/facture.entity';
+
 
 
 
@@ -40,17 +42,17 @@ export class FactureService extends BaseServiceV1<Facture> {
       searchFields: ['numero', 'description', 'notesInternes'],
       exactMatchFields: ['id', 'dossierId', 'clientId', 'status', 'type', 'numero'],
       dateRangeFields: ['dateFacture', 'dateEcheance', 'created_at', 'updated_at'],
-      relationFields: ['paiements']
+      relationFields: ['paiements', 'client', 'dossier']
     };
   }
 
   async createFacture(createDto: CreateFactureDto): Promise<Facture> {
     // Calcul automatique des montants si nécessaire
     if (!createDto.montantTVA) {
-      createDto.montantTVA = createDto.montantHT * (createDto.tauxTVA / 100);
+      createDto.montantTVA = Number(createDto.montantHT) * (Number(createDto.tauxTVA) / 100);
     }
     if (!createDto.montantTTC) {
-      createDto.montantTTC = createDto.montantHT + createDto.montantTVA;
+      createDto.montantTTC = Number(createDto.montantHT) + Number(createDto.montantTVA);
     }
     const { clientId, dossierId, ...rest } = createDto;
 
@@ -73,8 +75,8 @@ export class FactureService extends BaseServiceV1<Facture> {
     return this.repository.save(facture);
   }
 
-  async updateFacture(id: string, updateDto: UpdateFactureDto): Promise<Facture> {
-    const facture = await this.findOneV1(id, ['paiements']);
+  async updateFacture(id: string, updateDto: UpdateFactureDto): Promise<FactureResponseDto> {
+    const facture = await this.findOneV1(id, ['paiements','dossier','client']);
     if (!facture) {
       throw new NotFoundException(`Facture avec l'ID ${id} non trouvée`);
     }
@@ -92,12 +94,15 @@ export class FactureService extends BaseServiceV1<Facture> {
     Object.assign(facture, updateDto);
     facture.calculerResteAPayer();
 
-    return this.repository.save(facture);
+    return plainToInstance(FactureResponseDto,this.repository.save(facture));
   }
 
   async searchFactures(searchDto: SearchFactureDto): Promise<any> {
     const criteria: SearchCriteria = { ...searchDto };
-    
+    const factures = await this.repository.find({
+      relations: ['paiements', 'client', 'dossier'],
+    });
+    return plainToInstance(FactureResponseDto, factures);
     // Gestion des ranges de montants
     if (searchDto.montantTTC_min !== undefined || searchDto.montantTTC_max !== undefined) {
       criteria.montantTTC = [

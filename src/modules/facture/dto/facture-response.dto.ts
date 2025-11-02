@@ -1,62 +1,110 @@
 // src/facture/dto/facture-response.dto.ts
+import { Expose, Transform, Type } from 'class-transformer';
+import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
+import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { ApiProperty } from '@nestjs/swagger';
+
 import { StatutFacture, TypeFacture } from './create-facture.dto';
+
 
 export class FactureResponseDto {
   @ApiProperty({ description: 'ID de la facture' })
+  @Expose()
   id: string;
 
-  @ApiProperty({ description: 'ID du dossier associé' })
-  dossierId: string;
-
-  @ApiProperty({ description: 'ID du client' })
-  clientId: string;
-
-  @ApiProperty({ enum: TypeFacture, description: 'Type de facture' })
+  @ApiProperty({ description: 'Type de facture', enum: TypeFacture })
+  @Expose()
   type: TypeFacture;
 
   @ApiProperty({ description: 'Numéro de facture' })
+  @Expose()
   numero: string;
 
   @ApiProperty({ description: 'Date de la facture' })
+  @Expose()
+  @Type(() => Date)
   dateFacture: Date;
 
-  @ApiProperty({ description: 'Date d\'échéance' })
+  @ApiProperty({ description: "Date d'échéance de la facture" })
+  @Expose()
+  @Type(() => Date)
   dateEcheance: Date;
 
-  @ApiProperty({ description: 'Montant HT' })
+  @ApiProperty()
+  @Expose()
   montantHT: number;
 
-  @ApiProperty({ description: 'Taux de TVA' })
+  @ApiProperty()
+  @Expose()
   tauxTVA: number;
 
-  @ApiProperty({ description: 'Montant TVA' })
+  @ApiProperty()
+  @Expose()
   montantTVA: number;
 
-  @ApiProperty({ description: 'Montant TTC' })
+  @ApiProperty()
+  @Expose()
   montantTTC: number;
 
-  @ApiProperty({ description: 'Montant déjà payé' })
+  @ApiProperty()
+  @Expose()
   montantPaye: number;
 
-  @ApiProperty({ description: 'Reste à payer' })
+  @ApiProperty()
+  @Expose()
   resteAPayer: number;
 
-  @ApiProperty({ description: 'Description des prestations' })
-  description: string;
-
-  @ApiProperty({ enum: StatutFacture, description: 'Statut de la facture' })
+  @ApiProperty({ enum: StatutFacture })
+  @Expose()
   statut: StatutFacture;
 
-  @ApiProperty({ description: 'Notes internes' })
+  @ApiProperty()
+  @Expose()
+  description: string;
+
+  @ApiProperty()
+  @Expose()
   notesInternes: string;
 
-  @ApiProperty({ description: 'Date de création' })
+  @ApiProperty()
+  @Expose()
+  @Type(() => Date)
   created_at: Date;
 
-  @ApiProperty({ description: 'Date de modification' })
+  @ApiProperty()
+  @Expose()
+  @Type(() => Date)
   updated_at: Date;
 
-  @ApiProperty({ description: 'Paiements associés', type: [Object], required: false })
-  paiements?: any[];
+  // ✅ Relations exposées
+  @ApiProperty({ type: () => DossierResponseDto })
+  @Expose()
+  @Type(() => DossierResponseDto)
+  dossier: DossierResponseDto;
+
+  @ApiProperty({ type: () => CustomerResponseDto })
+  @Expose()
+  @Type(() => CustomerResponseDto)
+  client: CustomerResponseDto;
+
+  // ✅ Champs calculés
+  @ApiProperty({ description: 'Jours de retard' })
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.dateEcheance) return 0;
+    const diff = Date.now() - new Date(obj.dateEcheance).getTime();
+    const jours = Math.floor(diff / (1000 * 60 * 60 * 24));
+    return jours > 0 ? jours : 0;
+  })
+  jours_retard: number;
+
+  @ApiProperty({ description: 'Facture en retard ?' })
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.dateEcheance) return false;
+    const diff = Date.now() - new Date(obj.dateEcheance).getTime();
+    const jours = Math.floor(diff / (1000 * 60 * 60 * 24));
+    return jours > 0 && obj.resteAPayer > 0;
+  })
+  is_en_retard: boolean;
 }
