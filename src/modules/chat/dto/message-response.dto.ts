@@ -1,38 +1,31 @@
-import { Type, Expose } from 'class-transformer';
-import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/employee-response.dto';
+// src/chat/dto/message-response.dto.ts
+import { Type } from 'class-transformer';
+import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
 import { ApiProperty } from '@nestjs/swagger';
 
-import { ConversationResponseDto } from './conversation-response.dto';
+
+import { Conversation } from '../entities/conversation.entity';
 
 
-/**
- * DTO de sortie pour un message de conversation.
- * Inclut l'expéditeur (Employee) et la conversation (eager).
- */
+
 export class MessageResponseDto {
-  @ApiProperty({ example: 1 })
-  @Expose()
+  @ApiProperty()
   id: number;
 
-  @ApiProperty({ example: 'Bonjour, comment allez-vous ?' })
-  @Expose()
+  @ApiProperty()
   content: string;
 
-  @ApiProperty({ example: false })
-  @Expose()
+  @ApiProperty()
   isRead: boolean;
 
-  @ApiProperty({ example: '2025-11-02T10:30:00.000Z' })
-  @Expose()
+  @ApiProperty()
   createdAt: Date;
 
   @ApiProperty({ type: () => EmployeeResponseDto })
   @Type(() => EmployeeResponseDto)
-  @Expose()
   sender: EmployeeResponseDto;
 
-  @ApiProperty({ type: () => ConversationResponseDto })
-  @Type(() => ConversationResponseDto)
-  @Expose()
-  conversation: ConversationResponseDto;
+  @ApiProperty({ type: () => Conversation })
+  @Type(() => Conversation)
+  conversation: Conversation;
 }
