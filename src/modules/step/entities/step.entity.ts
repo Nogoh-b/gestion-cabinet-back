@@ -3,14 +3,15 @@ import { DocumentCustomer } from 'src/modules/documents/document-customer/entiti
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    CreateDateColumn,
-    UpdateDateColumn,
-    OneToMany,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
+
 
 
 
@@ -28,8 +29,8 @@ export enum StepType {
 }
 
 export enum StepStatus {
-  PENDING = 0,
-  IN_PROGRESS = 1,
+  PENDING = -1,
+  IN_PROGRESS = 0,
   COMPLETED = 1,
   CANCELLED = 2
 }
