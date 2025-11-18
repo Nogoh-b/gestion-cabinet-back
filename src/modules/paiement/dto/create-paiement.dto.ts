@@ -1,7 +1,8 @@
 // src/paiement/dto/create-paiement.dto.ts
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsOptional, IsDate, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
+import { IsString, IsNumber, IsOptional, IsDate, IsEnum } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 
 export enum ModePaiement {
   VIREMENT = 0,
@@ -9,8 +10,8 @@ export enum ModePaiement {
   ESPECES = 2,
   CARTE = 3,
   PRELEVEMENT = 4,
-  Mobile = 4,
-  AUTRE = 5
+  Mobile = 5,
+  AUTRE = 6
 }
 
 export enum StatutPaiement {
