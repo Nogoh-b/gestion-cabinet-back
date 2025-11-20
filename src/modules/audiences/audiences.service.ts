@@ -1,27 +1,29 @@
 // src/modules/audiences/audiences.service.ts
+import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { MoreThan, Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
-
-
-
-
-
-
-
-
+import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
 import { CreateAudienceDto } from './dto/create-audience.dto';
+import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, AudienceType } from './entities/audience.entity';
-import { plainToInstance } from 'class-transformer';
-import { AudienceResponseDto } from './dto/response-audience.dto';
-import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
+
 
 
 
@@ -72,6 +74,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
       audience_date: dto.audience_date,
+      audience_time: dto.audience_time,
       jurisdiction: dto.jurisdiction,
       room: dto.room,
       judge_name: dto.judge_name,

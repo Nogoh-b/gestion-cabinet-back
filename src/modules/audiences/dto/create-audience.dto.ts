@@ -1,6 +1,8 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
 import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+
 
 export class CreateAudienceDto {
   @ApiProperty({
@@ -18,6 +20,14 @@ export class CreateAudienceDto {
   @IsDateString()
   @IsNotEmpty()
   audience_date: Date;
+
+  @ApiProperty({
+    example: '2025-10-20T09:00:00Z',
+    description: "Heure prévue pour l'audience",
+  })
+  @IsDateString()
+  @IsNotEmpty()
+  audience_time: string;
 
   @ApiProperty({
     example: 'Tribunal de première instance de Yaoundé',
