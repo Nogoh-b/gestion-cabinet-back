@@ -38,11 +38,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCategory, DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
 
 
 
@@ -465,9 +467,9 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     // Vérification du type MIME
     if (!file.mimetype.startsWith(docType.mimetype)) {
       if (strict) {
-        throw new BadRequestException(
-          `Le fichier doit être de type : ${docType.mimetype}`
-        );
+        // throw new BadRequestException(
+        //   `Le fichier doit être de type : ${docType.mimetype}`
+        // );
       }
       return;
     }
