@@ -24,6 +24,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { User } from '../iam/user/entities/user.entity';
@@ -34,6 +36,8 @@ import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { Dossier } from './entities/dossier.entity';
+
+
 
 
 
@@ -270,7 +274,7 @@ async searhDosiers(
     return conditions;
   }
 
-  async findOne(id: number, user?: User): Promise<DossierResponseDto> {
+  async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
     console.log(id)
 
     const dossier = await this.dossierRepository.findOne({
@@ -299,6 +303,7 @@ async searhDosiers(
     // Vérification des droits d'accès
     // this.checkDossierAccess(dossier, user);
 
+    // return dossier;
     return plainToInstance(DossierResponseDto,dossier);
   }
 

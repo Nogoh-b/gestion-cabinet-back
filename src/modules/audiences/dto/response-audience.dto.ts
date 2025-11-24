@@ -1,7 +1,15 @@
 // src/modules/audiences/dto/audience-response.dto.ts
-import { ApiProperty } from "@nestjs/swagger";
 import { Expose, Transform } from "class-transformer";
+import { ApiProperty } from "@nestjs/swagger";
+
+
+
+
 import { AudienceStatus, AudienceType } from "../entities/audience.entity";
+
+
+
+
 
 export class AudienceResponseDto {
   @ApiProperty({ example: 1 })
@@ -81,14 +89,14 @@ export class AudienceResponseDto {
   @Expose()
   @Transform(({ obj }) => ({
     id: obj.dossier?.id,
-    reference: obj.dossier?.reference,
-    objet: obj.dossier?.objet,
+    dossier_number: obj.dossier?.dossier_number,
+    objet: obj.dossier?.object,
     client_name: obj.dossier?.client?.full_name
   }))
   dossier?: {
     id: number;
-    reference: string;
-    objet: string;
+    dossier_number?: string;
+    objet?: string;
     client_name?: string;
   };
 

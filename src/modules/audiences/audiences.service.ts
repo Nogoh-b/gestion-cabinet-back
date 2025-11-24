@@ -17,12 +17,18 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
+
+
+
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, AudienceType } from './entities/audience.entity';
+
+
+
 
 
 
@@ -77,6 +83,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       audience_time: dto.audience_time,
       jurisdiction: dto.jurisdiction,
       room: dto.room,
+      duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
       notes: dto.notes,
       postponed_to: dto.postponed_to,
@@ -102,7 +109,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   /**
    * 🔎 Trouver une audience par ID
    */
-  async findOne(id: number): Promise<AudienceResponseDto> {
+  async findOne(id: number): Promise<AudienceResponseDto | any> {
     const audience = await this.repository.findOne({
       where: { id },
       relations: ['dossier', 'dossier.client', 'documents'],
@@ -112,6 +119,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       throw new NotFoundException(`Audience avec ID ${id} introuvable`);
     }
 
+    // return audience;
     return plainToInstance(AudienceResponseDto,audience);
   }
 

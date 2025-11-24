@@ -4,7 +4,14 @@ import { DossierStatus } from "src/core/enums/dossier-status.enum";
 import { AudienceStatus } from "src/modules/audiences/entities/audience.entity";
 import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
 import { StatutFacture } from "src/modules/facture/dto/create-facture.dto";
+import { FactureResponseDto } from "src/modules/facture/dto/facture-response.dto";
 import { ApiProperty } from "@nestjs/swagger";
+
+
+
+
+
+
 
 
 
@@ -301,7 +308,7 @@ export class DossierResponseDto {
         invoice_number: "INV-2025-001",
         invoice_date: "2025-01-25",
         due_date: "2025-02-25",
-        amount_ttc: 150000,
+        montantTTC: 150000,
         status: StatutFacture.PAYEE,
         remaining_amount: 0,
         is_paid: true,
@@ -309,29 +316,31 @@ export class DossierResponseDto {
     ],
   })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.factures) return undefined;
-    return obj.factures.map((facture: any) => ({
-      id: facture.id,
-      invoice_number: facture.invoice_number,
-      invoice_date: facture.invoice_date,
-      due_date: facture.due_date,
-      amount_ttc: facture.amount_ttc,
-      status: facture.status,
-      remaining_amount: facture.remaining_amount,
-      is_paid: facture.is_paid,
-    }));
-  })
-  factures?: {
-    id: string;
-    invoice_number: string;
-    invoice_date: Date;
-    due_date: Date;
-    amount_ttc: number;
-    status: StatutFacture;
-    remaining_amount: number;
-    is_paid: boolean;
-  }[];
+  factures?: FactureResponseDto[];
+
+  // @Transform(({ obj }) => {
+  //   if (!obj.factures) return undefined;
+  //   return obj.factures.map((facture: any) => ({
+  //     id: facture.id,
+  //     invoice_number: facture.invoice_number,
+  //     invoice_date: facture.invoice_date,
+  //     due_date: facture.due_date,
+  //     montantTTC: facture.montantTTC,
+  //     status: facture.status,
+  //     remaining_amount: facture.remaining_amount,
+  //     is_paid: facture.is_paid,
+  //   }));
+  // })
+  // factures?: {
+  //   id: string;
+  //   invoice_number: string;
+  //   invoice_date: Date;
+  //   due_date: Date;
+  //   montantTTC: number;
+  //   status: StatutFacture;
+  //   remaining_amount: number;
+  //   is_paid: boolean;
+  // }[];
 
   // ---------------- COLLABORATEURS ----------------
   @ApiProperty({
@@ -418,7 +427,7 @@ export class DossierResponseDto {
   @Transform(({ obj }) => {
     if (!obj.factures) return 0;
     return obj.factures.reduce((total: number, facture: any) => 
-      total + parseFloat(facture.amount_ttc?.toString() || '0'), 0);
+      total + parseFloat(facture.montantTTC?.toString() || '0'), 0);
   })
   total_factures_amount: number;
 
@@ -429,9 +438,20 @@ export class DossierResponseDto {
     return obj.factures
       .filter((facture: any) => facture.status === StatutFacture.PAYEE)
       .reduce((total: number, facture: any) => 
-        total + parseFloat(facture.amount_ttc?.toString() || '0'), 0);
+        total + parseFloat(facture.montantTTC?.toString() || '0'), 0);
   })
   paid_factures_amount: number;
+  
+  @ApiProperty({ example: 250000 })
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.factures) return 0;
+    return obj.factures
+      .filter((facture: any) => facture.montantPaye > 0)
+      .reduce((total: number, facture: any) => 
+        total + parseFloat(facture.montantPaye?.toString() || '0'), 0);
+  })
+  paid_amount: number;
 
   // ---------------- ÉTATS LOGIQUES ----------------
   @ApiProperty({ example: true })
@@ -454,4 +474,7 @@ export class DossierResponseDto {
   @Expose()
   @Transform(({ obj }) => obj.status === DossierStatus.ARCHIVED)
   is_archived: boolean;
+
+
+  
 }

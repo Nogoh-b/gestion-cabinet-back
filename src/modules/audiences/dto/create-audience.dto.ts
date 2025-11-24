@@ -4,6 +4,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 
 
+
 export class CreateAudienceDto {
   @ApiProperty({
     example: 12,
@@ -22,12 +23,19 @@ export class CreateAudienceDto {
   audience_date: Date;
 
   @ApiProperty({
-    example: '2025-10-20T09:00:00Z',
+    example: '09:00:00',
     description: "Heure prévue pour l'audience",
   })
   @IsDateString()
   @IsNotEmpty()
   audience_time: string;
+
+  @ApiProperty({
+    example: 60,
+    description: "Durée prévue pour l'audience en minutes",
+  })
+  @IsInt()
+  duration_minutes: number;
 
   @ApiProperty({
     example: 'Tribunal de première instance de Yaoundé',
