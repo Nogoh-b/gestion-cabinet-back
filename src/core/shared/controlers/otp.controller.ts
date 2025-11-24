@@ -6,8 +6,12 @@ import { ApiBody, ApiTags } from "@nestjs/swagger";
 
 
 
+
+
 import { GenerateCotiOtpDto, SendOtpDto, VerifyOtpDto } from "../dto/otp.dto";
 import { OtpService } from "../services/otp/otp.service";
+
+
 
 
 
@@ -44,6 +48,12 @@ export class OtpController {
   @ApiBody({ type: VerifyOtpDto })
   validateOnlineOtp(@Body() dto: { email: string; code: string }) {
     return this.otpService.validateOtpLink(dto.email, dto.code);
+  }
+
+  @Post('sendMail')
+  @ApiBody({ type: VerifyOtpDto })
+  sendMail(@Body() dto: { email: string; html: string }) {
+    return this.otpService.sendMail(dto.email, dto.html);
   }
 }
 

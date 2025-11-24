@@ -17,6 +17,8 @@ import { MulterModule } from '@nestjs/platform-express';
 
 import { ServeStaticModule } from '@nestjs/serve-static';
 
+
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import {
@@ -27,18 +29,20 @@ import { CoreModule } from './core/core.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AudiencesModule } from './modules/audiences/audiences.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { DossiersModule } from './modules/dossiers/dossiers.module';
+import { FactureModule } from './modules/facture/facture.module';
 import { FinancesModule } from './modules/finances/finances.module';
 import { GeographyModule } from './modules/geography/geography.module';
 import { IamModule } from './modules/iam/iam.module';
+import { NotificationModule } from './modules/notification/notification.module';
+import { PaiementModule } from './modules/paiement/paiement.module';
 import { ProceduresModule } from './modules/procedures/procedures.module';
 import { StepModule } from './modules/step/step.module';
-import { FactureModule } from './modules/facture/facture.module';
-import { PaiementModule } from './modules/paiement/paiement.module';
-import { ChatModule } from './modules/chat/chat.module';
-import { NotificationModule } from './modules/notification/notification.module';
+
+
 
 
 
@@ -82,16 +86,16 @@ dotenv.config();
     }),
     MailerModule.forRoot({
       transport: {
-        host: 'vshp3.clo.xelgrp.com',
+        host: 'mail.nouyadjamassociates.com',
         port: 465,
         secure: true, // true pour le port 465
         auth: {
-          user: 'mendo-temp@xelgrp.com',
-          pass: '8#9F0g6cg',
+          user: 'emelineenanga@nouyadjamassociates.com',
+          pass: 'Aq123456789!',
         },
       },
       defaults: {
-        from: '"No Reply" <mendo-temp@xelgrp.com>',
+        from: '"No Reply" <emelineenanga@nouyadjamassociates.com>',
       },
     }),
     ClientsModule.register([
