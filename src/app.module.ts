@@ -41,6 +41,10 @@ import { NotificationModule } from './modules/notification/notification.module';
 import { PaiementModule } from './modules/paiement/paiement.module';
 import { ProceduresModule } from './modules/procedures/procedures.module';
 import { StepModule } from './modules/step/step.module';
+import { JurisdictionModule } from './modules/jurisdiction/jurisdiction.module';
+import { DocumentCategoryModule } from './modules/document-category/document-category.module';
+import { AudienceTypeModule } from './modules/audience-type/audience-type.module';
+import { InvoiceTypeModule } from './modules/invoice-type/invoice-type.module';
 
 
 
@@ -140,7 +144,11 @@ dotenv.config();
     FactureModule,
     PaiementModule,
     ChatModule,
-    NotificationModule
+    NotificationModule,
+    JurisdictionModule,
+    DocumentCategoryModule,
+    AudienceTypeModule,
+    InvoiceTypeModule
   ],
   controllers: [AppController],
   providers: [AppService],

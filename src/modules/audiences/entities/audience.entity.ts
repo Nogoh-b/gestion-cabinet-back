@@ -1,8 +1,12 @@
 // src/modules/audiences/entities/audience.entity.ts
 import { BaseEntity } from 'src/core/entities/baseEntity';
+import { AudienceType } from 'src/modules/audience-type/entities/audience-type.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+
+
 
 
 
@@ -13,7 +17,7 @@ export enum AudienceStatus {
   CANCELLED = 3,
 }
 
-export enum AudienceType {
+export enum AudienceType1 {
   HEARING = 0,
   DELIBERATION = 1,
   JUDGMENT = 2,
@@ -34,18 +38,18 @@ export class Audience extends BaseEntity {
   @Column({ name: 'audience_time', length: 10, nullable: false })
   audience_time: string;
 
-  @Column({ name: 'jurisdiction', length: 255, nullable: false })
-  jurisdiction: string;
+  @Column({  nullable: false , default: 1})
+  jurisdiction_id: number;
 
   @Column({ name: 'room', length: 50, nullable: true })
   room: string;
 
   @Column({ 
     type: 'enum', 
-    enum: AudienceType, 
-    default: AudienceType.HEARING 
+    enum: AudienceType1, 
+    default: AudienceType1.HEARING 
   })
-  type: AudienceType;
+  type: AudienceType1;
 
   @Column({ 
     type: 'enum', 
@@ -75,6 +79,9 @@ export class Audience extends BaseEntity {
   @Column({ name: 'judge_name', length: 255, nullable: true })
   judge_name: string;
 
+  @Column({  nullable: true , default: 1})
+  audience_type_id: number;
+
   @Column({ name: 'outcome', length: 100, nullable: true })
   outcome: string; // 'favorable', 'unfavorable', 'partial', 'postponed'
 
@@ -82,6 +89,14 @@ export class Audience extends BaseEntity {
   @ManyToOne(() => Dossier, (dossier) => dossier.audiences, { nullable: false })
   @JoinColumn({ name: 'dossier_id' })
   dossier: Dossier;
+
+  @ManyToOne(() => Jurisdiction, (jurisdiction) => jurisdiction.audiences, { nullable: false })
+  @JoinColumn({ name: 'jurisdiction_id' })
+  jurisdiction: Jurisdiction;  
+
+  @ManyToOne(() => AudienceType, (audienceType) => audienceType.audiences, { nullable: true })
+  @JoinColumn({ name: 'audience_type_id' })
+  audience_type: AudienceType;
 
   @ManyToMany(() => DocumentCustomer, (document) => document.audiences, {
     cascade: true, // facultatif, selon si tu veux créer les documents via audience
@@ -92,6 +107,8 @@ export class Audience extends BaseEntity {
     inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
   })
   documents: DocumentCustomer[];
+
+
 
   // @OneToMany(() => DocumentCustomer, (document) => document.audience)
   // documents: DocumentCustomer[];

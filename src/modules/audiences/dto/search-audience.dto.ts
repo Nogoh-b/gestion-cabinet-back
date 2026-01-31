@@ -1,8 +1,14 @@
 import { Type } from 'class-transformer';
 import { IsDate, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-import { AudienceStatus, AudienceType } from '../entities/audience.entity';
+
+
+import { AudienceStatus, AudienceType1 } from '../entities/audience.entity';
+
+
+
 
 
 export class AudienceSearchDto {
@@ -11,10 +17,15 @@ export class AudienceSearchDto {
   @IsInt()
   dossier_id?: number;
 
-  @ApiPropertyOptional({ description: 'Filtrer par type d’audience', enum: AudienceType })
+  @ApiPropertyOptional({ description: 'Filtrer par ID du Type Audience' })
   @IsOptional()
-  @IsEnum(AudienceType)
-  type?: AudienceType;
+  @IsInt()
+  audience_type_id?: number;
+
+  @ApiPropertyOptional({ description: 'Filtrer par type d’audience', enum: AudienceType1 })
+  @IsOptional()
+  @IsEnum(AudienceType1)
+  type?: AudienceType1;
 
   @ApiPropertyOptional({ description: 'Filtrer par statut', enum: AudienceStatus })
   @IsOptional()

@@ -1,7 +1,9 @@
 import { Exclude, Expose, Transform } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
-import { EmployeePosition, EmployeeStatus } from '../entities/employee.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { ApiProperty } from '@nestjs/swagger';
+
+import { EmployeePosition, EmployeeStatus } from '../entities/employee.entity';
+
 
 export class EmployeeResponseDto {
   @Expose()
@@ -116,7 +118,7 @@ export class EmployeeResponseDto {
   @Transform(({ obj }) => obj.updated_at)
   updated_at: Date;
 
-  @Exclude()
+  @Expose()
   user: any;
 
   @Exclude()

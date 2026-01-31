@@ -1,14 +1,22 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
-import { Controller, Get, Post, Body, UseGuards, Param, ParseIntPipe } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
+
+
+import { Controller, Get, Post, Body, UseGuards, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 
 import { ResetPasswordRequestDto } from './dto/create-employee.dto';
+import { SearchEmployeeDto } from './dto/create-employee.dto copy';
+import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { EmployeeService } from './employee.service';
+
+
 
 
 
@@ -19,6 +27,21 @@ import { EmployeeService } from './employee.service';
 
 export class EmployeeController {
   constructor(private readonly employeeService: EmployeeService) {}
+
+
+
+  @Get('search')
+  @ApiOperation({ summary: 'Recherche texte avec relations' })
+  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [EmployeeResponseDto]  })
+  async search(
+
+    @Query() searchParams?: SearchEmployeeDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.employeeService.searchWithTransformer(searchParams as SearchCriteria, EmployeeResponseDto , paginationParams);
+  }
+
+
 
   @Post()
   @ApiOperation({ summary: 'Create new employee' })

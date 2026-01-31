@@ -1,6 +1,7 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+
 
 
 
@@ -41,9 +42,9 @@ export class CreateAudienceDto {
     example: 'Tribunal de première instance de Yaoundé',
     required: false,
   })
-  @IsString()
+  @IsInt()
   @IsOptional()
-  jurisdiction?: string;
+  jurisdiction_id?: number;
 
   @ApiProperty({
     example: 'Salle 4',
@@ -68,6 +69,14 @@ export class CreateAudienceDto {
   @IsString()
   @IsOptional()
   type?: string;
+  
+  @ApiProperty({
+    example: 'Audience Type',
+    required: false,
+  })
+  @IsNumber()
+  @IsOptional()
+  audience_type_id: number;
 
   @ApiProperty({
     example: 'Affaire reportée faute de partie adverse',

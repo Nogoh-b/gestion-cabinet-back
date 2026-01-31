@@ -20,12 +20,28 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+import { AudienceTypeService } from '../audience-type/audience-type.service';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
+import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
-import { Audience, AudienceStatus, AudienceType } from './entities/audience.entity';
+import { Audience, AudienceStatus, } from './entities/audience.entity';
+
+
+
+
+
+
+
 
 
 
@@ -49,6 +65,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     protected readonly repository: Repository<Audience>,
     protected readonly paginationService: PaginationServiceV1,
     private readonly dossierService: DossiersService,
+    private readonly audienceTypeService: AudienceTypeService,
     private readonly documentCustomerService: DocumentCustomerService,
   ) {
     super(repository, paginationService);
@@ -59,10 +76,10 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes'],
-      exactMatchFields: ['status', 'type'],
+      searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier','audience_type'],
+      exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
-      relationFields: ['dossier'],
+      relationFields: ['dossier', 'jurisdiction','audience_type', 'documents'],
     };
   }
 
@@ -72,23 +89,28 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   async create(dto: CreateAudienceDto): Promise<Audience> {
     console.log('-------dto ', dto)
     const dossier = await this.dossierService.findOne(dto.dossier_id);
+    const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
 
     if (!dossier) {
       throw new NotFoundException('Dossier non trouvé');
+    }
+    if (!audience_type) {
+      throw new NotFoundException('Type d\'audience  non trouvé');
     }
 
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
       audience_date: dto.audience_date,
       audience_time: dto.audience_time,
-      jurisdiction: dto.jurisdiction,
+      jurisdiction: {id: dto.jurisdiction_id} as Jurisdiction,
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
       notes: dto.notes,
       postponed_to: dto.postponed_to,
       // ⚠️ Si c’est un enum côté entité
-      type: dto.type ? (dto.type as unknown as AudienceType) : 0,
+      audience_type,
+      type: dto.type ? 1 : 0,
       dossier: { id: dossier.id }, // ✅ relation proprement liée
       status: AudienceStatus.SCHEDULED,
     });
@@ -112,7 +134,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   async findOne(id: number): Promise<AudienceResponseDto | any> {
     const audience = await this.repository.findOne({
       where: { id },
-      relations: ['dossier', 'dossier.client', 'documents'],
+      relations: ['dossier', 'dossier.client', 'documents',  'jurisdiction','audience_type'],
     });
 
     if (!audience) {

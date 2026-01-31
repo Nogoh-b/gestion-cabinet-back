@@ -1,4 +1,5 @@
 import { plainToInstance } from 'class-transformer';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions as SearchOptionV1 } from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
@@ -7,6 +8,7 @@ import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/ba
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
+
 import {
   CreateDocumentFromCotiDto,
   DocTypeNameOnline,
@@ -21,7 +23,6 @@ import {
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
-
 import { DataSource, Repository } from 'typeorm';
 import {
   BadRequestException,
@@ -31,19 +32,20 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
-
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
@@ -56,6 +58,7 @@ import {
   CustomerCreatedFrom,
   CustomerStatus,
 } from './entities/customer.entity';
+
 
 
 
@@ -340,30 +343,179 @@ export class CustomersService extends BaseServiceV1<Customer> {
   //   doc
   // }
 
-  async update(
-    id: number,
-    dto: UpdateCustomerDto,
-  ): Promise<CustomerResponseDto> {
-    const customer = (await this.findOne(id)) as any;
+async update(
+  id: number,
+  dto: UpdateCustomerDto,
+): Promise<CustomerResponseDto> {
+  // Récupérer le client existant
+  const customer = await this.findOne(id);
+  if (!customer) {
+    throw new NotFoundException(`Customer with ID ${id} not found`);
+  }
 
-    if (dto.email && dto.email !== customer.email) {
-      const emailExists = await this.customerRepository.findOneBy({
-        email: dto.email,
-      });
-      if (emailExists) throw new ConflictException('Email already exists');
+  // Vérifier l'unicité de l'email si modifié
+  if (dto.email && dto.email !== customer.email) {
+    const emailExists = await this.customerRepository.findOneBy({
+      email: dto.email,
+    });
+    if (emailExists) {
+      throw new ConflictException('Email already exists');
     }
+  }
 
-    Object.assign(customer, dto);
-    if (dto.location_city_id) {
-      customer.location_city = await this.locationcityService.findOneSimple(
-        dto.location_city_id,
+  // Gestion des relations et transformations
+  const updateData: any = { ...dto };
+
+  // Mettre à jour la ville de localisation si fournie
+  if (dto.location_city_id) {
+    updateData.location_city = await this.locationcityService.findOneSimple(
+      dto.location_city_id,
+    );
+    // Supprimer l'ID pour éviter la confusion
+    delete updateData.location_city_id;
+  }
+
+  // Gérer la relation de branche si fournie
+  if (dto.branch_id) {
+    const branch = await this.branchService.findOne(dto.branch_id);
+    if (!branch) {
+      throw new NotFoundException(`Branch with ID ${dto.branch_id} not found`);
+    }
+    updateData.branch = branch;
+    delete updateData.branch_id;
+  }
+
+  // Gérer la relation de type de client si fournie
+  if (dto.type_customer_id) {
+    const typeCustomer = await this.typeCustomerService.findOne(dto.type_customer_id);
+    if (!typeCustomer) {
+      throw new NotFoundException(`Customer type with ID ${dto.type_customer_id} not found`);
+    }
+    updateData.type_customer = typeCustomer;
+    delete updateData.type_customer_id;
+  }
+
+  // Vérifier la civilité si fournie
+  if (dto.civilite) {
+    const allowedCivilites = ['M', 'Mme', 'Mlle', 'Société'];
+    if (!allowedCivilites.includes(dto.civilite)) {
+      throw new BadRequestException(
+        `Civilité must be one of: ${allowedCivilites.join(', ')}`,
       );
     }
-    return plainToInstance(
-      CustomerResponseDto,
-      this.customerRepository.save(customer),
-    );
   }
+
+  // Vérifier le type de facturation si fourni
+  if (dto.billing_type) {
+    const allowedBillingTypes = ['forfait', 'temps_passe', 'mixte'];
+    if (!allowedBillingTypes.includes(dto.billing_type)) {
+      throw new BadRequestException(
+        `Billing type must be one of: ${allowedBillingTypes.join(', ')}`,
+      );
+    }
+  }
+
+  // Vérifier le statut si fourni
+  if (dto.status) {
+    const validStatuses = Object.values(CustomerStatus);
+    if (!validStatuses.includes(dto.status)) {
+      throw new BadRequestException(
+        `Status must be one of: ${validStatuses.join(', ')}`,
+      );
+    }
+  }
+
+  // Vérifier le créé depuis si fourni
+  if (dto.created_from) {
+    const validCreatedFrom = Object.values(CustomerCreatedFrom);
+    if (!validCreatedFrom.includes(dto.created_from)) {
+      throw new BadRequestException(
+        `Created from must be one of: ${validCreatedFrom.join(', ')}`,
+      );
+    }
+  }
+
+  // Empêcher la mise à jour du code client s'il est déjà défini
+  if (dto.customer_code && customer.customer_code) {
+    throw new BadRequestException('Customer code cannot be modified once set');
+  }
+
+
+
+  // Validation SIRET si fourni
+  if (dto.siret) {
+    if (!/^\d{14}$/.test(dto.siret)) {
+      throw new BadRequestException('SIRET must be 14 digits');
+    }
+  }
+
+  // Validation TVA si fournie
+  if (dto.tva_number) {
+    // Format basique pour validation
+    if (!/^[A-Z]{2}\d+$/.test(dto.tva_number)) {
+      throw new BadRequestException('Invalid TVA number format');
+    }
+  }
+
+  // Validation NUI si fourni
+  if (dto.nui) {
+    if (!/^\d+$/.test(dto.nui)) {
+      throw new BadRequestException('NUI must contain only digits');
+    }
+  }
+
+  // Appliquer les modifications
+  Object.assign(customer, updateData);
+
+  try {
+    // Sauvegarder les modifications
+    const updatedCustomer = await this.customerRepository.save(plainToInstance(Customer, customer));
+
+    // Récupérer le client avec toutes ses relations pour la réponse
+    const fullCustomer = await this.customerRepository.findOne({
+      where: { id: updatedCustomer.id },
+      relations: [
+        'location_city',
+        'branch',
+        'type_customer',
+        'communications',
+        'documents',
+        'documents.document_type',
+        'dossiers',
+        'dossiers.factures',
+        'factures',
+      ],
+    });
+    if (!fullCustomer) {
+      throw new BadRequestException('Non');
+    }
+
+    // Calculer les statistiques pour la réponse
+    const responseData = {
+      ...fullCustomer,
+      document_count: fullCustomer.documents?.length || 0,
+      communication_count: fullCustomer.communications?.length || 0,
+      dossiers_en_cours: fullCustomer.dossiers?.filter(d => 
+        d.status !== DossierStatus.CLOSED && d.is_active
+      ).length || 0,
+      chiffre_affaires: fullCustomer.factures?.reduce(
+        (sum, facture) => sum + (facture.montantTTC || 0), 0
+      ) || 0,
+      solde_en_cours: fullCustomer.factures?.reduce(
+        (sum, facture) => sum + (facture.montantPaye || 0), 0
+      ) || 0,
+    };
+
+    // Transformer en DTO de réponse
+    return plainToInstance(CustomerResponseDto, responseData);
+  } catch (error) {
+    if (error.code === '23505') {
+      // Violation de contrainte d'unicité PostgreSQL
+      throw new ConflictException('A customer with similar unique data already exists');
+    }
+    throw error;
+  }
+}
 
   async remove(id: number): Promise<void> {
     const result = await this.customerRepository.delete(id);

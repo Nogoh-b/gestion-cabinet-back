@@ -1,11 +1,22 @@
 // src/modules/audiences/dto/audience-response.dto.ts
 import { Expose, Transform } from "class-transformer";
+
+
+
+
+import { Jurisdiction } from "src/modules/jurisdiction/entities/jurisdiction.entity";
+
+
+
+
 import { ApiProperty } from "@nestjs/swagger";
 
+import { AudienceStatus, AudienceType1 } from "../entities/audience.entity";
 
 
 
-import { AudienceStatus, AudienceType } from "../entities/audience.entity";
+
+
 
 
 
@@ -33,11 +44,10 @@ export class AudienceResponseDto {
   room?: string;
 
   @ApiProperty({ 
-    enum: AudienceType,
-    example: AudienceType.HEARING 
+    example: AudienceType1 
   })
   @Expose()
-  type: AudienceType;
+  type: AudienceType1;
 
   @ApiProperty({ 
     enum: AudienceStatus,
@@ -173,16 +183,9 @@ export class AudienceResponseDto {
 
   @ApiProperty({ example: "Audience d'appel" })
   @Expose()
-  @Transform(({ obj }) => {
-    const typeLabels = {
-      [AudienceType.HEARING]: "Audience",
-      [AudienceType.DELIBERATION]: "Délibération",
-      [AudienceType.JUDGMENT]: "Jugement",
-      [AudienceType.CONCILIATION]: "Conciliation"
-    };
-    return typeLabels[obj.type] || "Audience";
-  })
+  @Transform(({ obj }) => obj.code)
   type_label: string;
+
 
   @ApiProperty({ example: "Planifiée" })
   @Expose()
@@ -230,15 +233,15 @@ export class AudienceListResponseDto {
 
   @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
   @Expose()
-  jurisdiction: string;
+  jurisdiction: Jurisdiction;
 
   @ApiProperty({ example: "Salle 4B" })
   @Expose()
   room?: string;
 
-  @ApiProperty({ enum: AudienceType })
+  @ApiProperty({ enum: AudienceType1 })
   @Expose()
-  type: AudienceType;
+  type: AudienceType1;
 
   @ApiProperty({ enum: AudienceStatus })
   @Expose()

@@ -1,6 +1,14 @@
 // document-customer-response.dto.ts
 import { Expose, Transform } from 'class-transformer';
+import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+
+
+
+
+
+
 
 
 
@@ -15,13 +23,6 @@ export enum DocumentCustomerStatus {
   ARCHIVED = 4,
 }
 
-export enum DocumentCategory {
-  PROCEDURAL = 'procedural',
-  CLIENT = 'client', 
-  INTERNAL = 'internal',
-  FINANCIAL = 'financial',
-  DECISION = 'decision',
-}
 
 export class DocumentCustomerResponseDto {
   @ApiProperty()
@@ -48,10 +49,12 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
+  // @Transform(({ value }) => MimeTypeUtils.getFileTypeName(value))
   file_mimetype?: string;
 
-  @ApiProperty({ enum: DocumentCategory })
+  @ApiProperty()
   @Expose()
+  @Transform(({ obj }) => obj.category)
   category: DocumentCategory;
 
   @ApiProperty()
@@ -91,10 +94,12 @@ export class DocumentCustomerResponseDto {
     id: obj.dossier.id,
     dossier_number: obj.dossier.dossier_number,
     objet: obj.dossier.objet,
+    // name: obj.dossier.dossier_number,
   } : undefined)
   dossier?: {
     id: number;
     dossier_number: string;
+    // name: string;
     objet: string;
   };
 
@@ -321,20 +326,20 @@ export class DocumentCustomerResponseDto {
   };
 
   // Méthodes utilitaires exposées
-  @ApiProperty()
-  @Expose()
-  @Transform(({ obj }) => obj.category === DocumentCategory.PROCEDURAL)
-  is_procedural_document: boolean;
+  // @ApiProperty()
+  // @Expose()
+  // @Transform(({ obj }) => obj.category === DocumentCategory.PROCEDURAL)
+  // is_procedural_document: boolean;
 
-  @ApiProperty()
-  @Expose()
-  @Transform(({ obj }) => obj.category === DocumentCategory.CLIENT)
-  is_client_document: boolean;
+  // @ApiProperty()
+  // @Expose()
+  // @Transform(({ obj }) => obj.category === DocumentCategory.CLIENT)
+  // is_client_document: boolean;
 
-  @ApiProperty()
-  @Expose()
-  @Transform(({ obj }) => obj.category === DocumentCategory.INTERNAL)
-  is_internal_document: boolean;
+  // @ApiProperty()
+  // @Expose()
+  // @Transform(({ obj }) => obj.category === DocumentCategory.INTERNAL)
+  // is_internal_document: boolean;
 
   // @ApiProperty()
   // @Expose()

@@ -12,7 +12,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
 import { CustomerModule } from '../customer/customer.module';
+import { DocumentCategoryModule } from '../document-category/document-category.module';
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { IamModule } from '../iam/iam.module';
 import { DocumentCustomerController } from './document-customer/document-customer.controller';
@@ -33,10 +35,12 @@ import { DocumentType } from './document-type/entities/document-type.entity';
 
 
 
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocumentType, DocumentCustomer]),
     CoreModule,
+    DocumentCategoryModule,
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),
     

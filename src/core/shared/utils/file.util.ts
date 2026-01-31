@@ -1,7 +1,14 @@
 import { createWriteStream } from 'fs';
+import * as mime from 'mime-types';
 import { join } from 'path';
 import * as sharp from 'sharp';
+
+
+
 import { BUSINESS_RULES } from '../interfaces/business-rules.constants';
+
+
+
 
 export class FilesUtil {
   /**
@@ -17,7 +24,7 @@ export class FilesUtil {
       width?: number;
       quality?: number;
     }
-  ): Promise<{fileName: string, fileSize: number}> {
+  ): Promise<{fileName: string, fileMimeType?: string,fileSize: number}> {
     const fileName = FilesUtil.generateUniqueFilename(file.originalname);
     const filePath = join(FILE_PATH, fileName);
     let finalBuffer: Buffer;
@@ -88,9 +95,13 @@ export class FilesUtil {
     console.log(`Debug - Taille calculée: ${finalSize} bytes`);
     console.log(`Debug - Taille réelle sur disque: ${actualFileSize} bytes`);
 
+    const ext = file.originalname.split('.').pop() || '';
+    const mimeType = mime.lookup(ext) || 'application/octet-stream';
+    console.log('MIME détecté:', mimeType);
     return {
       fileName,
-      fileSize: actualFileSize // Retourner la taille réelle
+      fileSize: actualFileSize, // Retourner la taille réelle
+      fileMimeType: mimeType || 'application/octet-stream'
     };
   }
 

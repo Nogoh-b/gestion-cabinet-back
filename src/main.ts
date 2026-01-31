@@ -8,8 +8,11 @@ import { Transport } from '@nestjs/microservices';
 import { SwaggerModule } from '@nestjs/swagger';
 
 
+
 import { AppModule } from './app.module';
+import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
+
 
 
 
@@ -46,6 +49,8 @@ async function bootstrap() {
       } as tls.TlsOptions,
     },
   });
+  const seeder = app.get(PermissionSeeder);
+
   // Configuration Swagger
   if (process.env.NODE_ENV === 'development') {
     const document = SwaggerModule.createDocument(app, swaggerConfig);

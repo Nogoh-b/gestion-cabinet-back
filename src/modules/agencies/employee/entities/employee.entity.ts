@@ -1,4 +1,5 @@
 import { BaseEntity } from 'src/core/entities/baseEntity';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
   Column,
@@ -12,8 +13,9 @@ import {
   ManyToMany,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
+
 import { Branch } from '../../branch/entities/branch.entity';
-import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+
 
 export enum EmployeePosition {
   AVOCAT = 'avocat',
@@ -43,7 +45,8 @@ export class Employee extends BaseEntity {
   @ManyToOne(() => Branch)
   @JoinColumn({ name: 'branch_id' })
   branch?: Branch;
-
+  @Column({ name: 'branch_id', type: 'int', nullable: true }) // ✅ Changé en 'date'
+  branch_id: Date;
   @ApiProperty({ enum: EmployeePosition })
   @Column({ type: 'enum', enum: EmployeePosition })
   position: EmployeePosition;

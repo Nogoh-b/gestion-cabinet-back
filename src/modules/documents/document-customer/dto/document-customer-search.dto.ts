@@ -1,6 +1,11 @@
 import { ApiProperty } from "@nestjs/swagger";
 
-import { DocumentCategory, DocumentCustomerStatus } from "../entities/document-customer.entity";
+
+
+import { DocumentCustomerStatus } from "../entities/document-customer.entity";
+
+
+
 
 
 export class SearchDocumentCustomerDto {
@@ -10,8 +15,8 @@ export class SearchDocumentCustomerDto {
   @ApiProperty({ enum: DocumentCustomerStatus, required: false })
   status?: DocumentCustomerStatus;
 
-  @ApiProperty({ enum: DocumentCategory, required: false })
-  category?: DocumentCategory;
+  @ApiProperty({  required: false })
+  category_id?: number;
 
   @ApiProperty({ example: 1, required: false })
   dossier_id?: number;

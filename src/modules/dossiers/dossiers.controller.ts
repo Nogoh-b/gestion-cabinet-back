@@ -20,6 +20,15 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 
+
+
+
+
+
+
+
+
+
 import { User } from '../iam/user/entities/user.entity';
 import { DossiersService } from './dossiers.service';
 import { ChangeStatusDto } from './dto/change-status.dto';
@@ -27,6 +36,15 @@ import { CreateDossierDto } from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
+
+
+
+
+
+
+
+
+
 
 
 @ApiTags('dossiers')
@@ -128,7 +146,7 @@ export class DossiersController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.AVOCAT, UserRole.SECRETAIRE)
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT, UserRole.SECRETAIRE)
   @ApiOperation({ summary: 'Mettre à jour un dossier' })
   @ApiResponse({ status: 200, description: 'Dossier mis à jour', type: DossierResponseDto })
   @ApiResponse({ status: 404, description: 'Dossier non trouvé' })
@@ -136,12 +154,13 @@ export class DossiersController {
     @Param('id', ParseIntPipe) id: string,
     @Body() updateDossierDto: UpdateDossierDto,
     @CurrentUser() user: User
-  ): Promise<DossierResponseDto> {
+  ): Promise<DossierResponseDto | any> {
+    console.log(updateDossierDto)
     return this.dossiersService.update(+id, updateDossierDto, user);
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @ApiOperation({ summary: 'Changer le statut d\'un dossier' })
   @ApiResponse({ status: 200, description: 'Statut mis à jour', type: DossierResponseDto })
   @ApiResponse({ status: 400, description: 'Transition de statut non autorisée' })
@@ -166,7 +185,7 @@ export class DossiersController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @ApiOperation({ summary: 'Supprimer un dossier' })
   @ApiResponse({ status: 200, description: 'Dossier supprimé' })
   @ApiResponse({ status: 400, description: 'Impossible de supprimer le dossier' })

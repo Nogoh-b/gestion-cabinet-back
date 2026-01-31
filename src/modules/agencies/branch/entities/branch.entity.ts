@@ -8,7 +8,11 @@ import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity, OneToMan
 import { ApiProperty } from '@nestjs/swagger';
 
 
+
+
 import { Employee } from '../../employee/entities/employee.entity';
+
+
 
 
 
@@ -27,6 +31,8 @@ export class Branch extends BaseEntity {
   @ApiProperty({ example: 'Agence Principale' })
   @Column({ length: 100 })
   name: string;
+  @Column()
+  location_city_id: number;
 
   @ManyToOne(() => LocationCity)
   @JoinColumn({ name: 'location_city_id' })

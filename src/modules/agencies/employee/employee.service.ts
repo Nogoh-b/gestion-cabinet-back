@@ -1,6 +1,12 @@
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
+import { UserRole } from 'src/core/enums/user-role.enum';
 import { EmailService } from 'src/core/shared/services/email/email.service';
+
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+
 import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
 
 import { User } from 'src/modules/iam/user/entities/user.entity';
@@ -8,18 +14,18 @@ import { User } from 'src/modules/iam/user/entities/user.entity';
 import { UsersService } from 'src/modules/iam/user/user.service';
 
 import { Repository } from 'typeorm';
-
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-
 import { InjectRepository } from '@nestjs/typeorm';
+
 
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
-import { UserRole } from 'src/core/enums/user-role.enum';
+
+
 
 @Injectable()
-export class EmployeeService {
+export class EmployeeService  extends BaseServiceV1<Employee> {
   constructor(
     @InjectRepository(Branch)
     private branchRepository: Repository<Branch>,
@@ -29,8 +35,57 @@ export class EmployeeService {
     private userRepo: Repository<User>,
     private mailerService: EmailService,
     private userService: UsersService,
-  ) {}
+        protected readonly paginationService: PaginationServiceV1,
+  ) {
 
+    super(employeeRepository, paginationService);
+  }
+/**
+   * Override des options de recherche par défaut pour Customer
+   */
+  protected getDefaultSearchOptions(): SearchOptions {
+    return {
+      // Champs pour la recherche globale
+      searchFields: [
+        'dossier_number',
+        'object',
+        'jurisdiction',
+        'jurisdiction.name',
+        'court_name',
+        'case_number',
+        'opposing_party_name',
+        'opposing_party_lawyer',
+        'opposing_party_contact',
+        'client.first_name',
+        'client.last_name',
+        'procedure_type.name',
+        'procedure_subtype.name',
+        'client.email',
+        'danger_level'
+      ],
+      
+      // Champs pour recherche exacte
+      exactMatchFields: [
+        'id',
+        'status',
+        'confidentiality_level',
+        'priority_level',
+        'budget_estimate',
+        'danger_level'
+      ],
+      
+      // Champs pour ranges de dates
+      /*dateRangeFields: [
+        'created_at',
+        'updated_at',
+        'opening_date',
+        'closing_date'
+      ],*/
+      
+      // Champs de relations pour filtrage
+      relationFields: ['user', 'branch', 'managed_dossiers', 'collaborating_dossiers']
+    };
+  }
 
 async createEmployee(
   dto: CreateUserDto,

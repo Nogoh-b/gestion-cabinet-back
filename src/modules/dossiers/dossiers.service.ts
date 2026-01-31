@@ -12,23 +12,10 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { User } from '../iam/user/entities/user.entity';
+import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { ProcedureType } from '../procedures/entities/procedure.entity';
 import { ChangeStatusDto } from './dto/change-status.dto';
 import { CreateDossierDto } from './dto/create-dossier.dto';
@@ -36,20 +23,6 @@ import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { Dossier } from './entities/dossier.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -81,6 +54,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'dossier_number',
         'object',
         'jurisdiction',
+        'jurisdiction.name',
         'court_name',
         'case_number',
         'opposing_party_name',
@@ -90,7 +64,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'client.last_name',
         'procedure_type.name',
         'procedure_subtype.name',
-        'client.email'
+        'client.email',
+        'danger_level'
       ],
       
       // Champs pour recherche exacte
@@ -99,7 +74,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'status',
         'confidentiality_level',
         'priority_level',
-        'budget_estimate'
+        'budget_estimate',
+        'danger_level'
       ],
       
       // Champs pour ranges de dates
@@ -111,7 +87,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       ],*/
       
       // Champs de relations pour filtrage
-      relationFields: ['client', 'lawyer', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
+      relationFields: ['client', 'lawyer', 'lawyer.user', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators', 'collaborators.user']
     };
   }
 
@@ -122,7 +98,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 async searhDosiers(
   criteria: any,
   paginationParams?: any,
-  relations: string[] = ['client', 'lawyer', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
+  relations: string[] = ['client', 'lawyer', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
 ) {
   return this.searchWithTransformer(
     criteria,
@@ -177,6 +153,8 @@ async searhDosiers(
       dossier_number: dossierNumber,
       client,
       lawyer,
+      jurisdiction_id : createDossierDto.jurisdiction ?? 1,
+      jurisdiction: {id : createDossierDto.jurisdiction ?? 1} as Jurisdiction,
       procedure_type: procedureType,
       procedure_subtype: procedureSubtype,
       opening_date: createDossierDto.opening_date ? new Date(createDossierDto.opening_date) : new Date(),
@@ -290,11 +268,14 @@ async searhDosiers(
         'audiences',
         'factures',
         'steps',
+        'jurisdiction',
         'collaborators',
+        'collaborators.user',
         // 'comments',
         // 'comments.user'
       ],
     });
+    console.log(dossier)
 
     if (!dossier) {
       throw new NotFoundException(`Dossier ${id} non trouvé`);
@@ -307,72 +288,136 @@ async searhDosiers(
     return plainToInstance(DossierResponseDto,dossier);
   }
 
-  async update(id: number, updateDossierDto: UpdateDossierDto, user: User): Promise<DossierResponseDto> {
+  async update(
+    id: number,
+    updateDossierDto: UpdateDossierDto,
+    user: User
+  ): Promise<DossierResponseDto> {
+
     const dossier = await this.dossierRepository.findOne({
       where: { id },
-      relations: ['client', 'lawyer', 'procedure_type', 'procedure_subtype', 'collaborators']
+      relations: [
+        'client',
+        'lawyer',
+        'procedure_type',
+        'procedure_subtype',
+        'collaborators',
+        'jurisdiction',
+      ],
     });
 
     if (!dossier) {
-      throw new NotFoundException(`Dossier ${id} non trouvé`);
+      throw new NotFoundException('Dossier non trouvé');
     }
 
-    this.checkDossierAccess(dossier, user);
 
-    // Validation si changement de type/sous-type
-    if (updateDossierDto.procedure_type_id || updateDossierDto.procedure_subtype_id) {
-      const typeId = updateDossierDto.procedure_type_id || dossier.procedure_type.id;
-      const subtypeId = updateDossierDto.procedure_subtype_id || dossier.procedure_subtype.id;
-      
-      const isValid = await this.validateProcedureTypeSubtype(typeId, subtypeId);
-      if (!isValid) {
-        throw new BadRequestException('Le sous-type ne correspond pas au type de procédure');
+    /* =============================
+    * Validation type / sous-type
+    * ============================= */
+    if (
+      updateDossierDto.procedure_type_id &&
+      updateDossierDto.procedure_subtype_id
+    ) {
+      const isValidPair = await this.validateProcedureTypeSubtype(
+        updateDossierDto.procedure_type_id,
+        updateDossierDto.procedure_subtype_id
+      );
+
+      if (!isValidPair) {
+        throw new BadRequestException(
+          'Le sous-type ne correspond pas au type de procédure'
+        );
       }
     }
 
-    // Mise à jour des relations si nécessaire
+    /* =============================
+    * Chargement des entités liées
+    * ============================= */
     if (updateDossierDto.client_id) {
-      const client = await this.clientRepository.findOne({ where: { id: updateDossierDto.client_id } });
+      const client = await this.clientRepository.findOne({
+        where: { id: Number(updateDossierDto.client_id) },
+      });
       if (!client) throw new NotFoundException('Client non trouvé');
       dossier.client = client;
     }
 
     if (updateDossierDto.lawyer_id) {
-      const lawyer = await this.userRepository.findOne({ where: { id: updateDossierDto.lawyer_id } });
+      const lawyer = await this.userRepository.findOne({
+        where: { id: updateDossierDto.lawyer_id },
+      });
       if (!lawyer) throw new NotFoundException('Avocat non trouvé');
       dossier.lawyer = lawyer;
     }
 
     if (updateDossierDto.procedure_type_id) {
-      const procedureType = await this.procedureTypeRepository.findOne({ 
-        where: { id: updateDossierDto.procedure_type_id } 
+      const procedureType = await this.procedureTypeRepository.findOne({
+        where: { id: updateDossierDto.procedure_type_id },
       });
-      if (!procedureType) throw new NotFoundException('Type de procédure non trouvé');
+      if (!procedureType) {
+        throw new NotFoundException('Type de procédure non trouvé');
+      }
       dossier.procedure_type = procedureType;
     }
 
     if (updateDossierDto.procedure_subtype_id) {
-      const procedureSubtype = await this.procedureTypeRepository.findOne({ 
-        where: { id: updateDossierDto.procedure_subtype_id } 
+      const procedureSubtype = await this.procedureTypeRepository.findOne({
+        where: { id: updateDossierDto.procedure_subtype_id },
       });
-      if (!procedureSubtype) throw new NotFoundException('Sous-type de procédure non trouvé');
+      if (!procedureSubtype) {
+        throw new NotFoundException('Sous-type de procédure non trouvé');
+      }
       dossier.procedure_subtype = procedureSubtype;
     }
 
-    // Mise à jour des collaborateurs
-    if (updateDossierDto.collaborator_ids) {
-      const collaborators = await this.userRepository.find({
-        where: { id: In(updateDossierDto.collaborator_ids) }
-      });
-      dossier.collaborators = collaborators;
+    /* =============================
+    * Juridiction
+    * ============================= */
+    if (updateDossierDto.jurisdiction) {
+      dossier.jurisdiction_id = updateDossierDto.jurisdiction;
+      dossier.jurisdiction = { id: updateDossierDto.jurisdiction } as Jurisdiction;
     }
 
-    // Mise à jour des champs simples
-    Object.assign(dossier, updateDossierDto);
+    /* =============================
+    * Dates
+    * ============================= */
+    if (updateDossierDto.opening_date) {
+      dossier.opening_date = new Date(updateDossierDto.opening_date);
+    }
 
+    /* =============================
+    * Statut
+    * ============================= */
+    if (updateDossierDto.status) {
+      dossier.status = updateDossierDto.status;
+    }
+
+    /* =============================
+    * Collaborateurs
+    * ============================= */
+    if (updateDossierDto.collaborator_ids) {
+      if (updateDossierDto.collaborator_ids.length === 0) {
+        dossier.collaborators = [];
+      } else {
+        const collaborators = await this.userRepository.find({
+          where: { id: In(updateDossierDto.collaborator_ids) },
+        });
+        dossier.collaborators = collaborators;
+      }
+    }
+
+    /* =============================
+    * Champs simples (merge)
+    * ============================= */
+    Object.assign(dossier, {
+      ...updateDossierDto,
+      dossier_number: dossier.dossier_number, // protection
+    });
+    console.log(updateDossierDto, dossier);
+    dossier.confidentiality_level = Number(dossier.confidentiality_level);
     const updatedDossier = await this.dossierRepository.save(dossier);
     return this.mapToResponseDto(updatedDossier);
   }
+
 
   async changeStatus(id: number, changeStatusDto: ChangeStatusDto, user: User): Promise<DossierResponseDto> {
     const dossier = await this.dossierRepository.findOne({
@@ -407,7 +452,7 @@ async searhDosiers(
       throw new NotFoundException(`Dossier ${id} non trouvé`);
     }
 
-    this.checkDossierAccess(dossier, user);
+    // this.checkDossierAccess(dossier, user);
 
     // Vérifier si le dossier peut être supprimé
     if (dossier.is_closed || dossier.is_archived) {
@@ -505,7 +550,7 @@ async searhDosiers(
     const isAdmin = user.role === 'admin';
     const isClient = dossier.client.id === user.id;
 
-    if (!isOwner && !isCollaborator && !isAdmin && !isClient) {
+    if (!isOwner && !isCollaborator && !isAdmin && !isClient) { 
       // throw new ForbiddenException('Accès non autorisé à ce dossier');
     }
   }

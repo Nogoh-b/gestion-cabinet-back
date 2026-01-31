@@ -16,6 +16,7 @@ import {
 
 import { Paiement } from '../../paiement/entities/paiement.entity';
 import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
+import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
 
 
 @Entity('factures')
@@ -89,6 +90,10 @@ export class Facture {
   @ManyToOne(() => Dossier, { nullable: true })
   @JoinColumn({ name: 'dossier_id' })
   dossier: Dossier;
+
+  @ManyToOne(() => InvoiceType, { nullable: true })
+  @JoinColumn({ name: 'invoice_type_id' })
+  invoice_type: InvoiceType;
 
   @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: 'client_id' }) // correction: correspond à la colonne réelle

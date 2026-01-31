@@ -1,7 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { McotiService } from 'src/core/shared/services/mCoti/mcoti.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
@@ -13,16 +12,27 @@ import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities
 
 
 
+import { DocumentCategoryService } from 'src/modules/document-category/document-category.service';
+
+import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { DossiersService } from 'src/modules/dossiers/dossiers.service';
 
+
+
+
+
+
+
+import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+
+
+
+
+
+
+
 import { Repository } from 'typeorm';
-
-
-
-
-
-
 
 import {
   BadRequestException,
@@ -31,10 +41,15 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
 
 
 
@@ -43,7 +58,20 @@ import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
-import { DocumentCategory, DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -78,7 +106,7 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     @Inject(forwardRef(() => DossiersService))
     private dossierService: DossiersService,
     protected readonly paginationService: PaginationServiceV1,
-    private mcotiService: McotiService,
+    private documentCategoryService: DocumentCategoryService,
   ) {    
         super(docRepository, paginationService);console.log(forwardRef)
   }
@@ -92,6 +120,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
         'document_type.name',
         'document_type.code',
         'customer.customer_code',
+        'customer.last_name',
+        'customer.first_name',
         'customer.company_name',
         'dossier.object',
         'uploaded_by.first_name',
@@ -130,6 +160,7 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
       relationFields: [
         'document_type',
         'customer', 
+        'category', 
         'dossier',
         'uploaded_by',
         'previous_version'
@@ -142,7 +173,7 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
 async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     const document = await this.repository.findOne({
       where: { id },
-      relations: ['customer', 'document_type', 'uploaded_by', 'dossier'], // si tu veux inclure les relations
+      relations: ['customer', 'document_type', 'uploaded_by', 'dossier', 'category'], // si tu veux inclure les relations
     });
 
     if (!document) {
@@ -309,6 +340,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     const {
       document_type_id,
       customer_id,
+      category_id,
       dossier_id,
       loan_id,
       file,
@@ -321,13 +353,20 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       const docType = await this.validateDocumentType(document_type_id, strict);
       if (!docType && !strict) return null;
 
-      // 2. Validation du client et vérification des documents requis
-      const customer = await this.validateCustomer(customer_id, document_type_id, strict);
-      if (!customer && !strict) return null;
-
       // 3. Validation du dossier
-      const dossier = await this.validateDossier(dossier_id, strict);
+      const dossier : DossierResponseDto = await this.validateDossier(dossier_id, strict);
       if (!dossier && !strict) return null;
+
+      // 2. Validation du client et vérification des documents requis
+      const customer = await this.validateCustomer(dossier.client.id, document_type_id, strict);
+      if (!customer && !strict) return null;
+      
+      // 2. Validation du client et vérification des documents requis
+      if (!category_id) {
+        throw new NotFoundException(`Catégorie avec l'ID ${category_id} introuvable`);
+      }
+      const category = await this.documentCategoryService.findOne(category_id);
+      if (!category && !strict) return null;
 
 
 
@@ -353,7 +392,8 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         ...restDto,
         document_type: docType,
         customer,
-        dossier,
+        category : plainToInstance(DocumentCategory, category),
+        dossier: plainToInstance(Dossier, dossier),
         uploadedFile,
         uploadedByUserId
       });
@@ -513,7 +553,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     document_type: DocumentType;
     customer: Customer;
     dossier: Dossier;
-    uploadedFile: { fileName: string; fileSize: number };
+    uploadedFile: { fileName: string; fileSize: number, fileMimeType?: string };
     uploadedByUserId?: number;
     description?: string;
     name?: string;
@@ -522,27 +562,27 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     required_for_hearing?: boolean;
     is_confidential?: boolean;
     metadata?: string;
-  }): Promise<DocumentCustomer> {
+  }): Promise<DocumentCustomer | any> {
     const {
       document_type,
       customer,
       dossier,
+      category,
       uploadedFile,
       uploadedByUserId,
       ...restParams
     } = params;
-
     const documentData: Partial<any> = {
       ...restParams,
       document_type,
-      // customer,
+      customer,
       dossier,
       name: restParams.name ?? document_type.name,
       file_path: uploadedFile.fileName,
       file_size: uploadedFile.fileSize,
-      file_mimetype: document_type.mimetype,
+      file_mimetype: uploadedFile.fileMimeType,
       status: restParams.status || DocumentCustomerStatus.PENDING,
-      category: restParams.category || DocumentCategory.CLIENT,
+      category,
       required_for_hearing: restParams.required_for_hearing || false,
       is_confidential: restParams.is_confidential || false,
     };

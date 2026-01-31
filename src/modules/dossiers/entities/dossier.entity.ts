@@ -7,9 +7,23 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
+import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { Step, StepStatus } from 'src/modules/step/entities/step.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+
+
+
+
+
+export enum DangerLevel {
+  Faible = 0,
+  Normal = 1,
+  Eleve = 2,
+  Critique = 3,
+}
+
+
 
 
 @Entity('dossiers')
@@ -23,8 +37,11 @@ export class Dossier extends BaseEntity {
   @Column({ type: 'text', nullable: false })
   object: string;
 
-  @Column({ name: 'jurisdiction', length: 255, nullable: false })
-  jurisdiction: string;
+  @Column({ nullable: true, default: 1 })
+  jurisdiction_id?: number | null;
+
+  @Column({ name: 'danger_level', type: 'enum', enum: DangerLevel, default: DangerLevel.Normal })
+  danger_level: DangerLevel;
 
   @Column({ name: 'court_name', length: 255, nullable: true })
   court_name: string;
@@ -66,8 +83,8 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'estimated_duration', type: 'int', nullable: true })
   estimated_duration: number;
 
-  @Column({ name: 'confidentiality_level', length: 50, default: 'normal' })
-  confidentiality_level: string;
+  @Column({ name: 'confidentiality_level',  default: 0 })
+  confidentiality_level: number;
 
   @Column({ name: 'priority_level', type: 'int', default: 0 })
   priority_level: number;
@@ -124,6 +141,10 @@ export class Dossier extends BaseEntity {
   @ManyToOne(() => ProcedureType, { nullable: false })
   @JoinColumn({ name: 'procedure_type_id' })
   procedure_type: ProcedureType;
+
+  @ManyToOne(() => Jurisdiction, { nullable: true })
+  @JoinColumn({ name: 'jurisdiction_id' })
+  jurisdiction?: Jurisdiction | null;
 
   @ManyToOne(() => ProcedureType, { nullable: false })
   @JoinColumn({ name: 'procedure_subtype_id' })

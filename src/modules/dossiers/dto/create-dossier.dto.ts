@@ -12,8 +12,15 @@ import {
   ValidateIf,
   IsEnum
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PriorityLevel } from 'src/core/enums/dossier-status.enum';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+
+import { DangerLevel } from '../entities/dossier.entity';
+
+
+
+
 
 export class CreateDossierDto {
   @ApiProperty({
@@ -32,7 +39,26 @@ export class CreateDossierDto {
   })
   @IsNotEmpty()
   @IsString()
-  jurisdiction: string;
+  jurisdiction: number;
+
+  @ApiProperty({
+    description: 'Niveau de danger',
+    example: 1,
+    enum: ['Faible', 'Normal', 'Eleve', 'Critique'],
+    default: 'Normal'
+  })
+  @IsOptional()
+  @IsEnum(DangerLevel, { message: 'danger_level doit être une des valeurs : Faible, Normal, Eleve, Critique' })
+  danger_level?: DangerLevel;
+
+  @ApiProperty({
+    description: 'Juridiction compétente',
+    example: 'Tribunal de Commerce de Paris',
+    maxLength: 255
+  })
+  @IsNotEmpty()
+  @IsString()
+  jurisdiction_id: number;
 
   @ApiProperty({
     description: 'ID du client',
@@ -160,7 +186,7 @@ export class CreateDossierDto {
   })
   @IsOptional()
   @IsString()
-  confidentiality_level?: string;
+  confidentiality_level?: number;
 
   @IsOptional()
   @IsEnum(PriorityLevel, { message: 'priority_level doit être une des valeurs : low, medium, high, urgent' })

@@ -106,7 +106,8 @@ export class Customer extends BaseEntity {
 
   @Column({ name: 'customer_code', length: 45, nullable: false, unique: true })
   customer_code: string;
-
+  @Column({ name: 'branch_id', type: 'int', nullable: true }) // ✅ Changé en 'date'
+  branch_id: Date;
   @ManyToOne(() => Branch)
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;

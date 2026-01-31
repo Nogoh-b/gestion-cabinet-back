@@ -1,8 +1,14 @@
 import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsNumber, IsOptional, IsBoolean, IsEnum, IsString, IsJSON } from 'class-validator';
+
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { DocumentCategory, DocumentCustomerStatus } from '../entities/document-customer.entity';
+
+
+import { DocumentCustomerStatus } from '../entities/document-customer.entity';
+
+
+
 
 
 export class CreateDocumentCustomerDto {
@@ -41,12 +47,12 @@ export class CreateDocumentCustomerDto {
   name?: string;
 
   @ApiPropertyOptional({ 
-    enum: DocumentCategory,
     description: 'Catégorie du document' 
   })
   @IsOptional()
-  @IsEnum(DocumentCategory)
-  category?: DocumentCategory;
+  @IsNumber()
+  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  category_id?: number;
 
   @ApiPropertyOptional({ 
     enum: DocumentCustomerStatus,

@@ -7,6 +7,14 @@ import { StatutFacture } from "src/modules/facture/dto/create-facture.dto";
 import { FactureResponseDto } from "src/modules/facture/dto/facture-response.dto";
 import { ApiProperty } from "@nestjs/swagger";
 
+import { DangerLevel } from "../entities/dossier.entity";
+
+
+
+
+
+
+
 
 
 
@@ -153,6 +161,7 @@ export class DossierResponseDto {
     return {
       id: obj.client.id,
       full_name: obj.client.full_name,
+      name: obj.client.full_name,
       email: obj.client.email,
       number_phone_1: obj.client.number_phone_1,
       adress: obj.client.city_full_address,
@@ -188,6 +197,7 @@ export class DossierResponseDto {
     return {
       id: obj.lawyer.id,
       full_name: obj.lawyer.full_name,
+      name: obj.lawyer.full_name,
       email: obj.lawyer.email,
       specialization: obj.lawyer.specialization,
       bar_association_number: obj.lawyer.bar_association_number,
@@ -278,7 +288,7 @@ export class DossierResponseDto {
       id: audience.id,
       audience_date: audience.audience_date,
       audience_time: audience.audience_time,
-      jurisdiction: audience.jurisdiction,
+      // jurisdiction: audience.jurisdiction,
       status: audience.status,
       judge_name: audience.judge_name,
       room: audience.room,
@@ -355,6 +365,7 @@ export class DossierResponseDto {
     return obj.collaborators.map((collab: any) => ({
       id: collab.id,
       full_name: collab.full_name,
+      name: collab.full_name,
       email: collab.email,
       role: collab.role,
     }));
@@ -475,6 +486,8 @@ export class DossierResponseDto {
   @Transform(({ obj }) => obj.status === DossierStatus.ARCHIVED)
   is_archived: boolean;
 
-
+  @ApiProperty()
+  @Expose()
+  danger_level: DangerLevel;
   
 }

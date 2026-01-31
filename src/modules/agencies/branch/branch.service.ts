@@ -1,9 +1,17 @@
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { Repository } from 'typeorm';
+
+
+
 import { forwardRef, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
 
 
 
@@ -15,16 +23,60 @@ import { Branch } from './entities/branch.entity';
 
 
 
+
+
+
+
+
+
 @Injectable()
-export class BranchService {
+export class BranchService  extends BaseServiceV1<Branch> {
   constructor(
     @InjectRepository(Branch)
     private branchRepository: Repository<Branch>,
     private locationCityService: LocationCitiesService,
     private employeeService: EmployeeService,
-  ) {
+    protected readonly paginationService: PaginationServiceV1,) {
     console.log(forwardRef);
+        super(branchRepository, paginationService);
   }
+
+
+    protected getDefaultSearchOptions(): SearchOptions {
+      return {
+        // Champs pour la recherche globale
+        searchFields: [
+          'id',
+          'code',
+          'name',
+          'location_city.name',
+          'status',
+        ],
+        
+        // Champs pour recherche exacte
+        exactMatchFields: [
+          'id',
+          'status',
+          'confidentiality_level',
+          'priority_level',
+          'budget_estimate',
+          'danger_level'
+        ],
+        
+        // Champs pour ranges de dates
+        /*dateRangeFields: [
+          'created_at',
+          'updated_at',
+          'opening_date',
+          'closing_date'
+        ],*/
+        
+        // Champs de relations pour filtrage
+        relationFields: ['employees', 'customers']
+      };
+    }
+
+
   // Branches
   async createBranch(dto: CreateBranchDto): Promise<Branch> {
     // Vérification de l'existence de la ville
@@ -55,7 +107,7 @@ export class BranchService {
 
   async findAllBranches(status = 1): Promise<Branch[]> {
     return this.branchRepository.find({
-      relations: ['location_city'],
+      relations: ['location_city', 'customers'],
       where: { status },
     });
   }

@@ -1,15 +1,20 @@
 import { BaseEntity } from 'src/core/entities/baseEntity';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+
+import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
+
+
+
+
+
+
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+
+
 import { User } from 'src/modules/iam/user/entities/user.entity';
-
 import { Step } from 'src/modules/step/entities/step.entity';
-
-
-
-
-
-
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -22,9 +27,11 @@ import {
 } from 'typeorm';
 
 
+
 import { DocumentType } from '../../document-type/entities/document-type.entity';
-import { DossierStatus } from 'src/core/enums/dossier-status.enum';
-import { Audience } from 'src/modules/audiences/entities/audience.entity';
+
+
+
 
 
 
@@ -45,13 +52,13 @@ export enum DocumentCustomerStatus {
   ARCHIVED = 4,
 }
 
-export enum DocumentCategory {
-  PROCEDURAL = 'procedural', // Actes de procédure officiels
-  CLIENT = 'client', // Documents transmis par le client
-  INTERNAL = 'internal', // Documents internes/annexes
-  FINANCIAL = 'financial', // Documents financiers
-  DECISION = 'decision', // Décisions de justice
-}
+// export enum DocumentCategory {
+//   PROCEDURAL = 'procedural', // Actes de procédure officiels
+//   CLIENT = 'client', // Documents transmis par le client
+//   INTERNAL = 'internal', // Documents internes/annexes
+//   FINANCIAL = 'financial', // Documents financiers
+//   DECISION = 'decision', // Décisions de justice
+// }
 
 @Entity('document_customer')
 export class DocumentCustomer extends BaseEntity {
@@ -84,11 +91,16 @@ export class DocumentCustomer extends BaseEntity {
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
   
-  @Column({
-    type: 'enum',
-    enum: DocumentCategory,
-    default: DocumentCategory.CLIENT
-  })
+  // @Column({
+  //   type: 'enum',
+  //   enum: DocumentCategory,
+  //   default: DocumentCategory.CLIENT
+  // })
+  @Column({ type: 'int', nullable: true })
+  category_id?: number;
+  
+  @ManyToOne(() => DocumentCategory)
+  @JoinColumn({ name: 'category_id' })
   category: DocumentCategory;
 
   @Column({ 
@@ -239,48 +251,48 @@ get has_previous_versions(): boolean {
   return !!this.previous_version;
 }
 
-get is_procedural_document(): boolean {
-  return this.category === DocumentCategory.PROCEDURAL;
-}
+// get is_procedural_document(): boolean {
+//   return this.category === DocumentCategory.PROCEDURAL;
+// }
 
-get is_client_document(): boolean {
-  return this.category === DocumentCategory.CLIENT;
-}
+// get is_client_document(): boolean {
+//   return this.category === DocumentCategory.CLIENT;
+// }
 
-get is_internal_document(): boolean {
-  return this.category === DocumentCategory.INTERNAL;
-}
+// get is_internal_document(): boolean {
+//   return this.category === DocumentCategory.INTERNAL;
+// }
 
 get can_be_modified(): boolean {
   return this.status !== DocumentCustomerStatus.ARCHIVED && 
          this.dossier?.status !== DossierStatus.CLOSED; // Adaptez selon votre statut de dossier
 }
 
-get requires_validation(): boolean {
-  return this.is_procedural_document || this.is_client_document;
-}
+// get requires_validation(): boolean {
+//   return this.is_procedural_document || this.is_client_document;
+// }
   // @OneToMany(() => Comment, (comment) => comment.document)
   // comments: Comment[];
 
   // Méthodes utilitaires
-  public isProceduralDocument(): boolean {
-    return this.category === DocumentCategory.PROCEDURAL;
-  }
+  // public isProceduralDocument(): boolean {
+  //   return this.category === DocumentCategory.PROCEDURAL;
+  // }
 
-  public isClientDocument(): boolean {
-    return this.category === DocumentCategory.CLIENT;
-  }
+  // public isClientDocument(): boolean {
+  //   return this.category === DocumentCategory.CLIENT;
+  // }
 
-  public isInternalDocument(): boolean {
-    return this.category === DocumentCategory.INTERNAL;
-  }
+  // public isInternalDocument(): boolean {
+  //   return this.category === DocumentCategory.INTERNAL;
+  // }
 
   public canBeModified(): boolean {
     return this.status !== DocumentCustomerStatus.ARCHIVED && 
            this.dossier.status != 5;
   }
 
-  public requiresValidation(): boolean {
-    return this.isProceduralDocument() || this.isClientDocument();
-  }
+  // public requiresValidation(): boolean {
+  //   return this.isProceduralDocument() || this.isClientDocument();
+  // }
 }

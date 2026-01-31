@@ -1,14 +1,20 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
+
+
+
+
+
+
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+
+
+
+
 import { Controller, Post, Body, Param, Put, UseGuards, Get, Query } from '@nestjs/common';
-
-
-
-
-
-
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 
@@ -16,7 +22,13 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
+import { BranchResponseDto } from './dto/response-branch.dto';
+import { SearchBranchDto } from './dto/search-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+
+
+
+
 
 
 
@@ -43,6 +55,17 @@ export class BranchController {
     return this.branchService.createBranch(dto);
   }
 
+  @Get('search')
+  @ApiOperation({ summary: 'Recherche texte avec relations' })
+  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [BranchResponseDto]  })
+  async search(
+
+    @Query() searchParams?: SearchBranchDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.branchService.searchWithTransformer(searchParams as SearchCriteria, BranchResponseDto, paginationParams);
+  } 
+  
   @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all branches' })
