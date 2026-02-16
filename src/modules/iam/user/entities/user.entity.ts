@@ -9,6 +9,8 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDa
 
 
 import { UserRoleAssignment } from '../../user-role-assignment/entities/user-role-assignment.entity';
+import { Finding } from 'src/modules/finding/entities/finding.entity';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 
 
 
@@ -74,7 +76,14 @@ export class User {
 
   @OneToMany(() => Dossier, (dossier) => dossier.lawyer)
   managed_dossiers: Dossier[];
+  @OneToMany(() => Diligence, (diligence) => diligence.assigned_lawyer)
+  assigned_diligences: Diligence[];
 
+  @OneToMany(() => Finding, (finding) => finding.created_by)
+  created_findings: Finding[];
+
+  @OneToMany(() => Finding, (finding) => finding.validated_by)
+  validated_findings: Finding[];
 
   @UpdateDateColumn({ name: 'updated_at' })
   update_at: Date;

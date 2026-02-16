@@ -4,6 +4,7 @@ import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
@@ -149,6 +150,9 @@ export class Dossier extends BaseEntity {
   @ManyToOne(() => ProcedureType, { nullable: false })
   @JoinColumn({ name: 'procedure_subtype_id' })
   procedure_subtype: ProcedureType;
+
+  @OneToMany(() => Diligence, (diligence) => diligence.dossier)
+  diligences: Diligence[];
 
   // Relations avec les autres entités
   @OneToMany(() => DocumentCustomer, (document) => document.dossier)

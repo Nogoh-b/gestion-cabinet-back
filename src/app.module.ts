@@ -45,6 +45,8 @@ import { JurisdictionModule } from './modules/jurisdiction/jurisdiction.module';
 import { DocumentCategoryModule } from './modules/document-category/document-category.module';
 import { AudienceTypeModule } from './modules/audience-type/audience-type.module';
 import { InvoiceTypeModule } from './modules/invoice-type/invoice-type.module';
+import { DiligenceModule } from './modules/diligence/diligence.module';
+import { FindingModule } from './modules/finding/finding.module';
 
 
 
@@ -148,7 +150,9 @@ dotenv.config();
     JurisdictionModule,
     DocumentCategoryModule,
     AudienceTypeModule,
-    InvoiceTypeModule
+    InvoiceTypeModule,
+    DiligenceModule,
+    FindingModule
   ],
   controllers: [AppController],
   providers: [AppService],

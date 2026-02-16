@@ -12,6 +12,8 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
+import { seedDatabase } from './main.seeder';
+import { DataSource } from 'typeorm';
 
 
 
@@ -34,6 +36,7 @@ async function bootstrap() {
     `${process.env.HOME}/${process.env.SSL_CA_PATH}`,
     'utf8',
   );*/
+
 
   const app = await NestFactory.create(AppModule);
   const core = await NestFactory.createMicroservice(AppModule, {
@@ -72,6 +75,8 @@ async function bootstrap() {
   app.use('/admin/queues', serverAdapter.getRouter());
   // app.use(json({limit : '10mb'}))
   // app.use(urlencoded({extended : true , limit : '10mb'}))
+  await seedDatabase(app.get(DataSource));
+
   await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()]).then(
     () => {
       console.log(

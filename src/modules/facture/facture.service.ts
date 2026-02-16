@@ -18,6 +18,7 @@ import { FactureResponseDto } from './dto/facture-response.dto';
 import { SearchFactureDto } from './dto/search-facture.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { Facture } from './entities/facture.entity';
+import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 
 
 
@@ -42,7 +43,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       searchFields: ['numero', 'description', 'notesInternes'],
       exactMatchFields: ['id', 'dossierId', 'clientId', 'status', 'type', 'numero'],
       dateRangeFields: ['dateFacture', 'dateEcheance', 'created_at', 'updated_at'],
-      relationFields: ['paiements', 'client', 'dossier']
+      relationFields: ['paiements', 'client', 'dossier','invoice_type']
     };
   }
 
@@ -66,6 +67,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       dossier,
       numero,
       client,
+      invoice_type : {id: createDto.type} as InvoiceType,
       client_id,
       montantPaye: 0,
       resteAPayer: createDto.montantTTC

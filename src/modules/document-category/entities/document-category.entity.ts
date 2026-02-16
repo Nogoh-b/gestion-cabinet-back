@@ -47,7 +47,19 @@ export class DocumentCategory {
     allowed_mime_types?: string[];
     max_file_size_mb?: number;
     requires_validation?: boolean;
-    confidentiality_level?: 'public' | 'internal' | 'confidential';
+    board_approval?: boolean;
+    shareholder_rights?: boolean;
+    corporate_governance?: boolean;
+    intellectual_property?: boolean;
+    technical_validation?: boolean;
+    methodology_documented?: boolean;
+    peer_review?: boolean;
+    gdpr_compliance?: boolean;
+    tax_withholding?: boolean;
+    social_security?: boolean;
+    employee_rights?: boolean;
+    legal_importance?: string;
+    confidentiality_level?: 'public' | 'internal' | 'confidential' | 'strictly_confidential';
   };
 
 //   @OneToMany(() => DocumentType, documentType => documentType.documents)

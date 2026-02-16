@@ -5,6 +5,7 @@ import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dt
 import { ApiProperty } from '@nestjs/swagger';
 
 import { StatutFacture, TypeFacture } from './create-facture.dto';
+import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
 
 
 export class FactureResponseDto {
@@ -81,6 +82,11 @@ export class FactureResponseDto {
   @Expose()
   @Type(() => DossierResponseDto)
   dossier: DossierResponseDto;
+
+  @ApiProperty({ type: () => InvoiceType })
+  @Expose()
+  @Type(() => InvoiceType)
+  invoice_type: InvoiceType;
 
   @ApiProperty({ type: () => CustomerResponseDto })
   @Expose()

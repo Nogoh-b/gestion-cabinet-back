@@ -24,11 +24,14 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToMany,
+  OneToMany,
 } from 'typeorm';
 
 
 
 import { DocumentType } from '../../document-type/entities/document-type.entity';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
+import { Finding } from 'src/modules/finding/entities/finding.entity';
 
 
 
@@ -186,6 +189,11 @@ export class DocumentCustomer extends BaseEntity {
 
   @ManyToMany(() => Audience, (audience) => audience.documents)
   audiences: Audience[];
+  @ManyToMany(() => Diligence, (diligence) => diligence.documents)
+  diligences: Diligence[];
+
+  @OneToMany(() => Finding, (finding) => finding.document)
+  findings: Finding[];
 
 get status_label(): string {
   const statusLabels = {

@@ -1,6 +1,6 @@
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -53,6 +53,17 @@ export class JurisdictionController {
   @ApiResponse({ status: 200, type: JurisdictionResponseDto })
   async findOne(@Param('id') id: number) {
     return this.service.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Mettre à jour partiellement une juridiction' })
+  @ApiResponse({ status: 200, type: JurisdictionResponseDto })
+  @RequirePermissions('MANAGE_JURISDICTIONS')
+  async patch(
+    @Param('id') id: number,
+    @Body() dto: UpdateJurisdictionDto
+  ) {
+    return this.service.update(id, dto);
   }
 
   @Post(':id')
