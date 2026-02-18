@@ -87,7 +87,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       ],*/
       
       // Champs de relations pour filtrage
-      relationFields: ['client', 'lawyer', 'lawyer.user', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators', 'collaborators.user']
+      relationFields: ['client', 'lawyer', 'diligences','lawyer.user', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators', 'collaborators.user']
     };
   }
 
@@ -98,7 +98,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 async searhDosiers(
   criteria: any,
   paginationParams?: any,
-  relations: string[] = ['client', 'lawyer', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
+  relations: string[] = ['client', 'lawyer', 'diligences', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators']
 ) {
   return this.searchWithTransformer(
     criteria,
@@ -182,6 +182,7 @@ async searhDosiers(
         'procedure_type',
         'procedure_subtype',
         'documents',
+        'diligences',
         'audiences',
         'factures',
         'collaborators'
@@ -271,6 +272,7 @@ async searhDosiers(
         'jurisdiction',
         'collaborators',
         'collaborators.user',
+        'diligences'
         // 'comments',
         // 'comments.user'
       ],

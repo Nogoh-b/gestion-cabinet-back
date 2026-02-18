@@ -1,5 +1,5 @@
 // src/chat/dto/message-response.dto.ts
-import { Type } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
 import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -20,6 +20,9 @@ export class MessageResponseDto {
 
   @ApiProperty()
   createdAt: Date;
+  @Expose()
+  @ApiProperty()
+  sender_name: string;
 
   @ApiProperty({ type: () => EmployeeResponseDto })
   @Type(() => EmployeeResponseDto)

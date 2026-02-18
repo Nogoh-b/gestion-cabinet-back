@@ -17,6 +17,7 @@ import {
 import { SendMessageDto } from '../dto/create-conversation.dto';
 import { Message } from '../entities/messages.entity';
 import { ChatService } from '../services/chat/chat.service';
+import { forwardRef, Inject } from '@nestjs/common';
 
 
 
@@ -37,9 +38,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   
   constructor(
+    @Inject(forwardRef(() => ChatService))
     private chatService: ChatService,
     private notificationsService: NotificationsService,
-  ) {}
+  ) {
+    console.log(forwardRef)
+
+  }
 
   async handleConnection(client: Socket) {
     const userId = client.handshake.auth.userId;
@@ -65,48 +70,88 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-// src/chat/gateways/chat.gateway.ts
-@SubscribeMessage('sendMessage')
-async handleMessage(
-  @ConnectedSocket() client: Socket,
-  @MessageBody() data: SendMessageDto,
-) {
-  try {
-    const userId = this.getUserIdBySocketId(client.id);
-    console.log(`📨 Message reçu de l'utilisateur ${userId}:`, data);
 
-    const message = await this.chatService.sendMessage(data, userId);
-    console.log(`💾 Message sauvegardé:`, message);
-
+// Ajoute cette méthode dans ta classe ChatGateway
+  async emitMessagesRead(
+    conversationId: number,
+    readerUserId: number,
+    lastReadMessageId?: number
+  ) {
+    // Récupère tous les sockets connectés pour cette conversation
+    const room = `conversation_${conversationId}`;
+    const conversation = await this.chatService.getConversation(conversationId, readerUserId);
+    const participantIds = conversation.participants.map(p => p.id);
     this.server.sockets.sockets.forEach((socket) => {
-      const socketUserId = this.getUserIdBySocketId(socket.id);
-      if (socketUserId !== userId) {
-        // 🔥 Émettre sur l'événement global pour les notifications
-        this.server.emit('new_message', {
-          type: 'new_message',
-          message,
-        });
+        const socketUserId = this.getUserIdBySocketId(socket.id);
+        if (socketUserId !== readerUserId && participantIds.includes(socketUserId)) {
+          // 🔥 Émettre sur l'événement global pour les notifications
+          this.server.emit('messages_read', {
+              type: 'messages_read',
+              conversationId,
+              readerUserId,
+              lastReadMessageId,
+          });
 
-        // 🔥 Émettre sur la room spécifique pour les mises à jour en temps réel
-        this.server.to(`conversation_${data.conversationId}`).emit('conversation_message', {
-          type: 'new_message',
-          message,
-        });
+          // 🔥 Émettre sur la room spécifique pour les mises à jour en temps réel
+            this.server
+              .to(`conversation_${conversationId}`)
+              .emit('messages_readA', {
+                type: 'messages_readA',
+                conversationId: conversationId,
+                readerUserId: readerUserId, // Qui a lu
+                readAt: new Date().toISOString() 
+              });
 
-      }
-    });
+        }
+      });
 
-    console.log(`📢 Message diffusé sur les deux canaux`);
 
-    // 🔥 NOTIFICATIONS
-    await this.notificationsService.sendMessageNotification(message, userId);
 
-    return { success: true, message };
-  } catch (error) {
-    console.error('❌ Erreur handleMessage:', error);
-    client.emit('error', { message: error.message });
+    console.log(`📖 Messages lus dans la conversation ${conversationId} par l'utilisateur ${readerUserId}`);
   }
-}
+
+  // src/chat/gateways/chat.gateway.ts
+  @SubscribeMessage('sendMessage')
+  async handleMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: SendMessageDto,
+  ) {
+    try {
+      const userId = this.getUserIdBySocketId(client.id);
+      console.log(`📨 Message reçu de l'utilisateur ${userId}:`, data);
+
+      const message = await this.chatService.sendMessage(data, userId);
+      console.log(`💾 Message sauvegardé:`, message);
+
+      this.server.sockets.sockets.forEach((socket) => {
+        const socketUserId = this.getUserIdBySocketId(socket.id);
+        if (socketUserId !== userId) {
+          // 🔥 Émettre sur l'événement global pour les notifications
+          this.server.emit('new_message', {
+            type: 'new_message',
+            message,
+          });
+
+          // 🔥 Émettre sur la room spécifique pour les mises à jour en temps réel
+          this.server.to(`conversation_${data.conversationId}`).emit('conversation_message', {
+            type: 'new_message',
+            message,
+          });
+
+        }
+      });
+
+      console.log(`📢 Message diffusé sur les deux canaux`);
+
+      // 🔥 NOTIFICATIONS
+      await this.notificationsService.sendMessageNotification(message, userId);
+
+      return { success: true, message };
+    } catch (error) {
+      console.error('❌ Erreur handleMessage:', error);
+      client.emit('error', { message: error.message });
+    }
+  }
 
 
 

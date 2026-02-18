@@ -8,6 +8,7 @@ import { FactureResponseDto } from "src/modules/facture/dto/facture-response.dto
 import { ApiProperty } from "@nestjs/swagger";
 
 import { DangerLevel } from "../entities/dossier.entity";
+import { Diligence } from "src/modules/diligence/entities/diligence.entity";
 
 
 
@@ -155,6 +156,11 @@ export class DossierResponseDto {
       professional_phone: "+237 6 99 00 00 00",
     },
   })
+
+  
+  @Expose()
+  diligences: Diligence[]
+  
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.client) return undefined;

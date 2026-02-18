@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
 import * as tls from 'tls';
 import { ExpressAdapter } from '@bull-board/express';
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
 
 
@@ -14,6 +14,7 @@ import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
 import { seedDatabase } from './main.seeder';
 import { DataSource } from 'typeorm';
+import { ClassSerializerInterceptor } from '@nestjs/common';
 
 
 
@@ -53,6 +54,10 @@ async function bootstrap() {
     },
   });
   const seeder = app.get(PermissionSeeder);
+
+  app.useGlobalInterceptors(
+    new ClassSerializerInterceptor(app.get(Reflector)),
+  );
 
   // Configuration Swagger
   if (process.env.NODE_ENV === 'development') {

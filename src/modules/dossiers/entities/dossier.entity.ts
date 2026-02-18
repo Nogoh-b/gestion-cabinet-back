@@ -164,6 +164,9 @@ export class Dossier extends BaseEntity {
   @OneToMany(() => Facture, (facture) => facture.dossier)
   factures: Facture[];
 
+  @OneToMany(() => Diligence, (diligence) => diligence.dossier)
+  diligence: Diligence[];
+
 //   @OneToMany(() => Comment, (comment) => comment.dossier)
 //   comments: Comment[];
 

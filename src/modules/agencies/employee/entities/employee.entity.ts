@@ -15,6 +15,7 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 import { Branch } from '../../branch/entities/branch.entity';
+import { Expose } from 'class-transformer';
 
 
 export enum EmployeePosition {
@@ -147,6 +148,7 @@ export class Employee extends BaseEntity {
   }
 
   // ✅ GETTERS AJOUTÉS
+  @Expose()
   get full_name(): string {
     return this.user?.full_name || '';
   }

@@ -1,5 +1,5 @@
 // user.entity.ts
-import { Exclude } from 'class-transformer';
+import { Exclude, Expose } from 'class-transformer';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
@@ -89,6 +89,7 @@ export class User {
   update_at: Date;
 
     // Getters
+  @Expose()
   get full_name(): string {
     return `${this.first_name} ${this.last_name}`;
   }

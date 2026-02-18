@@ -8,10 +8,12 @@ import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/messages.entity';
 import { ChatGateway } from './gateways/chat.gateway';
 import { ChatService } from './services/chat/chat.service';
+import { MessageRead } from './entities/message-read.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Conversation, Message]), AgenciesModule, NotificationModule],
-  providers: [ChatService, ChatGateway, NotificationModule],
+  imports: [TypeOrmModule.forFeature([Conversation, Message, MessageRead]), AgenciesModule, NotificationModule],
+  providers: [ChatService, ChatGateway],
+  exports: [ChatService],
   controllers: [ChatController]
 })
 export class ChatModule {}
