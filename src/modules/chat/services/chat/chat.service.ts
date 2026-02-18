@@ -123,19 +123,28 @@ export class ChatService {
   }
 
 
-  async getUserConversations(userId: number): Promise<Conversation[]> {
-    return await this.conversationRepository
-      .createQueryBuilder('conversation')
-      .leftJoinAndSelect('conversation.participants', 'participant')
-      .leftJoinAndSelect('conversation.messages', 'message')
-      .leftJoinAndSelect('participant.user', 'user')
-      .leftJoinAndSelect('message.sender', 'sender')
-      .leftJoinAndSelect('sender.user', 'senderUser')
-      .where('participant.id = :userId', { userId })
-      .orderBy('conversation.lastMessageAt', 'DESC')
-      .addOrderBy('message.createdAt', 'DESC')
-      .getMany();
-  }
+async getUserConversations(userId: number): Promise<Conversation[]> {
+  return await this.conversationRepository
+    .createQueryBuilder('conversation')
+    .leftJoinAndSelect('conversation.participants', 'participant')
+    .leftJoinAndSelect('conversation.messages', 'message')
+    .leftJoinAndSelect('participant.user', 'user')
+    .leftJoinAndSelect('message.sender', 'sender')
+    .leftJoinAndSelect('sender.user', 'senderUser')
+    .loadRelationCountAndMap(
+      'conversation.unreadCount', // Nom de la propriété qui contiendra le compte
+      'conversation.messages',    // Relation à compter
+      'unreadMessages',           // Alias pour la sous-requête
+      (qb) => qb
+        .leftJoin('unreadMessages.reads', 'read')
+        .where('read.readerId = :userId', { userId })
+        .andWhere('read.isRead = :isRead', { isRead: false })
+    )
+    .where('participant.id = :userId', { userId })
+    .orderBy('conversation.lastMessageAt', 'DESC')
+    .addOrderBy('message.createdAt', 'DESC')
+    .getMany();
+}
 
   async getConversationMessages(conversationId: number, userId: number): Promise<Message[]> {
     const conversation = await this.conversationRepository.findOne({

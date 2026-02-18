@@ -31,6 +31,6 @@ export class Conversation {
   @Column({ default: null })
   lastMessageAt: Date;
   
-  @Column({ default: null })
-  lastMessage: Date;
+  @Column({ type: 'text', nullable: true })
+  lastMessage: string;
 }
