@@ -1,8 +1,9 @@
 // src/chat/entities/conversation.entity.ts
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany, ManyToMany, JoinTable } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany, ManyToMany, JoinTable, OneToOne } from 'typeorm';
 
 import { Message } from './messages.entity';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 
 
 @Entity()
@@ -24,6 +25,10 @@ export class Conversation {
 
   @OneToMany(() => Message, message => message.conversation)
   messages: Message[];
+
+  @OneToOne(() => Dossier, dossier => dossier.conversation)
+  dossier: Dossier;
+
 
   @CreateDateColumn()
   createdAt: Date;

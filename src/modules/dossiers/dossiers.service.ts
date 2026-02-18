@@ -23,6 +23,8 @@ import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { Dossier } from './entities/dossier.entity';
+import { ChatService } from '../chat/services/chat/chat.service';
+import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 
 
 
@@ -38,6 +40,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepository: Repository<ProcedureType>,
     protected readonly paginationService: PaginationServiceV1,
+    protected readonly chatService: ChatService,
 
   ) {
     super(dossierRepository, paginationService);
@@ -169,7 +172,15 @@ async searhDosiers(
       dossier.collaborators = collaborators;
     }
 
+    let conversationDto = new CreateConversationDto()
+    const users = await this.userRepository.find({
+      select: ['id'],
+    });
+    conversationDto.participantIds = dossier.collaborators.length  > 0 ? createDossierDto.collaborator_ids : users.map(u => u.id)
+    const conversation = await this.chatService.createConversation(conversationDto, createdBy.id)
+    dossier.conversation = conversation;
     const savedDossier = await this.dossierRepository.save(dossier);
+
     return this.mapToResponseDto(savedDossier);
   }
 
@@ -271,6 +282,7 @@ async searhDosiers(
         'steps',
         'jurisdiction',
         'collaborators',
+        'conversation',
         'collaborators.user',
         'diligences'
         // 'comments',
@@ -598,4 +610,102 @@ async searhDosiers(
 
     return response;
   }
+
+
+async getCollaboratorDossiers(
+  collaboratorId: number,
+  paginationParams?: PaginationParamsDto
+): Promise<DossierResponseDto[] | any> {
+  
+  // Vérifier l'existence du collaborateur
+  const collaborator = await this.userRepository.findOne({
+    where: { id: collaboratorId }
+  });
+
+  if (!collaborator) {
+    throw new NotFoundException(`Collaborateur avec l'ID ${collaboratorId} non trouvé`);
+  }
+
+  // Construire la requête de base
+  const queryBuilder = this.dossierRepository
+    .createQueryBuilder('dossier')
+    .leftJoinAndSelect('dossier.collaborators', 'collaborator')
+    .leftJoinAndSelect('dossier.client', 'client')
+    .leftJoinAndSelect('dossier.lawyer', 'lawyer')
+    .leftJoinAndSelect('dossier.procedure_type', 'procedure_type')
+    .leftJoinAndSelect('dossier.procedure_subtype', 'procedure_subtype')
+    .where('collaborator.id = :collaboratorId OR collaborator.id IS NULL', { collaboratorId })
+    .orderBy('dossier.created_at', 'DESC');
+
+  // Alternative avec une sous-requête si la première ne fonctionne pas
+  // .where(qb => {
+  //   const subQuery = qb.subQuery()
+  //     .select('dossier.id')
+  //     .from(Dossier, 'd')
+  //     .leftJoin('d.collaborators', 'c')
+  //     .where('c.id = :collaboratorId OR c.id IS NULL')
+  //     .getQuery();
+  //   return 'dossier.id IN ' + subQuery;
+  // }, { collaboratorId })
+
+  // Exécuter la requête
+  const dossiers = await queryBuilder.getMany();
+
+  // Filtrer pour ne garder que les dossiers où le collaborateur est présent
+  // OU les dossiers sans aucun collaborateur
+  const filteredDossiers = dossiers.filter(dossier => {
+    // Si le dossier n'a pas de collaborateurs, on le garde
+    if (!dossier.collaborators || dossier.collaborators.length === 0) {
+      return true;
+    }
+    // Si le dossier a des collaborateurs, on vérifie si le collaborateur recherché en fait partie
+    return dossier.collaborators.some(c => c.id === collaboratorId);
+  });
+
+  // Si aucun dossier trouvé
+  if (!filteredDossiers || filteredDossiers.length === 0) {
+    // Retourner selon le mode (paginated ou non)
+    if (paginationParams?.page && paginationParams?.limit) {
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: paginationParams.page,
+          limit: paginationParams.limit,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false
+        }
+      };
+    }
+    return [];
+  }
+
+  // Si pas de pagination, retourner tout
+  if (!paginationParams?.page || !paginationParams?.limit) {
+    return Promise.all(filteredDossiers.map(dossier => this.mapToResponseDto(dossier)));
+  }
+
+  // Avec pagination (appliquer la pagination sur les résultats filtrés)
+  const startIndex = (paginationParams.page - 1) * paginationParams.limit;
+  const endIndex = startIndex + paginationParams.limit;
+  const paginatedDossiers = filteredDossiers.slice(startIndex, endIndex);
+  const total = filteredDossiers.length;
+
+  const dtoDossiers = await Promise.all(
+    paginatedDossiers.map(dossier => this.mapToResponseDto(dossier))
+  );
+
+  return {
+    data: dtoDossiers,
+    meta: {
+      total,
+      page: paginationParams.page,
+      limit: paginationParams.limit,
+      totalPages: Math.ceil(total / paginationParams.limit),
+      hasNextPage: paginationParams.page < Math.ceil(total / paginationParams.limit),
+      hasPreviousPage: paginationParams.page > 1
+    }
+  };
+}
 }

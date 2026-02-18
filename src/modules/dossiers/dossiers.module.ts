@@ -15,6 +15,7 @@ import { ProcedureType } from '../procedures/entities/procedure.entity';
 import { DossiersController } from './dossiers.controller';
 import { DossiersService } from './dossiers.service';
 import { Dossier } from './entities/dossier.entity';
+import { ChatModule } from '../chat/chat.module';
 
 
 
@@ -28,6 +29,7 @@ import { Dossier } from './entities/dossier.entity';
     CoreModule,
     forwardRef(() => CustomerModule),
     forwardRef(() => DocumentsModule),
+    forwardRef(() => ChatModule),
 
     TypeOrmModule.forFeature([Dossier,  User, ProcedureType]),
   ],

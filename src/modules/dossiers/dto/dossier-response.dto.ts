@@ -358,6 +358,23 @@ export class DossierResponseDto {
   //   is_paid: boolean;
   // }[];
 
+
+  @Expose()
+    @Transform(({ obj }) => {
+      if (!obj.conversation) return undefined;
+      return {
+        id: obj.conversation.id,
+        name: obj.conversation.name,
+        isGroup: obj.conversation.isGroup,
+      };
+
+  })
+  conversation?: {
+    id: number;
+    name?: string;
+    isGroup: boolean;
+  };
+
   // ---------------- COLLABORATEURS ----------------
   @ApiProperty({
     type: [Object],

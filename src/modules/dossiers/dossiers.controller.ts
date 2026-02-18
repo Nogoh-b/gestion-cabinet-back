@@ -196,6 +196,14 @@ export class DossiersController {
     return this.dossiersService.remove(+id, user);
   }
 
+  @Get('collaborator/:collaboratorId')
+  async getDossiersByCollaborator(
+    @Param('collaboratorId') collaboratorId: number,
+    @Query() paginationParams: PaginationParamsDto
+  ) {
+    return this.dossiersService.getCollaboratorDossiers(collaboratorId, paginationParams);
+  }
+
   // Endpoints spécifiques pour les relations
   @Get(':id/documents')
   @ApiOperation({ summary: 'Obtenir les documents d\'un dossier' })

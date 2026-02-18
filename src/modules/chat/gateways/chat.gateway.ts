@@ -1,6 +1,5 @@
 // src/chat/gateways/chat.gateway.ts
 import { Server, Socket } from 'socket.io';
-import { NotificationsService } from 'src/modules/notification/notification.service';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -18,6 +17,7 @@ import { SendMessageDto } from '../dto/create-conversation.dto';
 import { Message } from '../entities/messages.entity';
 import { ChatService } from '../services/chat/chat.service';
 import { forwardRef, Inject } from '@nestjs/common';
+import { NotificationService } from 'src/modules/notification/notification.service';
 
 
 
@@ -40,7 +40,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @Inject(forwardRef(() => ChatService))
     private chatService: ChatService,
-    private notificationsService: NotificationsService,
+    private notificationsService: NotificationService,
   ) {
     console.log(forwardRef)
 
@@ -50,13 +50,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const userId = client.handshake.auth.userId;
     if (userId) {
       this.connectedUsers.set(userId, client.id);
+
       console.log(`User ${userId} connected`);
-      
+      await this.notificationsService.initConnexion(client)
       // Notifier que l'utilisateur est en ligne
       client.broadcast.emit('userOnline', { userId });
       await this.notificationsService.sendUserStatusNotification(userId, true);
     }
   }
+
+  
+  @SubscribeMessage('get_my_rooms')
+  handleGetMyRooms(client: Socket) {
+    const rooms = Array.from(client.rooms);
+    client.emit('my_rooms', rooms);
+  }
+
 
   handleDisconnect(client: Socket) {
     const userId = this.getUserIdBySocketId(client.id);

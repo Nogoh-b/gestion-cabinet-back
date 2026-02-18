@@ -3,6 +3,7 @@ import { BaseEntity } from 'src/core/entities/baseEntity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
+import { Conversation } from 'src/modules/chat/entities/conversation.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
@@ -11,7 +12,7 @@ import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { Step, StepStatus } from 'src/modules/step/entities/step.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne } from 'typeorm';
 
 
 
@@ -166,6 +167,11 @@ export class Dossier extends BaseEntity {
 
   @OneToMany(() => Diligence, (diligence) => diligence.dossier)
   diligence: Diligence[];
+  
+  @OneToOne(() => Conversation, conversation => conversation.dossier)
+  @JoinColumn({ name: 'conversation_id' })
+  conversation: Conversation;
+
 
 //   @OneToMany(() => Comment, (comment) => comment.dossier)
 //   comments: Comment[];
