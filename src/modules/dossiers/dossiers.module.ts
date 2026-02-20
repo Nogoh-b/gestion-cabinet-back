@@ -26,7 +26,7 @@ import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
-    CoreModule,
+    forwardRef(() => CoreModule),
     forwardRef(() => CustomerModule),
     forwardRef(() => DocumentsModule),
     forwardRef(() => ChatModule),

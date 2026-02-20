@@ -2,7 +2,7 @@
 import { plainToInstance } from 'class-transformer';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { In, Repository } from 'typeorm';
-import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { forwardRef, Injectable, NotFoundException } from '@nestjs/common';
 
 
 
@@ -14,7 +14,6 @@ import { CreateConversationDto, SendMessageDto, CreateGroupDto } from '../../dto
 import { MessageResponseDto } from '../../dto/message-response.dto';
 import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
-import { ChatGateway } from '../../gateways/chat.gateway';
 import { MessageRead } from '../../entities/message-read.entity';
 
 
@@ -34,8 +33,7 @@ export class ChatService {
     private messageRepository: Repository<Message>,
     @InjectRepository(Employee)
     private userRepository: Repository<Employee>,
-    @Inject(forwardRef(() => ChatGateway))
-    private chatGateway: ChatGateway,
+
   ) {
     console.log(forwardRef)
   }
@@ -70,7 +68,6 @@ export class ChatService {
 
     const group = await this.conversationRepository.save(conversation);
 
-    this.chatGateway
     return group
   }
 
@@ -228,7 +225,7 @@ async markMessagesAsRead(conversationId: number, userId: number): Promise<void> 
 
   // 4️⃣ compare
   if (after < before) {
-    this.chatGateway.emitMessagesRead(conversationId, userId);
+    // this.chatGateway.emitMessagesRead(conversationId, userId);
   }
 }
 

@@ -39,7 +39,7 @@ import { DocumentType } from './document-type/entities/document-type.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocumentType, DocumentCustomer]),
-    CoreModule,
+    forwardRef(() => CoreModule),
     DocumentCategoryModule,
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),

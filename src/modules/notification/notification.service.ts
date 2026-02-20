@@ -1,16 +1,16 @@
 // src/modules/notification/notification.service.ts
 import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, FindOptionsWhere, LessThan } from 'typeorm';
+import { Repository, In, LessThan, DataSource } from 'typeorm';
 import { Notification } from './entities/notification.entity';
-import { CreateNotificationDto } from './dto/create-notification.dto';
+import { UserNotification } from './entities/user-notification.entity';
+import { CreateNotificationDto, CreateBulkNotificationDto } from './dto/create-notification.dto';
 import { plainToInstance } from 'class-transformer';
 import { User } from '../iam/user/entities/user.entity';
-import { NotificationPriority, NotificationType } from './enum/notification-type.enum';
-import { NotificationGateway } from './gateways/notification.gateway';
 import { NotificationResponseDto } from './dto/notification-response.dto';
-import { Socket } from 'socket.io';
 import { DossiersService } from '../dossiers/dossiers.service';
+import { UsersService } from '../iam/user/user.service';
+import { NotificationType } from './enum/notification-type.enum';
 
 @Injectable()
 export class NotificationService {
@@ -19,60 +19,172 @@ export class NotificationService {
   constructor(
     @InjectRepository(Notification)
     private notificationRepository: Repository<Notification>,
+    @InjectRepository(UserNotification)
+    private userNotificationRepository: Repository<UserNotification>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
-    private notificationGateway: NotificationGateway,
+    private userService: UsersService,
     @Inject(forwardRef(() => DossiersService))
-    private dossierService: DossiersService
-  ) {
-    console.log(forwardRef)
+    private dossierService: DossiersService,
+    private dataSource: DataSource
+  ) {console.log(forwardRef)}
 
-  }
-
-  // Créer une notification
+  // Créer une notification pour un utilisateur
   async create(createNotificationDto: CreateNotificationDto): Promise<NotificationResponseDto> {
-    const notification = this.notificationRepository.create({
-      ...createNotificationDto,
-      is_read: false,
-      read_at: null
-    });
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    const savedNotification = await this.notificationRepository.save(notification);
-    
-    // Envoyer en temps réel via WebSocket
-    await this.notificationGateway.sendToUser(
-      createNotificationDto.user_id,
-      'new_notification',
-      plainToInstance(NotificationResponseDto, savedNotification)
-    );
+    try {
+      // 1. Créer la notification principale
+      const notification = this.notificationRepository.create({
+        type: createNotificationDto.type as Notification['type'],
+        title: createNotificationDto.title,
+        content: createNotificationDto.content,
+        data: createNotificationDto.data,
+        link: createNotificationDto.link,
+        priority: (createNotificationDto.priority ?? 'NORMAL') as Notification['priority'],
+        image_url: createNotificationDto.image_url,
+        actions: createNotificationDto.actions ?? []
+      });
 
-    this.logger.log(`✅ Notification créée pour l'utilisateur ${createNotificationDto.user_id}`);
+      const savedNotification = await queryRunner.manager.save(notification);
 
-    return plainToInstance(NotificationResponseDto, savedNotification);
-  }
+      // 2. Créer l'entrée dans la table pivot
+      // const userNotification = this.userNotificationRepository.create({
+      //   user_id: createNotificationDto.user_id,
+      //   notification_id: savedNotification.id,
+      //   is_read: false,
+      //   is_push_sent: createNotificationDto.is_push_sent ?? true
+      // });
 
-  // Créer une notification pour plusieurs utilisateurs
-  async createBulk(createNotificationDtos: CreateNotificationDto[]): Promise<NotificationResponseDto[]> {
-    const notifications = this.notificationRepository.create(
-      createNotificationDtos.map(dto => ({
-        ...dto,
+      // const savedUserNotification = await queryRunner.manager.save(userNotification);
+
+      await queryRunner.commitTransaction();
+
+      // 3. Envoyer en temps réel
+      const responseDto = plainToInstance(NotificationResponseDto, {
+        ...savedNotification,
+        // userNotificationId: savedUserNotification.id,
         is_read: false,
         read_at: null
-      }))
-    );
+      });
 
-    const savedNotifications = await this.notificationRepository.save(notifications);
 
-    // Envoyer chaque notification à son destinataire
-    savedNotifications.forEach(notification => {
-      this.notificationGateway.sendToUser(
-        notification.user_id,
-        'new_notification',
-        plainToInstance(NotificationResponseDto, notification)
+      this.logger.log(`✅ Notification créée pour l'utilisateur ${createNotificationDto.user_id}`);
+
+      return responseDto;
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('❌ Erreur création notification:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // Créer une notification pour plusieurs utilisateurs (version optimisée)
+  async createBulk(createBulkDto: CreateBulkNotificationDto, senderId: number): Promise<NotificationResponseDto[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Créer une seule notification pour tous
+      const notification = this.notificationRepository.create({
+        type: createBulkDto.type as Notification['type'],
+        title: createBulkDto.title,
+        content: createBulkDto.content,
+        data: createBulkDto.data,
+        link: createBulkDto.link,
+        priority: (createBulkDto.priority ?? 'NORMAL') as Notification['priority'],
+        image_url: createBulkDto.image_url,
+        actions: createBulkDto.actions ?? [],
+        user_id: senderId
+      });
+      console.log('Creating bulk notification with data:', createBulkDto.user_ids);
+
+      const savedNotification = await queryRunner.manager.save(notification);
+
+      // 2. Créer les entrées dans la table pivot pour tous les utilisateurs
+      const userNotifications = createBulkDto.user_ids.map(userId => 
+        this.userNotificationRepository.create({
+          user_id: userId,
+          notification_id: savedNotification.id,
+          is_read: false,
+          is_push_sent: true
+        })
       );
-    });
 
-    return plainToInstance(NotificationResponseDto, savedNotifications);
+      const savedUserNotifications = await queryRunner.manager.save(userNotifications);
+
+      await queryRunner.commitTransaction();
+
+      // 3. Envoyer en temps réel à chaque utilisateur
+      const responseDtos = savedUserNotifications.map(userNotif => 
+        plainToInstance(NotificationResponseDto, {
+          ...savedNotification,
+          userNotificationId: userNotif.id,
+          is_read: false,
+          read_at: null
+        })
+      );
+
+      // Envoyer à chaque utilisateur
+ 
+
+      this.logger.log(`✅ Notifications créées pour ${createBulkDto.user_ids.length} utilisateurs`);
+
+      return responseDtos;
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error('❌ Erreur création bulk notifications:', error);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // Version simplifiée pour créer des notifications en bulk (si vous avez déjà plusieurs notifications)
+  async createMany(createNotificationDtos: CreateNotificationDto[]): Promise<NotificationResponseDto[]> {
+    // Grouper par contenu de notification pour optimiser
+    const groupedByContent = new Map<string, {
+      dto: CreateNotificationDto;
+      userIds: number[];
+    }>();
+
+    for (const dto of createNotificationDtos) {
+      const key = `${dto.type}_${dto.title}_${dto.content}`;
+      if (!groupedByContent.has(key)) {
+        groupedByContent.set(key, {
+          dto,
+          userIds: []
+        });
+      }
+      groupedByContent.get(key)?.userIds.push(dto.user_id);
+    }
+
+    // Créer les notifications groupées
+    const results: NotificationResponseDto[] = [];
+    
+    for (const [_, group] of groupedByContent) {
+      const bulkResult = await this.createBulk({
+        user_ids: group.userIds,
+        type: group.dto.type,
+        title: group.dto.title,
+        content: group.dto.content,
+        data: group.dto.data,
+        link: group.dto.link,
+        priority: group.dto.priority,
+        actions: group.dto.actions,
+        image_url: group.dto.image_url
+      }, 1);
+      results.push(...bulkResult);
+    }
+
+    return results;
   }
 
   // Récupérer les notifications d'un utilisateur
@@ -82,88 +194,115 @@ export class NotificationService {
     limit: number = 20,
     unreadOnly: boolean = false
   ): Promise<{ data: NotificationResponseDto[]; total: number; unread_count: number }> {
-    const where: FindOptionsWhere<Notification> = { user_id: userId };
-    
+    const queryBuilder = this.userNotificationRepository
+      .createQueryBuilder('userNotification')
+      .leftJoinAndSelect('userNotification.notification', 'notification')
+      .where('userNotification.user_id = :userId', { userId })
+      .orderBy('userNotification.created_at', 'DESC');
+
     if (unreadOnly) {
-      where.is_read = false;
+      queryBuilder.andWhere('userNotification.is_read = :isRead', { isRead: false });
     }
 
-    const [notifications, total] = await this.notificationRepository.findAndCount({
-      where,
-      order: { created_at: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-      relations: ['user']
-    });
+    // Pagination
+    queryBuilder
+      .skip((page - 1) * limit)
+      .take(limit);
 
+    const [userNotifications, total] = await queryBuilder.getManyAndCount();
+
+    // Compter les non lues
     const unread_count = await this.countUnread(userId);
 
-    const data = plainToInstance(NotificationResponseDto, notifications);
+    // Transformer en DTO
+    const data = userNotifications.map(un => 
+      plainToInstance(NotificationResponseDto, {
+        ...un.notification,
+        userNotificationId: un.id,
+        is_read: un.is_read,
+        read_at: un.read_at,
+        created_at: un.created_at // Utiliser la date de la table pivot pour l'ordre
+      })
+    );
 
     return { data, total, unread_count };
   }
 
   // Récupérer les notifications non lues
   async getUnreadNotifications(userId: number): Promise<NotificationResponseDto[]> {
-    const notifications = await this.notificationRepository.find({
+    const userNotifications = await this.userNotificationRepository.find({
       where: { user_id: userId, is_read: false },
+      relations: ['notification'],
       order: { created_at: 'DESC' },
       take: 50
     });
 
-    return plainToInstance(NotificationResponseDto, notifications);
+    return userNotifications.map(un => 
+      plainToInstance(NotificationResponseDto, {
+        ...un.notification,
+        userNotificationId: un.id,
+        is_read: un.is_read,
+        read_at: un.read_at,
+        created_at: un.created_at
+      })
+    );
   }
 
   // Compter les notifications non lues
   async countUnread(userId: number): Promise<number> {
-    return this.notificationRepository.count({
+    return this.userNotificationRepository.count({
       where: { user_id: userId, is_read: false }
     });
   }
 
   // Marquer comme lue
   async markAsRead(notificationIds: number[], userId: number): Promise<void> {
-    await this.notificationRepository.update(
+    // notificationIds ici sont les IDs de la table user_notifications
+    await this.userNotificationRepository.update(
       { id: In(notificationIds), user_id: userId },
       { is_read: true, read_at: new Date() }
     );
 
     // Mettre à jour le compteur en temps réel
     const unreadCount = await this.countUnread(userId);
-    this.notificationGateway.sendToUser(userId, 'unread_count', { count: unreadCount });
+    // this.mainGateway.sendToUser(userId, 'unread_count', { count: unreadCount });
   }
 
   // Marquer tout comme lu
   async markAllAsRead(userId: number): Promise<void> {
-    await this.notificationRepository.update(
+    await this.userNotificationRepository.update(
       { user_id: userId, is_read: false },
       { is_read: true, read_at: new Date() }
     );
 
-    this.notificationGateway.sendToUser(userId, 'unread_count', { count: 0 });
+    // this.mainGateway.sendToUser(userId, 'unread_count', { count: 0 });
   }
 
   // Archiver une notification
-  async archive(notificationId: number, userId: number): Promise<void> {
-    const notification = await this.notificationRepository.findOne({
-      where: { id: notificationId, user_id: userId }
-    });
+  async archive(userNotificationId: number, userId: number): Promise<void> {
+    const result = await this.userNotificationRepository.update(
+      { id: userNotificationId, user_id: userId },
+      { is_archived: true }
+    );
 
-    if (!notification) {
+    if (result.affected === 0) {
       throw new NotFoundException('Notification non trouvée');
     }
-
-    notification.is_archived = true;
-    await this.notificationRepository.save(notification);
   }
 
-  // Supprimer une notification
-  async remove(notificationId: number, userId: number): Promise<void> {
-    const result = await this.notificationRepository.delete({ id: notificationId, user_id: userId });
+  // Supprimer une notification (soft delete ou hard delete selon besoin)
+  async remove(userNotificationId: number, userId: number): Promise<void> {
+    const result = await this.userNotificationRepository.delete({ 
+      id: userNotificationId, 
+      user_id: userId 
+    });
     
     if (result.affected === 0) {
       throw new NotFoundException('Notification non trouvée');
     }
+
+    // Optionnel: nettoyer les notifications orphelines
+    await this.cleanupOrphanNotifications();
   }
 
   // Nettoyer les vieilles notifications
@@ -171,26 +310,64 @@ export class NotificationService {
     const date = new Date();
     date.setDate(date.getDate() - daysOld);
 
-    const result = await this.notificationRepository.delete({
+    // Supprimer les entrées de la table pivot
+    const result = await this.userNotificationRepository.delete({
       created_at: LessThan(date),
-      is_read: true
+      is_read: true,
+      is_archived: true
     });
+
+    // Nettoyer les notifications orphelines
+    await this.cleanupOrphanNotifications();
 
     this.logger.log(`🧹 Nettoyage: ${result.affected} notifications supprimées`);
     return result.affected;
   }
 
+  // Nettoyer les notifications sans utilisateurs associés
+  private async cleanupOrphanNotifications(): Promise<void> {
+    await this.notificationRepository
+      .createQueryBuilder()
+      .delete()
+      .where('id NOT IN (SELECT DISTINCT notification_id FROM user_notifications)')
+      .execute();
+  }
+
+  // Récupérer les statistiques
+  async getNotificationStats(userId: number, days: number = 7): Promise<any> {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const stats = await this.userNotificationRepository
+      .createQueryBuilder('userNotification')
+      .leftJoin('userNotification.notification', 'notification')
+      .select('notification.type', 'type')
+      .addSelect('COUNT(userNotification.id)', 'count')
+      .where('userNotification.user_id = :userId', { userId })
+      .andWhere('userNotification.created_at >= :startDate', { startDate })
+      .groupBy('notification.type')
+      .getRawMany();
+
+    const total = stats.reduce((acc, curr) => acc + parseInt(curr.count), 0);
+    const unread = await this.countUnread(userId);
+
+    return {
+      total,
+      by_type: stats,
+      unread
+    };
+  }
+
   // Méthodes spécifiques pour différents types de notifications
   async sendMessageNotification(message: any, senderId: number): Promise<void> {
-    // Récupérer les destinataires (sauf l'expéditeur)
     const recipients = message.conversation.participants
       .filter(p => p.id !== senderId)
       .map(p => p.id);
 
     if (recipients.length === 0) return;
 
-    const notificationDtos: CreateNotificationDto[] = recipients.map(userId => ({
-      user_id: userId,
+    await this.createBulk({
+      user_ids: recipients,
       type: NotificationType.MESSAGE,
       title: 'Nouveau message',
       content: `${message.sender_name}: ${message.content.substring(0, 100)}${message.content.length > 100 ? '...' : ''}`,
@@ -201,15 +378,13 @@ export class NotificationService {
         senderName: message.sender_name
       },
       link: `/chat/${message.conversation_id}`,
-      priority: NotificationPriority.NORMAL
-    }));
-
-    await this.createBulk(notificationDtos);
+      priority: 'NORMAL'
+    }, senderId);
   }
 
   async sendDossierStatusNotification(dossier: any, oldStatus: string, userIds: number[]): Promise<void> {
-    const notificationDtos: CreateNotificationDto[] = userIds.map(userId => ({
-      user_id: userId,
+    await this.createBulk({
+      user_ids: userIds,
       type: NotificationType.DOSSIER_STATUS_CHANGED,
       title: 'Changement de statut',
       content: `Le dossier ${dossier.dossier_number} est passé de "${oldStatus}" à "${dossier.status}"`,
@@ -220,22 +395,19 @@ export class NotificationService {
         newStatus: dossier.status
       },
       link: `/dossiers/${dossier.id}`,
-      priority: NotificationPriority.NORMAL
-    }));
-
-    await this.createBulk(notificationDtos);
+      priority: 'NORMAL'
+    }, 1);
   }
 
   async sendAudienceReminder(audience: any): Promise<void> {
-    // Récupérer les personnes concernées
     const userIds = [
       audience.lawyer_id,
       audience.client_id,
       ...(audience.collaborator_ids || [])
     ].filter(Boolean);
 
-    const notificationDtos: CreateNotificationDto[] = userIds.map(userId => ({
-      user_id: userId,
+    await this.createBulk({
+      user_ids: userIds,
       type: NotificationType.AUDIENCE_REMINDER,
       title: 'Rappel d\'audience',
       content: `Audience pour le dossier ${audience.dossier_number} prévue le ${new Date(audience.date).toLocaleDateString('fr-FR')} à ${audience.time}`,
@@ -247,68 +419,13 @@ export class NotificationService {
         time: audience.time
       },
       link: `/audiences/${audience.id}`,
-      priority: NotificationPriority.HIGH
-    }));
-
-    await this.createBulk(notificationDtos);
-  }
-
-  async sendFactureOverdueReminders(): Promise<void> {
-    // Logique pour envoyer des rappels de factures impayées
-    // À implémenter selon votre logique métier
+      priority: 'HIGH'
+    }, 1);
   }
 
   // Récupérer les rooms de dossiers pour un utilisateur
   async getUserDossierRooms(userId: number): Promise<number[]> {
-    // Cette méthode dépend de votre structure de données
-    // Exemple avec une requête personnalisée
-    // const result = await this.notificationRepository.query(`
-    //   SELECT DISTINCT d.id 
-    //   FROM dossiers d
-    //   LEFT JOIN dossier_collaborators dc ON d.id = dc.dossier_id
-    //   WHERE d.lawyer_id = $1 OR dc.user_id = $1
-    // `, [userId]);
-
-    const dossiers = await this.dossierService.getCollaboratorDossiers(userId)
-
-    return dossiers.map(r => r.id);
-  }
-
-  // Statistiques
-  async getNotificationStats(userId: number, days: number = 7): Promise<any> {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    const stats = await this.notificationRepository
-      .createQueryBuilder('notification')
-      .select('notification.type', 'type')
-      .addSelect('COUNT(notification.id)', 'count')
-      .where('notification.user_id = :userId', { userId })
-      .andWhere('notification.created_at >= :startDate', { startDate })
-      .groupBy('notification.type')
-      .getRawMany();
-
-    const total = stats.reduce((acc, curr) => acc + parseInt(curr.count), 0);
-
-    return {
-      total,
-      by_type: stats,
-      unread: await this.countUnread(userId)
-    };
-  }
-
-  async initConnexion(client: Socket){
-    this.notificationGateway.initConnexion(client)
-  }
-
-  async sendUserStatusNotification(userId: number, isOnline: boolean): Promise<void> {
-    // Récupérer les utilisateurs qui doivent être notifiés
-    // (par exemple, les collaborateurs, admins, etc.)
-    
-    this.notificationGateway.sendToAll('user_status_changed', {
-      userId,
-      status: isOnline ? 'online' : 'offline',
-      timestamp: new Date().toISOString()
-    });
+    const dossiers = await this.dossierService.getCollaboratorDossiers(userId);
+    return dossiers.map(d => d.id);
   }
 }

@@ -6,10 +6,12 @@ import {
     CreateDateColumn,
     ManyToOne,
     JoinColumn,
-    Index
+    Index,
+    OneToMany
 } from 'typeorm';
 import { User } from '../../iam/user/entities/user.entity';
 import { NotificationPriority, NotificationType } from '../enum/notification-type.enum';
+import { UserNotification } from './user-notification.entity';
 
 @Entity('notifications')
 @Index(['user_id', 'read_at'])
@@ -65,4 +67,7 @@ export class Notification {
 
   @Column({ type: 'json', nullable: true })
   actions: any[];
+
+    @OneToMany(() => UserNotification, userNotification => userNotification.notification)
+  userNotifications: UserNotification[];
 }

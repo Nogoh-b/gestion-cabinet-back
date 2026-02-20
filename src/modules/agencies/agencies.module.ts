@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 
 
 
@@ -42,7 +42,7 @@ import { Employee } from './employee/entities/employee.entity';
 
 @Module({
   imports: [
-    GeographyModule,    // forwardRef(() =>  ),
+    forwardRef(() => GeographyModule),  // <-- UTILISEZ forwardRef ICI
     TypeOrmModule.forFeature([Branch, Employee]),
 
   ],

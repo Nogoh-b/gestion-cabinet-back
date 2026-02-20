@@ -73,6 +73,10 @@ import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
 import { PaginationService as MyPaginationService, PaginationService } from './shared/services/pagination/pagination.service';
 import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
+import { SocketService } from './shared/services/socket/socket.service';
+import { MainGateway } from './shared/services/socket/main.gateway';
+import { ChatModule } from 'src/modules/chat/chat.module';
+import { NotificationModule } from 'src/modules/notification/notification.module';
 
 
 
@@ -141,6 +145,9 @@ import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1
       OtpOnlineLink,
     ]),
     PassportModule,
+    ChatModule,
+    NotificationModule,
+    // forwardRef(() => NotificationModule),
     // SeedersModule,
     ScheduleModule.forRoot(),
   ],
@@ -170,7 +177,9 @@ import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1
     MyPaginationService,
     PaginationService,
     PaginationServiceV1,
+    SocketService,
     EmailService,
+    MainGateway
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
   exports: [
@@ -192,6 +201,8 @@ import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1
     PaginationServiceV1,
     // JwtAuthGuard,
     KeyGeneratorService,
+    SocketService,
+    MainGateway
   ],
 })
 export class CoreModule {}

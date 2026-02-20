@@ -14,7 +14,7 @@ import {
   HttpStatus
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
-import { CreateNotificationDto, MarkReadDto } from './dto/create-notification.dto';
+import { CreateBulkNotificationDto, CreateNotificationDto, MarkReadDto } from './dto/create-notification.dto';
 import { UserRole } from '../../core/enums/user-role.enum';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
@@ -68,8 +68,8 @@ export class NotificationController {
   @Post('bulk')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Créer plusieurs notifications (admin)' })
-  async createBulk(@Body() createNotificationDtos: CreateNotificationDto[]) {
-    return this.notificationService.createBulk(createNotificationDtos);
+  async createBulk(@Body() createNotificationDtos: CreateBulkNotificationDto, @Request() req) {
+    return this.notificationService.createBulk(createNotificationDtos, req.user.id);
   }
 
   @Patch('mark-read')

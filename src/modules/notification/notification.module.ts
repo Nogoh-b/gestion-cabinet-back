@@ -5,18 +5,19 @@ import { Notification } from './entities/notification.entity';
 import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { User } from '../iam/user/entities/user.entity';
-import { NotificationGateway } from './gateways/notification.gateway';
-import { ChatModule } from '../chat/chat.module';
 import { DossiersModule } from '../dossiers/dossiers.module';
+import { CoreModule } from 'src/core/core.module';
+import { UserNotification } from './entities/user-notification.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Notification, User]),
+    TypeOrmModule.forFeature([Notification, User, UserNotification]),
+    // CoreModule,
     forwardRef(() => DossiersModule), // Pour éviter les dépendances circulaires
-    forwardRef(() => ChatModule) // Pour éviter les dépendances circulaires
+    forwardRef(() => CoreModule) // Pour éviter les dépendances circulaires
   ],
   controllers: [NotificationController],
-  providers: [NotificationService, NotificationGateway],
+  providers: [NotificationService],
   exports: [NotificationService]
 })
 export class NotificationModule {}

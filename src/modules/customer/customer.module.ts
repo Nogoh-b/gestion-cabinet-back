@@ -1,5 +1,5 @@
 import { CoreModule } from 'src/core/core.module';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
@@ -51,8 +51,8 @@ import { DocumentsModule } from '../documents/documents.module';
   imports: [
     
     // forwardRef(() => IamModule),
-    // forwardRef(() => DocumentsModule),
-      CoreModule,
+    forwardRef(() => CoreModule),
+      // CoreModule,
     AgenciesModule, // Import direct
     GeographyModule, // Import direct  
     DocumentsModule,

@@ -1,5 +1,5 @@
 import { CoreModule } from 'src/core/core.module';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
@@ -23,7 +23,7 @@ import { RegionsService } from './region/region.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Region,LocationCity,District,Division,Country]),
-     CoreModule,        
+    forwardRef(() => CoreModule),  // <-- UTILISEZ forwardRef ICI
     // IamModule,
     // forwardRef(() => AgenciesModule), 
 
