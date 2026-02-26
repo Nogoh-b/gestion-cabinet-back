@@ -87,8 +87,13 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.removeConnection(client.id);
       
       if (!this.isUserOnline(userId)) {
+
+        client.broadcast.to(`conversation_4`).emit('userOffline', {
+          type: 'new_message',
+          room: `conversation_4`, 
+        });
         // Notifier les deux types d'événements
-        this.server.emit('user_status_changed', {
+        client.broadcast.emit('userOffline', {
           userId,
           status: 'offline',
           timestamp: new Date().toISOString()
@@ -99,6 +104,41 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       
       this.logger.log(`🔴 User ${userId} déconnecté`);
     }
+  }
+
+  // ========== ÉVÉNEMENTS CHAT ==========
+  @SubscribeMessage('join_room')
+  async joinRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any, // SendMessageDto
+  ) {
+    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
+    const room = data.room;
+    await client.join(room);
+    this.addUserRoom(userId, room);
+    client.emit('joined_room', { room });
+    this.logger.log(`📌 User ${userId} rejoint la room ${room}`);
+
+    const socketsInRoom = await this.server.in(room).fetchSockets();
+    // ✅ Extraire les userIds uniques
+    const onlineUserIds = Array.from(
+      new Set(
+        socketsInRoom
+          .map(s => this.getUserIdBySocketId(s.id))
+          .filter(id => id !== undefined)
+      )
+    );
+      // ✅ Envoyer uniquement au client qui vient de rejoindre
+      client.emit('room_online_users', {
+        room,
+        users: onlineUserIds
+      });
+
+    client.broadcast.to(room).emit('user_joined', {
+      userId,
+      room
+    });
+
   }
 
   // ========== ÉVÉNEMENTS CHAT ==========
@@ -115,15 +155,19 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const message = await this.chatService.sendMessage(data, userId);
 
       // Émettre les mêmes événements qu'avant
-      this.server.emit('new_message', {
-        type: 'new_message',
-        message,
-      });
+      // this.server.emit('new_message', {
+      //   type: 'new_message',
+      //   message,
+      // });
 
-      this.server.to(`conversation_${data.conversationId}`).emit('conversation_message', {
+      client.broadcast.to(`conversation_${data.conversationId}`).emit('room_message', {
         type: 'new_message',
         message,
+        room: `conversation_${data.conversationId}`, // ✅ Ajouter la room
+
       });
+      this.logger.log(`✅ Message envoyé à la conversation ${data.conversationId}`);
+
 
       // Notifications via le service notification existant
       await this.notificationService.sendMessageNotification(message, userId);
@@ -134,7 +178,39 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage('typing')
+  handleTyping(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: {
+      conversationId: number;
+      isTyping: boolean;
+      room: string;
+      userName: string;
+    },
+  ) {
+    try {
+      const userId = this.getUserIdBySocketId(client.id);
+      if (!userId) return;
 
+      this.logger.debug(
+        `⌨️ typing user ${userId} in ${data.room}: ${data.isTyping}`,
+      );
+
+      // broadcast à la room SAUF l'émetteur
+      client.broadcast.to(data.room).emit('typing', {
+        userId,
+        conversationId: data.conversationId,
+        isTyping: data.isTyping,
+        room: data.room,
+        userName: data.userName // Vous pouvez remplacer par le nom réel de l'utilisateur si disponible
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error('❌ typing error', error);
+      client.emit('error', { message: error.message });
+    }
+  }
 
 
 
@@ -331,10 +407,10 @@ async handleBroadcastNotification(
     }
 
     // Récupérer tous les utilisateurs (à adapter selon votre service)
-    // let targetUsers = await this.userService.findAll();
+    let targetUsers = await this.notificationService.findAllUser();
     
     // Garder une trace du total avant filtrage pour les logs
-    // const totalBeforeFilter = targetUsers.length;
+    const totalBeforeFilter = targetUsers.length;
 
     // Appliquer les filtres
     /*if (!data.include_all) {
@@ -359,9 +435,9 @@ async handleBroadcastNotification(
     }*/
 
     // Extraire les IDs des utilisateurs cibles
-    /*const targetUserIds = targetUsers.map(user => user.id);
+    const targetUserIds = targetUsers.map(user => user.id);
 
-    this.logger.log(`👥 Broadcast cible: ${targetUserIds.length}/${totalBeforeFilter} utilisateurs`);*/
+    this.logger.log(`👥 Broadcast cible: ${targetUserIds.length}/${totalBeforeFilter} utilisateurs`);
 
     let savedNotifications : NotificationResponseDto[] = [];
 
@@ -369,7 +445,8 @@ async handleBroadcastNotification(
     // if (data.save_to_db !== false && targetUserIds.length > 0) {
     if (data.save_to_db !== false) {
       savedNotifications = await this.notificationService.createBulk({
-        user_ids: [],
+        user_ids: targetUserIds,
+        broadcast:true,
         type: data.type as NotificationType,
         title: data.title,
         content: data.content,
@@ -427,14 +504,13 @@ async handleBroadcastNotification(
     const connectedTargetUsers = this.userSockets /*targetUserIds.filter(id => 
       connectedUserIds.includes(id)
     );*/
-    const targetUserIds = this.userSockets;
     // Réponse au sender avec les statistiques
     const response = {
       success: true,
       stats: {
-        total: targetUserIds.size,
+        total: targetUserIds.length,
         connected: connectedTargetUsers.size,
-        offline: targetUserIds.size - connectedTargetUsers.size,
+        offline: targetUserIds.length - connectedTargetUsers.size,
         saved: savedNotifications.length,
         filters: {
           roles: data.roles,
@@ -442,13 +518,13 @@ async handleBroadcastNotification(
           excludeCurrentUser: data.exclude_current_user
         }
       },
-      message: `Broadcast envoyé à ${connectedTargetUsers.size} utilisateurs connectés (${targetUserIds.size - connectedTargetUsers.size} hors ligne recevront à la connexion)`,
+      message: `Broadcast envoyé à ${connectedTargetUsers.size} utilisateurs connectés (${targetUserIds.length - connectedTargetUsers.size} hors ligne recevront à la connexion)`,
       timestamp: new Date().toISOString()
     };
 
     client.emit('broadcast_sent', response);
 
-    this.logger.log(`✅ Broadcast envoyé - Connectés: ${connectedTargetUsers.size}/${targetUserIds.size}`);
+    this.logger.log(`✅ Broadcast envoyé - Connectés: ${connectedTargetUsers.size}/${targetUserIds.length}`);
 
     return { 
       success: true, 
@@ -493,30 +569,31 @@ private getUserSockets(userId: number): string[] {
 
 
 
-  @SubscribeMessage('joinConversation')
+  @SubscribeMessage('userReadMessage')
   async handleJoinConversation(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number },
+    @MessageBody() data: { conversationId: number , roomName: string},
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
     
-    await client.join(`conversation_${data.conversationId}`);
-    await this.chatService.markMessagesAsRead(data.conversationId, userId);
+    const lastMessageId = await this.chatService.markMessagesAsRead(data.conversationId, userId);
     
-    client.emit('joinedConversation', { conversationId: data.conversationId });
+    client.broadcast.to(data.roomName).emit('messagesReaded', { conversationId: data.conversationId, lastMessageId, userId });
+    this.logger.log(`📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`);
+
   }
 
-  @SubscribeMessage('typing')
-  handleTyping(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number, isTyping: boolean },
-  ) {
-    const userId = this.getUserIdBySocketId(client.id);
-    client.broadcast.to(`conversation_${data.conversationId}`).emit('userTyping', {
-      userId,
-      isTyping: data.isTyping,
-    });
-  }
+  // @SubscribeMessage('typing')
+  // handleTyping(
+  //   @ConnectedSocket() client: Socket,
+  //   @MessageBody() data: { conversationId: number, isTyping: boolean },
+  // ) {
+  //   const userId = this.getUserIdBySocketId(client.id);
+  //   client.broadcast.to(`conversation_${data.conversationId}`).emit('userTyping', {
+  //     userId,
+  //     isTyping: data.isTyping,
+  //   });
+  // }
 
   @SubscribeMessage('messages_read')
   async handleMessagesRead(

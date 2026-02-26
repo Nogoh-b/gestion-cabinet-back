@@ -27,4 +27,13 @@ export class MessageRead {
 
   @CreateDateColumn()
   readAt: Date;
+
+  get messageId(): number {
+    return this.message?.id;
+  }
+
+  // Getter pour l'ID du lecteur
+  get readerId(): number {
+    return this.reader?.id;
+  }
 }

@@ -289,7 +289,7 @@ async searhDosiers(
         // 'comments.user'
       ],
     });
-    console.log(dossier)
+    // console.log(dossier)
 
     if (!dossier) {
       throw new NotFoundException(`Dossier ${id} non trouvé`);

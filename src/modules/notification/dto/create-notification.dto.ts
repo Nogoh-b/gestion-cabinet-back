@@ -1,5 +1,5 @@
 // src/modules/notification/dto/create-notification.dto.ts
-import { IsNotEmpty, IsString, IsOptional, IsEnum, IsNumber, IsObject, IsArray, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsEnum, IsNumber, IsObject, IsArray, IsBoolean, IsEmpty } from 'class-validator';
 import { NotificationType } from '../enum/notification-type.enum';
 
 export class CreateNotificationDto {
@@ -57,6 +57,10 @@ export class CreateBulkNotificationDto {
   @IsNotEmpty()
   @IsString()
   title: string;
+
+  @IsEmpty()
+  @IsBoolean()
+  broadcast?: boolean;
 
   @IsOptional()
   @IsString()

@@ -228,6 +228,10 @@ export class NotificationService {
     return { data, total, unread_count };
   }
 
+  async findAllUser(){
+    return this.userService.findAll();
+  }
+
   // Récupérer les notifications non lues
   async getUnreadNotifications(userId: number): Promise<NotificationResponseDto[]> {
     const userNotifications = await this.userNotificationRepository.find({
