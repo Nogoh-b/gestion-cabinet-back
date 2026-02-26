@@ -25,6 +25,9 @@ export class MessageRead {
   @Column({ default: false })
   isRead: boolean;
 
+  @Column({ default: false })
+  isReceive: boolean;
+
   @CreateDateColumn()
   readAt: Date;
 

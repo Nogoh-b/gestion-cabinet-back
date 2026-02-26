@@ -243,16 +243,16 @@ async getConversation(conversationId: number, userId?: number) {
   }
 
     // Transformer pour que reader soit directement l'ID
-    if (conversation.messages) {
-      conversation.messages.forEach(message => {
-        if (message.reads) {
-          message.reads = message.reads.map(read => ({
-            ...read,
-            reader: read.reader?.id
-          })) as any; // 👈 Force le type
-        }
-      });
-    }
+  if (conversation.messages) {
+    conversation.messages.forEach(message => {
+      if (message.reads) {
+        message.reads = message.reads.map(read => ({
+          ...read,
+          reader: read.reader?.id
+        })) as any; // 👈 Force le type
+      }
+    });
+  }
 
   return conversation;
 }
@@ -304,5 +304,17 @@ async markMessagesAsRead(conversationId: number, userId: number): Promise<any> {
   }
   return messageIds[0]
 }
+
+async setReceiveMessagesWithCount(userId: number): Promise<{ updated: number }> {
+    const result = await this.messageReadRepository
+      .createQueryBuilder()
+      .update(MessageRead)
+      .set({ isReceive: true })
+      .where('reader.id = :userId', { userId })
+      .andWhere('isReceive = :isReceive', { isReceive: false })
+      .execute();
+
+    return { updated: result.affected || 0 };
+  }
 
 }

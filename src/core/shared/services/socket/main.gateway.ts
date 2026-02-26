@@ -14,6 +14,7 @@ import { NotificationType } from 'src/modules/notification/enum/notification-typ
 import { ChatService } from 'src/modules/chat/services/chat/chat.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { NotificationResponseDto } from 'src/modules/notification/dto/notification-response.dto';
+import { UsersService } from 'src/modules/iam/user/user.service';
 
 @WebSocketGateway({
   cors: {
@@ -53,7 +54,8 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const userRoom = `user_${userId}`;
       await client.join(userRoom);
       this.addUserRoom(userId, userRoom);
-
+      this.userService.update(userId,{is_online : true})
+      this.chatService.setReceiveMessagesWithCount(userId)
       // Envoyer les notifications non lues (comportement de NotificationGateway)
       const unreadNotifications = await this.getUnreadNotifications(userId);
       if (unreadNotifications.length > 0) {
@@ -98,8 +100,10 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
           status: 'offline',
           timestamp: new Date().toISOString()
         });
+        const lastSeen  = new Date().toISOString()
+        this.userService.update(userId,{is_online : false, lastSeen})
         
-        this.server.emit('userOffline', { userId });
+        this.server.emit('userOffline', { userId, lastSeen });
       }
       
       this.logger.log(`🔴 User ${userId} déconnecté`);
@@ -834,5 +838,6 @@ private getUserSockets(userId: number): string[] {
   constructor(
     private chatService: ChatService,
     private notificationService: NotificationService,
+    private userService: UsersService
   ) {}
 }

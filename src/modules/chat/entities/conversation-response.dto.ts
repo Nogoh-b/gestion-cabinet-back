@@ -1,61 +1,57 @@
-// src/chat/entities/conversation.entity.ts
-import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany, ManyToMany, JoinTable, OneToOne } from 'typeorm';
+// src/chat/dto/response/conversation-response.dto.ts
+import { Expose, Type } from 'class-transformer';
+import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
+import { MessageResponseDto } from '../dto/message-response.dto';
+import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 
-import { Message } from './messages.entity';
-import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Expose } from 'class-transformer';
+export class LastMessageDataDto {
+  @Expose()
+  content: string;
 
+  @Expose()
+  createdAt: string;
 
+  @Expose()
+  senderId: number;
 
-@Entity()
-export class Conversation {
-  @PrimaryGeneratedColumn()
+  @Expose()
+  senderName: string;
+}
+
+export class ConversationResponseDto {
+  @Expose()
   id: number;
 
-  @Column({ nullable: true })
-  name: string; // Pour les groupes
+  @Expose()
+  name: string;
 
-  @Column({ default: false })
+  @Expose()
   isGroup: boolean;
 
-  @ManyToMany(() => Employee, {
-    eager: true,
-  })
-  @JoinTable()
-  participants: Employee[];
+  @Expose()
+  @Type(() => EmployeeResponseDto)
+  participants: EmployeeResponseDto[];
 
-  @OneToMany(() => Message, message => message.conversation)
-  messages: Message[];
+  @Expose()
+  @Type(() => MessageResponseDto)
+  messages: MessageResponseDto[];
 
-  @OneToOne(() => Dossier, dossier => dossier.conversation)
-  dossier: Dossier;
+  @Expose()
+  @Type(() => DossierResponseDto)
+  dossier: DossierResponseDto;
 
-
-  @CreateDateColumn()
+  @Expose()
   createdAt: Date;
 
-  @Column({ default: null })
+  @Expose()
   lastMessageAt: Date;
 
-
- // ✅ AJOUTER CETTE COLONNE
-  @Column({ type: 'json', nullable: true })
-  lastMessageData?: {
-    content: string;
-    createdAt: string;
-    senderId: number;
-    senderName: string;
-  };
-
-  // ✅ GARDER LE GETTER POUR LA COMPATIBILITÉ
   @Expose()
-  get lastMessage(): {
-    content: string;
-    createdAt: string;
-    senderId: number;
-    senderName: string;
-  } | undefined {
+  lastMessageData?: LastMessageDataDto;
+
+  // Le getter lastMessage sera automatiquement exposé si @Expose() est présent
+  @Expose()
+  get lastMessage(): LastMessageDataDto | undefined {
     return this.lastMessageData;
   }
 }

@@ -46,6 +46,7 @@ export class Conversation {
     createdAt: string;
     senderId: number;
     senderName: string;
+    readCount?: number;
   };
 
   // ✅ GARDER LE GETTER POUR LA COMPATIBILITÉ

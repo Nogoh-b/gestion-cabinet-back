@@ -67,6 +67,12 @@ export class User {
   @Column({ name: 'first_name', length: 45, nullable: false })
   first_name: string;
 
+  @Column({ name: 'is_online', default: true })
+  is_online: boolean;
+
+  @Column({ name: 'lastSeen', default: true })
+  lastSeen: Date;
+
   @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
