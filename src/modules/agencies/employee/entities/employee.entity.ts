@@ -152,34 +152,57 @@ export class Employee extends BaseEntity {
   get full_name(): string {
     return this.user?.full_name || '';
   }
+  @Expose()
 
   get email(): string {
     return this.user?.email || '';
   }
+  @Expose()
+
+  get lastSeen(): string {
+    return this.user?.lastSeen || '';
+  }
+  @Expose()
+
+  get username(): string {
+    return this.user?.username || '';
+  }
+  @Expose()
+
+  get is_online(): boolean {
+    return this.user?.is_online || false;
+  }
+  @Expose()
 
   get is_avocat(): boolean {
     return this.position === EmployeePosition.AVOCAT;
   }
+  @Expose()
 
   get is_secretaire(): boolean {
     return this.position === EmployeePosition.SECRETAIRE;
   }
+  @Expose()
 
   get is_huissier(): boolean {
     return this.position === EmployeePosition.HUISSIER;
   }
+  @Expose()
 
   get current_dossier_count(): number {
     return this.managed_dossiers?.filter(d => d.is_active).length || 0;
   }
+  @Expose()
 
   get can_accept_more_dossiers(): boolean {
     return this.current_dossier_count < this.max_dossiers;
   }
+  @Expose()
 
   get is_active(): boolean {
     return this.status === EmployeeStatus.ACTIVE;
   }
+  @Expose()
 
   get experience_level(): string {
     if (!this.years_of_experience) return 'Débutant';

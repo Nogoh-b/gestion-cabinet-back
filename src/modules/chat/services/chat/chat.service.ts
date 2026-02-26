@@ -110,7 +110,7 @@ export class ChatService {
 
       const finalMessage = await this.messageRepository.findOne({
           where: { id: savedMessage.id },
-          relations: ['sender', 'sender.user', 'conversation'],
+          relations: ['sender', 'sender.user', 'conversation', 'reads'],
       });
 
       if (!finalMessage) {
@@ -121,6 +121,7 @@ export class ChatService {
           message: savedMessage,
           reader: p,
           isRead: p.id === senderId,
+          isReceive: p.id === senderId,
       }));
 
       await this.messageReadRepository.save(reads);
@@ -180,7 +181,7 @@ export class ChatService {
         lastMessages.map(msg => [msg.conversationId, msg])
       );
 
-      return conversations.map(conv => {
+      const convs = conversations.map(conv => {
         const lastMsg = lastMessagesMap.get(conv.id);
         if (lastMsg) {
           // Construire le nom complet à partir des colonnes disponibles
@@ -201,6 +202,10 @@ export class ChatService {
           };
         }
         return conv;
+      });
+
+      return plainToInstance(Conversation, convs, {
+        excludeExtraneousValues: false,
       });
   }
 
@@ -254,56 +259,120 @@ async getConversation(conversationId: number, userId?: number) {
     });
   }
 
-  return conversation;
+  return plainToInstance(Conversation, conversation, {
+    excludeExtraneousValues: false,
+  });
 }
 
-// for one user, mark all messages as read in a conversation
-async markMessagesAsRead(conversationId: number, userId: number): Promise<any> {
-  const messages = await this.messageRepository.find({
-    where: { conversation: { id: conversationId } },
-    select: ['id']
-  });
+  async getParticipantIdsExcluding(conversationId: number, excludeUserId: number): Promise<number[]> {
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: conversationId },
+      relations: ['participants'],
+    });
 
-  const messageIds = messages.map(m => m.id);
-  if (messageIds.length === 0) return;
-
-  // 1️⃣ count BEFORE
-  const before = await this.messageReadRepository.count({
-    where: {
-      isRead: false,
-      message: { id: In(messageIds) }
+    if (!conversation) {
+      throw new NotFoundException(`Conversation avec l'ID ${conversationId} non trouvée`);
     }
-  });
 
-  if (before === 0) return; // rien à changer → inutile d’update
-
-  // 2️⃣ update
-  await this.messageReadRepository
-    .createQueryBuilder()
-    .update()
-    .set({
-      isRead: true,
-      readAt: new Date(),
-    })
-    .where('readerId = :userId', { userId })
-    .andWhere('isRead = false')
-    .andWhere('messageId IN (:...messageIds)', { messageIds })
-    .execute();
-
-  // 3️⃣ count AFTER
-  const after = await this.messageReadRepository.count({
-    where: {
-      isRead: false,
-      message: { id: In(messageIds) }
-    }
-  });
-
-  // 4️⃣ compare
-  if (after < before) {
-    // this.chatGateway.emitMessagesRead(conversationId, userId);
+    return conversation.participants
+      .filter(participant => participant.id !== excludeUserId)
+      .map(participant => participant.id);
   }
-  return messageIds[0]
-}
+
+  // for one user, mark all messages as read in a conversation
+  async markMessagesAsRead(conversationId: number, userId: number): Promise<any> {
+    const messages = await this.messageRepository.find({
+      where: { conversation: { id: conversationId } },
+      select: ['id']
+    });
+
+    const messageIds = messages.map(m => m.id);
+    if (messageIds.length === 0) return;
+
+    // 1️⃣ count BEFORE
+    const before = await this.messageReadRepository.count({
+      where: {
+        isRead: false,
+        message: { id: In(messageIds) }
+      }
+    });
+
+    if (before === 0) return; // rien à changer → inutile d’update
+
+    // 2️⃣ update
+    await this.messageReadRepository
+      .createQueryBuilder()
+      .update()
+      .set({
+        isRead: true,
+        readAt: new Date(),
+      })
+      .where('readerId = :userId', { userId })
+      .andWhere('isRead = false')
+      .andWhere('messageId IN (:...messageIds)', { messageIds })
+      .execute();
+
+    // 3️⃣ count AFTER
+    const after = await this.messageReadRepository.count({
+      where: {
+        isRead: false,
+        message: { id: In(messageIds) }
+      }
+    });
+
+    // 4️⃣ compare
+    if (after < before) {
+      // this.chatGateway.emitMessagesRead(conversationId, userId);
+    }
+    return messageIds[0]
+  }
+  // for one user, mark all messages as read in a conversation
+  async markMessagesAsReceive(conversationId: number, userId: number): Promise<any> {
+    const messages = await this.messageRepository.find({
+      where: { conversation: { id: conversationId } },
+      select: ['id']
+    });
+
+    const messageIds = messages.map(m => m.id);
+    if (messageIds.length === 0) return;
+
+    // 1️⃣ count BEFORE
+    const before = await this.messageReadRepository.count({
+      where: {
+        isReceive: false,
+        message: { id: In(messageIds) }
+      }
+    });
+
+    if (before === 0) return; // rien à changer → inutile d’update
+
+    // 2️⃣ update
+    await this.messageReadRepository
+      .createQueryBuilder()
+      .update()
+      .set({
+        isReceive: true,
+        readAt: new Date(),
+      })
+      .where('readerId = :userId', { userId })
+      .andWhere('isReceive = false')
+      .andWhere('messageId IN (:...messageIds)', { messageIds })
+      .execute();
+
+    // 3️⃣ count AFTER
+    const after = await this.messageReadRepository.count({
+      where: {
+        isReceive: false,
+        message: { id: In(messageIds) }
+      }
+    });
+
+    // 4️⃣ compare
+    if (after < before) {
+      // this.chatGateway.emitMessagesRead(conversationId, userId);
+    }
+    return messageIds[0]
+  }
 
 async setReceiveMessagesWithCount(userId: number): Promise<{ updated: number }> {
     const result = await this.messageReadRepository

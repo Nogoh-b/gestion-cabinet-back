@@ -70,8 +70,8 @@ export class User {
   @Column({ name: 'is_online', default: true })
   is_online: boolean;
 
-  @Column({ name: 'lastSeen', default: true })
-  lastSeen: Date;
+  @Column({ name: 'lastSeen' })
+  lastSeen?: string;
 
   @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: 'customer_id' })

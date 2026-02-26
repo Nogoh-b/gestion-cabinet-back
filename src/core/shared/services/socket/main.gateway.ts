@@ -94,16 +94,17 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
           type: 'new_message',
           room: `conversation_4`, 
         });
+        const lastSeen  = new Date().toISOString()
         // Notifier les deux types d'événements
         client.broadcast.emit('userOffline', {
           userId,
           status: 'offline',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          lastSeen
         });
-        const lastSeen  = new Date().toISOString()
         this.userService.update(userId,{is_online : false, lastSeen})
         
-        this.server.emit('userOffline', { userId, lastSeen });
+        // this.server.emit('userOffline', { userId, lastSeen });
       }
       
       this.logger.log(`🔴 User ${userId} déconnecté`);
@@ -120,6 +121,10 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const room = data.room;
     await client.join(room);
     this.addUserRoom(userId, room);
+    if(data.join_parent){
+      await client.join(room.split('_')[0]);
+      this.addUserRoom(userId, room.split('_')[0]);
+    }
     client.emit('joined_room', { room });
     this.logger.log(`📌 User ${userId} rejoint la room ${room}`);
 
@@ -157,12 +162,16 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // Appeler votre service chat existant
       const message = await this.chatService.sendMessage(data, userId);
-
-      // Émettre les mêmes événements qu'avant
-      // this.server.emit('new_message', {
-      //   type: 'new_message',
-      //   message,
-      // });
+      const idsParticipants = await this.chatService.getParticipantIdsExcluding(data.conversationId, userId)
+ 
+      idsParticipants.forEach(participantId => {
+        this.server.to(`user_${participantId}`).emit('new_message', {
+          type: 'room_message',
+          conversationId: data.conversationId,
+          message,
+          room: `conversation_${data.conversationId}`, // ✅ Ajouter la room
+        });
+      });
 
       client.broadcast.to(`conversation_${data.conversationId}`).emit('room_message', {
         type: 'new_message',
@@ -574,15 +583,45 @@ private getUserSockets(userId: number): string[] {
 
 
   @SubscribeMessage('userReadMessage')
-  async handleJoinConversation(
+  async handleReadsMessageConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: number , roomName: string},
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
     
     const lastMessageId = await this.chatService.markMessagesAsRead(data.conversationId, userId);
+
+    client.broadcast.to(data.roomName).emit('messagesReaded', { room: data.roomName, conversationId: data.conversationId, lastMessageId, userId });
+    this.logger.log(`📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`);
+
+  }
+
+  @SubscribeMessage('userReceiveMessage')
+  async handleUserReceiveMessageConversation(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: number , roomName: string},
+  ) {
+    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
     
-    client.broadcast.to(data.roomName).emit('messagesReaded', { conversationId: data.conversationId, lastMessageId, userId });
+    const lastMessageId = await this.chatService.markMessagesAsReceive(data.conversationId, userId);
+
+    const idsParticipants = await this.chatService.getParticipantIdsExcluding(data.conversationId, userId)
+ 
+    idsParticipants.forEach(participantId => {
+      this.logger.log(`📌 Envoi messagesReceived a  ${participantId} a lu les message de la conversation  ${data.roomName}`);
+
+      this.server.to(`user_${participantId}`).emit('new_message', {
+        type: 'messagesReceived',
+        conversationId: data.conversationId,
+        lastMessageId,
+        room: data.roomName, // ✅ Ajouter la room
+        userId
+      });
+    });
+
+    client.broadcast.to(data.roomName).emit('messagesReceived', 
+      { room: data.roomName, conversationId: data.conversationId, lastMessageId, userId }
+    );
     this.logger.log(`📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`);
 
   }
