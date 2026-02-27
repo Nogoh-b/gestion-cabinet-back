@@ -2,7 +2,7 @@
 import { plainToInstance } from 'class-transformer';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { In, Repository } from 'typeorm';
-import { forwardRef, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Injectable, NotFoundException } from '@nestjs/common';
 
 
 
@@ -16,6 +16,9 @@ import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
 import { MessageRead } from '../../entities/message-read.entity';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
+import { Attachment } from '../../entities/attachment.entity';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 
 
 
@@ -35,6 +38,8 @@ export class ChatService {
     private userService: EmployeeService,
     @InjectRepository(Employee)
     private userRepository: Repository<Employee>,
+    @InjectRepository(Attachment)
+    private attachmentRepository: Repository<Attachment>,
 
   ) {
     console.log(forwardRef)
@@ -130,6 +135,132 @@ export class ChatService {
   }
 
 
+  async sendMessageWithAttachments(
+    dto: SendMessageDto, 
+    senderId: number, 
+    files: Express.Multer.File[]
+  ): Promise<MessageResponseDto> {
+    // Validation de base
+    if (!dto.content && files.length === 0) {
+      throw new BadRequestException('Un message doit avoir du contenu ou des pièces jointes');
+    }
+
+    // 1. Récupération et validation de la conversation
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: dto.conversationId },
+      relations: ['participants', 'participants.user'],
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation non trouvée');
+    }
+
+    // 2. Validation de l'expéditeur
+    const sender = await this.userService.findOne(senderId);
+    if (!sender) {
+      throw new NotFoundException(`Utilisateur avec l'ID ${senderId} non trouvé`);
+    }
+
+    // 3. Validation des fichiers
+    // const validatedFiles = await this.validateFiles(files);
+    
+    // 4. Upload des fichiers
+    const uploadedAttachments = await FilesUtil.uploadFiles(files, UPLOAD_DOCS_PATH, 'docType.mimetype', {
+            maxSizeKB: 300, // 3MB
+            quality: 70,
+          });
+
+    // 5. Création du message
+    const message = this.messageRepository.create({
+      content: dto.content ,
+      sender,
+      conversation,
+      hasAttachments: uploadedAttachments.length > 0,
+    });
+
+    const savedMessage = await this.messageRepository.save(message);
+
+    // 6. Création des attachments liés au message
+    if (uploadedAttachments.length > 0) {
+      const attachments = uploadedAttachments.map(fileInfo => 
+        this.attachmentRepository.create({
+          ...fileInfo,
+          message: savedMessage,
+        })
+      );
+      await this.attachmentRepository.save(attachments);
+      savedMessage.attachments = attachments;
+    }
+
+    // 7. Mise à jour de la conversation
+    const lastMessageData: any = {
+      content: dto.content || (files.length > 0 ? '📎 Pièce jointe' : ''),
+      createdAt: new Date().toISOString(),
+      senderId: senderId,
+      senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
+    };
+
+    if (uploadedAttachments.length > 0) {
+      lastMessageData.hasAttachments = true;
+      lastMessageData.attachmentsCount = uploadedAttachments.length;
+      lastMessageData.attachmentsTypes = [...new Set(uploadedAttachments.map(a => a.fileMimeType))];
+    }
+
+    await this.conversationRepository.update(dto.conversationId, {
+      lastMessageAt: new Date(),
+      lastMessageData: lastMessageData,
+    });
+
+    // 8. Création des entrées de lecture
+    const reads = conversation.participants.map(p => ({
+      message: savedMessage,
+      reader: p,
+      isRead: p.id === senderId,
+      isReceive: p.id === senderId,
+    }));
+
+    await this.messageReadRepository.save(reads);
+
+    // 9. Récupération du message final avec toutes ses relations
+    const finalMessage = await this.messageRepository.findOne({
+      where: { id: savedMessage.id },
+      relations: ['sender', 'sender.user', 'conversation', 'reads', 'attachments'],
+    });
+
+    return plainToInstance(MessageResponseDto, finalMessage);
+  }
+
+  
+
+  // private async validateFiles(files: Express.Multer.File[]): Promise<Express.Multer.File[]> {
+  //   const maxSize = this.configService.get<number>('MAX_FILE_SIZE', 10 * 1024 * 1024); // 10MB par défaut
+  //   const allowedMimeTypes = [
+  //     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  //     'application/pdf', 'application/msword',
+  //     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  //     'application/vnd.ms-excel',
+  //     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  //     'text/plain', 'text/csv'
+  //   ];
+
+  //   for (const file of files) {
+  //     if (file.size > maxSize) {
+  //       throw new BadRequestException(
+  //         `Le fichier ${file.originalname} dépasse la taille maximale de ${maxSize / 1024 / 1024}MB`
+  //       );
+  //     }
+
+  //     if (!allowedMimeTypes.includes(file.mimetype)) {
+  //       throw new BadRequestException(
+  //         `Le type de fichier ${file.mimetype} n'est pas autorisé pour ${file.originalname}`
+  //       );
+  //     }
+  //   }
+
+  //   return files;
+  // }
+
+
   async getUserConversations(userId: number): Promise<Conversation[]> {
       const conversations = await this.conversationRepository
         .createQueryBuilder('conversation')
@@ -212,7 +343,7 @@ export class ChatService {
   async getConversationMessages(conversationId: number, userId: number): Promise<Message[]> {
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId },
-      relations: ['participants'],
+      relations: ['participants', 'attachments'],
     });
 
     if (!conversation || !conversation.participants.some(p => p.id === userId)) {
@@ -233,6 +364,7 @@ async getConversation(conversationId: number, userId?: number) {
     .leftJoinAndSelect('participant.user', 'user')
     .leftJoinAndSelect('conversation.messages', 'message')
     .leftJoinAndSelect('message.sender', 'sender')
+    .leftJoinAndSelect('message.attachments', 'attachments')
     .leftJoinAndSelect('message.reads', 'reads')
     .leftJoinAndSelect('reads.reader', 'reader')
     .leftJoinAndSelect('sender.user', 'senderUser')

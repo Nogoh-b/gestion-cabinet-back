@@ -1,21 +1,24 @@
 // src/chat/controllers/chat.controller.ts
 import {
-    Controller,
-    Get,
-    Post,
-    Body,
-    Param,
-    UseGuards,
-    Request,
-    HttpStatus
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+  HttpStatus,
+  UseInterceptors,
+  UploadedFiles
 } from '@nestjs/common';
 import {
-    ApiTags,
-    ApiOperation,
-    ApiResponse,
-    ApiBearerAuth,
-    ApiParam,
-    ApiBody
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiBody,
+  ApiConsumes
 } from '@nestjs/swagger';
 // src/chat/controllers/chat.controller.ts
 import { CreateConversationDto, CreateGroupDto, SendMessageDto } from '../../dto/create-conversation.dto';
@@ -23,6 +26,9 @@ import { ChatService } from '../../services/chat/chat.service';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -46,6 +52,10 @@ export class ChatController {
   async createConversation(@Body() dto: CreateConversationDto, @Request() req) {
     return await this.chatService.createConversation(dto, req.user.id);
   }
+
+
+
+
 
   @Post('groups')
   @ApiOperation({ summary: 'Créer un nouveau groupe' })
@@ -120,6 +130,42 @@ export class ChatController {
   @ApiBody({ type: SendMessageDto })
   async sendMessage(@Body() dto: SendMessageDto, @Request() req) {
     return await this.chatService.sendMessage(dto, req.user.id);
+  }
+
+
+   @Post('send')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Send message with optional attachments',
+    schema: {
+      type: 'object',
+      properties: {
+        conversationId: { type: 'number' },
+        content: { type: 'string' },
+        replyToId: { type: 'number' },
+        metadata: { type: 'object' },
+        attachments: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
+  @UseInterceptors(FilesInterceptor('attachments', 10)) // Max 10 fichiers
+  async sendMessageWithFiles(
+    @Body() dto: SendMessageDto,
+    @CurrentUser() user: User,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    return this.chatService.sendMessageWithAttachments(
+      dto, 
+      user.id,
+      files || []
+    );
   }
 
   @Post('conversations/:id/read')
