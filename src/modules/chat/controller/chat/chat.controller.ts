@@ -168,6 +168,50 @@ export class ChatController {
     );
   }
 
+  @Post('send-with-attachement-ids')
+  @ApiBody({ type: SendMessageDto })
+  @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
+  async sendMessageWithAttachementIds(
+    dto: SendMessageDto, 
+    @CurrentUser() user: User
+  ) {
+    return this.chatService.sendMessageWithExistingAttachments(
+      dto,
+      user.id
+    );
+  }
+
+
+  @Post('upload/attachements')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Send message with optional attachments',
+    schema: {
+      type: 'object',
+      properties: {
+        attachments: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
+  @UseInterceptors(FilesInterceptor('attachments', 10)) // Max 10 fichiers
+  async uploadFiles(
+    @CurrentUser() user: User,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    return this.chatService.uploadAttachments(
+      user.id,
+      files || []
+    );
+  }
+
+
   @Post('conversations/:id/read')
   @ApiOperation({ summary: 'Marquer les messages comme lus' })
   @ApiParam({ 

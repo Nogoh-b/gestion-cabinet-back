@@ -230,6 +230,146 @@ export class ChatService {
     return plainToInstance(MessageResponseDto, finalMessage);
   }
 
+
+  async sendMessageWithExistingAttachments(
+    dto: SendMessageDto, 
+    senderId: number, 
+  ): Promise<MessageResponseDto> {
+    // Validation de base
+    const attachmentIds = dto.attachmentIds
+    if (!dto.content && attachmentIds.length === 0) {
+      throw new BadRequestException('Un message doit avoir du contenu ou des pièces jointes');
+    }
+
+    // 1. Récupération et validation de la conversation
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: dto.conversationId },
+      relations: ['participants', 'participants.user'],
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation non trouvée');
+    }
+
+    // 2. Validation de l'expéditeur
+    const sender = await this.userService.findOne(senderId);
+    if (!sender) {
+      throw new NotFoundException(`Utilisateur avec l'ID ${senderId} non trouvé`);
+    }
+
+    // 3. Récupération des attachments existants par leurs IDs
+    let attachments: Attachment[] = [];
+    if (attachmentIds.length > 0) {
+      attachments = await this.attachmentRepository.findByIds(attachmentIds);
+      
+      // Vérifier que tous les IDs sont valides
+      if (attachments.length !== attachmentIds.length) {
+        const foundIds = attachments.map(a => a.id);
+        const missingIds = attachmentIds.filter(id => !foundIds.includes(id));
+        throw new NotFoundException(`Attachments non trouvés: ${missingIds.join(', ')}`);
+      }
+
+      // Optionnel: Vérifier que les attachments n'appartiennent pas déjà à un message
+      const alreadyLinked = attachments.some(a => a.message !== null);
+      if (alreadyLinked) {
+        throw new BadRequestException('Certains attachments sont déjà liés à un message');
+      }
+    }
+
+    // 4. Création du message
+    const message = this.messageRepository.create({
+      content: dto.content,
+      sender,
+      conversation,
+      hasAttachments: attachments.length > 0,
+    });
+
+    const savedMessage = await this.messageRepository.save(message);
+
+    // 5. Liaison des attachments au message
+    if (attachments.length > 0) {
+      // Mettre à jour chaque attachment avec le message
+      await Promise.all(attachments.map(attachment => 
+        this.attachmentRepository.update(attachment.id, {
+          message: savedMessage
+        })
+      ));
+      
+      // Mettre à jour la relation pour le retour
+      savedMessage.attachments = attachments;
+    }
+
+    // 6. Mise à jour de la conversation
+    const lastMessageData: any = {
+      content: dto.content || (attachmentIds.length > 0 ? '📎 Pièce jointe' : ''),
+      createdAt: new Date().toISOString(),
+      senderId: senderId,
+      senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
+    };
+
+    if (attachments.length > 0) {
+      lastMessageData.hasAttachments = true;
+      lastMessageData.attachmentsCount = attachments.length;
+      lastMessageData.attachmentsTypes = [...new Set(attachments.map(a => a.mimeType))];
+      lastMessageData.attachmentIds = attachmentIds; // Optionnel: stocker les IDs
+    }
+
+    await this.conversationRepository.update(dto.conversationId, {
+      lastMessageAt: new Date(),
+      lastMessageData: lastMessageData,
+    });
+
+    // 7. Création des entrées de lecture
+    const reads = conversation.participants.map(p => ({
+      message: savedMessage,
+      reader: p,
+      isRead: p.id === senderId,
+      isReceive: p.id === senderId,
+    }));
+
+    await this.messageReadRepository.save(reads);
+
+    // 8. Récupération du message final avec toutes ses relations
+    const finalMessage = await this.messageRepository.findOne({
+      where: { id: savedMessage.id },
+      relations: ['sender', 'sender.user', 'conversation', 'reads', 'attachments'],
+    });
+
+    return plainToInstance(MessageResponseDto, finalMessage);
+  }
+
+  async uploadAttachments(
+    senderId: number, 
+    files: Express.Multer.File[]
+  ): Promise<number[]> {
+
+    const uploadedAttachments = await FilesUtil.uploadFiles(
+      files,
+      UPLOAD_DOCS_PATH,
+      'docType.mimetype',
+      {
+        maxSizeKB: 300,
+        quality: 70,
+      }
+    );
+
+    if (!uploadedAttachments.length) {
+      return [];
+    }
+
+    // créer les entités
+    const attachments = uploadedAttachments.map(fileInfo =>
+      this.attachmentRepository.create({
+        ...fileInfo,
+      })
+    );
+
+    // ⚠️ save retourne les entités AVEC leurs ids
+    const savedAttachments = await this.attachmentRepository.save(attachments);
+
+    // ✅ extraire les ids
+    return savedAttachments.map(att => att.id);
+  }
   
 
   // private async validateFiles(files: Express.Multer.File[]): Promise<Express.Multer.File[]> {

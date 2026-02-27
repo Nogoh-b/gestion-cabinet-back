@@ -1,6 +1,6 @@
 // src/chat/dto/create-conversation.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsNotEmpty, IsOptional, IsBoolean, IsString, IsNumber } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsBoolean, IsString, IsNumber, IsEmpty } from 'class-validator';
 
 export class CreateConversationDto {
   @ApiProperty({
@@ -48,6 +48,15 @@ export class SendMessageDto {
   @IsString()
   @IsNotEmpty()
   content: string;
+
+  @ApiProperty({
+    description: 'Ids Attachements',
+    example: '[23]',
+  })
+  @IsArray()
+  @IsEmpty()
+  attachmentIds: number[];
+
 }
 
 
