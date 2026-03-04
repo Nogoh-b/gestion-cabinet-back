@@ -180,13 +180,12 @@ export class CreateDossierDto {
 
   @ApiPropertyOptional({
     description: 'Niveau de confidentialité',
-    example: 'high',
-    enum: ['low', 'normal', 'high', 'very_high'],
-    default: 'normal'
+    example: false,
+    default: false
   })
   @IsOptional()
   @IsString()
-  confidentiality_level?: number;
+  confidentiality_level?: boolean;
 
   @IsOptional()
   @IsEnum(PriorityLevel, { message: 'priority_level doit être une des valeurs : low, medium, high, urgent' })

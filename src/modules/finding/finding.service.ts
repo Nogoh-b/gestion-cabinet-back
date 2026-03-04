@@ -83,7 +83,7 @@ export class FindingsService extends BaseServiceV1<Finding> {
       diligence: { id: dto.diligence_id },
       document: dto.document_id ? { id: dto.document_id } : undefined,
       created_by: dto.created_by_id ? { id: dto.created_by_id } : undefined,
-      status: FindingStatus.IDENTIFIED,
+      status: dto.status,
     });
 
     return await this.repository.save(finding);

@@ -6,7 +6,8 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
-  JoinColumn
+  JoinColumn,
+  DeleteDateColumn
 } from 'typeorm';
 
 import { Facture } from '../../facture/entities/facture.entity';
@@ -26,9 +27,10 @@ export class Paiement {
  
   @Column({
     type: 'enum',
-    enum: ModePaiement
+    enum: ModePaiement,
+    default : ModePaiement.ESPECES
   })
-  mode: ModePaiement;
+  modePaiement: ModePaiement;
 
   @Column({ name: 'date_paiement', type: 'date' })
   datePaiement: Date;
@@ -50,8 +52,8 @@ export class Paiement {
 
   @Column({
     type: 'enum',
-    enum: StatutPaiement,
-    default: StatutPaiement.EN_ATTENTE 
+    enum: StatutPaiement
+    
   })
   status: StatutPaiement;
 
@@ -72,4 +74,8 @@ export class Paiement {
   @ManyToOne(() => Facture, facture => facture.paiements)
   @JoinColumn({ name: 'facture_id' })
   facture: Facture;
+
+  @DeleteDateColumn()
+  deletedAt: Date;
+  
 }

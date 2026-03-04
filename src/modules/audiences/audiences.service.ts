@@ -76,10 +76,10 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier','audience_type'],
+      searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier', 'dossier.client','audience_type'],
       exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
-      relationFields: ['dossier', 'jurisdiction','audience_type', 'documents'],
+      relationFields: ['dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents'],
     };
   }
 

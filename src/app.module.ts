@@ -4,7 +4,7 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
 
@@ -47,13 +47,23 @@ import { AudienceTypeModule } from './modules/audience-type/audience-type.module
 import { InvoiceTypeModule } from './modules/invoice-type/invoice-type.module';
 import { DiligenceModule } from './modules/diligence/diligence.module';
 import { FindingModule } from './modules/finding/finding.module';
+import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
+import { join } from 'path';
 
 
 
 
+const configService = new ConfigService();
 
-
-
+const helpers = {
+  companyName: () => configService.get('COMPANY_NAME'),
+  companyLogo: () => configService.get('COMPANY_LOGO_URL'),
+  companyAddress: () => configService.get('COMPANY_ADDRESS'),
+  companyEmail: () => configService.get('COMPANY_EMAIL'),
+  companyPhone: () => configService.get('COMPANY_PHONE'),
+  currentYear: () => new Date().getFullYear().toString(),
+  appUrl: () => configService.get('APP_URL'),
+};
 
 
 
@@ -102,6 +112,24 @@ dotenv.config();
       },
       defaults: {
         from: '"No Reply" <emelineenanga@nouyadjamassociates.com>',
+      }, 
+      template: {
+        dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+        // adapter: new HandlebarsAdapter(helpers), // Moteur de template
+        adapter: new HandlebarsAdapter(helpers), // Moteur de template
+        options: { 
+          strict: true,
+          defaultLayout: 'layout', 
+        },
+        
+      },
+      options: {
+        partials: {
+          dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+          options: {
+            strict: true, 
+          },
+        },
       },
     }),
     ClientsModule.register([

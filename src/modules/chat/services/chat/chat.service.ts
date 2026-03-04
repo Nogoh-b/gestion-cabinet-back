@@ -269,8 +269,10 @@ export class ChatService {
         throw new NotFoundException(`Attachments non trouvés: ${missingIds.join(', ')}`);
       }
 
+      console.log(attachments)
+
       // Optionnel: Vérifier que les attachments n'appartiennent pas déjà à un message
-      const alreadyLinked = attachments.some(a => a.message !== null);
+      const alreadyLinked = attachments.some(a => a.message !== null && a.message !== undefined );
       if (alreadyLinked) {
         throw new BadRequestException('Certains attachments sont déjà liés à un message');
       }
@@ -401,85 +403,111 @@ export class ChatService {
   // }
 
 
-  async getUserConversations(userId: number): Promise<Conversation[]> {
-      const conversations = await this.conversationRepository
-        .createQueryBuilder('conversation')
-        .leftJoinAndSelect('conversation.participants', 'participant')
-        .leftJoinAndSelect('participant.user', 'user')
-        .loadRelationCountAndMap(
-          'conversation.unreadCount',
-          'conversation.messages',
-          'unreadMessages',
-          (qb) => qb
-            .leftJoin('unreadMessages.reads', 'read')
-            .where('read.readerId = :userId', { userId })
-            .andWhere('read.isRead = :isRead', { isRead: false })
-        )
-        .where('EXISTS (SELECT 1 FROM conversation_participants_employee cp WHERE cp.conversationId = conversation.id AND cp.employeeId = :userId)', { userId })
-        .orderBy('conversation.lastMessageAt', 'DESC')
-        .getMany();
+async getUserConversations(userId: number): Promise<Conversation[]> {
+  const conversations = await this.conversationRepository
+    .createQueryBuilder('conversation')
+    .leftJoinAndSelect('conversation.participants', 'participant')
+    .leftJoinAndSelect('participant.user', 'user')
+    .loadRelationCountAndMap(
+      'conversation.unreadCount',
+      'conversation.messages',
+      'unreadMessages',
+      (qb) => qb
+        .leftJoin('unreadMessages.reads', 'read')
+        .where('read.readerId = :userId', { userId })
+        .andWhere('read.isRead = :isRead', { isRead: false })
+    )
+    .where('EXISTS (SELECT 1 FROM conversation_participants_employee cp WHERE cp.conversationId = conversation.id AND cp.employeeId = :userId)', { userId })
+    .orderBy('conversation.lastMessageAt', 'DESC')
+    .getMany();
 
-      // Récupérer les derniers messages
-      const conversationIds = conversations.map(c => c.id);
-      
-      const lastMessages = await this.messageRepository
-        .createQueryBuilder('message')
-        .select([
-          'message.conversationId as conversationId',
-          'message.content as content',
-          'message.createdAt as createdAt',
-          'sender.id as senderId',
-          // Utiliser les colonnes qui existent réellement
-          'user.first_name as senderFirstName',
-          'user.last_name as senderLastName',
-          'user.username as senderUsername'
-        ])
-        .leftJoin('message.sender', 'sender')
-        .leftJoin('sender.user', 'user')
-        .where('message.conversationId IN (:...ids)', { ids: conversationIds })
-        .andWhere(qb => {
-          const subQuery = qb.subQuery()
-            .select('MAX(m.createdAt)')
-            .from('message', 'm')
-            .where('m.conversationId = message.conversationId')
-            .getQuery();
-          return 'message.createdAt = ' + subQuery;
-        })
-        .getRawMany();
-
-      // Associer les derniers messages aux conversations
-      const lastMessagesMap = new Map(
-        lastMessages.map(msg => [msg.conversationId, msg])
-      );
-
-      const convs = conversations.map(conv => {
-        const lastMsg = lastMessagesMap.get(conv.id);
-        if (lastMsg) {
-          // Construire le nom complet à partir des colonnes disponibles
-          let senderName = '';
-          if (lastMsg.senderFirstName && lastMsg.senderLastName) {
-            senderName = `${lastMsg.senderFirstName} ${lastMsg.senderLastName}`;
-          } else if (lastMsg.senderUsername) {
-            senderName = lastMsg.senderUsername;
-          } else {
-            senderName = 'Utilisateur';
-          }
-
-          conv['lastMessageData'] = {
-            content: lastMsg.content,
-            createdAt: lastMsg.createdAt.toISOString(),
-            senderId: lastMsg.senderId,
-            senderName: senderName
-          };
-        }
-        return conv;
-      });
-
-      return plainToInstance(Conversation, convs, {
-        excludeExtraneousValues: false,
-      });
+  // Récupérer les derniers messages avec leurs pièces jointes
+  const conversationIds = conversations.map(c => c.id);
+  
+  if (conversationIds.length === 0) {
+    return plainToInstance(Conversation, conversations, {
+      excludeExtraneousValues: false,
+    });
   }
 
+  // Requête corrigée - ne pas utiliser la notation pointée dans select
+  const lastMessages = await this.messageRepository
+    .createQueryBuilder('message')
+    .leftJoinAndSelect('message.attachments', 'attachments')
+    .leftJoin('message.sender', 'sender')
+    .leftJoin('sender.user', 'user')
+    .addSelect([
+      // Sélectionner les colonnes de sender
+      'sender.id',
+      // Sélectionner les colonnes de user
+      'user.id',
+      'user.first_name',
+      'user.last_name',
+      'user.username'
+    ])
+    .where('message.conversationId IN (:...ids)', { ids: conversationIds })
+    .andWhere(qb => {
+      const subQuery = qb.subQuery()
+        .select('MAX(m.createdAt)')
+        .from('message', 'm')
+        .where('m.conversationId = message.conversationId')
+        .getQuery();
+      return 'message.createdAt = ' + subQuery;
+    })
+    .getMany();
+
+  // Créer un map des derniers messages par conversation
+  const lastMessagesMap = new Map();
+  lastMessages.forEach(msg => {
+    lastMessagesMap.set(msg.conversationId, msg);
+  });
+
+  // Enrichir les conversations avec les données du dernier message
+  const enrichedConversations = conversations.map(conv => {
+    const lastMsg = lastMessagesMap.get(conv.id);
+    
+    if (lastMsg) {
+      // Construire le nom complet de l'expéditeur
+      let senderName = 'Utilisateur';
+      if (lastMsg.sender?.user) {
+        const user = lastMsg.sender.user;
+        if (user.first_name && user.last_name) {
+          senderName = `${user.first_name} ${user.last_name}`;
+        } else if (user.username) {
+          senderName = user.username;
+        }
+      }
+
+      // Traiter les pièces jointes
+      const attachments = lastMsg.attachments || [];
+      const hasAttachments = attachments.length > 0;
+      const attachmentsTypes = hasAttachments 
+        ? [...new Set(attachments.map(a => a.mimeType || a.type).filter(Boolean))]
+        : [];
+      const attachmentIds = attachments.map(a => a.id).filter(Boolean);
+
+      // Ajouter les données du dernier message à la conversation
+      Object.assign(conv, {
+        lastMessageData: {
+          content: lastMsg.content || '',
+          createdAt: lastMsg.createdAt.toISOString(),
+          senderId: lastMsg.sender?.id,
+          senderName: senderName,
+          hasAttachments: hasAttachments,
+          attachmentsCount: attachments.length,
+          attachmentsTypes: attachmentsTypes,
+          attachmentIds: attachmentIds
+        }
+      });
+    }
+
+    return conv;
+  });
+
+  return plainToInstance(Conversation, enrichedConversations, {
+    excludeExtraneousValues: false,
+  });
+}
   async getConversationMessages(conversationId: number, userId: number): Promise<Message[]> {
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId },

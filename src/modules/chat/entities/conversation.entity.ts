@@ -47,6 +47,10 @@ export class Conversation {
     senderId: number;
     senderName: string;
     readCount?: number;
+    hasAttachments?: boolean;
+    attachmentsCount?: number;
+    attachmentsTypes?: string[];
+    attachmentIds?: number[];
   };
 
   // ✅ GARDER LE GETTER POUR LA COMPATIBILITÉ

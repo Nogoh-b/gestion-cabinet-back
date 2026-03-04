@@ -1,16 +1,16 @@
 // src/modules/findings/dto/create-finding.dto.ts
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsInt,
-    IsEnum,
-    IsNumber,
-    IsDateString,
-    IsBoolean
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  IsEnum,
+  IsNumber,
+  IsDateString,
+  IsBoolean
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { FindingSeverity, FindingCategory } from '../entities/finding.entity';
+import { FindingSeverity, FindingCategory, FindingStatus } from '../entities/finding.entity';
 
 export class CreateFindingDto {
   @ApiProperty({
@@ -94,6 +94,14 @@ export class CreateFindingDto {
   @IsString()
   @IsOptional()
   legal_basis?: string;
+
+  @ApiPropertyOptional({
+    example: FindingStatus.IDENTIFIED,
+    description: "Base légale / jurisprudence",
+  })
+  @IsString()
+  @IsOptional()
+  status?: FindingStatus;
 
   @ApiPropertyOptional({
     example: 150000,

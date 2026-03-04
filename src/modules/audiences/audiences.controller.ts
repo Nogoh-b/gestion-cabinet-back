@@ -58,7 +58,7 @@ export class AudiencesController {
   ) {
     return await this.audiencesService.searchWithTransformer(
       searchParams as SearchCriteria,
-      AudienceListResponseDto,
+      AudienceResponseDto,
       paginationParams,
     );
   }

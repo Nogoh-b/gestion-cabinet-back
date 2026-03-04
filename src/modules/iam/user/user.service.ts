@@ -1,6 +1,5 @@
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
-import { EmailService } from 'src/core/shared/services/email/email.service';
 import { CreateEmployeeDto } from 'src/modules/agencies/employee/dto/create-employee.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Repository } from 'typeorm';
@@ -22,6 +21,7 @@ import { UserRolesService } from '../user-role/user-role.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { User } from './entities/user.entity';
+import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
 

@@ -44,7 +44,7 @@ export class CreatePaiementDto {
     default: ModePaiement.VIREMENT,
   })
   @IsEnum(ModePaiement)
-  mode: ModePaiement = ModePaiement.VIREMENT;
+  modePaiment: ModePaiement = ModePaiement.VIREMENT;
 
   @ApiProperty({
     description: 'Date du paiement',
@@ -108,7 +108,7 @@ export class CreatePaiementDto {
   })
   @IsEnum(StatutPaiement)
   @IsOptional()
-  statut?: StatutPaiement = StatutPaiement.EN_ATTENTE;
+  status?: StatutPaiement ;
 
   @ApiPropertyOptional({
     description: 'Notes internes ou commentaire du paiement',

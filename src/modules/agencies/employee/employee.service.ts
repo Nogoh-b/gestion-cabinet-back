@@ -1,7 +1,6 @@
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
 import { UserRole } from 'src/core/enums/user-role.enum';
-import { EmailService } from 'src/core/shared/services/email/email.service';
 
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
@@ -21,6 +20,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
+import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
 

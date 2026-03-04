@@ -12,6 +12,7 @@ import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { Paiement } from './entities/paiement.entity';
+import { plainToInstance } from 'class-transformer';
 
 
 
@@ -32,11 +33,11 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       searchFields: ['reference', 'numeroCheque', 'banque', 'titulaire', 'notes'],
       exactMatchFields: ['id', 'factureId', 'mode', 'statut', 'reference'],
       dateRangeFields: ['datePaiement', 'dateValeur', 'created_at', 'updated_at'],
-      relationFields: ['facture', 'client', 'dossier']
+      relationFields: ['facture', 'facture.client', 'facture.dossier']
     };
   }
 
-  async createPaiement(createDto: CreatePaiementDto): Promise<Paiement> {
+  async createPaiement(createDto: CreatePaiementDto): Promise<PaiementResponseDto> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
       where: { id: String(createDto.factureId)  }
@@ -56,18 +57,19 @@ export class PaiementService extends BaseServiceV1<Paiement> {
 
     // Créer le paiement
     const paiement = this.repository.create(createDto);
+    // paiement.modePaiement = createDto.modePaiment
     const paiementSauvegarde = await this.repository.save(paiement);
 
     // Mettre à jour la facture
     console.log(createDto.montant)
-    facture.ajouterPaiement(createDto.montant);
+    // facture.ajouterPaiement(paiement);
     await this.factureRepository.save(facture);
 
-    return paiementSauvegarde;
+    return plainToInstance(PaiementResponseDto,paiementSauvegarde);
   }
 
-  async updatePaiement(id: string, updateDto: UpdatePaiementDto): Promise<Paiement> {
-    const paiement = await this.findOneV1(id, ['facture']);
+  async updatePaiement(id: string, updateDto: UpdatePaiementDto): Promise<PaiementResponseDto> {
+    const paiement = await this.findOneV1(id);
     if (!paiement) {
       throw new NotFoundException(`Paiement avec l'ID ${id} non trouvé`);
     }
@@ -90,13 +92,13 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       }
 
       // Mettre à jour la facture
-      facture.montantPaye += difference;
-      facture.calculerResteAPayer();
+      // facture.montantPaye += difference;
+      // facture.calculerResteAPayer();
       await this.factureRepository.save(facture);
     }
 
     Object.assign(paiement, updateDto);
-    return this.repository.save(paiement);
+    return plainToInstance(PaiementResponseDto,this.repository.save(paiement));
   }
 
   async searchPaiements(searchDto: SearchPaiementDto): Promise<any> {
@@ -151,8 +153,8 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     // Si le paiement était déjà validé, retirer le montant de la facture
     if (paiement.status === StatutPaiement.VALIDE) {
       const facture = paiement.facture;
-      facture.montantPaye -= paiement.montant;
-      facture.calculerResteAPayer();
+      // facture.montantPaye -= paiement.montant;
+      // facture.calculerResteAPayer();
       await this.factureRepository.save(facture);
     }
 

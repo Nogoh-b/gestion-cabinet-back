@@ -17,6 +17,7 @@ import { CreatePaiementDto } from './dto/create-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
+import { plainToInstance } from 'class-transformer';
 
 @ApiTags('paiements')
 @Controller('paiements')
@@ -42,7 +43,7 @@ export class PaiementController {
   @ApiResponse({ status: HttpStatus.OK, type: PaiementResponseDto })
   @ApiParam({ name: 'id', type: String })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.paiementService.findOneV1(id, ['facture']);
+    return plainToInstance(PaiementResponseDto, this.paiementService.findOneV1(id)) ;
   }
 
   @Patch(':id')

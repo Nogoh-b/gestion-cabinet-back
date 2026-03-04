@@ -3,7 +3,6 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryCustomerDto } from 'src/core/shared/dto/pagination-query.dto';
-import { EmailService } from 'src/core/shared/services/email/email.service';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
 
@@ -44,6 +43,7 @@ import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CustomerSearchDto } from './dto/search-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
 

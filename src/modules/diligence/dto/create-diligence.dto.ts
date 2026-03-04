@@ -1,16 +1,16 @@
 // src/modules/diligences/dto/create-diligence.dto.ts
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsInt,
-    IsDateString,
-    IsEnum,
-    IsNumber,
-    Min
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  Min
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DiligenceType, DiligencePriority } from '../entities/diligence.entity';
+import { DiligenceType, DiligencePriority, DiligenceStatus } from '../entities/diligence.entity';
 
 export class CreateDiligenceDto {
   @ApiProperty({
@@ -70,6 +70,16 @@ export class CreateDiligenceDto {
   @IsDateString()
   @IsNotEmpty()
   start_date: Date;
+
+  
+    @ApiPropertyOptional({
+      example: DiligenceStatus.DRAFT,
+      description: "Base légale / jurisprudence",
+    })
+    @IsString()
+    @IsOptional()
+    status?: DiligenceStatus;
+  
 
   @ApiProperty({
     example: '2026-04-15',

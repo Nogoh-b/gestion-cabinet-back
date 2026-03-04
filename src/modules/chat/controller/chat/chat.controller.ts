@@ -5,11 +5,11 @@ import {
   Post,
   Body,
   Param,
-  UseGuards,
   Request,
   HttpStatus,
   UseInterceptors,
-  UploadedFiles
+  UploadedFiles,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,12 +23,12 @@ import {
 // src/chat/controllers/chat.controller.ts
 import { CreateConversationDto, CreateGroupDto, SendMessageDto } from '../../dto/create-conversation.dto';
 import { ChatService } from '../../services/chat/chat.service';
-import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -172,7 +172,7 @@ export class ChatController {
   @ApiBody({ type: SendMessageDto })
   @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
   async sendMessageWithAttachementIds(
-    dto: SendMessageDto, 
+    @Body() dto: SendMessageDto, 
     @CurrentUser() user: User
   ) {
     return this.chatService.sendMessageWithExistingAttachments(
@@ -201,12 +201,13 @@ export class ChatController {
   })
   @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
   @UseInterceptors(FilesInterceptor('attachments', 10)) // Max 10 fichiers
+  
   async uploadFiles(
-    @CurrentUser() user: User,
+    @Request() req,
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
     return this.chatService.uploadAttachments(
-      user.id,
+      req.user.id,
       files || []
     );
   }

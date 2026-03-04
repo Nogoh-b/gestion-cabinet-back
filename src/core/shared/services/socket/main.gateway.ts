@@ -161,7 +161,8 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.log(`📨 sendMessage reçu de user ${userId}:`, data);
 
       // Appeler votre service chat existant
-      const message = await this.chatService.sendMessage(data, userId);
+      const message = await this.chatService.sendMessageWithExistingAttachments(data, userId);
+      // const message = await this.chatService.sendMessage(data, userId);
       const idsParticipants = await this.chatService.getParticipantIdsExcluding(data.conversationId, userId)
  
       idsParticipants.forEach(participantId => {

@@ -46,7 +46,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
   /**
    * ➕ Création d'une diligence
    */
-  async create(dto: CreateDiligenceDto): Promise<Diligence> {
+  async create(dto: CreateDiligenceDto): Promise<DiligenceResponseDto> {
     // Vérifier que le dossier existe
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     if (!dossier) {
@@ -68,6 +68,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     if (deadline <= startDate) {
       throw new BadRequestException('La date limite doit être postérieure à la date de début');
     }
+    
 
     // Création de l'entité
     const diligence = this.repository.create({
@@ -85,7 +86,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       status: DiligenceStatus.DRAFT,
     });
 
-    return await this.repository.save(diligence);
+    return plainToInstance(DiligenceResponseDto,await this.repository.save(diligence));
   }
 
   /**
@@ -118,6 +119,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    * ✏️ Mise à jour d'une diligence
    */
   async update(id: number, dto: UpdateDiligenceDto): Promise<Diligence> {
+
+    console.log(id ,  ' ', dto)
     const diligence = await this.repository.findOne({
       where: { id },
       relations: ['dossier', 'assigned_lawyer'],
@@ -169,6 +172,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       budget_hours: dto.budget_hours ?? diligence.budget_hours,
       scope: dto.scope ?? diligence.scope,
       client_reference: dto.client_reference ?? diligence.client_reference,
+      status : dto.status ?? diligence.status
     });
 
     return this.repository.save(diligence);

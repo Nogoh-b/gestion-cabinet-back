@@ -94,7 +94,7 @@ export class FactureService extends BaseServiceV1<Facture> {
     }
 
     Object.assign(facture, updateDto);
-    facture.calculerResteAPayer();
+    // facture.calculerResteAPayer();
 
     return plainToInstance(FactureResponseDto,this.repository.save(facture));
   }

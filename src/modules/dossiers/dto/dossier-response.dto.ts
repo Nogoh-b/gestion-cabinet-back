@@ -11,27 +11,6 @@ import { DangerLevel } from "../entities/dossier.entity";
 import { Diligence } from "src/modules/diligence/entities/diligence.entity";
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export class DossierResponseDto {
   @ApiProperty({ example: 1 })
   @Expose()

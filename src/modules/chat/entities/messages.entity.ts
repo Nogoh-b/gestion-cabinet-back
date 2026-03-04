@@ -1,6 +1,6 @@
 // src/chat/entities/message.entity.ts
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
 
 import { Conversation } from './conversation.entity';
 import { Expose } from 'class-transformer';
@@ -22,6 +22,7 @@ export class Message {
   @ManyToOne(() => Conversation, conversation => conversation.messages, {
     eager: true,
   })
+  @JoinColumn({ name: 'conversationId' })
   conversation: Conversation;
 
 
@@ -42,6 +43,9 @@ export class Message {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @Column()
+  conversationId: number;
 
   @Expose()
   get isRead(): boolean {

@@ -4,7 +4,7 @@ import { Repository, LessThanOrEqual } from 'typeorm';
 import { MailerService } from '@nestjs-modules/mailer';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
-import { CreateMailDto } from '../../emails/dto/create-mail.dto';
+import { CreateMailDto } from './dto/create-mail.dto';
 
 @Injectable()
 export class MailService {
@@ -20,8 +20,18 @@ export class MailService {
    * Crée un email en base (programmé ou immédiat)
    */
   async create(createMailDto: CreateMailDto): Promise<Mail> {
+  const enrichedContext = {
+    ...createMailDto.context,
+    logoUrl: process.env.COMPANY_LOGO_URL,
+    companyName: process.env.COMPANY_NAME,
+    companyAddress: process.env.COMPANY_ADDRESS,
+    companyEmail: process.env.COMPANY_EMAIL,
+    companyPhone: process.env.COMPANY_PHONE,
+    currentYear: new Date().getFullYear().toString(),
+  };
     const mail = this.mailRepository.create({
       ...createMailDto,
+      // context: enrichedContext,
       scheduledAt: createMailDto.scheduledAt ? new Date(createMailDto.scheduledAt) : undefined,
       status: MailStatus.PENDING,
     });
@@ -69,6 +79,7 @@ export class MailService {
         // Sinon utiliser le html/text fourni
         mailOptions.html = mail.html;
         mailOptions.text = mail.text;
+        mailOptions.layout = 'layout'; // ou passer dans context
       }
 
       // Envoyer
@@ -109,7 +120,7 @@ export class MailService {
   /**
    * Cron pour envoyer les emails programmés (toutes les minutes)
    */
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_12_HOURS)
   async handleScheduledMails() {
     this.logger.debug('Recherche des emails programmés à envoyer...');
 

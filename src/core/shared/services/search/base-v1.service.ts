@@ -14,12 +14,15 @@ import {
   LessThanOrEqual,
 } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 
 
 
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
 import { PaginatedResult, PaginationServiceV1 } from '../pagination/paginations-v1.service';
+import { MailService } from '../../emails/emails.service';
+import { Mail } from '../../emails/entities/mail.entity';
+import { CreateMailDto } from '../../emails/dto/create-mail.dto';
 
 
 
@@ -40,7 +43,16 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   constructor(
     protected readonly repository: Repository<T>,
     protected readonly paginationService: PaginationServiceV1,
+    @Optional() protected readonly emailsService?: MailService, // Optionnel
   ) {}
+
+
+  async sendMail(createMailDto: CreateMailDto): Promise<Mail | any> {
+    if (this.emailsService) {
+      return this.emailsService.create(createMailDto);
+    }
+    return null;
+  }
 
   /**
    * Recherche avancée avec support des relations pointées
@@ -473,10 +485,10 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   /**
    * Méthodes CRUD de base
    */
-  async findOneV1(id: string | number, relations: string[] = []): Promise<T | null> {
+  async findOneV1(id: string | number, relations: string[] | null = []): Promise<T | null> {
     return this.repository.findOne({
       where: { id } as any,
-      relations,
+      relations : this.getDefaultSearchOptions().relationFields,
     });
   }
 

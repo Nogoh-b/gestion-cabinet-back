@@ -85,8 +85,8 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'estimated_duration', type: 'int', nullable: true })
   estimated_duration: number;
 
-  @Column({ name: 'confidentiality_level',  default: 0 })
-  confidentiality_level: number;
+  @Column({ name: 'confidentiality_level',  default: false })
+  confidentiality_level: boolean;
 
   @Column({ name: 'priority_level', type: 'int', default: 0 })
   priority_level: number;
@@ -214,7 +214,7 @@ export class Dossier extends BaseEntity {
     return `${this.procedure_type.name} > ${this.procedure_subtype.name}`;
   }
 
-  get client_full_name(): string {
+  get full_name(): string {
     return this.client?.full_name || '';
   }
 

@@ -37,7 +37,7 @@ export class AudienceResponseDto {
 
   @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
   @Expose()
-  jurisdiction: string;
+  jurisdiction: Jurisdiction;
 
   @ApiProperty({ example: "Salle 4B", required: false })
   @Expose()
@@ -100,14 +100,14 @@ export class AudienceResponseDto {
   @Transform(({ obj }) => ({
     id: obj.dossier?.id,
     dossier_number: obj.dossier?.dossier_number,
-    objet: obj.dossier?.object,
-    client_name: obj.dossier?.client?.full_name
+    object: obj.dossier?.object,
+    full_name: obj.dossier?.full_name
   }))
   dossier?: {
     id: number;
     dossier_number?: string;
-    objet?: string;
-    client_name?: string;
+    object?: string;
+    full_name?: string;
   };
 
   @ApiProperty({ 

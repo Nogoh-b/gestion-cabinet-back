@@ -67,7 +67,6 @@ import { OtpController } from './shared/controlers/otp.controller';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { QueryLoggingInterceptor } from './shared/interceptors/query-logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
-import { EmailService } from './shared/services/email/email.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
@@ -77,6 +76,8 @@ import { SocketService } from './shared/services/socket/socket.service';
 import { MainGateway } from './shared/services/socket/main.gateway';
 import { ChatModule } from 'src/modules/chat/chat.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
+import { EmailsModule } from './shared/emails/emails.module';
+import { EmailService } from './shared/services/email/email.service copy';
 
 
 
@@ -150,6 +151,7 @@ import { NotificationModule } from 'src/modules/notification/notification.module
     // forwardRef(() => NotificationModule),
     // SeedersModule,
     ScheduleModule.forRoot(),
+    EmailsModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [
@@ -185,6 +187,7 @@ import { NotificationModule } from 'src/modules/notification/notification.module
   exports: [
     ConfigModule,
     EmailService,
+    EmailsModule,
     JwtModule,
     TypeOrmModule,
     JwtModule,

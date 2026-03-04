@@ -25,6 +25,7 @@ import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { Dossier } from './entities/dossier.entity';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
+import { MailService } from 'src/core/shared/emails/emails.service';
 
 
 
@@ -41,11 +42,15 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     private readonly procedureTypeRepository: Repository<ProcedureType>,
     protected readonly paginationService: PaginationServiceV1,
     protected readonly chatService: ChatService,
+    protected readonly emailsService?: MailService, // Optionnel
+    
 
   ) {
-    super(dossierRepository, paginationService);
+    super(dossierRepository, paginationService, emailsService);
 
   }
+
+  
 
 /**
    * Override des options de recherche par défaut pour Customer
@@ -179,6 +184,8 @@ async searhDosiers(
     conversationDto.participantIds = dossier.collaborators.length  > 0 ? createDossierDto.collaborator_ids : users.map(u => u.id)
     const conversation = await this.chatService.createConversation(conversationDto, createdBy.id)
     dossier.conversation = conversation;
+    console.log('DTO:', JSON.stringify(createDossierDto, null, 2));
+    console.log('Entity before save:', dossier);
     const savedDossier = await this.dossierRepository.save(dossier);
 
     return this.mapToResponseDto(savedDossier);
@@ -427,7 +434,7 @@ async searhDosiers(
       dossier_number: dossier.dossier_number, // protection
     });
     console.log(updateDossierDto, dossier);
-    dossier.confidentiality_level = Number(dossier.confidentiality_level);
+    dossier.confidentiality_level = (dossier.confidentiality_level);
     const updatedDossier = await this.dossierRepository.save(dossier);
     return this.mapToResponseDto(updatedDossier);
   }
