@@ -13,10 +13,21 @@ export enum MailStatus {
   CANCELLED = 'cancelled',
 }
 
+export interface AttachmentMail {
+  filename: string;
+  content?: string | Buffer;      // base64 ou Buffer encodé
+  path?: string;
+  href?: string;
+  contentType?: string;
+}
+
 @Entity('mails')
 export class Mail {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ nullable: true, unique: true })
+  deduplicationKey?: string; // Clé unique pour éviter les doublons
 
   @Column({ nullable: true })
   templateName?: string; // Nom du template (ex: 'welcome', 'invoice')
@@ -43,12 +54,7 @@ export class Mail {
   text?: string; // Version texte
 
   @Column({ type: 'json', nullable: true })
-  attachments?: Array<{
-    filename: string;
-    content?: string; // base64 ou Buffer
-    path?: string;
-    contentType?: string;
-  }>;
+  attachments?: Array<AttachmentMail>;
 
   @Column({ type: 'enum', enum: MailStatus, default: MailStatus.PENDING })
   status: MailStatus;

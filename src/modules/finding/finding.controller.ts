@@ -52,7 +52,7 @@ export class FindingsController {
     return await this.findingsService.findAll();
   }
 
-  @Get('get/:id')
+  @Get(':id')
   @ApiOperation({ summary: 'Obtenir un finding par ID' })
   @ApiResponse({ status: 200, type: FindingResponseDto })
   async findOne(@Param('id', ParseIntPipe) id: number) {

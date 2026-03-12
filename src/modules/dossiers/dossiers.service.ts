@@ -26,6 +26,7 @@ import { Dossier } from './entities/dossier.entity';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
+import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 
 
 
@@ -36,7 +37,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     private readonly dossierRepository: Repository<Dossier>,
     @InjectRepository(Customer)
     private readonly clientRepository: Repository<Customer>,
-    @InjectRepository(User)
+    @InjectRepository(Employee)
     private readonly userRepository: Repository<Employee>,
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepository: Repository<ProcedureType>,
@@ -49,7 +50,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     super(dossierRepository, paginationService, emailsService);
 
   }
-
+ 
   
 
 /**
@@ -133,7 +134,7 @@ async searhDosiers(
     // Vérification des entités liées
     const [client, lawyer, procedureType, procedureSubtype] = await Promise.all([
       this.clientRepository.findOne({ where: { id: Number(createDossierDto.client_id) } }),
-      this.userRepository.findOne({ where: { id: createDossierDto.lawyer_id } }),
+      this.userRepository.findOne({ where: { id: createDossierDto.lawyer_id }, relations: ['user'] }),
       this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_type_id } }),
       this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_subtype_id } }),
     ]);
@@ -179,16 +180,23 @@ async searhDosiers(
 
     let conversationDto = new CreateConversationDto()
     const users = await this.userRepository.find({
-      select: ['id'],
+      // select: ['id'],
+      relations : ['user']
     });
-    conversationDto.participantIds = dossier.collaborators.length  > 0 ? createDossierDto.collaborator_ids : users.map(u => u.id)
+    conversationDto.participantIds = dossier.collaborators?.length  > 0 ? createDossierDto.collaborator_ids : users.map(u => u.id)
     const conversation = await this.chatService.createConversation(conversationDto, createdBy.id)
     dossier.conversation = conversation;
     console.log('DTO:', JSON.stringify(createDossierDto, null, 2));
     console.log('Entity before save:', dossier);
     const savedDossier = await this.dossierRepository.save(dossier);
-
-    return this.mapToResponseDto(savedDossier);
+    let mailDto = new CreateMailDto() 
+    const dossierR = await this.mapToResponseDto(savedDossier);
+    mailDto.templateName = "entities/dossier/dossier-created-creator"
+    mailDto.context = dossierR
+    mailDto.to = users.map(u => u.email)
+    mailDto.subject = "Creation d'un nouveau dossier"
+    this.sendMail(mailDto)
+    return dossierR
   }
 
   async findAll(searchDto: DossierSearchDto, user: User): Promise<any[]> {

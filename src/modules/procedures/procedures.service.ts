@@ -9,17 +9,41 @@ import { ProcedureType } from './entities/procedure.entity';
 import { ProcedureTypeResponseDto } from './dto/procedure-type-response';
 import { CreateProcedureTypeDto } from './dto/create-procedure.dto';
 import { UpdateProcedureTypeDto } from './dto/update-procedure.dto';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 
 @Injectable()
-export class ProceduresService {
+export class ProceduresService extends BaseServiceV1<ProcedureType> {
   constructor(
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepository: Repository<ProcedureType>,
     @InjectRepository(Dossier)
     private readonly dossierRepository: Repository<Dossier>,
-  ) {}
+    protected readonly paginationService: PaginationServiceV1,
 
+  ) {
+      super(procedureTypeRepository, paginationService);
+
+  }
+  getDefaultSearchOptions(): SearchOptions {
+    return {
+      // Champs sur lesquels la recherche textuelle sera effectuée
+      searchFields: ['name', 'code', 'description'],
+      
+      // Relations à inclure dans la recherche/filtrage
+      relationFields: ['parent', 'subtypes', 'dossiers'],
+      
+      // Champs où la recherche doit être exacte (pas de LIKE)
+      exactMatchFields: ['code', 'is_active', 'parent_id', 'hierarchy_level'],
+      
+      // Champs de date pour les filtres de période
+      dateRangeFields: ['created_at', 'updated_at'],
+    };
+  }
   async create(createProcedureTypeDto: CreateProcedureTypeDto): Promise<ProcedureTypeResponseDto> {
+
+    if(createProcedureTypeDto.parent_id)
+      return this.createSubtype(createProcedureTypeDto.parent_id, createProcedureTypeDto)
     // Vérifier l'unicité du code
     const existingCode = await this.procedureTypeRepository.findOne({
       where: { code: createProcedureTypeDto.code }
@@ -79,11 +103,11 @@ export class ProceduresService {
       where.category = searchDto.category;
     }*/
 
-    if (searchDto.main_types_only) {
+    if (searchDto.is_subtype) {
       where.is_subtype = false;
     }
 
-    if (searchDto.subtypes_only) {
+    if (searchDto.is_subtype) {
       where.is_subtype = true;
     }
 
@@ -92,8 +116,8 @@ export class ProceduresService {
     }
 
     if (searchDto.is_active !== undefined && searchDto.is_active !== null) {
-      where.is_active =
-        searchDto.is_active === true ;
+      // where.is_active =
+      //   searchDto.is_active === true ;
     }
 
     console.log('Search DTO:', where);
@@ -112,14 +136,14 @@ export class ProceduresService {
   async findOne(id: number): Promise<ProcedureTypeResponseDto> {
     const procedureType = await this.procedureTypeRepository.findOne({
       where: { id },
-      relations: ['parent', 'subtypes']
+      relations: ['parent', 'subtypes' , 'dossiers']
     });
 
     if (!procedureType) {
       throw new NotFoundException(`Type de procédure ${id} non trouvé`);
     }
 
-    return this.mapToResponseDto(procedureType);
+    return plainToInstance(ProcedureTypeResponseDto,procedureType);
   }
 
   async getMainTypes(): Promise<ProcedureTypeResponseDto[]> {

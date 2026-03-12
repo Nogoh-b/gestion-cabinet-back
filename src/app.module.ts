@@ -57,12 +57,34 @@ const configService = new ConfigService();
 
 const helpers = {
   companyName: () => configService.get('COMPANY_NAME'),
-  companyLogo: () => configService.get('COMPANY_LOGO_URL'),
+  logoUrl: () => configService.get('COMPANY_LOGO_URL'),
   companyAddress: () => configService.get('COMPANY_ADDRESS'),
   companyEmail: () => configService.get('COMPANY_EMAIL'),
   companyPhone: () => configService.get('COMPANY_PHONE'),
   currentYear: () => new Date().getFullYear().toString(),
-  appUrl: () => configService.get('APP_URL'),
+  appUrl: () => configService.get('APP_URL'),  
+  formatDate: (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  },
+  formatDateTime: (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }, 
+  eq: (a, b) => a === b,
+  contains: (str, substr) => str && str.includes(substr),
 };
 
 

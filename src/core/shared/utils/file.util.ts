@@ -2,6 +2,7 @@ import { createWriteStream, existsSync } from 'fs';
 import * as mime from 'mime-types';
 import { join } from 'path';
 import * as sharp from 'sharp';
+import * as fs from 'fs-extra'; // Ou utilisez 'fs/promises' avec Node.js natif
 
 
 
@@ -11,10 +12,13 @@ import { mkdir } from 'fs/promises';
 
 export interface UploadedFileInfo {
   fileName: string;
+  filePath: string;      // Chemin physique sur le serveur
+  fileUrl: string;        // URL publique pour le téléchargement
   fileSize: number;
-  filePath: string;
+  fileType: AttachmentType;
   mimeType: string;
-  originalName: string;
+  thumbnailUrl?: string;  // URL publique de la miniature
+  thumbnailPath?: string; // Chemin physique de la miniature
 }
 
 export interface UploadOptions {
@@ -136,21 +140,13 @@ static async uploadFileV1(
     width?: number;
     quality?: number;
   }
-): Promise<{
-  fileName: string;
-  filePath: string;      // Chemin physique sur le serveur
-  fileUrl: string;        // URL publique pour le téléchargement
-  fileSize: number;
-  fileType: AttachmentType;
-  mimeType: string;
-  thumbnailUrl?: string;  // URL publique de la miniature
-  thumbnailPath?: string; // Chemin physique de la miniature
-}> {
+): Promise<UploadedFileInfo> {
   console.log('Upload path ', uploadDir )
   const APP_URL = process.env.APP_URL || 'http://localhost:3000';
   const UPLOADS_URL_PREFIX = '/uploads'; // Le préfixe d'URL pour vos fichiers
   const fileName = FilesUtil.generateUniqueFilename(file.originalname);
-  
+  await this.ensureDirectoryExists(uploadDir, false);
+
   // Chemin physique complet sur le serveur
   const filePath = join(uploadDir, fileName);
   
@@ -449,4 +445,50 @@ private static determineFileType(mimetype: string, filename: string): Attachment
     const random = Math.random().toString(36).substring(2, 15);
     return `${timestamp}-${random}.${ext}`;
   }
+
+  /**
+ * Crée récursivement les dossiers pour un chemin donné s'ils n'existent pas
+ * @param path - Le chemin complet du fichier ou dossier à créer
+ * @param isFile - Indique si le chemin pointe vers un fichier (true) ou un dossier (false)
+ * @returns Promise<string> - Le chemin créé
+ */
+static async  ensureDirectoryExists(path: string, isFile: boolean = true): Promise<string> {
+  try {
+    // Si c'est un fichier, on prend son répertoire parent
+    const dirPath = isFile ? join(path, '..') : path;
+    
+    // Vérifier si le dossier existe
+    const exists = await fs.pathExists(dirPath);
+    
+    if (!exists) {
+      // Créer récursivement tous les dossiers manquants
+      await fs.mkdir(dirPath, { recursive: true });
+      console.log(`Dossier créé: ${dirPath}`);
+    }
+    
+    return path;
+  } catch (error) {
+    console.error(`Erreur lors de la création du dossier pour ${path}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Version synchrone
+ */
+static  ensureDirectoryExistsSync(path: string, isFile: boolean = true): string {
+  try {
+    const dirPath = isFile ? join(path, '..') : path;
+    
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+      console.log(`Dossier créé: ${dirPath}`);
+    }
+    
+    return path;
+  } catch (error) {
+    console.error(`Erreur lors de la création du dossier pour ${path}:`, error);
+    throw error;
+  }
+}
 }

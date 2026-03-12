@@ -33,7 +33,7 @@ export class Audience extends BaseEntity {
   audience_date: Date;
 
   @Column({ name: 'dossier_id', type: 'int', nullable: true }) // ✅ Changé en 'date'
-  dossier_id: Date;
+  dossier_id: string;
 
   @Column({ name: 'audience_time', length: 10, nullable: false })
   audience_time: string;

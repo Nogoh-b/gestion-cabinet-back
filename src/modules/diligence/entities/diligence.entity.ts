@@ -150,9 +150,13 @@ export class Diligence extends BaseEntity {
     if (!this.findings || this.findings.length === 0) return 0;
     
     const totalFindings = this.findings.length;
-    const reviewedFindings = this.findings.filter(f => f.status !== FindingStatus.IDENTIFIED).length;
-    
-    return Math.round((reviewedFindings / totalFindings) * 100);
+    const completedFindings = this.findings.filter(
+      f => 
+        f.status === FindingStatus.RESOLVED ||
+        f.status === FindingStatus.WAIVED
+    ).length;  
+        
+    return Math.round((completedFindings / totalFindings) * 100);
   }
 
   get total_critical_findings(): number {

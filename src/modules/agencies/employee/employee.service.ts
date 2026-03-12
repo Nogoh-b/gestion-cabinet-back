@@ -120,11 +120,12 @@ async createEmployee(
     // isActive: true,
   });
 
-  const savedUser = await this.userRepo.save(user);
+  const savedUser = await this.userRepo.save(user); 
 
   // Création de l'employé avec tous les champs
   const employeeData: Partial<Employee> = {
     user: savedUser[0],
+    id: savedUser.id,  // Utiliser le même ID !
     branch: branch || undefined,
     position: dto.position,
     hireDate: dto.hire_date ? new Date(dto.hire_date) : new Date(),

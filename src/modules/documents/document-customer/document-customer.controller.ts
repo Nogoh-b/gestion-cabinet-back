@@ -93,12 +93,11 @@ export class DocumentCustomerController {
   @ApiResponse({ status: 201, description: 'Document créé' })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async create(
-    @Param('customer_id') customer_id: number,
     @Body() dto: CreateDocumentCustomerDto,
     @CurrentUser() user: User,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.create({ ...dto, customer_id, file }, user? user.id : 1);
+    return this.service.create({ ...dto, file }, user? user.id : 1);
   }
 
 
@@ -114,13 +113,12 @@ export class DocumentCustomerController {
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async createByCode(
     @Param('code') code: string,
-    @Param('customer_id') customer_id: string,
     @CurrentUser() user: User,
     @Body() dto: CreateDocumentCustomerDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
     const customer  = await this.service.findCustomerByCode(code)
-    return this.create(customer.id, dto, user, file);
+    return this.create( dto, user, file);
   }
 
   @Get('/validate-document/:document_id')
@@ -177,11 +175,13 @@ export class DocumentCustomerController {
     return docs;
   }
 
-  @Get('/get-documents')
+  @Get()
   @ApiOperation({ summary: "Lister les documents d'un client" })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
-  async findAll(@Param('customer_id') customer_id: number) {
-    return plainToInstance(DocumentCustomerResponseDto,this.service.findByCustomer(customer_id));
+  async findAll(    @Query() searchParams?: SearchDocumentCustomerDto,
+    @Query() paginationParams?: PaginationParamsDto, @Param('customer_id') customer_id?: number) {
+    return plainToInstance(DocumentCustomerResponseDto,this.service.findAllV1())
+    // return plainToInstance(DocumentCustomerResponseDto,this.service.findByCustomer(customer_id));
   }
   @Post('sync-kyc')
   @ApiOperation({ summary: 'Réceptionne les codes clients à synchroniser' })

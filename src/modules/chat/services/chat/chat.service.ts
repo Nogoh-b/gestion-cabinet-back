@@ -51,7 +51,7 @@ export class ChatService {
     const participants = await this.userRepository.findByIds(ids);
     
     if (participants.length !== ids.length) {
-      throw new NotFoundException('Certains utilisateurs n\'existent pas');
+      // throw new NotFoundException('Certains utilisateurs n\'existent pas');
     }
 
     const conversation = this.conversationRepository.create({

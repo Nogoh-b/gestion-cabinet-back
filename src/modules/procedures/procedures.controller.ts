@@ -18,6 +18,8 @@ import { CreateProcedureTypeDto } from './dto/create-procedure.dto';
 import { ProcedureTypeResponseDto } from './dto/procedure-type-response';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { UpdateProcedureTypeDto } from './dto/update-procedure.dto';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
 @ApiTags('procedures')
 @ApiBearerAuth()
@@ -33,6 +35,21 @@ export class ProceduresController {
   create(@Body() createProcedureTypeDto: CreateProcedureTypeDto): Promise<ProcedureTypeResponseDto> {
     return this.proceduresService.create(createProcedureTypeDto);
   }
+
+    @Get('/search')
+    @ApiOperation({ summary: 'Rechercher des procedure avec filtres' })
+    @ApiResponse({ status: 200, type: [ProcedureTypeResponseDto] })
+    async search(
+      @Query() searchParams?: ProcedureSearchDto,
+      @Query() paginationParams?: PaginationParamsDto,
+    ) {
+      return await this.proceduresService.searchWithTransformer(
+        searchParams as SearchCriteria,
+        ProcedureTypeResponseDto,
+        paginationParams,
+      );
+    }
+  
 
   @Post(':id/subtypes')
   @UseGuards(JwtAuthGuard)
@@ -78,8 +95,9 @@ export class ProceduresController {
   @ApiOperation({ summary: 'Obtenir un type de procédure par son ID' })
   @ApiResponse({ status: 200, description: 'Type de procédure trouvé', type: ProcedureTypeResponseDto })
   @ApiResponse({ status: 404, description: 'Type de procédure non trouvé' })
-  findOne(@Param('id', ParseIntPipe) id: string): Promise<ProcedureTypeResponseDto> {
-    return this.proceduresService.findOne(+id);
+  findOne(@Param('id', ParseIntPipe) id: string): any{
+    return this.proceduresService.findOneV1(+id,null,ProcedureTypeResponseDto);
+    
   }
 
   @Patch(':id')

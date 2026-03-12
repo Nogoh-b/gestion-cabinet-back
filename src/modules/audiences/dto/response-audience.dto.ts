@@ -1,5 +1,5 @@
 // src/modules/audiences/dto/audience-response.dto.ts
-import { Expose, Transform } from "class-transformer";
+import { Exclude, Expose, Transform } from "class-transformer";
 
 
 
@@ -103,11 +103,32 @@ export class AudienceResponseDto {
     object: obj.dossier?.object,
     full_name: obj.dossier?.full_name
   }))
-  dossier?: {
+  dossier_details?: {
     id: number;
     dossier_number?: string;
     object?: string;
     full_name?: string;
+  };
+
+  @ApiProperty({ 
+    example: {
+      id: 1,
+      reference: "DOS-2024-001",
+      objet: "Affaire commerciale"
+    }
+  })
+  @Expose()
+  @Transform(({ obj }) => ({
+    id: obj.dossier?.client?.id,
+    // dossier_number: obj.dossier?.dossier_number,
+    // object: obj.dossier?.object,
+    full_name: obj.dossier?.client?.full_name
+  }))
+  client_details?: {
+    id: number;
+    // dossier_number?: string;
+    // object?: string;
+    full_name?: any;
   };
 
   @ApiProperty({ 
@@ -127,15 +148,22 @@ export class AudienceResponseDto {
       id: doc.id,
       name: doc.name,
       document_type: doc.document_type,
-      file_url: doc.file_url
+      category: doc.category,
+      file_url: doc.file_url,
+      status: doc.status,
+      file_mimetype: doc.file_mimetype
     }));
   })
-  documents?: Array<{
+  documents: Array<{
     id: number;
     name: string;
     document_type: string;
     file_url?: string;
+    file_mimetype?: string;
   }>;
+
+  @Exclude({ toPlainOnly: true })
+  dossier: any;
 
   // Computed fields
   @ApiProperty({ example: true })

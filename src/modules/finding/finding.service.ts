@@ -176,6 +176,7 @@ export class FindingsService extends BaseServiceV1<Finding> {
       estimated_risk_amount: dto.estimated_risk_amount ?? finding.estimated_risk_amount,
       due_date: dto.due_date ? new Date(dto.due_date) : finding.due_date,
       confidential: dto.confidential ?? finding.confidential,
+      status : dto.status ?? finding.status
     });
 
     return this.repository.save(finding);

@@ -157,12 +157,12 @@ export class DiligenceResponseDto {
 
   @ApiProperty({ example: 65 })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.findings || obj.findings.length === 0) return 0;
-    const totalFindings = obj.findings.length;
-    const reviewedFindings = obj.findings.filter(f => f.status !== 'identified').length;
-    return Math.round((reviewedFindings / totalFindings) * 100);
-  })
+  // @Transform(({ obj }) => {
+  //   if (!obj.findings || obj.findings.length === 0) return 0;
+  //   const totalFindings = obj.findings.length;
+  //   const reviewedFindings = obj.findings.filter(f => f.status !== 'identified').length;
+  //   return Math.round((reviewedFindings / totalFindings) * 100);
+  // })
   progress_percentage: number;
 
   @ApiProperty({ example: 3 })
@@ -174,6 +174,13 @@ export class DiligenceResponseDto {
   @Expose()
   @Transform(({ obj }) => obj.findings?.filter(f => f.severity === 'high').length || 0)
   total_high_findings: number;
+
+  @ApiProperty({ example: 8 })
+  @Expose()
+  @Transform(({ obj }) => obj.findings?.length || 0)
+  findings_count: number;
+
+  
 
   @ApiProperty({ example: 'En retard' })
   @Expose()

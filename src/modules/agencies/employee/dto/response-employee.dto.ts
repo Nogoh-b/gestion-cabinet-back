@@ -1,142 +1,186 @@
-import { Exclude, Expose, Transform } from 'class-transformer';
-import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { Expose, Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-
 import { EmployeePosition, EmployeeStatus } from '../entities/employee.entity';
-
+import { UserResponseDto } from 'src/modules/iam/user/dto/user-response.dto';
+import { BranchResponseDto } from '../../branch/dto/response-branch.dto';
 
 export class EmployeeResponseDto {
+  // =========== PROPRIÉTÉS DE BASE ===========
+  
+  @ApiProperty({ example: 1, description: 'ID unique de l\'employé' })
   @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.user?.id)
   id: number;
 
+  @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
   @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.id)
-  employee_id: number;
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.user?.first_name)
-  first_name: string;
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.user?.last_name)
-  last_name: string;
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => `${obj.user?.first_name} ${obj.user?.last_name}`)
-  full_name: string;
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.user?.email)
-  email: string;
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.user?.phone_number)
-  phone_number: string;
-
-  @Expose()
-  @ApiProperty({ enum: EmployeePosition })
   position: EmployeePosition;
 
+  @ApiProperty({ example: '2023-01-01', description: "Date d'embauche" })
   @Expose()
-  @ApiProperty({ enum: EmployeeStatus })
-  status: EmployeeStatus;
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.user?.role)
-  role: string;
-
-  @Expose()
-  @ApiProperty()
   hireDate: Date;
 
+  @ApiProperty({ enum: EmployeeStatus, example: EmployeeStatus.ACTIVE })
   @Expose()
-  @ApiProperty()
-  specialization?: string;
+  status: EmployeeStatus;
 
+  @ApiProperty({ example: 'Droit des affaires', description: 'Spécialisation' })
   @Expose()
-  @ApiProperty()
-  bar_association_number?: string;
+  specialization: string;
 
+  @ApiProperty({ example: 'A123456', description: "Numéro d'inscription au barreau" })
   @Expose()
-  @ApiProperty()
-  bar_association_city?: string;
+  bar_association_number: string;
 
+  @ApiProperty({ example: 'Paris', description: "Ville du barreau" })
   @Expose()
-  @ApiProperty()
-  years_of_experience?: number;
+  bar_association_city: string;
 
+  @ApiProperty({ example: 5, description: "Années d'expérience" })
   @Expose()
-  @ApiProperty()
-  hourly_rate?: number;
+  years_of_experience: number;
 
+  @ApiProperty({ example: 150.00, description: 'Taux horaire' })
   @Expose()
-  @ApiProperty()
+  hourly_rate: number;
+
+  @ApiProperty({ example: true, description: "Disponibilité de l'employé" })
+  @Expose()
   is_available: boolean;
 
+  @ApiProperty({ example: 50, description: 'Nombre maximum de dossiers' })
   @Expose()
-  @ApiProperty()
   max_dossiers: number;
 
+  @ApiProperty({ example: 'Avocat spécialisé en droit commercial...', description: 'Biographie' })
   @Expose()
-  @ApiProperty()
-  current_dossier_count: number;
+  bio: string;
 
+  @ApiProperty({ example: ['Français', 'Anglais'], description: 'Langues parlées' })
   @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.expertise_areas || [])
-  expertise_areas: string[];
-
-  @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.languages || [])
   languages: string[];
 
+  @ApiProperty({ example: ['Droit des sociétés', 'Contrats'], description: "Domaines d'expertise" })
   @Expose()
-  @ApiProperty()
+  expertise_areas: string[];
+
+  @ApiProperty({ example: 'EMP-AVO-2026-8YY3FB', description: "Numéro d'employé unique" })
+  @Expose()
+  employee_number: string;
+
+  @ApiProperty({ example: '1990-01-01', description: 'Date de naissance' })
+  @Expose()
+  birth_date: Date;
+
+  @ApiProperty({ example: '123 Rue du Palais, 75001 Paris', description: 'Adresse professionnelle' })
+  @Expose()
+  professional_address: string;
+
+  @ApiProperty({ example: '+33 1 45 67 89 00', description: 'Téléphone professionnel' })
+  @Expose()
+  professional_phone: string;
+
+  @ApiProperty({ example: 'MC123456789', description: "Numéro SIRET" })
+  @Expose()
+  siret_number: string;
+
+  @ApiProperty({ example: 'FR12345678901', description: "Numéro de TVA" })
+  @Expose()
+  tva_number: string;
+
+  // =========== RELATIONS ===========
+
+  @ApiProperty({ type: () => UserResponseDto, description: 'Informations utilisateur associées' })
+  @Expose()
+  @Type(() => UserResponseDto)
+  user: UserResponseDto;
+
+  @ApiProperty({ type: () => BranchResponseDto, description: 'Agence de rattachement' })
+  @Expose()
+  @Type(() => BranchResponseDto)
+  branch?: BranchResponseDto;
+
+  // =========== GETTERS ===========
+
+  @ApiProperty({ example: 'John Doe', description: 'Nom complet' })
+  @Expose()
+  full_name: string;
+
+  @ApiProperty({ example: 'john.doe@example.com', description: 'Email' })
+  @Expose()
+  email: string;
+
+  @ApiProperty({ example: '2025-07-09T02:02:56.000Z', description: 'Dernière connexion' })
+  @Expose()
+  lastSeen: string;
+
+  @ApiProperty({ example: 'johndoe', description: "Nom d'utilisateur" })
+  @Expose()
+  username: string;
+
+  @ApiProperty({ example: true, description: "Est en ligne" })
+  @Expose()
+  is_online: boolean;
+
+  @ApiProperty({ example: true, description: "Est un avocat" })
+  @Expose()
+  is_avocat: boolean;
+
+  @ApiProperty({ example: false, description: "Est un secrétaire" })
+  @Expose()
+  is_secretaire: boolean;
+
+  @ApiProperty({ example: false, description: "Est un huissier" })
+  @Expose()
+  is_huissier: boolean;
+
+  @ApiProperty({ example: 12, description: "Nombre de dossiers en cours" })
+  @Expose()
+  current_dossier_count: number;
+
+  @ApiProperty({ example: true, description: "Peut accepter plus de dossiers" })
+  @Expose()
+  can_accept_more_dossiers: boolean;
+
+  @ApiProperty({ example: true, description: "Est actif" })
+  @Expose()
+  is_active: boolean;
+
+  @ApiProperty({ example: 'Confirmé', description: "Niveau d'expérience" })
+  @Expose()
   experience_level: string;
 
-  @Expose()
-  @ApiProperty()
-  branch: Branch;
+  // =========== MÉTHODES EXPOSÉES ===========
 
+  @ApiProperty({ example: true, description: "Peut gérer des dossiers" })
   @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.created_at)
+  canManageDossiers: boolean;
+
+  @ApiProperty({ example: true, description: "Peut valider des documents" })
+  @Expose()
+  canValidateDocuments: boolean;
+
+  @ApiProperty({ 
+    example: { particulier: 150, professionnel: 180, entreprise: 225 },
+    description: "Tarifs selon le type de client" 
+  })
+  @Expose()
+  rates_by_client_type: {
+    particulier: number;
+    professionnel: number;
+    entreprise: number;
+  };
+
+  // =========== AUDIT ===========
+
+  @ApiProperty({ example: '2025-11-18T17:45:02.121Z', description: 'Date de création' })
+  @Expose()
   created_at: Date;
 
+  @ApiProperty({ example: '2025-11-18T17:45:02.133Z', description: 'Date de mise à jour' })
   @Expose()
-  @ApiProperty()
-  @Transform(({ obj }) => obj.updated_at)
   updated_at: Date;
 
+  @ApiProperty({ example: null, nullable: true, description: 'Date de suppression' })
   @Expose()
-  user: any;
-
-  @Exclude()
-  password: string;
-
-  // Getters calculés
-  @Expose()
-  get can_accept_more_dossiers(): boolean {
-    return this.current_dossier_count < this.max_dossiers;
-  }
-
-  @Expose()
-  get is_avocat(): boolean {
-    return this.position === EmployeePosition.AVOCAT;
-  }
-
-  @Expose()
-  get is_active(): boolean {
-    return this.status === EmployeeStatus.ACTIVE;
-  }
+  deleted_at: Date | null;
 }

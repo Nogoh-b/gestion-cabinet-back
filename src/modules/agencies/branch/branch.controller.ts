@@ -80,7 +80,7 @@ export class BranchController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_BRANCH')
   findOne(@Param('id') id: number) {
-    return this.branchService.findOne(id);
+    return this.branchService.findOne(id,true);
   }
 
   @Get(':id/employees')

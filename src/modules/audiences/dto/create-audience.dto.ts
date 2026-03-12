@@ -1,5 +1,5 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 
@@ -85,6 +85,15 @@ export class CreateAudienceDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiProperty({
+    example: 'Identifiants des documents',
+    required: false,
+  })
+  @IsArray()
+  @IsOptional()
+  document_ids: number[]; // Liste des destinataires principaux
+
 
   @ApiProperty({
     example: '2025-11-05T09:00:00Z',

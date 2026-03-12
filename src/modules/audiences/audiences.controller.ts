@@ -72,7 +72,7 @@ export class AudiencesController {
   }
 
   // ✅ GET BY ID - GET /audiences/:id
-  @Get('get/:id')
+  @Get(':id')
   @ApiOperation({ summary: 'Obtenir une audience par ID' })
   @ApiResponse({ status: 200, type: AudienceResponseDto })
   async findOne(@Param('id') id: string) {

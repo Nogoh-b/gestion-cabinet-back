@@ -63,6 +63,19 @@ export class EmployeeController {
     });
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Récupérer un employé par son ID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Employé trouvé', 
+    type: EmployeeResponseDto 
+  })
+  @ApiResponse({ status: 404, description: 'Employé non trouvé' })
+  @RequirePermissions('VIEW_EMPLOYEE')
+  async findOne(@Param('id', ParseIntPipe) id: number): Promise<EmployeeResponseDto | any> {
+    return this.employeeService.findOneV1(id,['user', 'branch'],EmployeeResponseDto);
+  }
+
   /**
    * Variante: réinitialisation par id directement dans l'URL.
    */

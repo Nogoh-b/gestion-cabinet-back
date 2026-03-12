@@ -69,7 +69,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   }
 
   async updatePaiement(id: string, updateDto: UpdatePaiementDto): Promise<PaiementResponseDto> {
-    const paiement = await this.findOneV1(id);
+    const paiement = await this.findOneV1(id,['facture']);
     if (!paiement) {
       throw new NotFoundException(`Paiement avec l'ID ${id} non trouvé`);
     }

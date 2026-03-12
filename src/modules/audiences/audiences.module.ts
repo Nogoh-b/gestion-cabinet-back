@@ -11,6 +11,7 @@ import { DossiersModule } from '../dossiers/dossiers.module';
 import { AudiencesController } from './audiences.controller';
 import { AudiencesService } from './audiences.service';
 import { Audience } from './entities/audience.entity';
+import { AudienceSubscriber } from './suscribers/audiences.suscribers';
 
 
 
@@ -25,6 +26,6 @@ import { Audience } from './entities/audience.entity';
     CoreModule
   ],
   controllers: [AudiencesController],
-  providers: [AudiencesService],
+  providers: [AudiencesService, AudienceSubscriber],
 })
 export class AudiencesModule {}

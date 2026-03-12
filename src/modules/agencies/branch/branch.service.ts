@@ -20,6 +20,8 @@ import { EmployeeService } from '../employee/employee.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
+import { BranchResponseDto } from './dto/response-branch.dto';
+import { plainToInstance } from 'class-transformer';
 
 
 
@@ -72,7 +74,7 @@ export class BranchService  extends BaseServiceV1<Branch> {
         ],*/
         
         // Champs de relations pour filtrage
-        relationFields: ['employees', 'customers']
+        relationFields: ['employees', 'customers', 'location_city']
       };
     }
 
@@ -147,14 +149,18 @@ export class BranchService  extends BaseServiceV1<Branch> {
     return !existing;
   }
 
-  async findOne(id: number, all = false): Promise<Branch> {
-    const relations = all ? ['employees', 'savingsAccounts', 'customers'] : [];
-    const branch = await this.branchRepository.findOne({
+  async findOne(id: number, all = false): Promise<BranchResponseDto> {
+    const relations = all ? ['employees', 'employees.user', 'customers', 'location_city',
+    'location_city.district',
+        'location_city.district.division',
+        'location_city.district.division.region',
+        'location_city.district.division.region.country',] : [];
+    const branch = await this.branchRepository.findOne({ 
       where: { id, status: 1 },
       relations,
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
-    return branch;
+    return plainToInstance(BranchResponseDto,branch);
   }
 
   async findEmployeesByBranchId(id: number): Promise<EmployeeResponseDto[]> {

@@ -47,9 +47,9 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   ) {}
 
 
-  async sendMail(createMailDto: CreateMailDto): Promise<Mail | any> {
+  async sendMail(createMailDto: CreateMailDto, deduplicationKey?: string): Promise<Mail | any> {
     if (this.emailsService) {
-      return this.emailsService.create(createMailDto);
+      return this.emailsService.create(createMailDto, deduplicationKey);
     }
     return null;
   }
@@ -485,12 +485,41 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   /**
    * Méthodes CRUD de base
    */
-  async findOneV1(id: string | number, relations: string[] | null = []): Promise<T | null> {
+  async findOneV2(id: string | number, relations: string[] | null = []): Promise<T | null> {
     return this.repository.findOne({
       where: { id } as any,
       relations : this.getDefaultSearchOptions().relationFields,
     });
   }
+
+  async findOneV1<DTO = T>(
+  id: string | number, 
+  relations: string[] | null = [],
+  dtoClass?: new () => DTO
+  ): Promise<DTO | T | null> {
+  try {
+    const result = await this.repository.findOne({
+      where: { id } as any,
+      relations: relations || this.getDefaultSearchOptions().relationFields,
+    });
+    
+    if (!result) {
+      return null;
+    }
+    
+    if (dtoClass) {
+      return plainToInstance(dtoClass, result, {
+        excludeExtraneousValues: false,
+        enableImplicitConversion: true,
+      });
+    }
+    
+    return result;
+  } catch (error) {
+    // Gérer l'erreur selon votre besoin
+    throw new Error(`Erreur lors de la recherche de l'entité avec l'id ${id}: ${error.message}`);
+  }
+}
 
   async findByIdsV1(ids: (string | number)[], relations: string[] = []): Promise<T[]> {
     return this.repository.find({

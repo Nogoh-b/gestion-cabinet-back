@@ -13,7 +13,7 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
-import { DiligenceResponseDto, DiligenceListResponseDto } from './dto/response-diligence.dto';
+import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { DiligenceSearchDto } from './dto/search-diligence.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
@@ -33,21 +33,21 @@ export class DiligencesController {
 
   @Get('/search')
   @ApiOperation({ summary: 'Rechercher des diligences avec filtres' })
-  @ApiResponse({ status: 200, type: [DiligenceListResponseDto] })
+  @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
   async search(
     @Query() searchParams?: DiligenceSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
     return await this.diligencesService.searchWithTransformer(
       searchParams as SearchCriteria,
-      DiligenceListResponseDto,
+      DiligenceResponseDto,
       paginationParams,
     );
   }
 
   @Get()
   @ApiOperation({ summary: 'Lister toutes les diligences' })
-  @ApiResponse({ status: 200, type: [DiligenceListResponseDto] })
+  @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
   async findAll() {
     return await this.diligencesService.findAll();
   }
@@ -115,14 +115,14 @@ export class DiligencesController {
 
   @Get('upcoming/deadlines')
   @ApiOperation({ summary: 'Récupérer les diligences avec échéances proches' })
-  @ApiResponse({ status: 200, type: [DiligenceListResponseDto] })
+  @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
   async findUpcomingDeadlines(@Query('days') days: number = 7) {
     return await this.diligencesService.findUpcomingDeadlines(days);
   }
 
   @Get('overdue')
   @ApiOperation({ summary: 'Récupérer les diligences en retard' })
-  @ApiResponse({ status: 200, type: [DiligenceListResponseDto] })
+  @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
   async findOverdue() {
     return await this.diligencesService.findOverdue();
   }

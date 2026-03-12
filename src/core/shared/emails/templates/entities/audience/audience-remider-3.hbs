@@ -1,0 +1,143 @@
+{{> header}}
+
+<div class="reminder-card urgent">
+  <div class="reminder-header">
+    <h1>🚨 URGENT : Audience DEMAN (J-3)</h1>
+    <div class="countdown-badge urgent">J-3</div>
+  </div>
+
+  <div class="urgent-message">
+    <p><strong>🔴 Votre audience est prévue pour DEMAIN !</strong></p>
+  </div>
+
+  <div class="info-section highlight">
+    <h2>📌 Récapitulatif final</h2>
+    <table class="info-table">
+      <tr>
+        <td><strong>Dossier :</strong></td>
+        <td>{{dossier_details.dossier_number}}</td>
+      </tr>
+      <tr>
+        <td><strong>Client :</strong></td>
+        <td>{{client_details.full_name}}</td>
+      </tr>
+      <tr>
+        <td><strong>Date et heure :</strong></td>
+        <td class="datetime-highlight">{{formatDate audience_date}} à {{audience_time}}</td>
+      </tr>
+      <tr>
+        <td><strong>Lieu :</strong></td>
+        <td>{{jurisdiction.name}} - Salle {{room}}</td>
+      </tr>
+      <tr>
+        <td><strong>Adresse :</strong></td>
+        <td>{{jurisdiction.address}}, {{jurisdiction.city}}</td>
+      </tr>
+      <tr>
+        <td><strong>Juge :</strong></td>
+        <td>{{judge_name}}</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Documents checklists critiques -->
+  <div class="critical-section">
+    <h2>⚠️ Vérification de dernière minute</h2>
+    
+    {{#if documents.length}}
+    <div class="checklist-critical">
+      <h3>Documents nécessaires pour demain :</h3>
+      
+      {{!-- {{#if (hasMissingRequired documents)}}
+      <div class="error-box">
+        <p><strong>❌ Documents OBLIGATOIRES manquants :</strong></p>
+        <ul>
+          {{#each documents}}
+            {{#if required_for_hearing}}
+              {{#unless is_validated}}
+              <li class="critical-item">
+                <strong>{{name}}</strong> - {{document_type.name}}
+                <span class="action-needed">(À valider URGENT)</span>
+              </li>
+              {{/unless}}
+            {{/if}}
+          {{/each}}
+        </ul>
+      </div>
+      {{/if}} --}}
+
+      <div class="quick-check">
+        <table class="compact-table">
+          <tr>
+            <th>Document</th>
+            <th>Statut</th>
+            <th>Action</th>
+          </tr>
+          {{#each documents}}
+          <tr class="{{#if required_for_hearing}}required-row{{/if}}">
+            <td>
+              <strong>{{name}}</strong><br>
+              <small>{{document_type.name}}</small>
+            </td>
+            <td>
+              {{#if is_validated}}
+              <span class="status-valid">✅ Validé</span>
+              {{else}}
+              <span class="status-pending">⏳ En attente</span>
+              {{/if}}
+            </td>
+            <td>
+              {{#unless is_validated}}
+              <a href="{{appUrl}}/documents/{{id}}/validate" class="btn-small">Valider</a>
+              {{/unless}}
+            </td>
+          </tr>
+          {{/each}}
+        </table>
+      </div>
+    </div>
+    {{else}}
+    <div class="error-box">
+      <p><strong>❌ AUCUN DOCUMENT associé à cette audience !</strong></p>
+    </div>
+    {{/if}}
+  </div>
+
+  <!-- Informations pratiques -->
+  <div class="practical-info">
+    <h3>📍 Informations pratiques</h3>
+    <div class="info-grid">
+      <div class="info-item">
+        <strong>🚗 Parking :</strong>
+        <p>Parking disponible {{#if jurisdiction.parking}} ({{jurisdiction.parking}}) {{else}} sur place {{/if}}</p>
+      </div>
+      <div class="info-item">
+        <strong>⏰ Arrivée :</strong>
+        <p>Prévoir 30 min d'avance</p>
+      </div>
+      <div class="info-item">
+        <strong>📞 Contact :</strong>
+        <p>{{jurisdiction.phone}}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions urgentes -->
+  <div class="urgent-actions">
+    <h3>⚡ Actions immédiates</h3>
+    <div class="button-group">
+      <a href="{{appUrl}}/audiences/{{id}}/documents" class="btn btn-urgent">📋 Finaliser les documents</a>
+      <a href="{{appUrl}}/audiences/{{id}}/print" class="btn btn-secondary">🖨️ Imprimer la convocation</a>
+      <a href="{{appUrl}}/audiences/{{id}}/directions" class="btn btn-secondary">🗺️ Itinéraire</a>
+    </div>
+  </div>
+
+  <!-- Notes de dernière minute -->
+  {{#if notes}}
+  <div class="last-minute-notes">
+    <h4>📝 Notes importantes :</h4>
+    <p class="notes-highlight">{{notes}}</p>
+  </div>
+  {{/if}}
+</div>
+{{> footer}}

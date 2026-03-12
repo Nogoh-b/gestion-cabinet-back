@@ -49,7 +49,7 @@ export class ProcedureType extends BaseEntity {
   @OneToMany(() => Dossier, (dossier) => dossier.procedure_type)
   dossiers: Dossier[];
 
-  // Getters
+  // Getters existants
   get is_main_type(): boolean {
     return !this.is_subtype && this.hierarchy_level === 1;
   }
@@ -65,11 +65,127 @@ export class ProcedureType extends BaseEntity {
     return this.name;
   }
 
-  // La catégorie est déduite du type principal
   get category(): string {
     if (this.is_main_type) {
       return this.name.toLowerCase();
     }
     return this.parent?.name.toLowerCase() || '';
+  }
+
+  // Nouveaux getters intéressants
+  get has_subtypes(): boolean {
+    return this.subtypes && this.subtypes.length > 0;
+  }
+
+  get subtypes_count(): number {
+    return this.subtypes?.length || 0;
+  }
+
+  get dossiers_count(): number {
+    return this.dossiers?.length || 0;
+  }
+
+  get is_leaf(): boolean {
+    return !this.has_subtypes;
+  }
+
+  get hierarchy_path(): string[] {
+    const path = [this.name];
+    let current = this.parent;
+    while (current) {
+      path.unshift(current.name);
+      current = current.parent;
+    }
+    return path;
+  }
+
+  get hierarchy_path_with_codes(): string {
+    const path = [`${this.name} (${this.code})`];
+    let current = this.parent;
+    while (current) {
+      path.unshift(`${current.name} (${current.code})`);
+      current = current.parent;
+    }
+    return path.join(' → ');
+  }
+
+  get document_count(): number {
+    return this.required_documents?.length || 0;
+  }
+
+  get has_required_documents(): boolean {
+    return this.document_count > 0;
+  }
+
+  get required_documents_list(): string {
+    return 'Aucun document requis';
+  }
+
+  get jurisdictions_count(): number {
+    return this.specific_jurisdictions?.length || 0;
+  }
+
+  get has_specific_jurisdictions(): boolean {
+    return this.jurisdictions_count > 0;
+  }
+
+  get specific_jurisdictions_list(): string {
+    return this.specific_jurisdictions?.join(', ') || 'Toutes juridictions';
+  }
+
+  get duration_display(): string {
+    if (!this.average_duration) return 'Non défini';
+    
+    const days = this.average_duration;
+    if (days < 30) {
+      return `${days} jour${days > 1 ? 's' : ''}`;
+    } else if (days < 365) {
+      const months = Math.floor(days / 30);
+      return `environ ${months} mois`;
+    } else {
+      const years = Math.floor(days / 365);
+      return `environ ${years} an${years > 1 ? 's' : ''}`;
+    }
+  }
+
+  get status_display(): string {
+    return this.is_active ? 'Actif' : 'Inactif';
+  }
+
+  get status_color(): string {
+    return this.is_active ? 'green' : 'red';
+  }
+
+  get type_display(): string {
+    if (this.is_main_type) return 'Type principal';
+    if (this.is_sub_type) return 'Sous-type';
+    return 'Non catégorisé';
+  }
+
+  get hierarchy_level_display(): string {
+    return `Niveau ${this.hierarchy_level}`;
+  }
+
+  get summary(): Record<string, any> {
+    return {
+      id: this.id,
+      name: this.name,
+      code: this.code,
+      type: this.type_display,
+      status: this.status_display,
+      hierarchy: this.hierarchy_path_with_codes,
+      subtypes: this.subtypes_count,
+      dossiers: this.dossiers_count,
+      documents: this.document_count,
+      jurisdictions: this.jurisdictions_count,
+      duration: this.duration_display
+    };
+  }
+
+  get tree_display(): string {
+    const indent = '  '.repeat(this.hierarchy_level - 1);
+    const prefix = this.is_main_type ? '📁' : (this.is_sub_type ? '📄' : '📌');
+    const status = this.is_active ? '✅' : '❌';
+    return `${indent}${prefix} ${this.name} (${this.code}) ${status}`;
   }
 }

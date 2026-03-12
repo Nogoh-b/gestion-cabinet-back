@@ -1,0 +1,113 @@
+{{> header}}
+
+<div class="audience-card">
+  <div class="header-audience">
+    <h1>🔔 Nouvelle Audience Enregistrée</h1>
+    <div class="badge {{#if is_past}}past{{else if is_today}}today{{else}}upcoming{{/if}}">
+      {{status_label}}
+    </div>
+  </div>
+
+  <div class="info-section">
+    <h2>📋 Informations générales</h2>
+    <table class="info-table">
+      <tr>
+        <td><strong>N° Dossier :</strong></td>
+        <td>{{dossier_details.dossier_number}}</td>
+      </tr>
+      <tr>
+        <td><strong>Client :</strong></td>
+        <td>{{client_details.full_name}}</td>
+      </tr>
+      <tr>
+        <td><strong>Date :</strong></td>
+        <td>{{formatDate audience_date}} à {{audience_time}}</td>
+      </tr>
+      <tr>
+        <td><strong>Salle :</strong></td>
+        <td>{{room}}</td>
+      </tr>
+      <tr>
+        <td><strong>Juge :</strong></td>
+        <td>{{judge_name}}</td>
+      </tr>
+      <tr>
+        <td><strong>Durée :</strong></td>
+        <td>{{duration_minutes}} minutes</td>
+      </tr>
+      <tr>
+        <td><strong>Type d'audience :</strong></td>
+        <td>{{audience_type.name}}</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="info-section">
+    <h2>⚖️ Juridiction</h2>
+    <table class="info-table">
+      <tr>
+        <td><strong>Nom :</strong></td>
+        <td>{{jurisdiction.name}}</td>
+      </tr>
+      <tr>
+        <td><strong>Adresse :</strong></td>
+        <td>{{jurisdiction.address}}, {{jurisdiction.city}}</td>
+      </tr>
+      <tr>
+        <td><strong>Tél :</strong></td>
+        <td>{{jurisdiction.phone}}</td>
+      </tr>
+    </table>
+  </div>
+
+  {{#if notes}}
+  <div class="info-section">
+    <h2>📝 Notes</h2>
+    <p class="notes">{{notes}}</p>
+  </div>
+  {{/if}}
+
+  {{#if documents.length}}
+  <div class="documents-section">
+    <h2>📎 Documents à préparer ({{documents.length}})</h2>
+    <div class="documents-list">
+      {{#each documents}}
+      <div class="document-item {{#if required_for_hearing}}required{{/if}}">
+        <div class="document-icon">
+          {{#if (eq file_mimetype 'application/pdf')}}📄{{/if}}
+          {{#if (contains file_mimetype 'image')}}🖼️{{/if}}
+          {{#if (contains file_mimetype 'word')}}📝{{/if}}
+        </div>
+        <div class="document-details">
+          <div class="document-name">
+            <strong>{{name}}</strong>
+            {{#if required_for_hearing}}<span class="required-badge">Obligatoire</span>{{/if}}
+          </div>
+          <div class="document-meta">
+            <span>Type: {{document_type.name}}</span>
+            <span>Catégorie: {{category.name}}</span>
+            {{!-- <span>Taille: {{file_size_formatted}}</span> --}}
+          </div>
+          {{#if description}}
+          <div class="document-description">{{description}}</div>
+          {{/if}}
+          <div class="document-status">
+            Statut: <span class="status-{{status}}">{{status}}</span>
+          </div>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
+
+  <div class="actions-section">
+    <h3>🔗 Actions rapides</h3>
+    <div class="action-buttons">
+      <a href="{{appUrl}}/dossiers/{{dossier_id}}" class="btn btn-primary">Voir le dossier</a>
+      <a href="{{appUrl}}/audiences/{{id}}/documents" class="btn btn-secondary">Gérer les documents</a>
+      <a href="{{appUrl}}/calendrier?date={{audience_date}}" class="btn btn-secondary">Voir dans le calendrier</a>
+    </div>
+  </div>
+</div>
+{{> footer}}

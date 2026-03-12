@@ -86,7 +86,7 @@ export class DocumentCustomer extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description: string;
 
-  @ManyToOne(() => DocumentType)
+  @ManyToOne(() => DocumentType, { eager: true  })
   @JoinColumn({ name: 'document_type_id' })
   document_type: DocumentType;
 
@@ -102,7 +102,7 @@ export class DocumentCustomer extends BaseEntity {
   @Column({ type: 'int', nullable: true })
   category_id?: number;
   
-  @ManyToOne(() => DocumentCategory)
+  @ManyToOne(() => DocumentCategory, { eager: true  })
   @JoinColumn({ name: 'category_id' })
   category: DocumentCategory;
 
@@ -115,6 +115,9 @@ export class DocumentCustomer extends BaseEntity {
 
   @Column({ name: 'file_path', nullable: true })
   file_path: string;
+
+  @Column({ name: 'file_url', nullable: true })
+  file_url: string;
 
   @Column({ name: 'file_size', nullable: true })
   file_size: number;
@@ -189,6 +192,9 @@ export class DocumentCustomer extends BaseEntity {
 
   @ManyToMany(() => Audience, (audience) => audience.documents)
   audiences: Audience[];
+
+  
+  
   @ManyToMany(() => Diligence, (diligence) => diligence.documents)
   diligences: Diligence[];
 

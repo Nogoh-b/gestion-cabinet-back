@@ -1,12 +1,12 @@
 import { Expose } from 'class-transformer';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    OneToMany
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany
 } from 'typeorm';
 
 
@@ -75,7 +75,7 @@ export class AudienceType {
     legal_basis?: string;
   };
 
-  @OneToMany(() => Audience, audience => audience.audience_type)
+  @OneToMany(() => Audience, audience => audience.audience_type) 
   @Expose()
   audiences: Audience[];
 

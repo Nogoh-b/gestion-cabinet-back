@@ -3,7 +3,7 @@ import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { FilesUtil, UploadedFileInfo } from 'src/core/shared/utils/file.util';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
@@ -59,6 +59,7 @@ import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+import { join } from 'path';
 
 
 
@@ -531,11 +532,11 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   private async uploadFile(
     file: Express.Multer.File,
     docType: DocumentType
-  ): Promise<{ fileName: string; fileSize: number }> {
+  ): Promise<UploadedFileInfo> {
 
     try {
-      console.log(UPLOAD_DOCS_PATH)
-      return await FilesUtil.uploadFile(file, UPLOAD_DOCS_PATH, docType.mimetype, {
+      console.log(join(UPLOAD_DOCS_PATH, 'Dossier/Type'))
+      return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, 'Dossier/Type'),{
         maxSizeKB: 300, // 3MB
         quality: 70,
       });
@@ -553,7 +554,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     document_type: DocumentType;
     customer: Customer;
     dossier: Dossier;
-    uploadedFile: { fileName: string; fileSize: number, fileMimeType?: string };
+    uploadedFile: UploadedFileInfo;
     uploadedByUserId?: number;
     description?: string;
     name?: string;
@@ -579,8 +580,9 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       dossier,
       name: restParams.name ?? document_type.name,
       file_path: uploadedFile.fileName,
+      file_url: uploadedFile.fileUrl,
       file_size: uploadedFile.fileSize,
-      file_mimetype: uploadedFile.fileMimeType,
+      file_mimetype: uploadedFile.mimeType,
       status: restParams.status || DocumentCustomerStatus.PENDING,
       category,
       required_for_hearing: restParams.required_for_hearing || false,

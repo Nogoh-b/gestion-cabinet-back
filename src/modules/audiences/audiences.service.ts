@@ -2,31 +2,9 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { MoreThan, Repository } from 'typeorm';
+import { EntityManager, MoreThan, Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
-
-
-
-
-
-
 import { AudienceTypeService } from '../audience-type/audience-type.service';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
@@ -35,26 +13,10 @@ import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, } from './entities/audience.entity';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { MailService } from 'src/core/shared/emails/emails.service';
+import { EmployeeService } from '../agencies/employee/employee.service';
+import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
+import { DateUtils } from 'src/core/shared/utils/date.util.';
 
 
 
@@ -66,9 +28,11 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     protected readonly paginationService: PaginationServiceV1,
     private readonly dossierService: DossiersService,
     private readonly audienceTypeService: AudienceTypeService,
+    private readonly employeeService: EmployeeService,
     private readonly documentCustomerService: DocumentCustomerService,
+    protected readonly emailsService?: MailService, // Optionnel
   ) {
-    super(repository, paginationService);
+    super(repository, paginationService, emailsService);
   }
 
   /**
@@ -79,14 +43,14 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier', 'dossier.client','audience_type'],
       exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
-      relationFields: ['dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents'],
+      relationFields: ['dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'],
     };
   }
 
   /**
    * ➕ Création d'une audience
    */
-  async create(dto: CreateAudienceDto): Promise<Audience> {
+  async create(dto: CreateAudienceDto): Promise<AudienceResponseDto | Audience | null> {
     console.log('-------dto ', dto)
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
@@ -114,8 +78,23 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       dossier: { id: dossier.id }, // ✅ relation proprement liée
       status: AudienceStatus.SCHEDULED,
     });
+     if(dto?.document_ids) {
+      const documents = await this.documentCustomerService.findByIds(dto?.document_ids);
+      audience.documents = documents;
+     }
 
-    return await this.repository.save(audience);
+    // let mailDto = new CreateMailDto() 
+    // const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
+    let aud = await this.repository.save(audience);
+    return await this.findOneV1(aud.id,this.getDefaultSearchOptions().relationFields,AudienceResponseDto)
+    return plainToInstance(AudienceResponseDto,await this.findOneV1(aud.id,this.getDefaultSearchOptions().relationFields))
+    // aud = await this.addDocumentsToAudience(aud?.id, dto?.document_ids)
+    // mailDto.templateName = "entities/dossier/dossier-created-creator"
+    // mailDto.context = aud
+    // mailDto.to = users.map(u => u.email)
+    // mailDto.subject = "Creation d'un nouveau dossier"
+    // this.sendMail(mailDto)
+    return plainToInstance(AudienceResponseDto,aud)
   }
 
   /**
@@ -228,16 +207,81 @@ export class AudiencesService extends BaseServiceV1<Audience> {
 async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   const audience = await this.repository.findOne({
     where: { id: audienceId },
-    relations: ['documents'],
+    relations: this.getDefaultSearchOptions().relationFields,
   });
 
   if (!audience) throw new NotFoundException('Audience non trouvée');
+  if(!documentIds) return audience
 
   const documents = await this.documentCustomerService.findByIds(documentIds);
 
   audience.documents = [...(audience.documents || []), ...documents];
   return await this.repository.save(audience);
 }
+// audiences.service.ts
+  async sendEmails(audienceId: number, entityManager?: EntityManager) {
+    try {
+
+      const repo = entityManager ? entityManager.getRepository(Audience) : this.repository;
+      
+      const data = await repo
+      .createQueryBuilder('audience')
+      .leftJoinAndSelect('audience.documents', 'documents')
+      .leftJoinAndSelect('audience.dossier', 'dossier')
+      .leftJoinAndSelect('dossier.client', 'client')
+      .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
+      .leftJoinAndSelect('audience.audience_type', 'audience_type')
+      .leftJoinAndSelect('documents.document_type', 'document_type')
+      .leftJoinAndSelect('documents.category', 'category')
+      .where('audience.id = :id', { id: audienceId })
+      .getOne();
+      const audience = plainToInstance(AudienceResponseDto,data)
+// 'dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'
+      console.log('QueryBuilder result - documents count:', audience?.documents?.length);
+      console.log('QueryBuilder result - documents:', audience?.status_label);
+      if (!audience) {
+        throw new Error(`Audience ${audienceId} non trouvée`);
+      }
+
+      const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
+      const attachments = await this.prepareAttachments(audience.documents);
+
+      let mailDto = new CreateMailDto() 
+      const deduplicationKey = `commande-${audience.id}-confirmation-${audience.status}`;
+      mailDto.templateName = "entities/audience/audience-created"
+      mailDto.context = audience
+      mailDto.to = ['nogohbrice@gmail.com']//users.map(u => u.email)
+      mailDto.subject = "Creation de l'audience Concernant le dossier " + audience?.dossier_details?.dossier_number
+      mailDto.attachments = attachments; // Ajouter les pièces jointes
+
+      console.log(mailDto.context.documents)
+      await this.sendMail(mailDto, deduplicationKey)
+      const deduplicationKey1 = `commande-${audience.id}-confirmation-${audience.status}-3`;
+      mailDto.templateName = "entities/audience/audience-remider-3"
+      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(audience.audience_date, 3)
+      await this.sendMail(mailDto, deduplicationKey1)
+      const deduplicationKey2 = `commande-${audience.id}-confirmation-${audience.status}-1`;
+      mailDto.templateName = "entities/audience/audience-remider-1"
+      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(audience.audience_date, 1)
+      await this.sendMail(mailDto, deduplicationKey2)
+
+    } catch (error) { 
+      console.log(error.message)  
+    }
+  }
+
+  private prepareAttachments(documents: any[]): any[] {
+    if (!documents || documents.length === 0) { 
+      return []; 
+    }
+    
+    return documents.map(doc => ({
+      filename: doc.name || 'document.pdf',
+      href: doc.file_url, // L'URL accessible du document
+      contentType: doc.file_mimetype, 
+    }));
+  }
+
 
 
 }

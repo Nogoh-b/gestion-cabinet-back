@@ -169,6 +169,14 @@ export class CreateDossierDto {
   opening_date?: string;
 
   @ApiPropertyOptional({
+    // description: 'Date d\'ouverture du dossier (format YYYY-MM-DD)',
+    example: 'AEDDDD'
+  })
+  @IsOptional()
+  @IsString()
+  case_number?: string; 
+
+  @ApiPropertyOptional({
     description: 'Durée estimée en jours',
     example: 180,
     minimum: 1

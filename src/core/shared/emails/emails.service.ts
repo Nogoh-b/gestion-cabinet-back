@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual } from 'typeorm';
 import { MailerService } from '@nestjs-modules/mailer';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
+import { AttachmentMail, Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
 import { CreateMailDto } from './dto/create-mail.dto';
 
 @Injectable()
@@ -19,20 +19,21 @@ export class MailService {
   /**
    * Crée un email en base (programmé ou immédiat)
    */
-  async create(createMailDto: CreateMailDto): Promise<Mail> {
-  const enrichedContext = {
-    ...createMailDto.context,
-    logoUrl: process.env.COMPANY_LOGO_URL,
-    companyName: process.env.COMPANY_NAME,
-    companyAddress: process.env.COMPANY_ADDRESS,
-    companyEmail: process.env.COMPANY_EMAIL,
-    companyPhone: process.env.COMPANY_PHONE,
-    currentYear: new Date().getFullYear().toString(),
-  };
+  async create(createMailDto: CreateMailDto, deduplicationKey?: string): Promise<Mail> {
+    if (deduplicationKey) {
+      const existingMail = await this.mailRepository.findOne({
+        where: { deduplicationKey }
+      });
+      
+      if (existingMail) {
+        this.logger.warn(`Email déjà créé avec la clé ${deduplicationKey}`);
+        return existingMail;
+      }
+    }
     const mail = this.mailRepository.create({
       ...createMailDto,
-      // context: enrichedContext,
-      scheduledAt: createMailDto.scheduledAt ? new Date(createMailDto.scheduledAt) : undefined,
+      deduplicationKey, // Stocker la clé
+    scheduledAt: createMailDto.scheduledAt ? new Date(createMailDto.scheduledAt) : undefined,
       status: MailStatus.PENDING,
     });
     const saved = await this.mailRepository.save(mail);
@@ -60,6 +61,9 @@ export class MailService {
       this.logger.warn(`Mail ${id} déjà envoyé`);
       return;
     }
+    let attachments : AttachmentMail[] = []
+    if(mail.attachments)
+      attachments = await this.prepareAttachmentsWithBuffers(mail.attachments);
 
     try {
       // Préparer les options d'envoi
@@ -103,6 +107,24 @@ export class MailService {
       throw error; // pour permettre au caller de gérer
     }
   }
+
+
+  private async prepareAttachmentsWithBuffers(documents: AttachmentMail[]): Promise<any[]> {
+  const attachments = [] as AttachmentMail[];
+  for (const doc of documents) {
+    if (doc.href) {
+      const response = await fetch(doc.href);
+      const buffer = await response.arrayBuffer();
+      attachments.push({
+        filename: doc.filename,
+        content: Buffer.from(buffer),
+        contentType: doc.contentType,
+      });
+    }
+    // sinon, lire depuis le disque local
+  }
+  return attachments;
+}
 
   /**
    * Annule un email programmé

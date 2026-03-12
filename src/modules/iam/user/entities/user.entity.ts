@@ -20,7 +20,7 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ length: 45, unique: true })
+  @Column({ length: 45, unique: false })
   username: string;
 
   @Column({ type: 'tinyint' })
