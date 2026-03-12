@@ -12,6 +12,8 @@ import {
   FindManyOptions,
   MoreThanOrEqual,
   LessThanOrEqual,
+  MoreThan,
+  LessThan,
 } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { Injectable, Optional } from '@nestjs/common';
@@ -127,7 +129,9 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     order?: FindOptionsOrder<T>
   ): Promise<PaginatedResult<R>> {
     
-    const whereConditions = this.buildWhereConditionsV1(criteria, {});
+    this.debugConditions( criteria, {})
+    
+    const whereConditions = this.buildWhereConditionsV1(criteria, {}); 
 
     // ⚙️ Construire dynamiquement l'ordre en prenant en compte les relations
     const finalOrder = order ?? this.buildOrderWithRelations(
@@ -219,13 +223,15 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
 /**
  * Construit les conditions WHERE complexes avec support des relations - VERSION ROBUSTE
  */
-  protected buildWhereConditionsV1(
+  protected buildWhereConditionsV1_old(
     criteria: SearchCriteria,
     searchOptions?: SearchOptions
   ): FindOptionsWhere<T> | FindOptionsWhere<T>[] {
     const defaultOptions = this.getDefaultSearchOptions();
     const options = { ...defaultOptions, ...searchOptions };
-
+    const operatorPrefixes = [
+      'between_', 'gt_', 'gte_', 'lt_', 'lte_', 'like_', 'in_'
+    ];
     // ✅ CORRECTION : Utiliser des Sets pour éviter les doublons
     const searchFieldsSet = new Set<string>();
     const dateFieldsSet = new Set<string>();
@@ -243,7 +249,9 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     const searchOnlyFields = Array.from(searchFieldsSet).filter(field => 
       !dateFieldsSet.has(field) && 
       field !== 'created_at' && 
-      field !== 'updated_at'
+      field !== 'updated_at' &&
+      !operatorPrefixes.some(prefix => field.startsWith(prefix))
+
     );
 
     const conditions: FindOptionsWhere<T>[] = [];
@@ -297,6 +305,90 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   return {};
 
   }
+
+protected buildWhereConditionsV1(
+  criteria: SearchCriteria,
+  searchOptions?: SearchOptions
+): FindOptionsWhere<T> | FindOptionsWhere<T>[] {
+  const defaultOptions = this.getDefaultSearchOptions();
+  const options = { ...defaultOptions, ...searchOptions };
+
+  // ✅ ÉTAPE CRITIQUE: Filtrer les critères pour enlever les préfixes d'opérateurs
+  // avant toute autre opération
+  const operatorPrefixes = ['between_', 'gt_', 'gte_', 'lt_', 'lte_', 'like_', 'in_'];
+  
+  // Créer une copie propre des critères SANS les clés avec préfixes
+  const cleanCriteria: SearchCriteria = {};
+  
+  for (const [key, value] of Object.entries(criteria)) {
+    // Vérifier si la clé commence par un préfixe d'opérateur
+    const hasOperatorPrefix = operatorPrefixes.some(prefix => key.startsWith(prefix));
+    
+    if (!hasOperatorPrefix) {
+      // Garder uniquement les clés sans préfixe
+      cleanCriteria[key] = value;
+    }
+  }
+
+  // ✅ Utiliser cleanCriteria pour la suite, PAS criteria original
+  const searchFieldsSet = new Set<string>();
+  const dateFieldsSet = new Set<string>();
+
+  // Utiliser cleanCriteria au lieu de criteria
+  if (cleanCriteria.search && options.searchFields) {
+    options.searchFields.forEach(field => searchFieldsSet.add(field));
+  }
+
+  if (options.dateRangeFields) {
+    options.dateRangeFields.forEach(field => dateFieldsSet.add(field));
+  }
+
+  // Filtrer les champs de recherche
+  const searchOnlyFields = Array.from(searchFieldsSet).filter(field => 
+    !dateFieldsSet.has(field) && 
+    field !== 'created_at' && 
+    field !== 'updated_at'
+  );
+
+  const conditions: FindOptionsWhere<T>[] = [];
+
+  // 1. Conditions de recherche texte - utiliser cleanCriteria
+  if (cleanCriteria.search && searchOnlyFields.length > 0) {
+    const searchConditions = this.buildSearchConditions(
+      cleanCriteria.search.toString(),
+      searchOnlyFields
+    );
+    conditions.push(...searchConditions);
+  }
+
+  // 2. Conditions AND avec opérateurs (utiliser criteria original pour ceux-ci)
+  const andConditions = this.buildConditionsWithOperators(criteria, options);
+
+  // 3. Conditions simples - utiliser cleanCriteria
+  const simpleConditions = this.buildSpecificConditions(cleanCriteria, options);
+  Object.assign(andConditions, simpleConditions);
+
+  // Combinaison finale - utiliser cleanCriteria.search
+  if (cleanCriteria.search && searchOnlyFields.length > 0 && Object.keys(andConditions).length > 0) {
+    const combinedConditions = searchOnlyFields.map(field => {
+      const orCondition = field.includes('.')
+        ? this.buildNestedCondition(field, cleanCriteria.search)
+        : { [field]: ILike(`%${cleanCriteria.search}%`) };
+      return { ...andConditions, ...orCondition };
+    });
+    return combinedConditions;
+  }
+
+  if (cleanCriteria.search && searchOnlyFields.length > 0) {
+    return this.buildSearchConditions(cleanCriteria.search.toString(), searchOnlyFields);
+  }
+
+  if (Object.keys(andConditions).length > 0) {
+    return andConditions;
+  }
+
+  return {};
+}
 
   /**
    * Construit les conditions de recherche textuelle avec support des relations
@@ -418,7 +510,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
   /**
    * Construit les conditions pour les critères spécifiques
    */
-  private buildSpecificConditions(
+  private buildSpecificConditions_old(
     criteria: SearchCriteria,
     options: SearchOptions
   ): FindOptionsWhere<T> {
@@ -471,6 +563,69 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     return conditions as FindOptionsWhere<T>;
   }
 
+
+  private buildSpecificConditions(
+    criteria: SearchCriteria,
+    options: SearchOptions
+  ): FindOptionsWhere<T> {
+    const conditions: any = {};
+
+    const operatorPrefixes = [
+      'between_', 'gt_', 'gte_', 'lt_', 'lte_', 'like_', 'in_'
+    ];
+
+    // Liste complète des champs à exclure
+    const excludedFields = new Set([
+      'search', 'page', 'limit', 'sort_by', 'sort_desc', 'sort_direction',
+      'date_from', 'date_to', 'date_range'
+    ]);
+
+    // Ajouter tous les champs date_* à exclure
+    if (options.dateRangeFields) {
+      options.dateRangeFields.forEach(field => {
+        excludedFields.add(`${field}_from`);
+        excludedFields.add(`${field}_to`);
+      });
+    }
+
+    for (const [key, value] of Object.entries(criteria)) {
+      // ✅ Ignorer les clés qui sont des opérateurs
+      if (operatorPrefixes.some(prefix => key.startsWith(prefix))) {
+        continue;
+      }
+
+      // Vérifier dans le Set des champs exclus
+      if (excludedFields.has(key) || key.endsWith('_from') || key.endsWith('_to')) {
+        continue;
+      }
+
+      if (value !== undefined && value !== null && value !== '') {
+        // Champ avec relation pointée
+        if (key.includes('.')) {
+          Object.assign(conditions, this.buildNestedCondition(key, value));
+        } 
+        // Champ de recherche exacte
+        else if (options.exactMatchFields?.includes(key)) {
+          conditions[key] = value;
+        }
+        // Champ de date range (format tableau) - garder pour compatibilité
+        else if (options.dateRangeFields?.includes(key) && Array.isArray(value)) {
+          conditions[key] = Between(value[0], value[1]);
+        }
+        // Champ avec recherche IN (tableau)
+        else if (Array.isArray(value)) {
+          conditions[key] = In(value);
+        }
+        // Recherche LIKE par défaut
+        else {
+          conditions[key] = ILike(`%${value}%`);
+        }
+      }
+    }
+
+    return conditions as FindOptionsWhere<T>;
+  }
+
   /**
    * Options de recherche par défaut (à override dans les services enfants)
    */
@@ -480,6 +635,55 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
       exactMatchFields: ['id', 'status'], // Champs pour recherche exacte
       dateRangeFields: ['created_at', 'updated_at'], // Champs pour ranges de dates
     };
+  }
+
+  /**
+ * Construit les conditions avec opérateurs dynamiques
+ * Supporte: between_, gt_, gte_, lt_, lte_, like_, in_
+ * Format: operateur_champ et valeur séparée par _ pour between
+ */
+  private buildConditionsWithOperators(
+    criteria: SearchCriteria,
+    options: SearchOptions
+  ): FindOptionsWhere<T> {
+    const conditions: any = {};
+    
+    const operators = [
+      { prefix: 'between_', handler: this.handleBetween },
+      { prefix: 'gt_', handler: this.handleGreaterThan },
+      { prefix: 'gte_', handler: this.handleGreaterThanOrEqual },
+      { prefix: 'lt_', handler: this.handleLessThan },
+      { prefix: 'lte_', handler: this.handleLessThanOrEqual },
+      { prefix: 'like_', handler: this.handleLike },
+      { prefix: 'in_', handler: this.handleIn }
+    ];
+
+    for (const [key, value] of Object.entries(criteria)) {
+      if (value === undefined || value === null || value === '') continue;
+      
+      let matched = false;
+      
+      // ✅ Ne traiter QUE les clés qui commencent par un préfixe d'opérateur
+      for (const operator of operators) {
+        if (key.startsWith(operator.prefix)) {
+          const fieldName = key.substring(operator.prefix.length);
+          
+          // Vérifier que le champ existe dans l'entité
+          if (this.isValidField(fieldName, options)) {
+            const condition = operator.handler.call(this, fieldName, value);
+            Object.assign(conditions, condition);
+          }
+          matched = true;
+          break;
+        }
+      }
+      
+      // ✅ NE RIEN FAIRE pour les clés sans préfixe
+      // Elles seront traitées par buildSpecificConditions avec cleanCriteria
+      // Pas besoin de else ou de traitement par défaut
+    }
+    
+    return conditions;
   }
 
   /**
@@ -607,5 +811,132 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     console.log('Conditions finales:', finalConditions);
     
     console.log('====================================');
+  }
+
+
+  private handleBetween(field: string, value: any): any {
+    // Format attendu: "2024-01-01_2024-12-31" ou "10_50"
+    if (typeof value === 'string' && value.includes('_')) {
+      const [min, max] = value.split('_').map(v => v.trim());
+      
+      // Détecter si c'est une date ou un nombre
+      if (this.isDateString(min) && this.isDateString(max)) {
+        return { [field]: Between(new Date(min), new Date(max)) };
+      } else {
+        const numMin = parseFloat(min);
+        const numMax = parseFloat(max);
+        if (!isNaN(numMin) && !isNaN(numMax)) {
+          return { [field]: Between(numMin, numMax) };
+        }
+      }
+    }
+    return {};
+  }
+
+  private handleGreaterThan(field: string, value: any): any {
+    const numValue = this.parseNumericValue(value);
+    if (numValue !== null) {
+      return { [field]: MoreThan(numValue) };
+    }
+    return {};
+  }
+
+  private handleGreaterThanOrEqual(field: string, value: any): any {
+    if (this.isDateString(value)) {
+      return { [field]: MoreThanOrEqual(new Date(value)) };
+    }
+    
+    const numValue = this.parseNumericValue(value);
+    if (numValue !== null) {
+      return { [field]: MoreThanOrEqual(numValue) };
+    }
+    return {};
+  }
+
+  private handleLessThan(field: string, value: any): any {
+    const numValue = this.parseNumericValue(value);
+    if (numValue !== null) {
+      return { [field]: LessThan(numValue) };
+    }
+    return {};
+  }
+
+  private handleLessThanOrEqual(field: string, value: any): any {
+    if (this.isDateString(value)) {
+      return { [field]: LessThanOrEqual(new Date(value)) };
+    }
+    
+    const numValue = this.parseNumericValue(value);
+    if (numValue !== null) {
+      return { [field]: LessThanOrEqual(numValue) };
+    }
+    return {};
+  }
+
+  private handleLike(field: string, value: any): any {
+    if (typeof value === 'string') {
+      return { [field]: ILike(`%${value}%`) };
+    }
+    return {};
+  }
+
+  private handleIn(field: string, value: any): any {
+    if (typeof value === 'string' && value.includes(',')) {
+      const values = value.split(',').map(v => v.trim());
+      return { [field]: In(values) };
+    }
+    if (Array.isArray(value)) {
+      return { [field]: In(value) };
+    }
+    return {};
+  }
+
+  private isValidField(fieldName: string, options: SearchOptions): boolean {
+    // Vérifier si le champ existe dans les options ou est un champ standard
+    const allFields = [
+      ...(options.searchFields || []),
+      ...(options.exactMatchFields || []),
+      ...(options.dateRangeFields || []),
+      'id', 'created_at', 'updated_at'
+    ];
+  
+    return allFields.includes(fieldName) || fieldName.includes('.');
+  }
+
+  private parseNumericValue(value: any): number | null {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const num = parseFloat(value);
+      return isNaN(num) ? null : num;
+    }
+    return null;
+  }
+
+  private isDateString(value: any): boolean {
+    if (typeof value !== 'string') return false;
+    // Format ISO ou YYYY-MM-DD
+    const date = new Date(value);
+    return date instanceof Date && !isNaN(date.getTime());
+  }
+
+  private handleSimpleField(
+    key: string, 
+    value: any, 
+    options: SearchOptions, 
+    conditions: any
+  ): void {
+    // Exclure les champs de contrôle
+    const excludedFields = ['search', 'page', 'limit', 'sort_by', 'sort_desc', 'sort_direction'];
+    if (excludedFields.includes(key)) return;
+
+    if (key.includes('.')) {
+      Object.assign(conditions, this.buildNestedCondition(key, value));
+    } else if (options.exactMatchFields?.includes(key)) {
+      conditions[key] = value;
+    } else if (Array.isArray(value)) {
+      conditions[key] = In(value);
+    } else {
+      conditions[key] = ILike(`%${value}%`);
+    }
   }
 }
