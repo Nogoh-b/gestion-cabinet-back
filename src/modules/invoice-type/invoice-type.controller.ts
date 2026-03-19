@@ -9,6 +9,8 @@ import { CreateInvoiceTypeDto } from './dto/create-invoice-type.dto';
 import { InvoiceTypeResponseDto } from './dto/invoice-type-response.dto';
 import { UpdateInvoiceTypeDto } from './dto/update-invoice-type.dto';
 import { InvoiceTypeService } from './invoice-type.service';
+import { InvoiceTypeStatsService } from './invoice-type-stats.service';
+import { InvoiceTypeStatsDto } from './dto/invoice-type-stats.dto';
 
 
 
@@ -16,7 +18,49 @@ import { InvoiceTypeService } from './invoice-type.service';
 @ApiBearerAuth()
 @Controller('invoice-types')
 export class InvoiceTypeController {
-  constructor(private readonly service: InvoiceTypeService) {}
+  constructor(private readonly service: InvoiceTypeService,
+  private readonly statsService: InvoiceTypeStatsService) {}
+
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
+  @ApiOperation({ summary: 'Obtenir les statistiques des types de factures' })
+  @ApiResponse({ status: 200, type: InvoiceTypeStatsDto })
+  async getStats(): Promise<InvoiceTypeStatsDto> {
+    return this.statsService.getStats();
+  }
+
+  @Get('stats/categories')
+  // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
+  @ApiOperation({ summary: 'Obtenir les statistiques par catégorie' })
+  async getStatsByCategory() {
+    const stats = await this.statsService.getStats();
+    return stats.byCategory;
+  }
+
+  @Get('stats/tax-rates')
+  // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
+  @ApiOperation({ summary: 'Obtenir les statistiques par taux de TVA' })
+  async getStatsByTaxRate() {
+    const stats = await this.statsService.getStats();
+    return stats.byTaxRate;
+  }
+
+  @Get('stats/top')
+  // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
+  @ApiOperation({ summary: 'Obtenir les types de factures les plus utilisés' })
+  async getTopInvoiceTypes() {
+    const stats = await this.statsService.getStats();
+    return stats.topInvoiceTypes;
+  }
+
+  @Get('stats/usage')
+  // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'utilisation' })
+  async getUsageStats() {
+    const stats = await this.statsService.getStats();
+    return stats.usageStats;
+  }
 
   @Post()
   @ApiOperation({ summary: 'Créer un nouveau type de facture' })

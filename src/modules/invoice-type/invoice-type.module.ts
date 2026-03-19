@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { InvoiceType } from './entities/invoice-type.entity';
 import { InvoiceTypeController } from './invoice-type.controller';
 import { InvoiceTypeService } from './invoice-type.service';
+import { InvoiceTypeStatsService } from './invoice-type-stats.service';
 
 
 @Module({
@@ -13,6 +14,6 @@ import { InvoiceTypeService } from './invoice-type.service';
     ],
     exports :[InvoiceTypeService],
   controllers: [InvoiceTypeController],
-  providers: [InvoiceTypeService],
+  providers: [InvoiceTypeService, InvoiceTypeStatsService],
 })
 export class InvoiceTypeModule {}

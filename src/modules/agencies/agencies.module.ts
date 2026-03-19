@@ -26,6 +26,8 @@ import { Branch } from './branch/entities/branch.entity';
 import { EmployeeController } from './employee/employee.controller';
 import { EmployeeService } from './employee/employee.service';
 import { Employee } from './employee/entities/employee.entity';
+import { EmployeeStatsService } from './employee/employee-stats.service';
+import { BranchStatsService } from './branch/branch-stats.service';
 
 
 
@@ -47,7 +49,7 @@ import { Employee } from './employee/entities/employee.entity';
 
   ],
   controllers: [BranchController, EmployeeController],
-  providers: [BranchService, EmployeeService],
-  exports: [BranchService, EmployeeService, TypeOrmModule],
+  providers: [BranchService, EmployeeService,EmployeeStatsService, BranchStatsService],
+  exports: [BranchService, EmployeeService,EmployeeStatsService, TypeOrmModule, BranchStatsService],
 })
 export class AgenciesModule {}

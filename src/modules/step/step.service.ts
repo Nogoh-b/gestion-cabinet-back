@@ -41,12 +41,12 @@ export class StepsService {
     });
 
     if (!dossier) {
-      throw new NotFoundException('Dossier non trouvé');
+      throw new NotFoundException('Dossier non trouvé '+ dossierId);
     }
 
     let assignedTo : User| null = null;
     if (createStepDto.assignedToId) {
-      assignedTo = plainToInstance(User,await this.usersService.findOne(dossierId));
+      assignedTo = plainToInstance(User,await this.usersService.findOne(parseInt(createStepDto.assignedToId)));
     }
 
     const step = this.stepsRepository.create({

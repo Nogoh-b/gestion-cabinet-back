@@ -5,33 +5,13 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { FilesUtil, UploadedFileInfo } from 'src/core/shared/utils/file.util';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
-
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
 import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
-
-
-
-
 import { DocumentCategoryService } from 'src/modules/document-category/document-category.service';
-
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { DossiersService } from 'src/modules/dossiers/dossiers.service';
-
-
-
-
-
-
-
 import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-
-
-
-
-
-
-
 import { Repository } from 'typeorm';
 
 import {
@@ -41,56 +21,13 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
 import { join } from 'path';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(

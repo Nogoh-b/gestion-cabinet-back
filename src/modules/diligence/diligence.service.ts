@@ -335,4 +335,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
 
     return result;
   }
+
+
+
 }

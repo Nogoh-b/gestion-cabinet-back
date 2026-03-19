@@ -12,6 +12,7 @@ import { AudiencesController } from './audiences.controller';
 import { AudiencesService } from './audiences.service';
 import { Audience } from './entities/audience.entity';
 import { AudienceSubscriber } from './suscribers/audiences.suscribers';
+import { AudienceStatsService } from './audience-stats.service';
 
 
 
@@ -26,6 +27,8 @@ import { AudienceSubscriber } from './suscribers/audiences.suscribers';
     CoreModule
   ],
   controllers: [AudiencesController],
-  providers: [AudiencesService, AudienceSubscriber],
+  providers: [AudiencesService, AudienceSubscriber, AudienceStatsService],
+  exports: [AudiencesService, AudienceStatsService] // Export if needed by other modules
+
 })
 export class AudiencesModule {}

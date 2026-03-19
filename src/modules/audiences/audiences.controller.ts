@@ -10,33 +10,19 @@ import {
   Delete,
   Query
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-
-
-
-
-
-
-
-
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AudiencesService } from './audiences.service';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceListResponseDto, AudienceResponseDto } from './dto/response-audience.dto';
 import { AudienceSearchDto } from './dto/search-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
-
-
-
-
-
-
-
-
+import { AudienceStatsService } from './audience-stats.service';
 
 @ApiTags('Audiences')
 @Controller('audiences')
 export class AudiencesController {
-  constructor(private readonly audiencesService: AudiencesService) {}
+  constructor(private readonly audiencesService: AudiencesService,
+    private readonly statsService: AudienceStatsService) {}
 
   // ✅ CREATE - POST /audiences
   @Post()
@@ -46,6 +32,21 @@ export class AudiencesController {
     console.log('-------dto ', createAudienceDto)
 
     return await this.audiencesService.create(createAudienceDto);
+  }
+
+    @Get('stats')
+    @ApiQuery({ name: 'startDate', required: false, type: Date })
+    @ApiQuery({ name: 'endDate', required: false, type: Date })
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getSummary(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      fieldToUseForDate : 'audience_date'
+    });
   }
 
   // ✅ SEARCH - GET /audiences/search

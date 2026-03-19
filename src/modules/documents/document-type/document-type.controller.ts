@@ -18,6 +18,8 @@ import { DocumentTypeService } from './document-type.service';
 import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
 import { DocumentTypeResponseDto } from './dto/ressponse-document-type.dto';
 import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
+import { DocumentTypeStatsDto } from './dto/document-type-stats.dto';
+import { DocumentTypeStatsService } from './document-type-stats.service';
 
 
 
@@ -31,7 +33,57 @@ import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class DocumentTypeController {
-  constructor(private readonly service: DocumentTypeService) {}
+  constructor(private readonly service: DocumentTypeService,
+    private readonly statsService: DocumentTypeStatsService) {}
+
+
+    @Get('stats')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques des types de documents' })
+  @ApiResponse({ status: 200, type: DocumentTypeStatsDto })
+  async getStats(): Promise<DocumentTypeStatsDto> {
+    return this.statsService.getStats();
+  }
+
+  @Get('stats/by-status')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques par statut' })
+  async getStatsByStatus() {
+    const stats = await this.statsService.getStats();
+    return stats.byStatus;
+  }
+
+  @Get('stats/by-customer-type')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques par type de client' })
+  async getStatsByCustomerType() {
+    const stats = await this.statsService.getStats();
+    return stats.byCustomerType;
+  }
+
+  @Get('stats/top')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les types de documents les plus utilisés' })
+  async getTopDocumentTypes() {
+    const stats = await this.statsService.getStats();
+    return stats.topDocumentTypes;
+  }
+
+  @Get('stats/usage')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'utilisation' })
+  async getUsageStats() {
+    const stats = await this.statsService.getStats();
+    return stats.usageStats;
+  }
+
+  @Get('stats/mime-types')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques par type MIME' })
+  async getMimeTypeStats() {
+    const stats = await this.statsService.getStats();
+    return stats.mimeTypeStats;
+  }
 
   @Get('/search')
   @ApiOperation({ summary: 'Rechercher des audiences avec filtres' })

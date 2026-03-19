@@ -174,6 +174,15 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
       });
 
+      // idsParticipants.forEach(participantId => {
+      //   this.server.to(`conversation`).emit('new_message', {
+      //     type: 'room_message',
+      //     conversationId: data.conversationId,
+      //     message,
+      //     room: `conversation`, // ✅ Ajouter la room
+      //   });
+      // });
+
       client.broadcast.to(`conversation_${data.conversationId}`).emit('room_message', {
         type: 'new_message',
         message,

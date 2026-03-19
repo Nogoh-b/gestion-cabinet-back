@@ -13,19 +13,21 @@ import {
 } from '@nestjs/common';
 import { ProceduresService } from './procedures.service';
 import { ProcedureSearchDto } from './dto/procedure-search.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CreateProcedureTypeDto } from './dto/create-procedure.dto';
 import { ProcedureTypeResponseDto } from './dto/procedure-type-response';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { UpdateProcedureTypeDto } from './dto/update-procedure.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { ProcedureStatsService } from './procedure-stats.service';
 
 @ApiTags('procedures')
 @ApiBearerAuth()
 @Controller('procedures')
 export class ProceduresController {
-  constructor(private readonly proceduresService: ProceduresService) {}
+  constructor(private readonly proceduresService: ProceduresService,
+      private readonly statsService: ProcedureStatsService) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -35,6 +37,24 @@ export class ProceduresController {
   create(@Body() createProcedureTypeDto: CreateProcedureTypeDto): Promise<ProcedureTypeResponseDto> {
     return this.proceduresService.create(createProcedureTypeDto);
   }
+
+  
+      @Get('stats')
+      @ApiQuery({ name: 'startDate', required: false, type: Date })
+      @ApiQuery({ name: 'endDate', required: false, type: Date })
+    // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+    async getSummary(
+      @Query('startDate') startDate?: string,
+      @Query('endDate') endDate?: string,
+    ) {
+      return this.statsService.getStats(
+      //   {
+      //   startDate: startDate ? new Date(startDate) : undefined,
+      //   endDate: endDate ? new Date(endDate) : undefined,
+      //   fieldToUseForDate : 'audience_date'
+      // }
+      );
+    }
 
     @Get('/search')
     @ApiOperation({ summary: 'Rechercher des procedure avec filtres' })

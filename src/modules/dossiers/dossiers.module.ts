@@ -16,6 +16,7 @@ import { DossiersController } from './dossiers.controller';
 import { DossiersService } from './dossiers.service';
 import { Dossier } from './entities/dossier.entity';
 import { ChatModule } from '../chat/chat.module';
+import { DossierStatsService } from './dossier-stats.service';
 
 
 
@@ -34,7 +35,7 @@ import { ChatModule } from '../chat/chat.module';
     TypeOrmModule.forFeature([Dossier,  User, ProcedureType]),
   ],
   controllers: [DossiersController],
-  providers: [DossiersService],
-  exports: [DossiersService, TypeOrmModule],
+  providers: [DossiersService,DossierStatsService, ],
+  exports: [DossiersService, DossierStatsService, TypeOrmModule],
 })
 export class DossiersModule {}

@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Jurisdiction } from './entities/jurisdiction.entity';
 import { JurisdictionController } from './jurisdiction.controller';
 import { JurisdictionService } from './jurisdiction.service';
+import { JurisdictionStatsService } from './jurisdiction-stats.service';
 
 
 @Module({
@@ -11,8 +12,8 @@ import { JurisdictionService } from './jurisdiction.service';
           TypeOrmModule.forFeature([Jurisdiction]),
       
     ],
-    exports :[JurisdictionService],
+  exports :[JurisdictionService, JurisdictionStatsService],
   controllers: [JurisdictionController],
-  providers: [JurisdictionService],
+  providers: [JurisdictionService, JurisdictionStatsService],
 })
 export class JurisdictionModule {}

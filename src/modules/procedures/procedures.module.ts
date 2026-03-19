@@ -6,6 +6,7 @@ import { CustomerModule } from '../customer/customer.module';
 import { ProcedureType } from './entities/procedure.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { DossiersModule } from '../dossiers/dossiers.module';
+import { ProcedureStatsService } from './procedure-stats.service';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { DossiersModule } from '../dossiers/dossiers.module';
     DossiersModule
   ],
   controllers: [ProceduresController],
-  providers: [ProceduresService],
-  exports: [ProceduresService],
+  providers: [ProceduresService, ProcedureStatsService],
+  exports: [ProceduresService, ProcedureStatsService],
 })
 export class ProceduresModule {}

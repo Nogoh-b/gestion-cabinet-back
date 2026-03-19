@@ -4,19 +4,7 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryCustomerDto } from 'src/core/shared/dto/pagination-query.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-
-
-
-
-
-
 import { KycSyncDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
-
-
-
-
-
-
 import {
   Controller,
   Get,
@@ -32,11 +20,6 @@ import {
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
-
-
-
-
-
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -44,21 +27,8 @@ import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CustomerSearchDto } from './dto/search-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { EmailService } from 'src/core/shared/services/email/email.service copy';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { CustomerStatsService } from './customer-stats.service';
+import { CustomerStatsDto } from './dto/customer-stats.dto';
 
 
 @ApiTags('customer')
@@ -69,7 +39,38 @@ export class CustomerController {
   constructor(
     private readonly customerService: CustomersService,
     private readonly emailService: EmailService,
+    private readonly statsService: CustomerStatsService
   ) {}
+
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques des clients' })
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('branchId') branchId?: number,
+  ): Promise<CustomerStatsDto> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      branchId: branchId ? +branchId : undefined,
+    });
+  }
+
+  @Get('stats/top')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getTopClients() {
+    const stats = await this.statsService.getStats({});
+    return stats.topClients;
+  }
+
+  @Get('stats/without-dossier')
+  // @Roles(UserRole.ADMIN)
+  async getCustomersWithoutDossier() {
+    const stats = await this.statsService.getStats({});
+    return stats.customersWithoutDossier;
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })

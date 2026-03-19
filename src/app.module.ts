@@ -49,6 +49,8 @@ import { DiligenceModule } from './modules/diligence/diligence.module';
 import { FindingModule } from './modules/finding/finding.module';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { join } from 'path';
+import { StatsModule } from './modules/stats/stats.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 
 
@@ -202,7 +204,9 @@ dotenv.config();
     AudienceTypeModule,
     InvoiceTypeModule,
     DiligenceModule,
-    FindingModule
+    FindingModule,
+    StatsModule,
+    DashboardModule
   ],
   controllers: [AppController],
   providers: [AppService],

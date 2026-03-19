@@ -18,7 +18,7 @@ import {
   UseGuards,
   ParseIntPipe
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
 
 
 
@@ -36,6 +36,8 @@ import { CreateDossierDto } from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
+import { DossierStatsDto } from './dto/dossier-stats.dto';
+import { DossierStatsService } from './dossier-stats.service';
 
 
 
@@ -52,7 +54,61 @@ import { UpdateDossierDto } from './dto/update-dossier.dto';
 @Controller('dossiers')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class DossiersController {
-  constructor(private readonly dossiersService: DossiersService) {}
+  constructor(private readonly dossiersService: DossiersService,
+  private readonly statsService: DossierStatsService) {}
+
+    @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques des dossiers' })
+  @ApiResponse({ status: 200, type: DossierStatsDto })
+  @ApiQuery({ name: 'startDate', required: false, type: Date })
+  @ApiQuery({ name: 'endDate', required: false, type: Date })
+  @ApiQuery({ name: 'lawyerId', required: false, type: Number })
+  @ApiQuery({ name: 'procedureTypeId', required: false, type: Number })
+  @ApiQuery({ name: 'doosierId', required: false, type: Number })
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('lawyerId') lawyerId?: number,
+    @Query('procedureTypeId') procedureTypeId?: number,
+    @Query('doosierId') doosierId?: number,
+  ): Promise<any> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      lawyerId: lawyerId ? +lawyerId : undefined,
+      procedureTypeId: procedureTypeId ? +procedureTypeId : undefined,
+      doosierId: doosierId ? +doosierId : undefined,
+      fieldToUseForDate : 'opening_date'
+    });
+  }
+
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'un dossier spécifique' })
+  @ApiParam({ name: 'id', description: 'ID du dossier' })
+  async getStatsForDossier(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats({ dossierId: id });
+  }
+
+
+  // @Get('summary')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  // @ApiOperation({ summary: 'Obtenir un résumé des statistiques' })
+  // async getSummary() {
+  //   return this.statsService.getStats({});
+  // }
+
+  @Get('urgent')
+  @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les dossiers urgents' })
+  async getUrgentDossiers() {
+    const stats = await this.statsService.getStats({});
+    return (stats as any).urgentDossiers;
+  }
+
 
   @Post()
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT, UserRole.SECRETAIRE)
@@ -67,6 +123,11 @@ export class DossiersController {
     // return user;
     console.log(createDossierDto)
     return this.dossiersService.create(createDossierDto, user);
+  }
+  @Get('summary')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getSummary() {
+    return this.dossiersService.getStats({});
   }
 
   @Get('search')
@@ -225,4 +286,7 @@ export class DossiersController {
     // Implémentation dans le service Finances
     return this.dossiersService.findOne(+id, user).then(dossier => dossier.factures);
   }
+
+
+
 }

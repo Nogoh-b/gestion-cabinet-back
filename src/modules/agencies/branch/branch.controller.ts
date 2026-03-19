@@ -3,48 +3,29 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
-
-
-
-
-
-
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-
-
-
-
 import { Controller, Post, Body, Param, Put, UseGuards, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-
-
-
-
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { BranchResponseDto } from './dto/response-branch.dto';
 import { SearchBranchDto } from './dto/search-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { BranchStatsService } from './branch-stats.service';
 
 @Controller('branch')
 @ApiTags('branch')
 @ApiBearerAuth()
 export class BranchController {
-  constructor(private readonly branchService: BranchService) {}
+  constructor(private readonly branchService: BranchService, 
+    private readonly statsService: BranchStatsService) {}
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN)
+  async getStats() {
+    return this.statsService.getStats();
+  }
+
 
   @Post()
   @ApiOperation({ summary: 'Create new branch' })
@@ -136,10 +117,5 @@ export class BranchController {
     return this.branchService.activate(id);
   }
 
-  @Get(':id/stats')
-  @ApiOperation({ summary: 'Get stats Branch' })
-  // @RequirePermissions('VIEW_BRANCH_STATS')
-  stats(@Param('id') id: number) {
-    return this.branchService.stats(id);
-  }
+
 }

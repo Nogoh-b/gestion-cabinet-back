@@ -10,7 +10,8 @@ import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
 import { Repository, In, Between, FindOptionsWhere } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
- 
+import { subMonths } from 'date-fns';
+
 
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Customer } from '../customer/customer/entities/customer.entity';
@@ -22,11 +23,14 @@ import { CreateDossierDto } from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
-import { Dossier } from './entities/dossier.entity';
+import { DangerLevel, Dossier } from './entities/dossier.entity';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
+import { DistributionItem, EvolutionData } from 'src/core/types/base-stats.dto';
+import { DossierStatsDto, FinancialStatsDto, RecentDossierDto, TimelineStatsDto, UrgentDossierDto } from './dto/dossier-stats.dto';
+// import { DistributionItem, DossierStatsDto, EvolutionData, FinancialStats, LawyerStats, RecentDossier, TimelineStats, UrgentDossier } from 'src/core/types/base-stats.dto';
 
 
 
@@ -723,4 +727,550 @@ async getCollaboratorDossiers(
     }
   };
 }
+
+
+
+
+
+
+
+
+
+  async getStats(filters?: {
+    startDate?: Date;
+    endDate?: Date;
+    lawyerId?: number;
+    procedureTypeId?: number;
+  }): Promise<DossierStatsDto> {
+    const [total, active, closed, archived] = await Promise.all([
+      this.getTotalCount(filters),
+      this.getActiveCount(filters),
+      this.getClosedCount(filters),
+      this.getArchivedCount(filters),
+    ]);
+
+    const [
+      evolution,
+      byStatus,
+      byDangerLevel,
+      byPriority,
+      byProcedureType,
+      byJurisdiction,
+      financialStats,
+      timelineStats,
+      lawyerStats,
+      recentDossiers,
+      urgentDossiers
+    ] = await Promise.all([
+      this.getEvolution(filters),
+      this.getDistributionByStatus(filters),
+      this.getDistributionByDangerLevel(filters),
+      this.getDistributionByPriority(filters),
+      this.getDistributionByProcedureType(filters),
+      this.getDistributionByJurisdiction(filters),
+      this.getFinancialStats(filters),
+      this.getTimelineStats(filters),
+      this.getLawyerStats(filters),
+      this.getRecentDossiers(filters),
+      this.getUrgentDossiers(filters),
+    ]);
+
+    return {
+      total,
+      activeDossiers: active,
+      closedDossiers: closed,
+      archivedDossiers: archived,
+      evolution,
+      byStatus,
+      byDangerLevel,
+      byPriority,
+      byProcedureType,
+      byJurisdiction,
+      financialStats,
+      timelineStats,
+      // lawyerStats,
+      recentDossiers,
+      urgentDossiers,
+    };
+  }
+
+  private async getTotalCount(filters?: any): Promise<number> {
+    const query = this.dossierRepository.createQueryBuilder('dossier');
+    this.applyFilters(query, filters);
+    return query.getCount();
+  }
+
+  private async getActiveCount(filters?: any): Promise<number> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .where('dossier.status IN (:...statuses)', {
+        statuses: [DossierStatus.OPEN, DossierStatus.AMICABLE, DossierStatus.LITIGATION, DossierStatus.DECISION, DossierStatus.APPEAL]
+      });
+    this.applyFilters(query, filters);
+    return query.getCount();
+  }
+
+  private async getClosedCount(filters?: any): Promise<number> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .where('dossier.status = :status', { status: DossierStatus.CLOSED });
+    this.applyFilters(query, filters);
+    return query.getCount();
+  }
+
+  private async getArchivedCount(filters?: any): Promise<number> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .where('dossier.status = :status', { status: DossierStatus.ARCHIVED });
+    this.applyFilters(query, filters);
+    return query.getCount();
+  }
+
+  private async getEvolution(filters?: any): Promise<EvolutionData[]> {
+    const { startDate = subMonths(new Date(), 6), endDate = new Date() } = filters || {};
+    
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .select('DATE(dossier.opening_date)', 'date')
+      .addSelect('COUNT(*)', 'count')
+      .where('dossier.opening_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .groupBy('DATE(dossier.opening_date)')
+      .orderBy('date', 'ASC');
+
+    this.applyFilters(query, filters, 'dossier');
+
+    const results = await query.getRawMany();
+    
+    let cumulative = 0;
+    return results.map(r => {
+      cumulative += parseInt(r.count);
+      return {
+        date: r.date,
+        count: parseInt(r.count),
+        cumulative,
+        period: 'day',
+      };
+    });
+  }
+
+  private async getDistributionByStatus(filters?: any): Promise<DistributionItem[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .select('dossier.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('dossier.status');
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getRawMany();
+    const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
+
+    const statusLabels = {
+      [DossierStatus.OPEN]: 'Ouvert',
+      [DossierStatus.AMICABLE]: 'Amiable',
+      [DossierStatus.LITIGATION]: 'Contentieux',
+      [DossierStatus.DECISION]: 'Décision',
+      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.CLOSED]: 'Clôturé',
+      [DossierStatus.ARCHIVED]: 'Archivé',
+    };
+
+    const statusColors = {
+      [DossierStatus.OPEN]: '#3b82f6', // bleu
+      [DossierStatus.AMICABLE]: '#10b981', // vert
+      [DossierStatus.LITIGATION]: '#f59e0b', // orange
+      [DossierStatus.DECISION]: '#8b5cf6', // violet
+      [DossierStatus.APPEAL]: '#ef4444', // rouge
+      [DossierStatus.CLOSED]: '#6b7280', // gris
+      [DossierStatus.ARCHIVED]: '#9ca3af', // gris clair
+    };
+
+    return results.map(r => ({
+      name: statusLabels[r.status] || `Status ${r.status}`,
+      value: parseInt(r.count),
+      percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
+      color: statusColors[r.status],
+      id: r.status,
+      code: DossierStatus[r.status],
+    }));
+  }
+
+  private async getDistributionByDangerLevel(filters?: any): Promise<DistributionItem[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .select('dossier.danger_level', 'level')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('dossier.danger_level');
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getRawMany();
+    const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
+
+    const levelLabels = {
+      [DangerLevel.Faible]: 'Faible',
+      [DangerLevel.Normal]: 'Normal',
+      [DangerLevel.Eleve]: 'Élevé',
+      [DangerLevel.Critique]: 'Critique',
+    };
+
+    const levelColors = {
+      [DangerLevel.Faible]: '#10b981', // vert
+      [DangerLevel.Normal]: '#3b82f6', // bleu
+      [DangerLevel.Eleve]: '#f59e0b', // orange
+      [DangerLevel.Critique]: '#ef4444', // rouge
+    };
+
+    return results.map(r => ({
+      name: levelLabels[r.level] || `Niveau ${r.level}`,
+      value: parseInt(r.count),
+      percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
+      color: levelColors[r.level],
+      id: r.level,
+    }));
+  }
+
+  private async getDistributionByPriority(filters?: any): Promise<DistributionItem[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .select('dossier.priority_level', 'priority')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('dossier.priority_level');
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getRawMany();
+    const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
+
+    const priorityLabels = {
+      0: 'Basse',
+      1: 'Moyenne',
+      2: 'Haute',
+      3: 'Urgente',
+    };
+
+    const priorityColors = {
+      0: '#9ca3af', // gris
+      1: '#3b82f6', // bleu
+      2: '#f59e0b', // orange
+      3: '#ef4444', // rouge
+    };
+
+    return results.map(r => ({
+      name: priorityLabels[r.priority] || `Priorité ${r.priority}`,
+      value: parseInt(r.count),
+      percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
+      color: priorityColors[r.priority],
+      id: r.priority,
+    }));
+  }
+
+  private async getDistributionByProcedureType(filters?: any): Promise<DistributionItem[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .leftJoinAndSelect('dossier.procedure_type', 'procedureType')
+      .select('procedureType.id', 'id')
+      .addSelect('procedureType.name', 'name')
+      .addSelect('COUNT(*)', 'count')
+      .where('procedureType.id IS NOT NULL')
+      .groupBy('procedureType.id, procedureType.name');
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getRawMany();
+    const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
+
+    return results.map(r => ({
+      name: r.name || 'Non spécifié',
+      value: parseInt(r.count),
+      percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
+      id: r.id,
+    }));
+  }
+
+  private async getDistributionByJurisdiction(filters?: any): Promise<DistributionItem[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .leftJoinAndSelect('dossier.jurisdiction', 'jurisdiction')
+      .select('jurisdiction.id', 'id')
+      .addSelect('jurisdiction.name', 'name')
+      .addSelect('COUNT(*)', 'count')
+      .where('jurisdiction.id IS NOT NULL')
+      .groupBy('jurisdiction.id, jurisdiction.name')
+      .orderBy('count', 'DESC')
+      .limit(10);
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getRawMany();
+    const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
+
+    return results.map(r => ({
+      name: r.name || 'Non spécifié',
+      value: parseInt(r.count),
+      percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
+      id: r.id,
+    }));
+  }
+
+  private async getFinancialStats(filters?: any): Promise<FinancialStatsDto> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .select('SUM(dossier.budget_estimate)', 'totalBudget')
+      .addSelect('SUM(dossier.actual_costs)', 'totalActual')
+      .addSelect('AVG(dossier.budget_estimate)', 'avgBudget')
+      .addSelect('AVG(dossier.actual_costs)', 'avgActual')
+      .where('dossier.budget_estimate IS NOT NULL OR dossier.actual_costs IS NOT NULL');
+
+    this.applyFilters(query, filters);
+
+    const totals = await query.getRawOne();
+
+    // Stats par statut
+    const byStatusQuery = this.dossierRepository.createQueryBuilder('dossier')
+      .select('dossier.status', 'status')
+      .addSelect('SUM(dossier.budget_estimate)', 'budgetEstimate')
+      .addSelect('SUM(dossier.actual_costs)', 'actualCosts')
+      .where('dossier.budget_estimate IS NOT NULL OR dossier.actual_costs IS NOT NULL')
+      .groupBy('dossier.status');
+
+    this.applyFilters(byStatusQuery, filters);
+
+    const byStatus = await byStatusQuery.getRawMany();
+
+    const statusLabels = {
+      [DossierStatus.OPEN]: 'Ouvert',
+      [DossierStatus.AMICABLE]: 'Amiable',
+      [DossierStatus.LITIGATION]: 'Contentieux',
+      [DossierStatus.DECISION]: 'Décision',
+      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.CLOSED]: 'Clôturé',
+      [DossierStatus.ARCHIVED]: 'Archivé',
+    };
+
+    return {
+      totalBudgetEstimate: parseFloat(totals?.totalBudget || 0),
+      totalActualCosts: parseFloat(totals?.totalActual || 0),
+      averageBudgetPerDossier: parseFloat(totals?.avgBudget || 0),
+      averageCostPerDossier: parseFloat(totals?.avgActual || 0),
+      budgetVsActual: totals?.totalBudget ? 
+        ((parseFloat(totals.totalActual) / parseFloat(totals.totalBudget)) * 100) : 0,
+      byStatus: byStatus.map(s => ({
+        status: statusLabels[s.status] || `Status ${s.status}`,
+        budgetEstimate: parseFloat(s.budgetEstimate || 0),
+        actualCosts: parseFloat(s.actualCosts || 0),
+        // Correction pour la ligne 302
+        difference: parseFloat((s.actualCosts || '0')) - parseFloat((s.budgetEstimate || '0')),        
+      })),
+    };
+  }
+
+  private async getTimelineStats(filters?: any): Promise<TimelineStatsDto> {
+    // Dossiers clôturés avec date d'ouverture et de clôture
+    const closedQuery = this.dossierRepository.createQueryBuilder('dossier')
+      .select('dossier.id')
+      .addSelect('dossier.opening_date', 'openingDate')
+      .addSelect('dossier.closing_date', 'closingDate')
+      // Pour MySQL : DATEDIFF retourne la différence en jours
+      .addSelect('DATEDIFF(dossier.closing_date, dossier.opening_date)', 'duration')
+      .where('dossier.status = :status', { status: DossierStatus.CLOSED })
+      .andWhere('dossier.opening_date IS NOT NULL')
+      .andWhere('dossier.closing_date IS NOT NULL');
+
+    this.applyFilters(closedQuery, filters);
+
+    const closedDossiers = await closedQuery.getRawMany();
+    
+    const durations = closedDossiers.map(d => parseInt(d.duration));
+    const avgDuration = durations.length > 0 
+      ? durations.reduce((a, b) => a + b, 0) / durations.length 
+      : 0;
+
+    // Stats par type de procédure
+    const byProcedureQuery = this.dossierRepository.createQueryBuilder('dossier')
+      .leftJoin('dossier.procedure_type', 'procedureType')
+      .select('procedureType.name', 'procedureType')
+      // MySQL: AVG de DATEDIFF
+      .addSelect('AVG(DATEDIFF(dossier.closing_date, dossier.opening_date))', 'avgDuration')
+      .addSelect('COUNT(*)', 'count')
+      .where('dossier.status = :status', { status: DossierStatus.CLOSED })
+      .andWhere('dossier.opening_date IS NOT NULL')
+      .andWhere('dossier.closing_date IS NOT NULL')
+      .andWhere('procedureType.id IS NOT NULL')
+      .groupBy('procedureType.name');
+
+    this.applyFilters(byProcedureQuery, filters);
+
+    const byProcedure = await byProcedureQuery.getRawMany();
+
+    // Tendances mensuelles - Version MySQL
+    const { startDate = subMonths(new Date(), 12), endDate = new Date() } = filters || {};
+
+    // Pour MySQL: utiliser DATE_FORMAT au lieu de TO_CHAR
+    const openingTrendQuery = this.dossierRepository.createQueryBuilder('dossier')
+      .select("DATE_FORMAT(dossier.opening_date, '%Y-%m')", 'month')
+      .addSelect('COUNT(*)', 'count')
+      .where('dossier.opening_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .groupBy("DATE_FORMAT(dossier.opening_date, '%Y-%m')")
+      .orderBy('month', 'ASC');
+
+    this.applyFilters(openingTrendQuery, filters);
+
+    const openingTrend = await openingTrendQuery.getRawMany();
+
+    const closingTrendQuery = this.dossierRepository.createQueryBuilder('dossier')
+      .select("DATE_FORMAT(dossier.closing_date, '%Y-%m')", 'month')
+      .addSelect('COUNT(*)', 'count')
+      .where('dossier.closing_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .andWhere('dossier.status = :status', { status: DossierStatus.CLOSED })
+      .groupBy("DATE_FORMAT(dossier.closing_date, '%Y-%m')")
+      .orderBy('month', 'ASC');
+
+    this.applyFilters(closingTrendQuery, filters);
+
+    const closingTrend = await closingTrendQuery.getRawMany();
+
+    return {
+      averageDuration: Math.round(avgDuration),
+      shortestDuration: durations.length > 0 ? Math.min(...durations) : 0,
+      longestDuration: durations.length > 0 ? Math.max(...durations) : 0,
+      byProcedureType: byProcedure.map(p => ({
+        procedureType: p.procedureType,
+        averageDuration: Math.round(parseFloat(p.avgDuration)),
+        count: parseInt(p.count),
+      })),
+      openingTrend: openingTrend.map(o => ({
+        month: o.month,
+        count: parseInt(o.count),
+      })),
+      closingTrend: closingTrend.map(c => ({
+        month: c.month,
+        count: parseInt(c.count),
+      })),
+    };
+  }
+
+  private async getLawyerStats(filters?: any): Promise<any[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .leftJoin('dossier.lawyer', 'lawyer')
+      .leftJoin('lawyer.user', 'user')
+      .select('lawyer.id', 'lawyerId')
+      // MySQL: CONCAT au lieu de || 
+      .addSelect("CONCAT(user.first_name, ' ', user.last_name)", 'lawyerName')
+      .addSelect('COUNT(*)', 'totalDossiers')
+      .addSelect('SUM(CASE WHEN dossier.status IN (:...activeStatuses) THEN 1 ELSE 0 END)', 'activeDossiers')
+      .addSelect('SUM(CASE WHEN dossier.status = :closedStatus THEN 1 ELSE 0 END)', 'closedDossiers')
+      // MySQL: DATEDIFF au lieu de EXTRACT
+      .addSelect('AVG(DATEDIFF(dossier.closing_date, dossier.opening_date))', 'avgDuration')
+      .setParameters({
+        activeStatuses: [DossierStatus.OPEN, DossierStatus.AMICABLE, DossierStatus.LITIGATION, DossierStatus.DECISION, DossierStatus.APPEAL],
+        closedStatus: DossierStatus.CLOSED,
+      })
+      .where('lawyer.id IS NOT NULL')
+      .groupBy('lawyer.id, user.first_name, user.last_name');
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getRawMany();
+
+    return results.map(r => ({
+      lawyerId: parseInt(r.lawyerId),
+      lawyerName: r.lawyerName || 'Avocat',
+      totalDossiers: parseInt(r.totalDossiers),
+      activeDossiers: parseInt(r.activeDossiers || 0),
+      closedDossiers: parseInt(r.closedDossiers || 0),
+      averageDuration: Math.round(parseFloat(r.avgDuration || 0)),
+      successRate: 75,
+    })).sort((a, b) => b.totalDossiers - a.totalDossiers)
+      .slice(0, 10);
+  }
+
+  private async getRecentDossiers(filters?: any): Promise<RecentDossierDto[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .leftJoinAndSelect('dossier.client', 'client')
+      .leftJoinAndSelect('dossier.lawyer', 'lawyer')
+      .leftJoinAndSelect('lawyer.user', 'user')
+      .select([
+        'dossier.id',
+        'dossier.dossier_number',
+        'dossier.object',
+        'dossier.status',
+        'dossier.danger_level',
+        'dossier.opening_date',
+        'client',
+        'lawyer',
+        'user'
+      ])
+      .orderBy('dossier.opening_date', 'DESC')
+      .limit(10);
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getMany();
+
+    return results.map(d => ({
+      id: d.id,
+      dossierNumber: d.dossier_number,
+      object: d.object,
+      clientName: d.client?.full_name || 'Client inconnu',
+      status: d.status,
+      dangerLevel: d.danger_level,
+      openingDate: d.opening_date,
+      lawyerName: d.lawyer?.full_name || 'Avocat inconnu',
+    }));
+  }
+
+  private async getUrgentDossiers(filters?: any): Promise<UrgentDossierDto[]> {
+    const query = this.dossierRepository.createQueryBuilder('dossier')
+      .leftJoinAndSelect('dossier.client', 'client')
+      .leftJoinAndSelect('dossier.lawyer', 'lawyer')
+      .leftJoinAndSelect('lawyer.user', 'user')
+      .leftJoinAndSelect('dossier.audiences', 'audience')
+      .where('dossier.status IN (:...activeStatuses)', {
+        activeStatuses: [DossierStatus.OPEN, DossierStatus.AMICABLE, DossierStatus.LITIGATION]
+      })
+      .andWhere('(dossier.danger_level IN (:...highLevels) OR dossier.priority_level >= :highPriority)', {
+        highLevels: [DangerLevel.Eleve, DangerLevel.Critique],
+        highPriority: 2
+      })
+      .orderBy('dossier.danger_level', 'DESC')
+      .addOrderBy('dossier.priority_level', 'DESC')
+      .addOrderBy('dossier.opening_date', 'ASC')
+      .limit(10);
+
+    this.applyFilters(query, filters);
+
+    const results = await query.getMany();
+
+    return results.map(d => {
+      const nextAudience = d.audiences?.find(a => a.is_upcoming);
+      
+      return {
+        id: d.id,
+        dossierNumber: d.dossier_number,
+        object: d.object,
+        clientName: d.client?.full_name || 'Client inconnu',
+        dangerLevel: d.danger_level,
+        priorityLevel: d.priority_level,
+        nextAudience: nextAudience?.full_datetime,
+        daysUntilDeadline: nextAudience ? 
+          Math.ceil((nextAudience.full_datetime.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 
+          undefined,
+      };
+    });
+  }
+
+  private applyFilters(query: any, filters?: any, alias: string = 'dossier'): void {
+    if (!filters) return;
+
+    if (filters.startDate) {
+      query.andWhere(`${alias}.opening_date >= :startDate`, { startDate: filters.startDate });
+    }
+
+    if (filters.endDate) {
+      query.andWhere(`${alias}.opening_date <= :endDate`, { endDate: filters.endDate });
+    }
+
+    if (filters.lawyerId) {
+      query.andWhere(`${alias}.lawyer_id = :lawyerId`, { lawyerId: filters.lawyerId });
+    }
+
+    if (filters.procedureTypeId) {
+      query.andWhere(`${alias}.procedure_type_id = :procedureTypeId`, { procedureTypeId: filters.procedureTypeId });
+    }
+
+    if (filters.jurisdictionId) {
+      query.andWhere(`${alias}.jurisdiction_id = :jurisdictionId`, { jurisdictionId: filters.jurisdictionId });
+    }
+  }
 }

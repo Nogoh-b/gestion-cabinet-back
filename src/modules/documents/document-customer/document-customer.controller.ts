@@ -45,6 +45,8 @@ import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
+import { DocumentStatsDto } from './dto/document-stats.dto';
+import { DocumentStatsService } from './document-stats.service';
 
 
 
@@ -59,7 +61,36 @@ import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
 @Controller('documents')
 @ApiBearerAuth()
 export class DocumentCustomerController {
-  constructor(private readonly service: DocumentCustomerService) {}
+  constructor(private readonly service: DocumentCustomerService, private readonly statsService: DocumentStatsService) {}
+
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('dossierId') dossierId?: number,
+  ): Promise<DocumentStatsDto> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      dossierId: dossierId ? +dossierId : undefined,
+    });
+  }
+
+  @Get('pending')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getPendingDocuments() {
+    const stats = await this.statsService.getStats({});
+    return stats.pendingDocuments;
+  }
+
+  @Get('storage')
+  // @Roles(UserRole.ADMIN)
+  async getStorageStats() {
+    const stats = await this.statsService.getStats({});
+    return stats.storageStats;
+  }
 
   @Get('get/:id')
   @ApiOperation({ summary: 'Récupérer un document client par ID' })

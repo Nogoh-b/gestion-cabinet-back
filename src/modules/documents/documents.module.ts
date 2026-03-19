@@ -23,6 +23,8 @@ import { DocumentCustomer } from './document-customer/entities/document-customer
 import { DocumentTypeController } from './document-type/document-type.controller';
 import { DocumentTypeService } from './document-type/document-type.service';
 import { DocumentType } from './document-type/entities/document-type.entity';
+import { DocumentStatsService } from './document-customer/document-stats.service';
+import { DocumentTypeStatsService } from './document-type/document-type-stats.service';
 
 
 
@@ -49,7 +51,7 @@ import { DocumentType } from './document-type/entities/document-type.entity';
 
   ],
   controllers: [DocumentTypeController, DocumentCustomerController],
-  providers: [DocumentTypeService, DocumentCustomerService],
-  exports: [DocumentTypeService, DocumentCustomerService, TypeOrmModule],
+  providers: [DocumentTypeService, DocumentCustomerService,DocumentStatsService, DocumentTypeStatsService],
+  exports: [DocumentTypeService, DocumentCustomerService,DocumentStatsService, TypeOrmModule],
 })
 export class DocumentsModule {}

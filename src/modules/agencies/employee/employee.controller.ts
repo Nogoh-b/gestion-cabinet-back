@@ -15,6 +15,8 @@ import { ResetPasswordRequestDto } from './dto/create-employee.dto';
 import { SearchEmployeeDto } from './dto/create-employee.dto copy';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { EmployeeService } from './employee.service';
+import { EmployeeStatsService } from './employee-stats.service';
+import { EmployeeStatsDto } from './dto/employee-stats.dto';
 
 
 
@@ -26,9 +28,46 @@ import { EmployeeService } from './employee.service';
 @ApiBearerAuth() 
 
 export class EmployeeController {
-  constructor(private readonly employeeService: EmployeeService) {}
+  constructor(private readonly employeeService: EmployeeService,
+  private readonly statsService: EmployeeStatsService) {}
 
 
+  @Get('stats')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques des employés' })
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('branchId') branchId?: number,
+  ): Promise<EmployeeStatsDto> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      branchId: branchId ? +branchId : undefined,
+      fieldToUseForDate : 'hireDate'
+    });
+  }
+
+  @Get('stats/workload')
+  // @Roles(UserRole.ADMIN)
+  async getWorkloadStats() {
+    const stats = await this.statsService.getStats({});
+    return stats.workloadStats;
+  }
+
+  @Get('stats/available')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getAvailableEmployees() {
+    const stats = await this.statsService.getStats({});
+    return stats.availableEmployees;
+  }
+
+  @Get('stats/top-performers')
+  // @Roles(UserRole.ADMIN)
+  async getTopPerformers() {
+    const stats = await this.statsService.getStats({});
+    return stats.topPerformers;
+  }
 
   @Get('search')
   @ApiOperation({ summary: 'Recherche texte avec relations' })

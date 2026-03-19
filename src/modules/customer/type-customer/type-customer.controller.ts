@@ -13,18 +13,30 @@ import { TypeCustomerListResponseDto } from './dto/response-type_customer.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { TypeCustomerSearchDto } from './dto/type-customer-search.dto';
+import { TypeCustomerStatsDto } from './dto/type-customer-stats.dto';
+import { TypeCustomerStatsService } from './type-customer-stats.service';
 
 @Controller('type-customers')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class TypeCustomersController {
-  constructor(private readonly service: TypeCustomersService) {}
+  constructor(private readonly service: TypeCustomersService,
+  private readonly statsService: TypeCustomerStatsService,) {}
 
   @Post()
   @RequirePermissions('CREATE_TYPE_CUSTOMER')
   create(@Body() dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
     return this.service.create(dto);
   }
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
+  @ApiOperation({ summary: 'Obtenir les statistiques des types de factures' })
+  @ApiResponse({ status: 200, type: TypeCustomerStatsDto })
+  async getStats(): Promise<TypeCustomerStatsDto> {
+    return this.statsService.getStats();
+  }
+  
 
   @Get('/search')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

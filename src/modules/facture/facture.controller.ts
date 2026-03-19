@@ -22,14 +22,44 @@ import { SearchFactureDto } from './dto/search-facture.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { FactureService } from './facture.service';
 import { plainToInstance } from 'class-transformer';
+import { FactureStatsService } from './facture-stats.service';
+import { FactureStatsDto } from './dto/facture-stats.dto';
 
 
 
 @ApiTags('factures')
 @Controller('factures')
 export class FactureController {
-  constructor(private readonly factureService: FactureService) {}
+  constructor(private readonly factureService: FactureService, private readonly statsService: FactureStatsService) {}
 
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('clientId') clientId?: number,
+  ): Promise<FactureStatsDto> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      clientId: clientId ? +clientId : undefined,
+      fieldToUseForDate : 'dateFacture'
+    });
+  }
+
+  @Get('unpaid')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getUnpaidInvoices() {
+    const stats = await this.statsService.getStats({});
+    return stats.unpaidInvoices;
+  }
+
+  @Get('overdue')
+  // @Roles(UserRole.ADMIN)
+  async getOverdueStats() {
+    const stats = await this.statsService.getStats({});
+    return stats.overdueStats;
+  }
   @Post()
   @ApiOperation({ summary: 'Créer une nouvelle facture' })
   @ApiResponse({ status: HttpStatus.CREATED, type: FactureResponseDto })

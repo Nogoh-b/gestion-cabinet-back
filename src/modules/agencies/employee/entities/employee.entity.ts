@@ -16,6 +16,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Branch } from '../../branch/entities/branch.entity';
 import { Expose } from 'class-transformer';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 
 
 export enum EmployeePosition {
@@ -131,6 +132,10 @@ export class Employee extends BaseEntity {
 
   @ManyToMany(() => Dossier, dossier => dossier.collaborators)
   collaborating_dossiers: Dossier[];
+
+    
+  @OneToMany(() => Diligence, diligence => diligence.assigned_lawyer)
+  assigned_diligences: Diligence[]; 
 
   @BeforeInsert()
   setDefaultHireDate() {

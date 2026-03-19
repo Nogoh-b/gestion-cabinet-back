@@ -5,7 +5,8 @@ import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiBearerAuth
+  ApiBearerAuth,
+  ApiQuery
 } from '@nestjs/swagger';
 
 
@@ -14,6 +15,7 @@ import { JurisdictionResponseDto } from './dto/jurisdiction-response.dto';
 import { SearchJurisdictionDto } from './dto/search-jurisdiction.dto';
 import { UpdateJurisdictionDto } from './dto/update-jurisdiction.dto';
 import { JurisdictionService } from './jurisdiction.service';
+import { JurisdictionStatsService } from './jurisdiction-stats.service';
 
 
 
@@ -21,8 +23,25 @@ import { JurisdictionService } from './jurisdiction.service';
 @ApiBearerAuth()
 @Controller('jurisdictions')
 export class JurisdictionController {
-  constructor(private readonly service: JurisdictionService) {}
+  constructor(private readonly service: JurisdictionService, 
+  private readonly statsService: JurisdictionStatsService) {}
 
+  @Get('stats')
+  // @Roles(UserRole.ADMIN)
+  @ApiQuery({ name: 'startDate', required: false, type: Date })
+  @ApiQuery({ name: 'endDate', required: false, type: Date })
+
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+
+  ) {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+
+    });
+  }
   @Post()
   @ApiOperation({ summary: 'Créer une nouvelle juridiction' })
   @ApiResponse({ status: 201, type: JurisdictionResponseDto })

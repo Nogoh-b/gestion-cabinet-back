@@ -10,7 +10,7 @@ import {
   Query,
   ParseIntPipe,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
@@ -18,12 +18,54 @@ import { DiligenceSearchDto } from './dto/search-diligence.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { DiligencesService } from './diligence.service';
+import { DiligenceStatsService } from './diligence-stats.service';
+import { DiligenceStatsDto } from './dto/diligence-stats.dto';
 
 @ApiTags('Diligences')
 @Controller('diligences')
 export class DiligencesController {
-  constructor(private readonly diligencesService: DiligencesService) {}
+  constructor(private readonly diligencesService: DiligencesService,
+  private readonly statsService: DiligenceStatsService) {}
 
+
+
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiQuery({ name: 'startDate', required: false, type: Date })
+  @ApiQuery({ name: 'endDate', required: false, type: Date })
+  @ApiQuery({ name: 'lawyerId', required: false, type: Number })
+  @ApiQuery({ name: 'dossierId', required: false, type: Number })
+  @ApiOperation({ summary: 'Obtenir les statistiques des diligences' })
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('lawyerId') lawyerId?: number,
+    @Query('dossierId') dossierId?: number,
+  ): Promise<DiligenceStatsDto> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      lawyerId: lawyerId ? +lawyerId : undefined,
+      dossierId: dossierId ? +dossierId : undefined,
+    });
+  }
+
+  @Get('upcoming')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getUpcomingDeadlines() {
+    const stats = await this.statsService.getStats({});
+    return stats.upcomingDeadlines;
+  }
+
+  @Get('overdue')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getExpiredDeadlines() {
+    const stats = await this.statsService.getStats({});
+    return stats.expiredDeadlines;
+  }
+
+  
   @Post()
   @ApiOperation({ summary: 'Créer une nouvelle mission de diligence' })
   @ApiResponse({ status: 201, type: DiligenceResponseDto })
@@ -126,4 +168,6 @@ export class DiligencesController {
   async findOverdue() {
     return await this.diligencesService.findOverdue();
   }
+
+
 }
