@@ -1,4 +1,4 @@
-// src/modules/diligences/services/diligence-stats.service.ts
+// src/modules/documents/document-customer/services/document-stats.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -6,7 +6,7 @@ import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
 import { DocumentStatsDto } from './dto/document-stats.dto';
-
+import { SingleDocumentStatsDto } from './dto/single-document-stats.dto';
 
 @Injectable()
 export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
@@ -17,7 +17,206 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     super(documentRepository);
   }
 
-  async getStats(filters?: StatsFilterDto): Promise<DocumentStatsDto> {
+  async getStats(filters?: StatsFilterDto): Promise<DocumentStatsDto | SingleDocumentStatsDto> {
+    // Si un documentId est fourni, on retourne les stats détaillées de ce document
+    if (filters?.documentId) {
+      return this.getStatsForSingleDocument(filters.documentId);
+    }
+
+    // Sinon, on retourne les stats globales
+    return this.getGlobalStats(filters);
+  }
+
+  // Méthode pour un document spécifique
+  private async getStatsForSingleDocument(documentId: number): Promise<SingleDocumentStatsDto> {
+    const document = await this.documentRepository.findOne({
+      where: { id: documentId },
+      relations: [
+        'document_type',
+        'category',
+        'dossier',
+        'dossier.client',
+        'dossier.lawyer',
+        'dossier.lawyer.user',
+        'customer',
+        'uploaded_by',
+        'previous_version',
+        'audiences',
+        'audiences.jurisdiction',
+        'diligences',
+        'findings'
+      ]
+    });
+
+    if (!document) {
+      throw new Error(`Document avec ID ${documentId} non trouvé`);
+    }
+
+    // Récupérer les versions précédentes
+    const versionsPrecedentes = await this.documentRepository.find({
+      where: { previous_version: { id: documentId } },
+      relations: ['uploaded_by'],
+      order: { version: 'DESC' }
+    });
+
+    const statusLabels = {
+      [DocumentCustomerStatus.PENDING]: 'En attente',
+      [DocumentCustomerStatus.ACCEPTED]: 'Validé',
+      [DocumentCustomerStatus.REFUSED]: 'Refusé',
+      [DocumentCustomerStatus.EXPIRED]: 'Expiré',
+      [DocumentCustomerStatus.ARCHIVED]: 'Archivé',
+    };
+
+    return {
+      document: {
+        id: document.id,
+        nom: document.name,
+        description: document.description,
+        type: document.document_type?.name || 'Non spécifié',
+        categorie: document.category?.name || 'Non catégorisé',
+        statut: document.status,
+        statutLabel: statusLabels[document.status] || 'Inconnu',
+        version: document.version,
+        estVersionCourante: document.is_current_version,
+        dateUpload: document.uploaded_at,
+        dateModification: document.last_modified,
+        dateValidation: document.date_validation,
+        dateExpiration: document.date_expired,
+      },
+      fichier: {
+        chemin: document.file_path,
+        url: document.file_url,
+        taille: document.file_size || 0,
+        tailleFormatee: this.formatFileSize(document.file_size),
+        mimetype: document.file_mimetype,
+        extension: this.getFileExtension(document.file_mimetype, document.name) || 'N/A',
+      },
+      // dossier: document.dossier ? {
+      //   id: document.dossier.id,
+      //   numero: document.dossier.dossier_number,
+      //   objet: document.dossier.object,
+      //   client: document.dossier.client?.full_name,
+      //   avocat: document.dossier.lawyer?.full_name,
+      // } : null,
+      // client: document.customer ? {
+      //   id: document.customer.id,
+      //   nom: document.customer.full_name,
+      //   email: document.customer.email,
+      //   telephone: document.customer.number_phone_1 || document.customer.professional_phone,
+      // } : null,
+      // uploader: document.uploaded_by ? {
+      //   id: document.uploaded_by.id,
+      //   nom: document.uploaded_by.full_name,
+      //   email: document.uploaded_by.email,
+      //   dateUpload: document.uploaded_at,
+      // } : null,
+      metadonnees: document.metadata ? {
+        motsCles: document.metadata.keywords,
+        nombrePages: document.metadata.page_count,
+        langue: document.metadata.language,
+        nomOriginal: document.metadata.original_filename,
+      } : {},
+      versionsPrecedentes: versionsPrecedentes.map(v => ({
+        id: v.id,
+        version: v.version,
+        dateUpload: v.uploaded_at,
+        uploader: v.uploaded_by?.full_name || 'Inconnu',
+        taille: this.formatFileSize(v.file_size),
+      })),
+      audiences: (document.audiences || []).map(a => ({
+        id: a.id,
+        titre: 'N/A',
+        date: a.full_datetime,
+        jurisdiction: a.jurisdiction?.name,
+      })),
+      diligences: (document.diligences || []).map(d => ({
+        id: d.id,
+        titre: d.title,
+        statut: d.status,
+        deadline: d.deadline,
+      })),
+      historique: this.buildHistory(document),
+    };
+  }
+
+  private getFileExtension(mimetype: string, filename: string): string | undefined {
+    if (filename && filename.includes('.')) {
+      return filename.split('.').pop();
+    }
+    
+    const extensionMap = {
+      'application/pdf': 'pdf',
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'application/msword': 'doc',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.ms-excel': 'xls',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+      'text/plain': 'txt',
+      'application/zip': 'zip',
+    };
+    
+    return extensionMap[mimetype] || 'bin';
+  }
+
+  private buildHistory(document: any): SingleDocumentStatsDto['historique'] {
+    const history : any = [];
+
+    // Upload
+    history.push({
+      action: 'Upload',
+      utilisateur: document.uploaded_by?.full_name || 'Système',
+      date: document.uploaded_at,
+    });
+
+    // Validation/Rejet
+    if (document.date_validation) {
+      history.push({
+        action: document.status === DocumentCustomerStatus.ACCEPTED ? 'Validation' : 'Rejet',
+        utilisateur: 'Système', // À remplacer par l'utilisateur qui a validé
+        date: document.date_validation,
+        details: document.status === DocumentCustomerStatus.ACCEPTED ? 'Document validé' : 'Document rejeté',
+      });
+    }
+
+    // Expiration
+    if (document.date_expired) {
+      history.push({
+        action: 'Expiration',
+        utilisateur: 'Système',
+        date: document.date_expired,
+        details: 'Document expiré',
+      });
+    }
+
+    // Modifications
+    if (document.last_modified && document.last_modified > document.uploaded_at) {
+      history.push({
+        action: 'Modification',
+        utilisateur: 'Système',
+        date: document.last_modified,
+        details: 'Document modifié',
+      });
+    }
+
+    // Audit trail from metadata
+    if (document.metadata?.audit_trail) {
+      document.metadata.audit_trail.forEach((entry: any) => {
+        history.push({
+          action: entry.action,
+          utilisateur: `Utilisateur ${entry.user_id}`,
+          date: entry.timestamp,
+          details: entry.details,
+        });
+      });
+    }
+
+    // Trier par date (plus récent d'abord)
+    return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  // Méthode existante pour les stats globales
+  private async getGlobalStats(filters?: StatsFilterDto): Promise<DocumentStatsDto> {
     const [
       total,
       totalSize,

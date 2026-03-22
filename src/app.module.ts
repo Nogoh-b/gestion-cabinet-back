@@ -4,7 +4,7 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
 
@@ -51,43 +51,12 @@ import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handleba
 import { join } from 'path';
 import { StatsModule } from './modules/stats/stats.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { helpers } from './utils/helper-template-maill';
 
 
 
 
-const configService = new ConfigService();
 
-const helpers = {
-  companyName: () => configService.get('COMPANY_NAME'),
-  logoUrl: () => configService.get('COMPANY_LOGO_URL'),
-  companyAddress: () => configService.get('COMPANY_ADDRESS'),
-  companyEmail: () => configService.get('COMPANY_EMAIL'),
-  companyPhone: () => configService.get('COMPANY_PHONE'),
-  currentYear: () => new Date().getFullYear().toString(),
-  appUrl: () => configService.get('APP_URL'),  
-  formatDate: (date) => {
-    if (!date) return '';
-    const d = new Date(date);
-    return d.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  },
-  formatDateTime: (date) => {
-    if (!date) return '';
-    const d = new Date(date);
-    return d.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }, 
-  eq: (a, b) => a === b,
-  contains: (str, substr) => str && str.includes(substr),
-};
 
 
 
@@ -135,7 +104,7 @@ dotenv.config();
         },
       },
       defaults: {
-        from: '"No Reply" <emelineenanga@nouyadjamassociates.com>',
+        from: '"No Reply NOUYADJAM & ASSOCIATES" <emelineenanga@nouyadjamassociates.com>',
       }, 
       template: {
         dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),

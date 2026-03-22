@@ -17,6 +17,7 @@ import { DossiersService } from './dossiers.service';
 import { Dossier } from './entities/dossier.entity';
 import { ChatModule } from '../chat/chat.module';
 import { DossierStatsService } from './dossier-stats.service';
+import { StepModule } from '../step/step.module';
 
 
 
@@ -31,6 +32,7 @@ import { DossierStatsService } from './dossier-stats.service';
     forwardRef(() => CustomerModule),
     forwardRef(() => DocumentsModule),
     forwardRef(() => ChatModule),
+    forwardRef(() => StepModule),
 
     TypeOrmModule.forFeature([Dossier,  User, ProcedureType]),
   ],

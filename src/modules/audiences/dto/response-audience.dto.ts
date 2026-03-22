@@ -35,8 +35,26 @@ export class AudienceResponseDto {
   @Expose()
   audience_time: string;
 
-  @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
+ @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
   @Expose()
+  @Transform(({ value }: { value: Jurisdiction }) => {
+    if (!value) return null;
+    return {
+      id: value.id,
+      code: value.code,
+      name: value.name,
+      description: value.description,
+      level: value.level,
+      jurisdiction_type: value.jurisdiction_type,
+      city: value.city,
+      region: value.region,
+      country: value.country,
+      address: value.address,
+      phone: value.phone,
+      email: value.email,
+      website: value.website
+    };
+  })
   jurisdiction: Jurisdiction;
 
   @ApiProperty({ example: "Salle 4B", required: false })

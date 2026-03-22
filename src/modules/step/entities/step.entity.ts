@@ -1,6 +1,7 @@
 // entities/step.entity.ts
+import { RecommendationType } from 'src/core/enums/dossier-status.enum';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
-import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { DangerLevel, Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
   Entity,
@@ -69,7 +70,11 @@ export class Step {
   metadata: {
     decision?: string;
     court?: string;
+    successProbability?: number;
+    dangerLevel?: DangerLevel;
+    recommendation?: RecommendationType;
     hearingDate?: Date;
+    isSatisfied?: boolean;
     agreementReached?: boolean;
     appealType?: string;
     // Autres métadonnées spécifiques à l'étape

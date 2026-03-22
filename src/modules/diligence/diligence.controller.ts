@@ -10,7 +10,7 @@ import {
   Query,
   ParseIntPipe,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
@@ -19,7 +19,6 @@ import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { DiligencesService } from './diligence.service';
 import { DiligenceStatsService } from './diligence-stats.service';
-import { DiligenceStatsDto } from './dto/diligence-stats.dto';
 
 @ApiTags('Diligences')
 @Controller('diligences')
@@ -42,7 +41,7 @@ export class DiligencesController {
     @Query('endDate') endDate?: string,
     @Query('lawyerId') lawyerId?: number,
     @Query('dossierId') dossierId?: number,
-  ): Promise<DiligenceStatsDto> {
+  ): Promise<any> {
     return this.statsService.getStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
@@ -51,18 +50,28 @@ export class DiligencesController {
     });
   }
 
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'une diligence spécifique' })
+  @ApiParam({ name: 'id', description: 'ID de la diligence' })
+  async getStatsForDiligence(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats({ diligenceId: id });
+  }
+
   @Get('upcoming')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   async getUpcomingDeadlines() {
     const stats = await this.statsService.getStats({});
-    return stats.upcomingDeadlines;
+    return (stats as any).upcomingDeadlines;
   }
 
   @Get('overdue')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   async getExpiredDeadlines() {
     const stats = await this.statsService.getStats({});
-    return stats.expiredDeadlines;
+    return (stats as any).expiredDeadlines;
   }
 
   

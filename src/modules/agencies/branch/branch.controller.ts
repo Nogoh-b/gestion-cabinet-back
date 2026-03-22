@@ -4,8 +4,8 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-import { Controller, Post, Body, Param, Put, UseGuards, Get, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Post, Body, Param, Put, UseGuards, Get, Query, ParseIntPipe } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { BranchResponseDto } from './dto/response-branch.dto';
@@ -26,6 +26,22 @@ export class BranchController {
     return this.statsService.getStats();
   }
 
+
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'une agence spécifique' })
+  @ApiParam({ name: 'id', description: 'ID de l\'agence' })
+  async getStatsForBranch(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ): Promise<any> {
+    return this.statsService.getStats({
+      branchId: id,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create new branch' })
@@ -53,13 +69,13 @@ export class BranchController {
   // @UseGuards(JwtAuthGuard, PermissionsGuard)
   // @RequirePermissions('VIEW_BRANCH')
   findAllBranches() {
-    return this.branchService.findAllBranches();
+    return this.branchService.findAllBranches(); 
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get Inactive Branch' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
+  // @RequirePermissions('VIEW_BRANCH')
   findOne(@Param('id') id: number) {
     return this.branchService.findOne(id,true);
   }

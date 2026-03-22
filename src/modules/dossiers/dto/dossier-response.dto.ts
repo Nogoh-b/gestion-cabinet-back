@@ -493,3 +493,45 @@ export class DossierResponseDto {
   danger_level: DangerLevel;
   
 }
+
+
+// src/modules/dossiers/dto/minimal-dossier.dto.ts
+
+export class MinimalDossierResponseDto {
+  @Expose()
+  id: number;
+
+  @Expose()
+  dossier_number: string;
+
+  @Expose()
+  object: string;
+
+  @Expose()
+  status: number;
+
+  @Expose()
+  @Transform(({ obj }) => obj.client?.full_name || null)
+  client_name: string;
+
+  @Expose()
+  @Transform(({ obj }) => obj.lawyer?.full_name || null)
+  lawyer_name: string;
+
+  @Expose()
+  @Transform(({ obj }) => obj.procedure_type?.name || null)
+  procedure_type: string;
+
+  @Expose()
+  opening_date: Date;
+
+  @Expose()
+  danger_level: number;
+
+  @Expose()
+  priority_level: number;
+
+  @Expose()
+  @Transform(({ obj }) => obj.is_active)
+  is_active: boolean;
+}

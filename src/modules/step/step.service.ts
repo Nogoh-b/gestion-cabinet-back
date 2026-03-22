@@ -9,7 +9,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-import { DossiersService } from '../dossiers/dossiers.service';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { User } from '../iam/user/entities/user.entity';
 import { UsersService } from '../iam/user/user.service';
@@ -29,7 +28,7 @@ export class StepsService {
     private stepsRepository: Repository<Step>,
     @InjectRepository(Dossier)
     private dossierRepository: Repository<Dossier>,
-    private dossierService: DossiersService,
+    // private dossierService: DossiersService,
     private usersService: UsersService,
   ) {}
 
@@ -53,6 +52,28 @@ export class StepsService {
       ...createStepDto,
       dossier,
       assignedTo
+    });
+
+    return this.stepsRepository.save(step);
+  }
+
+  // Dans steps.service.ts
+
+  /**
+  * Créer une étape directement à partir d'une entité Step
+  */
+  async createStepFromEntity(dossierId: number, stepEntity: Partial<Step>): Promise<Step> {
+    const dossier = await this.dossierRepository.findOne({
+      where: { id: dossierId }
+    });
+
+    if (!dossier) {
+      throw new NotFoundException('Dossier non trouvé ' + dossierId);
+    }
+
+    const step = this.stepsRepository.create({
+      ...stepEntity,
+      dossier
     });
 
     return this.stepsRepository.save(step);
@@ -207,8 +228,8 @@ export class StepsService {
 
       appealStep = this.stepsRepository.create({
         type: StepType.APPEAL,
-        title: 'Voies de recours',
-        description: `Recours de type ${appealType}`,
+        title : 'Pourvoi en cassation',
+        description : 'Cassation engagée devant la Cour de cassation',
         status: StepStatus.IN_PROGRESS,
         dossier,
         metadata: { appealType }

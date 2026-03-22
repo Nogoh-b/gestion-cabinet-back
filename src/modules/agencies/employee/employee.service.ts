@@ -20,7 +20,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
-import { EmailService } from 'src/core/shared/services/email/email.service copy';
+import { MailService } from 'src/core/shared/emails/emails.service';
+// import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
 
@@ -33,9 +34,10 @@ export class EmployeeService  extends BaseServiceV1<Employee> {
     private employeeRepository: Repository<Employee>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
-    private mailerService: EmailService,
+    // private mailerService: EmailService,
     private userService: UsersService,
-        protected readonly paginationService: PaginationServiceV1,
+    private mailService: MailService,
+    protected readonly paginationService: PaginationServiceV1,
   ) {
 
     super(employeeRepository, paginationService);
@@ -108,6 +110,9 @@ async createEmployee(
   if (existingUser && is_strict) {
     throw new ConflictException('Un utilisateur avec cet email existe déjà');
   }
+  if (!dto.password) {
+    throw new ConflictException('Mot de passe non defini');
+  }
 
   // Création de l'utilisateur
   const user = this.userRepo.create({
@@ -147,14 +152,23 @@ async createEmployee(
     tva_number: dto.tva_number,
   };
 
+
   const employee = await this.employeeRepository.save(
     this.employeeRepository.create(employeeData)
   );
+  this.findOneV1(employee.id)
+  const e : any = await this.findOneV1(employee.id, ['user', 'branch', 'managed_dossiers', 'collaborating_dossiers'], Employee)
+  e.email = 'nogohbrice@gmail.com'
+  console.log('merdddddddddde1 ', e)
+
+  await this.mailService.sendActivationEmail(e,'Okkk')
+  await this.mailService.sendResetPasswordEmail(e,'Okkk')
+  await this.mailService.sendWelcomeWithPasswordEmail(e,'1234567890')
 
   return plainToInstance(EmployeeResponseDto, employee);
 }
 
-// Méthode helper pour déterminer le rôle utilisateur
+// Méthode helper pour déterminer le rôle utilisateur 
 private getUserRoleFromPosition(position: EmployeePosition): UserRole {
   switch (position) {
     case EmployeePosition.AVOCAT:
@@ -178,6 +192,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     const employees = await this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
+      .leftJoinAndSelect('employee.collaborating_dossiers', 'collaborating_dossiers')
       .leftJoinAndSelect('user.customer', 'customer')
       .leftJoinAndSelect(
         'user.roleAssignments',
@@ -301,7 +316,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     <p><strong>Nouveau mot de passe temporaire :</strong> ${plain_password}</p>
     <p>Par mesure de sécurité, merci de le changer dès votre prochaine connexion.</p>
     <p>— Support</p>`;
-    await this.mailerService.sendPasswordResetEmail(user.email, html);
+    // await this.mailerService.sendPasswordResetEmail(user.email, html);
     /*await this.mailerService.sendMail({
       to: user.email,
       subject: 'Votre nouveau mot de passe',

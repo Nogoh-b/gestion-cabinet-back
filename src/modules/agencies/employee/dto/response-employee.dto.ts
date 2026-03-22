@@ -1,8 +1,9 @@
-import { Expose, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { EmployeePosition, EmployeeStatus } from '../entities/employee.entity';
 import { UserResponseDto } from 'src/modules/iam/user/dto/user-response.dto';
 import { BranchResponseDto } from '../../branch/dto/response-branch.dto';
+import { MinimalDossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 
 export class EmployeeResponseDto {
   // =========== PROPRIÉTÉS DE BASE ===========
@@ -14,6 +15,13 @@ export class EmployeeResponseDto {
   @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
   @Expose()
   position: EmployeePosition;
+  
+  @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
+  @Transform(({ obj }) =>
+    obj.position
+  )
+  @Expose()
+  role: EmployeePosition;
 
   @ApiProperty({ example: '2023-01-01', description: "Date d'embauche" })
   @Expose()
@@ -140,6 +148,36 @@ export class EmployeeResponseDto {
   @ApiProperty({ example: true, description: "Peut accepter plus de dossiers" })
   @Expose()
   can_accept_more_dossiers: boolean;
+
+  @Expose()
+  @Type(() => MinimalDossierResponseDto)
+  @Transform(({ obj }) => {
+    if (!obj.collaborating_dossiers) return [];
+    // Transformation explicite vers le DTO
+    return obj.collaborating_dossiers.map(dossier => ({
+      id: dossier.id,
+      dossier_number: dossier.dossier_number,
+      object: dossier.object,
+      status: dossier.status,
+      client_name: dossier.client?.full_name || null,
+      lawyer_name: dossier.lawyer?.full_name || null,
+      procedure_type: dossier.procedure_type?.name || null,
+      opening_date: dossier.opening_date,
+      danger_level: dossier.danger_level,
+      priority_level: dossier.priority_level,
+      is_active: dossier.is_active
+    }));
+  })
+  collaborating_dossiers: MinimalDossierResponseDto[];
+
+  @Expose()
+  @Type(() => Number)
+  @Transform(({ obj }) => {
+    if (!obj.collaborating_dossiers) return 0;
+    // Transformation explicite vers le DTO
+    return obj.collaborating_dossiers.length
+  })
+  collaborating_dossiers_count: number;
 
   @ApiProperty({ example: true, description: "Est actif" })
   @Expose()

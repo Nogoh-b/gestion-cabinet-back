@@ -16,10 +16,11 @@ import {
   UseInterceptors,
   UploadedFiles,
   UseGuards,
-  Query
+  Query,
+  ParseIntPipe
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody, ApiParam } from '@nestjs/swagger';
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -28,7 +29,6 @@ import { CustomerSearchDto } from './dto/search-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { EmailService } from 'src/core/shared/services/email/email.service copy';
 import { CustomerStatsService } from './customer-stats.service';
-import { CustomerStatsDto } from './dto/customer-stats.dto';
 
 
 @ApiTags('customer')
@@ -50,7 +50,7 @@ export class CustomerController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('branchId') branchId?: number,
-  ): Promise<CustomerStatsDto> {
+  ): Promise<any> {
     return this.statsService.getStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
@@ -58,18 +58,28 @@ export class CustomerController {
     });
   }
 
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'un client spécifique' })
+  @ApiParam({ name: 'id', description: 'ID du client' })
+  async getStatsForCustomer(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats({ customerId: id });
+  }
+
   @Get('stats/top')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   async getTopClients() {
     const stats = await this.statsService.getStats({});
-    return stats.topClients;
+    return (stats as any).topClients;
   }
 
   @Get('stats/without-dossier')
   // @Roles(UserRole.ADMIN)
   async getCustomersWithoutDossier() {
     const stats = await this.statsService.getStats({});
-    return stats.customersWithoutDossier;
+    return (stats as any).customersWithoutDossier;
   }
 
   @Post()

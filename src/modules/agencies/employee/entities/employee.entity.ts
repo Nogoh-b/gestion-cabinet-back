@@ -251,4 +251,10 @@ export class Employee extends BaseEntity {
     
     return rate;
   }
+
+  set email(value: string) {
+    if (this.user) {
+      this.user.email = value;
+    }
+  }
 }

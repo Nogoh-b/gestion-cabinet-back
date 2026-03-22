@@ -26,6 +26,7 @@ import {
   UploadedFiles,
   UseGuards,
   Query,
+  ParseIntPipe,
 } from '@nestjs/common';
 
 
@@ -37,6 +38,7 @@ import {
   ApiConsumes,
   ApiBody,
   ApiBearerAuth,
+  ApiParam,
 } from '@nestjs/swagger';
 
 
@@ -45,7 +47,6 @@ import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
-import { DocumentStatsDto } from './dto/document-stats.dto';
 import { DocumentStatsService } from './document-stats.service';
 
 
@@ -70,7 +71,7 @@ export class DocumentCustomerController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('dossierId') dossierId?: number,
-  ): Promise<DocumentStatsDto> {
+  ): Promise<any> {
     return this.statsService.getStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
@@ -78,18 +79,28 @@ export class DocumentCustomerController {
     });
   }
 
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'un document spécifique' })
+  @ApiParam({ name: 'id', description: 'ID du document' })
+  async getStatsForDocument(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats({ documentId: id });
+  }
+
   @Get('pending')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   async getPendingDocuments() {
     const stats = await this.statsService.getStats({});
-    return stats.pendingDocuments;
+    return (stats as any).pendingDocuments;
   }
 
   @Get('storage')
   // @Roles(UserRole.ADMIN)
   async getStorageStats() {
     const stats = await this.statsService.getStats({});
-    return stats.storageStats;
+    return (stats as any).storageStats;
   }
 
   @Get('get/:id')

@@ -193,7 +193,7 @@ export class DashboardService {
   private buildTopPerformers(employes: any): DashboardOverviewDto['topPerformers'] {
     if (!employes?.topPerformers) return [];
 
-    return employes.topPerformers.slice(0, 5).map((p: any) => ({
+    return employes.topPerformers.slice(0, 20).map((p: any) => ({
       id: p.id,
       name: p.name,
       position: p.position,

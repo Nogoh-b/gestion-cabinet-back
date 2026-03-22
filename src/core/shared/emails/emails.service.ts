@@ -5,6 +5,7 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AttachmentMail, Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
 import { CreateMailDto } from './dto/create-mail.dto';
+import { helpers } from 'src/utils/helper-template-maill';
 
 @Injectable()
 export class MailService {
@@ -124,6 +125,94 @@ export class MailService {
     // sinon, lire depuis le disque local
   }
   return attachments;
+}
+
+ /**
+   * Envoie un email immédiatement sans le persister en base
+   */
+  async sendDirect(options: {
+    to: string | string[];
+    subject?: string;
+    html?: string;
+    text?: string;
+    templateName?: string;
+    context?: any;
+    attachments?: AttachmentMail[];
+    cc?: string | string[];
+    bcc?: string | string[];
+  }): Promise<void> {
+    const { to, subject, html, text, templateName, context, attachments, cc, bcc } = options;
+
+    // Préparer les pièces jointes si nécessaire (récupération des buffers)
+    let attachmentList: any[] = [];
+    if (attachments && attachments.length > 0) {
+      attachmentList = await this.prepareAttachmentsWithBuffers(attachments);
+    }
+
+    // Construire les options d'envoi
+    const mailOptions: any = {
+      to,
+      cc,
+      bcc,
+      subject,
+      attachments: attachmentList,
+    };
+
+    if (templateName) {
+      mailOptions.template = templateName;
+      mailOptions.context = context || {};
+    } else {
+      mailOptions.html = html;
+      mailOptions.text = text;
+    }
+
+    // Envoyer
+    await this.mailerService.sendMail(mailOptions);
+    this.logger.log(`Email direct envoyé à ${to}`);
+  }
+
+
+
+  async sendResetPasswordEmail(user: any, token: string) {
+  const context = {
+    ...user,
+    resetLink: helpers.resetPasswordLink(token)
+  };
+  
+  await this.sendDirect({
+    to: user.email,
+    subject: 'Réinitialisation de votre mot de passe',
+    templateName: 'entities/employee/reset-password',
+    context
+  });
+}
+
+async sendActivationEmail(user: any, token: string) {
+  const context = {
+    ...user,
+    activationLink: helpers.activationLink(token)
+  };
+  
+  await this.sendDirect({
+    to: user.email,
+    subject: 'Activez votre compte',
+    templateName: 'entities/employee/welcome-activation',
+    context
+  });
+}
+
+async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
+  const context = {
+    ...user,
+    tempPassword
+  };
+  
+  await this.sendDirect({
+    to: user.email,
+    subject: 'Bienvenue sur la plateforme',
+    templateName: 'entities/employee/welcome-password',
+    context
+  });
 }
 
   /**

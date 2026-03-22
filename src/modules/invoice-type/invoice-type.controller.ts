@@ -2,8 +2,8 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 
 import { CreateInvoiceTypeDto } from './dto/create-invoice-type.dto';
 import { InvoiceTypeResponseDto } from './dto/invoice-type-response.dto';
@@ -26,8 +26,19 @@ export class InvoiceTypeController {
   // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
   @ApiOperation({ summary: 'Obtenir les statistiques des types de factures' })
   @ApiResponse({ status: 200, type: InvoiceTypeStatsDto })
-  async getStats(): Promise<InvoiceTypeStatsDto> {
+  async getStats(): Promise<any> {
     return this.statsService.getStats();
+  }
+
+  
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN, UserRole.COMPTABLE)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'un type de facture spécifique' })
+  @ApiParam({ name: 'id', description: 'ID du type de facture' })
+  async getStatsForType(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats(id);
   }
 
   @Get('stats/categories')
@@ -35,7 +46,7 @@ export class InvoiceTypeController {
   @ApiOperation({ summary: 'Obtenir les statistiques par catégorie' })
   async getStatsByCategory() {
     const stats = await this.statsService.getStats();
-    return stats.byCategory;
+    return (stats as any).byCategory;
   }
 
   @Get('stats/tax-rates')
@@ -43,7 +54,7 @@ export class InvoiceTypeController {
   @ApiOperation({ summary: 'Obtenir les statistiques par taux de TVA' })
   async getStatsByTaxRate() {
     const stats = await this.statsService.getStats();
-    return stats.byTaxRate;
+    return (stats as any).byTaxRate;
   }
 
   @Get('stats/top')
@@ -51,7 +62,7 @@ export class InvoiceTypeController {
   @ApiOperation({ summary: 'Obtenir les types de factures les plus utilisés' })
   async getTopInvoiceTypes() {
     const stats = await this.statsService.getStats();
-    return stats.topInvoiceTypes;
+    return (stats as any).topInvoiceTypes;
   }
 
   @Get('stats/usage')
@@ -59,7 +70,7 @@ export class InvoiceTypeController {
   @ApiOperation({ summary: 'Obtenir les statistiques d\'utilisation' })
   async getUsageStats() {
     const stats = await this.statsService.getStats();
-    return stats.usageStats;
+    return (stats as any).usageStats;
   }
 
   @Post()

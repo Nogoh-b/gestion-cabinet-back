@@ -5,14 +5,14 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { Any } from 'typeorm';
-import { Controller, Post, Body, Get, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, Put, Delete, UseGuards, Query, ParseIntPipe } from '@nestjs/common';
 
 
 
 
 
 
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 
 import { DocumentTypeService } from './document-type.service';
 import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
@@ -41,8 +41,18 @@ export class DocumentTypeController {
   // @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Obtenir les statistiques des types de documents' })
   @ApiResponse({ status: 200, type: DocumentTypeStatsDto })
-  async getStats(): Promise<DocumentTypeStatsDto> {
+  async getStats(): Promise<any> {
     return this.statsService.getStats();
+  }
+
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'un type de document spécifique' })
+  @ApiParam({ name: 'id', description: 'ID du type de document' })
+  async getStatsForType(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats(id);
   }
 
   @Get('stats/by-status')
@@ -50,7 +60,7 @@ export class DocumentTypeController {
   @ApiOperation({ summary: 'Obtenir les statistiques par statut' })
   async getStatsByStatus() {
     const stats = await this.statsService.getStats();
-    return stats.byStatus;
+    return (stats as any).byStatus;
   }
 
   @Get('stats/by-customer-type')
@@ -58,7 +68,7 @@ export class DocumentTypeController {
   @ApiOperation({ summary: 'Obtenir les statistiques par type de client' })
   async getStatsByCustomerType() {
     const stats = await this.statsService.getStats();
-    return stats.byCustomerType;
+    return (stats as any).byCustomerType;
   }
 
   @Get('stats/top')
@@ -66,7 +76,7 @@ export class DocumentTypeController {
   @ApiOperation({ summary: 'Obtenir les types de documents les plus utilisés' })
   async getTopDocumentTypes() {
     const stats = await this.statsService.getStats();
-    return stats.topDocumentTypes;
+    return (stats as any).topDocumentTypes;
   }
 
   @Get('stats/usage')
@@ -74,7 +84,7 @@ export class DocumentTypeController {
   @ApiOperation({ summary: 'Obtenir les statistiques d\'utilisation' })
   async getUsageStats() {
     const stats = await this.statsService.getStats();
-    return stats.usageStats;
+    return (stats as any).usageStats;
   }
 
   @Get('stats/mime-types')
@@ -82,7 +92,7 @@ export class DocumentTypeController {
   @ApiOperation({ summary: 'Obtenir les statistiques par type MIME' })
   async getMimeTypeStats() {
     const stats = await this.statsService.getStats();
-    return stats.mimeTypeStats;
+    return (stats as any).mimeTypeStats;
   }
 
   @Get('/search')

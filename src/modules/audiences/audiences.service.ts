@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
@@ -12,13 +12,17 @@ import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
-import { Audience, AudienceStatus, } from './entities/audience.entity';
+import { Audience, AudienceStatus, AudienceType1, } from './entities/audience.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { EmployeeService } from '../agencies/employee/employee.service';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 import { DateUtils } from 'src/core/shared/utils/date.util.';
 import { subMonths } from 'date-fns';
 import { AudienceStatsDto, UpcomingAudienceDto } from './dto/audience-stats.dto';
+import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
+import { AudienceType } from '../audience-type/entities/audience-type.entity';
+import { Dossier } from '../dossiers/entities/dossier.entity';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 
 
 
@@ -31,6 +35,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     private readonly dossierService: DossiersService,
     private readonly audienceTypeService: AudienceTypeService,
     private readonly employeeService: EmployeeService,
+    private readonly jurisdictionService: JurisdictionService,
     private readonly documentCustomerService: DocumentCustomerService,
     protected readonly emailsService?: MailService, // Optionnel
   ) {
@@ -53,7 +58,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    * ➕ Création d'une audience
    */
   async create(dto: CreateAudienceDto): Promise<AudienceResponseDto | Audience | null> {
-    console.log('-------dto ', dto)
+    console.log('-------dto ', dto);
+    
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
 
@@ -61,44 +67,83 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       throw new NotFoundException('Dossier non trouvé');
     }
     if (!audience_type) {
-      throw new NotFoundException('Type d\'audience  non trouvé');
+      throw new NotFoundException('Type d\'audience non trouvé');
     }
+
+    // ✅ VÉRIFICATION DU STATUT DU DOSSIER
+    // Vérifier si l'audience est compatible avec le statut actuel
+    this.validateAudienceForDossierStatus(dossier, dto.type as AudienceType1);
 
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
       audience_date: dto.audience_date,
       audience_time: dto.audience_time,
-      jurisdiction: {id: dto.jurisdiction_id} as Jurisdiction,
+      jurisdiction: { id: dto.jurisdiction_id } as Jurisdiction,
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
       notes: dto.notes,
       postponed_to: dto.postponed_to,
-      // ⚠️ Si c’est un enum côté entité
       audience_type,
-      type: dto.type ? 1 : 0,
-      dossier: { id: dossier.id }, // ✅ relation proprement liée
+      type: audience_type.code as unknown as AudienceType1,
+      dossier: { id: dossier.id },
       status: AudienceStatus.SCHEDULED,
     });
-     if(dto?.document_ids) {
+
+    if (dto?.document_ids) {
       const documents = await this.documentCustomerService.findByIds(dto?.document_ids);
       audience.documents = documents;
-     }
+    }
 
-    // let mailDto = new CreateMailDto() 
-    // const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
     let aud = await this.repository.save(audience);
-    return await this.findOneV1(aud.id,this.getDefaultSearchOptions().relationFields,AudienceResponseDto)
-    return plainToInstance(AudienceResponseDto,await this.findOneV1(aud.id,this.getDefaultSearchOptions().relationFields))
-    // aud = await this.addDocumentsToAudience(aud?.id, dto?.document_ids)
-    // mailDto.templateName = "entities/dossier/dossier-created-creator"
-    // mailDto.context = aud
-    // mailDto.to = users.map(u => u.email)
-    // mailDto.subject = "Creation d'un nouveau dossier"
-    // this.sendMail(mailDto)
-    return plainToInstance(AudienceResponseDto,aud)
+    
+    // ✅ Mettre à jour le dossier si nécessaire (ex: première audience en contentieux)
+    await this.updateDossierStatusOnAudience(aud, dossier);
+    
+    return await this.findOneV1(aud.id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
   }
 
+/**
+ * ✅ Valider si l'audience est compatible avec le statut du dossier
+ */
+private validateAudienceForDossierStatus(dossier: Dossier, audienceType: AudienceType1): void {
+  const dossierStatus = dossier.status;
+  
+  // Audience de conciliation uniquement en phase transactionnelle ou préliminaire
+  if (audienceType === AudienceType1.CONCILIATION) {
+    if (dossierStatus !== DossierStatus.AMICABLE && dossierStatus !== DossierStatus.PRELIMINARY_ANALYSIS) {
+      throw new BadRequestException(
+        `Les audiences de conciliation ne sont possibles qu'en phase transactionnelle. Statut actuel: ${dossierStatus}`
+      );
+    }
+  }
+  
+  // Audience de jugement uniquement en phase contentieuse
+  if (audienceType === AudienceType1.JUDGMENT) {
+    if (dossierStatus !== DossierStatus.LITIGATION && dossierStatus !== DossierStatus.APPEAL) {
+      throw new BadRequestException(
+        `Les audiences de jugement ne sont possibles qu'en phase contentieuse. Statut actuel: ${dossierStatus}`
+      );
+    }
+  }
+  
+  // Audience d'appel uniquement en phase d'appel
+  if (audienceType === AudienceType1.DELIBERATION && dossierStatus === DossierStatus.APPEAL) {
+    // C'est valide
+  }
+}
+
+/**
+ * ✅ Mettre à jour le statut du dossier lors de la première audience
+ */
+private async updateDossierStatusOnAudience(audience: Audience, dossier: Dossier): Promise<void> {
+  // Si c'est la première audience en contentieux et que le dossier est encore en préliminaire
+  if (dossier.status === DossierStatus.PRELIMINARY_ANALYSIS && 
+      audience.type === AudienceType1.HEARING) {
+    // Option: on pourrait automatiquement passer en contentieux si décision déjà prise
+    // ou laisser le workflow normal via processClientDecision
+  }
+}
   /**
    * 📄 Récupération de toutes les audiences (avec relations)
    */
@@ -129,17 +174,46 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   /**
    * ✏️ Mise à jour d'une audience
    */
-  async update(id: number, dto: UpdateAudienceDto): Promise<Audience> {
-    const audience = plainToInstance(Audience,await this.findOne(id));
-    Object.assign(audience, dto);
-    return this.repository.save(audience);
+  // Dans votre service
+  async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceResponseDto | any> {
+    const audience = await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, Audience);
+    
+    if (!audience) {
+      return null;
+    }
+    
+    // Gestion pour jurisdiction_id - ignorer si null
+    if (dto.jurisdiction_id !== undefined && dto.jurisdiction_id !== null) {
+      audience.jurisdiction = plainToInstance(Jurisdiction, await this.jurisdictionService.findOne(dto.jurisdiction_id));
+    }
+    
+    if (dto.audience_type_id !== undefined && dto.audience_type_id !== null) {
+      audience.audience_type = plainToInstance(AudienceType, await this.audienceTypeService.findOne(dto.audience_type_id));
+    }
+    
+    // Gestion spéciale pour document_ids
+    if (dto.document_ids !== undefined && dto.document_ids !== null) {
+      const documents = await this.documentCustomerService.findByIds(dto.document_ids);
+      audience.documents = documents;
+    }
+    
+    // Pour les autres champs, exclure document_ids et jurisdiction_id déjà traités
+    const otherFields = { ...dto };
+    delete otherFields.document_ids;
+    delete otherFields.jurisdiction_id;
+    delete otherFields.audience_type_id;
+    
+    // 🔥 IMPORTANT: Assigner les autres champs
+    Object.assign(audience, otherFields);
+    
+    return plainToInstance(AudienceResponseDto, await this.repository.save(audience));
   }
 
   /**
-   * ❌ Suppression d'une audience
+   * ❌ Suppression d'une audience 
    */
   async remove(id: number): Promise<void> {
-    const audience = await this.findOne(id);
+    const audience = await this.findOne(id); 
     await this.repository.remove(plainToInstance(Audience,audience));
   }
 

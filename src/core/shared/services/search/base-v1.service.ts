@@ -701,7 +701,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
 
   async findOneV1<DTO = T>(
   id: string | number, 
-  relations: string[] | null = [],
+  relations: string[] | null = null,
   dtoClass?: new () => DTO
   ): Promise<DTO | T | null> {
   try {
@@ -709,6 +709,8 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
       where: { id } as any,
       relations: relations || this.getDefaultSearchOptions().relationFields,
     });
+
+    console.log('relationsss ', relations || this.getDefaultSearchOptions().relationFields)
     
     if (!result) {
       return null;

@@ -11,8 +11,9 @@ import { DossiersModule } from '../dossiers/dossiers.module';
 import { AudiencesController } from './audiences.controller';
 import { AudiencesService } from './audiences.service';
 import { Audience } from './entities/audience.entity';
-import { AudienceSubscriber } from './suscribers/audiences.suscribers';
 import { AudienceStatsService } from './audience-stats.service';
+import { JurisdictionModule } from '../jurisdiction/jurisdiction.module';
+import { AudienceSubscriber } from './suscribers/audiences.suscribers';
 
 
 
@@ -22,6 +23,7 @@ import { AudienceStatsService } from './audience-stats.service';
     TypeOrmModule.forFeature([Audience]),
     CustomerModule,
     AudienceTypeModule,
+    JurisdictionModule,
     DossiersModule,
     DocumentsModule,
     CoreModule

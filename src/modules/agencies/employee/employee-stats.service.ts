@@ -4,10 +4,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
-import { Branch } from '../branch/entities/branch.entity';
+import { Branch } from './../branch/entities/branch.entity';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
 import { EmployeeStatsDto } from './dto/employee-stats.dto';
-// src/modules/agencies/employee/services/employee-stats.service.ts
+import { SingleEmployeeStatsDto } from './dto/single-employee-stats.dto';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { AudienceStatus } from './../../audiences/entities/audience.entity';
+import { DiligenceStatus } from 'src/modules/diligence/entities/diligence.entity';
 
 @Injectable()
 export class EmployeeStatsService extends BaseStatsService<Employee> {
@@ -20,7 +23,498 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     super(employeeRepository);
   }
 
-  async getStats(filters?: StatsFilterDto): Promise<EmployeeStatsDto> {
+  async getStats(filters?: StatsFilterDto): Promise<EmployeeStatsDto | SingleEmployeeStatsDto> {
+    // Si un employeeId est fourni, on retourne les stats détaillées de cet employé
+    if (filters?.employeeId) {
+      return this.getStatsForSingleEmployee(filters.employeeId, filters);
+    }
+
+    // Sinon, on retourne les stats globales
+    return this.getGlobalStats(filters);
+  }
+
+  // Méthode pour un employé spécifique
+  private async getStatsForSingleEmployee(
+    employeeId: number,
+    filters?: StatsFilterDto
+  ): Promise<SingleEmployeeStatsDto> {
+    const employee = await this.employeeRepository.findOne({
+      where: { id: employeeId },
+      relations: [
+        'user',
+        'branch',
+        'managed_dossiers',
+        'managed_dossiers.client',
+        'managed_dossiers.audiences',
+        'managed_dossiers.audiences.jurisdiction',
+        'managed_dossiers.diligences',
+        'collaborating_dossiers',
+        'collaborating_dossiers.client',
+        'assigned_diligences',
+        'assigned_diligences.dossier'
+      ]
+    });
+
+    if (!employee) {
+      throw new Error(`Employé avec ID ${employeeId} non trouvé`);
+    }
+
+    const maintenant = new Date();
+
+    return {
+      employe: {
+        id: employee.id,
+        nom: employee.full_name,
+        email: employee.email,
+        telephone: employee.professional_phone,
+        position: employee.position,
+        specialisation: employee.specialization,
+        numeroBarreau: employee.bar_association_number,
+        villeBarreau: employee.bar_association_city,
+        anneesExperience: employee.years_of_experience || 0,
+        tauxHoraire: employee.hourly_rate || 0,
+        dateEmbauche: employee.hireDate,
+        dateNaissance: employee.birth_date,
+        statut: this.getStatusLabel(employee.status),
+        estDisponible: employee.is_available,
+        adresseProfessionnelle: employee.professional_address,
+        numeroSiret: employee.siret_number,
+        numeroTVA: employee.tva_number,
+        bio: employee.bio,
+        langues: employee.languages || [],
+        domainesExpertise: employee.expertise_areas || [],
+      },
+      resume: this.getResumeStats(employee, filters),
+      dossiers: this.getDossiersStats(employee, filters),
+      audiences: this.getAudiencesStats(employee, filters),
+      diligences: this.getDiligencesStats(employee, filters),
+      performance: await this.getPerformanceStatsForEmployee(employee, filters),
+      chargeTravail: this.getWorkloadForEmployee(employee),
+      collaboration: await this.getCollaborationStats(employee, filters),
+    };
+  }
+
+  private getResumeStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['resume'] {
+      // Dossiers gérés (responsable principal)
+      const managedDossiers = employee.managed_dossiers || [];
+      const managedDossiersFiltres = this.filterByDate(managedDossiers, filters, 'created_at');
+      
+      // Dossiers en collaboration
+      const collaboratingDossiers = employee.collaborating_dossiers || [];
+      const collaboratingDossiersFiltres = this.filterByDate(collaboratingDossiers, filters, 'created_at');
+      
+      // Combiner tous les dossiers pour certaines stats globales
+      const tousDossiersFiltres = [...managedDossiersFiltres, ...collaboratingDossiersFiltres];
+      
+      // Stats pour dossiers gérés
+      const managedActifs = managedDossiersFiltres.filter(d => 
+        d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED
+      );
+      const managedClos = managedDossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+      
+      // Stats pour dossiers en collaboration
+      const collaboratingActifs = collaboratingDossiersFiltres.filter(d => 
+        d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED
+      );
+      const collaboratingClos = collaboratingDossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+      
+      // Stats combinées
+      const dossiersActifsTotal = managedActifs.length + collaboratingActifs.length;
+      const dossiersClosTotal = managedClos.length + collaboratingClos.length;
+
+      // Audiences (de tous les dossiers)
+      const toutesAudiences = tousDossiersFiltres.flatMap(d => d.audiences || []);
+      const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
+      
+      const audiencesAVenir = audiencesFiltrees.filter(a => 
+        new Date(a.full_datetime) > new Date() && a.status === AudienceStatus.SCHEDULED
+      );
+      const audiencesPassees = audiencesFiltrees.filter(a => 
+        new Date(a.full_datetime) < new Date()
+      );
+
+      // Diligences assignées (personnelles)
+      const diligences = employee.assigned_diligences || [];
+      const diligencesFiltrees = this.filterByDate(diligences, filters, 'created_at');
+      
+      const diligencesEnCours = diligencesFiltrees.filter(d => 
+        d.status === DiligenceStatus.IN_PROGRESS || d.status === DiligenceStatus.REVIEW
+      );
+      const diligencesTerminees = diligencesFiltrees.filter(d => d.status === DiligenceStatus.COMPLETED);
+
+      const maxDossiers = employee.max_dossiers || 50;
+      const tauxOccupation = Math.min(100, Math.round((dossiersActifsTotal / maxDossiers) * 100));
+
+      return {
+        // Stats globales
+        dossiersActifs: dossiersActifsTotal,
+        dossiersClos: dossiersClosTotal,
+        totalDossiers: tousDossiersFiltres.length,
+        
+        // Détail par type
+        managed: {
+          actifs: managedActifs.length,
+          clos: managedClos.length,
+          total: managedDossiersFiltres.length
+        },
+        collaborating: {
+          actifs: collaboratingActifs.length,
+          clos: collaboratingClos.length,
+          total: collaboratingDossiersFiltres.length
+        },
+      
+        audiencesAVenir: audiencesAVenir.length,
+        audiencesPassees: audiencesPassees.length,
+        diligencesEnCours: diligencesEnCours.length,
+        diligencesTerminees: diligencesTerminees.length,
+        tauxOccupation,
+      };
+  }
+
+  private getDossiersStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['dossiers'] {
+    const dossiers = employee.managed_dossiers || [];
+    const dossiersFiltres = this.filterByDate(dossiers, filters, 'created_at');
+    const total = dossiersFiltres.length;
+    const maintenant = new Date();
+
+    // Dossiers actifs avec prochaine audience
+    const actifs = dossiersFiltres
+      .filter(d => d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED)
+      .map(d => {
+        const prochainesAudiences = (d.audiences || [])
+          .filter(a => new Date(a.full_datetime) > maintenant && a.status === AudienceStatus.SCHEDULED)
+          .sort((a, b) => new Date(a.full_datetime).getTime() - new Date(b.full_datetime).getTime());
+
+        return {
+          id: d.id,
+          numero: d.dossier_number,
+          objet: d.object,
+          client: d.client?.full_name,
+          statut: d.status,
+          niveauDanger: d.danger_level,
+          dateOuverture: d.opening_date,
+          prochaineAudience: prochainesAudiences[0]?.full_datetime,
+        };
+      });
+
+    // Dossiers récents
+    const recents = [...dossiersFiltres]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10)
+      .map(d => ({
+        id: d.id,
+        numero: d.dossier_number,
+        client: d.client?.full_name,
+        dateOuverture: d.opening_date,
+        statut: d.status,
+      }));
+
+    // Répartition par statut
+    const byStatusMap = new Map<number, number>();
+    dossiersFiltres.forEach(d => {
+      byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
+    });
+
+    const statusLabels = {
+      [DossierStatus.OPEN]: 'Ouvert',
+      [DossierStatus.AMICABLE]: 'Amiable',
+      [DossierStatus.LITIGATION]: 'Contentieux',
+      // [DossierStatus.DECISION]: 'Décision',
+      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.CLOSED]: 'Clôturé',
+      [DossierStatus.ARCHIVED]: 'Archivé',
+    };
+
+    const statusColors = {
+      [DossierStatus.OPEN]: '#3b82f6',
+      [DossierStatus.AMICABLE]: '#10b981',
+      [DossierStatus.LITIGATION]: '#f59e0b',
+      // [DossierStatus.DECISION]: '#8b5cf6',
+      [DossierStatus.APPEAL]: '#ef4444',
+      [DossierStatus.CLOSED]: '#6b7280',
+      [DossierStatus.ARCHIVED]: '#9ca3af',
+    };
+
+    const parStatut = Array.from(byStatusMap.entries()).map(([status, count]) => ({
+      name: statusLabels[status] || 'Inconnu',
+      value: count,
+      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+      color: statusColors[status] || '#6b7280',
+    }));
+
+    // Répartition par type de procédure
+    const typeMap = new Map<string, number>();
+    dossiersFiltres.forEach(d => {
+      const type = d.procedure_type?.name || 'Non spécifié';
+      typeMap.set(type, (typeMap.get(type) || 0) + 1);
+    });
+
+    const parType = Array.from(typeMap.entries())
+      .map(([type, count]) => ({
+        type,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      actifs,
+      recents,
+      parStatut,
+      parType,
+    };
+  }
+
+  private getAudiencesStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['audiences'] {
+    const dossiers = employee.managed_dossiers || [];
+    const toutesAudiences = dossiers.flatMap(d => d.audiences || []);
+    const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
+    const maintenant = new Date();
+
+    const aVenir = audiencesFiltrees
+      .filter(a => new Date(a.full_datetime) > maintenant && a.status === AudienceStatus.SCHEDULED)
+      .sort((a, b) => new Date(a.full_datetime).getTime() - new Date(b.full_datetime).getTime())
+      .map(a => ({
+        id: a.id,
+        titre: a.title,
+        date: a.full_datetime,
+        dossier: a.dossier?.dossier_number,
+        client: a.dossier?.client?.full_name,
+        juridiction: a.jurisdiction?.name,
+      }));
+
+    const passees = audiencesFiltrees
+      .filter(a => new Date(a.full_datetime) < maintenant)
+      .sort((a, b) => new Date(b.full_datetime).getTime() - new Date(a.full_datetime).getTime())
+      .slice(0, 10)
+      .map(a => ({
+        id: a.id,
+        titre: a.title,
+        date: a.full_datetime,
+        dossier: a.dossier?.dossier_number,
+        client: a.dossier?.client?.full_name,
+        statut: a.status,
+      }));
+
+    const audiencesTenues = audiencesFiltrees.filter(a => a.status === AudienceStatus.HELD).length;
+    const totalAudiences = audiencesFiltrees.length;
+    const tauxTenues = totalAudiences > 0 ? Math.round((audiencesTenues / totalAudiences) * 100) : 0;
+
+    return {
+      aVenir,
+      passees,
+      total: totalAudiences,
+      tauxTenues,
+    };
+  }
+
+  private getDiligencesStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['diligences'] {
+    const diligences = employee.assigned_diligences || [];
+    const diligencesFiltrees = this.filterByDate(diligences, filters, 'created_at');
+    const maintenant = new Date();
+
+    const enCours = diligencesFiltrees
+      .filter(d => d.status === DiligenceStatus.IN_PROGRESS || d.status === DiligenceStatus.REVIEW)
+      .map(d => {
+        const deadline = d.deadline instanceof Date ? d.deadline : new Date(d.deadline);
+        const joursRestants = Math.ceil((deadline.getTime() - maintenant.getTime()) / (1000 * 60 * 60 * 24));
+
+        return {
+          id: d.id,
+          titre: d.title,
+          dossier: d.dossier?.dossier_number,
+          deadline: d.deadline,
+          joursRestants,
+          priorite: d.priority,
+          progression: d.progress_percentage || 0,
+        };
+      })
+      .sort((a, b) => a.joursRestants - b.joursRestants);
+
+    const terminees = diligencesFiltrees
+      .filter(d => d.status === DiligenceStatus.COMPLETED)
+      .sort((a, b) => new Date(b.completion_date).getTime() - new Date(a.completion_date).getTime())
+      .slice(0, 10)
+      .map(d => ({
+        id: d.id,
+        titre: d.title,
+        dossier: d.dossier?.dossier_number,
+        dateCompletion: d.completion_date,
+        statut: d.status,
+      }));
+
+    const diligencesTerminees = diligencesFiltrees.filter(d => d.status === DiligenceStatus.COMPLETED).length;
+    const totalDiligences = diligencesFiltrees.length;
+    const tauxCompletion = totalDiligences > 0 ? Math.round((diligencesTerminees / totalDiligences) * 100) : 0;
+
+    return {
+      enCours,
+      terminees,
+      total: totalDiligences,
+      tauxCompletion,
+    };
+  }
+
+  private async getPerformanceStatsForEmployee(
+    employee: Employee,
+    filters?: StatsFilterDto
+  ): Promise<SingleEmployeeStatsDto['performance']> {
+    const dossiers = employee.managed_dossiers || [];
+    const dossiersFiltres = this.filterByDate(dossiers, filters, 'created_at');
+    
+    // Dossiers clos par mois
+    const dossiersClos = dossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+    const closParMois = new Map<string, number>();
+    
+    dossiersClos.forEach(d => {
+      if (d.closing_date) {
+        const date = new Date(d.closing_date);
+        const mois = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        closParMois.set(mois, (closParMois.get(mois) || 0) + 1);
+      }
+    });
+
+    const dossiersClosParMois = Array.from(closParMois.entries())
+      .map(([mois, count]) => ({ mois, count }))
+      .sort((a, b) => a.mois.localeCompare(b.mois))
+      .slice(-6);
+
+    // Temps moyen de traitement
+    let totalJours = 0;
+    let dossiersAvecDuree = 0;
+    
+    dossiersClos.forEach(d => {
+      if (d.opening_date && d.closing_date) {
+        const ouverture = new Date(d.opening_date);
+        const cloture = new Date(d.closing_date);
+        const jours = Math.ceil((cloture.getTime() - ouverture.getTime()) / (1000 * 60 * 60 * 24));
+        totalJours += jours;
+        dossiersAvecDuree++;
+      }
+    });
+
+    const tempsMoyenTraitement = dossiersAvecDuree > 0 ? Math.round(totalJours / dossiersAvecDuree) : 0;
+
+    // Taux de succès (basé sur les dossiers clos sans contentieux)
+    const dossiersReussis = dossiersClos.filter(d => 
+      d.status === DossierStatus.CLOSED && d.final_decision?.includes('favorable')
+    ).length;
+    const tauxSucces = dossiersClos.length > 0 ? Math.round((dossiersReussis / dossiersClos.length) * 100) : 0;
+
+    // Audiences
+    const toutesAudiences = dossiers.flatMap(d => d.audiences || []);
+    const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
+    const audiencesTenues = audiencesFiltrees.filter(a => a.status === AudienceStatus.HELD).length;
+    const audiencesAnnulees = audiencesFiltrees.filter(a => a.status === AudienceStatus.CANCELLED).length;
+
+    // Diligences dans les temps
+    const diligences = employee.assigned_diligences || [];
+    const diligencesFiltrees = this.filterByDate(diligences, filters, 'created_at');
+    const diligencesDansLesTemps = diligencesFiltrees.filter(d => 
+      d.status === DiligenceStatus.COMPLETED && 
+      d.completion_date && 
+      new Date(d.completion_date) <= new Date(d.deadline)
+    ).length;
+
+    return {
+      dossiersClosParMois,
+      tempsMoyenTraitement,
+      tauxSucces,
+      audiencesTenues,
+      audiencesAnnulees,
+      diligencesDansLesTemps,
+    };
+  }
+
+  private getWorkloadForEmployee(employee: Employee): SingleEmployeeStatsDto['chargeTravail'] {
+    const dossiersActifs = (employee.managed_dossiers || []).filter(d => 
+      d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED
+    ).length;
+    
+    const maxLoad = employee.max_dossiers || 50;
+    const currentLoad = dossiersActifs;
+    const disponibilite = Math.max(0, Math.round(((maxLoad - currentLoad) / maxLoad) * 100));
+
+    let recommandation = '';
+    if (disponibilite > 70) {
+      recommandation = 'Disponible pour de nouveaux dossiers';
+    } else if (disponibilite > 30) {
+      recommandation = 'Charge de travail modérée';
+    } else if (disponibilite > 0) {
+      recommandation = 'Charge élevée, éviter de nouveaux dossiers';
+    } else {
+      recommandation = 'Surchargé, prioriser les dossiers existants';
+    }
+
+    return {
+      currentLoad,
+      maxLoad,
+      disponibilite,
+      recommandation,
+    };
+  }
+
+  private async getCollaborationStats(
+    employee: Employee,
+    filters?: StatsFilterDto
+  ): Promise<SingleEmployeeStatsDto['collaboration']> {
+    const collaboratingDossiers = employee.collaborating_dossiers || [];
+    const dossiersFiltres = this.filterByDate(collaboratingDossiers, filters, 'created_at');
+    
+    // Compter les collaborateurs fréquents
+    const collaborateurMap = new Map<number, { nom: string; count: number }>();
+
+    dossiersFiltres.forEach(dossier => {
+      if (dossier.lawyer_id && dossier.lawyer_id !== employee.id) {
+        const current = collaborateurMap.get(dossier.lawyer_id) || {
+          nom: dossier.lawyer?.full_name || 'Inconnu',
+          count: 0,
+        };
+        current.count++;
+        collaborateurMap.set(dossier.lawyer_id, current);
+      }
+    });
+
+    const colleguesFrequents = Array.from(collaborateurMap.entries())
+      .map(([id, data]) => ({
+        id,
+        nom: data.nom,
+        dossiersCommuns: data.count,
+      }))
+      .sort((a, b) => b.dossiersCommuns - a.dossiersCommuns)
+      .slice(0, 5);
+
+    return {
+      dossiersPartages: dossiersFiltres.length,
+      colleguesFrequents,
+    };
+  }
+
+  // Méthodes utilitaires
+  private getStatusLabel(status: EmployeeStatus): string {
+    const labels = {
+      [EmployeeStatus.ACTIVE]: 'Actif',
+      [EmployeeStatus.INACTIVE]: 'Inactif',
+      [EmployeeStatus.SUSPENDED]: 'Suspendu',
+      [EmployeeStatus.VACATION]: 'Congés',
+    };
+    return labels[status] || 'Inconnu';
+  }
+
+  private filterByDate(items: any[], filters?: StatsFilterDto, dateField: string = 'created_at'): any[] {
+    if (!filters?.startDate && !filters?.endDate) return items;
+    
+    return items.filter(item => {
+      const itemDate = new Date(item[dateField]);
+      if (filters?.startDate && itemDate < new Date(filters.startDate)) return false;
+      if (filters?.endDate && itemDate > new Date(filters.endDate)) return false;
+      return true;
+    });
+  }
+
+  // Méthode existante pour les stats globales
+  private async getGlobalStats(filters?: StatsFilterDto): Promise<EmployeeStatsDto> {
     const [
       total,
       active,
@@ -58,7 +552,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       this.getDistributionByStatus(filters),
       this.getDistributionByBranch(filters),
       this.getDistributionBySpecialization(filters),
-      this.getEvolution(filters,filters?.fieldToUseForDate, 'employee'),
+      this.getEvolution(filters, 'hireDate', 'employee'),
       this.getWorkloadStats(filters),
       this.getPerformanceStats(filters),
       this.getNewHiresTrend(filters),
@@ -96,7 +590,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .where('employee.status = :status', { status: EmployeeStatus.ACTIVE });
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
     return query.getCount();
   }
 
@@ -104,7 +598,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .where('employee.status = :status', { status: EmployeeStatus.INACTIVE });
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
     return query.getCount();
   }
 
@@ -112,7 +606,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .where('employee.status = :status', { status: EmployeeStatus.VACATION });
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
     return query.getCount();
   }
 
@@ -120,7 +614,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .where('employee.position = :position', { position });
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
     return query.getCount();
   }
 
@@ -132,7 +626,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .groupBy('employee.position')
       .orderBy('count', 'DESC');
 
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
@@ -171,7 +665,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .addSelect('COUNT(*)', 'count')
       .groupBy('employee.status');
 
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
@@ -210,7 +704,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .orderBy('count', 'DESC')
       .limit(10);
 
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
@@ -223,18 +717,15 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
   }
 
   private async getDistributionBySpecialization(filters?: StatsFilterDto): Promise<any[]> {
-    // Cette requête est plus complexe car specialization est un champ texte
-    // On va récupérer tous les employés et compter manuellement
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .select(['employee.specialization'])
       .where('employee.specialization IS NOT NULL');
 
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
 
     const employees = await query.getMany();
     
-    // Compter les spécialisations
     const specializationCount = new Map<string, number>();
     employees.forEach(emp => {
       if (emp.specialization) {
@@ -245,7 +736,6 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       }
     });
 
-    // Convertir en tableau et trier
     const results = Array.from(specializationCount.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
@@ -325,7 +815,6 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
   }
 
   private async getPerformanceStats(filters?: StatsFilterDto): Promise<any> {
-    // Stats globales
     const globalQuery = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoin('employee.managed_dossiers', 'dossier')
@@ -350,7 +839,6 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const global = await globalQuery.getRawOne();
 
-    // Stats par poste
     const byPositionQuery = this.employeeRepository
       .createQueryBuilder('employee')
       .select('employee.position', 'position')
@@ -378,7 +866,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     return {
       averageDossierCompletionTime: Math.round(parseFloat(global?.avgCompletionTime || 0)),
-      averageDossierSuccessRate: 75, // À calculer selon votre logique
+      averageDossierSuccessRate: 75,
       totalAudiences: parseInt(global?.totalAudiences || 0),
       audiencesHeld: parseInt(global?.audiencesHeld || 0),
       audiencesSuccessRate: parseInt(global?.totalAudiences || 0) > 0
@@ -418,7 +906,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .groupBy("DATE_FORMAT(employee.hireDate, '%Y-%m')")
       .orderBy('month', 'ASC');
 
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
 
     const results = await query.getRawMany();
 
@@ -455,7 +943,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .orderBy('completedDossiers', 'DESC')
       .limit(10);
 
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
 
     const results = await query.getRawMany();
 
@@ -484,7 +972,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .orderBy('employee.hireDate', 'DESC')
       .limit(20);
 
-    this.applyFilters(query, filters, 'employee'); ;
+    this.applyFilters(query, filters, 'employee');
 
     const results = await query.getMany();
 

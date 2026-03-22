@@ -78,6 +78,8 @@ import { ChatModule } from 'src/modules/chat/chat.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 import { EmailsModule } from './shared/emails/emails.module';
 import { EmailService } from './shared/services/email/email.service copy';
+import { AuthToken } from './auth/entities/auth-token.entity';
+import { AuthTokenService } from './auth/auth-token.service';
 
 
 
@@ -112,6 +114,7 @@ import { EmailService } from './shared/services/email/email.service copy';
     // forwardRef(() => IamModule),
     // forwardRef(() => AgenciesModule),
     // forwardRef(() => SavingsAccountModule),
+    EmailsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
@@ -144,6 +147,7 @@ import { EmailService } from './shared/services/email/email.service copy';
       UserRole,
       Customer,
       OtpOnlineLink,
+      AuthToken,
     ]),
     PassportModule,
     ChatModule,
@@ -151,7 +155,6 @@ import { EmailService } from './shared/services/email/email.service copy';
     // forwardRef(() => NotificationModule),
     // SeedersModule,
     ScheduleModule.forRoot(),
-    EmailsModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [
@@ -166,7 +169,6 @@ import { EmailService } from './shared/services/email/email.service copy';
     UserRolesService,
     PermissionsService,
     RolePermissionService,// RolesGuard,
-    PermissionsService,
     PermissionsGuard,
     // JwtAuthGuard,
     // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
@@ -180,6 +182,7 @@ import { EmailService } from './shared/services/email/email.service copy';
     PaginationService,
     PaginationServiceV1,
     SocketService,
+    AuthTokenService,
     EmailService,
     MainGateway
     // { provide: 'APP_PIPE', useClass: ValidationPipe },

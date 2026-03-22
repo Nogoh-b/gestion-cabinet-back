@@ -68,7 +68,7 @@ export class CreateAudienceDto {
   })
   @IsString()
   @IsOptional()
-  type?: string;
+  type: any;
   
   @ApiProperty({
     example: 'Audience Type',

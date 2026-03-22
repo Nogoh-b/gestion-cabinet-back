@@ -38,6 +38,7 @@ import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { DossierStatsDto } from './dto/dossier-stats.dto';
 import { DossierStatsService } from './dossier-stats.service';
+import { ClientDecisionDto, JudgmentDto, PreliminaryAnalysisDto } from './dto/dossier-analysis.dto';
 
 
 
@@ -127,7 +128,7 @@ export class DossiersController {
   @Get('summary')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   async getSummary() {
-    return this.dossiersService.getStats({});
+    // return this.dossiersService.getStats({});
   }
 
   @Get('search')
@@ -286,6 +287,80 @@ export class DossiersController {
     // Implémentation dans le service Finances
     return this.dossiersService.findOne(+id, user).then(dossier => dossier.factures);
   }
+
+
+
+   @Post(':id/analysis')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async performAnalysis(
+      @Param('id') id: string,
+      @Body() dto: PreliminaryAnalysisDto,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.performPreliminaryAnalysis(
+        +id,
+        dto.successProbability,
+        dto.dangerLevel,
+        dto.notes,
+        user
+      );
+    }
+  
+    @Post(':id/client-decision')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async clientDecision(
+      @Param('id') id: string,
+      @Body() dto: ClientDecisionDto,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.processClientDecision(+id, dto.decision as any, user);
+    }
+  
+    @Post(':id/judgment')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async registerJudgment(
+      @Param('id') id: string,
+      @Body() dto: JudgmentDto,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.registerJudgment(+id, dto.decision, dto.isSatisfied, user);
+    }
+  
+    @Post(':id/appeal')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async fileAppeal(
+      @Param('id') id: string,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.fileAppeal(+id, user);
+    }
+  
+    @Post(':id/cassation')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async fileCassation(
+      @Param('id') id: string,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.fileCassation(+id, user);
+    }
+  
+    @Post(':id/execute')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async executeDecision(
+      @Param('id') id: string,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.executeDecision(+id, user);
+    }
+  
+    @Post(':id/close')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async closeDossier(
+      @Param('id') id: string,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.closeDossier(+id, user);
+    }
 
 
 

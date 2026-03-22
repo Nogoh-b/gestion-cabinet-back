@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AgenciesModule } from '../agencies/agencies.module';
@@ -12,7 +12,7 @@ import { Attachment } from './entities/attachment.entity';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Conversation, Message, MessageRead, Attachment]), 
-    AgenciesModule,  
+    forwardRef(() => AgenciesModule),
 ],
   providers: [ChatService],
   exports: [ChatService],

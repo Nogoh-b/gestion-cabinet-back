@@ -1,6 +1,6 @@
 // src/modules/dossiers/entities/dossier.entity.ts
 import { BaseEntity } from 'src/core/entities/baseEntity';
-import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { ClientDecision, DossierStatus, RecommendationType } from 'src/core/enums/dossier-status.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
 import { Conversation } from 'src/modules/chat/entities/conversation.entity';
@@ -66,6 +66,9 @@ export class Dossier extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ type: 'text', default: false })
+  is_archived: boolean;
+
   @Column({ name: 'initial_request', type: 'text', nullable: true })
   initial_request: string;
 
@@ -130,6 +133,57 @@ export class Dossier extends BaseEntity {
 
   @Column({ name: 'procedure_subtype_id', type: 'int', nullable: true })
   procedure_subtype_id?: number;
+
+    @Column({ 
+    name: 'client_decision', 
+    type: 'enum', 
+    enum: ClientDecision, 
+    nullable: true 
+  })
+  client_decision: ClientDecision;
+
+  @Column({ 
+    name: 'recommendation', 
+    type: 'enum', 
+    enum: RecommendationType, 
+    nullable: true 
+  })
+  recommendation: RecommendationType;
+
+  @Column({ 
+    name: 'analysis_date', 
+    type: 'date', 
+    nullable: true 
+  })
+  analysis_date: Date;
+
+  @Column({ 
+    name: 'analysis_notes', 
+    type: 'text', 
+    nullable: true 
+  })
+  analysis_notes: string;
+
+  @Column({ 
+    name: 'appeal_filed', 
+    type: 'boolean', 
+    default: false 
+  })
+  appeal_filed: boolean;
+
+  @Column({ 
+    name: 'cassation_filed', 
+    type: 'boolean', 
+    default: false 
+  })
+  cassation_filed: boolean;
+
+  @Column({ 
+    name: 'execution_date', 
+    type: 'date', 
+    nullable: true 
+  })
+  execution_date: Date;
 
   // Relations principales (obligatoires selon R1)
   @ManyToOne(() => Customer, { nullable: false })
@@ -202,9 +256,9 @@ export class Dossier extends BaseEntity {
     return this.status === DossierStatus.CLOSED || this.status === DossierStatus.ARCHIVED;
   }
 
-  get is_archived(): boolean {
-    return this.status === DossierStatus.ARCHIVED;
-  }
+  // get is_archived(): boolean {
+  //   return this.status === DossierStatus.ARCHIVED;
+  // }
 
   get is_active(): boolean {
     return !this.is_closed && !this.is_archived;
@@ -244,16 +298,116 @@ export class Dossier extends BaseEntity {
     return this.audiences?.length || 0;
   }
 
-  // Méthode pour changer le statut avec validation des transitions
+  performPreliminaryAnalysis(successProbability: number, dangerLevel: DangerLevel, notes: string): void {
+    this.success_probability = successProbability;
+    this.danger_level = dangerLevel;
+    this.analysis_notes = notes;
+    this.analysis_date = new Date();
+    this.status = DossierStatus.PRELIMINARY_ANALYSIS;
+    
+    // Générer la recommandation
+    this.recommendation = this.generateRecommendation();
+  }
+
+  // Générer la recommandation basée sur les critères
+  private generateRecommendation(): RecommendationType {
+    if (this.success_probability < 30) {
+      return RecommendationType.TRANSACTION;
+    } else if (this.success_probability >= 30 && this.success_probability <= 70) {
+      return RecommendationType.PRESENT_OPTIONS;
+    } else {
+      return RecommendationType.PROCEDURE;
+    }
+  }
+
+  // Choisir la décision du client
+  chooseClientDecision(decision: ClientDecision): void {
+    this.client_decision = decision;
+    
+    switch (decision) {
+      case ClientDecision.TRANSACTION:
+        this.status = DossierStatus.AMICABLE;
+        break;
+      case ClientDecision.CONTENTIEUX:
+        this.status = DossierStatus.LITIGATION;
+        break;
+      case ClientDecision.ABANDON:
+        this.status = DossierStatus.ABANDONED;
+        this.closing_date = new Date();
+        break;
+    }
+  }
+
+  // Enregistrer le jugement
+  registerJudgment(decision: string, isSatisfied: boolean): void {
+    this.final_decision = decision;
+    this.status = DossierStatus.JUDGMENT;
+    
+    if (!isSatisfied) {
+      this.appeal_possibility = true;
+      // Calculer la date limite d'appel (généralement 1 mois)
+      const appealDeadline = new Date();
+      appealDeadline.setMonth(appealDeadline.getMonth() + 1);
+      this.appeal_deadline = appealDeadline;
+    }
+  }
+
+  // Interjeter appel
+  fileAppeal(): void {
+    if (!this.appeal_possibility && this.status !== DossierStatus.JUDGMENT) {
+      throw new Error('L\'appel n\'est pas possible pour ce dossier');
+    }
+    
+    this.status = DossierStatus.APPEAL;
+    this.appeal_filed = true;
+  }
+
+  // Former pourvoi en cassation
+  fileCassation(): void {
+    if (this.status !== DossierStatus.APPEAL) {
+      throw new Error('La cassation n\'est possible qu\'après un appel');
+    }
+    
+    this.status = DossierStatus.CASSATION;
+    this.cassation_filed = true;
+  }
+
+  // Exécuter la décision
+  executeDecision(): void {
+    if (this.status !== DossierStatus.JUDGMENT && this.status !== DossierStatus.APPEAL && this.status !== DossierStatus.CASSATION) {
+      throw new Error('Aucune décision à exécuter');
+    }
+    
+    this.status = DossierStatus.EXECUTION;
+    this.execution_date = new Date();
+  }
+
+  // Clôturer le dossier
+  close(): void {
+    if (this.status !== DossierStatus.EXECUTION && 
+        this.status !== DossierStatus.AMICABLE && 
+        this.status !== DossierStatus.ABANDONED) {
+      throw new Error('Le dossier ne peut pas être clôturé dans son état actuel');
+    }
+    
+    this.status = DossierStatus.CLOSED;
+    this.closing_date = new Date();
+  }
+
+  // Override de la méthode change_status existante
   change_status(new_status: DossierStatus): void {
     const allowed_transitions: Record<DossierStatus, DossierStatus[]> = {
-      [DossierStatus.OPEN]: [DossierStatus.AMICABLE, DossierStatus.LITIGATION],
-      [DossierStatus.AMICABLE]: [DossierStatus.LITIGATION, DossierStatus.CLOSED],
-      [DossierStatus.LITIGATION]: [DossierStatus.DECISION, DossierStatus.CLOSED],
-      [DossierStatus.DECISION]: [DossierStatus.APPEAL, DossierStatus.CLOSED],
-      [DossierStatus.APPEAL]: [DossierStatus.DECISION, DossierStatus.CLOSED],
+      [DossierStatus.PRELIMINARY_ANALYSIS]: [DossierStatus.AMICABLE, DossierStatus.LITIGATION, DossierStatus.ABANDONED],
+      [DossierStatus.AMICABLE]: [DossierStatus.CLOSED],
+      [DossierStatus.LITIGATION]: [DossierStatus.JUDGMENT, DossierStatus.CLOSED],
+      [DossierStatus.JUDGMENT]: [DossierStatus.APPEAL, DossierStatus.EXECUTION, DossierStatus.CLOSED],
+      [DossierStatus.APPEAL]: [DossierStatus.JUDGMENT, DossierStatus.CASSATION, DossierStatus.CLOSED],
+      [DossierStatus.CASSATION]: [DossierStatus.JUDGMENT, DossierStatus.CLOSED],
+      [DossierStatus.EXECUTION]: [DossierStatus.CLOSED],
       [DossierStatus.CLOSED]: [DossierStatus.ARCHIVED],
-      [DossierStatus.ARCHIVED]: [] // Aucune transition depuis archivé
+      [DossierStatus.ARCHIVED]: [],
+      [DossierStatus.OPEN]: [DossierStatus.PRELIMINARY_ANALYSIS],
+      [DossierStatus.ABANDONED]: [DossierStatus.CLOSED],
     };
 
     const current_transitions: DossierStatus[] = allowed_transitions[this.status] || [];
@@ -264,7 +418,6 @@ export class Dossier extends BaseEntity {
 
     this.status = new_status;
 
-    // Mettre à jour la date de clôture si nécessaire
     if (new_status === DossierStatus.CLOSED || new_status === DossierStatus.ARCHIVED) {
       this.closing_date = new Date();
     }
