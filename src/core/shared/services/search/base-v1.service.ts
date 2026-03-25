@@ -710,7 +710,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
       relations: relations || this.getDefaultSearchOptions().relationFields,
     });
 
-    console.log('relationsss ', relations || this.getDefaultSearchOptions().relationFields)
+    // console.log('relationsss ', relations || this.getDefaultSearchOptions().relationFields)
     
     if (!result) {
       return null;

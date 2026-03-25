@@ -1,13 +1,13 @@
 // src/modules/dossiers/dto/dossier-response.dto.ts
 import { Expose, Transform } from "class-transformer";
-import { DossierStatus } from "src/core/enums/dossier-status.enum";
+import { ClientDecision, DossierStatus, RecommendationType } from "src/core/enums/dossier-status.enum";
 import { AudienceStatus } from "src/modules/audiences/entities/audience.entity";
 import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
 import { StatutFacture } from "src/modules/facture/dto/create-facture.dto";
 import { FactureResponseDto } from "src/modules/facture/dto/facture-response.dto";
 import { ApiProperty } from "@nestjs/swagger";
 
-import { DangerLevel } from "../entities/dossier.entity";
+import { DangerLevel, Dossier } from "../entities/dossier.entity";
 import { Diligence } from "src/modules/diligence/entities/diligence.entity";
 
 
@@ -115,6 +115,89 @@ export class DossierResponseDto {
   @ApiProperty({ example: "2025-12-01", required: false })
   @Expose()
   appeal_deadline?: Date;
+
+  // Ajouts prioritaires recommandés
+
+@Expose()
+@ApiProperty({ enum: ClientDecision, required: false })
+client_decision?: ClientDecision;
+
+@Expose()
+@ApiProperty({ enum: RecommendationType, required: false })
+recommendation?: RecommendationType;
+
+@Expose()
+@ApiProperty({ required: false })
+analysis_date?: Date;
+
+@Expose()
+@ApiProperty({ required: false })
+analysis_notes?: string;
+
+@Expose()
+@ApiProperty({ required: false })
+first_instance_decision?: string;
+
+@Expose()
+@ApiProperty({ required: false })
+appeal_decision?: string;
+
+@Expose()
+@ApiProperty({ required: false })
+current_decision_type?: 'FIRST_INSTANCE' | 'APPEAL' | 'CASSATION' | null;
+
+@Expose()
+@ApiProperty({ required: false })
+appeal_filed: boolean;
+
+@Expose()
+@ApiProperty({ required: false })
+cassation_possibility: boolean;
+
+@Expose()
+@ApiProperty({ required: false })
+cassation_deadline?: Date;
+
+@Expose()
+@ApiProperty({ required: false })
+cassation_filed: boolean;
+
+@Expose()
+@ApiProperty({ required: false })
+currentStep: any;
+
+@Expose()
+@ApiProperty({ required: false })
+execution_date?: Date;
+
+@Expose()
+@ApiProperty({ required: false })
+remand_jurisdiction?: string;
+
+// Dans DossierResponseDto
+
+@Expose()
+@ApiProperty({
+  description: "Résumé des étapes du dossier",
+  example: {
+    current_step_title: "Phase contentieuse",
+    current_step_type: "contentious",
+    current_step_status: 0,
+    total_steps: 5,
+    completed_steps: 2,
+    progress: 40
+  },
+  nullable: true
+})
+@Transform(({ obj }: { obj: Dossier }) => obj.stepsSummary ?? null)
+steps_summary: {
+  current_step_title?: string;
+  current_step_type?: string;
+  current_step_status?: number;
+  total_steps: number;
+  completed_steps: number;
+  progress: number;
+} | null;
 
   @ApiProperty({ example: "2025-01-15T08:00:00Z" })
   @Expose()

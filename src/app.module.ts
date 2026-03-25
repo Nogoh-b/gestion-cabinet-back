@@ -40,7 +40,6 @@ import { IamModule } from './modules/iam/iam.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { PaiementModule } from './modules/paiement/paiement.module';
 import { ProceduresModule } from './modules/procedures/procedures.module';
-import { StepModule } from './modules/step/step.module';
 import { JurisdictionModule } from './modules/jurisdiction/jurisdiction.module';
 import { DocumentCategoryModule } from './modules/document-category/document-category.module';
 import { AudienceTypeModule } from './modules/audience-type/audience-type.module';
@@ -52,6 +51,7 @@ import { join } from 'path';
 import { StatsModule } from './modules/stats/stats.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { helpers } from './utils/helper-template-maill';
+import { ProcedureModule } from './modules/procedure/procedure.module';
 
 
 
@@ -163,7 +163,6 @@ dotenv.config();
     AudiencesModule,
     FinancesModule,
     ProceduresModule,
-    StepModule,
     FactureModule,
     PaiementModule,
     ChatModule,
@@ -175,7 +174,8 @@ dotenv.config();
     DiligenceModule,
     FindingModule,
     StatsModule,
-    DashboardModule
+    DashboardModule,
+    ProcedureModule
   ],
   controllers: [AppController],
   providers: [AppService],

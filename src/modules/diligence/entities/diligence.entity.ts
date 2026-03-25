@@ -5,6 +5,7 @@ import { DocumentCustomer } from 'src/modules/documents/document-customer/entiti
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, ManyToMany, JoinTable } from 'typeorm';
 import { Finding, FindingSeverity, FindingStatus } from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { Step } from 'src/modules/dossiers/entities/step.entity';
 
 export enum DiligenceType {
   ACQUISITION = 'acquisition',
@@ -126,6 +127,15 @@ export class Diligence extends BaseEntity {
     inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
   })
   documents: DocumentCustomer[];
+
+
+    @ManyToOne(() => Step, step => step.diligences, { nullable: true })
+  @JoinColumn({ name: 'step_id' })
+  step: Step;
+
+  @Column({ name: 'step_id', type: 'int', nullable: true })
+  step_id: number;
+
 
   // Getters
   get is_overdue(): boolean {

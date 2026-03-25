@@ -14,6 +14,7 @@ import { Diligence, DiligenceStatus, DiligencePriority } from './entities/dilige
 import { UsersService } from '../iam/user/user.service';
 import { FindingsService } from '../finding/finding.service';
 import { User } from '../iam/user/entities/user.entity';
+import { StepsService } from '../dossiers/step.service';
 
 @Injectable()
 export class DiligencesService extends BaseServiceV1<Diligence> {
@@ -26,6 +27,9 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     private readonly documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => FindingsService))
     private readonly findingsService: FindingsService,
+    @Inject(forwardRef(() => StepsService))
+    private stepsService: StepsService,
+    
   ) {
     console.log(forwardRef)
     super(repository, paginationService);
@@ -85,6 +89,15 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       assigned_lawyer: dto.assigned_lawyer_id ? { id: dto.assigned_lawyer_id } : undefined,
       status: DiligenceStatus.DRAFT,
     });
+
+      // Récupérer l'étape courante
+    const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
+    
+    // Lier la diligence à l'étape (Many-to-One)
+    if (currentStep) {
+      await this.stepsService.syncActionWithStep('diligence', diligence.id, currentStep.id);
+    }
+    
 
     return plainToInstance(DiligenceResponseDto,await this.repository.save(diligence));
   }

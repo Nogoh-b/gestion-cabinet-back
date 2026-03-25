@@ -12,7 +12,7 @@ import { DiligenceStatsService } from './diligence-stats.service';
   controllers: [DiligencesController],
   providers: [DiligencesService, DiligenceStatsService],
   exports: [DiligencesService, DiligenceStatsService],
-  imports: [forwardRef(() => FindingModule) , DossiersModule, DocumentsModule, TypeOrmModule.forFeature([Diligence]),
+  imports: [forwardRef(() => FindingModule) , forwardRef(() =>DossiersModule), DocumentsModule, TypeOrmModule.forFeature([Diligence]),
   ],
 })
 export class DiligenceModule {}

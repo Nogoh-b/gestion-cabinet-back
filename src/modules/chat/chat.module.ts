@@ -15,7 +15,7 @@ import { Attachment } from './entities/attachment.entity';
     forwardRef(() => AgenciesModule),
 ],
   providers: [ChatService],
-  exports: [ChatService],
+  exports: [ChatService, TypeOrmModule],
   controllers: [ChatController]
 })
 export class ChatModule {}

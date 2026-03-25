@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { Between, Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -19,6 +19,7 @@ import { SearchFactureDto } from './dto/search-facture.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { Facture } from './entities/facture.entity';
 import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
+import { StepsService } from '../dossiers/step.service';
 
 
 
@@ -33,8 +34,13 @@ export class FactureService extends BaseServiceV1<Facture> {
     @InjectRepository(Facture)
     protected readonly repository: Repository<Facture>,
     protected readonly paginationService: PaginationServiceV1,
-    protected readonly dossiersService: DossiersService,
+    @Inject(forwardRef(() => DossiersService))  // 👈 Ajouter forwardRef
+    protected readonly dossiersService: DossiersService,    
+    @Inject(forwardRef(() => StepsService))
+    private stepsService: StepsService,
+    
   ) {
+    console.log(forwardRef)
     super(repository, paginationService);
   }
 
@@ -72,9 +78,20 @@ export class FactureService extends BaseServiceV1<Facture> {
       montantPaye: 0,
       resteAPayer: createDto.montantTTC
     });
-    console.log(rest)
+    console.log('fffffffffff ' ,facture.dossier.id, ' ',dossierId)
 
-    return this.repository.save(facture);
+    const fac = await this.repository.save(facture);
+
+    const currentStep = await this.stepsService.getCurrentStep(createDto.dossierId);
+    
+    // Lier la facture à l'étape (Many-to-One)
+    if (currentStep) {
+      await this.stepsService.syncActionWithStep('facture', fac.id, currentStep.id);
+    }
+    
+ 
+    return fac
+  
   }
 
   async updateFacture(id: string, updateDto: UpdateFactureDto): Promise<FactureResponseDto> {

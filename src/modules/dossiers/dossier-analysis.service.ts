@@ -3,8 +3,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Dossier, DangerLevel } from './entities/dossier.entity';
-import { Step, StepType, StepStatus } from 'src/modules/step/entities/step.entity';
 import { ClientDecision, RecommendationType } from 'src/core/enums/dossier-status.enum';
+import { Step, StepStatus, StepType } from './entities/step.entity';
 
 @Injectable()
 export class DossierAnalysisService {

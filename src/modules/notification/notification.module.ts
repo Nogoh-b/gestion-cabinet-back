@@ -6,7 +6,6 @@ import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { User } from '../iam/user/entities/user.entity';
 import { DossiersModule } from '../dossiers/dossiers.module';
-import { CoreModule } from 'src/core/core.module';
 import { UserNotification } from './entities/user-notification.entity';
 
 @Module({
@@ -14,7 +13,6 @@ import { UserNotification } from './entities/user-notification.entity';
     TypeOrmModule.forFeature([Notification, User, UserNotification]),
     // CoreModule,
     forwardRef(() => DossiersModule), // Pour éviter les dépendances circulaires
-    forwardRef(() => CoreModule) // Pour éviter les dépendances circulaires
   ],
   controllers: [NotificationController],
   providers: [NotificationService],

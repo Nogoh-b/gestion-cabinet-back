@@ -1,5 +1,4 @@
-import { CoreModule } from 'src/core/core.module';
-import { forwardRef, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 
 
 
@@ -47,7 +46,6 @@ import { UsersService } from './user/user.service';
     
   ActivitiesUserController, PermissionsController, UserRolesController, RolePermissionController,  UserRoleAssignmentController],
   imports: [
-    forwardRef(() => CoreModule),
   // forwardRef(() => CustomerModule),
     TypeOrmModule.forFeature([
       UserRole,

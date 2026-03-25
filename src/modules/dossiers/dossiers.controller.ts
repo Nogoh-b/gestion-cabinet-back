@@ -39,6 +39,7 @@ import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { DossierStatsDto } from './dto/dossier-stats.dto';
 import { DossierStatsService } from './dossier-stats.service';
 import { ClientDecisionDto, JudgmentDto, PreliminaryAnalysisDto } from './dto/dossier-analysis.dto';
+import { Step } from './entities/step.entity';
 
 
 
@@ -300,7 +301,7 @@ export class DossiersController {
       return this.dossiersService.performPreliminaryAnalysis(
         +id,
         dto.successProbability,
-        dto.dangerLevel,
+        dto.danger_level,
         dto.notes,
         user
       );
@@ -324,6 +325,27 @@ export class DossiersController {
       @CurrentUser() user: User
     ) {
       return this.dossiersService.registerJudgment(+id, dto.decision, dto.isSatisfied, user);
+    }  
+
+    @Post(':id/register/apeal/decision')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async registerAppealDecision(
+      @Param('id') id: string,
+      @Body() dto: JudgmentDto,
+      @CurrentUser() user: User
+    ) {
+      // return dto
+      return this.dossiersService.registerAppealDecision(+id, dto.decision, dto.isSatisfied, user);
+    }
+
+    @Post(':id/register/cassation/decision')
+    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    async registerCassationDecision(
+      @Param('id') id: string,
+      @Body() dto: JudgmentDto,
+      @CurrentUser() user: User
+    ) {
+      return this.dossiersService.registerCassationDecision(+id, dto.decision as any, dto.isSatisfied, user);
     }
   
     @Post(':id/appeal')
@@ -361,6 +383,55 @@ export class DossiersController {
     ) {
       return this.dossiersService.closeDossier(+id, user);
     }
+
+
+      @Get(':dossierId/steps/current')
+  @ApiOperation({ 
+    summary: 'Obtenir l\'étape courante',
+    description: 'Retourne l\'étape actuellement en cours pour le dossier'
+  })
+  @ApiParam({
+    name: 'dossierId',
+    description: 'ID du dossier',
+    type: Number,
+    example: 1
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Étape courante récupérée avec succès',
+    type: Step
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Dossier non trouvé ou aucune étape en cours'
+  })
+  async getCurrentStep(@Param('dossierId', ParseIntPipe) dossierId: number) {
+    return this.dossiersService.getCurrentStep(dossierId);
+  }
+
+  @Get(':dossierId/steps/workflow')
+  @ApiOperation({ 
+    summary: 'Obtenir le workflow complet du dossier',
+    description: 'Retourne toutes les étapes du dossier dans l\'ordre chronologique'
+  })
+  @ApiParam({
+    name: 'dossierId',
+    description: 'ID du dossier',
+    type: Number,
+    example: 1
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Workflow récupéré avec succès',
+    type: [Step]
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Dossier non trouvé'
+  })
+  async getWorkflow(@Param('dossierId', ParseIntPipe) dossierId: number) {
+    return this.dossiersService.getDossierWorkflow(dossierId);
+  }
 
 
 

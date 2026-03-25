@@ -3,6 +3,7 @@ import { BaseEntity } from 'src/core/entities/baseEntity';
 import { AudienceType } from 'src/modules/audience-type/entities/audience-type.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
 
@@ -60,6 +61,13 @@ export class Audience extends BaseEntity {
 
   @Column({ type: 'text', nullable: true })
   notes: string;
+
+  @ManyToOne(() => Step, step => step.audiences, { nullable: true })
+  @JoinColumn({ name: 'step_id' })
+  step: Step;
+
+  @Column({ name: 'step_id', type: 'int', nullable: true })
+  step_id: number;
 
   @Column({ name: 'decision', type: 'text', nullable: true })
   decision: string;

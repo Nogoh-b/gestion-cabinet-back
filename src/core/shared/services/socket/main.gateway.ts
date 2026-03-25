@@ -9,7 +9,7 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { NotificationType } from 'src/modules/notification/enum/notification-type.enum';
 import { ChatService } from 'src/modules/chat/services/chat/chat.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
@@ -885,8 +885,11 @@ private getUserSockets(userId: number): string[] {
 
   // ========== INJECTION DES SERVICES ==========
   constructor(
+    @Inject(forwardRef(() => ChatService))
     private chatService: ChatService,
     private notificationService: NotificationService,
     private userService: UsersService
-  ) {}
+  ) {
+    console.log(forwardRef)
+  }
 }

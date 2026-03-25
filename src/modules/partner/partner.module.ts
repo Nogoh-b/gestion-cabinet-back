@@ -1,5 +1,3 @@
-import { CoreModule } from 'src/core/core.module';
-
 import { forwardRef, Module } from '@nestjs/common';
 
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -22,7 +20,6 @@ import { Partner } from './entities/partner.entity';
 @Module({
   imports: [    
       forwardRef(() => CustomerModule),
-      forwardRef(() => CoreModule),
       forwardRef(() => DocumentsModule),
       
     TypeOrmModule.forFeature([

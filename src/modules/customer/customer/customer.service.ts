@@ -85,6 +85,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
     private typeCustomerRepository: Repository<TypeCustomer>,
     private typeCustomerService: TypeCustomersService,
     private locationcityService: LocationCitiesService,
+    @Inject(forwardRef(() => DocumentCustomerService))
     private documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => BranchService))
     private branchService: BranchService,

@@ -38,7 +38,7 @@ import { UsersService } from 'src/modules/iam/user/user.service';
 
 import { HttpModule } from '@nestjs/axios';
 
-import { Global, Module } from '@nestjs/common';
+import { forwardRef, Global, Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
@@ -151,7 +151,8 @@ import { AuthTokenService } from './auth/auth-token.service';
     ]),
     PassportModule,
     ChatModule,
-    NotificationModule,
+    // forwardRef(() => ChatModule),
+    forwardRef(() => NotificationModule) ,// Pour éviter les dépendances circulaires
     // forwardRef(() => NotificationModule),
     // SeedersModule,
     ScheduleModule.forRoot(),
@@ -184,7 +185,8 @@ import { AuthTokenService } from './auth/auth-token.service';
     SocketService,
     AuthTokenService,
     EmailService,
-    MainGateway
+    MainGateway,
+    TypeOrmModule
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
   exports: [

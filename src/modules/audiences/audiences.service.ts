@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
@@ -23,6 +23,7 @@ import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
 import { AudienceType } from '../audience-type/entities/audience-type.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { StepsService } from '../dossiers/step.service';
 
 
 
@@ -32,14 +33,20 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     @InjectRepository(Audience)
     protected readonly repository: Repository<Audience>,
     protected readonly paginationService: PaginationServiceV1,
+    @Inject(forwardRef(() => DossiersService))
     private readonly dossierService: DossiersService,
     private readonly audienceTypeService: AudienceTypeService,
     private readonly employeeService: EmployeeService,
     private readonly jurisdictionService: JurisdictionService,
     private readonly documentCustomerService: DocumentCustomerService,
+    @Inject(forwardRef(() => StepsService))
+    private stepsService: StepsService,
     protected readonly emailsService?: MailService, // Optionnel
+    
   ) {
     super(repository, paginationService, emailsService);
+    console.log(forwardRef)
+
   }
 
   /**
@@ -99,7 +106,13 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     
     // ✅ Mettre à jour le dossier si nécessaire (ex: première audience en contentieux)
     await this.updateDossierStatusOnAudience(aud, dossier);
-    
+
+    const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
+  
+    // Lier l'audience à l'étape (Many-to-One)
+    if (currentStep) {
+      await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id);
+    }
     return await this.findOneV1(aud.id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
   }
 

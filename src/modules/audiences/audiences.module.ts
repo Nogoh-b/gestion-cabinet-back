@@ -1,5 +1,4 @@
-import { CoreModule } from 'src/core/core.module';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
@@ -24,9 +23,8 @@ import { AudienceSubscriber } from './suscribers/audiences.suscribers';
     CustomerModule,
     AudienceTypeModule,
     JurisdictionModule,
-    DossiersModule,
     DocumentsModule,
-    CoreModule
+    forwardRef(() => DossiersModule),
   ],
   controllers: [AudiencesController],
   providers: [AudiencesService, AudienceSubscriber, AudienceStatsService],

@@ -18,6 +18,7 @@ import { Paiement } from '../../paiement/entities/paiement.entity';
 import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
 import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
 import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
+import { Step } from 'src/modules/dossiers/entities/step.entity';
 
 
 @Entity('factures')
@@ -30,6 +31,13 @@ export class Facture {
 
   @Column({ name: 'client_id' })
   client_id: number;
+
+  @ManyToOne(() => Step, step => step.factures, { nullable: true })
+  @JoinColumn({ name: 'step_id' })
+  step: Step;
+
+  @Column({ name: 'step_id', type: 'int', nullable: true })
+  step_id: number;
 
   @Column({
     type: 'enum',

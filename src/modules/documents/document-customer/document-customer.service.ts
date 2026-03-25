@@ -28,6 +28,7 @@ import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-fro
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
 import { join } from 'path';
+import { StepsService } from 'src/modules/dossiers/step.service';
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(
@@ -45,6 +46,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     private dossierService: DossiersService,
     protected readonly paginationService: PaginationServiceV1,
     private documentCategoryService: DocumentCategoryService,
+    @Inject(forwardRef(() => StepsService))
+    private stepsService: StepsService,
   ) {    
         super(docRepository, paginationService);console.log(forwardRef)
   }
@@ -336,10 +339,32 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         uploadedByUserId
       });
 
+        const currentStep = await this.stepsService.getCurrentStep(createDto.dossier_id);
+  
+        // Lier automatiquement le document à l'étape courante (Many-to-Many)
+        if (currentStep) {
+          await this.stepsService.linkDocumentToStep(document.id, currentStep.id);
+        }
+        if (currentStep) {
+          await this.stepsService.syncActionWithStep('document', document.id, currentStep.id);
+        }
+        // Si des diligences ou audiences sont spécifiées dans le formulaire
+        // if (createDto.diligence_ids?.length) {
+        //   await this.stepsService.linkDocumentToMultipleEntities(document.id, {
+        //     diligenceIds: createDto.diligence_ids
+        //   });
+        // }
+        
+        // if (createDto.audience_ids?.length) {
+        //   await this.stepsService.linkDocumentToMultipleEntities(document.id, {
+        //     audienceIds: createDto.audience_ids
+        //   });
+        // }
+
       // 9. Validation automatique si demandée
-      if (createDto.status === DocumentCustomerStatus.ACCEPTED) {
-        await this.validate(document.id);
-      }
+      // if (createDto.status === DocumentCustomerStatus.ACCEPTED) {
+      //   await this.stepsService.updateStepMetrics(document.id);
+      // }
 
       return plainToInstance(DocumentCustomerResponseDto, document);
 

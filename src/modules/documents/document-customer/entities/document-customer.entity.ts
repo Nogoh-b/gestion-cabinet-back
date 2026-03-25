@@ -14,7 +14,6 @@ import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 
 
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { Step } from 'src/modules/step/entities/step.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -25,6 +24,7 @@ import {
   UpdateDateColumn,
   ManyToMany,
   OneToMany,
+  JoinTable,
 } from 'typeorm';
 
 
@@ -32,6 +32,7 @@ import {
 import { DocumentType } from '../../document-type/entities/document-type.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
+import { Step } from 'src/modules/dossiers/entities/step.entity';
 
 
 
@@ -109,7 +110,7 @@ export class DocumentCustomer extends BaseEntity {
   @Column({ 
     type: 'enum',
     enum: DocumentCustomerStatus,
-    default: DocumentCustomerStatus.PENDING
+    default: DocumentCustomerStatus.ACCEPTED
   })
   status: DocumentCustomerStatus;
 
@@ -149,14 +150,18 @@ export class DocumentCustomer extends BaseEntity {
   @JoinColumn({ name: 'uploaded_by_id' })
   uploaded_by: User;
 
-  @ManyToOne(() => Step, { nullable: true })
-  @JoinColumn({ name: 'step_id' })
-  step: Step;
+  @ManyToMany(() => Step, step => step.documents)
+  @JoinTable({
+    name: 'step_documents',  // Table de jointure
+    joinColumn: { name: 'document_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'step_id', referencedColumnName: 'id' }
+  })
+  steps: Step[];
 
   @Column({ name: 'uploaded_at', type: 'timestamp' })
   @CreateDateColumn()
   uploaded_at: Date;
-
+ 
   @Column({ name: 'last_modified', type: 'timestamp' })
   @UpdateDateColumn()
   last_modified: Date;
@@ -193,7 +198,8 @@ export class DocumentCustomer extends BaseEntity {
   @ManyToMany(() => Audience, (audience) => audience.documents)
   audiences: Audience[];
 
-  
+  // @ManyToMany(() => Step, step => step.documents)
+  // steps: Step[];
   
   @ManyToMany(() => Diligence, (diligence) => diligence.documents)
   diligences: Diligence[];

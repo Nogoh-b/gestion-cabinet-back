@@ -11,8 +11,8 @@ import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { Step, StepStatus } from 'src/modules/step/entities/step.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne } from 'typeorm';
+import { Step, StepStatus } from './step.entity';
 
 
 
@@ -114,13 +114,22 @@ export class Dossier extends BaseEntity {
   next_steps: string;
 
   @Column({ name: 'final_decision', type: 'text', nullable: true })
-  final_decision: string;
+  final_decision: string | null;
+
+  @Column({ name: 'appeal_decision', type: 'text', nullable: true })
+  appeal_decision : string | null;  
+  
+  @Column({ name: 'remand_jurisdiction', type: 'text', nullable: true })
+  remand_jurisdiction : string | null; 
+
+  @Column({ name: 'first_instance_decision', type: 'text', nullable: true })
+  first_instance_decision : string | null;
 
   @Column({ name: 'appeal_possibility', type: 'boolean', default: false })
   appeal_possibility: boolean;
 
   @Column({ name: 'appeal_deadline', type: 'date', nullable: true })
-  appeal_deadline: Date;
+  appeal_deadline: Date | null;
 
   @Column({ name: 'client_id', type: 'int', nullable: true })
   client_id?: number;
@@ -170,6 +179,28 @@ export class Dossier extends BaseEntity {
     default: false 
   })
   appeal_filed: boolean;
+
+   @Column({ 
+    name: 'cassation_possibility', 
+    type: 'boolean', 
+    default: false 
+  })
+  cassation_possibility: boolean;
+
+    @Column({ 
+    name: 'current_decision_type', 
+    type: 'enum', 
+    enum: ['FIRST_INSTANCE', 'APPEAL', 'CASSATION'],
+    nullable: true 
+  })
+  current_decision_type?: 'FIRST_INSTANCE' | 'APPEAL' | 'CASSATION' | null;
+
+  @Column({ 
+    name: 'cassation_deadline', 
+    type: 'date', 
+    nullable: true 
+  })
+  cassation_deadline: Date | null;
 
   @Column({ 
     name: 'cassation_filed', 
@@ -448,4 +479,71 @@ export class Dossier extends BaseEntity {
       .filter(audience => audience.status === AudienceStatus.SCHEDULED)
       .sort((a, b) => a.full_datetime.getTime() - b.full_datetime.getTime());
   }
+
+  // Dans class Dossier
+
+/**
+ * Étape actuellement en cours (la première trouvée avec status IN_PROGRESS)
+ */
+get currentStep(): Step | null {
+  if (!this.steps || this.steps.length === 0) return null;
+  
+  // On prend généralement la plus récente en IN_PROGRESS
+  // ou la première selon ton workflow
+  return this.steps
+    .filter(s => s.status === StepStatus.IN_PROGRESS)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] || null;
+}
+
+/**
+ * Nombre total d'étapes
+ */
+get stepCount(): number {
+  return this.steps?.length || 0;
+}
+
+/**
+ * Nombre d'étapes terminées ou annulées
+ */
+get completedStepCount(): number {
+  if (!this.steps) return 0;
+  return this.steps.filter(s => 
+    s.status === StepStatus.COMPLETED || 
+    s.status === StepStatus.CANCELLED
+  ).length;
+}
+
+/**
+ * Pourcentage global d'avancement (basé sur les étapes terminées)
+ */
+get stepsProgress(): number {
+  const total = this.stepCount;
+  if (total === 0) return 0;
+  
+  const completed = this.completedStepCount;
+  return Math.round((completed / total) * 100);
+}
+
+/**
+ * Résumé structuré des étapes (prêt pour le DTO)
+ */
+get stepsSummary(): {
+  current_step_title?: string;
+  current_step_type?: string;
+  current_step_status?: number;
+  total_steps: number;
+  completed_steps: number;
+  progress: number;
+} {
+  const current = this.currentStep;
+
+  return {
+    current_step_title: current?.title,
+    current_step_type: current?.type,
+    current_step_status: current?.status,
+    total_steps: this.stepCount,
+    completed_steps: this.completedStepCount,
+    progress: this.stepsProgress,
+  };
+}
 }

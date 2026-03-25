@@ -1,4 +1,3 @@
-import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -41,7 +40,6 @@ import { DocumentTypeStatsService } from './document-type/document-type-stats.se
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocumentType, DocumentCustomer]),
-    forwardRef(() => CoreModule),
     DocumentCategoryModule,
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),

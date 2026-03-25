@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsIn, IsNumber, IsString, Max, Min } from "class-validator";
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsString, Max, Min } from "class-validator";
 import { DangerLevel } from "../entities/dossier.entity";
 
 // src/modules/dossiers/dto/preliminary-analysis.dto.ts
@@ -9,7 +9,7 @@ export class PreliminaryAnalysisDto {
   successProbability: number;
 
   @IsEnum(DangerLevel)
-  dangerLevel: DangerLevel;
+  danger_level: DangerLevel;
 
   @IsString()
   notes: string;
@@ -26,6 +26,9 @@ export class ClientDecisionDto {
 export class JudgmentDto {
   @IsString()
   decision: string;
+
+  @IsInt()
+  idAudience: number;
 
   @IsBoolean()
   isSatisfied: boolean;

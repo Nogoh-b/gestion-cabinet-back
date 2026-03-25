@@ -1,4 +1,3 @@
-import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -17,7 +16,11 @@ import { DossiersService } from './dossiers.service';
 import { Dossier } from './entities/dossier.entity';
 import { ChatModule } from '../chat/chat.module';
 import { DossierStatsService } from './dossier-stats.service';
-import { StepModule } from '../step/step.module';
+import { StepsService } from './step.service';
+import { Step } from './entities/step.entity';
+import { AudiencesModule } from '../audiences/audiences.module';
+import { DiligenceModule } from '../diligence/diligence.module';
+import { FactureModule } from '../facture/facture.module';
 
 
 
@@ -28,16 +31,17 @@ import { StepModule } from '../step/step.module';
 
 @Module({
   imports: [
-    forwardRef(() => CoreModule),
     forwardRef(() => CustomerModule),
     forwardRef(() => DocumentsModule),
     forwardRef(() => ChatModule),
-    forwardRef(() => StepModule),
+    forwardRef(() => AudiencesModule),
+    forwardRef(() => DiligenceModule),
+    forwardRef(() => FactureModule),
 
-    TypeOrmModule.forFeature([Dossier,  User, ProcedureType]),
+    TypeOrmModule.forFeature([Dossier,  User, ProcedureType, Step]),
   ],
   controllers: [DossiersController],
-  providers: [DossiersService,DossierStatsService, ],
-  exports: [DossiersService, DossierStatsService, TypeOrmModule],
+  providers: [DossiersService,DossierStatsService, StepsService ],
+  exports: [DossiersService, DossierStatsService, TypeOrmModule, StepsService],
 })
 export class DossiersModule {}

@@ -1,4 +1,3 @@
-import { CoreModule } from 'src/core/core.module';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgenciesModule } from '../agencies/agencies.module';
@@ -18,11 +17,9 @@ import { TypeCustomerStatsService } from './type-customer/type-customer-stats.se
   imports: [
     
     // forwardRef(() => IamModule),
-    forwardRef(() => CoreModule),
-      // CoreModule,
+    forwardRef(() => DocumentsModule),
     AgenciesModule, // Import direct
     GeographyModule, // Import direct  
-    DocumentsModule,
     TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType]),
   ],
   controllers: [TypeCustomersController, CustomerController],

@@ -62,7 +62,7 @@ export class SendOtpDto {
   targetSavingsAccountCode: string;
 }
 
-export class VerifyOtpDto {
+export class VerifyOtpDto1 {
   @ApiProperty({
     description: "Email address of the user",
     example: "user@example.com",
