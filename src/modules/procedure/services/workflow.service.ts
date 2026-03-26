@@ -80,7 +80,7 @@ export class WorkflowService {
       throw new BadRequestException('Invalid transition for current stage');
     }
 
-    return this.executeTransition(instance, transition, userId, dto.comment);
+    return this.executeTransition(instance, transition, userId, dto?.comment);
   }
 
 
@@ -92,7 +92,7 @@ export class WorkflowService {
     instance: ProcedureInstance,
     transition: Transition,
     userId: string | null,
-    comment: string | null,
+    comment?: string | null,
     eventData?: any,
   ): Promise<TransitionResult> {
     // 1. Enregistrer la décision (si utilisateur)
@@ -196,6 +196,9 @@ export class WorkflowService {
         
         if (context.stage) {
             vars['stage'] = context.stage;
+        }
+        if (context.event) {
+            vars['event'] = context.event;
         }
         
         // Vérifier si jsonLogic est défini

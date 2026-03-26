@@ -72,6 +72,25 @@ template: ProcedureTemplate;
   @Column({ type: 'text', nullable: true })
   onTransition: string | null;
 
+  @Column({ type: 'boolean', default: false })
+  expectsUserInput: boolean;
+
+  @Column({ type: 'json', nullable: true })
+  userInputs: {
+    name: string;
+    label: string;
+    type: 'text' | 'textarea' | 'select' | 'number' | 'date' | 'checkbox';
+    required?: boolean;
+    options?: { value: string; label: string }[];
+    defaultValue?: any;
+  }[];
+
+  @Column({ type: 'json', nullable: true })
+  preTransitionActions: any;
+
+  @Column({ type: 'json', nullable: true })
+  postTransitionActions: any;
+
   @CreateDateColumn()
   createdAt: Date;
 

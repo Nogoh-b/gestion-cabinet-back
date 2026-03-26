@@ -5,6 +5,9 @@ import { DocumentCustomer } from 'src/modules/documents/document-customer/entiti
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { Stage } from 'src/modules/procedure/entities/stage.entity';
+import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
 
 
@@ -116,7 +119,27 @@ export class Audience extends BaseEntity {
   })
   documents: DocumentCustomer[];
 
+  @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
+  sub_stage_id: string;
 
+  @Column({ name: 'stage_id', type: 'varchar', nullable: true })
+  stage_id: string;
+
+  @ManyToOne(() => Stage)
+  @JoinColumn({ name: 'stage_id' })
+  stage: Stage;
+
+  @ManyToOne(() => SubStage, (subStage) => subStage.audiences, { nullable: true })
+  @JoinColumn({ name: 'sub_stage_id' })
+  subStage: SubStage;
+
+  // Garder aussi la liaison avec ProcedureInstance pour la vue globale
+  @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
+  procedure_instance_id: string;
+
+  @ManyToOne(() => ProcedureInstance, { nullable: true })
+  @JoinColumn({ name: 'procedure_instance_id' })
+  procedureInstance: ProcedureInstance;
 
   // @OneToMany(() => DocumentCustomer, (document) => document.audience)
   // documents: DocumentCustomer[];

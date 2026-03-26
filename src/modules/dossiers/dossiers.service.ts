@@ -100,7 +100,28 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       ],*/
       
       // Champs de relations pour filtrage
-      relationFields: ['client', 'steps', 'lawyer', 'diligences','lawyer.user', 'jurisdiction', 'procedure_type', 'procedure_subtype', 'documents', 'audiences', 'factures', 'collaborators', 'collaborators.user']
+      relationFields: [
+        'client',
+        'client.location_city',
+        'lawyer',
+        'lawyer.user',
+        'procedure_type',
+        'procedureInstance',
+        'procedureInstance.currentStage',
+        'procedureInstance.currentStage.subStages',
+        'procedure_subtype',
+        'documents',
+        'audiences',
+        'factures',
+        // 'steps',
+        'jurisdiction',
+        'collaborators',
+        'conversation',
+        'collaborators.user',
+        'diligences'
+        // 'comments',
+        // 'comments.user'
+      ]
     };
   }
 
@@ -288,25 +309,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 
     const dossier = await this.dossierRepository.findOne({
       where: { id },
-      relations: [
-        'client',
-        'client.location_city',
-        'lawyer',
-        'lawyer.user',
-        'procedure_type',
-        'procedure_subtype',
-        'documents',
-        'audiences',
-        'factures',
-        'steps',
-        'jurisdiction',
-        'collaborators',
-        'conversation',
-        'collaborators.user',
-        'diligences'
-        // 'comments',
-        // 'comments.user'
-      ],
+      relations: this.getDefaultSearchOptions().relationFields,
     });
     // console.log(dossier)
 
@@ -334,6 +337,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'lawyer',
         'procedure_type',
         'procedure_subtype',
+        'procedureInstance',
+        'procedureInstance.currentStage',
         'collaborators',
         'jurisdiction',
       ],

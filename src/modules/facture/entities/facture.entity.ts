@@ -19,6 +19,9 @@ import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
 import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
 import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
+import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { Stage } from 'src/modules/procedure/entities/stage.entity';
 
 
 @Entity('factures')
@@ -107,6 +110,28 @@ export class Facture {
   @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: 'client_id' }) // correction: correspond à la colonne réelle
   client: Customer;
+
+  @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
+  sub_stage_id: string;
+
+  @ManyToOne(() => SubStage, (subStage) => subStage.factures, { nullable: true })
+  @JoinColumn({ name: 'sub_stage_id' })
+  subStage: SubStage;
+
+  @Column({ name: 'stage_id', type: 'varchar', nullable: true })
+  stage_id: string;
+
+  @ManyToOne(() => Stage)
+  @JoinColumn({ name: 'stage_id' })
+  stage: Stage;
+
+  // Garder aussi la liaison avec ProcedureInstance pour la vue globale
+  @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
+  procedure_instance_id: string;
+
+  @ManyToOne(() => ProcedureInstance, { nullable: true })
+  @JoinColumn({ name: 'procedure_instance_id' })
+  procedureInstance: ProcedureInstance;
 
 
    get montantPaye(): number {

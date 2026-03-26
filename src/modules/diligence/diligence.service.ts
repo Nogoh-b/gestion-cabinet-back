@@ -15,6 +15,9 @@ import { UsersService } from '../iam/user/user.service';
 import { FindingsService } from '../finding/finding.service';
 import { User } from '../iam/user/entities/user.entity';
 import { StepsService } from '../dossiers/step.service';
+import { SubStage } from '../procedure/entities/sub-stage.entity';
+import { Stage } from '../procedure/entities/stage.entity';
+import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 
 @Injectable()
 export class DiligencesService extends BaseServiceV1<Diligence> {
@@ -73,7 +76,29 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       throw new BadRequestException('La date limite doit être postérieure à la date de début');
     }
     
+    let procedureInstance: ProcedureInstance | null = null;
+    let subStage: SubStage | null = null;
+    let stage: Stage | null = null;
 
+    if (dossier.procedureInstance) {
+      // Sinon, prendre l'instance active du dossier
+      procedureInstance =  dossier.procedureInstance;
+    }
+
+    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
+    if (procedureInstance && procedureInstance.currentStage) {
+      // Option: prendre la première sous-étape obligatoire non complétée
+      const currentStage = procedureInstance.currentStage;
+      const completedSubStages = procedureInstance.completedSubStages || [];
+      
+      subStage = currentStage.subStages?.find(
+        (ss: SubStage) => 
+          ss.isMandatory && 
+          !completedSubStages.includes(ss.id)
+      ) || currentStage.subStages?.[0];      
+
+      stage = currentStage
+    }
     // Création de l'entité
     const diligence = this.repository.create({
       title: dto.title,
@@ -88,6 +113,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       dossier: { id: dossier.id },
       assigned_lawyer: dto.assigned_lawyer_id ? { id: dto.assigned_lawyer_id } : undefined,
       status: DiligenceStatus.DRAFT,
+      sub_stage_id: subStage?.id,
+      procedure_instance_id: procedureInstance?.id
     });
 
       // Récupérer l'étape courante

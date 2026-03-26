@@ -174,6 +174,10 @@ execution_date?: Date;
 @ApiProperty({ required: false })
 remand_jurisdiction?: string;
 
+@Expose()
+@ApiProperty({ required: false })
+procedureInstance?: any;
+
 // Dans DossierResponseDto
 
 @Expose()

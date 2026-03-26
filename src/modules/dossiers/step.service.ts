@@ -120,7 +120,7 @@ export class StepsService extends BaseServiceV1<Step> {
 }
 
   // Méthode pour récupérer l'étape courante
-  async getCurrentStep(dossierId: number): Promise<Step> {
+  async getCurrentStep(dossierId: number): Promise<any> {
     const step = await this.stepsRepository.findOne({
       where: { 
         dossier: { id: dossierId },
@@ -131,7 +131,7 @@ export class StepsService extends BaseServiceV1<Step> {
     console.log(step)
 
     if (!step) {
-      throw new NotFoundException('Aucune étape en cours pour ce dossier');
+      // throw new NotFoundException('Aucune étape en cours pour ce dossier');
     }
 
     return step;

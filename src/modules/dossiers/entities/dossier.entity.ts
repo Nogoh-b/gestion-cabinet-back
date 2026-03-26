@@ -13,6 +13,7 @@ import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.ent
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne } from 'typeorm';
 import { Step, StepStatus } from './step.entity';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 
 
 
@@ -269,6 +270,13 @@ export class Dossier extends BaseEntity {
     inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' }
   })
   collaborators: Employee[];
+  
+    @OneToOne(() => ProcedureInstance)
+  @JoinColumn({ name: 'procedureInstanceId' })
+  procedureInstance: ProcedureInstance;
+
+  @Column({ nullable: true })
+  procedureInstanceId: string;
 
 
   @OneToMany(() => Step, step => step.dossier)

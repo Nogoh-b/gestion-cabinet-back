@@ -29,6 +29,8 @@ import { DocumentCustomerResponseDto } from './dto/document-customer-response.dt
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
 import { join } from 'path';
 import { StepsService } from 'src/modules/dossiers/step.service';
+import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(
@@ -328,6 +330,28 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       // 7. Upload du fichier
       const uploadedFile = await this.uploadFile(file, docType);
 
+        // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
+    let procedureInstance: ProcedureInstance | null = null;
+    let subStage: SubStage | null = null;
+
+    if (dossier.procedureInstance) {
+      // Sinon, prendre l'instance active du dossier
+      procedureInstance =  dossier.procedureInstance;
+    }
+
+    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
+    if (procedureInstance && procedureInstance.currentStage) {
+      // Option: prendre la première sous-étape obligatoire non complétée
+      const currentStage = procedureInstance.currentStage;
+      const completedSubStages = procedureInstance.completedSubStages || [];
+      
+      subStage = currentStage.subStages?.find(
+        (ss: SubStage) => 
+          ss.isMandatory && 
+          !completedSubStages.includes(ss.id)
+      ) || currentStage.subStages?.[0];
+    }
+
       // 8. Création du document
       const document = await this.createDocument({
         ...restDto,
@@ -336,6 +360,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         category : plainToInstance(DocumentCategory, category),
         dossier: plainToInstance(Dossier, dossier),
         uploadedFile,
+
         uploadedByUserId
       });
 

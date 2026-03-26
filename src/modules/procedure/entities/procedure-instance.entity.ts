@@ -8,6 +8,8 @@ import {
     OneToMany,
     CreateDateColumn,
     UpdateDateColumn,
+    ManyToMany,
+    JoinTable,
 } from 'typeorm';
 import { ProcedureTemplate } from './procedure-template.entity';
 import { Stage } from './stage.entity';
@@ -15,6 +17,7 @@ import { Decision } from './decision.entity';
 import { Task } from './task.entity';
 import { InstanceStatus } from './enums/instance-status.enum';
 import { HistoryEntry } from './history-entry.entity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 
 @Entity('procedure_instances')
 export class ProcedureInstance {
@@ -61,6 +64,15 @@ export class ProcedureInstance {
 
   @CreateDateColumn()
   createdAt: Date;
+
+
+  @ManyToMany(() => DocumentCustomer, (document) => document.procedureInstances)
+  @JoinTable({
+    name: 'procedure_instance_documents',
+    joinColumn: { name: 'procedure_instance_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
+  })
+  documents: DocumentCustomer[];
 
   @UpdateDateColumn()
   updatedAt: Date;

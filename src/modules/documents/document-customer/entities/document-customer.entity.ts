@@ -33,6 +33,9 @@ import { DocumentType } from '../../document-type/entities/document-type.entity'
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { Stage } from 'src/modules/procedure/entities/stage.entity';
+import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 
 
 
@@ -203,6 +206,24 @@ export class DocumentCustomer extends BaseEntity {
   
   @ManyToMany(() => Diligence, (diligence) => diligence.documents)
   diligences: Diligence[];
+
+    // Many-to-Many avec ProcedureInstance
+    @ManyToMany(() => ProcedureInstance, (instance) => instance.documents)
+    procedureInstances: ProcedureInstance[];
+
+    // Many-to-Many avec Stage (pour lier à des étapes spécifiques)
+    @ManyToMany(() => Stage, (stage) => stage.documents)
+    @JoinTable({
+      name: 'stage_documents',
+      joinColumn: { name: 'document_id', referencedColumnName: 'id' },
+      inverseJoinColumn: { name: 'stage_id', referencedColumnName: 'id' },
+    })
+    stages: Stage[];
+
+    @ManyToMany(() => SubStage, (subStage) => subStage.documents)
+    subStages: SubStage[];
+
+    
 
   @OneToMany(() => Finding, (finding) => finding.document)
   findings: Finding[];

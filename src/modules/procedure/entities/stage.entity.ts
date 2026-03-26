@@ -9,11 +9,13 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     OneToOne,
+    ManyToMany,
 } from 'typeorm';
 import { ProcedureTemplate } from './procedure-template.entity';
 import { SubStage } from './sub-stage.entity';
 import { Transition } from './transition.entity';
 import { StageConfig } from './stage-config.entity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 
 @Entity('stages')
 export class Stage {
@@ -56,6 +58,8 @@ export class Stage {
   config: StageConfig;
   @CreateDateColumn()
   createdAt: Date;
+  @ManyToMany(() => DocumentCustomer, (document) => document.subStages)
+  documents: DocumentCustomer[];
 
   @UpdateDateColumn()
   updatedAt: Date;

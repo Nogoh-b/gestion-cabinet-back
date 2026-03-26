@@ -24,7 +24,7 @@ export class ProcedureTemplateController {
 
   @Get()
   async findAll(@Query('activeOnly') activeOnly?: string) {
-    return this.templateService.findAll(activeOnly === 'true');
+    return this.templateService.findAll(true); 
   }
 
   @Get(':id')

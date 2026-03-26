@@ -20,6 +20,9 @@ import { UpdateFactureDto } from './dto/update-facture.dto';
 import { Facture } from './entities/facture.entity';
 import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 import { StepsService } from '../dossiers/step.service';
+import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
+import { SubStage } from '../procedure/entities/sub-stage.entity';
+import { Stage } from '../procedure/entities/stage.entity';
 
 
 
@@ -67,7 +70,29 @@ export class FactureService extends BaseServiceV1<Facture> {
     const client  =  dossier.client
     const client_id  =  dossier.client.id
     const numero  = await    this.generateFacNumber()
+    let procedureInstance: ProcedureInstance | null = null;
+    let subStage: SubStage | null = null;
+    let stage: Stage | null = null;
 
+    if (dossier.procedureInstance) {
+      // Sinon, prendre l'instance active du dossier
+      procedureInstance =  dossier.procedureInstance;
+    }
+
+    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
+    if (procedureInstance && procedureInstance.currentStage) {
+      // Option: prendre la première sous-étape obligatoire non complétée
+      const currentStage = procedureInstance.currentStage;
+      const completedSubStages = procedureInstance.completedSubStages || [];
+      
+      subStage = currentStage.subStages?.find(
+        (ss: SubStage) => 
+          ss.isMandatory && 
+          !completedSubStages.includes(ss.id)
+      ) || currentStage.subStages?.[0];      
+
+      stage = currentStage
+    }
     const facture =this.repository.create({
       ...rest,
       dossier,
@@ -76,7 +101,9 @@ export class FactureService extends BaseServiceV1<Facture> {
       invoice_type : {id: createDto.type} as InvoiceType,
       client_id,
       montantPaye: 0,
-      resteAPayer: createDto.montantTTC
+      resteAPayer: createDto.montantTTC,
+      sub_stage_id: subStage?.id,
+      procedure_instance_id: procedureInstance?.id
     });
     console.log('fffffffffff ' ,facture.dossier.id, ' ',dossierId)
 

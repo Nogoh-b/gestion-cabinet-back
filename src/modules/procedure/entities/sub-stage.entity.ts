@@ -7,8 +7,14 @@ import {
     JoinColumn,
     CreateDateColumn,
     UpdateDateColumn,
+    OneToMany,
+    ManyToMany,
 } from 'typeorm';
 import { Stage } from './stage.entity';
+import { Facture } from 'src/modules/facture/entities/facture.entity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
+import { Audience } from 'src/modules/audiences/entities/audience.entity';
 
 @Entity('sub_stages')
 export class SubStage {
@@ -33,6 +39,19 @@ export class SubStage {
 
   @Column({ default: true })
   isMandatory: boolean;
+
+
+    @OneToMany(() => Facture, (facture) => facture.subStage)
+  factures: Facture[];
+
+  @ManyToMany(() => DocumentCustomer, (document) => document.subStages)
+  documents: DocumentCustomer[];
+
+  @OneToMany(() => Diligence, (diligence) => diligence.subStage)
+  diligences: Diligence[];
+
+  @OneToMany(() => Audience, (audience) => audience.subStage)
+  audiences: Audience[];
 
   @CreateDateColumn()
   createdAt: Date;

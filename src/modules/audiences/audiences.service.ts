@@ -24,6 +24,9 @@ import { AudienceType } from '../audience-type/entities/audience-type.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { StepsService } from '../dossiers/step.service';
+import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
+import { SubStage } from '../procedure/entities/sub-stage.entity';
+import { Stage } from '../procedure/entities/stage.entity';
 
 
 
@@ -80,6 +83,29 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // ✅ VÉRIFICATION DU STATUT DU DOSSIER
     // Vérifier si l'audience est compatible avec le statut actuel
     this.validateAudienceForDossierStatus(dossier, dto.type as AudienceType1);
+    let procedureInstance: ProcedureInstance | null = null;
+    let subStage: SubStage | null = null;
+    let stage: Stage | null = null;
+
+    if (dossier.procedureInstance) {
+      // Sinon, prendre l'instance active du dossier
+      procedureInstance =  dossier.procedureInstance;
+    }
+
+    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
+    if (procedureInstance && procedureInstance.currentStage) {
+      // Option: prendre la première sous-étape obligatoire non complétée
+      const currentStage = procedureInstance.currentStage;
+      const completedSubStages = procedureInstance.completedSubStages || [];
+      
+      subStage = currentStage.subStages?.find(
+        (ss: SubStage) => 
+          ss.isMandatory && 
+          !completedSubStages.includes(ss.id)
+      ) || currentStage.subStages?.[0];      
+
+      stage = currentStage
+    }
 
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
@@ -95,6 +121,9 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       type: audience_type.code as unknown as AudienceType1,
       dossier: { id: dossier.id },
       status: AudienceStatus.SCHEDULED,
+      procedure_instance_id: procedureInstance?.id,
+      sub_stage_id: subStage?.id,
+      stage_id: stage?.id
     });
 
     if (dto?.document_ids) {

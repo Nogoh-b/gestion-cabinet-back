@@ -6,6 +6,9 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMan
 import { Finding, FindingSeverity, FindingStatus } from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
+import { Stage } from 'src/modules/procedure/entities/stage.entity';
 
 export enum DiligenceType {
   ACQUISITION = 'acquisition',
@@ -135,6 +138,28 @@ export class Diligence extends BaseEntity {
 
   @Column({ name: 'step_id', type: 'int', nullable: true })
   step_id: number;
+
+    @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
+  sub_stage_id: string;
+
+  @ManyToOne(() => SubStage, (subStage) => subStage.factures, { nullable: true })
+  @JoinColumn({ name: 'sub_stage_id' })
+  subStage: SubStage;
+
+    @Column({ name: 'stage_id', type: 'varchar', nullable: true })
+    stage_id: string;
+  
+    @ManyToOne(() => Stage)
+    @JoinColumn({ name: 'stage_id' })
+    stage: Stage;
+
+  // Garder aussi la liaison avec ProcedureInstance pour la vue globale
+  @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
+  procedure_instance_id: string;
+
+  @ManyToOne(() => ProcedureInstance, { nullable: true })
+  @JoinColumn({ name: 'procedure_instance_id' })
+  procedureInstance: ProcedureInstance;
 
 
   // Getters

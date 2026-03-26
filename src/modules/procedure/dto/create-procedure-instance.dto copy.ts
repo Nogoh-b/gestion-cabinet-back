@@ -1,5 +1,5 @@
 // dto/apply-transition.dto.ts
-import { IsString, IsOptional, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsObject, IsArray, IsUUID } from 'class-validator';
 
 export class ApplyTransitionDto {
   @IsUUID()
@@ -7,5 +7,13 @@ export class ApplyTransitionDto {
 
   @IsOptional()
   @IsString()
-  comment: string;
+  comment?: string;
+
+  @IsOptional()
+  @IsObject()
+  userInputs?: Record<string, any>;
+
+  @IsOptional()
+  @IsArray()
+  fileIds?: number[]; // IDs des fichiers déjà uploadés
 }

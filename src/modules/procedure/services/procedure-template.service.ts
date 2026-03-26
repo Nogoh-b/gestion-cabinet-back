@@ -677,10 +677,18 @@ private async updateTransitions(
             allowDiligences: stage.config.allowDiligences,
             allowInvoices: stage.config.allowInvoices,
             allowHearings: stage.config.allowHearings,
-            documentTypesAllowed: stage.config.documentTypesAllowed,
-            diligenceConfig: stage.config.diligenceConfig,
-            hearingConfig: stage.config.hearingConfig,
-            invoiceConfig: stage.config.invoiceConfig,
+            documentTypesAllowed: stage.config.documentTypesAllowed 
+                ? JSON.stringify(stage.config.documentTypesAllowed) 
+                : null,
+            diligenceConfig: stage.config.diligenceConfig 
+                ? JSON.stringify(stage.config.diligenceConfig) 
+                : null,
+            hearingConfig: stage.config.hearingConfig 
+                ? JSON.stringify(stage.config.hearingConfig) 
+                : null,
+            invoiceConfig: stage.config.invoiceConfig 
+                ? JSON.stringify(stage.config.invoiceConfig) 
+                : null,
           });
           await queryRunner.manager.save(newConfig);
         }
