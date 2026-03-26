@@ -30,6 +30,11 @@ export class HistoryService {
     return this.historyRepository.save(entry);
   }
 
+    async create(historyData: Partial<HistoryEntry>): Promise<HistoryEntry> {
+        const entry = this.historyRepository.create(historyData);
+        return this.historyRepository.save(entry);
+    }
+
   async findByInstance(instanceId: string): Promise<HistoryEntry[]> {
     return this.historyRepository.find({
       where: { instanceId },

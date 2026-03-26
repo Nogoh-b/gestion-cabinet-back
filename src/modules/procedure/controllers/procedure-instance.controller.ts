@@ -62,6 +62,46 @@ export class ProcedureInstanceController {
     return this.workflowService.applyManualTransition(id, dto, userId);
   }
 
+
+
+
+
+  @Get(':id/cycles')
+  async getAvailableCycles(@Param('id') id: string) {
+    return this.instanceService.getAvailableCycles(id);
+  }
+
+  @Post(':id/sub-stages/:subStageId/complete')
+  async completeSubStage(
+    @Param('id') id: string,
+    @Param('subStageId') subStageId: string,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id || 'system';
+    return this.instanceService.completeSubStage(id, subStageId, userId);
+  }
+
+  @Post(':id/transitions/:transitionId/apply')
+  async applyTransition1(
+    @Param('id') id: string,
+    @Param('transitionId') transitionId: string,
+    @Body() dto: ApplyTransitionDto,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id || 'system';
+    // return this.instanceService.applyTransition(id, { transitionId, ...dto }, userId);
+  }
+
+  @Post(':id/cycles/:cycleId/apply')
+  async applyCycle(
+    @Param('id') id: string,
+    @Param('cycleId') cycleId: string,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id || 'system';
+    return this.instanceService.applyCycle(id, cycleId, userId);
+  }
+
   @Put(':id/status')
   async updateStatus(
     @Param('id') id: string,
@@ -71,4 +111,5 @@ export class ProcedureInstanceController {
     const userId = req.user?.id || 'system';
     return this.instanceService.updateStatus(id, status, userId);
   }
+
 }

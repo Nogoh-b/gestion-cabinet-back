@@ -55,10 +55,11 @@ export class TaskService {
     task.status = TaskStatus.COMPLETED;
     task.completedAt = new Date();
     await this.taskRepository.save(task);
+    const instance = await this.instanceService.findOne(task.instanceId);
 
     // Déclencher les transitions automatiques basées sur la complétion de tâche
     await this.workflowService.triggerAutomaticTransitions(
-      task.instanceId,
+      instance,
       EventType.TASK_COMPLETED,
       { taskId: task.id, task },
     );

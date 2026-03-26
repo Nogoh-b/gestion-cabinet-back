@@ -16,34 +16,34 @@ export class Cycle {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ name: 'templateId' })
   templateId: string;
 
   @ManyToOne(() => ProcedureTemplate, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'templateId' })
   template: ProcedureTemplate;
 
-  @Column()
+  @Column({ name: 'fromStageId' })
   fromStageId: string;
 
-  @ManyToOne(() => Stage)
+  @ManyToOne(() => Stage, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'fromStageId' })
   fromStage: Stage;
 
-  @Column()
+  @Column({ name: 'toStageId' })
   toStageId: string;
 
-  @ManyToOne(() => Stage)
+  @ManyToOne(() => Stage, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'toStageId' })
   toStage: Stage;
 
-  @Column({ nullable: true })
-  label: string;
+  @Column({ type: 'text', nullable: true })
+  label: string | null;
 
-  @Column({ nullable: true, type: 'json' })
-  condition: any;
+  @Column({ type: 'text', nullable: true })
+  condition: string | null;
 
-  @Column({ default: 1 })
+  @Column({ type: 'int', default: 1 })
   maxLoops: number;
 
   @CreateDateColumn()

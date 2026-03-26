@@ -24,6 +24,7 @@ import { ProcedureInstanceController } from './controllers/procedure-instance.co
 import { TaskController } from './controllers/task.controller';
 import { HistoryEntry } from './entities/history-entry.entity';
 import { Cycle } from './entities/cycle.entity';
+import { StageConfig } from './entities/stage-config.entity';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { Cycle } from './entities/cycle.entity';
       ProcedureInstance,
       Cycle,
       Decision,
+      StageConfig,
       HistoryEntry,
       Task,
     ]),

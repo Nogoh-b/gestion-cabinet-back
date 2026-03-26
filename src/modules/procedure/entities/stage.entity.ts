@@ -8,10 +8,12 @@ import {
     JoinColumn,
     CreateDateColumn,
     UpdateDateColumn,
+    OneToOne,
 } from 'typeorm';
 import { ProcedureTemplate } from './procedure-template.entity';
 import { SubStage } from './sub-stage.entity';
 import { Transition } from './transition.entity';
+import { StageConfig } from './stage-config.entity';
 
 @Entity('stages')
 export class Stage {
@@ -50,7 +52,8 @@ export class Stage {
 
   @OneToMany(() => SubStage, (subStage) => subStage.stage, { cascade: true })
   subStages: SubStage[];
-
+  @OneToOne(() => StageConfig, (config) => config.stage, { cascade: true })
+  config: StageConfig;
   @CreateDateColumn()
   createdAt: Date;
 

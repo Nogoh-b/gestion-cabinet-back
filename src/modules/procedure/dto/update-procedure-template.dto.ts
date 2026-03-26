@@ -1,61 +1,22 @@
 // dto/update-procedure-template.dto.ts
-import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsInt } from 'class-validator';
+import { PartialType } from '@nestjs/mapped-types';
+import {
+    CreateStageDto,
+    StageConfigDto,
+    CreateTransitionDto,
+    CreateCycleDto
+} from './create-procedure-template.dto';
+import { IsOptional, IsArray, ValidateNested, IsBoolean, IsString, IsObject } from 'class-validator';
 import { Type } from 'class-transformer';
 
-
-
-
-
-
-
-export class UpdateSubStageDto {
+// DTO pour la mise à jour des stages (avec ID optionnel)
+export class UpdateStageDto extends PartialType(CreateStageDto) {
   @IsOptional()
   @IsString()
   id?: string;
-
-  @IsOptional()
-  @IsString()
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  description?: string;
-  @IsOptional()
-  @IsInt()
-  order?: number;
-  @IsOptional()
-  @IsBoolean()
-  isMandatory?: boolean;
 }
 
-export class UpdateStageDto {
-  @IsOptional()
-  @IsString()
-  id?: string;
-
-  @IsOptional()
-  @IsString()
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  canBeSkipped?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  canBeReentered?: boolean;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => UpdateSubStageDto)
-  subStages?: UpdateSubStageDto[];
-}
-
+// DTO pour la mise à jour
 export class UpdateProcedureTemplateDto {
   @IsOptional()
   @IsString()
@@ -74,4 +35,20 @@ export class UpdateProcedureTemplateDto {
   @ValidateNested({ each: true })
   @Type(() => UpdateStageDto)
   stages?: UpdateStageDto[];
+
+  @IsOptional()
+  @IsObject()
+  stageConfigs?: Record<string, StageConfigDto>;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateTransitionDto)
+  transitions?: CreateTransitionDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateCycleDto)
+  cycles?: CreateCycleDto[];
 }

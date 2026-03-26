@@ -53,6 +53,12 @@ export class ProcedureInstance {
   @OneToMany(() => Task, (task) => task.instance, { cascade: true })
   tasks: Task[];
 
+ @Column({ type: 'json', nullable: true })
+  completedSubStages: string[];
+
+  @Column({ type: 'json', nullable: true })
+  cycleUsageCount: Record<string, number>;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -28,4 +28,21 @@ export enum EventType {
   SUBSTAGE_COMPLETED = 'substage_completed',
   TASK_COMPLETED = 'task_completed',
   DOCUMENT_UPLOADED = 'document_uploaded',
+CYCLE_APPLIED = 'cycle_applied',
+
+
+
+  INSTANCE_CREATED = 'instance_created',
+  INSTANCE_STARTED = 'instance_started',
+  INSTANCE_COMPLETED = 'instance_completed',
+  INSTANCE_CANCELLED = 'instance_cancelled',
+  STAGE_ENTERED = 'stage_entered',
+  STAGE_COMPLETED = 'stage_completed',
+  SUB_STAGE_ENTERED = 'sub_stage_entered',
+  SUB_STAGE_COMPLETED = 'sub_stage_completed',
+  TRANSITION_TRIGGERED = 'transition_triggered',
+  USER_ACTION = 'user_action',
+  ERROR_OCCURRED = 'error_occurred',
+
+
 }

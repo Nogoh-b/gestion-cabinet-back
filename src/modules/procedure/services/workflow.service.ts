@@ -6,11 +6,11 @@ import { ProcedureInstance } from '../entities/procedure-instance.entity';
 import { Stage } from '../entities/stage.entity';
 import { Transition } from '../entities/transition.entity';
 import { Decision } from '../entities/decision.entity';
-import { WorkflowContext } from '../interfaces/workflow-context.interface';
 import { TransitionResult } from '../interfaces/transition-result.interface';
 import { HistoryEntry } from '../entities/history-entry.entity';
 import { EventType, TransitionType } from '../entities/enums/instance-status.enum';
 import { ApplyTransitionDto } from '../dto/create-procedure-instance.dto copy';
+import * as jsonLogic from 'json-logic-js';
 
 @Injectable()
 export class WorkflowService {
@@ -83,47 +83,7 @@ export class WorkflowService {
     return this.executeTransition(instance, transition, userId, dto.comment);
   }
 
-  /**
-   * Déclenche les transitions automatiques basées sur un événement
-   */
-  async triggerAutomaticTransitions(
-    instanceId: string,
-    eventType: EventType,
-    eventData: any,
-  ): Promise<TransitionResult[]> {
-    const instance = await this.getInstanceWithRelations(instanceId);
-    const results: TransitionResult[] = [];
 
-    const automaticTransitions = await this.transitionRepository.find({
-      where: {
-        fromStageId: instance.currentStageId,
-        type: TransitionType.AUTOMATIC,
-        triggerEvent: eventType,
-      },
-      relations: ['fromStage', 'toStage'],
-    });
-
-    for (const transition of automaticTransitions) {
-      const context: WorkflowContext = {
-        instance,
-        eventType,
-        eventData,
-      };
-
-      if (await this.evaluateCondition(transition.triggerCondition, context)) {
-        const result = await this.executeTransition(
-          instance,
-          transition,
-          null,
-          null,
-          eventData,
-        );
-        results.push(result);
-      }
-    }
-
-    return results;
-  }
 
   /**
    * Exécute une transition (cœur du workflow)
@@ -186,33 +146,7 @@ export class WorkflowService {
     };
   }
 
-  /**
-   * Évalue une condition stockée en JSON
-   */
-  private async evaluateCondition(
-    condition: any,
-    context: WorkflowContext | ProcedureInstance,
-  ): Promise<boolean> {
-    if (!condition) {
-      return true;
-    }
 
-    // Condition peut être une expression simple ou un objet JSON Logic
-    // Exemple: { "==": [{ "var": "instance.data.montant" }, 10000] }
-    
-    try {
-      // Implémentation simplifiée - à adapter selon vos besoins
-      if (typeof condition === 'string') {
-        // Évaluation d'expression simple (à remplacer par un vrai parser)
-        return true;
-      }
-      
-      // Pour JSON Logic, utiliser une lib comme 'json-logic-js'
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
 
   /**
    * Exécute les actions post-transition
@@ -231,11 +165,149 @@ export class WorkflowService {
   private async getInstanceWithRelations(id: string): Promise<ProcedureInstance> {
     const instance = await this.instanceRepository.findOne({
       where: { id },
-      relations: ['template', 'currentStage', 'decisions', 'history'],
+      relations: ['template', 'currentStage',  'currentStage.subStages','decisions', 'history'],
     });
     if (!instance) {
       throw new NotFoundException(`Instance with ID ${id} not found`);
     }
     return instance;
   }
+
+  /**
+   * Évalue une condition stockée en JSON
+   */
+    async evaluateCondition(condition: any, context: any): Promise<boolean> {
+        if (!condition) return true;
+        
+        try {
+        // Préparer les variables pour jsonLogic
+        const vars: any = {};
+        
+        if (context.instance) {
+            vars['instance'] = {
+            data: context.instance.data,
+            completedSubStages: context.instance.completedSubStages,
+            };
+        }
+        
+        if (context.subStage) {
+            vars['subStage'] = context.subStage;
+        }
+        
+        if (context.stage) {
+            vars['stage'] = context.stage;
+        }
+        
+        // Vérifier si jsonLogic est défini
+        if (!jsonLogic || typeof jsonLogic.apply !== 'function') {
+            console.warn('jsonLogic not properly loaded, returning true for condition');
+            return true;
+        }
+        
+        // Utiliser json-logic-js pour évaluer
+        return jsonLogic.apply(condition, vars);
+        } catch (error) {
+        console.error('Error evaluating condition:', error);
+        console.error('Condition:', JSON.stringify(condition));
+        console.error('Context:', JSON.stringify(context));
+        return false;
+        }
+    }
+
+// Modifier triggerAutomaticTransitions pour accepter queryRunner
+async triggerAutomaticTransitions(
+  instance: ProcedureInstance,
+  eventType: EventType,
+  eventData: any,
+  queryRunner?: any,
+  userId?: string
+): Promise<TransitionResult[]> {
+  const results: TransitionResult[] = [];
+
+  const automaticTransitions = await this.transitionRepository.find({
+    where: {
+      fromStageId: instance.currentStageId,
+      type: TransitionType.AUTOMATIC,
+      triggerEvent: eventType,
+    },
+    relations: ['fromStage', 'toStage'],
+  });
+
+  for (const transition of automaticTransitions) {
+    const context = {
+      instance: { 
+        data: instance.data, 
+        completedSubStages: instance.completedSubStages 
+      },
+      eventType,
+      eventData,
+    };
+
+    if (await this.evaluateCondition(transition.triggerCondition, context)) {
+      const result = await this.executeTransitionWithQueryRunner(
+        instance,
+        transition,
+        userId || 'system',
+        null,
+        eventData,
+        queryRunner
+      );
+      results.push(result);
+    }
+  }
+
+  return results;
+}
+
+// Ajouter méthode avec queryRunner pour les transactions
+private async executeTransitionWithQueryRunner(
+  instance: ProcedureInstance,
+  transition: Transition,
+  userId: string,
+  comment: string | null,
+  eventData: any,
+  queryRunner?: any
+): Promise<TransitionResult> {
+  const repo = queryRunner || this.instanceRepository;
+  
+  // Enregistrer la décision
+  const decision = this.decisionRepository.create({
+    instanceId: instance.id,
+    fromStageId: transition.fromStageId,
+    transitionId: transition.id,
+    toStageId: transition.toStageId,
+    userId,
+    comment,
+  });
+  await repo.manager.save(decision);
+
+  // Quitter le stage courant
+  await this.historyRepository.save({
+    instanceId: instance.id,
+    eventType: EventType.STAGE_EXIT,
+    stageId: transition.fromStageId,
+    userId,
+    metadata: { transitionId: transition.id, eventData },
+  });
+
+  // Entrer dans le nouveau stage
+  instance.currentStageId = transition.toStageId;
+  await repo.manager.save(instance);
+
+  await this.historyRepository.save({
+    instanceId: instance.id,
+    eventType: EventType.STAGE_ENTER,
+    stageId: transition.toStageId,
+    userId,
+    metadata: { transitionId: transition.id },
+  });
+
+  return {
+    success: true,
+    fromStage: transition.fromStage,
+    toStage: transition.toStage,
+    transition,
+  };
+}
+
 }
