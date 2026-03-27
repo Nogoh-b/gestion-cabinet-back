@@ -530,7 +530,7 @@ private async updateTransitions(
   templateId: string,
   transitionsDto: any[],
 ): Promise<void> {
-  if (!transitionsDto || transitionsDto.length === 0) {
+  if (!transitionsDto ) {
     return;
   }
   
@@ -544,7 +544,7 @@ private async updateTransitions(
       console.warn(`Okkkkkk ${JSON.stringify(stages)}`);
   
   // Supprimer toutes les transitions existantes
-  if (validStageIds.size > 0) {
+  if (validStageIds.size >= 0) {
     await queryRunner.manager.delete(Transition, {
       fromStageId: In(Array.from(validStageIds)),
     });
