@@ -80,10 +80,22 @@ export class ProcedureInstanceController {
   async completeSubStage(
     @Param('id') id: string,
     @Param('subStageId') subStageId: string,
+    @Param('notes') notes: string,
+    @Param('skipAutoTransitions') skipAutoTransitions: boolean,
     @Req() req: any,
   ) {
     const userId = req.user?.id || 'system';
-    return this.instanceService.completeSubStage(id, subStageId, userId);
+    return this.instanceService.completeSubStage(id, subStageId, userId,notes,skipAutoTransitions);
+  }
+
+  @Post(':id/sub-stages/:subStageId/start')
+  async startSubStage(
+    @Param('id') id: string,
+    @Param('subStageId') subStageId: string,
+    @Req() req: any,
+  ) {
+    const userId = req.user?.id || 'system';
+    return this.instanceService.startSubStage(id, subStageId, userId);
   }
 
   @Post(':id/transitions/:transitionId/apply')

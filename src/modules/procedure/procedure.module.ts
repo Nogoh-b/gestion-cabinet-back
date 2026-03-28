@@ -25,6 +25,7 @@ import { TaskController } from './controllers/task.controller';
 import { HistoryEntry } from './entities/history-entry.entity';
 import { Cycle } from './entities/cycle.entity';
 import { StageConfig } from './entities/stage-config.entity';
+import { InstanceMapperService } from './services/instance-sub-stage.service';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { StageConfig } from './entities/stage-config.entity';
     WorkflowService,
     TaskService,
     HistoryService,
+    InstanceMapperService
   ],
   exports: [
     ProcedureTemplateService,

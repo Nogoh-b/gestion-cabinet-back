@@ -65,6 +65,17 @@ export class ProcedureInstance {
   @CreateDateColumn()
   createdAt: Date;
 
+@Column({ type: 'json', nullable: true })
+  subStageMetadata: Record<string, {
+    startedAt?: string;
+    completedAt?: string;
+    notes?: string;
+    documentIds?: number[];
+    diligenceIds?: number[];
+    invoiceIds?: number[];
+    audienceIds?: number[];
+  }>;
+
 
   @ManyToMany(() => DocumentCustomer, (document) => document.procedureInstances)
   @JoinTable({

@@ -100,7 +100,7 @@ export class WorkflowService {
       const decision = this.decisionRepository.create({
         instanceId: instance.id,
         fromStageId: transition.fromStageId,
-        transitionId: transition.id,
+        // transitionId: transition.id,
         toStageId: transition.toStageId,
         userId,
         comment,
@@ -277,7 +277,7 @@ private async executeTransitionWithQueryRunner(
   const decision = this.decisionRepository.create({
     instanceId: instance.id,
     fromStageId: transition.fromStageId,
-    transitionId: transition.id,
+    // transitionId: transition.id,
     toStageId: transition.toStageId,
     userId,
     comment,

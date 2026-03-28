@@ -30,6 +30,11 @@ export enum EventType {
   DOCUMENT_UPLOADED = 'document_uploaded',
 CYCLE_APPLIED = 'cycle_applied',
 
+  SUBSTAGE_STARTED = 'substage_started',
+  SUBSTAGE_BLOCKED = 'substage_blocked',
+  SUBSTAGE_UNBLOCKED = 'substage_unblocked',
+  SUBSTAGE_SKIPPED = 'substage_skipped',
+
 
 
   INSTANCE_CREATED = 'instance_created',

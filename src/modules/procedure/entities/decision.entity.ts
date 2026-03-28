@@ -29,8 +29,8 @@ export class Decision {
   @JoinColumn({ name: 'fromStageId' })
   fromStage: Stage;
 
-  @Column()
-  transitionId: string;
+//   @Column()
+//   transitionId: string;
 
   @ManyToOne(() => Transition)
   @JoinColumn({ name: 'transitionId' })

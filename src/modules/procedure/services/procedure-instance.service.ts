@@ -13,6 +13,8 @@ import { HistoryService } from './history.service';
 import { CreateProcedureInstanceDto } from '../dto/create-procedure-instance.dto';
 import { EventType, InstanceStatus, TransitionType } from '../entities/enums/instance-status.enum';
 import { HistoryEntry } from '../entities/history-entry.entity';
+import { InstanceMapperService } from './instance-sub-stage.service';
+import { MappedInstance } from '../entities/type/instance-status.enum';
 
 @Injectable()
 export class ProcedureInstanceService {
@@ -31,6 +33,8 @@ export class ProcedureInstanceService {
     private workflowService: WorkflowService,
     private historyService: HistoryService,
     private dataSource: DataSource,
+    private instanceMapper: InstanceMapperService,
+
   ) {}
 
   async create(dto: CreateProcedureInstanceDto, userId: string): Promise<ProcedureInstance> {
@@ -75,50 +79,58 @@ export class ProcedureInstanceService {
 async completeSubStage(
   instanceId: string,
   subStageId: string,
-  userId: string
+  userId: string,
+  notes?: string,
+  skipAutoTransitions: boolean = false, // Ajout du paramètre
 ): Promise<ProcedureInstance> {
   try {
     // 1. Récupérer l'instance sans lock
     const instance = await this.findOne(instanceId);
-    
     if (!instance) {
       throw new NotFoundException(`Instance with ID ${instanceId} not found`);
     }
     
-    // Vérifier que la sous-étape n'est pas déjà complétée
+    
+    // Vérifier si déjà complétée
     if (instance.completedSubStages?.includes(subStageId)) {
       throw new BadRequestException('SubStage already completed');
     }
     
-    // 2. Vérifier que la sous-étape appartient au stage courant
-    const currentStage = instance.currentStage;
-    const subStage = currentStage?.subStages?.find(ss => ss.id === subStageId);
+    // Ajouter aux complétées
+    instance.completedSubStages = [...(instance.completedSubStages || []), subStageId];
     
-    if (!subStage) {
-      throw new BadRequestException('SubStage not found in current stage');
+    // Mettre à jour les métadonnées
+    if (!instance.subStageMetadata) {
+      instance.subStageMetadata = {};
     }
     
-    // 3. Ajouter à la liste des sous-étapes complétées
-    const completedSubStages = [...(instance.completedSubStages || []), subStageId];
+    instance.subStageMetadata[subStageId] = {
+      ...instance.subStageMetadata[subStageId],
+      completedAt: new Date().toISOString(),
+      notes: notes || instance.subStageMetadata[subStageId]?.notes,
+    };
     
-    // Mise à jour directe sans transaction
-    await this.instanceRepository.update(instance.id, {
-      completedSubStages,
-    });
+    await this.instanceRepository.save(instance);
     
-    // 4. Enregistrer dans l'historique
     await this.historyService.log(
       instanceId,
       EventType.SUBSTAGE_COMPLETED,
-      instance.currentStageId,
+      null,
       userId,
-      { subStageId, subStageName: subStage.name }
+      { subStageId, notes },
     );
     
+    // Vérifier les transitions automatiques
+    // await this.checkAndTriggerAutomaticTransitions(instanceId,userId);
+    
+    // 2. Vérifier que la sous-étape appartient au stage courant
+    const currentStage = instance.currentStage;
+
+
     // 5. Vérifier si toutes les sous-étapes obligatoires sont complétées
     const mandatorySubStages = currentStage.subStages.filter(ss => ss.isMandatory);
     const allMandatoryCompleted = mandatorySubStages.every(ss => 
-      completedSubStages.includes(ss.id)
+      instance.completedSubStages.includes(ss.id)
     );
 
     console.log(mandatorySubStages, ' ', allMandatoryCompleted)
@@ -150,8 +162,16 @@ private async triggerAutomaticTransitionsSimple(
       type: TransitionType.AUTOMATIC,
     },
   });
+  console.log('automaticTransitions ', automaticTransitions)
   
   for (const transition of automaticTransitions) {
+
+    const userHasChosenTransition = instance.data?._pendingTransition;
+    if (userHasChosenTransition) {
+      console.log('Skipping automatic transition because user has chosen a manual transition');
+      continue;
+    }
+
     // Évaluer la condition si présente
     let shouldTrigger = true;
     if (transition.triggerCondition) {
@@ -166,6 +186,7 @@ private async triggerAutomaticTransitionsSimple(
         context
       );
     }
+    console.log('doit effectue transaction automatique ', automaticTransitions)
     
     if (shouldTrigger) {
       // Exécuter la transition
@@ -214,89 +235,6 @@ private async executeTransitionSimple(
   );
 }
 
-  /**
-   * Déclencher les transitions automatiques (sans transaction imbriquée)
-   */
-private async triggerAutomaticTransitions(
-    instance: ProcedureInstance,
-    queryRunner: any,
-    userId: string
-  ): Promise<void> {
-    const automaticTransitions = await this.transitionRepository.find({
-    where: {
-        fromStageId: instance.currentStageId,
-        type: TransitionType.AUTOMATIC, // Use the enum value
-    },
-    });
-    
-    for (const transition of automaticTransitions) {
-      // Évaluer la condition si présente
-      let shouldTrigger = true;
-      if (transition.triggerCondition) {
-        const context = {
-          instance: {
-            data: instance.data,
-            completedSubStages: instance.completedSubStages,
-          },
-        };
-        shouldTrigger = await this.workflowService.evaluateCondition(transition.triggerCondition, context);
-      }
-      
-      if (shouldTrigger) {
-        // Exécuter la transition
-        await this.executeTransition(
-          instance,
-          transition,
-          userId,
-          queryRunner
-        );
-      }
-    }
-  }
-
-
-    /**
-   * Exécuter une transition (sans transaction imbriquée)
-   */
-  private async executeTransition(
-    instance: ProcedureInstance,
-    transition: any,
-    userId: string,
-    queryRunner: any
-  ): Promise<void> {
-    // Enregistrer la décision
-    const decision = {
-      instanceId: instance.id,
-      fromStageId: transition.fromStageId,
-      transitionId: transition.id,
-      toStageId: transition.toStageId,
-      userId,
-      comment: 'Transition automatique',
-    };
-    await queryRunner.manager.save('decisions', decision);
-    
-    // Quitter le stage courant
-    await queryRunner.manager.save(HistoryEntry, {
-      instanceId: instance.id,
-      eventType: EventType.STAGE_EXIT,
-      stageId: transition.fromStageId,
-      userId,
-      metadata: { transitionId: transition.id, type: 'automatic' },
-    });
-    
-    // Entrer dans le nouveau stage
-    await queryRunner.manager.update(ProcedureInstance, instance.id, {
-      currentStageId: transition.toStageId,
-    });
-    
-    await queryRunner.manager.save(HistoryEntry, {
-      instanceId: instance.id,
-      eventType: EventType.STAGE_ENTER,
-      stageId: transition.toStageId,
-      userId,
-      metadata: { transitionId: transition.id },
-    });
-  }
 
   
   /**
@@ -567,7 +505,7 @@ private generateUuid(): string {
         'currentStage.subStages',
         'decisions',
         'tasks',
-        'history',
+        // 'history',
       ],
     });
     
@@ -579,6 +517,13 @@ private generateUuid(): string {
     if (!instance.cycleUsageCount) instance.cycleUsageCount = {};
     
     return instance;
+  }
+
+  async findOneMapped(id: string): Promise<MappedInstance> {
+    const instance = await this.findOne(id);
+    // const currentTemplate = await this.templateService.findOne(instance.templateId);
+    
+    return this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template);
   }
 
   async updateStatus(id: string, status: InstanceStatus, userId: string): Promise<ProcedureInstance> {
@@ -599,9 +544,9 @@ private generateUuid(): string {
 
   async getWorkflowStatus(id: string): Promise<any> {
     const instance = await this.findOne(id);
-    const availableTransitions = await this.getAvailableTransitions(id);
+    const availableTransitions = await this.workflowService.getAvailableTransitions(id);
     const availableCycles = await this.getAvailableCycles(id);
-
+    const mapped = this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template);
     // Calculer la progression
     const totalMandatorySubStages = instance.template.stages.reduce(
       (acc, stage) => acc + stage.subStages.filter(ss => ss.isMandatory).length, 0
@@ -611,18 +556,87 @@ private generateUuid(): string {
       : 0;
 
     return {
-      instance,
-      currentStage: instance.currentStage,
+      instance: {   
+        ...mapped.instance,
+        currentStage: mapped.currentStage,  // Remplacer par le stage mappé
+        },
+      stages: mapped.stages,
+      currentStage: mapped.currentStage,
+      progress: mapped.progress,
       availableTransitions,
       availableCycles,
-      progress,
       completedSubStages: instance.completedSubStages,
       cycleUsageCount: instance.cycleUsageCount,
-      history: instance.history,
+    //   history: instance.history,
       tasks: instance.tasks,
     };
   }
 
+
+
+ /**
+   * Démarrer une sous-étape
+   */
+  async startSubStage(
+    instanceId: string,
+    subStageId: string,
+    userId: string,
+    notes?: string,
+  ): Promise<ProcedureInstance> {
+    const instance = await this.findOne(instanceId);
+    
+    // Initialiser les métadonnées si nécessaire
+    if (!instance.subStageMetadata) {
+      instance.subStageMetadata = {};
+    }
+    
+    instance.subStageMetadata[subStageId] = {
+      ...instance.subStageMetadata[subStageId],
+      startedAt: new Date().toISOString(),
+      notes: notes || instance.subStageMetadata[subStageId]?.notes,
+    };
+    
+    await this.instanceRepository.save(instance);
+    
+    await this.historyService.log(
+      instanceId,
+      EventType.SUBSTAGE_STARTED,
+      null,
+      userId,
+      { subStageId, notes },
+    );
+    
+    return instance;
+  }
+
+
+
+  /**
+   * Ajouter un document à une sous-étape
+   */
+  async addDocumentToSubStage(
+    instanceId: string,
+    subStageId: string,
+    documentId: number,
+  ): Promise<ProcedureInstance> {
+    const instance = await this.findOne(instanceId);
+    
+    if (!instance.subStageMetadata) {
+      instance.subStageMetadata = {};
+    }
+    
+    if (!instance.subStageMetadata[subStageId]) {
+      instance.subStageMetadata[subStageId] = {};
+    }
+    
+    const currentDocs = instance.subStageMetadata[subStageId].documentIds || [];
+    if (!currentDocs.includes(documentId)) {
+      instance.subStageMetadata[subStageId].documentIds = [...currentDocs, documentId];
+    }
+    
+    await this.instanceRepository.save(instance);
+    return instance;
+  }
 
 
   /**
@@ -678,6 +692,18 @@ async applyTransition(
       }
     }
 
+    const currentStage = instance.currentStage;
+    const mandatorySubStages = currentStage.subStages.filter(ss => ss.isMandatory);
+    const allMandatoryCompleted = mandatorySubStages.every(ss => 
+      instance.completedSubStages.includes(ss.id)
+    );
+    
+    if (!allMandatoryCompleted) {
+      throw new BadRequestException(
+        'Toutes les sous-étapes obligatoires doivent être complétées avant de continuer'
+      );
+    }
+
     // 5. Traiter les inputs utilisateur (si la transition en attend)
     let processedInputs: Record<string, any> = {};
     if (transition.expectsUserInput && transition.userInputs?.length > 0) {
@@ -718,7 +744,7 @@ async applyTransition(
     await queryRunner.commitTransaction();
 
     // 8. Déclencher les transitions automatiques de la nouvelle étape
-    await this.checkAndTriggerAutomaticTransitions(instance.id, userId);
+    // await this.checkAndTriggerAutomaticTransitions(instance.id, userId); 
 
     return this.findOne(instance.id);
   } catch (error) {
@@ -955,147 +981,154 @@ async triggerEventOnInstance(
 }
 
 
+/**
+ * Réinitialiser une instance de procédure comme à la création
+ * @param instanceId - ID de l'instance à réinitialiser
+ * @param userId - ID de l'utilisateur effectuant la réinitialisation
+ * @param options - Options de réinitialisation
+ */
+async resetInstance(
+  instanceId: string,
+  userId: string,
+  options?: {
+    keepTitle?: boolean;
+    keepData?: boolean;
+    keepHistory?: boolean;
+    reason?: string;
+  }
+): Promise<ProcedureInstance> {
+  const queryRunner = this.dataSource.createQueryRunner();
+  
+  try {
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    /**
-    * Réinitialiser une instance de procédure comme à la création
-    * @param instanceId - ID de l'instance à réinitialiser
-    * @param userId - ID de l'utilisateur effectuant la réinitialisation
-    * @param options - Options de réinitialisation
-    */
-    async resetInstance(
-        instanceId: string,
-        userId: string,
-        options?: {
-            keepTitle?: boolean;
-            keepData?: boolean;
-            keepHistory?: boolean;
-            reason?: string;
-        }
-    ): Promise<ProcedureInstance> {
-        const queryRunner = this.dataSource.createQueryRunner();
-        
-        try {
-            await queryRunner.connect();
-            await queryRunner.startTransaction();
-
-            // Récupérer l'instance
-            const instance = await queryRunner.manager.findOne(ProcedureInstance, {
-                where: { id: instanceId },
-                lock: { mode: 'pessimistic_write' },
-            });
-            
-            if (!instance) {
-                throw new NotFoundException(`Instance with ID ${instanceId} not found`);
-            }
-
-            // Récupérer le template
-            const template = await this.templateService.findOne(instance.templateId);
-            const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
-
-            // Préparer les données
-            const originalTitle = instance.title;
-            const originalData = instance.data;
-            
-            const resetData: Partial<ProcedureInstance> = {
-                status: InstanceStatus.ACTIVE,
-                currentStageId: firstStage.id,
-                completedSubStages: [],
-                cycleUsageCount: {},
-            };
-
-            if (options?.keepTitle) {
-                resetData.title = originalTitle;
-            } else {
-                resetData.title = `${originalTitle} (Réinitialisée)`;
-            }
-
-            if (options?.keepData) {
-                resetData.data = {
-                    ...originalData,
-                    _resetInfo: {
-                        resetAt: new Date(),
-                        resetBy: userId,
-                        previousData: originalData,
-                        reason: options?.reason,
-                    }
-                };
-            } else {
-                resetData.data = {
-                    ...(originalData?.clientName ? { clientName: originalData.clientName } : {}),
-                    _resetInfo: {
-                        resetAt: new Date(),
-                        resetBy: userId,
-                        reason: options?.reason,
-                    }
-                };
-            }
-
-            // Mettre à jour l'instance
-            await queryRunner.manager.update(ProcedureInstance, instance.id, resetData);
-
-            // Supprimer les décisions si nécessaire
-            if (!options?.keepHistory) {
-                await queryRunner.manager
-                    .createQueryBuilder()
-                    .delete()
-                    .from('decisions')
-                    .where('instanceId = :instanceId', { instanceId: instance.id })
-                    .execute();
-            }
-
-            // ✅ CORRECTION ICI - Utiliser queryRunner.manager.create() au lieu de générer manuellement l'UUID
-            // Enregistrer le premier historique
-            const historyEntry1 = queryRunner.manager.create(HistoryEntry, {
-                instanceId: instance.id,
-                eventType: EventType.DECISION,
-                stageId: instance.currentStageId,
-                userId: userId || 'system',
-                metadata: {
-                    action: 'reset',
-                    fromStage: instance.currentStageId,
-                    toStage: firstStage.id,
-                    completedSubStages: instance.completedSubStages,
-                    cycleUsageCount: instance.cycleUsageCount,
-                    reason: options?.reason || 'Réinitialisation manuelle',
-                },
-            });
-            await queryRunner.manager.save(historyEntry1);
-
-            // Enregistrer le second historique
-            const historyEntry2 = queryRunner.manager.create(HistoryEntry, {
-                instanceId: instance.id,
-                eventType: EventType.STAGE_ENTER,
-                stageId: firstStage.id,
-                userId: userId || 'system',
-                metadata: {
-                    message: 'Instance réinitialisée',
-                    fromStage: instance.currentStageId,
-                    reason: options?.reason,
-                    keepData: options?.keepData,
-                    keepTitle: options?.keepTitle,
-                },
-            });
-            await queryRunner.manager.save(historyEntry2);
-
-            await queryRunner.commitTransaction();
-
-            // Retourner l'instance mise à jour
-            return this.findOne(instance.id);
-            
-        } catch (error) {
-            await queryRunner.rollbackTransaction();
-            console.error('Error resetting instance:', error);
-            
-            if (error.code === 'ER_LOCK_WAIT_TIMEOUT') {
-                throw new BadRequestException('La réinitialisation est temporairement indisponible, veuillez réessayer');
-            }
-            
-            throw new BadRequestException(`Erreur lors de la réinitialisation: ${error.message}`);
-        } finally {
-            await queryRunner.release();
-        }
+    // Récupérer l'instance avec lock
+    const instance = await queryRunner.manager.findOne(ProcedureInstance, {
+      where: { id: instanceId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    
+    if (!instance) {
+      throw new NotFoundException(`Instance with ID ${instanceId} not found`);
     }
 
+    // Récupérer le template actuel
+    const template = await this.templateService.findOne(instance.templateId);
+    const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
+
+    // Sauvegarder les données originales
+    const originalTitle = instance.title;
+    const originalData = instance.data;
+    
+    // 🔥 Préparer les données de réinitialisation
+    const resetData: Partial<ProcedureInstance> = {
+      status: InstanceStatus.ACTIVE,
+      currentStageId: firstStage.id,
+      // ✅ Réinitialiser les sous-étapes complétées
+      completedSubStages: [],
+      // ✅ Réinitialiser les métadonnées des sous-étapes
+      subStageMetadata: {},
+      // ✅ Réinitialiser les compteurs de cycles
+      cycleUsageCount: {},
+    };
+
+    // Gestion du titre
+    if (options?.keepTitle) {
+      resetData.title = originalTitle;
+    } else {
+      resetData.title = `${originalTitle} (Réinitialisée)`;
+    }
+
+    // Gestion des données métier
+    if (options?.keepData) {
+      resetData.data = {
+        ...originalData,
+        _resetInfo: {
+          resetAt: new Date(),
+          resetBy: userId,
+          previousData: originalData,
+          reason: options?.reason,
+        }
+      };
+    } else {
+      resetData.data = {
+        ...(originalData?.clientName ? { clientName: originalData.clientName } : {}),
+        _resetInfo: {
+          resetAt: new Date(),
+          resetBy: userId,
+          reason: options?.reason,
+        }
+      };
+    }
+
+    // 🔥 Mettre à jour l'instance
+    await queryRunner.manager.update(ProcedureInstance, instance.id, resetData);
+
+    // Supprimer les décisions si demandé
+    if (!options?.keepHistory) {
+      await queryRunner.manager
+        .createQueryBuilder()
+        .delete()
+        .from('decisions')
+        .where('instanceId = :instanceId', { instanceId: instance.id })
+        .execute();
+    }
+
+    // 🔥 Enregistrer l'historique de la réinitialisation
+    const historyEntry1 = queryRunner.manager.create(HistoryEntry, {
+      instanceId: instance.id,
+      eventType: EventType.DECISION,
+      stageId: instance.currentStageId,
+      userId: userId || 'system',
+      metadata: {
+        action: 'reset',
+        fromStage: instance.currentStageId,
+        toStage: firstStage.id,
+        completedSubStages: instance.completedSubStages,
+        subStageMetadata: instance.subStageMetadata, // ✅ Sauvegarder l'ancien état
+        cycleUsageCount: instance.cycleUsageCount,
+        reason: options?.reason || 'Réinitialisation manuelle',
+      },
+    });
+    await queryRunner.manager.save(historyEntry1);
+
+    // 🔥 Enregistrer l'entrée dans le premier stage
+    const historyEntry2 = queryRunner.manager.create(HistoryEntry, {
+      instanceId: instance.id,
+      eventType: EventType.STAGE_ENTER,
+      stageId: firstStage.id,
+      userId: userId || 'system',
+      metadata: {
+        message: 'Instance réinitialisée',
+        fromStage: instance.currentStageId,
+        reason: options?.reason,
+        keepData: options?.keepData,
+        keepTitle: options?.keepTitle,
+      },
+    });
+    await queryRunner.manager.save(historyEntry2);
+
+    await queryRunner.commitTransaction();
+
+    // Retourner l'instance mise à jour
+    return this.findOne(instance.id);
+    
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    console.error('Error resetting instance:', error);
+    
+    if (error.code === 'ER_LOCK_WAIT_TIMEOUT') {
+      throw new BadRequestException(
+        'La réinitialisation est temporairement indisponible, veuillez réessayer'
+      );
+    }
+    
+    throw new BadRequestException(`Erreur lors de la réinitialisation: ${error.message}`);
+  } finally {
+    await queryRunner.release();
+  }
+}
     // services/procedure-instance.service.ts
 
 /**
