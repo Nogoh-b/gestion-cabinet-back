@@ -510,7 +510,7 @@ private generateUuid(): string {
     });
     
     if (!instance) {
-      throw new NotFoundException(`Instance with ID ${id} not found`);
+      throw new NotFoundException(`Instance with ID - ${id} not found`);
     }
     
     if (!instance.completedSubStages) instance.completedSubStages = [];
@@ -1184,6 +1184,583 @@ async resetInstanceSimple(
     } finally {
         await queryRunner.release();
     }
+}
+
+
+
+
+// services/procedure-instance.service.ts
+
+/**
+ * COMPLÉTER TOUTES LES SOUS-ÉTAPES DE L'ÉTAPE COURANTE (UNIQUEMENT POUR TESTS)
+ * 
+ * @warning Cette méthode est destinée uniquement aux tests et au développement.
+ * Elle complète toutes les sous-étapes de l'étape courante en une seule opération.
+ * 
+ * @param instanceId - ID de l'instance
+ * @param userId - ID de l'utilisateur
+ * @param options - Options supplémentaires
+ * @returns L'instance mise à jour
+ */
+async completeAllSubStagesInCurrentStage(
+  instanceId: string,
+  userId: string,
+  options?: {
+    notes?: string;
+    skipAutoTransitions?: boolean;
+    forceComplete?: boolean; // Force la complétion même si déjà complétées
+  }
+): Promise<ProcedureInstance> {
+  const queryRunner = this.dataSource.createQueryRunner();
+  
+  try {
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    // Récupérer l'instance avec lock
+    const instance = await queryRunner.manager.findOne(ProcedureInstance, {
+      where: { id: instanceId },
+      relations: ['currentStage', 'currentStage.subStages'],
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!instance) {
+      throw new NotFoundException(`Instance avec l'ID ${instanceId} non trouvée`);
+    }
+
+    if (!instance.currentStage) {
+      throw new BadRequestException('L\'instance n\'a pas d\'étape courante');
+    }
+
+    const currentStage = instance.currentStage;
+    const allSubStages = currentStage.subStages || [];
+    
+    if (allSubStages.length === 0) {
+      throw new BadRequestException('L\'étape courante n\'a pas de sous-étapes');
+    }
+
+    // Filtrer les sous-étapes à compléter
+    const subStagesToComplete = options?.forceComplete 
+      ? allSubStages 
+      : allSubStages.filter(ss => !instance.completedSubStages?.includes(ss.id));
+
+    if (subStagesToComplete.length === 0) {
+      throw new BadRequestException('Toutes les sous-étapes sont déjà complétées');
+    }
+
+    console.log(`📝 Complétion de ${subStagesToComplete.length} sous-étapes pour le test...`);
+
+    // Initialiser les structures si nécessaire
+    const completedSubStages = [...(instance.completedSubStages || [])];
+    const subStageMetadata = { ...(instance.subStageMetadata || {}) };
+
+    // Compléter chaque sous-étape
+    for (const subStage of subStagesToComplete) {
+      if (!completedSubStages.includes(subStage.id)) {
+        completedSubStages.push(subStage.id);
+        
+        // Ajouter les métadonnées
+        subStageMetadata[subStage.id] = {
+          ...subStageMetadata[subStage.id],
+          completedAt: new Date().toISOString(),
+          notes: options?.notes || `Complétée automatiquement par test le ${new Date().toISOString()}`,
+        //   completedBy: userId,
+        //   isTestCompletion: true,
+        };
+      }
+    }
+
+    // Mettre à jour l'instance
+    await queryRunner.manager.update(ProcedureInstance, instance.id, {
+      completedSubStages,
+      subStageMetadata,
+    });
+
+    // Enregistrer l'historique pour chaque sous-étape complétée
+    for (const subStage of subStagesToComplete) {
+      await queryRunner.manager.save(HistoryEntry, {
+        instanceId: instance.id,
+        eventType: EventType.SUBSTAGE_COMPLETED,
+        stageId: currentStage.id,
+        subStageId: subStage.id,
+        userId: userId || 'system',
+        metadata: {
+          notes: options?.notes,
+          isTestCompletion: true,
+          completedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    // Enregistrer un événement de test
+    await queryRunner.manager.save(HistoryEntry, {
+      instanceId: instance.id,
+      eventType: EventType.DECISION,
+      stageId: currentStage.id,
+      userId: userId || 'system',
+      metadata: {
+        action: 'test_complete_all_substages',
+        completedCount: subStagesToComplete.length,
+        totalSubStages: allSubStages.length,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    await queryRunner.commitTransaction();
+
+    // Vérifier et déclencher les transitions automatiques si demandé
+    if (!options?.skipAutoTransitions) {
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
+    }
+
+    // Retourner l'instance mise à jour
+    return this.findOne(instanceId);
+
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    console.error('Erreur lors de la complétion des sous-étapes:', error);
+    throw new BadRequestException(
+      `Erreur lors de la complétion des sous-étapes: ${error.message}`
+    );
+  } finally {
+    await queryRunner.release();
+  }
+}
+
+/**
+ * COMPLÉTER TOUTES LES SOUS-ÉTAPES D'UNE ÉTAPE SPÉCIFIQUE (UNIQUEMENT POUR TESTS)
+ * 
+ * @param instanceId - ID de l'instance
+ * @param stageId - ID de l'étape dont on veut compléter les sous-étapes
+ * @param userId - ID de l'utilisateur
+ * @param options - Options supplémentaires
+ * @returns L'instance mise à jour
+ */
+async completeAllSubStagesInStage(
+  instanceId: string,
+  stageId: string,
+  userId: string,
+  options?: {
+    notes?: string;
+    skipAutoTransitions?: boolean;
+    forceComplete?: boolean;
+  }
+): Promise<ProcedureInstance> {
+  const queryRunner = this.dataSource.createQueryRunner();
+  
+  try {
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    // Récupérer l'instance et vérifier l'étape
+    const instance = await queryRunner.manager.findOne(ProcedureInstance, {
+      where: { id: instanceId },
+      relations: ['template', 'template.stages', 'template.stages.subStages'],
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!instance) {
+      throw new NotFoundException(`Instance avec l'ID ${instanceId} non trouvée`);
+    }
+
+    const targetStage = instance.template.stages?.find(s => s.id === stageId);
+    if (!targetStage) {
+      throw new NotFoundException(`Étape avec l'ID ${stageId} non trouvée dans ce template`);
+    }
+
+    const allSubStages = targetStage.subStages || [];
+    
+    if (allSubStages.length === 0) {
+      throw new BadRequestException('Cette étape n\'a pas de sous-étapes');
+    }
+
+    // Filtrer les sous-étapes à compléter
+    const subStagesToComplete = options?.forceComplete 
+      ? allSubStages 
+      : allSubStages.filter(ss => !instance.completedSubStages?.includes(ss.id));
+
+    if (subStagesToComplete.length === 0) {
+      throw new BadRequestException('Toutes les sous-étapes de cette étape sont déjà complétées');
+    }
+
+    console.log(`📝 Complétion de ${subStagesToComplete.length} sous-étapes pour l'étape ${targetStage.name}...`);
+
+    // Compléter les sous-étapes
+    const completedSubStages = [...(instance.completedSubStages || [])];
+    const subStageMetadata = { ...(instance.subStageMetadata || {}) };
+
+    for (const subStage of subStagesToComplete) {
+      if (!completedSubStages.includes(subStage.id)) {
+        completedSubStages.push(subStage.id);
+        
+        subStageMetadata[subStage.id] = {
+          ...subStageMetadata[subStage.id],
+          completedAt: new Date().toISOString(),
+          notes: options?.notes || `Complétée par test (étape ${targetStage.name})`,
+        //   completedBy: userId,
+        //   isTestCompletion: true,
+        };
+      }
+    }
+
+    await queryRunner.manager.update(ProcedureInstance, instance.id, {
+      completedSubStages,
+      subStageMetadata,
+    });
+
+    // Enregistrer l'historique
+    for (const subStage of subStagesToComplete) {
+      await queryRunner.manager.save(HistoryEntry, {
+        instanceId: instance.id,
+        eventType: EventType.SUBSTAGE_COMPLETED,
+        stageId: targetStage.id,
+        subStageId: subStage.id,
+        userId: userId || 'system',
+        metadata: {
+          notes: options?.notes,
+          isTestCompletion: true,
+          completedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    await queryRunner.commitTransaction();
+
+    // Si l'étape ciblée est l'étape courante et qu'on ne skip pas les transitions
+    if (!options?.skipAutoTransitions && instance.currentStageId === stageId) {
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
+    }
+
+    return this.findOne(instanceId);
+
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    console.error('Erreur lors de la complétion des sous-étapes:', error);
+    throw new BadRequestException(
+      `Erreur lors de la complétion des sous-étapes: ${error.message}`
+    );
+  } finally {
+    await queryRunner.release();
+  }
+}
+
+/**
+ * COMPLÉTER TOUTES LES SOUS-ÉTAPES DE TOUTES LES ÉTAPES (UNIQUEMENT POUR TESTS)
+ * 
+ * @warning Cette méthode complète TOUTES les sous-étapes de l'instance
+ * 
+ * @param instanceId - ID de l'instance
+ * @param userId - ID de l'utilisateur
+ * @param options - Options supplémentaires
+ * @returns L'instance mise à jour
+ */
+async completeAllSubStagesInAllStages(
+  instanceId: string,
+  userId: string,
+  options?: {
+    notes?: string;
+    skipAutoTransitions?: boolean;
+    finalStageId?: string; // Optionnel: ID de l'étape finale à atteindre
+  }
+): Promise<ProcedureInstance> {
+  const queryRunner = this.dataSource.createQueryRunner();
+  
+  try {
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    const instance = await this.findOne(instanceId);
+    const allStages = instance.template.stages?.sort((a, b) => a.order - b.order) || [];
+    
+    let currentStageId = instance.currentStageId;
+    const allSubStageIds: string[] = [];
+    const subStageMetadata: any = { ...(instance.subStageMetadata || {}) };
+
+    // Collecter toutes les sous-étapes
+    for (const stage of allStages) {
+      for (const subStage of stage.subStages) {
+        if (!allSubStageIds.includes(subStage.id)) {
+          allSubStageIds.push(subStage.id);
+          
+          subStageMetadata[subStage.id] = {
+            ...subStageMetadata[subStage.id],
+            completedAt: new Date().toISOString(),
+            notes: options?.notes || `Complétée par test (toutes les étapes)`,
+            completedBy: userId,
+            isTestCompletion: true,
+          };
+        }
+      }
+    }
+
+    // Mettre à jour l'instance
+    const updateData: any = {
+      completedSubStages: allSubStageIds,
+      subStageMetadata,
+    };
+
+    // Si une étape finale est spécifiée, l'utiliser
+    if (options?.finalStageId) {
+      updateData.currentStageId = options.finalStageId;
+    }
+
+    await queryRunner.manager.update(ProcedureInstance, instance.id, updateData);
+
+    // Enregistrer l'historique de test
+    await queryRunner.manager.save(HistoryEntry, {
+      instanceId: instance.id,
+      eventType: EventType.DECISION,
+      stageId: instance.currentStageId,
+      userId: userId || 'system',
+      metadata: {
+        action: 'test_complete_all_substages_all_stages',
+        completedCount: allSubStageIds.length,
+        totalStages: allStages.length,
+        finalStageId: options?.finalStageId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    await queryRunner.commitTransaction();
+
+    // Déclencher les transitions automatiques si demandé
+    if (!options?.skipAutoTransitions) {
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
+    }
+
+    return this.findOne(instanceId);
+
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    console.error('Erreur lors de la complétion de toutes les sous-étapes:', error);
+    throw new BadRequestException(
+      `Erreur lors de la complétion de toutes les sous-étapes: ${error.message}`
+    );
+  } finally {
+    await queryRunner.release();
+  }
+}
+
+// procedure-instance.service.ts
+
+  /**
+  * Naviguer temporairement vers une étape spécifique (pour consultation)
+  * Ne modifie pas le currentStage de l'instance, juste pour l'affichage
+  */
+  async navigateToStage(
+    instanceId: string,
+    stageId: string,
+    userId: string,
+  ): Promise<{ 
+    instance: ProcedureInstance;
+    targetStage: Stage;
+    canCompleteSubStages: boolean;
+  }> {
+    const instance = await this.findOne(instanceId);
+    
+    const targetStage = instance.template.stages?.find(s => s.id === stageId);
+    if (!targetStage) {
+      throw new NotFoundException(`Stage with ID ${stageId} not found`);
+    }
+
+    // Vérifier si l'utilisateur peut compléter des sous-étapes dans cette étape
+    const canCompleteSubStages = this.canCompleteSubStagesInStage(instance, targetStage);
+
+    // Enregistrer dans l'historique la consultation
+    await this.historyService.log(
+      instance.id,
+      EventType.DECISION,
+      stageId,
+      userId,
+      { 
+        action: 'navigate_to_stage',
+        fromStageId: instance.currentStageId,
+        isTemporary: true,
+        canCompleteSubStages,
+      },
+    );
+
+    return {
+      instance,
+      targetStage,
+      canCompleteSubStages,
+    };
+  }
+
+  /**
+  * Vérifie si l'utilisateur peut compléter des sous-étapes dans une étape spécifique
+  * Règles:
+  * - L'étape doit être avant l'étape courante (déjà passée) OU
+  * - L'étape est l'étape courante
+  */
+  private canCompleteSubStagesInStage(
+    instance: ProcedureInstance, 
+    targetStage: Stage
+  ): boolean {
+    if (!instance.template?.stages) return false;
+    
+    const sortedStages = [...instance.template.stages].sort((a, b) => a.order - b.order);
+    const currentStageIndex = sortedStages.findIndex(s => s.id === instance.currentStageId);
+    const targetStageIndex = sortedStages.findIndex(s => s.id === targetStage.id);
+    
+    // On peut compléter des sous-étapes si c'est l'étape courante OU une étape passée
+    // (pour permettre de revenir en arrière et compléter des optionnelles)
+    return targetStageIndex <= currentStageIndex;
+  }
+
+
+  /**
+ * Revenir à une étape précédente pour compléter des sous-étapes
+ * Ne change que la vue, pas le workflow réel
+ * Les sous-étapes complétées sont enregistrées normalement
+ */
+async goBackToStage(
+  instanceId: string,
+  stageId: string,
+  userId: string,
+  options?: {
+    allowCompleteOptional?: boolean;
+    reason?: string;
+  }
+): Promise<{
+  instance: ProcedureInstance;
+  targetStage: Stage;
+  completedSubStagesInStage: string[];
+  remainingSubStages: SubStage[];
+}> {
+  const instance = await this.findOne(instanceId);
+  
+  const sortedStages = [...instance.template.stages].sort((a, b) => a.order - b.order);
+  const currentStageIndex = sortedStages.findIndex(s => s.id === instance.currentStageId);
+  const targetStageIndex = sortedStages.findIndex(s => s.id === stageId);
+  
+  // Vérifier que l'étape cible est avant ou égale à l'étape courante
+  if (targetStageIndex > currentStageIndex) {
+    throw new BadRequestException(
+      'Cannot go back to a future stage. Only current or previous stages are accessible.'
+    );
+  }
+  
+  const targetStage = sortedStages[targetStageIndex];
+  
+  // Identifier les sous-étapes déjà complétées dans cette étape
+  const completedSubStagesInStage = (targetStage.subStages || [])
+    .filter(ss => instance.completedSubStages?.includes(ss.id))
+    .map(ss => ss.id);
+  
+  // Identifier les sous-étapes restantes (optionnelles uniquement si on ne force pas)
+  const remainingSubStages = (targetStage.subStages || []).filter(ss => {
+    const isCompleted = instance.completedSubStages?.includes(ss.id);
+    if (isCompleted) return false;
+    
+    // Si on permet seulement les optionnelles, filtrer les obligatoires
+    if (!options?.allowCompleteOptional && ss.isMandatory) {
+      return false; // Les obligatoires ne peuvent pas être complétées en retour arrière
+    }
+    
+    return true;
+  });
+  
+  // Enregistrer dans l'historique
+  await this.historyService.log(
+    instance.id,
+    EventType.DECISION,
+    stageId,
+    userId,
+    {
+      action: 'go_back_to_stage',
+      fromStageId: instance.currentStageId,
+      reason: options?.reason,
+      allowCompleteOptional: options?.allowCompleteOptional,
+    },
+  );
+  
+  return {
+    instance,
+    targetStage,
+    completedSubStagesInStage,
+    remainingSubStages,
+  };
+}
+
+/**
+ * Compléter une sous-étape dans une étape précédente
+ */
+async completeSubStageInPreviousStage(
+  instanceId: string,
+  subStageId: string,
+  stageId: string,
+  userId: string,
+  notes?: string,
+): Promise<ProcedureInstance> {
+  const instance = await this.findOne(instanceId);
+  
+  // Vérifier que la sous-étape appartient bien à l'étape spécifiée
+  const targetStage = instance.template.stages?.find(s => s.id === stageId);
+  if (!targetStage) {
+    throw new NotFoundException(`Stage ${stageId} not found`);
+  }
+  
+  const subStage = targetStage.subStages?.find(ss => ss.id === subStageId);
+  if (!subStage) {
+    throw new NotFoundException(`SubStage ${subStageId} not found in stage ${stageId}`);
+  }
+  
+  // Vérifier qu'on a le droit de compléter cette sous-étape
+  const sortedStages = [...instance.template.stages].sort((a, b) => a.order - b.order);
+  const currentStageIndex = sortedStages.findIndex(s => s.id === instance.currentStageId);
+  const targetStageIndex = sortedStages.findIndex(s => s.id === stageId);
+  
+  if (targetStageIndex > currentStageIndex) {
+    throw new BadRequestException('Cannot complete sub-stage in a future stage');
+  }
+  
+  // Pour les sous-étapes obligatoires dans les étapes passées, on bloque (elles devraient déjà être complétées)
+  if (subStage.isMandatory && targetStageIndex < currentStageIndex) {
+    throw new BadRequestException(
+      'Mandatory sub-stages in previous stages cannot be completed retroactively. They should have been completed when the stage was current.'
+    );
+  }
+  
+  // Si déjà complétée
+  if (instance.completedSubStages?.includes(subStageId)) {
+    throw new BadRequestException('SubStage already completed');
+  }
+  
+  // Compléter la sous-étape
+  instance.completedSubStages = [...(instance.completedSubStages || []), subStageId];
+  
+  if (!instance.subStageMetadata) {
+    instance.subStageMetadata = {};
+  }
+  
+  instance.subStageMetadata[subStageId] = {
+    ...instance.subStageMetadata[subStageId],
+    completedAt: new Date().toISOString(),
+    notes: notes,
+    completedInStage: stageId,
+    wasPreviousStage: targetStageIndex < currentStageIndex,
+  };
+  
+  await this.instanceRepository.save(instance);
+  
+  await this.historyService.log(
+    instanceId,
+    EventType.SUBSTAGE_COMPLETED,
+    stageId,
+    userId,
+    { 
+      subStageId, 
+      notes,
+      wasPreviousStage: true,
+      currentStageId: instance.currentStageId,
+    },
+  );
+  
+  // Ne pas déclencher de transitions automatiques car on est dans une étape passée
+  // Le currentStage n'a pas changé
+  
+  return this.findOne(instanceId);
 }
 
 }

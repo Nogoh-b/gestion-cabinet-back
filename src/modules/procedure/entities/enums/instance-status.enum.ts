@@ -4,6 +4,7 @@ export enum InstanceStatus {
   SUSPENDED = 'suspended',
   CLOSED = 'closed',
   ABANDONED = 'abandoned',
+  COMPLETED = 'completed',
 }
 
 // enums/task-status.enum.ts
