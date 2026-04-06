@@ -25,6 +25,7 @@ import {
   ManyToMany,
   OneToMany,
   JoinTable,
+  BeforeInsert,
 } from 'typeorm';
 
 
@@ -90,7 +91,7 @@ export class DocumentCustomer extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description: string;
 
-  @ManyToOne(() => DocumentType, { eager: true  })
+  @ManyToOne(() => DocumentType, { eager: false  })
   @JoinColumn({ name: 'document_type_id' })
   document_type: DocumentType;
 
@@ -105,10 +106,14 @@ export class DocumentCustomer extends BaseEntity {
   // })
   @Column({ type: 'int', nullable: true })
   category_id?: number;
+
+
+  @ManyToMany(() => Audience, (audience) => audience.decision_documents)
+  decision_audiences: Audience[];
   
-  @ManyToOne(() => DocumentCategory, { eager: true  })
+  @ManyToOne(() => DocumentCategory, { eager: false  })
   @JoinColumn({ name: 'category_id' })
-  category: DocumentCategory;
+  category: DocumentCategory; 
 
   @Column({ 
     type: 'enum',
@@ -331,6 +336,12 @@ get can_be_modified(): boolean {
   public canBeModified(): boolean {
     return this.status !== DocumentCustomerStatus.ARCHIVED && 
            this.dossier.status != 5;
+  }
+
+  @BeforeInsert()
+  beforeCreate() {
+    this.status = DocumentCustomerStatus.ACCEPTED;
+    // this.status = this.status ?? CustomerStatus.ACTIVE;
   }
 
   // public requiresValidation(): boolean {

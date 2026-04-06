@@ -26,8 +26,8 @@ export class CreatePaiementDto {
     description: 'ID de la facture associée',
     example: 101,
   })
-  @IsNumber()
-  factureId: number;
+  @IsString()
+  factureId: string;
 
   @ApiProperty({
     description: 'Montant du paiement',

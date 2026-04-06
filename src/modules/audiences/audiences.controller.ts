@@ -17,12 +17,17 @@ import { AudienceListResponseDto, AudienceResponseDto } from './dto/response-aud
 import { AudienceSearchDto } from './dto/search-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { AudienceStatsService } from './audience-stats.service';
+import { AudienceDecisionService } from './audience-decision.service';
+import { AddDecisionResponseDto, DecisionAudienceDto } from './dto/decision-audience.dto';
 
 @ApiTags('Audiences')
 @Controller('audiences')
 export class AudiencesController {
-  constructor(private readonly audiencesService: AudiencesService,
-    private readonly statsService: AudienceStatsService) {}
+  constructor(
+    private readonly audiencesService: AudiencesService,
+    private readonly decisionService: AudienceDecisionService, // Ajouter ceci
+    private readonly statsService: AudienceStatsService
+    ) {}
 
   // ✅ CREATE - POST /audiences
   @Post()
@@ -94,5 +99,53 @@ export class AudiencesController {
   @ApiResponse({ status: 200, description: 'Audience supprimée avec succès' })
   async remove(@Param('id') id: string) {
     return await this.audiencesService.remove(+id);
+  }
+
+
+  /**
+   * ✅ AJOUTER UNE DÉCISION - POST /audiences/:id/decision
+   */
+  @Post(':id/decision')
+  @ApiOperation({ summary: 'Ajouter une décision à une audience' })
+  @ApiResponse({ status: 201, type: AddDecisionResponseDto })
+  async addDecision(
+    @Param('id') id: string,
+    @Body() decisionDto: DecisionAudienceDto,
+  ) {
+    return await this.decisionService.addDecision(+id, decisionDto);
+  }
+
+  /**
+   * ✅ MODIFIER UNE DÉCISION - PATCH /audiences/:id/decision
+   */
+  @Patch(':id/decision')
+  @ApiOperation({ summary: 'Modifier la décision d\'une audience' })
+  @ApiResponse({ status: 200, type: AddDecisionResponseDto })
+  async updateDecision(
+    @Param('id') id: string,
+    @Body() decisionDto: DecisionAudienceDto,
+  ) {
+    return await this.decisionService.updateDecision(+id, decisionDto);
+  }
+
+  /**
+   * ✅ RÉCUPÉRER LA DÉCISION - GET /audiences/:id/decision
+   */
+  @Get(':id/decision')
+  @ApiOperation({ summary: 'Récupérer la décision d\'une audience' })
+  async getDecision(@Param('id') id: string) {
+    return await this.decisionService.getDecision(+id);
+  }
+
+  /**
+   * ✅ SUPPRIMER UN DOCUMENT DE LA DÉCISION - DELETE /audiences/:id/decision/documents/:documentId
+   */
+  @Delete(':id/decision/documents/:documentId')
+  @ApiOperation({ summary: 'Supprimer un document de la décision' })
+  async removeDecisionDocument(
+    @Param('id') id: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return await this.decisionService.removeDecisionDocument(+id, +documentId);
   }
 }

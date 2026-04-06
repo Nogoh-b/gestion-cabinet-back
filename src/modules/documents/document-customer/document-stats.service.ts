@@ -7,12 +7,16 @@ import { StatsFilterDto } from 'src/core/types/base-stats.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
 import { DocumentStatsDto } from './dto/document-stats.dto';
 import { SingleDocumentStatsDto } from './dto/single-document-stats.dto';
+import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
+import { DossiersService } from 'src/modules/dossiers/dossiers.service';
 
 @Injectable()
 export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
     private documentRepository: Repository<DocumentCustomer>,
+    private procedureInstanceService: ProcedureInstanceService,
+    private dossierservice: DossiersService,
   ) {
     super(documentRepository);
   }
@@ -44,7 +48,8 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
         'audiences',
         'audiences.jurisdiction',
         'diligences',
-        'findings'
+        'findings',
+        'subStages'
       ]
     });
 
@@ -642,4 +647,45 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     }
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   }
+
+  async linkDocumentsToSubStage(
+  documentIds: number[],
+  subStageId: string
+): Promise<void> {
+  if (!documentIds || documentIds.length === 0) {
+    throw new Error('Aucun document fourni');
+  }
+
+  // Vérifier que le subStage existe
+  // const subStage = await this.subStageRepository.findOne({
+  //   where: { id: subStageId },
+  // });
+
+  // if (!subStage) {
+  //   throw new Error(`SubStage ${subStageId} non trouvé`);
+  // }
+
+  // 🔗 Ajout en masse (table pivot)
+  await this.documentRepository
+    .createQueryBuilder()
+    .relation('subStages')
+    .of(documentIds) // 👈 tableau ici
+    .add(subStageId);
+}
+
+async validatefile(documentId: number, validatorId: number): Promise<void> {
+  const document = await this.documentRepository.findOne({
+    where: { id: documentId },
+    relations: ['uploaded_by'],
+  });
+  if (!document) {
+    throw new Error(`Document avec ID ${documentId} non trouvé`);
+  }
+  document.status = DocumentCustomerStatus.ACCEPTED;
+  document.date_validation = new Date();
+  await this.documentRepository.save(document);
+}
+
+
+
 }

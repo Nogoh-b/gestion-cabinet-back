@@ -20,7 +20,7 @@ export class Paiement {
   id: number;
 
   @Column({ name: 'facture_id' })
-  factureId: number;
+  factureId: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   montant: number;

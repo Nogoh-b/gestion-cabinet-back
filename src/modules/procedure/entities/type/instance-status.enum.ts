@@ -3,7 +3,8 @@
 import { ProcedureInstance } from "../procedure-instance.entity";
 
 export type SubStageStatus = 'pending' | 'in_progress' | 'completed' | 'skipped';
-
+export type StageStatus = 'pending' | 'in_progress' | 'current' | 'completed';
+export type InstanceStatus = 'pending' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 export interface MappedSubStage {
   id: string;
   name: string;
@@ -31,6 +32,7 @@ export interface MappedStage {
   canBeReentered: boolean;
   subStages: MappedSubStage[];
   progress: number;
+  status: StageStatus;
   config?: any;
 }
 

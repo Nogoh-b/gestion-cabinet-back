@@ -45,7 +45,7 @@ export class UserRolesService {
 
   async getPermissionsByCode(code:string){
     const role = await this.repository.findOneBy({ code });
-    return await this.rolepermissionService.getRolePermissions(role!.id);
+    return await this.rolepermissionService.getRolePermissions(role?.id || 1);
   }
     
 

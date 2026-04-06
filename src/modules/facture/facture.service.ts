@@ -52,7 +52,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       searchFields: ['numero', 'description', 'notesInternes'],
       exactMatchFields: ['id', 'dossierId', 'clientId', 'status', 'type', 'numero'],
       dateRangeFields: ['dateFacture', 'dateEcheance', 'created_at', 'updated_at'],
-      relationFields: ['paiements', 'client', 'dossier','invoice_type']
+      relationFields: ['paiements', 'client', 'dossier','invoice_type','subStage']
     };
   }
 
@@ -84,14 +84,19 @@ export class FactureService extends BaseServiceV1<Facture> {
       // Option: prendre la première sous-étape obligatoire non complétée
       const currentStage = procedureInstance.currentStage;
       const completedSubStages = procedureInstance.completedSubStages || [];
-      
+            
       subStage = currentStage.subStages?.find(
-        (ss: SubStage) => 
-          ss.isMandatory && 
-          !completedSubStages.includes(ss.id)
-      ) || currentStage.subStages?.[0];      
+        (ss: any) => ss.status === 'in_progress'
+      ) || null;
+      console.log('SubStage trouvé pour la diligence :', (subStage)?.id);
 
-      stage = currentStage
+      if (!subStage) {
+        throw new Error(
+          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentStage.id}`
+        );
+      }
+
+      stage = currentStage;
     }
     const facture =this.repository.create({
       ...rest,

@@ -5,6 +5,10 @@ import AudienceTypeSeeder from './modules/audience-type/seeder/audience-type.see
 import DocumentCategorySeeder from './modules/document-category/seeder/document-category.seeder';
 import InvoiceTypeSeeder from './modules/invoice-type/seeder/invoice-type.seeder';
 import JurisdictionSeeder from './modules/jurisdiction/seeder/jurisdiction.seeder';
+import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
+import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
+import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-template.seeder';
+// src/database/seeders/index.ts
 
 
 export async function seedDatabase(dataSource: DataSource) {
@@ -16,7 +20,10 @@ export async function seedDatabase(dataSource: DataSource) {
         JurisdictionSeeder,
         DocumentCategorySeeder,
         AudienceTypeSeeder,
-        InvoiceTypeSeeder
+        InvoiceTypeSeeder,
+        ProcedureTypeSeeder,
+        ProcedureSubtypeSeeder,
+        ProcedureTemplateSeeder
       ]
     });
 
@@ -26,6 +33,9 @@ export async function seedDatabase(dataSource: DataSource) {
     console.log('   - Catégories de documents');
     console.log('   - Types d\'audience');
     console.log('   - Types de factures (en FCFA)');
+    console.log('   - Types de procédure');
+    console.log('   - Sous-types de procédure');
+    console.log('   - Template de procédure avec stages, transitions et cycles');
     
   } catch (error) {
     console.error('❌ Erreur lors de l\'exécution des seeders:', error);
@@ -33,5 +43,4 @@ export async function seedDatabase(dataSource: DataSource) {
   }
 }
 
-// Export par défaut aussi pour compatibilité
 export default { seedDatabase };

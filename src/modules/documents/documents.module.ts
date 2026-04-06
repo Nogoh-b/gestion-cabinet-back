@@ -24,6 +24,7 @@ import { DocumentTypeService } from './document-type/document-type.service';
 import { DocumentType } from './document-type/entities/document-type.entity';
 import { DocumentStatsService } from './document-customer/document-stats.service';
 import { DocumentTypeStatsService } from './document-type/document-type-stats.service';
+import { ProcedureModule } from '../procedure/procedure.module';
 
 
 
@@ -43,6 +44,7 @@ import { DocumentTypeStatsService } from './document-type/document-type-stats.se
     DocumentCategoryModule,
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),
+    forwardRef(() => ProcedureModule),
     
     forwardRef(() => IamModule),
     

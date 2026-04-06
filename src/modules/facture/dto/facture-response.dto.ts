@@ -57,7 +57,7 @@ export class FactureResponseDto {
 
   @ApiProperty({ enum: StatutFacture })
   @Expose()
-  statut: StatutFacture;
+  status: StatutFacture;
 
   @ApiProperty()
   @Expose()

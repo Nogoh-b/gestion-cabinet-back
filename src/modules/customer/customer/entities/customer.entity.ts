@@ -113,7 +113,7 @@ export class Customer extends BaseEntity {
   branch: Branch;
 
   // ✅ TypeCustomer gère maintenant le segment
-  @ManyToOne(() => TypeCustomer, { eager: true }) // eager loading pour accès facile
+  @ManyToOne(() => TypeCustomer, { eager: false }) // eager loading pour accès facile
   @JoinColumn({ name: 'type_customer_id' })
   type_customer: TypeCustomer;
 
@@ -214,5 +214,11 @@ export class Customer extends BaseEntity {
   }
   get full_name(): string {
     return `${this.first_name} ${this.last_name}`;
+  }
+
+  @BeforeInsert()
+  beforeCreate() {
+    this.status = CustomerStatus.ACTIVE; 
+    // this.status = this.status ?? CustomerStatus.ACTIVE;
   }
 }

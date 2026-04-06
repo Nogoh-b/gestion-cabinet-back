@@ -760,8 +760,11 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     await this.repository.update(criteria, data as QueryDeepPartialEntity<T>);
   }
 
-  async removeV1(id: string | number): Promise<void> {
+  async removeV1(id: string | number): Promise<T | null> {
+    
+    const data = await this.findOneV1(id,this.getDefaultSearchOptions().relationFields);
     await this.repository.softDelete(id);
+    return data;
   }
 
   async removeManyV1(criteria: FindOptionsWhere<T>): Promise<void> {

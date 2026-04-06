@@ -40,6 +40,13 @@ export class CreateProcedureTypeDto {
   required_documents?: string[];
 
   @ApiPropertyOptional({
+    description: 'Procedure Template requis pour ce type de procédure',
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  procedure_template_id?: string;
+
+  @ApiPropertyOptional({
     description: 'Durée moyenne en jours',
     example: 180
   })

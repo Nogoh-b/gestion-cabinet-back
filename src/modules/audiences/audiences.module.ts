@@ -13,6 +13,7 @@ import { Audience } from './entities/audience.entity';
 import { AudienceStatsService } from './audience-stats.service';
 import { JurisdictionModule } from '../jurisdiction/jurisdiction.module';
 import { AudienceSubscriber } from './suscribers/audiences.suscribers';
+import { AudienceDecisionService } from './audience-decision.service';
 
 
 
@@ -27,7 +28,7 @@ import { AudienceSubscriber } from './suscribers/audiences.suscribers';
     forwardRef(() => DossiersModule),
   ],
   controllers: [AudiencesController],
-  providers: [AudiencesService, AudienceSubscriber, AudienceStatsService],
+  providers: [AudiencesService, AudienceSubscriber, AudienceStatsService, AudienceDecisionService],
   exports: [AudiencesService, AudienceStatsService] // Export if needed by other modules
 
 })

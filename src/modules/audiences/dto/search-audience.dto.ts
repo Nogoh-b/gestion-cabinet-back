@@ -22,6 +22,9 @@ export class AudienceSearchDto {
   @IsInt()
   audience_type_id?: number;
 
+  @ApiPropertyOptional({ example: 'b9d6c1dd-664c-4924-b359-fd77337da47e', required: false })
+  'sub_stage_id'?: string;
+
   @ApiPropertyOptional({ description: 'Filtrer par type d’audience', enum: AudienceType1 })
   @IsOptional()
   @IsEnum(AudienceType1)

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ProceduresService } from './procedures.service';
 import { ProceduresController } from './procedures.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -7,12 +7,14 @@ import { ProcedureType } from './entities/procedure.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { ProcedureStatsService } from './procedure-stats.service';
+import { ProcedureModule } from '../procedure/procedure.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ProcedureType, Dossier]), // ✅ les deux entités ici
     CustomerModule,
-    DossiersModule
+    ProcedureModule,
+    forwardRef(() =>DossiersModule)
   ],
   controllers: [ProceduresController],
   providers: [ProceduresService, ProcedureStatsService],

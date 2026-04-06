@@ -21,6 +21,7 @@ import { Step } from './entities/step.entity';
 import { AudiencesModule } from '../audiences/audiences.module';
 import { DiligenceModule } from '../diligence/diligence.module';
 import { FactureModule } from '../facture/facture.module';
+import { ProcedureModule } from '../procedure/procedure.module';
 
 
 
@@ -37,6 +38,7 @@ import { FactureModule } from '../facture/facture.module';
     forwardRef(() => AudiencesModule),
     forwardRef(() => DiligenceModule),
     forwardRef(() => FactureModule),
+    forwardRef(() => ProcedureModule),
 
     TypeOrmModule.forFeature([Dossier,  User, ProcedureType, Step]),
   ],

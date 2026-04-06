@@ -13,6 +13,7 @@ import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { Paiement } from './entities/paiement.entity';
 import { plainToInstance } from 'class-transformer';
+import { StatutFacture } from '../facture/dto/create-facture.dto';
 
 
 
@@ -40,9 +41,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   async createPaiement(createDto: CreatePaiementDto): Promise<PaiementResponseDto> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
-      where: { id: String(createDto.factureId)  }
+      where: { id: String(createDto.factureId)  },
+      relations: ['paiements']
     });
-
+    console.log(createDto)
     if (!facture) {
       throw new NotFoundException(`Facture avec l'ID ${createDto.factureId} non trouvée`);
     }
@@ -50,24 +52,47 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     // Vérifier que le montant ne dépasse pas le reste à payer
     const resteAPayer = Number(facture.montantTTC) - Number(facture.montantPaye);
     if (Number(createDto.montant )> Number(resteAPayer)) {
-      throw new BadRequestException(
-        `Le montant du paiement (${createDto.montant}) dépasse le reste à payer (${resteAPayer})`
-      );
+      // throw new BadRequestException(
+      //   `Le montant du paiement (${createDto.montant}) dépasse le reste à payer (${resteAPayer})`
+      // );
     }
-
+    facture.status = Number(facture.montantPaye) + Number(createDto.montant) >= Number(facture.montantTTC) ? StatutFacture.PAYEE : StatutFacture.PARTIELLEMENT_PAYEE;
+    await this.factureRepository.save(facture);
     // Créer le paiement
     const paiement = this.repository.create(createDto);
+    paiement.status = StatutPaiement.VALIDE
     // paiement.modePaiement = createDto.modePaiment
     const paiementSauvegarde = await this.repository.save(paiement);
 
     // Mettre à jour la facture
-    console.log(createDto.montant)
-    // facture.ajouterPaiement(paiement);
-    await this.factureRepository.save(facture);
+    console.log(facture.montantPaye ,' ', (paiement.montant) , ' ' ,facture.montantTTC)
+
 
     return plainToInstance(PaiementResponseDto,paiementSauvegarde);
   }
 
+
+  async updateFacture(factureId:string): Promise<void> {
+    // Vérifier que la facture existe
+    const facture = await this.factureRepository.findOne({
+      where: { id: String(factureId)  },
+      relations: ['paiements']
+    });
+    console.log("factuereId ",factureId)
+    if (!facture) {
+      throw new NotFoundException(`Facture avec l'ID ${factureId} non trouvée`);
+    }
+
+    // Vérifier que le montant ne dépasse pas le reste à payer
+    const resteAPayer = Number(facture.montantTTC) - Number(facture.montantPaye);
+    console.log("resteAPayer ",resteAPayer)
+    console.log("montantPaye ",facture.montantPaye)
+    facture.status = Number(facture.montantPaye)  >= Number(facture.montantTTC) ? StatutFacture.PAYEE : StatutFacture.PARTIELLEMENT_PAYEE;
+    await this.factureRepository.save(facture);
+    // Créer le paiement
+
+
+  }
   async updatePaiement(id: string, updateDto: UpdatePaiementDto): Promise<PaiementResponseDto> {
     const paiement = await this.findOneV1(id,['facture']);
     if (!paiement) {

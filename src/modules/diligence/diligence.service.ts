@@ -25,6 +25,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     @InjectRepository(Diligence)
     protected readonly repository: Repository<Diligence>,
     protected readonly paginationService: PaginationServiceV1,
+    @Inject(forwardRef(() => DossiersService))
     private readonly dossierService: DossiersService,
     private readonly usersService: UsersService,
     private readonly documentCustomerService: DocumentCustomerService,
@@ -46,7 +47,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       searchFields: ['title', 'description', 'scope', 'findings_summary', 'recommendations'],
       exactMatchFields: ['status', 'type', 'priority', 'dossier_id', 'assigned_lawyer_id'],
       dateRangeFields: ['start_date', 'deadline', 'completion_date', 'created_at'],
-      relationFields: ['dossier', 'dossier.client', 'assigned_lawyer', 'findings', 'documents'],
+      relationFields: ['dossier', 'dossier.client', 'assigned_lawyer', 'findings', 'documents','subStage'],
     };
   }
 
@@ -90,14 +91,19 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       // Option: prendre la première sous-étape obligatoire non complétée
       const currentStage = procedureInstance.currentStage;
       const completedSubStages = procedureInstance.completedSubStages || [];
-      
+            
       subStage = currentStage.subStages?.find(
-        (ss: SubStage) => 
-          ss.isMandatory && 
-          !completedSubStages.includes(ss.id)
-      ) || currentStage.subStages?.[0];      
+        (ss: any) => ss.status === 'in_progress'
+      ) || null;
+      console.log('SubStage trouvé pour la diligence :', (subStage)?.id);
 
-      stage = currentStage
+      if (!subStage) {
+        throw new Error(
+          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentStage.id}`
+        );
+      }
+
+      stage = currentStage;
     }
     // Création de l'entité
     const diligence = this.repository.create({
@@ -113,7 +119,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       dossier: { id: dossier.id },
       assigned_lawyer: dto.assigned_lawyer_id ? { id: dto.assigned_lawyer_id } : undefined,
       status: DiligenceStatus.DRAFT,
-      sub_stage_id: subStage?.id,
+      // sub_stage_id: (subStage as any)?.id,
+      subStage: { id: (subStage)?.id },
       procedure_instance_id: procedureInstance?.id
     });
 

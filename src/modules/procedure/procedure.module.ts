@@ -61,6 +61,7 @@ import { InstanceMapperService } from './services/instance-sub-stage.service';
     WorkflowService,
     TaskService,
     HistoryService,
+    TypeOrmModule
   ],
 })
 export class ProcedureModule {}

@@ -60,7 +60,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier', 'dossier.client','audience_type'],
       exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
-      relationFields: ['dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'],
+      relationFields: ['dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category','subStage'],
     };
   }
 
@@ -97,14 +97,19 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       // Option: prendre la première sous-étape obligatoire non complétée
       const currentStage = procedureInstance.currentStage;
       const completedSubStages = procedureInstance.completedSubStages || [];
-      
+            
       subStage = currentStage.subStages?.find(
-        (ss: SubStage) => 
-          ss.isMandatory && 
-          !completedSubStages.includes(ss.id)
-      ) || currentStage.subStages?.[0];      
+        (ss: any) => ss.status === 'in_progress'
+      ) || null;
+      console.log('SubStage trouvé pour la diligence :', (subStage)?.id);
 
-      stage = currentStage
+      if (!subStage) {
+        throw new Error(
+          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentStage.id}`
+        );
+      }
+
+      stage = currentStage;
     }
 
     // 🧠 Conversion explicite pour éviter l’erreur
@@ -202,7 +207,7 @@ private async updateDossierStatusOnAudience(audience: Audience, dossier: Dossier
   async findOne(id: number): Promise<AudienceResponseDto | any> {
     const audience = await this.repository.findOne({
       where: { id },
-      relations: ['dossier', 'dossier.client', 'documents',  'jurisdiction','audience_type'],
+      relations: ['dossier', 'dossier.client', 'documents',  'jurisdiction','audience_type','decision_documents'],
     });
 
     if (!audience) {
@@ -217,39 +222,53 @@ private async updateDossierStatusOnAudience(audience: Audience, dossier: Dossier
    * ✏️ Mise à jour d'une audience
    */
   // Dans votre service
-  async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceResponseDto | any> {
-    const audience = await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, Audience);
-    
-    if (!audience) {
-      return null;
-    }
-    
-    // Gestion pour jurisdiction_id - ignorer si null
-    if (dto.jurisdiction_id !== undefined && dto.jurisdiction_id !== null) {
-      audience.jurisdiction = plainToInstance(Jurisdiction, await this.jurisdictionService.findOne(dto.jurisdiction_id));
-    }
-    
-    if (dto.audience_type_id !== undefined && dto.audience_type_id !== null) {
-      audience.audience_type = plainToInstance(AudienceType, await this.audienceTypeService.findOne(dto.audience_type_id));
-    }
-    
-    // Gestion spéciale pour document_ids
-    if (dto.document_ids !== undefined && dto.document_ids !== null) {
-      const documents = await this.documentCustomerService.findByIds(dto.document_ids);
-      audience.documents = documents;
-    }
-    
-    // Pour les autres champs, exclure document_ids et jurisdiction_id déjà traités
-    const otherFields = { ...dto };
-    delete otherFields.document_ids;
-    delete otherFields.jurisdiction_id;
-    delete otherFields.audience_type_id;
-    
-    // 🔥 IMPORTANT: Assigner les autres champs
-    Object.assign(audience, otherFields);
-    
-    return plainToInstance(AudienceResponseDto, await this.repository.save(audience));
+async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceResponseDto | any> {
+  const audience = await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, Audience);
+  
+  if (!audience) {
+    return null;
   }
+  
+  // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
+  if (dto.status !== undefined && dto.status === AudienceStatus.HELD) {
+    const now = new Date();
+    const audienceDateTime = new Date(`${audience.audience_date}T${audience.audience_time}`);
+    
+    // Vérifier si la date de l'audience n'est pas encore passée
+    if (audienceDateTime > now) {
+      throw new BadRequestException(
+        `Impossible de marquer l'audience comme tenue car elle n'a pas encore eu lieu. ` +
+        `Date de l'audience: ${audience.audience_date} à ${audience.audience_time}`
+      );
+    }
+  }
+  
+  // Gestion pour jurisdiction_id - ignorer si null
+  if (dto.jurisdiction_id !== undefined && dto.jurisdiction_id !== null) {
+    audience.jurisdiction = plainToInstance(Jurisdiction, await this.jurisdictionService.findOne(dto.jurisdiction_id));
+  }
+  
+  if (dto.audience_type_id !== undefined && dto.audience_type_id !== null) {
+    audience.audience_type = plainToInstance(AudienceType, await this.audienceTypeService.findOne(dto.audience_type_id));
+  }
+  
+  // Gestion spéciale pour document_ids
+  if (dto.document_ids !== undefined && dto.document_ids !== null) {
+    const documents = await this.documentCustomerService.findByIds(dto.document_ids);
+    audience.documents = documents;
+  }
+  
+  // Pour les autres champs, exclure document_ids et jurisdiction_id déjà traités
+  const otherFields = { ...dto };
+  delete otherFields.document_ids;
+  delete otherFields.jurisdiction_id;
+  delete otherFields.audience_type_id;
+  
+  // 🔥 IMPORTANT: Assigner les autres champs
+  Object.assign(audience, otherFields);
+  
+  return plainToInstance(AudienceResponseDto, await this.repository.save(audience));
+}
 
   /**
    * ❌ Suppression d'une audience 

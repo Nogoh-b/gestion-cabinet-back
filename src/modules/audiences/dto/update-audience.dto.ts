@@ -3,6 +3,7 @@ import { PartialType, ApiProperty } from '@nestjs/swagger';
 import { CreateAudienceDto } from './create-audience.dto';
 import { IsArray, IsOptional, IsInt, IsDateString, IsString, IsNumber } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { AudienceStatus } from '../entities/audience.entity';
 
 export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   @ApiProperty({
@@ -108,4 +109,8 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   @IsOptional()
   @IsDateString()
   postponed_to?: Date;
+
+
+  @IsOptional()
+  status?: AudienceStatus;
 }

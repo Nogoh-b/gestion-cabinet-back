@@ -1,6 +1,7 @@
 // src/modules/procedures/entities/procedure_type.entity.ts
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 
 @Entity('procedure_types')
@@ -35,6 +36,9 @@ export class ProcedureType extends BaseEntity {
   @Column({ name: 'average_duration', type: 'int', nullable: true })
   average_duration: number;
 
+  @Column({ name: 'procedure_template_id', nullable: true })
+  procedure_template_id: string;
+
   @Column({ name: 'specific_jurisdictions', type: 'json', nullable: true })
   specific_jurisdictions: string[];
 
@@ -42,6 +46,10 @@ export class ProcedureType extends BaseEntity {
   @ManyToOne(() => ProcedureType, (type) => type.subtypes, { nullable: true })
   @JoinColumn({ name: 'parent_id' })
   parent: ProcedureType;
+
+  @ManyToOne(() => ProcedureTemplate)
+  @JoinColumn({ name: 'procedure_template_id' })
+  procedure_template: ProcedureTemplate;
 
   @OneToMany(() => ProcedureType, (type) => type.parent)
   subtypes: ProcedureType[];  
@@ -130,8 +138,24 @@ export class ProcedureType extends BaseEntity {
   }
 
   get specific_jurisdictions_list(): string {
-    return this.specific_jurisdictions?.join(', ') || 'Toutes juridictions';
+    if (!this.specific_jurisdictions) {
+      return 'Toutes juridictions';
+    }
+    
+    // If it's an array, join it
+    if (Array.isArray(this.specific_jurisdictions)) {
+      return this.specific_jurisdictions.join(', ');
+    }
+    
+    // If it's a string, return it as is
+    if (typeof this.specific_jurisdictions === 'string') {
+      return this.specific_jurisdictions;
+    }
+    
+    // Fallback
+    return 'Toutes juridictions';
   }
+ 
 
   get duration_display(): string {
     if (!this.average_duration) return 'Non défini';
@@ -157,6 +181,7 @@ export class ProcedureType extends BaseEntity {
   }
 
   get type_display(): string {
+    // if (this.is_main_type) return 'Type principal';
     if (this.is_main_type) return 'Type principal';
     if (this.is_sub_type) return 'Sous-type';
     return 'Non catégorisé';

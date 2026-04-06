@@ -26,6 +26,9 @@ export class SearchDocumentCustomerDto {
 
   @ApiProperty({ example: 1, required: false })
   document_type_id?: number;
+  
+  @ApiProperty({ example: 'b9d6c1dd-664c-4924-b359-fd77337da47e', required: false })
+  'subStages.id'?: string;
 
   @ApiProperty({ example: "2024-01-01", required: false })
   date_from?: string;

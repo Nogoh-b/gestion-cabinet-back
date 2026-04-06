@@ -29,6 +29,8 @@ import { MailService } from 'src/core/shared/emails/emails.service';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 import { StepsService } from './step.service';
 import { Step, StepStatus, StepType } from './entities/step.entity';
+import { ProcedureInstanceService } from '../procedure/services/procedure-instance.service';
+import { CreateProcedureInstanceDto } from '../procedure/dto/create-procedure-instance.dto';
 // import { DistributionItem, DossierStatsDto, EvolutionData, FinancialStats, LawyerStats, RecentDossier, TimelineStats, UrgentDossier } from 'src/core/types/base-stats.dto';
 
 
@@ -47,6 +49,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     protected readonly paginationService: PaginationServiceV1,
     protected readonly chatService: ChatService,
     protected readonly stepsService: StepsService,
+    private procedureInstanceService: ProcedureInstanceService,
     protected readonly emailsService?: MailService, // Optionnel
     
 
@@ -106,9 +109,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'lawyer',
         'lawyer.user',
         'procedure_type',
-        'procedureInstance',
-        'procedureInstance.currentStage',
-        'procedureInstance.currentStage.subStages',
+        // 'procedureInstance',
+
         'procedure_subtype',
         'documents',
         'audiences',
@@ -161,7 +163,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       this.clientRepository.findOne({ where: { id: Number(createDossierDto.client_id) } }),
       this.userRepository.findOne({ where: { id: createDossierDto.lawyer_id }, relations: ['user'] }),
       this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_type_id } }),
-      this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_subtype_id } }),
+      this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_subtype_id }, relations: ['procedure_template'] }),
     ]);
 
     if (!client) {
@@ -177,11 +179,19 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       throw new NotFoundException('Sous-type de procédure non trouvé');
     }
 
+
     // Génération du numéro de dossier
     const dossierNumber = await this.generateDossierNumber();
     if(!createDossierDto.dossier_number){
       createDossierDto.dossier_number = dossierNumber
     } 
+
+    let procedureInstanceDTO = new CreateProcedureInstanceDto();
+    procedureInstanceDTO.templateId = procedureSubtype.procedure_template?.id || procedureType.procedure_template?.id;
+    procedureInstanceDTO.title = createDossierDto.dossier_number;
+
+    const procedureInstance = await this.procedureInstanceService.create(procedureInstanceDTO, createdBy.id.toString())
+
     const dossier = this.dossierRepository.create({
       ...createDossierDto,
       dossier_number: dossierNumber,
@@ -191,6 +201,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       jurisdiction: {id : createDossierDto.jurisdiction ?? 1} as Jurisdiction,
       procedure_type: procedureType,
       procedure_subtype: procedureSubtype,
+      procedureInstance,
       opening_date: createDossierDto.opening_date ? new Date(createDossierDto.opening_date) : new Date(),
       status: DossierStatus.OPEN,
     });
@@ -304,26 +315,51 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     return conditions;
   }
 
-  async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
-    console.log(id)
+// Dans votre DossierService
+async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
+  console.log(id);
+  
+  // ✅ Charger UNIQUEMENT le dossier avec ses relations directes
+  const dossier = await this.dossierRepository.findOne({
+    where: { id },
+    relations: [
+      'client',
+      'lawyer',
+      'lawyer.user',
+      'factures',
+      'procedure_type',
+      'procedure_subtype',
+      'jurisdiction',
+    ],
+  });
 
-    const dossier = await this.dossierRepository.findOne({
-      where: { id },
-      relations: this.getDefaultSearchOptions().relationFields,
-    });
-    // console.log(dossier)
-
-    if (!dossier) {
-      throw new NotFoundException(`Dossier ${id} non trouvé`);
-    }
-
-    // Vérification des droits d'accès
-    // this.checkDossierAccess(dossier, user);
-
-    // return dossier;
-    return plainToInstance(DossierResponseDto,dossier);
+  if (!dossier) {
+    throw new NotFoundException(`Dossier ${id} non trouvé`);
   }
 
+  // ✅ Charger procedureInstance séparément si nécessaire
+  if (dossier.procedureInstanceId) {
+    const procedureInstance = await this.procedureInstanceService.getWorkflowStatus(dossier.procedureInstanceId);
+    
+    if (procedureInstance) {
+      dossier.procedureInstance = procedureInstance;
+      
+      // ✅ Charger les subStages de l'étape courante séparément si vraiment besoin
+      // if (procedureInstance.currentStage) {
+      //   const stageWithSubStages = await this.stageRepository.findOne({
+      //     where: { id: procedureInstance.currentStage.id },
+      //     relations: ['subStages'],
+      //   });
+        
+      //   if (stageWithSubStages) {
+      //     dossier.procedureInstance.currentStage = stageWithSubStages;
+      //   }
+      // }
+    }
+  }
+
+  return plainToInstance(DossierResponseDto, dossier);
+}
   async update(
     id: number,
     updateDossierDto: UpdateDossierDto,

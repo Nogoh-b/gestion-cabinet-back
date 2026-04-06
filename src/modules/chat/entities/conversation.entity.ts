@@ -20,7 +20,7 @@ export class Conversation {
   isGroup: boolean;
 
   @ManyToMany(() => Employee, {
-    eager: true,
+    eager: false,
   })
   @JoinTable()
   participants: Employee[];

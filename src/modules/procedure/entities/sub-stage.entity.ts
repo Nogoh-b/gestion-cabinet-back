@@ -1,14 +1,15 @@
 // entities/sub-stage.entity.ts
 import {
-    Entity,
-    Column,
-    PrimaryGeneratedColumn,
-    ManyToOne,
-    JoinColumn,
-    CreateDateColumn,
-    UpdateDateColumn,
-    OneToMany,
-    ManyToMany,
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+  ManyToMany,
+  JoinTable,
 } from 'typeorm';
 import { Stage } from './stage.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
@@ -45,6 +46,11 @@ export class SubStage {
   factures: Facture[];
 
   @ManyToMany(() => DocumentCustomer, (document) => document.subStages)
+  @JoinTable({
+    name: 'sub_stage_documents', // Table de jointure explicite
+    joinColumn: { name: 'sub_stage_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' }
+  })
   documents: DocumentCustomer[];
 
   @OneToMany(() => Diligence, (diligence) => diligence.subStage)

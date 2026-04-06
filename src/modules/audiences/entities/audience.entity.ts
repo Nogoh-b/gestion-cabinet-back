@@ -125,6 +125,33 @@ export class Audience extends BaseEntity {
   @Column({ name: 'stage_id', type: 'varchar', nullable: true })
   stage_id: string;
 
+
+
+
+    @Column({ name: 'decision_text', type: 'text', nullable: true })
+  decision_text: string;
+
+  @Column({ name: 'decision_date', type: 'date', nullable: true })
+  decision_date: Date;
+
+  @Column({ name: 'decision_outcome', length: 50, nullable: true })
+  decision_outcome: string; // 'favorable', 'unfavorable', 'partial'
+
+  @Column({ name: 'decision_notes', type: 'text', nullable: true })
+  decision_notes: string;
+
+  // Relation avec les documents de décision
+  @ManyToMany(() => DocumentCustomer, (document) => document.decision_audiences, {
+    cascade: true,
+  })
+  @JoinTable({
+    name: 'audience_decision_documents',
+    joinColumn: { name: 'audience_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
+  })
+  decision_documents: DocumentCustomer[];
+
+
   @ManyToOne(() => Stage)
   @JoinColumn({ name: 'stage_id' })
   stage: Stage;

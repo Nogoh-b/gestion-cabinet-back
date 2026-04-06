@@ -34,6 +34,21 @@ export class AudienceResponseDto {
   @ApiProperty({ example: "14:30" })
   @Expose()
   audience_time: string;
+  @Expose()  
+  decision_text: string;
+
+  @Expose()  
+  decision_date: Date;
+
+  @Expose()  
+  decision_outcome: string; // 'favorable', 'unfavorable', 'partial'
+
+  @Expose()  
+  decision_notes: string;
+
+  @Expose()  
+  decision_documents: any[];
+
 
  @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
   @Expose()

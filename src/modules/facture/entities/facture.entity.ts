@@ -10,7 +10,8 @@ import {
   UpdateDateColumn,
   OneToMany,
   ManyToOne,
-  JoinColumn
+  JoinColumn,
+  BeforeInsert
 } from 'typeorm';
 
 
@@ -96,7 +97,7 @@ export class Facture {
   updated_at: Date;
 
   // Relations
-  @OneToMany(() => Paiement, paiement => paiement.facture)
+  @OneToMany(() => Paiement, paiement => paiement.facture, { nullable: true })
   paiements: Paiement[];
 
   @ManyToOne(() => Dossier, { nullable: true })
@@ -217,5 +218,11 @@ export class Facture {
     } else if (this.montantPaye >= this.montantTTC) {
       this.status = StatutFacture.PAYEE;
     }
+  }
+
+  @BeforeInsert()
+  beforeCreate() {
+    this.status = this.status ??  StatutFacture.BROUILLON; 
+    // this.status = this.status ?? CustomerStatus.ACTIVE;
   }
 }

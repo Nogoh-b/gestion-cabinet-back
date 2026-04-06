@@ -18,6 +18,7 @@ import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { plainToInstance } from 'class-transformer';
+import { Paiement } from './entities/paiement.entity';
 
 @ApiTags('paiements')
 @Controller('paiements')
@@ -62,7 +63,13 @@ export class PaiementController {
   @ApiResponse({ status: HttpStatus.NO_CONTENT })
   @ApiParam({ name: 'id', type: String })
   async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.paiementService.removeV1(id);
+
+    const paiement = await this.paiementService.removeV1(id);
+
+    console.log((paiement as unknown as Paiement)?.facture?.id)
+    await this.paiementService.updateFacture((paiement as unknown as Paiement)?.facture?.id);
+    return paiement;
+
   }
 
   @Get('facture/:factureId')

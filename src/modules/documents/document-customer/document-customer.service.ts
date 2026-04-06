@@ -6,7 +6,7 @@ import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/ba
 import { FilesUtil, UploadedFileInfo } from 'src/core/shared/utils/file.util';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
-import { Customer, CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentCategoryService } from 'src/modules/document-category/document-category.service';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { DossiersService } from 'src/modules/dossiers/dossiers.service';
@@ -106,7 +106,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
         'category', 
         'dossier',
         'uploaded_by',
-        'previous_version'
+        'previous_version',
+        'subStages'
       ],
   
     };
@@ -357,6 +358,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         ...restDto,
         document_type: docType,
         customer,
+        status : DocumentCustomerStatus.ACCEPTED,
         category : plainToInstance(DocumentCategory, category),
         dossier: plainToInstance(Dossier, dossier),
         uploadedFile,
@@ -682,11 +684,11 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     const validateDocs = await this.findByCustomer(customer!.id, true);
     console.log('validateDocs.length', validateDocs.length)
     console.log('customer?.type_customer.requiredDocuments.length', customer?.type_customer.requiredDocuments.length)
-    if (validateDocs.length === customer?.type_customer.requiredDocuments.length) {
-        await this.customerRepository.update(customer.id, {
-          status: CustomerStatus.ACTIVE,
-        })
-    }
+    // if (validateDocs.length === customer?.type_customer.requiredDocuments.length) {
+    //     await this.customerRepository.update(customer.id, {
+    //       status: CustomerStatus.ACTIVE,
+    //     })
+    // }
   
     return doc;
   }

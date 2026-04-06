@@ -142,7 +142,12 @@ export class EmployeeResponseDto {
   is_huissier: boolean;
 
   @ApiProperty({ example: 12, description: "Nombre de dossiers en cours" })
-  @Expose()
+  @Type(() => Number)
+  @Transform(({ obj }) => {
+    if (!obj.managed_dossiers) return 0;
+    // Transformation explicite vers le DTO
+    return obj.managed_dossiers.length
+  })
   current_dossier_count: number;
 
   @ApiProperty({ example: true, description: "Peut accepter plus de dossiers" })
@@ -169,6 +174,28 @@ export class EmployeeResponseDto {
     }));
   })
   collaborating_dossiers: MinimalDossierResponseDto[];
+
+
+  @Expose()
+  @Type(() => MinimalDossierResponseDto)
+  @Transform(({ obj }) => {
+    if (!obj.managed_dossiers) return [];
+    // Transformation explicite vers le DTO
+    return obj.collaborating_dossiers.map(dossier => ({
+      id: dossier.id,
+      dossier_number: dossier.dossier_number,
+      object: dossier.object,
+      status: dossier.status,
+      client_name: dossier.client?.full_name || null,
+      lawyer_name: dossier.lawyer?.full_name || null,
+      procedure_type: dossier.procedure_type?.name || null,
+      opening_date: dossier.opening_date,
+      danger_level: dossier.danger_level,
+      priority_level: dossier.priority_level,
+      is_active: dossier.is_active
+    }));
+  })
+  managed_dossiers: MinimalDossierResponseDto[];
 
   @Expose()
   @Type(() => Number)
