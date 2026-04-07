@@ -7,6 +7,7 @@ import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { Stage } from 'src/modules/procedure/entities/stage.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
 
@@ -122,9 +123,22 @@ export class Audience extends BaseEntity {
   @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
   sub_stage_id: string;
 
-  @Column({ name: 'stage_id', type: 'varchar', nullable: true })
-  stage_id: string;
+  // @Column({ name: 'stage_id', type: 'varchar', nullable: true })
+  // stage_id: string;
 
+  @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
+  sub_stage_visit_id: string;
+
+  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, { nullable: true })
+  @JoinColumn({ name: 'sub_stage_visit_id' })
+  subStageVisit: SubStageVisit;
+
+  @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
+  stageVisit_id: string;
+
+  @ManyToOne(() => Stage)
+  @JoinColumn({ name: 'stageVisit_id' })
+  stageVisit: Stage;
 
 
 

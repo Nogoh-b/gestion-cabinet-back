@@ -128,7 +128,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       status: AudienceStatus.SCHEDULED,
       procedure_instance_id: procedureInstance?.id,
       sub_stage_id: subStage?.id,
-      stage_id: stage?.id
+      stageVisit_id: stage?.id
     });
 
     if (dto?.document_ids) {
@@ -139,15 +139,15 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     let aud = await this.repository.save(audience);
     
     // ✅ Mettre à jour le dossier si nécessaire (ex: première audience en contentieux)
-    await this.updateDossierStatusOnAudience(aud, dossier);
+    await this.updateDossierStatusOnAudience(aud[0], dossier);
 
     const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
   
     // Lier l'audience à l'étape (Many-to-One)
     if (currentStep) {
-      await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id);
+      await this.stepsService.syncActionWithStep('audience', aud[0].id, currentStep.id);
     }
-    return await this.findOneV1(aud.id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
+    return await this.findOneV1(aud[0].id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
   }
 
 /**

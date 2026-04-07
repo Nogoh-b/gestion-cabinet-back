@@ -26,6 +26,8 @@ import { HistoryEntry } from './entities/history-entry.entity';
 import { Cycle } from './entities/cycle.entity';
 import { StageConfig } from './entities/stage-config.entity';
 import { InstanceMapperService } from './services/instance-sub-stage.service';
+import { StageVisit } from './entities/stage-visit.entity';
+import { SubStageVisit } from './entities/sub-stage-visit.entity';
 
 @Module({
   imports: [
@@ -38,7 +40,9 @@ import { InstanceMapperService } from './services/instance-sub-stage.service';
       Cycle,
       Decision,
       StageConfig,
+      StageVisit,
       HistoryEntry,
+      SubStageVisit,
       Task,
     ]),
   ],

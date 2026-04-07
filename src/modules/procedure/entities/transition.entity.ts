@@ -1,12 +1,12 @@
 // entities/transition.entity.ts
 import {
-    Entity,
-    Column,
-    PrimaryGeneratedColumn,
-    ManyToOne,
-    JoinColumn,
-    CreateDateColumn,
-    UpdateDateColumn,
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Stage } from './stage.entity';
 import { ProcedureTemplate } from './procedure-template.entity';
@@ -60,8 +60,9 @@ export class Transition {
   @Column({ type: 'boolean', default: false })
   isDefault: boolean;
 
-@JoinColumn({ name: 'templateId' })
-template: ProcedureTemplate;
+  @ManyToOne(() => ProcedureTemplate, (template) => template.transitions)
+  @JoinColumn({ name: 'templateId' })
+  template: ProcedureTemplate;
 
   @Column({ type: 'boolean', default: true })
   requiresDecision: boolean;

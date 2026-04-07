@@ -225,6 +225,14 @@ export class DocumentCustomer extends BaseEntity {
     })
     stages: Stage[];
 
+    @ManyToMany(() => Stage, (stage) => stage.documents)
+    @JoinTable({
+      name: 'stage_visit_documents',
+      joinColumn: { name: 'document_id', referencedColumnName: 'id' },
+      inverseJoinColumn: { name: 'stageVisit_id', referencedColumnName: 'id' },
+    })
+    stageVisits: Stage[];
+
     @ManyToMany(() => SubStage, (subStage) => subStage.documents)
     subStages: SubStage[];
 

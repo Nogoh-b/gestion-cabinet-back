@@ -23,6 +23,7 @@ import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { Stage } from 'src/modules/procedure/entities/stage.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 
 
 @Entity('factures')
@@ -119,12 +120,26 @@ export class Facture {
   @JoinColumn({ name: 'sub_stage_id' })
   subStage: SubStage;
 
-  @Column({ name: 'stage_id', type: 'varchar', nullable: true })
-  stage_id: string;
+  // @Column({ name: 'stage_id', type: 'varchar', nullable: true })
+  // stage_id: string;
+
+  // @ManyToOne(() => Stage)
+  // @JoinColumn({ name: 'stageVisit_id' })
+  // stage: Stage;
+  @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
+  sub_stage_visit_id: string;
+
+  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, { nullable: true })
+  @JoinColumn({ name: 'sub_stage_visit_id' })
+  subStageVisit: SubStageVisit;
+  
+  @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
+  stageVisit_id: string;
 
   @ManyToOne(() => Stage)
   @JoinColumn({ name: 'stage_id' })
-  stage: Stage;
+  stageVisit: Stage;
+
 
   // Garder aussi la liaison avec ProcedureInstance pour la vue globale
   @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })

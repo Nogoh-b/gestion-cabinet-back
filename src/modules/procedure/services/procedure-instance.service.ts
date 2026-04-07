@@ -15,6 +15,8 @@ import { EventType, InstanceStatus, TransitionType } from '../entities/enums/ins
 import { HistoryEntry } from '../entities/history-entry.entity';
 import { InstanceMapperService } from './instance-sub-stage.service';
 import { MappedInstance } from '../entities/type/instance-status.enum';
+import { StageVisit } from '../entities/stage-visit.entity';
+import { SubStageVisit } from '../entities/sub-stage-visit.entity';
 
 @Injectable()
 export class ProcedureInstanceService {
@@ -34,42 +36,47 @@ export class ProcedureInstanceService {
     private historyService: HistoryService,
     private dataSource: DataSource,
     private instanceMapper: InstanceMapperService,
+    @InjectRepository(StageVisit)
+    private stageVisitRepository: Repository<StageVisit>,
+    @InjectRepository(SubStageVisit)
+    private subStageVisitRepository: Repository<SubStageVisit>,
 
   ) {}
 
   async create(dto: CreateProcedureInstanceDto, userId: string): Promise<ProcedureInstance> {
-    const template = await this.templateService.findOne(dto.templateId);
+      const template = await this.templateService.findOne(dto.templateId);
 
-    if (!template.stages || template.stages.length === 0) {
-      throw new Error('Template has no stages');
+      if (!template.stages || template.stages.length === 0) {
+        throw new Error('Template has no stages');
+      }
+
+      const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
+
+      const instance = this.instanceRepository.create({
+        templateId: dto.templateId,
+        title: dto.title,
+        status: InstanceStatus.ACTIVE,
+        currentStageId: firstStage.id,
+        data: dto.data || {},
+        completedSubStages: [],
+        cycleUsageCount: {},
+      });
+
+      await this.instanceRepository.save(instance);
+
+      // Créer la première visite
+      await this.getCurrentStageVisit(instance.id);
+
+      await this.historyService.log(
+        instance.id,
+        EventType.STAGE_ENTER,
+        firstStage.id,
+        userId,
+        { message: 'Instance créée' },
+      );
+
+      return this.findOne(instance.id);
     }
-
-    // Trier les stages par ordre
-    const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
-
-    const instance = this.instanceRepository.create({
-      templateId: dto.templateId,
-      title: dto.title,
-      status: InstanceStatus.ACTIVE,
-      currentStageId: firstStage.id,
-      data: dto.data || {},
-      completedSubStages: [], // Tableau des IDs des sous-étapes complétées
-      cycleUsageCount: {},    // Compteur des utilisations de cycles
-    });
-
-    await this.instanceRepository.save(instance);
-
-    // Enregistrer l'entrée dans le premier stage
-    await this.historyService.log(
-      instance.id,
-      EventType.STAGE_ENTER,
-      firstStage.id,
-      userId,
-      { message: 'Instance créée' },
-    );
-
-    return this.findOne(instance.id);
-  }
 
 // services/procedure-instance.service.ts
 
@@ -77,77 +84,59 @@ export class ProcedureInstanceService {
  * Compléter une sous-étape (version sans transaction)
  */
 async completeSubStage(
-  instanceId: string,
-  subStageId: string,
-  userId: string,
-  notes?: string,
-  skipAutoTransitions: boolean = false, // Ajout du paramètre
-): Promise<ProcedureInstance> {
-  try {
-    // 1. Récupérer l'instance sans lock
+    instanceId: string,
+    subStageId: string,
+    userId: string,
+    notes?: string,
+    skipAutoTransitions: boolean = false,
+  ): Promise<ProcedureInstance> {
     const instance = await this.findOne(instanceId);
-    if (!instance) {
-      throw new NotFoundException(`Instance with ID ${instanceId} not found`);
+    const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+
+    // Trouver ou créer SubStageVisit
+    let subStageVisit = await this.subStageVisitRepository.findOne({
+      where: {
+        stageVisitId: currentStageVisit.id,
+        subStageId: subStageId,
+      },
+    });
+
+    if (!subStageVisit) {
+      subStageVisit = this.subStageVisitRepository.create({
+        stageVisitId: currentStageVisit.id,
+        subStageId: subStageId,
+        isCompleted: true,
+        startedAt: new Date(),
+        completedAt: new Date(),
+        metadata: { notes, completedBy: userId },
+      });
+    } else {
+      subStageVisit.isCompleted = true;
+      subStageVisit.completedAt = new Date();
+      subStageVisit.metadata = { ...subStageVisit.metadata, notes, lastCompletedBy: userId };
     }
-    
-    
-    // Vérifier si déjà complétée
-    if (instance.completedSubStages?.includes(subStageId)) {
-      throw new BadRequestException('SubStage already completed');
-    }
-    
-    // Ajouter aux complétées
-    instance.completedSubStages = [...(instance.completedSubStages || []), subStageId];
-    
-    // Mettre à jour les métadonnées
-    if (!instance.subStageMetadata) {
-      instance.subStageMetadata = {};
-    }
-    
-    instance.subStageMetadata[subStageId] = {
-      ...instance.subStageMetadata[subStageId],
-      completedAt: new Date().toISOString(),
-      notes: notes || instance.subStageMetadata[subStageId]?.notes,
-    };
-    
-    await this.instanceRepository.save(instance);
-    
+
+    await this.subStageVisitRepository.save(subStageVisit);
+
     await this.historyService.log(
       instanceId,
       EventType.SUBSTAGE_COMPLETED,
-      null,
+      instance.currentStageId,
       userId,
-      { subStageId, notes },
-    );
-    
-    // Vérifier les transitions automatiques
-    // await this.checkAndTriggerAutomaticTransitions(instanceId,userId);
-    
-    // 2. Vérifier que la sous-étape appartient au stage courant
-    const currentStage = instance.currentStage;
-
-
-    // 5. Vérifier si toutes les sous-étapes obligatoires sont complétées
-    const mandatorySubStages = currentStage.subStages.filter(ss => ss.isMandatory);
-    const allMandatoryCompleted = mandatorySubStages.every(ss => 
-      instance.completedSubStages.includes(ss.id)
+      { 
+        subStageId, 
+        visitNumber: currentStageVisit.visitNumber,
+        subStageVisitId: subStageVisit.id,
+        notes 
+      }
     );
 
-    console.log(mandatorySubStages, ' ', allMandatoryCompleted)
-    
-    // 6. Si toutes les sous-étapes sont complétées, déclencher les transitions auto
-    if (allMandatoryCompleted) {
-      await this.triggerAutomaticTransitionsSimple(instance, userId);
+    if (!skipAutoTransitions) {
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
     }
-    
-    // Retourner l'instance mise à jour
+
     return this.findOne(instanceId);
-    
-  } catch (error) {
-    console.error('Error in completeSubStage:', error);
-    throw error;
   }
-}
 
 /**
  * Déclencher les transitions automatiques (version simple sans transaction)
@@ -448,35 +437,55 @@ private generateUuid(): string {
   /**
    * Récupérer les transitions disponibles
    */
-  async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
-    const instance = await this.findOne(instanceId);
-    
-    const transitions = await this.transitionRepository.find({
-      where: {
-        fromStageId: instance.currentStageId,
-        type: TransitionType.MANUAL,
-      },
-    });
-    
-    const available: Transition[] = [];
-    for (const transition of transitions) {
-      if (transition.condition) {
-        const context = {
-          instance: { 
-            data: instance.data, 
-            completedSubStages: instance.completedSubStages 
-          },
-        };
-        if (await this.workflowService.evaluateCondition(transition.condition, context)) {
-          available.push(transition);
-        }
-      } else {
-        available.push(transition);
-      }
+/**
+ * Récupérer les transitions manuelles disponibles
+ * Utilise maintenant la visite courante (StageVisit) pour évaluer les conditions
+ */
+async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
+  const instance = await this.findOne(instanceId);
+  const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+
+  // Récupérer toutes les transitions manuelles depuis l'étape courante
+  const transitions = await this.transitionRepository.find({
+    where: {
+      fromStageId: instance.currentStageId,
+      type: TransitionType.MANUAL,
+    },
+    relations: ['fromStage', 'toStage'],
+  });
+  console.log(transitions)
+  const available: Transition[] = [];
+
+  for (const transition of transitions) {
+    let shouldBeAvailable = true;
+
+    // Si la transition a une condition, on l'évalue avec les données de la visite courante
+    if (transition.condition) {
+      const context = {
+        instance: {
+          data: instance.data,
+          // On passe les sous-étapes complétées de la VISITE COURANTE
+          completedSubStages: currentStageVisit.completedSubStages || [],
+        },
+        stageVisit: {
+          visitNumber: currentStageVisit.visitNumber,
+          completedSubStages: currentStageVisit.completedSubStages || [],
+        },
+      };
+
+      shouldBeAvailable = await this.workflowService.evaluateCondition(
+        transition.condition,
+        context
+      );
     }
-    
-    return available;
+
+    if (shouldBeAvailable) {
+      available.push(transition);
+    }
   }
+
+  return available;
+}
 
   async findAll(filters?: { status?: InstanceStatus; templateId?: string }): Promise<ProcedureInstance[]> {
     const where: any = {};
@@ -494,36 +503,40 @@ private generateUuid(): string {
    * Récupérer une instance (sans lock)
    */
   async findOne(id: string): Promise<ProcedureInstance> {
-    const instance = await this.instanceRepository.findOne({
-      where: { id },
-      relations: [
-        'template',
-        'template.stages',
-        'template.stages.subStages',
-        'template.stages.config',
-        'currentStage',
-        'currentStage.subStages',
-        'decisions',
-        'tasks',
-        // 'history',
-      ],
-    });
-    
-    if (!instance) {
-      throw new NotFoundException(`Instance with ID - ${id} not found`);
+      const instance = await this.instanceRepository.findOne({
+        where: { id },
+        relations: [
+          'template',
+          'template.stages',
+          'template.transitions',
+          'template.stages.subStages',
+          'template.stages.config',
+          'currentStage',
+          'currentStage.subStages',
+          'decisions',
+          'tasks',
+          'stageVisits',
+          'stageVisits.subStageVisits',
+        ],
+      });
+
+      if (!instance) throw new NotFoundException(`Instance with ID ${id} not found`);
+
+      if (!instance.completedSubStages) instance.completedSubStages = [];
+      if (!instance.cycleUsageCount) instance.cycleUsageCount = {};
+
+      return instance;
     }
-    
-    if (!instance.completedSubStages) instance.completedSubStages = [];
-    if (!instance.cycleUsageCount) instance.cycleUsageCount = {};
-    
-    return instance;
-  }
 
   async findOneMapped(id: string): Promise<MappedInstance> {
-    const instance = await this.findOne(id);
-    // const currentTemplate = await this.templateService.findOne(instance.templateId);
-    
-    return this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template);
+      const instance = await this.findOne(id);
+      const currentVisit = await this.getCurrentStageVisit(id);
+
+      return await this.instanceMapper.mapInstanceWithCurrentTemplate(
+        instance, 
+        instance.template, 
+        currentVisit
+      );
   }
 
   async updateStatus(id: string, status: InstanceStatus, userId: string): Promise<ProcedureInstance> {
@@ -544,9 +557,11 @@ private generateUuid(): string {
 
   async getWorkflowStatus(id: string): Promise<any> {
     const instance = await this.findOne(id);
-    const availableTransitions = await this.workflowService.getAvailableTransitions(id);
+    const availableTransitions = await this.getAvailableTransitions(id);
     const availableCycles = await this.getAvailableCycles(id);
-    const mapped = this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template);
+    const currentVisit = await this.getCurrentStageVisit(id);
+
+    const mapped = await this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template, currentVisit);
     // Calculer la progression
     const totalMandatorySubStages = instance.template.stages.reduce(
       (acc, stage) => acc + stage.subStages.filter(ss => ss.isMandatory).length, 0
@@ -560,6 +575,7 @@ private generateUuid(): string {
         ...mapped.instance,
         currentStage: mapped.currentStage,  // Remplacer par le stage mappé
         },
+      currentVisitNumber: currentVisit.visitNumber,
       stages: mapped.stages,
       currentStage: mapped.currentStage,
       progress: mapped.progress,
@@ -597,38 +613,62 @@ private generateUuid(): string {
  /**
    * Démarrer une sous-étape
    */
-  async startSubStage(
-    instanceId: string,
-    subStageId: string,
-    userId: string,
-    notes?: string,
-  ): Promise<ProcedureInstance> {
-    const instance = await this.findOne(instanceId);
-    
-    // Initialiser les métadonnées si nécessaire
-    if (!instance.subStageMetadata) {
-      instance.subStageMetadata = {};
-    }
-    
-    instance.subStageMetadata[subStageId] = {
-      ...instance.subStageMetadata[subStageId],
-      startedAt: new Date().toISOString(),
-      notes: notes || instance.subStageMetadata[subStageId]?.notes,
+/**
+ * Démarrer une sous-étape (version moderne avec SubStageVisit)
+ */
+async startSubStage(
+  instanceId: string,
+  subStageId: string,
+  userId: string,
+  notes?: string,
+): Promise<ProcedureInstance> {
+  const instance = await this.findOne(instanceId);
+  const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+
+  // Trouver ou créer SubStageVisit
+  let subStageVisit = await this.subStageVisitRepository.findOne({
+    where: {
+      stageVisitId: currentStageVisit.id,
+      subStageId: subStageId,
+    },
+  });
+
+  if (!subStageVisit) {
+    subStageVisit = this.subStageVisitRepository.create({
+      stageVisitId: currentStageVisit.id,
+      subStageId: subStageId,
+      isCompleted: false,
+      startedAt: new Date(),
+      metadata: {
+        notes: notes || '',
+        startedBy: userId,
+      },
+    });
+  } else {
+    subStageVisit.startedAt = new Date();
+    subStageVisit.metadata = {
+      ...subStageVisit.metadata,
+      notes: notes || subStageVisit.metadata?.notes,
+      restartedBy: userId,
     };
-    
-    await this.instanceRepository.save(instance);
-    
-    await this.historyService.log(
-      instanceId,
-      EventType.SUBSTAGE_STARTED,
-      null,
-      userId,
-      { subStageId, notes },
-    );
-    
-    return instance;
   }
 
+  await this.subStageVisitRepository.save(subStageVisit);
+
+  await this.historyService.log(
+    instanceId,
+    EventType.SUBSTAGE_STARTED,
+    instance.currentStageId,
+    userId,
+    { 
+      subStageId, 
+      visitNumber: currentStageVisit.visitNumber,
+      subStageVisitId: subStageVisit.id 
+    }
+  );
+
+  return this.findOne(instanceId);
+}
 
 
   /**
@@ -659,164 +699,144 @@ private generateUuid(): string {
   }
 
 
-  /**
- * Appliquer une transition manuelle (avec gestion des inputs utilisateur)
+/**
+ * Appliquer une transition (manuelle ou automatique)
+ * Version adaptée pour supporter les visites d'étapes
  */
 async applyTransition(
-  instanceId: string,
-  transitionId: string,
-  userId: string,
-  userInputs?: Record<string, any>,
-  comment?: string,
-): Promise<ProcedureInstance> {
-  const queryRunner = this.dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
+    instanceId: string,
+    transitionId: string,
+    userId: string,
+    userInputs?: Record<string, any>,
+    comment?: string,
+  ): Promise<ProcedureInstance> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-  try {
-    // 1. Récupérer l'instance et la transition
-    const instance = await this.findOne(instanceId);
-    const transition = await this.transitionRepository.findOne({
-      where: { id: transitionId },
-      relations: ['fromStage', 'toStage'],
+    try {
+      const instance = await this.findOne(instanceId);
+      const transition = await this.transitionRepository.findOne({
+        where: { id: transitionId },
+        relations: ['fromStage', 'toStage'],
+      });
+
+      if (!transition) throw new NotFoundException('Transition non trouvée');
+
+      // Fermer la visite actuelle
+      const currentVisit = await this.stageVisitRepository.findOne({
+        where: { instanceId, stageId: transition.fromStageId },
+        order: { visitNumber: 'DESC' },
+      });
+
+      if (currentVisit && !currentVisit.exitedAt) {
+        currentVisit.exitedAt = new Date();
+        await queryRunner.manager.save(currentVisit);
+      }
+
+      // Exécuter la transition
+      await this.executeTransitionWithQueryRunner(
+        instance,
+        transition,
+        userId,
+        comment || '',
+        queryRunner,
+      );
+
+      await queryRunner.commitTransaction();
+
+      // Créer nouvelle visite pour la nouvelle étape
+      await this.getCurrentStageVisit(instanceId);
+
+      return this.findOne(instanceId);
+
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /**
+  * Exécuter une transition avec queryRunner (version unifiée)
+  */
+  /**
+  * Exécuter une transition avec queryRunner
+  * Crée automatiquement une nouvelle StageVisit pour la nouvelle étape
+  */
+  private async executeTransitionWithQueryRunner(
+    instance: ProcedureInstance,
+    transition: Transition,
+    userId: string,
+    comment: string,
+    queryRunner: any,
+  ): Promise<void> {
+    // 1. Enregistrer la décision
+    const decision = {
+      instanceId: instance.id,
+      fromStageId: transition.fromStageId,
+      toStageId: transition.toStageId,
+      userId,
+      comment,
+    };
+    await queryRunner.manager.save('decisions', decision);
+
+    // 2. Historique : Sortie de l'étape actuelle
+    await queryRunner.manager.save(HistoryEntry, {
+      instanceId: instance.id,
+      eventType: EventType.STAGE_EXIT,
+      stageId: transition.fromStageId,
+      userId,
+      metadata: { 
+        transitionId: transition.id, 
+        comment,
+        type: transition.type 
+      },
     });
 
-    if (!transition) {
-      throw new NotFoundException('Transition non trouvée');
-    }
+    // 3. Mettre à jour l'étape courante de l'instance
+    await queryRunner.manager.update(ProcedureInstance, instance.id, {
+      currentStageId: transition.toStageId,
+    });
 
-    // 2. Vérifier que c'est une transition manuelle
-    if (transition.type !== TransitionType.MANUAL) {
-      throw new BadRequestException('Cette transition ne peut pas être appliquée manuellement');
-    }
+    // 4. Créer une NOUVELLE StageVisit pour la nouvelle étape
+    const newVisitNumber = await this.getNextVisitNumber(instance.id, transition.toStageId);
 
-    // 3. Vérifier que la transition est disponible depuis l'étape courante
-    if (transition.fromStageId !== instance.currentStageId) {
-      throw new BadRequestException('Cette transition n\'est pas disponible depuis l\'étape actuelle');
-    }
+    const newStageVisit = this.stageVisitRepository.create({
+      instanceId: instance.id,
+      stageId: transition.toStageId,
+      visitNumber: newVisitNumber,
+      completedSubStages: [],
+      subStageMetadata: {},
+      enteredAt: new Date(),
+      subStageVisits: [],
+    });
 
-    // 4. Vérifier la condition de la transition (si présente)
-    if (transition.condition) {
-      const context = {
-        instance: {
-          data: instance.data,
-          completedSubStages: instance.completedSubStages,
-        },
-      };
-      const conditionMet = await this.workflowService.evaluateCondition(
-        transition.condition,
-        context,
-      );
-      if (!conditionMet) {
-        throw new BadRequestException('Les conditions de la transition ne sont pas remplies');
-      }
-    }
+    await queryRunner.manager.save(newStageVisit);
 
-    const currentStage = instance.currentStage;
-    const mandatorySubStages = currentStage.subStages.filter(ss => ss.isMandatory);
-    const allMandatoryCompleted = mandatorySubStages.every(ss => 
-      instance.completedSubStages.includes(ss.id)
-    );
-    
-    if (!allMandatoryCompleted) {
-      throw new BadRequestException(
-        'Toutes les sous-étapes obligatoires doivent être complétées avant de continuer'
-      );
-    }
-
-    // 5. Traiter les inputs utilisateur (si la transition en attend)
-    let processedInputs: Record<string, any> = {};
-    if (transition.expectsUserInput && transition.userInputs?.length > 0) {
-      processedInputs = await this.processUserInputs(
-        transition,
-        userInputs || {},
-        queryRunner,
-        instance,
-      );
-    }
-
-    // 6. Mettre à jour les données de l'instance avec les inputs
-    if (Object.keys(processedInputs).length > 0) {
-      instance.data = {
-        ...instance.data,
-        ...processedInputs,
-        _transitionHistory: {
-          ...instance.data?._transitionHistory,
-          [transition.id]: {
-            appliedAt: new Date(),
-            inputs: processedInputs,
-            comment,
-          },
-        },
-      };
-      await queryRunner.manager.save(instance);
-    }
-
-    // 7. Exécuter la transition (en utilisant votre méthode existante)
-    await this.executeTransitionWithQueryRunner(
-      instance,
-      transition,
+    // 5. Historique : Entrée dans la nouvelle étape
+    await queryRunner.manager.save(HistoryEntry, {
+      instanceId: instance.id,
+      eventType: EventType.STAGE_ENTER,
+      stageId: transition.toStageId,
       userId,
-      comment || '',
-      queryRunner,
-    );
-
-    await queryRunner.commitTransaction();
-
-    // 8. Déclencher les transitions automatiques de la nouvelle étape
-    // await this.checkAndTriggerAutomaticTransitions(instance.id, userId); 
-
-    return this.findOne(instance.id);
-  } catch (error) {
-    await queryRunner.rollbackTransaction();
-    throw error;
-  } finally {
-    await queryRunner.release();
+      metadata: { 
+        transitionId: transition.id, 
+        visitNumber: newVisitNumber,
+        stageVisitId: newStageVisit.id 
+      },
+    });
   }
-}
 
-/**
- * Exécuter une transition avec queryRunner (version unifiée)
+  /**
+ * Retourne le prochain numéro de visite pour une étape donnée
  */
-private async executeTransitionWithQueryRunner(
-  instance: ProcedureInstance,
-  transition: Transition,
-  userId: string,
-  comment: string | null,
-  queryRunner: any,
-): Promise<void> {
-  // Enregistrer la décision
-  const decision = {
-    instanceId: instance.id,
-    fromStageId: transition.fromStageId,
-    transitionId: transition.id,
-    toStageId: transition.toStageId,
-    userId,
-    comment: comment || (transition.type === TransitionType.AUTOMATIC ? 'Transition automatique' : transition.label),
-  };
-  await queryRunner.manager.save('decisions', decision);
-
-  // Quitter le stage courant
-  await queryRunner.manager.save(HistoryEntry, {
-    instanceId: instance.id,
-    eventType: EventType.STAGE_EXIT,
-    stageId: transition.fromStageId,
-    userId,
-    metadata: { transitionId: transition.id, type: transition.type, comment },
+private async getNextVisitNumber(instanceId: string, stageId: string): Promise<number> {
+  const count = await this.stageVisitRepository.count({
+    where: { instanceId, stageId }
   });
-
-  // Entrer dans le nouveau stage
-  await queryRunner.manager.update(ProcedureInstance, instance.id, {
-    currentStageId: transition.toStageId,
-  });
-
-  await queryRunner.manager.save(HistoryEntry, {
-    instanceId: instance.id,
-    eventType: EventType.STAGE_ENTER,
-    stageId: transition.toStageId,
-    userId,
-    metadata: { transitionId: transition.id, fromStage: transition.fromStageId },
-  });
+  return count + 1;
 }
 
 /**
@@ -870,58 +890,110 @@ private async processUserInputs(
 /**
  * Vérifier et déclencher les transitions automatiques
  */
+/**
+ * Vérifie et déclenche les transitions automatiques
+ * Version adaptée à StageVisit / SubStageVisit
+ */
+/**
+ * Vérifie et déclenche les transitions automatiques
+ * Condition importante : seulement si TOUTES les sous-étapes obligatoires de la visite courante sont complétées
+ */
 private async checkAndTriggerAutomaticTransitions(
   instanceId: string,
   userId: string,
 ): Promise<void> {
   const instance = await this.findOne(instanceId);
+  const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+
+  // 1. Vérifier si toutes les sous-étapes OBLIGATOIRES de la visite courante sont complétées
+  const currentStage = instance.currentStage;
+  if (!currentStage || !currentStage.subStages) {
+    return;
+  }
+
+  const mandatorySubStages = currentStage.subStages.filter(ss => ss.isMandatory);
+  
+  const allMandatoryCompleted = mandatorySubStages.length === 0 || 
+    mandatorySubStages.every(subStage => 
+      currentStageVisit.subStageVisits.some(visit => 
+        visit.subStageId === subStage.id && visit.isCompleted === true
+      )
+    );
+
+  if (!allMandatoryCompleted) {
+    console.log(`[Auto Transition] Transition bloquée : toutes les sous-étapes obligatoires ne sont pas encore complétées`);
+    return;
+  }
+
+  console.log(`[Auto Transition] Toutes les sous-étapes obligatoires sont complétées → recherche de transitions automatiques`);
+
+  // 2. Récupérer les transitions automatiques depuis l'étape courante
   const automaticTransitions = await this.transitionRepository.find({
     where: {
       fromStageId: instance.currentStageId,
       type: TransitionType.AUTOMATIC,
     },
+    relations: ['fromStage', 'toStage'],
   });
 
   for (const transition of automaticTransitions) {
     let shouldTrigger = true;
 
+    // Évaluer la condition supplémentaire de la transition (si elle en a une)
     if (transition.triggerCondition) {
       const context = {
         instance: {
           data: instance.data,
-          completedSubStages: instance.completedSubStages,
+        },
+        stageVisit: {
+          visitNumber: currentStageVisit.visitNumber,
+          completedSubStages: currentStageVisit.completedSubStages || [],
         },
       };
+
       shouldTrigger = await this.workflowService.evaluateCondition(
         transition.triggerCondition,
-        context,
+        context
       );
     }
 
     if (shouldTrigger) {
+      console.log(`[Auto Transition] Déclenchement automatique vers l'étape ${transition.toStageId}`);
+
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
       try {
+        // Fermer proprement la visite actuelle
+        if (!currentStageVisit.exitedAt) {
+          currentStageVisit.exitedAt = new Date();
+          await queryRunner.manager.save(currentStageVisit);
+        }
+
+        // Exécuter la transition
         await this.executeTransitionWithQueryRunner(
           instance,
           transition,
           userId,
-          'Transition automatique déclenchée',
+          'Transition automatique déclenchée après complétion des sous-étapes obligatoires',
           queryRunner,
         );
+
         await queryRunner.commitTransaction();
+
+        // Créer une nouvelle visite pour la nouvelle étape
+        await this.getCurrentStageVisit(instanceId);
+
       } catch (error) {
         await queryRunner.rollbackTransaction();
-        console.error('Erreur lors du déclenchement automatique:', error);
+        console.error(`Erreur lors du déclenchement automatique :`, error);
       } finally {
         await queryRunner.release();
       }
     }
   }
 }
-
 /**
  * Récupérer les transitions disponibles (version enrichie avec inputs)
  */
@@ -999,6 +1071,42 @@ async triggerEventOnInstance(
     }
   }
 }
+
+
+
+/**
+ * Récupère la visite courante de l'étape actuelle
+ * Crée une nouvelle visite si aucune n'existe
+ */
+async getCurrentStageVisit(instanceId: string): Promise<StageVisit> {
+    const instance = await this.findOne(instanceId);
+
+    let visit = await this.stageVisitRepository.findOne({
+      where: { instanceId, stageId: instance.currentStageId },
+      order: { visitNumber: 'DESC' },
+      relations: ['subStageVisits'],
+    });
+
+    if (!visit) {
+      const visitCount = await this.stageVisitRepository.count({
+        where: { instanceId, stageId: instance.currentStageId }
+      });
+
+      visit = this.stageVisitRepository.create({
+        instanceId: instance.id,
+        stageId: instance.currentStageId,
+        visitNumber: visitCount + 1,
+        completedSubStages: [],
+        subStageMetadata: {},
+        enteredAt: new Date(),
+        subStageVisits: [],
+      });
+
+      await this.stageVisitRepository.save(visit);
+    }
+
+    return visit;
+  }
 
 
 /**
@@ -1151,8 +1259,10 @@ async resetInstance(
 }
     // services/procedure-instance.service.ts
 
+
 /**
- * Réinitialiser une instance (version simplifiée)
+ * Réinitialiser une instance complètement (comme à la création)
+ * Supprime toutes les StageVisit et SubStageVisit
  */
 async resetInstanceSimple(
     instanceId: string,
@@ -1168,38 +1278,81 @@ async resetInstanceSimple(
         const template = await this.templateService.findOne(instance.templateId);
         const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
 
-        // Enregistrer la réinitialisation
+        // 1. Supprimer toutes les visites et sous-visites existantes
+        await queryRunner.manager
+            .createQueryBuilder()
+            .delete()
+            .from('sub_stage_visits')
+            .where('stageVisitId IN (SELECT id FROM stage_visits WHERE instanceId = :instanceId)', { instanceId })
+            .execute();
+
+        await queryRunner.manager
+            .createQueryBuilder()
+            .delete()
+            .from('stage_visits')
+            .where('instanceId = :instanceId', { instanceId })
+            .execute();
+
+        // 2. Réinitialiser l'instance principale
+        await queryRunner.manager.update(ProcedureInstance, instance.id, {
+            status: InstanceStatus.ACTIVE,
+            currentStageId: firstStage.id,
+            completedSubStages: [],        // Déprécié mais conservé
+            cycleUsageCount: {},
+            subStageMetadata: {},          // Déprécié
+            updatedAt: new Date(),
+        });
+
+        // 3. Créer une nouvelle visite pour la première étape (comme à la création)
+        const newStageVisit = this.stageVisitRepository.create({
+            instanceId: instance.id,
+            stageId: firstStage.id,
+            visitNumber: 1,
+            completedSubStages: [],
+            subStageMetadata: {},
+            enteredAt: new Date(),
+            subStageVisits: [],
+        });
+
+        await queryRunner.manager.save(newStageVisit);
+
+        // 4. Enregistrer dans l'historique
         await this.historyService.log(
             instance.id,
             EventType.DECISION,
             instance.currentStageId,
             userId,
-            { action: 'reset', reason, toStage: firstStage.id },
-            
+            { 
+                action: 'reset_simple',
+                reason: reason || 'Réinitialisation complète',
+                fromStage: instance.currentStageId,
+                toStage: firstStage.id,
+                message: 'Toutes les visites ont été supprimées'
+            }
         );
 
-        // Réinitialiser
-        await queryRunner.manager.update(ProcedureInstance, instance.id, {
-            status: InstanceStatus.ACTIVE,
-            currentStageId: firstStage.id,
-            completedSubStages: [],
-            cycleUsageCount: {},
-        });
-
-        // Enregistrer l'entrée
         await this.historyService.log(
             instance.id,
             EventType.STAGE_ENTER,
             firstStage.id,
             userId,
-            { message: 'Instance réinitialisée', reason },
+            { 
+                message: 'Nouvelle instance réinitialisée - Première visite créée',
+                visitNumber: 1,
+                stageVisitId: newStageVisit.id,
+                reason: reason || 'Réinitialisation complète'
+            }
         );
 
         await queryRunner.commitTransaction();
+
+        console.log(`Instance ${instanceId} réinitialisée complètement. Nouvelle visite créée pour l'étape ${firstStage.name}`);
+
         return this.findOne(instance.id);
         
     } catch (error) {
         await queryRunner.rollbackTransaction();
+        console.error('Erreur lors de la réinitialisation simple:', error);
         throw error;
     } finally {
         await queryRunner.release();

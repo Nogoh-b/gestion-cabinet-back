@@ -11,6 +11,7 @@ import { HistoryEntry } from '../entities/history-entry.entity';
 import { EventType, TransitionType } from '../entities/enums/instance-status.enum';
 import { ApplyTransitionDto } from '../dto/create-procedure-instance.dto copy';
 import * as jsonLogic from 'json-logic-js';
+import { StageVisit } from '../entities/stage-visit.entity';
 
 @Injectable()
 export class WorkflowService {
@@ -25,6 +26,8 @@ export class WorkflowService {
     private decisionRepository: Repository<Decision>,
     @InjectRepository(HistoryEntry)
     private historyRepository: Repository<HistoryEntry>,
+    @InjectRepository(StageVisit)
+    private stageVisitRepository: Repository<StageVisit>,
   ) {}
 
   /**
@@ -192,6 +195,10 @@ export class WorkflowService {
         
         if (context.subStage) {
             vars['subStage'] = context.subStage;
+        }  
+
+        if (context.stageVisit) {
+            vars['stageVisit'] = context.stageVisit;
         }
         
         if (context.stage) {
@@ -216,6 +223,30 @@ export class WorkflowService {
         return false;
         }
     }
+
+    // Exemple de méthode de migration (à appeler une seule fois)
+async migrateToStageVisits() {
+  const instances = await this.instanceRepository.find({
+    relations: ['template', 'template.stages', 'template.stages.subStages']
+  });
+
+  for (const instance of instances) {
+    if (!instance.currentStageId) continue;
+
+    const visit = this.stageVisitRepository.create({
+      instanceId: instance.id,
+      stageId: instance.currentStageId,
+      visitNumber: 1,
+      completedSubStages: instance.completedSubStages || [],
+      subStageMetadata: instance.subStageMetadata || {},
+      enteredAt: instance.createdAt,
+    });
+
+    await this.stageVisitRepository.save(visit);
+  }
+
+  console.log('Migration des StageVisit terminée');
+}
 
 // Modifier triggerAutomaticTransitions pour accepter queryRunner
 async triggerAutomaticTransitions(

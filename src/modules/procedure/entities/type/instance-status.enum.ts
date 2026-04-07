@@ -41,4 +41,24 @@ export interface MappedInstance {
   stages: MappedStage[];
   currentStage: MappedStage;
   progress: number;
+  totalSubStagesCount
+totalMandatorySubStagesCount?: any;
+completedSubStagesCount?: any;
+completedMandatorySubStagesCount?: any;
+remainingSubStagesCount?: any;
+remainingMandatorySubStagesCount?: any;
+totalSubStagesToCompleteCount?: any;
+completedSubStagesToCompleteCount?: any;
+progressPercentage?: any;
+isCurrentStageCompleted?: any;
+areAllMandatorySubStagesCompleted?: any;
+isFullyCompleted?: any;
+isOnLastStage?: any;
+areAllCurrentStageSubStagesCompleted?: any;
+currentStageProgress?: any;
+remainingMandatorySubStages?: any;
+canBeCompleted?: any;
+stagesTraversedCount?: any;
+totalDurationInDays?: any;
+completedAt?: any;
 }

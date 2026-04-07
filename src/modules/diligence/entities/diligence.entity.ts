@@ -9,6 +9,7 @@ import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { Stage } from 'src/modules/procedure/entities/stage.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 
 export enum DiligenceType {
   ACQUISITION = 'acquisition',
@@ -139,19 +140,33 @@ export class Diligence extends BaseEntity {
   @Column({ name: 'step_id', type: 'int', nullable: true })
   step_id: number;
 
-    @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
+  @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
   sub_stage_id: string;
 
   @ManyToOne(() => SubStage, (subStage) => subStage.factures, { nullable: true })
   @JoinColumn({ name: 'sub_stage_id' })
   subStage: SubStage;
 
-    @Column({ name: 'stage_id', type: 'varchar', nullable: true })
-    stage_id: string;
-  
-    @ManyToOne(() => Stage)
-    @JoinColumn({ name: 'stage_id' })
-    stage: Stage;
+  @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
+  sub_stage_visit_id: string;
+
+  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, { nullable: true })
+  @JoinColumn({ name: 'sub_stage_visit_id' })
+  subStageVisit: SubStageVisit;
+
+  // @Column({ name: 'stage_id', type: 'varchar', nullable: true })
+  // stage_id: string;
+
+  // @ManyToOne(() => Stage)
+  // @JoinColumn({ name: 'stageVisit_id' })
+  // stage: Stage;
+
+  @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
+  stageVisit_id: string;
+
+  @ManyToOne(() => Stage)
+  @JoinColumn({ name: 'stageVisit_id' })
+  stageVisit: Stage;
 
   // Garder aussi la liaison avec ProcedureInstance pour la vue globale
   @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
