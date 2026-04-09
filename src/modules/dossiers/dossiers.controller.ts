@@ -18,7 +18,7 @@ import {
   UseGuards,
   ParseIntPipe
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
 
 
 
@@ -32,7 +32,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam }
 import { User } from '../iam/user/entities/user.entity';
 import { DossiersService } from './dossiers.service';
 import { ChangeStatusDto } from './dto/change-status.dto';
-import { CreateDossierDto } from './dto/create-dossier.dto';
+import { CreateDossierDto, LinkDocumentsToSubStageDto } from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
@@ -246,6 +246,7 @@ export class DossiersController {
   ): Promise<DossierResponseDto> {
     return this.dossiersService.archive(+id, user);
   }
+  
 
   @Delete(':id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
@@ -287,6 +288,27 @@ export class DossiersController {
   getFactures(@Param('id', ParseIntPipe) id: string, @CurrentUser() user: User) {
     // Implémentation dans le service Finances
     return this.dossiersService.findOne(+id, user).then(dossier => dossier.factures);
+  }
+
+
+    /**
+   * Lier des documents existants à une sous-étape de procédure
+   */
+  @Post('link/documents/to/substage')
+  @ApiOperation({ summary: 'Lier des documents à une sous-étape de procédure' })
+  @ApiResponse({ status: 200, description: 'Documents liés avec succès' })
+  @ApiResponse({ status: 404, description: 'Sous-étape ou dossier non trouvé' })
+  @ApiBody({ type: LinkDocumentsToSubStageDto })
+  // @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  async linkDocumentsToSubStage(
+    @Body() dto: LinkDocumentsToSubStageDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.linkDocumentsToSubStage(
+      dto.documentIds,
+      dto.dossierId,
+      user.id
+    );
   }
 
 

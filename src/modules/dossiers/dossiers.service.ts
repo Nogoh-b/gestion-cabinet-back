@@ -31,6 +31,8 @@ import { StepsService } from './step.service';
 import { Step, StepStatus, StepType } from './entities/step.entity';
 import { ProcedureInstanceService } from '../procedure/services/procedure-instance.service';
 import { CreateProcedureInstanceDto } from '../procedure/dto/create-procedure-instance.dto';
+import { StageVisit } from '../procedure/entities/stage-visit.entity';
+import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 // import { DistributionItem, DossierStatsDto, EvolutionData, FinancialStats, LawyerStats, RecentDossier, TimelineStats, UrgentDossier } from 'src/core/types/base-stats.dto';
 
 
@@ -47,6 +49,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepository: Repository<ProcedureType>,
     protected readonly paginationService: PaginationServiceV1,
+    protected readonly documentCustomerService: DocumentCustomerService,
     protected readonly chatService: ChatService,
     protected readonly stepsService: StepsService,
     private procedureInstanceService: ProcedureInstanceService,
@@ -768,6 +771,26 @@ async getCollaboratorDossiers(
     }
   };
 }
+
+async linkDocumentsToSubStage(  documentIds: number[], dossierId: any, userId: any): Promise<DossierResponseDto | null> {
+  const dossier = await this.findOne(dossierId)
+  const currentSubStage = await this.getCurrentStageVisit(dossier);
+  await this.documentCustomerService.linkDocumentsToSubStage(documentIds, currentSubStage?.id || 0)
+  return plainToInstance(DossierResponseDto, dossier);
+}
+async getCurrentStageVisit(dossier: Dossier): Promise<StageVisit | null> {
+
+  if(dossier?.procedureInstance?.id)
+    return await this.procedureInstanceService.getCurrentStageVisit(dossier?.procedureInstance?.id)
+  return null
+}
+
+
+
+// *******************************************************
+
+
+
 
 
 // src/modules/dossiers/dossiers.service.ts

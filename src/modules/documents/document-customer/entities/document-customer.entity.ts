@@ -37,6 +37,8 @@ import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { Stage } from 'src/modules/procedure/entities/stage.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
+import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 
 
 
@@ -225,13 +227,27 @@ export class DocumentCustomer extends BaseEntity {
     })
     stages: Stage[];
 
-    @ManyToMany(() => Stage, (stage) => stage.documents)
+    @ManyToMany(() => StageVisit, (stage) => stage.documents)
     @JoinTable({
       name: 'stage_visit_documents',
       joinColumn: { name: 'document_id', referencedColumnName: 'id' },
       inverseJoinColumn: { name: 'stageVisit_id', referencedColumnName: 'id' },
     })
-    stageVisits: Stage[];
+    stageVisits: StageVisit[];
+
+    @ManyToMany(() => SubStageVisit, (subVisit) => subVisit.documents)
+    @JoinTable({
+      name: 'sub_stage_visit_documents',
+      joinColumn: {
+        name: 'document_id',
+        referencedColumnName: 'id',
+      },
+      inverseJoinColumn: {
+        name: 'sub_stage_visit_id',
+        referencedColumnName: 'id',
+      },
+    })
+    sub_stage_visits: SubStageVisit[];
 
     @ManyToMany(() => SubStage, (subStage) => subStage.documents)
     subStages: SubStage[];

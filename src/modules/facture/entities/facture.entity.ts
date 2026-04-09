@@ -22,8 +22,8 @@ import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
-import { Stage } from 'src/modules/procedure/entities/stage.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
+import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 
 
 @Entity('factures')
@@ -136,9 +136,10 @@ export class Facture {
   @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
   stageVisit_id: string;
 
-  @ManyToOne(() => Stage)
-  @JoinColumn({ name: 'stage_id' })
-  stageVisit: Stage;
+
+  @ManyToOne(() => StageVisit)
+  @JoinColumn({ name: 'stageVisit_id' })
+  stageVisit: StageVisit;
 
 
   // Garder aussi la liaison avec ProcedureInstance pour la vue globale

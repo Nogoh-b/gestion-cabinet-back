@@ -49,9 +49,15 @@ export class SubStageVisit {
   // Relations spécifiques à cette exécution de sous-étape
   @ManyToMany(() => DocumentCustomer)
   @JoinTable({
-    name: 'sub_stage_visit_documents',
-    joinColumn: { name: 'sub_stage_visit_id' },
-    inverseJoinColumn: { name: 'document_id' },
+    name: 'sub_stage_visit_documents',           // Nom de la table de jointure
+    joinColumn: {                                 // Colonne de l'entité courante
+      name: 'sub_stage_visit_id',                // Nom de la colonne dans la table de jointure
+      referencedColumnName: 'id',                // Colonne référencée dans l'entité courante
+    },
+    inverseJoinColumn: {                          // Colonne de l'entité cible
+      name: 'document_id',                       // Nom de la colonne dans la table de jointure
+      referencedColumnName: 'id',                // Colonne référencée dans l'entité cible
+    },
   })
   documents: DocumentCustomer[];
 

@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { Between, Repository } from 'typeorm';
-import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -65,38 +65,35 @@ export class FactureService extends BaseServiceV1<Facture> {
       createDto.montantTTC = Number(createDto.montantHT) + Number(createDto.montantTVA);
     }
     const { clientId, dossierId, ...rest } = createDto;
-
-    const dossier = plainToInstance(Dossier, await this.dossiersService.findOne(dossierId))
-    const client  =  dossier.client
-    const client_id  =  dossier.client.id
+    const dossier_ = await this.dossiersService.findOne(dossierId)
+    const dossier = { id: dossierId } as Dossier
+    const client  =  dossier_.client
+    const client_id  =  dossier_.client.id
     const numero  = await    this.generateFacNumber()
-    let procedureInstance: ProcedureInstance | null = null;
+    let procedureInstance: ProcedureInstance | any = null;
     let subStage: SubStage | null = null;
     let stage: Stage | null = null;
 
-    if (dossier.procedureInstance) {
+    if (dossier_.procedureInstance) {
       // Sinon, prendre l'instance active du dossier
-      procedureInstance =  dossier.procedureInstance;
+      procedureInstance =  dossier_.procedureInstance;
     }
 
     // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
-    if (procedureInstance && procedureInstance.currentStage) {
+    let subStageId 
+    if (procedureInstance && procedureInstance.currentVisit) {
       // Option: prendre la première sous-étape obligatoire non complétée
-      const currentStage = procedureInstance.currentStage;
+      const currentVisit = procedureInstance.currentVisit;
       const completedSubStages = procedureInstance.completedSubStages || [];
+      subStageId = currentVisit.currentSubStageVisitId
             
-      subStage = currentStage.subStages?.find(
-        (ss: any) => ss.status === 'in_progress'
-      ) || null;
-      console.log('SubStage trouvé pour la diligence :', (subStage)?.id);
-
-      if (!subStage) {
-        throw new Error(
-          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentStage.id}`
+      console.log('SubStage trouvé pour la diligence :', (subStageId));
+      if (!subStageId) {
+        throw new ConflictException(
+          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentVisit.id}`
         );
       }
-
-      stage = currentStage;
+      // stage = currentVisit;
     }
     const facture =this.repository.create({
       ...rest,
@@ -107,7 +104,8 @@ export class FactureService extends BaseServiceV1<Facture> {
       client_id,
       montantPaye: 0,
       resteAPayer: createDto.montantTTC,
-      sub_stage_id: subStage?.id,
+      stageVisit_id: procedureInstance.currentVisit?.id,
+      sub_stage_visit_id: procedureInstance.currentVisit?.currentSubStageVisitId,
       procedure_instance_id: procedureInstance?.id
     });
     console.log('fffffffffff ' ,facture.dossier.id, ' ',dossierId)

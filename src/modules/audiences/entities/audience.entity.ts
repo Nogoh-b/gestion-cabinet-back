@@ -6,6 +6,7 @@ import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { Stage } from 'src/modules/procedure/entities/stage.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
@@ -136,9 +137,10 @@ export class Audience extends BaseEntity {
   @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
   stageVisit_id: string;
 
-  @ManyToOne(() => Stage)
+
+  @ManyToOne(() => StageVisit)
   @JoinColumn({ name: 'stageVisit_id' })
-  stageVisit: Stage;
+  stageVisit: StageVisit;
 
 
 

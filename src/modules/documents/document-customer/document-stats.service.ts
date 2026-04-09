@@ -668,7 +668,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   // 🔗 Ajout en masse (table pivot)
   await this.documentRepository
     .createQueryBuilder()
-    .relation('subStages')
+    .relation('sub_stage_visits')
     .of(documentIds) // 👈 tableau ici
     .add(subStageId);
 }

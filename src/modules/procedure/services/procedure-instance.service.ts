@@ -1,7 +1,7 @@
 // services/procedure-instance.service.ts
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryRunner, IsNull } from 'typeorm';
 import { ProcedureInstance } from '../entities/procedure-instance.entity';
 import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
@@ -84,14 +84,33 @@ export class ProcedureInstanceService {
  * Compléter une sous-étape (version sans transaction)
  */
 async completeSubStage(
-    instanceId: string,
-    subStageId: string,
-    userId: string,
-    notes?: string,
-    skipAutoTransitions: boolean = false,
-  ): Promise<ProcedureInstance> {
+  instanceId: string,
+  subStageId: string,
+  userId: string,
+  notes?: string,
+  skipAutoTransitions: boolean = false,
+): Promise<ProcedureInstance> {
+  const queryRunner = this.dataSource.createQueryRunner();
+  
+  try {
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
     const instance = await this.findOne(instanceId);
-    const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+    let currentStageVisit = await this.getCurrentStageVisitEntity(instance);
+
+    // Vérifier que c'est bien la sous-étape en cours
+    if (currentStageVisit.currentSubStageVisitId) {
+      const ongoingSubStage = await queryRunner.manager.findOne(SubStageVisit, {
+        where: { id: currentStageVisit.currentSubStageVisitId }
+      });
+      
+      if (ongoingSubStage && ongoingSubStage.subStageId !== subStageId) {
+        throw new BadRequestException(
+          `Vous ne pouvez pas compléter cette sous-étape car "${ongoingSubStage.subStageId}" est en cours.`
+        );
+      }
+    }
 
     // Trouver ou créer SubStageVisit
     let subStageVisit = await this.subStageVisitRepository.findOne({
@@ -116,7 +135,16 @@ async completeSubStage(
       subStageVisit.metadata = { ...subStageVisit.metadata, notes, lastCompletedBy: userId };
     }
 
-    await this.subStageVisitRepository.save(subStageVisit);
+    await queryRunner.manager.save(subStageVisit);
+
+    // 🔥 Nettoyer le champ currentSubStageVisitId
+    if (currentStageVisit.currentSubStageVisitId === subStageVisit.id) {
+      await queryRunner.manager.update(StageVisit, currentStageVisit.id, {
+        currentSubStageVisitId: null,
+      });
+    }
+
+    await queryRunner.commitTransaction();
 
     await this.historyService.log(
       instanceId,
@@ -131,12 +159,19 @@ async completeSubStage(
       }
     );
 
-    if (!skipAutoTransitions) {
-      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
-    }
+    // if (!skipAutoTransitions) {
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId, queryRunner);
+    // }
 
     return this.findOne(instanceId);
+    
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    throw error;
+  } finally {
+    await queryRunner.release();
   }
+}
 
 /**
  * Déclencher les transitions automatiques (version simple sans transaction)
@@ -443,13 +478,13 @@ private generateUuid(): string {
  */
 async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
   const instance = await this.findOne(instanceId);
-  const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+  const currentStageVisit = await this.getCurrentStageVisitEntity(instance);
 
   // Récupérer toutes les transitions manuelles depuis l'étape courante
   const transitions = await this.transitionRepository.find({
     where: {
       fromStageId: instance.currentStageId,
-      type: TransitionType.MANUAL,
+      // type: TransitionType.MANUAL,
     },
     relations: ['fromStage', 'toStage'],
   });
@@ -512,9 +547,9 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
           'template.stages.subStages',
           'template.stages.config',
           'currentStage',
-          'currentStage.subStages',
-          'decisions',
-          'tasks',
+          // 'currentStage.subStages',
+          // 'decisions',
+          // 'tasks',
           'stageVisits',
           'stageVisits.subStageVisits',
         ],
@@ -530,7 +565,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
 
   async findOneMapped(id: string): Promise<MappedInstance> {
       const instance = await this.findOne(id);
-      const currentVisit = await this.getCurrentStageVisit(id);
+      const currentVisit = await this.getCurrentStageVisitEntity(instance);
 
       return await this.instanceMapper.mapInstanceWithCurrentTemplate(
         instance, 
@@ -559,7 +594,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     const instance = await this.findOne(id);
     const availableTransitions = await this.getAvailableTransitions(id);
     const availableCycles = await this.getAvailableCycles(id);
-    const currentVisit = await this.getCurrentStageVisit(id);
+    const currentVisit = await this.getCurrentStageVisitEntity(instance);
 
     const mapped = await this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template, currentVisit);
     // Calculer la progression
@@ -577,6 +612,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
         },
       currentVisitNumber: currentVisit.visitNumber,
       stages: mapped.stages,
+      currentVisit: currentVisit,
       currentStage: mapped.currentStage,
       progress: mapped.progress,
       availableTransitions,
@@ -603,6 +639,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
       stagesTraversedCount: instance.stagesTraversedCount,
       totalDurationInDays: instance.totalDurationInDays,
       completedAt: instance.completedAt,
+      isOnLastStageAdvanced: instance.isOnLastStageAdvanced,
     //   history: instance.history,
       tasks: instance.tasks,
     };
@@ -610,64 +647,114 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
 
 
 
- /**
-   * Démarrer une sous-étape
-   */
-/**
- * Démarrer une sous-étape (version moderne avec SubStageVisit)
- */
+
+  /**
+  * Démarrer une sous-étape (version moderne avec SubStageVisit)
+  * ⚠️ Ne permet qu'une seule sous-étape en cours à la fois
+  */
 async startSubStage(
   instanceId: string,
   subStageId: string,
   userId: string,
   notes?: string,
 ): Promise<ProcedureInstance> {
-  const instance = await this.findOne(instanceId);
-  const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+  const queryRunner = this.dataSource.createQueryRunner();
+  
+  try {
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-  // Trouver ou créer SubStageVisit
-  let subStageVisit = await this.subStageVisitRepository.findOne({
-    where: {
-      stageVisitId: currentStageVisit.id,
-      subStageId: subStageId,
-    },
-  });
+    const instance = await this.findOne(instanceId);
+    let currentStageVisit = await this.getCurrentStageVisitEntity(instance);
 
-  if (!subStageVisit) {
-    subStageVisit = this.subStageVisitRepository.create({
-      stageVisitId: currentStageVisit.id,
-      subStageId: subStageId,
-      isCompleted: false,
-      startedAt: new Date(),
-      metadata: {
-        notes: notes || '',
-        startedBy: userId,
+    // 🔥 Vérifier s'il y a déjà une sous-étape en cours (via le nouveau champ)
+    if (currentStageVisit.currentSubStageVisitId) {
+      const ongoingSubStage = await queryRunner.manager.findOne(SubStageVisit, {
+        where: { id: currentStageVisit.currentSubStageVisitId }
+      });
+      
+      if (ongoingSubStage && !ongoingSubStage.isCompleted) {
+        throw new BadRequestException(
+          `Une sous-étape est déjà en cours. Veuillez la compléter avant d'en démarrer une nouvelle.`
+        );
+      }
+    }
+
+    // Vérifier si la sous-étape n'est pas déjà complétée
+    const existingSubStageVisit = await queryRunner.manager.findOne(SubStageVisit, {
+      where: {
+        stageVisitId: currentStageVisit.id,
+        subStageId: subStageId,
       },
     });
-  } else {
-    subStageVisit.startedAt = new Date();
-    subStageVisit.metadata = {
-      ...subStageVisit.metadata,
-      notes: notes || subStageVisit.metadata?.notes,
-      restartedBy: userId,
-    };
-  }
 
-  await this.subStageVisitRepository.save(subStageVisit);
-
-  await this.historyService.log(
-    instanceId,
-    EventType.SUBSTAGE_STARTED,
-    instance.currentStageId,
-    userId,
-    { 
-      subStageId, 
-      visitNumber: currentStageVisit.visitNumber,
-      subStageVisitId: subStageVisit.id 
+    if (existingSubStageVisit?.isCompleted) {
+      throw new BadRequestException(`Cette sous-étape a déjà été complétée.`);
     }
-  );
 
-  return this.findOne(instanceId);
+    // Créer ou mettre à jour SubStageVisit
+    let subStageVisit = existingSubStageVisit;
+    
+    if (!subStageVisit) {
+      subStageVisit = this.subStageVisitRepository.create({
+        stageVisitId: currentStageVisit.id,
+        subStageId: subStageId,
+        isCompleted: false,
+        startedAt: new Date(),
+        metadata: {
+          notes: notes || '',
+          startedBy: userId,
+        },
+      });
+      subStageVisit = await queryRunner.manager.save(subStageVisit);
+    } else {
+      subStageVisit.startedAt = new Date();
+      subStageVisit.metadata = {
+        ...subStageVisit.metadata,
+        notes: notes || subStageVisit.metadata?.notes,
+        restartedBy: userId,
+      };
+      await queryRunner.manager.save(subStageVisit);
+    }
+
+    // 🔥 Mettre à jour le champ currentSubStageVisitId dans StageVisit
+    await queryRunner.manager.update(StageVisit, currentStageVisit.id, {
+      currentSubStageVisitId: subStageVisit.id,
+    });
+
+    // Rafraîchir currentStageVisit
+    const refreshedVisit = await queryRunner.manager.findOne(StageVisit, {
+      where: { id: currentStageVisit.id },
+      relations: ['currentSubStageVisit'],
+    });
+    if (!refreshedVisit) {
+      throw new Error('StageVisit not found after refresh');
+    }
+    currentStageVisit = refreshedVisit;
+
+    await queryRunner.commitTransaction();
+
+    await this.historyService.log(
+      instanceId,
+      EventType.SUBSTAGE_STARTED,
+      instance.currentStageId,
+      userId,
+      { 
+        subStageId, 
+        visitNumber: currentStageVisit.visitNumber,
+        subStageVisitId: subStageVisit.id,
+        stageVisitId: currentStageVisit.id,
+      }
+    );
+
+    return this.findOne(instanceId);
+    
+  } catch (error) {
+    await queryRunner.rollbackTransaction();
+    throw error;
+  } finally {
+    await queryRunner.release();
+  }
 }
 
 
@@ -723,6 +810,10 @@ async applyTransition(
 
       if (!transition) throw new NotFoundException('Transition non trouvée');
 
+      if(instance.currentStageProgress.mandatoryCompleted != instance.currentStageProgress.mandatoryTotal) {
+        throw new BadRequestException('Vous devez compléter toutes les sous-étapes obligatoires avant de pouvoir effectuer une transition.');
+      }
+
       // Fermer la visite actuelle
       const currentVisit = await this.stageVisitRepository.findOne({
         where: { instanceId, stageId: transition.fromStageId },
@@ -746,7 +837,7 @@ async applyTransition(
       await queryRunner.commitTransaction();
 
       // Créer nouvelle visite pour la nouvelle étape
-      await this.getCurrentStageVisit(instanceId);
+      await this.getCurrentStageVisitEntity(instance);
 
       return this.findOne(instanceId);
 
@@ -901,74 +992,121 @@ private async processUserInputs(
 private async checkAndTriggerAutomaticTransitions(
   instanceId: string,
   userId: string,
+  queryRunner?: QueryRunner,
 ): Promise<void> {
-  const instance = await this.findOne(instanceId);
-  const currentStageVisit = await this.getCurrentStageVisit(instanceId);
-
-  // 1. Vérifier si toutes les sous-étapes OBLIGATOIRES de la visite courante sont complétées
-  const currentStage = instance.currentStage;
-  if (!currentStage || !currentStage.subStages) {
-    return;
-  }
-
-  const mandatorySubStages = currentStage.subStages.filter(ss => ss.isMandatory);
+  const useExistingRunner = !!queryRunner;
+  const runner = queryRunner || this.dataSource.createQueryRunner();
   
-  const allMandatoryCompleted = mandatorySubStages.length === 0 || 
-    mandatorySubStages.every(subStage => 
-      currentStageVisit.subStageVisits.some(visit => 
-        visit.subStageId === subStage.id && visit.isCompleted === true
-      )
-    );
-
-  if (!allMandatoryCompleted) {
-    console.log(`[Auto Transition] Transition bloquée : toutes les sous-étapes obligatoires ne sont pas encore complétées`);
-    return;
-  }
-
-  console.log(`[Auto Transition] Toutes les sous-étapes obligatoires sont complétées → recherche de transitions automatiques`);
-
-  // 2. Récupérer les transitions automatiques depuis l'étape courante
-  const automaticTransitions = await this.transitionRepository.find({
-    where: {
-      fromStageId: instance.currentStageId,
-      type: TransitionType.AUTOMATIC,
-    },
-    relations: ['fromStage', 'toStage'],
-  });
-
-  for (const transition of automaticTransitions) {
-    let shouldTrigger = true;
-
-    // Évaluer la condition supplémentaire de la transition (si elle en a une)
-    if (transition.triggerCondition) {
-      const context = {
-        instance: {
-          data: instance.data,
-        },
-        stageVisit: {
-          visitNumber: currentStageVisit.visitNumber,
-          completedSubStages: currentStageVisit.completedSubStages || [],
-        },
-      };
-
-      shouldTrigger = await this.workflowService.evaluateCondition(
-        transition.triggerCondition,
-        context
-      );
+  try {
+    if (!useExistingRunner) {
+      await runner.connect();
+      await runner.startTransaction();
     }
 
-    if (shouldTrigger) {
-      console.log(`[Auto Transition] Déclenchement automatique vers l'étape ${transition.toStageId}`);
+    // Récupérer l'instance avec le template et ses stages
+    const instance = await runner.manager.findOne(ProcedureInstance, {
+      where: { id: instanceId },
+      relations: ['template', 'template.stages', 'template.stages.subStages'],
+    });
 
-      const queryRunner = this.dataSource.createQueryRunner();
-      await queryRunner.connect();
-      await queryRunner.startTransaction();
+    if (!instance || !instance.template?.stages) {
+      console.log(`[Auto Transition] Instance ou template non trouvé`);
+      return;
+    }
 
-      try {
+    // Récupérer la visite courante avec ses sous-visites
+    const currentStageVisit = await runner.manager.findOne(StageVisit, {
+      where: {
+        instanceId: instanceId,
+        exitedAt: IsNull(), // Visite active
+      },
+      relations: ['subStageVisits'],
+    });
+
+    if (!currentStageVisit) {
+      console.log(`[Auto Transition] Aucune visite active trouvée`);
+      return;
+    }
+
+    // ✅ Trouver l'étape correspondante dans le template
+    const currentStageFromTemplate = instance.template.stages.find(
+      stage => stage.id === currentStageVisit.stageId
+    );
+
+    if (!currentStageFromTemplate || !currentStageFromTemplate.subStages?.length) {
+      console.log(`[Auto Transition] Étape ou sous-étapes non trouvées dans le template`);
+      return;
+    }
+
+    // ✅ Vérifier les sous-étapes obligatoires
+    const mandatorySubStages = currentStageFromTemplate.subStages.filter(ss => ss.isMandatory);
+    
+    const allMandatoryCompleted = mandatorySubStages.length === 0 || 
+      mandatorySubStages.every(mandatorySubStage => 
+        currentStageVisit.subStageVisits?.some(visit => 
+          visit.subStageId === mandatorySubStage.id && visit.isCompleted === true
+        )
+      );
+
+    if (!allMandatoryCompleted) {
+      console.log(`[Auto Transition] Transition bloquée : toutes les sous-étapes obligatoires ne sont pas encore complétées`);
+      return;
+    }
+
+    console.log(`[Auto Transition] Toutes les sous-étapes obligatoires sont complétées → recherche de transitions automatiques`);
+
+    // ✅ Récupérer les transitions automatiques depuis l'étape courante
+    const automaticTransitions = await this.transitionRepository.find({
+      where: {
+        fromStageId: currentStageVisit.stageId,
+        type: TransitionType.AUTOMATIC,
+      },
+      relations: ['fromStage', 'toStage'],
+    });
+
+    if (automaticTransitions.length === 0) {
+      console.log(`[Auto Transition] Aucune transition automatique trouvée`);
+      return;
+    }
+
+    for (const transition of automaticTransitions) {
+      let shouldTrigger = true;
+
+      // Évaluer la condition supplémentaire
+      if (transition.triggerCondition) {
+        const completedSubStageIds = currentStageVisit.subStageVisits
+          ?.filter(sv => sv.isCompleted)
+          .map(sv => sv.subStageId) || [];
+
+        const context = {
+          instance: {
+            id: instance.id,
+            data: instance.data,
+          },
+          stageVisit: {
+            id: currentStageVisit.id,
+            visitNumber: currentStageVisit.visitNumber,
+            stageId: currentStageVisit.stageId,
+            stageName: currentStageFromTemplate.name,
+            completedSubStages: completedSubStageIds,
+            enteredAt: currentStageVisit.enteredAt,
+          },
+          completedSubStages: completedSubStageIds,
+        };
+
+        shouldTrigger = await this.workflowService.evaluateCondition(
+          transition.triggerCondition,
+          context
+        );
+      }
+
+      if (shouldTrigger) {
+        console.log(`[Auto Transition] Déclenchement automatique vers l'étape ${transition.toStageId}`);
+
         // Fermer proprement la visite actuelle
         if (!currentStageVisit.exitedAt) {
           currentStageVisit.exitedAt = new Date();
-          await queryRunner.manager.save(currentStageVisit);
+          await runner.manager.save(currentStageVisit);
         }
 
         // Exécuter la transition
@@ -977,23 +1115,63 @@ private async checkAndTriggerAutomaticTransitions(
           transition,
           userId,
           'Transition automatique déclenchée après complétion des sous-étapes obligatoires',
-          queryRunner,
+          runner,
         );
 
-        await queryRunner.commitTransaction();
+        // ✅ Créer une nouvelle visite pour l'étape destination
+        // const newStageVisit = this.stageVisitRepository.create({
+        //   instanceId: instance.id,
+        //   stageId: transition.toStageId,
+        //   visitNumber: (currentStageVisit.visitNumber || 0) + 1,
+        //   enteredAt: new Date(),
+        //   subStageVisits: [],
+        // });
+        // await runner.manager.save(newStageVisit);
 
-        // Créer une nouvelle visite pour la nouvelle étape
-        await this.getCurrentStageVisit(instanceId);
+        // Logger l'événement
+        // await this.historyService.log(
+        //   instance.id,
+        //   EventType.TRANSITION_TRIGGERED,
+        //   currentStageVisit.stageId,
+        //   userId,
+        //   {
+        //     fromStageId: currentStageVisit.stageId,
+        //     toStageId: transition.toStageId,
+        //     transitionId: transition.id,
+        //     fromVisitId: currentStageVisit.id,
+        //     toVisitId: newStageVisit.id,
+        //     visitNumber: newStageVisit.visitNumber,
+        //     reason: 'Transition automatique après complétion des sous-étapes obligatoires',
+        //   }
+        // );
 
-      } catch (error) {
-        await queryRunner.rollbackTransaction();
-        console.error(`Erreur lors du déclenchement automatique :`, error);
-      } finally {
-        await queryRunner.release();
+        if (!useExistingRunner) {
+          await runner.commitTransaction();
+        }
+        
+        // console.log(`[Auto Transition] Transition réussie vers l'étape ${transition.toStageId} (visite ${newStageVisit.visitNumber})`);
+        // console.log(`[Auto Transition] Transition réussie vers l'étape ${transition.toStageId} (visite ${newStageVisit.visitNumber})`);
+        break; // Une seule transition par appel
       }
+    }
+
+    if (!useExistingRunner && automaticTransitions.length === 0) {
+      await runner.commitTransaction();
+    }
+
+  } catch (error) {
+    if (!useExistingRunner) {
+      await runner.rollbackTransaction();
+    }
+    console.error(`Erreur lors du déclenchement automatique :`, error);
+    throw error;
+  } finally {
+    if (!useExistingRunner && runner) {
+      await runner.release();
     }
   }
 }
+
 /**
  * Récupérer les transitions disponibles (version enrichie avec inputs)
  */
@@ -1080,6 +1258,39 @@ async triggerEventOnInstance(
  */
 async getCurrentStageVisit(instanceId: string): Promise<StageVisit> {
     const instance = await this.findOne(instanceId);
+
+    let visit = await this.stageVisitRepository.findOne({
+      where: { instanceId, stageId: instance.currentStageId },
+      order: { visitNumber: 'DESC' },
+      relations: ['subStageVisits'],
+    });
+
+    if (!visit) {
+      const visitCount = await this.stageVisitRepository.count({
+        where: { instanceId, stageId: instance.currentStageId }
+      });
+
+      visit = this.stageVisitRepository.create({
+        instanceId: instance.id,
+        stageId: instance.currentStageId,
+        visitNumber: visitCount + 1,
+        completedSubStages: [],
+        subStageMetadata: {},
+        enteredAt: new Date(),
+        subStageVisits: [],
+      });
+
+      await this.stageVisitRepository.save(visit);
+    }
+
+    return visit;
+  }
+/**
+ * Récupère la visite courante de l'étape actuelle
+ * Crée une nouvelle visite si aucune n'existe
+ */
+async getCurrentStageVisitEntity(instance: ProcedureInstance): Promise<StageVisit> {
+    const instanceId = instance.id;
 
     let visit = await this.stageVisitRepository.findOne({
       where: { instanceId, stageId: instance.currentStageId },
@@ -1483,7 +1694,7 @@ async completeAllSubStagesInCurrentStage(
 
     // Vérifier et déclencher les transitions automatiques si demandé
     if (!options?.skipAutoTransitions) {
-      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId, queryRunner);
     }
 
     // Retourner l'instance mise à jour
@@ -1601,7 +1812,7 @@ async completeAllSubStagesInStage(
 
     // Si l'étape ciblée est l'étape courante et qu'on ne skip pas les transitions
     if (!options?.skipAutoTransitions && instance.currentStageId === stageId) {
-      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId, queryRunner);
     }
 
     return this.findOne(instanceId);
@@ -1698,7 +1909,7 @@ async completeAllSubStagesInAllStages(
 
     // Déclencher les transitions automatiques si demandé
     if (!options?.skipAutoTransitions) {
-      await this.checkAndTriggerAutomaticTransitions(instanceId, userId);
+      await this.checkAndTriggerAutomaticTransitions(instanceId, userId, queryRunner);
     }
 
     return this.findOne(instanceId);
@@ -1935,5 +2146,41 @@ async completeSubStageInPreviousStage(
   
   return this.findOne(instanceId);
 }
+
+
+  /**
+  * Vérifie s'il y a une sous-étape en cours dans la visite courante
+  */
+  async hasOngoingSubStage(instanceId: string): Promise<{ hasOngoing: boolean; ongoingSubStage?: SubStage }> {
+    const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+    
+    const ongoingSubStageVisit = currentStageVisit.subStageVisits?.find(
+      sv => !sv.isCompleted && sv.completedAt === null
+    );
+    
+    if (!ongoingSubStageVisit) {
+      return { hasOngoing: false };
+    }
+    
+    const ongoingSubStage = await this.subStageRepository.findOne({
+      where: { id: ongoingSubStageVisit.subStageId }
+    });
+    
+    return {
+      hasOngoing: true,
+      ongoingSubStage: ongoingSubStage || undefined,
+    };
+  }
+
+  /**
+  * Récupère la sous-étape en cours (si elle existe)
+  */
+  async getCurrentOngoingSubStage(instanceId: string): Promise<SubStageVisit | null> {
+    const currentStageVisit = await this.getCurrentStageVisit(instanceId);
+    
+    return currentStageVisit.subStageVisits?.find(
+      sv => !sv.isCompleted && sv.completedAt === null
+    ) || null;
+  }
 
 }

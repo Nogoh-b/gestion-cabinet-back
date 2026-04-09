@@ -252,30 +252,34 @@ export class ProcedureInstance {
    * Compte toutes les sous-étapes (obligatoires + optionnelles) des étapes courantes et futures
    * Pour les étapes passées, ne compte que les sous-étapes obligatoires
    */
-  @Expose()
-  get totalSubStagesToCompleteCount(): number {
-    if (!this.template?.stages) return 0;
+@Expose()
+get totalSubStagesToCompleteCount(): number {
+  if (!this.template?.stages) return 0;
 
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
-    const currentStageIndex = sortedStages.findIndex(stage => stage.id === this.currentStageId);
+  const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
+  const currentStageIndex = sortedStages.findIndex(stage => stage.id === this.currentStageId);
+  const completedIds = this.getAllCompletedSubStageIds();
 
-    let total = 0;
+  let total = 0;
 
-    for (let i = 0; i < sortedStages.length; i++) {
-      const stage = sortedStages[i];
-      const stageSubStages = stage.subStages || [];
+  for (let i = 0; i < sortedStages.length; i++) {
+    const stage = sortedStages[i];
+    const stageSubStages = stage.subStages || [];
 
-      if (i < currentStageIndex) {
-        // Étape passée : compter uniquement les sous-étapes obligatoires
-        total += stageSubStages.filter(ss => ss.isMandatory).length;
-      } else {
-        // Étape courante ou future : compter toutes les sous-étapes
-        total += stageSubStages.length;
-      }
+    if (i < currentStageIndex) {
+      // Étape passée : compter uniquement les sous-étapes OBLIGATOIRES NON ENCORE COMPLÉTÉES
+      const mandatoryNotCompleted = stageSubStages.filter(ss => 
+        ss.isMandatory && !completedIds.has(ss.id)
+      ).length;
+      total += mandatoryNotCompleted;
+    } else {
+      // Étape courante ou future : compter toutes les sous-étapes
+      total += stageSubStages.length;
     }
-
-    return total;
   }
+
+  return total;
+}
 
   /**
    * Nombre de sous-étapes complétées
@@ -325,13 +329,19 @@ export class ProcedureInstance {
    */
   @Expose()
   get isCurrentStageCompleted(): boolean {
-    if (!this.currentStage?.subStages) return false;
-
-    const mandatorySubStagesInCurrentStage = this.currentStage.subStages.filter(ss => ss.isMandatory);
-    if (mandatorySubStagesInCurrentStage.length === 0) return true;
-
+    if (!this.currentStageId || !this.template?.stages) return false;
+    
+    // Récupérer le stage depuis le template (déjà chargé)
+    const currentStageFromTemplate = this.template.stages.find(
+      s => s.id === this.currentStageId
+    );
+    
+    if (!currentStageFromTemplate?.subStages) return false;
+    
     const completedIds = this.getCompletedSubStageIdsForStage(this.currentStageId);
-    return mandatorySubStagesInCurrentStage.every(ss => completedIds.has(ss.id));
+    const mandatorySubStages = currentStageFromTemplate.subStages.filter(ss => ss.isMandatory);
+    
+    return mandatorySubStages.every(ss => completedIds.has(ss.id));
   }
 
   /**
@@ -397,10 +407,16 @@ export class ProcedureInstance {
    */
   @Expose()
   get areAllCurrentStageSubStagesCompleted(): boolean {
-    if (!this.currentStage?.subStages) return false;
-
-    const completedIds = this.getCompletedSubStageIdsForStage(this.currentStageId);
-    return this.currentStage.subStages.every(ss => completedIds.has(ss.id));
+    if (!this.template?.stages) true;
+        
+    // Récupérer le stage depuis le template (déjà chargé)
+    const currentStageFromTemplate = this.template?.stages?.find(
+      s => s.id === this.currentStageId
+    );
+    
+    if (!currentStageFromTemplate?.subStages) return false;
+    const completedIds = this.getCompletedSubStageIdsForStage(this.currentStageId);  // ✅ Déjà agrège toutes les visites
+    return currentStageFromTemplate.subStages.every(ss => completedIds.has(ss.id));
   }
 
   /**
@@ -414,16 +430,42 @@ export class ProcedureInstance {
     mandatoryCompleted: number;
     percentage: number;
   } {
-    if (!this.currentStage?.subStages) {
+    if (!this.currentStageId || !this.template?.stages) {
       return { total: 0, completed: 0, mandatoryTotal: 0, mandatoryCompleted: 0, percentage: 0 };
     }
 
-    const allSubStages = this.currentStage.subStages;
-    const mandatorySubStages = allSubStages.filter(ss => ss.isMandatory);
-    const completedIds = this.getCompletedSubStageIdsForStage(this.currentStageId);
+    const currentStageFromTemplate = this.template.stages.find(
+      s => s.id === this.currentStageId
+    );
 
-    const completedAll = allSubStages.filter(ss => completedIds.has(ss.id)).length;
-    const completedMandatory = mandatorySubStages.filter(ss => completedIds.has(ss.id)).length;
+    if (!currentStageFromTemplate?.subStages) {
+      return { total: 0, completed: 0, mandatoryTotal: 0, mandatoryCompleted: 0, percentage: 0 };
+    }
+
+    // Récupérer la visite courante de l'étape actuelle
+    const currentStageVisit = this.stageVisits
+      ?.filter(v => v.stageId === this.currentStageId)
+      .sort((a, b) => b.visitNumber - a.visitNumber)[0];
+
+    if (!currentStageVisit) {
+      return { total: 0, completed: 0, mandatoryTotal: 0, mandatoryCompleted: 0, percentage: 0 };
+    }
+
+    const allSubStages = currentStageFromTemplate.subStages;
+    const mandatorySubStages = allSubStages.filter(ss => ss.isMandatory);
+
+    // Compter les sous-étapes complétées via SubStageVisit
+    const completedAll = allSubStages.filter(ss => 
+      currentStageVisit.subStageVisits?.some(sv => 
+        sv.subStageId === ss.id && sv.isCompleted === true
+      )
+    ).length;
+
+    const completedMandatory = mandatorySubStages.filter(ss => 
+      currentStageVisit.subStageVisits?.some(sv => 
+        sv.subStageId === ss.id && sv.isCompleted === true
+      )
+    ).length;
 
     return {
       total: allSubStages.length,
@@ -530,6 +572,8 @@ export class ProcedureInstance {
     const hasOutgoingTransitions = this.template.transitions?.some(
       t => t.fromStageId === this.currentStageId
     ) ?? false;
+
+    console.log(this.template.transitions.length, hasOutgoingTransitions);
 
     if (!hasOutgoingTransitions) {
       return { isLast: true, reason: 'Aucune transition sortante définie', confidence: 'high' };

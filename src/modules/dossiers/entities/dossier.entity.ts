@@ -11,7 +11,7 @@ import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert } from 'typeorm';
 import { Step, StepStatus } from './step.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 
@@ -67,8 +67,8 @@ export class Dossier extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description: string;
 
-  @Column({ type: 'text', default: false })
-  is_archived: boolean;
+  @Column({ type: 'boolean', default: false })
+  is_archived?: boolean;
 
   @Column({ name: 'initial_request', type: 'text', nullable: true })
   initial_request: string;
@@ -554,4 +554,10 @@ get stepsSummary(): {
     progress: this.stepsProgress,
   };
 }
+
+  @BeforeInsert()
+  beforeCreate() {
+    this.is_archived = this.is_archived ?? false;
+  }
+
 }

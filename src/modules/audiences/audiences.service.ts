@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
-import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
@@ -83,7 +83,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // ✅ VÉRIFICATION DU STATUT DU DOSSIER
     // Vérifier si l'audience est compatible avec le statut actuel
     this.validateAudienceForDossierStatus(dossier, dto.type as AudienceType1);
-    let procedureInstance: ProcedureInstance | null = null;
+    let procedureInstance: ProcedureInstance | any = null;
     let subStage: SubStage | null = null;
     let stage: Stage | null = null;
 
@@ -92,24 +92,20 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       procedureInstance =  dossier.procedureInstance;
     }
 
-    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
-    if (procedureInstance && procedureInstance.currentStage) {
+    let subStageId 
+    if (procedureInstance && procedureInstance.currentVisit) {
       // Option: prendre la première sous-étape obligatoire non complétée
-      const currentStage = procedureInstance.currentStage;
+      const currentVisit = procedureInstance.currentVisit;
       const completedSubStages = procedureInstance.completedSubStages || [];
+      subStageId = currentVisit.currentSubStageVisitId
             
-      subStage = currentStage.subStages?.find(
-        (ss: any) => ss.status === 'in_progress'
-      ) || null;
-      console.log('SubStage trouvé pour la diligence :', (subStage)?.id);
-
-      if (!subStage) {
-        throw new Error(
-          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentStage.id}`
+      console.log('SubStage trouvé pour la diligence :', (subStageId));
+      if (!subStageId) {
+        throw new ConflictException(
+          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentVisit.id}`
         );
       }
-
-      stage = currentStage;
+      // stage = currentVisit;
     }
 
     // 🧠 Conversion explicite pour éviter l’erreur
@@ -127,8 +123,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       dossier: { id: dossier.id },
       status: AudienceStatus.SCHEDULED,
       procedure_instance_id: procedureInstance?.id,
-      sub_stage_id: subStage?.id,
-      stageVisit_id: stage?.id
+      stageVisit_id: procedureInstance.currentVisit?.id,
+      sub_stage_visit_id: procedureInstance.currentVisit?.currentSubStageVisitId,
     });
 
     if (dto?.document_ids) {

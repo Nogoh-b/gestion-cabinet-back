@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { LessThan, MoreThan, Repository, In } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DossiersService } from '../dossiers/dossiers.service';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
@@ -77,7 +77,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       throw new BadRequestException('La date limite doit être postérieure à la date de début');
     }
     
-    let procedureInstance: ProcedureInstance | null = null;
+    let procedureInstance: ProcedureInstance | any = null;
     let subStage: SubStage | null = null;
     let stage: Stage | null = null;
 
@@ -86,24 +86,22 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       procedureInstance =  dossier.procedureInstance;
     }
 
-    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
-    if (procedureInstance && procedureInstance.currentStage) {
-      // Option: prendre la première sous-étape obligatoire non complétée
-      const currentStage = procedureInstance.currentStage;
-      const completedSubStages = procedureInstance.completedSubStages || [];
-            
-      subStage = currentStage.subStages?.find(
-        (ss: any) => ss.status === 'in_progress'
-      ) || null;
-      console.log('SubStage trouvé pour la diligence :', (subStage)?.id);
 
-      if (!subStage) {
-        throw new Error(
-          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentStage.id}`
+    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
+    let subStageId 
+    if (procedureInstance && procedureInstance.currentVisit) {
+      // Option: prendre la première sous-étape obligatoire non complétée
+      const currentVisit = procedureInstance.currentVisit;
+      const completedSubStages = procedureInstance.completedSubStages || [];
+      subStageId = currentVisit.currentSubStageVisitId
+            
+      console.log('SubStage trouvé pour la diligence :', (subStageId));
+      if (!subStageId) {
+        throw new ConflictException(
+          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentVisit.id}`
         );
       }
-
-      stage = currentStage;
+      // stage = currentVisit;
     }
     // Création de l'entité
     const diligence = this.repository.create({
@@ -120,7 +118,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       assigned_lawyer: dto.assigned_lawyer_id ? { id: dto.assigned_lawyer_id } : undefined,
       status: DiligenceStatus.DRAFT,
       // sub_stage_id: (subStage as any)?.id,
-      subStage: { id: (subStage)?.id },
+      sub_stage_visit_id: subStageId,
+      stageVisit_id: procedureInstance.currentVisit?.id,
       procedure_instance_id: procedureInstance?.id
     });
 

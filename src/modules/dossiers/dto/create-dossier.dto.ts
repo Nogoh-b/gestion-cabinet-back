@@ -19,6 +19,25 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DangerLevel } from '../entities/dossier.entity';
 
 
+export class LinkDocumentsToSubStageDto {
+  @ApiProperty({
+    description: 'IDs des documents à lier',
+    example: [1, 2, 3],
+    type: [Number],
+  })
+  @IsArray()
+  @IsNotEmpty()
+  // @ArrayMinSize(1)
+  documentIds: number[];
+
+  @ApiProperty({
+    description: 'ID du dossier (UUID)',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID()
+  @IsNotEmpty()
+  dossierId: string;
+}
 
 
 

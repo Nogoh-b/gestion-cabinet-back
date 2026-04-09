@@ -48,6 +48,15 @@ export class StageVisit {
   subStageVisits: SubStageVisit[];
 
 
+  @Column({ type: 'uuid', nullable: true })
+  currentSubStageVisitId?: string | null;
+
+  // Relation optionnelle pour accéder facilement à la sous-étape en cours
+  @ManyToOne(() => SubStageVisit, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'currentSubStageVisitId' })
+  currentSubStageVisit?: SubStageVisit | null;
+
+
   @Column({ type: 'json', nullable: true })
   subStageMetadata: Record<string, any>;
 

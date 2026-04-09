@@ -29,8 +29,7 @@ import { DocumentCustomerResponseDto } from './dto/document-customer-response.dt
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
 import { join } from 'path';
 import { StepsService } from 'src/modules/dossiers/step.service';
-import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
-import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(
@@ -39,6 +38,7 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     
     @InjectRepository(DocumentType)
     private docTypeRepository: Repository<DocumentType>,    
+    private procedureInstanceService: ProcedureInstanceService,
 
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
@@ -127,114 +127,6 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
 
     return plainToInstance(DocumentCustomerResponseDto, document);
   }
-  /*async create(dto: CreateDocumentCustomerDto, customer_id = null): Promise<any> {
-    const file = dto.file!
-    const docType = await this.docTypeRepository.findOneBy({ id: dto.document_type_id });
-    if (!docType) {
-      if(!dto.strict)
-        return
-      throw new NotFoundException('Type document non trouvé');
-    }    
-    const customer  = await this.customerRepository.findOne({ where: { id: dto.customer_id }, relations: ['type_customer', 'type_customer.requiredDocuments'] });
-
-    if (!customer) {
-      if(!dto.strict)
-        return
-      throw new NotFoundException(`client ${dto.customer_id} non trouvé`);
-    }
-    const requiredDocument = customer?.type_customer?.requiredDocuments.find(
-      (doc) => String(doc.id) === String(dto.document_type_id)
-    );
-    console.log('Comparaison des IDs :');
-    // return customer?.type_customer?.requiredDocuments
-    customer?.type_customer?.requiredDocuments.forEach(doc => {
-      console.log('doc.id:', doc.id, 'vs', 'dto:', dto.document_type_id);
-    });
-    if(!requiredDocument ){
-      if(!dto.strict)
-        return
-      throw new NotAcceptableException(`vous ne pouvez pas soumettre ce type de document `);
-    }
-    const getSimilarDocs : DocumentCustomer[] = await this.searchWithJoinsAdvanced({
-      alias: 'doc',
-      // conditions: { status: 1 },
-      orConditions: [
-        // Groupe OR 1: status = 1
-        {
-          andConditions: [{ field: 'status', value: DocumentCustomerStatus.ACCEPTED }],
-        },
-        // Groupe OR 2: (status = 0 ET nom = 'brice')
-        {
-          andConditions: [
-            { field: 'status', value: DocumentCustomerStatus.PENDING },
-          ],
-        },  
-      ],
-      joins: [
-        {
-          relation: 'document_type',
-          alias: 'doc_type',
-          conditions: { id: dto.document_type_id }, 
-        },
-        {
-          relation: 'customer',
-          alias: 'cust',
-          conditions: { id: dto.customer_id },
-        },
-      ],
-    });
-    if (getSimilarDocs.length > 0) {
-      if(!dto.strict)
-        return
-      throw new ConflictException(`Document : ${getSimilarDocs[0].name} deja soumis ou validé`);
-    } 
-
-    if (!file) {
-      if(!dto.strict)
-        return
-      throw new BadRequestException('Aucun fichier uploadé');
-    }
-
-    if (!file.mimetype.startsWith(docType.mimetype)) {
-      if(!dto.strict)
-        return
-      throw new BadRequestException(`le fichier doit être de type : ${docType.mimetype}`);
-    }
-
-    if (file.size > 1024 * 1024 * 3) { 
-      if(!dto.strict)
-        return
-      throw new BadRequestException('Le fichier est trop volumineux (max 1MB)');
-    }
-    
-    const uploadedFile = await FilesUtil.uploadFile(
-      file,
-      UPLOAD_DOCS_PATH,
-      docType.mimetype,
-      {
-      maxSizeKB: 1024*1024*2, 
-      width: 1024, 
-    }
-    );
-
-    const document = this.docRepository.create({
-      ...dto,
-      document_type: docType,
-      customer: customer,
-      file_path: uploadedFile.fileName,
-      file_size: uploadedFile.fileSize,
-      name: docType.name,
-      status: DocumentCustomerStatus.PENDING,
-    });
-    const doc = await  plainToInstance(DocumentCustomerResponseDto, this.docRepository.save(document));
-    console.log('DOC--- ',doc)
-    if(dto.status){ 
-      this.validate(doc.id)
-    }
-    return doc
-  }*/
-
-
 
 
 /**
@@ -332,26 +224,26 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       const uploadedFile = await this.uploadFile(file, docType);
 
         // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
-    let procedureInstance: ProcedureInstance | null = null;
-    let subStage: SubStage | null = null;
+    // let procedureInstance: ProcedureInstance | null = null;
+    // let subStage: SubStage | null = null;
 
-    if (dossier.procedureInstance) {
-      // Sinon, prendre l'instance active du dossier
-      procedureInstance =  dossier.procedureInstance;
-    }
+    // if (dossier.procedureInstance) {
+    //   // Sinon, prendre l'instance active du dossier
+    //   procedureInstance =  dossier.procedureInstance;
+    // }
 
-    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
-    if (procedureInstance && procedureInstance.currentStage) {
-      // Option: prendre la première sous-étape obligatoire non complétée
-      const currentStage = procedureInstance.currentStage;
-      const completedSubStages = procedureInstance.completedSubStages || [];
+    // // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
+    // if (procedureInstance && procedureInstance.currentStage) {
+    //   // Option: prendre la première sous-étape obligatoire non complétée
+    //   const currentStage = procedureInstance.currentStage;
+    //   const completedSubStages = procedureInstance.completedSubStages || [];
       
-      subStage = currentStage.subStages?.find(
-        (ss: SubStage) => 
-          ss.isMandatory && 
-          !completedSubStages.includes(ss.id)
-      ) || currentStage.subStages?.[0];
-    }
+    //   subStage = currentStage.subStages?.find(
+    //     (ss: SubStage) => 
+    //       ss.isMandatory && 
+    //       !completedSubStages.includes(ss.id)
+    //   ) || currentStage.subStages?.[0];
+    // }
 
       // 8. Création du document
       const document = await this.createDocument({
@@ -360,7 +252,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         customer,
         status : DocumentCustomerStatus.ACCEPTED,
         category : plainToInstance(DocumentCategory, category),
-        dossier: plainToInstance(Dossier, dossier),
+        dossier: { id: dossier.id } as Dossier, // ou gardez l'objet tel quel
         uploadedFile,
 
         uploadedByUserId
@@ -535,6 +427,32 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       );
     }
   }
+
+
+async linkDocumentsToSubStage(
+  documentIds: number[],
+  currentSubStageVisitId: any
+): Promise<void> {
+  if (!documentIds || documentIds.length === 0) {
+    throw new Error('Aucun document fourni');
+  }
+
+  // Vérifier que le subStage existe
+  // const subStage = await this.subStageRepository.findOne({
+  //   where: { id: subStageId },
+  // });
+
+  if (!currentSubStageVisitId) {
+    throw new NotFoundException(`Sous étape non trouvé`);
+  }
+
+  // 🔗 Ajout en masse (table pivot)
+  await this.repository
+    .createQueryBuilder()
+    .relation('sub_stage_visits')
+    .of(documentIds) // 👈 tableau ici
+    .add(currentSubStageVisitId);
+}
 
   /**
    * Crée l'entité document
