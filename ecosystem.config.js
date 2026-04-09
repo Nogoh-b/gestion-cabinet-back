@@ -11,7 +11,7 @@ module.exports = {
       instances: 1,
       env: {
         NODE_ENV:'development',
-        PORT: 3005,
+        PORT: 3006,
       },
     },
   ],
