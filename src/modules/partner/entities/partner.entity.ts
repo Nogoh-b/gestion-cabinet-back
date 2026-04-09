@@ -1,6 +1,5 @@
 // src/partner/entities/partner.entity.ts
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { TransactionSavingsAccount } from 'src/modules/transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import {
   Entity,
   Column,
@@ -10,9 +9,9 @@ import {
   JoinColumn,
   Index,
   BaseEntity,
-  OneToMany,
   PrimaryColumn,
 } from 'typeorm';
+
 
 
 
@@ -48,15 +47,6 @@ export class Partner extends BaseEntity {
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
-  /*@ManyToOne(() => SavingsAccount)
-  @JoinColumn({ name: 'saving_account_id' })
-  saving_account: SavingsAccount;*/
-
-  @OneToMany(
-    () => TransactionSavingsAccount,
-    tx => tx.partner
-  )
-  transactions?: TransactionSavingsAccount[];
   
   @Column({ type: 'tinyint', default: 1 })
   status: number; // Statut du partenaire (1=actif, 0=inactif)

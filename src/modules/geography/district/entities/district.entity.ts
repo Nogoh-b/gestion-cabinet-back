@@ -14,7 +14,10 @@ export class District {
   @Column({ length: 45, nullable: false })
   code: string;
 
-  @ManyToOne(() => Division, { nullable: false, eager: true  })
+  @Column({ type: 'int', nullable: true })
+  division_id: number;
+
+  @ManyToOne(() => Division, { nullable: true, eager: true  })
   @JoinColumn({ name: 'division_id' })
   division: Division;
 

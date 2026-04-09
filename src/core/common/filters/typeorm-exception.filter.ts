@@ -17,6 +17,7 @@ export class TypeOrmExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const responseBody = {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+      statusCode1: HttpStatus.INTERNAL_SERVER_ERROR,
       // renvoie directement le message d'erreur SQL/TypeORM
       message: (exception as any).message,
     };

@@ -5,6 +5,7 @@ import { Request, Response, NextFunction } from 'express';
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
+    console.log('AuthMiddleware executed');
     const authHeader = req.headers['authorization'];
     
     if (!authHeader) {

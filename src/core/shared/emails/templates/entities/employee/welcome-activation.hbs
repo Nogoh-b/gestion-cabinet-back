@@ -1,0 +1,71 @@
+
+{{> header}}
+
+  <div class="audience-card">
+    <div class="header-audience">
+      <h1>🎉 Bienvenue dans l'équipe {{branch.name}} !</h1>
+      <div class="badge upcoming">Activation de compte</div>
+    </div>
+
+    <p>Bonjour <strong>{{user.first_name}} {{user.last_name}}</strong>,</p>
+    <p>Votre compte a été créé sur la plateforme du Cabinet Juridique. Pour finaliser votre inscription, veuillez définir votre mot de passe.</p>
+
+    <div class="info-section">
+      <h2>📋 Récapitulatif de votre profil</h2>
+      <table class="info-table">
+        <tr>
+          <td><strong>Nom complet :</strong></td>
+          <td>{{user.first_name}} {{user.last_name}}</td>
+        </tr>
+        <tr>
+          <td><strong>Fonction :</strong></td>
+          <td>{{position}}</td>
+        </tr>
+        <tr>
+          <td><strong>Email :</strong></td>
+          <td>{{user.email}}</td>
+        </tr>
+        <tr>
+          <td><strong>Agence :</strong></td>
+          <td>{{branch.display_name}}</td>
+        </tr>
+        <tr>
+          <td><strong>Numéro d'employé :</strong></td>
+          <td>{{employee_number}}</td>
+        </tr>
+        <tr>
+          <td><strong>Spécialisation :</strong></td>
+          <td>{{specialization}}</td>
+        </tr>
+        <tr>
+          <td><strong>Barreau :</strong></td>
+          <td>{{bar_association_number}} - {{bar_association_city}}</td>
+        </tr>
+        <tr>
+          <td><strong>Date d'embauche :</strong></td>
+          <td>{{formatDate hireDate}}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="info-section">
+      <h2>⚖️ Compétences</h2>
+      <table class="info-table">
+        <tr>
+          <td><strong>Langues :</strong></td>
+          <td>{{join languages}}</td>
+        </tr>
+        <tr>
+          <td><strong>Domaines d'expertise :</strong></td>
+          <td>{{join expertise_areas}}</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="actions-section">
+      <h3>🔗 Pour activer votre compte :</h3>
+      <a href="{{activationLink}}" class="btn btn-primary">Définir mon mot de passe</a>
+      <p style="margin-top: 20px; font-size: 14px; color: #6b7280;">Ce lien d'activation expire le {{formatDate activationExpiration}}.</p>
+    </div>
+  </div>
+{{> footer}}

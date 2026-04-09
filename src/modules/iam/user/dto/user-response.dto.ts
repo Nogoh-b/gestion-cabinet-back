@@ -55,10 +55,10 @@ export class UserResponseDto {
 
   @Expose()
   @ApiProperty()
-  @Transform(({ obj }) =>
-    obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.code || null
-  )
-  role: string;
+  // @Transform(({ obj }) =>
+  //   obj.roleAssignments?.find(a => a.role?.status === 1)?.role?.code || null
+  // )
+  role: string; 
 
   @Expose()
   @ApiProperty()

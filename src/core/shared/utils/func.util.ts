@@ -6,4 +6,6 @@ export class Func {
     return ["true", "1", "yes", "y", "on"].includes(str.toLowerCase().trim());
   }
 
+  
+
 }

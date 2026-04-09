@@ -1,8 +1,9 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
-import { EmailService } from 'src/core/shared/services/email/email.service';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { PaginationQueryCustomerDto } from 'src/core/shared/dto/pagination-query.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { KycSyncDto } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
 import {
   Controller,
@@ -16,37 +17,18 @@ import {
   UploadedFiles,
   UseGuards,
   Query,
+  ParseIntPipe
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
-
-
-
-
-
-
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
-
-
-
-
-
-
+import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody, ApiParam } from '@nestjs/swagger';
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
+import { CustomerSearchDto } from './dto/search-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-import { PaginationQueryCustomerDto } from 'src/core/shared/dto/pagination-query.dto';
-
-
-
-
-
-
-
-
-
-
+import { EmailService } from 'src/core/shared/services/email/email.service copy';
+import { CustomerStatsService } from './customer-stats.service';
 
 
 @ApiTags('customer')
@@ -57,27 +39,70 @@ export class CustomerController {
   constructor(
     private readonly customerService: CustomersService,
     private readonly emailService: EmailService,
+    private readonly statsService: CustomerStatsService
   ) {}
+
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques des clients' })
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('branchId') branchId?: number,
+  ): Promise<any> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      branchId: branchId ? +branchId : undefined,
+    });
+  }
+
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'un client spécifique' })
+  @ApiParam({ name: 'id', description: 'ID du client' })
+  async getStatsForCustomer(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats({ customerId: id });
+  }
+
+  @Get('stats/top')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getTopClients() {
+    const stats = await this.statsService.getStats({});
+    return (stats as any).topClients;
+  }
+
+  @Get('stats/without-dossier')
+  // @Roles(UserRole.ADMIN)
+  async getCustomersWithoutDossier() {
+    const stats = await this.statsService.getStats({});
+    return (stats as any).customersWithoutDossier;
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
   @RequirePermissions('CREATE_CUSTOMER')
   async create(@Body() createCustomerDto: CreateCustomerDto): Promise<any> {
+    console.log(createCustomerDto)
     return await this.customerService.create(createCustomerDto);
   }
 
-  @Post('/search')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Get('/search')
+  // @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('VIEW_CUSTOMER')
   @ApiOperation({ summary: 'Rechercher customer' })
-  @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
+  @ApiResponse({ status: 201, description: 'Liste' , type: [CustomerResponseDto] })
 
-  async search(
-    @Body() searchDto: AdvancedSearchOptionsDto,
-    ): Promise<any[]> {
-    
-     return await this.customerService.search(searchDto);
+ async search(
+
+    @Query() searchParams?: CustomerSearchDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.customerService.searchWithTransformer(searchParams as SearchCriteria, CustomerResponseDto , paginationParams);
   }
 
 
@@ -103,6 +128,7 @@ export class CustomerController {
     return await this.customerService.findAll();
   }
 
+
   @Get("v2")
   @ApiOperation({ summary: 'Get all customers' })
   @ApiResponse({ status: 200, description: 'List of customers', type: [CustomerResponseDto] })
@@ -120,6 +146,7 @@ export class CustomerController {
       from ? new Date(from).toISOString() : undefined,
       to ? new Date(to).toISOString() : undefined,);
   }
+
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a customer by ID' })
@@ -196,6 +223,7 @@ export class CustomerController {
   async getCustomersWithMissingKyc1(@Query('email') email: string) {
     return  await this.customerService.emailExists(email)
   }
+
   @Get('kyc/missing')
   async getCustomersWithMissingKyc() {
     return this.customerService.findCustomersWithMissingKyc();

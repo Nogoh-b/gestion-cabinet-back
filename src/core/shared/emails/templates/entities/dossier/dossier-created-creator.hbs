@@ -1,0 +1,88 @@
+{{> header}}
+
+<h1>Nouveau dossier créé avec succès</h1>
+
+{{!-- <p>Bonjour <strong>{{creator.full_name}}</strong>,</p> --}}
+
+<p>Le dossier <strong>n°{{dossier_number}}</strong> a été créé avec succès dans le système.</p>
+
+<div style="background-color: #f0fdf4; border-left: 4px solid #22c55e; padding: 16px; margin: 24px 0;">
+    <h2 style="margin-top: 0; color: #166534;">Récapitulatif</h2>
+    
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600; width: 35%;">Client :</td>
+            <td style="padding: 8px 0;">{{client.full_name}} {{client.company_name}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Objet :</td>
+            <td style="padding: 8px 0;">{{object}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Statut :</td>
+            <td style="padding: 8px 0;"><span style="background-color: #e2e8f0; padding: 4px 8px; border-radius: 4px;">{{status}}</span></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Avocat responsable :</td>
+            <td style="padding: 8px 0;">{{lawyer.full_name}}</td>
+        </tr>
+        {{#if priority_level}}
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Niveau de priorité :</td>
+            <td style="padding: 8px 0;">
+                {{#if (eq dossier.priority_level 3)}}<span style="color: #dc2626;">🔴 Urgent</span>{{/if}}
+                {{#if (eq dossier.priority_level 2)}}<span style="color: #ea580c;">🟠 Élevé</span>{{/if}}
+                {{#if (eq dossier.priority_level 1)}}<span style="color: #ca8a04;">🟡 Moyen</span>{{/if}}
+                {{#if (eq dossier.priority_level 0)}}<span style="color: #16a34a;">🟢 Normal</span>{{/if}}
+            </td>
+        </tr>
+        {{/if}}
+    </table>
+</div>
+
+<h3>Informations complémentaires</h3>
+<ul>
+    {{#if case_number}}
+    <li><strong>N° de dossier tribunal :</strong> {{case_number}}</li>
+    {{/if}}
+    {{#if court_name}}
+    <li><strong>Chambre :</strong> {{court_name}}</li>
+    {{/if}}
+    {{#if estimated_duration}}
+    <li><strong>Durée estimée :</strong> {{estimated_duration}} jours</li>
+    {{/if}}
+    {{#if budget_estimate}}
+    <li><strong>Budget estimé :</strong> {{formatMoney budget_estimate}} FCFA</li>
+    {{/if}}
+    {{#if danger_level}}
+    <li><strong>Niveau de risque :</strong> 
+        {{#if (eq danger_level 3)}}Critique{{/if}}
+        {{#if (eq danger_level 2)}}Élevé{{/if}}
+        {{#if (eq danger_level 1)}}Normal{{/if}}
+        {{#if (eq danger_level 0)}}Faible{{/if}}
+    </li>
+    {{/if}}
+    {{#if procedure_type}}
+    <li><strong>Type de procédure :</strong> {{procedure_type.name}}</li>
+    {{/if}}
+    {{#if procedure_subtype}}
+    <li><strong>Sous-type :</strong> {{procedure_subtype.name}}</li>
+    {{/if}}
+</ul>
+
+<h3>Actions recommandées</h3>
+<ul>
+    <li>Programmer une réunion de lancement avec l'équipe</li>
+    <li>Préparer la convention d'honoraires</li>
+    <li>Planifier les prochaines échéances dans le calendrier</li>
+</ul>
+
+<div style="text-align: center; margin: 32px 0;">
+    <a href="{{appUrl}}/dossiers/{{id}}" style="background-color: #22c55e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        Accéder au dossier
+    </a>
+</div>
+
+<p>Ce dossier a été automatiquement ajouté à votre tableau de bord.</p>
+
+{{> footer}}

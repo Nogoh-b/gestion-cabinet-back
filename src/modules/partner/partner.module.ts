@@ -1,5 +1,3 @@
-import { CoreModule } from 'src/core/core.module';
-
 import { forwardRef, Module } from '@nestjs/common';
 
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -7,11 +5,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
+
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
-import { SavingsAccountModule } from '../savings-account/savings-account.module';
-import { TransactionModule } from '../transaction/transaction.module';
 import { Partner } from './entities/partner.entity';
+
 
 
 
@@ -22,9 +20,6 @@ import { Partner } from './entities/partner.entity';
 @Module({
   imports: [    
       forwardRef(() => CustomerModule),
-      forwardRef(() => CoreModule),
-      forwardRef(() => SavingsAccountModule),
-      forwardRef(() => TransactionModule),
       forwardRef(() => DocumentsModule),
       
     TypeOrmModule.forFeature([

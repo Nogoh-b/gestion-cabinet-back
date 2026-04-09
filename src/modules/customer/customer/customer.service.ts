@@ -1,25 +1,29 @@
 import { plainToInstance } from 'class-transformer';
-import { AdvancedSearchOptionsDto } from 'src/core/shared/dto/advanced-search.dto';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { DateRange, PaginatedResult, PaginationOptions, SearchOptions as SearchOptionV1 } from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { BaseService } from 'src/core/shared/services/search/base.service';
+import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
+
 import {
   CreateDocumentFromCotiDto,
   DocTypeNameOnline,
   KycSyncDto,
 } from 'src/modules/documents/document-customer/dto/create-document-from-coti.dto';
+
 import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
-import { SavingsAccountService } from 'src/modules/savings-account/savings-account/savings-account.service';
-
 import { DataSource, Repository } from 'typeorm';
-
 import {
   BadRequestException,
   ConflictException,
@@ -28,6 +32,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -42,11 +58,23 @@ import {
   CustomerCreatedFrom,
   CustomerStatus,
 } from './entities/customer.entity';
-import { DateRange, PaginatedResult, PaginationOptions, SearchOptions } from 'src/core/shared/interfaces/pagination.interface';
-import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @Injectable()
-export class CustomersService extends BaseService<Customer> {
+export class CustomersService extends BaseServiceV1<Customer> {
   constructor(
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
@@ -56,34 +84,85 @@ export class CustomersService extends BaseService<Customer> {
     @InjectRepository(TypeCustomer)
     private typeCustomerRepository: Repository<TypeCustomer>,
     private typeCustomerService: TypeCustomersService,
-    @Inject(forwardRef(() => SavingsAccountService))
-    private savingsAccountService: SavingsAccountService,
     private locationcityService: LocationCitiesService,
+    @Inject(forwardRef(() => DocumentCustomerService))
     private documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => BranchService))
     private branchService: BranchService,
-    private paginationService: PaginationService,
+    protected readonly oldPaginationService: PaginationService,
+    protected readonly paginationServiceV1: PaginationServiceV1,
     private readonly dataSource: DataSource,
   ) {
     console.log(forwardRef);
-    super();
+    super(customerRepository, paginationServiceV1);
   }
 
+  protected getDefaultSearchOptions(): SearchOptions {
+      return {
+        // Champs pour la recherche globale
+        searchFields: [
+          'last_name',
+          'first_name',
+          'company_name',
+          'address',
+          'postal_code',
+          'country',
+          'billing_type',
+          'professional_phone',
+          'fax',
+          'siret',
+          'tva_number',
+          'legal_form',
+          'reference',
+          'number_phone_1',
+          'number_phone_2',
+          'email',
+          'customer_code',
+          'type_customer.name',
+          'location_city.name',
+          'nui',
+          'rccm',
+          'birthday',
+        ],
+        
+        // Champs pour recherche exacte
+        exactMatchFields: [
+          'type_customer.name',
+          'location_city.name',
+        ],
+        
+        // Champs pour ranges de dates
+        /*dateRangeFields: [
+          'created_at',
+          'updated_at',
+          'opening_date',
+          'closing_date'
+        ],*/
+        
+        // Champs de relations pour filtrage
+        relationFields: ['type_customer', 'location_city']
+      };
+    }
+ toNumberOrNull(value: any): number | null {
+  const num = Number(value);
+  return isNaN(num) ? null : num;
+}
   async create(createCustomerDto: CreateCustomerDto): Promise<any> {
     return await this.dataSource.transaction(async (manager) => {
       // const customerRes = new CustomerResponseDto()
       // customerRes.customer_code = GenCOde.generateCode(10)
       // return customerRes
-      const errors = await validateDto(CreateCustomerDto, createCustomerDto);
+      // const errors = await validateDto(CreateCustomerDto, createCustomerDto);
+      console.log(createCustomerDto)
 
       // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
       // if (existing) throw new ConflictException('Numero deja attribué à un compte');
       const type_customer = await this.typeCustomerService.findOne(
-        createCustomerDto.type_customer_id,
+        Number(createCustomerDto.type_customer_id),
       );
       // return new CustomerResponseDto()
       const location_city = await this.locationcityService.findOne(
-        createCustomerDto.location_city_id,
+        Number(createCustomerDto.location_city_id),
       );
       if (!type_customer || !location_city)
         throw new NotFoundException(
@@ -91,7 +170,7 @@ export class CustomersService extends BaseService<Customer> {
         );
 
       const branch = await this.branchService.findOne(
-        createCustomerDto.branch_id,
+        Number(createCustomerDto.branch_id),
       );
       if (!branch) throw new NotFoundException('Branche invalide');
 
@@ -102,7 +181,7 @@ export class CustomersService extends BaseService<Customer> {
 
       const customer = this.customerRepository.create({
         ...createCustomerDto,
-        first_name: createCustomerDto.first_name ?? createCustomerDto.firt_name,
+        first_name: createCustomerDto.first_name ?? createCustomerDto.first_name,
         type_customer,
         location_city,
       });
@@ -172,15 +251,15 @@ export class CustomersService extends BaseService<Customer> {
 
     return {
       customer,
-      documents:
-        await this.documentCustomerService.createMany(documentsWithFiles),
+      // documents:
+      //   await this.documentCustomerService.createMany(documentsWithFiles, 1),
     };
     return documentsWithFiles;
   }
 
-  async search(params: AdvancedSearchOptionsDto) {
-    return this.enhancedSearch(params);
-  }
+  // async search(params: AdvancedSearchOptionsDto) {
+  //   return null// this.enhancedSearch(params);
+  // }
 
   async findAll(): Promise<CustomerResponseDto[]> {
     const customers = await this.customerRepository.find({
@@ -189,16 +268,7 @@ export class CustomersService extends BaseService<Customer> {
     return plainToInstance(CustomerResponseDto, customers);
   }
 
-  async findOne(id: number): Promise<CustomerResponseDto> {
-    const customer = await this.customerRepository.findOne({
-      where: { id },
-      relations: ['type_customer', 'location_city'],
-    });
-    if (!customer) throw new NotFoundException();
-    return plainToInstance(CustomerResponseDto, customer);
-  }
-
-    async findAllV2(page = 1, limit = 10,
+  async findAllV2(page = 1, limit = 10,
     term?: string,
     fields?: string[],
     exact?: boolean,
@@ -213,7 +283,7 @@ export class CustomersService extends BaseService<Customer> {
       .leftJoinAndSelect('c.location_city', 'location_city')
 
       const options: PaginationOptions & {
-        search?: SearchOptions;
+        search?: SearchOptionV1;
         dateRange?: DateRange;
       } = { page, limit };
       if (term) options.search = { term, fields, exact };
@@ -223,13 +293,13 @@ export class CustomersService extends BaseService<Customer> {
           to: to ? new Date(to) : undefined,
         };
       console.log('------options---- ', options);
-      const result = await this.paginationService.paginate(qb, options);
+      const result = await this.oldPaginationService.paginate(qb, options);
 
       // transformer chaque item en DTO
       return {
         ...result,
         data: result.data.map((customer) =>
-          plainToInstance(CustomerResponseDto, customer, { excludeExtraneousValues: true })
+          plainToInstance(CustomerResponseDto, customer)
         ),
       };
 
@@ -238,6 +308,16 @@ export class CustomersService extends BaseService<Customer> {
     });
     return plainToInstance(CustomerResponseDto, customers);*/
   }
+
+  async findOne(id: number): Promise<CustomerResponseDto> {
+    const customer = await this.customerRepository.findOne({
+      where: { id },
+      relations: ['type_customer', 'location_city' , 'dossiers' , 'documents', 'factures', 'communications'],
+    });
+    if (!customer) throw new NotFoundException();
+    return plainToInstance(CustomerResponseDto, customer);
+  }
+
   async findOneByCode(
     customer_code: string,
     strict = true,
@@ -264,30 +344,179 @@ export class CustomersService extends BaseService<Customer> {
   //   doc
   // }
 
-  async update(
-    id: number,
-    dto: UpdateCustomerDto,
-  ): Promise<CustomerResponseDto> {
-    const customer = await this.findOne(id);
+async update(
+  id: number,
+  dto: UpdateCustomerDto,
+): Promise<CustomerResponseDto> {
+  // Récupérer le client existant
+  const customer = await this.findOne(id);
+  if (!customer) {
+    throw new NotFoundException(`Customer with ID ${id} not found`);
+  }
 
-    if (dto.email && dto.email !== customer.email) {
-      const emailExists = await this.customerRepository.findOneBy({
-        email: dto.email,
-      });
-      if (emailExists) throw new ConflictException('Email already exists');
+  // Vérifier l'unicité de l'email si modifié
+  if (dto.email && dto.email !== customer.email) {
+    const emailExists = await this.customerRepository.findOneBy({
+      email: dto.email,
+    });
+    if (emailExists) {
+      throw new ConflictException('Email already exists');
     }
+  }
 
-    Object.assign(customer, dto);
-    if (dto.location_city_id) {
-      customer.location_city = await this.locationcityService.findOneSimple(
-        dto.location_city_id,
+  // Gestion des relations et transformations
+  const updateData: any = { ...dto };
+
+  // Mettre à jour la ville de localisation si fournie
+  if (dto.location_city_id) {
+    updateData.location_city = await this.locationcityService.findOneSimple(
+      dto.location_city_id,
+    );
+    // Supprimer l'ID pour éviter la confusion
+    delete updateData.location_city_id;
+  }
+
+  // Gérer la relation de branche si fournie
+  if (dto.branch_id) {
+    const branch = await this.branchService.findOne(dto.branch_id);
+    if (!branch) {
+      throw new NotFoundException(`Branch with ID ${dto.branch_id} not found`);
+    }
+    updateData.branch = branch;
+    delete updateData.branch_id;
+  }
+
+  // Gérer la relation de type de client si fournie
+  if (dto.type_customer_id) {
+    const typeCustomer = await this.typeCustomerService.findOne(dto.type_customer_id);
+    if (!typeCustomer) {
+      throw new NotFoundException(`Customer type with ID ${dto.type_customer_id} not found`);
+    }
+    updateData.type_customer = typeCustomer;
+    delete updateData.type_customer_id;
+  }
+
+  // Vérifier la civilité si fournie
+  if (dto.civilite) {
+    const allowedCivilites = ['M', 'Mme', 'Mlle', 'Société'];
+    if (!allowedCivilites.includes(dto.civilite)) {
+      throw new BadRequestException(
+        `Civilité must be one of: ${allowedCivilites.join(', ')}`,
       );
     }
-    return plainToInstance(
-      CustomerResponseDto,
-      this.customerRepository.save(customer),
-    );
   }
+
+  // Vérifier le type de facturation si fourni
+  if (dto.billing_type) {
+    const allowedBillingTypes = ['forfait', 'temps_passe', 'mixte'];
+    if (!allowedBillingTypes.includes(dto.billing_type)) {
+      throw new BadRequestException(
+        `Billing type must be one of: ${allowedBillingTypes.join(', ')}`,
+      );
+    }
+  }
+
+  // Vérifier le statut si fourni
+  if (dto.status) {
+    const validStatuses = Object.values(CustomerStatus);
+    if (!validStatuses.includes(dto.status)) {
+      throw new BadRequestException(
+        `Status must be one of: ${validStatuses.join(', ')}`,
+      );
+    }
+  }
+
+  // Vérifier le créé depuis si fourni
+  if (dto.created_from) {
+    const validCreatedFrom = Object.values(CustomerCreatedFrom);
+    if (!validCreatedFrom.includes(dto.created_from)) {
+      throw new BadRequestException(
+        `Created from must be one of: ${validCreatedFrom.join(', ')}`,
+      );
+    }
+  }
+
+  // Empêcher la mise à jour du code client s'il est déjà défini
+  if (dto.customer_code && customer.customer_code) {
+    throw new BadRequestException('Customer code cannot be modified once set');
+  }
+
+
+
+  // Validation SIRET si fourni
+  if (dto.siret) {
+    if (!/^\d{14}$/.test(dto.siret)) {
+      throw new BadRequestException('SIRET must be 14 digits');
+    }
+  }
+
+  // Validation TVA si fournie
+  if (dto.tva_number) {
+    // Format basique pour validation
+    if (!/^[A-Z]{2}\d+$/.test(dto.tva_number)) {
+      throw new BadRequestException('Invalid TVA number format');
+    }
+  }
+
+  // Validation NUI si fourni
+  if (dto.nui) {
+    if (!/^\d+$/.test(dto.nui)) {
+      throw new BadRequestException('NUI must contain only digits');
+    }
+  }
+
+  // Appliquer les modifications
+  Object.assign(customer, updateData);
+
+  try {
+    // Sauvegarder les modifications
+    const updatedCustomer = await this.customerRepository.save(plainToInstance(Customer, customer));
+
+    // Récupérer le client avec toutes ses relations pour la réponse
+    const fullCustomer = await this.customerRepository.findOne({
+      where: { id: updatedCustomer.id },
+      relations: [
+        'location_city',
+        'branch',
+        'type_customer',
+        'communications',
+        'documents',
+        'documents.document_type',
+        'dossiers',
+        'dossiers.factures',
+        'factures',
+      ],
+    });
+    if (!fullCustomer) {
+      throw new BadRequestException('Non');
+    }
+
+    // Calculer les statistiques pour la réponse
+    const responseData = {
+      ...fullCustomer,
+      document_count: fullCustomer.documents?.length || 0,
+      communication_count: fullCustomer.communications?.length || 0,
+      dossiers_en_cours: fullCustomer.dossiers?.filter(d => 
+        d.status !== DossierStatus.CLOSED && d.is_active
+      ).length || 0,
+      chiffre_affaires: fullCustomer.factures?.reduce(
+        (sum, facture) => sum + (facture.montantTTC || 0), 0
+      ) || 0,
+      solde_en_cours: fullCustomer.factures?.reduce(
+        (sum, facture) => sum + (facture.montantPaye || 0), 0
+      ) || 0,
+    };
+
+    // Transformer en DTO de réponse
+    return plainToInstance(CustomerResponseDto, responseData);
+  } catch (error) {
+    if (error.code === '23505') {
+      // Violation de contrainte d'unicité PostgreSQL
+      throw new ConflictException('A customer with similar unique data already exists');
+    }
+    throw error;
+  }
+}
 
   async remove(id: number): Promise<void> {
     const result = await this.customerRepository.delete(id);
@@ -339,40 +568,9 @@ export class CustomersService extends BaseService<Customer> {
     if (!customer) throw new NotFoundException(`Compte ${id} introuvable`);
 
     const stats = {
-      outgoingTransactionsTotal: 0,
-      incomingTransactionsTotal: 0,
-      outgoingTransactionsMOMOTotal: 0,
-      incomingTransactionsMOMOTotal: 0,
-      outgoingTransactionsOMTotal: 0,
-      incomingTransactionsOMTotal: 0,
-      inComingAmount: 0,
-      outgoingAmount: 0,
-      inComingAmountMOMO: 0,
-      outgoingAmountMOMO: 0,
-      inComingAmountOM: 0,
-      outgoingAmountOM: 0,
-      savingAccountTotal: customer.savings_accounts.length,
     };
 
-    if (customer.savings_accounts) {
-      for (const sa of customer.savings_accounts) {
-        const stat = await this.savingsAccountService.stats(sa.id);
-        stats.outgoingTransactionsTotal += stat.outgoingTransactionsTotal;
-        stats.incomingTransactionsTotal += stat.incomingTransactionsTotal;
-        stats.outgoingTransactionsMOMOTotal +=
-          stat.outgoingTransactionsMOMOTotal;
-        stats.incomingTransactionsMOMOTotal +=
-          stat.incomingTransactionsMOMOTotal;
-        stats.outgoingTransactionsOMTotal += stat.outgoingTransactionsOMTotal;
-        stats.incomingTransactionsOMTotal += stat.incomingTransactionsOMTotal;
-        stats.inComingAmount += stat.inComingAmount;
-        stats.outgoingAmount += stat.outgoingAmount;
-        stats.inComingAmountMOMO += stat.inComingAmountMOMO;
-        stats.outgoingAmountMOMO += stat.outgoingAmountMOMO;
-        stats.inComingAmountOM += stat.inComingAmountOM;
-        stats.outgoingAmountOM += stat.outgoingAmountOM;
-      }
-    }
+
 
     return stats;
   }
@@ -391,7 +589,6 @@ export class CustomersService extends BaseService<Customer> {
 
     return !!customer; // true si trouvé, false sinon
   }
-
   async findCustomersWithMissingKyc() {
     return await this.customerRepository
       .createQueryBuilder('c')

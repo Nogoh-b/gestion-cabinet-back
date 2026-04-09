@@ -1,0 +1,21 @@
+// src/modules/auth/dto/verify-otp.dto.ts
+import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+
+export class VerifyOtpDto {
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  @Length(6, 6)
+  otp: string;
+
+  @ApiProperty({ enum: ['reset_password', 'set_password'] })
+  @IsString()
+  @IsNotEmpty()
+  type: 'reset_password' | 'set_password';
+}

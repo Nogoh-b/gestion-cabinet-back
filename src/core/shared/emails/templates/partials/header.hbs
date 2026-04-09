@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        .header { background-color: #f8f9fa; padding: 20px; text-align: center; }
+        .logo { max-width: 150px; margin-bottom: 10px; }
+        .company-name { color: #333; font-size: 24px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        {{#if logoUrl}}
+            <img src="{{logoUrl}}" alt="{{companyName}}" class="logo">
+        {{/if}}
+        <div class="company-name">{{companyName}}</div>
+        <div>{{companyAddress}}</div>
+    </div>
+    <div class="content">

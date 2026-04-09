@@ -1,6 +1,5 @@
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
-import { EmailService } from 'src/core/shared/services/email/email.service';
 import { CreateEmployeeDto } from 'src/modules/agencies/employee/dto/create-employee.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Repository } from 'typeorm';
@@ -22,6 +21,7 @@ import { UserRolesService } from '../user-role/user-role.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { User } from './entities/user.entity';
+import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
 
@@ -53,15 +53,15 @@ export class UsersService {
 
   async create(createUserDto: CreateUserDto , is_strict = true): Promise<UserResponseDto> {
     //await validateDto(CreateUserDto, createUserDto)
-    const customer = await this.customerRepository.findOneBy({id:createUserDto.customer_id})
+    /*const customer = await this.customerRepository.findOneBy({id:createUserDto.customer_id})
     if (!customer &&  is_strict) {
       throw new NotFoundException('Le compte client est inexistant');
-    }
+    }*/
     const existingUser = await this.userRepository.findOne({
       where: { email: createUserDto.email },
     });
     const existingUserName = await this.userRepository.findOne({
-      where: { username: createUserDto.username },
+      where: { email: createUserDto.email },
     });
     if (existingUser) {
       throw new ConflictException('Email already exists');
@@ -74,7 +74,6 @@ export class UsersService {
 
     const user = this.userRepository.create({
       ...createUserDto,
-      customer : customer ?? new Customer(),
       password: hashedPassword, 
       status : 1
     });
@@ -120,6 +119,21 @@ export class UsersService {
   async findByUsername(username: string): Promise<any | null> {
     const user = await this.userRepository.findOne({
       where: { username },
+      relations: ['customer', 'roleAssignments.role'],
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+
+    const activeRoleAssignment = user.roleAssignments.find(
+      (assignment) => assignment.role.status === 1,
+    );
+
+    user.roleAssignments = activeRoleAssignment ? [activeRoleAssignment] : [];
+    return user;
+  }
+  async findByEmail(email: string): Promise<any | null> {
+    const user = await this.userRepository.findOne({
+      where: { email },
       relations: ['customer', 'roleAssignments.role'],
     });
 

@@ -3,9 +3,6 @@
 import { join } from 'path';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 
-
-
- 
 export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
   database: {
     type: 'mysql',
@@ -14,12 +11,13 @@ export const databaseConfig = (): { database: TypeOrmModuleOptions } => ({
     username: process.env.DB_USER ?? 'root', 
     password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_NAME ??  'core_banking',  
-    synchronize: true,
-    subscribers: [join(__dirname, '../../**/*.subscriber{.ts,.js}')],
+    synchronize: false,  
+    // subscribers: [join(__dirname, '../../**/*.subscriber{.ts,.js}')],
+    // subscribers: [join(__dirname, '../../**/*.subscriber{.ts,.js}')],
     entities: [join(__dirname, '../../**/*.entity{.ts,.js}')],
-    logging: ["error",],
+    logging: ["error",], 
     // logging: ["query", "error", "schema"], 
-    logger: "advanced-console" 
+    logger: "advanced-console"  
 
   },
 });

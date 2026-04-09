@@ -1,47 +1,107 @@
-/* eslint-disable prettier/prettier */
-import { AgenciesModule } from 'src/modules/agencies/agencies.module';
-import { IamModule } from 'src/modules/iam/iam.module';
+import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
+import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
+
+
+
+
+
+
+import { PermissionsService } from 'src/modules/iam/permission/permission.service';
+
+
+
+
+
+import { RolePermission } from 'src/modules/iam/role-permission/entities/role-permission.entity';
+
+
+
+
+
+
+
+import { RolePermissionService } from 'src/modules/iam/role-permission/role-permission.service';
+
+
+import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
+
+// import { swaggerConfig } from './config/swagger.config';
+import { UserRolesService } from 'src/modules/iam/user-role/user-role.service';
+
+import { User } from 'src/modules/iam/user/entities/user.entity';
+
+import { UsersService } from 'src/modules/iam/user/user.service';
+
 import { HttpModule } from '@nestjs/axios';
+
 import { forwardRef, Global, Module } from '@nestjs/common';
+
 import { ConfigModule, ConfigService } from '@nestjs/config';
+
 import { APP_FILTER } from '@nestjs/core';
 
 import { JwtModule } from '@nestjs/jwt';
+
 import { PassportModule } from '@nestjs/passport';
 
-
-
-
+import { ScheduleModule } from '@nestjs/schedule';
 
 
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-
-
-
-
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
-// import { swaggerConfig } from './config/swagger.config';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
-import { SeedersModule } from './database/seeders/seeders.module';
 import { OtpCode, OtpOnlineLink } from './entities/otp-code.entity';
 import { InitService } from './init/init.service';
 import { OtpController } from './shared/controlers/otp.controller';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
+import { QueryLoggingInterceptor } from './shared/interceptors/query-logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
-import { EmailService } from './shared/services/email/email.service';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
-import { PaginationService } from './shared/services/pagination/pagination.service';
-import { ScheduleModule } from '@nestjs/schedule';
+import { PaginationService as MyPaginationService, PaginationService } from './shared/services/pagination/pagination.service';
+import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
+import { SocketService } from './shared/services/socket/socket.service';
+import { MainGateway } from './shared/services/socket/main.gateway';
+import { ChatModule } from 'src/modules/chat/chat.module';
+import { NotificationModule } from 'src/modules/notification/notification.module';
+import { EmailsModule } from './shared/emails/emails.module';
+import { EmailService } from './shared/services/email/email.service copy';
+import { AuthToken } from './auth/entities/auth-token.entity';
+import { AuthTokenService } from './auth/auth-token.service';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -51,9 +111,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 @Global()
 @Module({
   imports: [
-    forwardRef(() => IamModule),
-    forwardRef(() => AgenciesModule),
+    // forwardRef(() => IamModule),
+    // forwardRef(() => AgenciesModule),
     // forwardRef(() => SavingsAccountModule),
+    EmailsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
@@ -78,10 +139,22 @@ import { ScheduleModule } from '@nestjs/schedule';
     }),
     TypeOrmModule.forFeature([
       OtpCode,
+      Permission,
+      User,
+      Branch,
+      RolePermission, 
+      Employee,
+      UserRole,
+      Customer,
       OtpOnlineLink,
+      AuthToken,
     ]),
     PassportModule,
-    SeedersModule,
+    ChatModule,
+    // forwardRef(() => ChatModule),
+    forwardRef(() => NotificationModule) ,// Pour éviter les dépendances circulaires
+    // forwardRef(() => NotificationModule),
+    // SeedersModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AuthController, OtpController],
@@ -92,34 +165,52 @@ import { ScheduleModule } from '@nestjs/schedule';
     JwtStrategy,
     McotiService,
     OtpService,
-    // RolesGuard,
+    UsersService,
+    EmployeeService,
+    UserRolesService,
+    PermissionsService,
+    RolePermissionService,// RolesGuard,
     PermissionsGuard,
-    JwtAuthGuard,
+    // JwtAuthGuard,
     // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
     { provide: APP_FILTER,     useClass: TypeOrmExceptionFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
+    { provide: 'APP_INTERCEPTOR', useClass: QueryLoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
     KeyGeneratorService,
+    MyPaginationService,
     PaginationService,
+    PaginationServiceV1,
+    SocketService,
+    AuthTokenService,
     EmailService,
+    MainGateway,
+    TypeOrmModule
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
   exports: [
     ConfigModule,
     EmailService,
+    EmailsModule,
     JwtModule,
     TypeOrmModule,
     JwtModule,
     PassportModule,
+    UsersService,
+    EmployeeService,
     OtpService,
     AuthService,
     McotiService,
     PermissionSeeder,
     PermissionsGuard,
+    MyPaginationService,
     PaginationService,
-    JwtAuthGuard,
+    PaginationServiceV1,
+    // JwtAuthGuard,
     KeyGeneratorService,
+    SocketService,
+    MainGateway
   ],
 })
 export class CoreModule {}

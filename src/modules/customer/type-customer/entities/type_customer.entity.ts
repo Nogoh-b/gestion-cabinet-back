@@ -8,7 +8,11 @@ import {
   UpdateDateColumn,
   ManyToMany,
   JoinTable,
+  OneToMany,
 } from 'typeorm';
+
+import { Customer } from '../../customer/entities/customer.entity';
+
 
 @Entity('type_customer')
 export class TypeCustomer {
@@ -29,11 +33,14 @@ export class TypeCustomer {
   })
   requiredDocuments: DocumentType[];
 
+  @OneToMany(() => Customer, (c:Customer) => c.type_customer)
+  customers: Customer[];
+
   @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
+  created_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
+  updated_at: Date;
 
   @Column({ type: 'tinyint', nullable: true, default: 1 })
   status: number;

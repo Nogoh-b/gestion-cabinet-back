@@ -1,36 +1,47 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
-import { Controller, Post, Body, Param, Put, UseGuards, Get, Query } from '@nestjs/common';
-
-
-
-
-
-
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-
-
-
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { Controller, Post, Body, Param, Put, UseGuards, Get, Query, ParseIntPipe } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
+import { BranchResponseDto } from './dto/response-branch.dto';
+import { SearchBranchDto } from './dto/search-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
-
-
-
-
-
-
-
-
-
+import { BranchStatsService } from './branch-stats.service';
 
 @Controller('branch')
 @ApiTags('branch')
 @ApiBearerAuth()
 export class BranchController {
-  constructor(private readonly branchService: BranchService) {}
+  constructor(private readonly branchService: BranchService, 
+    private readonly statsService: BranchStatsService) {}
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN)
+  async getStats() {
+    return this.statsService.getStats();
+  }
+
+
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'une agence spécifique' })
+  @ApiParam({ name: 'id', description: 'ID de l\'agence' })
+  async getStatsForBranch(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ): Promise<any> {
+    return this.statsService.getStats({
+      branchId: id,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    });
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create new branch' })
@@ -41,21 +52,32 @@ export class BranchController {
     return this.branchService.createBranch(dto);
   }
 
+  @Get('search')
+  @ApiOperation({ summary: 'Recherche texte avec relations' })
+  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [BranchResponseDto]  })
+  async search(
+
+    @Query() searchParams?: SearchBranchDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.branchService.searchWithTransformer(searchParams as SearchCriteria, BranchResponseDto, paginationParams);
+  } 
+  
   @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all branches' })
   // @UseGuards(JwtAuthGuard, PermissionsGuard)
   // @RequirePermissions('VIEW_BRANCH')
   findAllBranches() {
-    return this.branchService.findAllBranches();
+    return this.branchService.findAllBranches(); 
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get Inactive Branch' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
+  // @RequirePermissions('VIEW_BRANCH')
   findOne(@Param('id') id: number) {
-    return this.branchService.findOne(id);
+    return this.branchService.findOne(id,true);
   }
 
   @Get(':id/employees')
@@ -70,23 +92,7 @@ export class BranchController {
     return this.branchService.findEmployeesByBranchId(id);
   }
 
-  @Get(':id/savings-accounts')
-  @ApiOperation({ summary: 'Get All Employees of a Branch' })
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
-  findAllSavingAccounts(@Param('id') id: number,     @Query() query: PaginationQueryDto) {
-    const { page, limit, term, fields, exact, from, to } = query;
-    const fieldList = fields ? fields.split(',') : undefined;
-    const isExact = exact ;
-    return this.branchService.findAllSavingAccounts(id,false,
-      page ? +page : undefined,
-      limit ? +limit : undefined,
-      term,
-      fieldList,
-      isExact,
-      from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined);
-  }
+
 
   @Put(':id')
   @ApiOperation({ summary: 'Update branch' })
@@ -127,10 +133,5 @@ export class BranchController {
     return this.branchService.activate(id);
   }
 
-  @Get(':id/stats')
-  @ApiOperation({ summary: 'Get stats Branch' })
-  // @RequirePermissions('VIEW_BRANCH_STATS')
-  stats(@Param('id') id: number) {
-    return this.branchService.stats(id);
-  }
+
 }

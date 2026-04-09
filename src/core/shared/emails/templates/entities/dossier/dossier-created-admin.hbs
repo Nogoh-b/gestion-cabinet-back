@@ -1,0 +1,55 @@
+{{> header}}
+
+<h2 style="color: #4b5563; margin-bottom: 16px;">🔔 Nouveau dossier créé</h2>
+
+<div style="background-color: #f3f4f6; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 8px 0; width: 30%;"><strong>N° dossier :</strong></td>
+            <td style="padding: 8px 0;">{{dossier.dossier_number}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0;"><strong>Client :</strong></td>
+            <td style="padding: 8px 0;">{{client.full_name}} {{client.company_name}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0;"><strong>Objet :</strong></td>
+            <td style="padding: 8px 0;">{{dossier.object}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0;"><strong>Créé par :</strong></td>
+            <td style="padding: 8px 0;">{{creator.full_name}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0;"><strong>Avocat :</strong></td>
+            <td style="padding: 8px 0;">{{dossier.lawyer.full_name}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0;"><strong>Date création :</strong></td>
+            <td style="padding: 8px 0;">{{formatDateTime dossier.created_at}}</td>
+        </tr>
+        {{#if dossier.priority_level}}
+        <tr>
+            <td style="padding: 8px 0;"><strong>Priorité :</strong></td>
+            <td style="padding: 8px 0;">
+                {{#if (eq dossier.priority_level 3)}}🔴 Urgent{{/if}}
+                {{#if (eq dossier.priority_level 2)}}🟠 Élevée{{/if}}
+                {{#if (eq dossier.priority_level 1)}}🟡 Moyenne{{/if}}
+                {{#if (eq dossier.priority_level 0)}}🟢 Normale{{/if}}
+            </td>
+        </tr>
+        {{/if}}
+    </table>
+</div>
+
+<div style="text-align: center; margin: 24px 0;">
+    <a href="{{appUrl}}/admin/dossiers/{{dossier.id}}" style="background-color: #6b7280; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">
+        Voir le dossier dans l'administration
+    </a>
+</div>
+
+<p style="color: #6b7280; font-size: 14px; text-align: center;">
+    Ceci est une notification automatique. Aucune action de votre part n'est requise.
+</p>
+
+{{> footer}}

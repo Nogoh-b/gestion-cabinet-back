@@ -1,0 +1,65 @@
+{{> header}}
+
+<h1>Bonjour {{client.full_name}} {{client.company_name}},</h1>
+
+<p>Nous avons le plaisir de vous informer de l'ouverture de votre dossier <strong>n°{{dossier.dossier_number}}</strong> au sein de notre cabinet.</p>
+
+<div style="background-color: #f0f9ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 24px 0;">
+    <h2 style="margin-top: 0; color: #1e3a8a;">Récapitulatif de votre dossier</h2>
+    
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600; width: 40%;">Objet :</td>
+            <td style="padding: 8px 0;">{{dossier.object}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Juridiction :</td>
+            <td style="padding: 8px 0;">{{dossier.jurisdiction}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Date d'ouverture :</td>
+            <td style="padding: 8px 0;">{{formatDate dossier.opening_date}}</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Avocat responsable :</td>
+            <td style="padding: 8px 0;">{{dossier.lawyer.full_name}}</td>
+        </tr>
+        {{#if dossier.opposing_party_name}}
+        <tr>
+            <td style="padding: 8px 0; font-weight: 600;">Partie adverse :</td>
+            <td style="padding: 8px 0;">{{dossier.opposing_party_name}}</td>
+        </tr>
+        {{/if}}
+    </table>
+</div>
+
+<p>Notre équipe, dirigée par {{dossier.lawyer.full_name}}, est entièrement mobilisée pour assurer le suivi de votre dossier dans les meilleures conditions.</p>
+
+<h3>Prochaines étapes</h3>
+<p>Nous reviendrons vers vous rapidement pour :</p>
+<ul style="margin-bottom: 24px;">
+    <li>Confirmer les prochaines audiences ou échéances</li>
+    <li>Vous demander d'éventuels documents complémentaires</li>
+    <li>Vous tenir informé de l'avancement de la procédure</li>
+</ul>
+
+<div style="text-align: center; margin: 32px 0;">
+    <a href="{{appUrl}}/dossiers/{{dossier.id}}" style="background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600;">
+        Suivre mon dossier en ligne
+    </a>
+</div>
+
+<p>Vous pouvez à tout moment consulter l'évolution de votre dossier en vous connectant à votre espace client.</p>
+
+<p>Restant à votre disposition pour toute information complémentaire,</p>
+
+<p>Cordialement,</p>
+
+<p>
+    <strong>{{dossier.lawyer.full_name}}</strong><br>
+    {{company.name}}<br>
+    Tél : {{company.phone}}<br>
+    Email : {{company.email}}
+</p>
+
+{{> footer}}

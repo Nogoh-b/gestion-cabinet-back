@@ -1,9 +1,7 @@
-import { CoreModule } from 'src/core/core.module';
-import { forwardRef, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { AgenciesModule } from '../agencies/agencies.module';
-import { IamModule } from '../iam/iam.module';
+
 import { CountriesController } from './country/country.controller';
 import { CountriesService } from './country/country.service';
 import { Country } from './country/entities/country.entity';
@@ -20,12 +18,12 @@ import { Region } from './region/entities/region.entity';
 import { RegionController } from './region/region.controller';
 import { RegionsService } from './region/region.service';
 
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Region,LocationCity,District,Division,Country]),
-    forwardRef(() => CoreModule),        
-    IamModule,
-    forwardRef(() => AgenciesModule), 
+    // IamModule,
+    // forwardRef(() => AgenciesModule), 
 
   ],
   controllers: [

@@ -1,9 +1,9 @@
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { SavingsAccount } from 'src/modules/savings-account/savings-account/entities/savings-account.entity';
-
 import {
   BeforeInsert,
   Column,
@@ -14,8 +14,13 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
-import { Loan } from 'src/modules/credit/loan/entities/loan.entity';
+import { CustomerCommunication } from './customer-communication.entity';
+import { Facture } from 'src/modules/facture/entities/facture.entity';
+
+
+// import { Dossier } from 'src/modules/dossiers/entities/dossier.entity'; // ✅ Ajout
 
 export enum CustomerStatus {
   ACTIVE = 1,
@@ -25,21 +30,62 @@ export enum CustomerStatus {
   SUSPENDED = -3,
   LOCKED = -4,
 }
+
 export enum CustomerCreatedFrom {
   ONLINE = 1,
   AGENCY = 0,
 }
+
 @Entity('customer')
 export class Customer extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'last_name', length: 45, nullable: true })
+  @Column({ name: 'last_name', length: 45, nullable: false })
   last_name: string;
 
-  @Column({ name: 'first_name', length: 45, nullable: true })
+  @Column({ name: 'first_name', length: 45, nullable: false })
   first_name: string;
 
+  // ✅ AJOUTS pour correspondre aux specs juridiques
+  @Column({ name: 'company_name', length: 255, nullable: true })
+  company_name: string;
+
+  @Column({ type: 'text', nullable: true })
+  address: string;
+
+  @Column({ name: 'postal_code', length: 20, nullable: true })
+  postal_code: string;
+
+  @Column({ name: 'country', length: 100, nullable: true, default: 'France' })
+  country: string;
+
+  // ✅ Type de facturation par client
+  @Column({ name: 'billing_type', length: 50, nullable: true })
+  billing_type: string; // 'forfait', 'temps_passe', 'mixte'
+
+  // ✅ Informations de contact supplémentaires
+  @Column({ name: 'professional_phone', length: 45, nullable: true })
+  professional_phone: string;
+
+  @Column({ name: 'fax', length: 45, nullable: true })
+  fax: string;
+
+  // ✅ Informations juridiques (pour professionnels)
+  @Column({ name: 'siret', length: 14, nullable: true, unique: false })
+  siret: string;
+
+  @Column({ name: 'tva_number', length: 20, nullable: true, unique: false })
+  tva_number: string;
+
+  @Column({ name: 'legal_form', length: 100, nullable: true })
+  legal_form: string; // SARL, SAS, EI, etc.
+
+  // ✅ Référencement client
+  @Column({ name: 'reference', length: 100, nullable: true })
+  reference: string; // Comment le client a connu le cabinet
+
+  // -- CHAMPS EXISTANTS À CONSERVER --
   @Column({ name: 'public_key', length: 45, nullable: true })
   public_key: string;
 
@@ -60,18 +106,14 @@ export class Customer extends BaseEntity {
 
   @Column({ name: 'customer_code', length: 45, nullable: false, unique: true })
   customer_code: string;
-
+  @Column({ name: 'branch_id', type: 'int', nullable: true }) // ✅ Changé en 'date'
+  branch_id: Date;
   @ManyToOne(() => Branch)
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
-  @OneToMany(() => Loan, (type) => type.customer)
-  loans: Loan[];
-
-  @OneToMany(() => SavingsAccount, (sa) => sa.customer)
-  savings_accounts: SavingsAccount[];
-
-  @ManyToOne(() => TypeCustomer)
+  // ✅ TypeCustomer gère maintenant le segment
+  @ManyToOne(() => TypeCustomer, { eager: false }) // eager loading pour accès facile
   @JoinColumn({ name: 'type_customer_id' })
   type_customer: TypeCustomer;
 
@@ -81,15 +123,6 @@ export class Customer extends BaseEntity {
 
   @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY })
   created_from: CustomerCreatedFrom;
-
-  // Ajoutez ces propriétés pour accéder directement aux IDs
-  get typeCustomerId(): number {
-    return this.type_customer?.id;
-  }
-
-  get locationCityId(): number {
-    return this.location_city?.id;
-  }
 
   @Column({ length: 45, nullable: true, unique: false })
   nui: string;
@@ -103,11 +136,89 @@ export class Customer extends BaseEntity {
   @Column({ nullable: true, default: 1 })
   status: CustomerStatus;
 
+  // ✅ Relation avec les dossiers juridiques
+  @OneToMany(() => Dossier, (dossier) => dossier.client)
+  dossiers: Dossier[];
+
+  @OneToMany(() => DocumentCustomer, (document) => document.customer, {
+    nullable: true,
+  })
+  documents: DocumentCustomer[];
+
+  @OneToMany(() => Facture, (facture) => facture.client)
+  factures: Facture[];
+
+  // src/modules/customer/customer/entities/customer.entity.ts
+
+  // Ajoutez cette relation pour les communications
+  @OneToMany(() => CustomerCommunication, (communication) => communication.customer)
+  communications: CustomerCommunication[];
+
+
+
+  // Corrigez les getters
+  get isProfessional(): boolean {
+    return this.type_customer?.code === 'PRO' || this.type_customer?.name === 'Professionnel';
+  }
+
+  get isParticulier(): boolean {
+    return this.type_customer?.code === 'PART' || this.type_customer?.name === 'Particulier';
+}
+
+  // ✅ GETTERS améliorés
+  get fullName(): string {
+    if (this.company_name && this.isProfessional) {  
+      return this.company_name;
+    }
+    return `${this.first_name} ${this.last_name}`.trim(); 
+  }
+
+  get city_full_address(): string {
+    return this.location_city?.full_address ?? '';
+  }
+
+  get hasValidContact(): boolean {
+    return !!(this.email || this.number_phone_1 || this.professional_phone);
+  }
+
+  // ✅ Génération des clés
   @BeforeInsert()
   generateKeys() {
-    const { publicKey, privateKey } = GenKeys.generateKeyPair();
-    const encryptedPrivateKey = GenKeys.encryptPrivateKey(privateKey);
-    this.public_key = 'publicKey';
-    this.private_key = 'encryptedPrivateKey';
+    if (!this.public_key && !this.private_key) {
+      const { publicKey, privateKey } = GenKeys.generateKeyPair();
+      const encryptedPrivateKey = GenKeys.encryptPrivateKey(privateKey);
+      this.public_key = 'publicKey';
+      this.private_key = 'encryptedPrivateKey';
+    }
+    this.status = 1
+    
+    if (!this.customer_code) {
+      this.customer_code = this.generateCustomerCode();
+    }
+  }
+
+  // ✅ Génération de code client juridique
+  private generateCustomerCode(): string {
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substring(2, 8);
+    const typeCode = this.type_customer?.code || 'CLI';
+    return `JUR-${typeCode}-${timestamp}-${random}`.toUpperCase();
+  }
+
+  get typeCustomerId(): number {
+    return this.type_customer?.id;
+  }
+
+  get locationCityId(): number {
+    return this.location_city?.id;
+  }
+  get full_name(): string {
+    return `${this.first_name} ${this.last_name}`;
+  }
+
+  @BeforeInsert()
+  beforeCreate() {
+    this.status = CustomerStatus.ACTIVE; 
+    // this.status = this.status ?? CustomerStatus.ACTIVE;
   }
 }

@@ -1,14 +1,18 @@
 // src/core/document/entities/document-type.entity.ts
 import { BaseEntity } from 'src/core/entities/baseEntity';
 import { TypeCustomer } from 'src/modules/customer/type-customer/entities/type_customer.entity';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToMany,
-  JoinTable
-} from 'typeorm';
-import { TypeCredit } from '../../../credit/type_credit/entities/typeCredit.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable, OneToMany } from 'typeorm';
+
+
+
+
+
+import { DocumentCustomer } from '../../document-customer/entities/document-customer.entity';
+
+
+
+
+
 
 export enum DocumentTypeStatus {
   PENDING = 0,
@@ -67,8 +71,11 @@ export class DocumentType extends BaseEntity {
   status: number;
   // @ManyToMany(() => TypeSavingsAccount, type => type.documentTypes)
   // typeAccounts: TypeSavingsAccount[];
-  @ManyToMany(() => TypeCredit, (type) => type.typeOfDocuments, {
+  @OneToMany(() => DocumentCustomer, (doc) => doc.document_type, {
     nullable: true,
   })
-  typeCredits: TypeCredit[];
+
+  documents: DocumentCustomer[];
+
+
 }

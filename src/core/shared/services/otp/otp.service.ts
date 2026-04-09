@@ -4,6 +4,7 @@ import { forwardRef, Injectable } from '@nestjs/common';
 
 
 import { InjectRepository } from '@nestjs/typeorm';
+import { EmailService } from '../email/email.service copy';
 
 
 
@@ -15,7 +16,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
-import { EmailService } from '../email/email.service';
+
+
+
+
 
 
 
@@ -77,7 +81,7 @@ export class OtpService {
 
     console.log(code)
     const email_sended = this.emailService.sendMail({
-      to: email,
+      to: 'nogohbrice@gmail.com',
       subject: 'Envoi de votre code OTP',
       message: `Code OTP : ${code}\nMontant : ${amount}\nProvider : ${provider}\nType : ${transactionType === 0 ? 'Dépôt' : 'Retrait'}`,
       context: {
@@ -144,4 +148,16 @@ export class OtpService {
     return {number_saving_account : otp?.savingsAccountCode};
   }
 
+
+  async sendMail(email: string, html: string ,subject: string = '') {
+      const email_sended = this.emailService.sendMail({
+      to: email,
+      subject,
+      message: html,
+      context: {
+        name: '',
+        message: html      },
+    });
+    return email_sended;
+  }
 }

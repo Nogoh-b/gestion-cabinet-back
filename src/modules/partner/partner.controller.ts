@@ -1,19 +1,20 @@
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
+import { Any } from 'typeorm';
 import { Get, Post, Body, Param, Query, Patch, Controller } from '@nestjs/common';
+
+
+
+
+
+
+
 import { ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 
-
-
-
-
-
-
-import { SavingsAccount } from '../savings-account/savings-account/entities/savings-account.entity';
-import { TransactionSavingsAccount } from '../transaction/transaction_saving_account/entities/transaction_saving_account.entity';
 import { CreatePartnerDto } from './dto/create-partner.dto';
 import { UpdatePartnerStatusDto } from './dto/update-partner.dto';
 import { Partner } from './entities/partner.entity';
 import { PartnerService } from './partner.service';
+
 
 
 
@@ -119,7 +120,7 @@ constructor(private readonly partnerService: PartnerService) {}
     @ApiParam({ name: 'promo_code', description: 'promo_code du partenaire', type: String })
     @ApiQuery({ name: 'start_date', description: 'Date début (YYYY-MM-DD)', required: false, example: '2025-01-01' })
     @ApiQuery({ name: 'end_date', description: 'Date fin (YYYY-MM-DD)', required: false, example: '2025-07-12' })
-    @ApiResponse({ status: 200, description: 'Liste des comptes épargne', type: [SavingsAccount] })
+    @ApiResponse({ status: 200, description: 'Liste des comptes épargne', type: [Any] })
     getSavingsAccounts(
         @Param('promo_code') promo_code: number,
         @Query() query: PaginationQueryDto
@@ -143,7 +144,7 @@ constructor(private readonly partnerService: PartnerService) {}
     @ApiParam({ name: 'code', description: 'Code promo du partenaire', type: String })
     @ApiQuery({ name: 'start_date', description: 'Date début (YYYY-MM-DD)', required: false, example: '2025-01-01' })
     @ApiQuery({ name: 'end_date', description: 'Date fin (YYYY-MM-DD)', required: false, example: '2025-07-12' })
-    @ApiResponse({ status: 200, description: 'Liste des transactions', type: [TransactionSavingsAccount] })
+    @ApiResponse({ status: 200, description: 'Liste des transactions', type: [Any] })
     getTransactionsByCode(
         @Param('code') code: string,
     @Query() query: PaginationQueryDto

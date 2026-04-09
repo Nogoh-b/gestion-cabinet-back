@@ -1,7 +1,19 @@
+import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+
+
+
+
 import {
   Controller,
   Post,
@@ -13,10 +25,12 @@ import {
   BadRequestException,
   UploadedFiles,
   UseGuards,
+  Query,
+  ParseIntPipe,
 } from '@nestjs/common';
 
-import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
+import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
   ApiOperation,
@@ -24,35 +38,129 @@ import {
   ApiConsumes,
   ApiBody,
   ApiBearerAuth,
+  ApiParam,
 } from '@nestjs/swagger';
+
 
 import { DocumentCustomerService } from './document-customer.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
+import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
+import { DocumentStatsService } from './document-stats.service';
+
+
+
+
+
+
+
+
 
 @ApiTags('Customer Documents')
 @ApiConsumes('multipart/form-data')
-@Controller('customers/:customer_id')
+@Controller('documents')
 @ApiBearerAuth()
 export class DocumentCustomerController {
-  constructor(private readonly service: DocumentCustomerService) {}
+  constructor(private readonly service: DocumentCustomerService, private readonly statsService: DocumentStatsService) {}
 
-  @Post('/add-document')
+
+  @Get('stats')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getStats(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('dossierId') dossierId?: number,
+  ): Promise<any> {
+    return this.statsService.getStats({
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+      dossierId: dossierId ? +dossierId : undefined,
+    });
+  }
+
+  @Get('stats/:id')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @ApiOperation({ summary: 'Obtenir les statistiques d\'un document spécifique' })
+  @ApiParam({ name: 'id', description: 'ID du document' })
+  async getStatsForDocument(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<any> {
+    return this.statsService.getStats({ documentId: id });
+  }
+
+  @Get('pending')
+  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  async getPendingDocuments() {
+    const stats = await this.statsService.getStats({});
+    return (stats as any).pendingDocuments;
+  }
+
+  @Get('storage')
+  // @Roles(UserRole.ADMIN)
+  async getStorageStats() {
+    const stats = await this.statsService.getStats({});
+    return (stats as any).storageStats;
+  }
+
+  @Get('get/:id')
+  @ApiOperation({ summary: 'Récupérer un document client par ID' })
+  @ApiResponse({ status: 200, type: DocumentCustomerResponseDto })
+  async findOne(@Param('id') id: number): Promise<DocumentCustomerResponseDto> {
+    return this.service.findOne(id);
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: 'Recherche texte avec relations' })
+  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [DocumentCustomerResponseDto]  })
+  async search(
+
+    @Query() searchParams?: SearchDocumentCustomerDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.service.searchWithTransformer(searchParams as SearchCriteria, DocumentCustomerResponseDto , paginationParams);
+  }
+  @Post()
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB
+    },
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Upload document',
+    type: CreateDocumentCustomerDto,
+  })
+  
+  @ApiResponse({ status: 201, description: 'Document créé' })
+  @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  async create(
+    @Body() dto: CreateDocumentCustomerDto,
+    @CurrentUser() user: User,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.service.create({ ...dto, file }, user? user.id : 1);
+  }
+
+
+  @Post('/add-document/by-code')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Upload document',
     type: CreateDocumentCustomerDto,
   })
+  
   @ApiResponse({ status: 201, description: 'Document créé' })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
-  async create(
-    @Param('customer_id') customer_id: number,
+  async createByCode(
+    @Param('code') code: string,
+    @CurrentUser() user: User,
     @Body() dto: CreateDocumentCustomerDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.service.create({ ...dto, customer_id, file });
+    const customer  = await this.service.findCustomerByCode(code)
+    return this.create( dto, user, file);
   }
 
   @Get('/validate-document/:document_id')
@@ -109,11 +217,13 @@ export class DocumentCustomerController {
     return docs;
   }
 
-  @Get('/get-documents')
+  @Get()
   @ApiOperation({ summary: "Lister les documents d'un client" })
   @RequirePermissions('VERIFY_CUSTOMER_KYC')
-  async findAll(@Param('customer_id') customer_id: number) {
-    return this.service.findByCustomer(customer_id);
+  async findAll(    @Query() searchParams?: SearchDocumentCustomerDto,
+    @Query() paginationParams?: PaginationParamsDto, @Param('customer_id') customer_id?: number) {
+    return plainToInstance(DocumentCustomerResponseDto,this.service.findAllV1())
+    // return plainToInstance(DocumentCustomerResponseDto,this.service.findByCustomer(customer_id));
   }
   @Post('sync-kyc')
   @ApiOperation({ summary: 'Réceptionne les codes clients à synchroniser' })

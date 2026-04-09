@@ -7,8 +7,13 @@ export function getCronTime(date: Date, period: MODE_REIMBURSEMENT_PERIOD) {
   const getDay = date.getDay();
   const getDate = date.getDate();
   switch (period) {
-    case MODE_REIMBURSEMENT_PERIOD.DAYLY:
+    case MODE_REIMBURSEMENT_PERIOD.DAILY_2:
+    case MODE_REIMBURSEMENT_PERIOD.DAILY_3:
+    case MODE_REIMBURSEMENT_PERIOD.DAILY_4:
+    case MODE_REIMBURSEMENT_PERIOD.DAILY_5:
+    case MODE_REIMBURSEMENT_PERIOD.DAILY_6:
     case MODE_REIMBURSEMENT_PERIOD.BIWEEKLY:
+    case MODE_REIMBURSEMENT_PERIOD.DAILY:
       cronTimeFormat = `0 ${getMinute} ${getHour} * * *`;
       break;
     case MODE_REIMBURSEMENT_PERIOD.WEEKLY:

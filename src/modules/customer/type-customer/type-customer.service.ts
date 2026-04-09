@@ -1,23 +1,73 @@
 // type-customers.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { CreateTypeCustomerDto } from './dto/create-type_customer.dto';
-import { TypeCustomer } from './entities/type_customer.entity';
-import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import { AssignDocumentsToTypeDto } from 'src/modules/documents/shared/assign-documents-to-type.dto';
+import { Repository } from 'typeorm';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+import { CreateTypeCustomerDto } from './dto/create-type_customer.dto';
+import { UpdateTypeCustomerDto } from './dto/update-type_customer.dto';
+import { TypeCustomer } from './entities/type_customer.entity';
+
+
+
+
+
+
+
 
 @Injectable()
-export class TypeCustomersService {
+export class TypeCustomersService extends BaseServiceV1<TypeCustomer>  {
   constructor(
     @InjectRepository(TypeCustomer)
-    private repository: Repository<TypeCustomer>,
+    protected repository: Repository<TypeCustomer>,
     @InjectRepository(TypeCustomer)
     private typeCustomerRepository: Repository<TypeCustomer>,
+    protected readonly paginationService: PaginationServiceV1,
     @InjectRepository(DocumentType)
     private document_typeRepository: Repository<DocumentType>
-  ) {}
+  ) {    
+    super(repository, paginationService);
+  }
+
+    protected getDefaultSearchOptions(): SearchOptions {
+      return {
+        // Champs pour la recherche globale
+        searchFields: [
+          'name',
+          'code',
+          'status',
+        ],
+        
+        // Champs pour recherche exacte
+        // exactMatchFields: [
+        //   'id',
+        //   'status',
+        //   'confidentiality_level',
+        //   'priority_level',
+        //   'budget_estimate'
+        // ],
+        
+        // Champs pour ranges de dates
+        /*dateRangeFields: [
+          'created_at',
+          'updated_at',
+          'opening_date',
+          'closing_date'
+        ],*/
+        
+        // Champs de relations pour filtrage
+        relationFields: ['customers']
+      };
+    }
 
   create(dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
     return this.repository.save(dto);

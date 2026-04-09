@@ -96,10 +96,10 @@ export class SuperAdminSeeder {
       const hashedPassword = await bcrypt.hash('Admin@1234', 10); // Use a strong default password
       let dto = new CreateUserDto();
       dto.email = 'admin@gmail.com'
-      dto.username = superAdminUsername
+      // dto.username = superAdminUsername
       dto.password = 'Admin@1234'
       //dto.branch_id = -1
-      dto.hire_date = new Date()
+      // dto.hire_date = new Date()
       superAdminUser = await this.employeeService.createEmployee(dto, false)
       this.logger.log('Created SUPER_ADMIN user');
     }

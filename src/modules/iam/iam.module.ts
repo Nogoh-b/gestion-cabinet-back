@@ -1,16 +1,16 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-
-
-
-
-
-
-
-
-
-import { CustomerModule } from '../customer/customer.module';
 import { ActivitiesUserController } from './activities-user/activities-user.controller';
 import { ActivitiesUserService } from './activities-user/activities-user.service';
 import { ActivitiesUser } from './activities-user/entities/activities-user.entity';
@@ -39,13 +39,14 @@ import { UsersService } from './user/user.service';
 
 
 
+
 @Module({
   controllers: [ 
     // UsersController, 
     
   ActivitiesUserController, PermissionsController, UserRolesController, RolePermissionController,  UserRoleAssignmentController],
   imports: [
-  forwardRef(() => CustomerModule),
+  // forwardRef(() => CustomerModule),
     TypeOrmModule.forFeature([
       UserRole,
       Permission,
