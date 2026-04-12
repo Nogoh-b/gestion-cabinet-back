@@ -28,7 +28,7 @@ export class LinkDocumentsToSubStageDto {
   @IsArray()
   @IsNotEmpty()
   // @ArrayMinSize(1)
-  documentIds: number[];
+  document_ids: number[];
 
   @ApiProperty({
     description: 'ID du dossier (UUID)',
@@ -36,7 +36,7 @@ export class LinkDocumentsToSubStageDto {
   })
   @IsUUID()
   @IsNotEmpty()
-  dossierId: string;
+  dossier_id: string;
 }
 
 

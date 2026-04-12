@@ -40,6 +40,7 @@ import { DossierStatsDto } from './dto/dossier-stats.dto';
 import { DossierStatsService } from './dossier-stats.service';
 import { ClientDecisionDto, JudgmentDto, PreliminaryAnalysisDto } from './dto/dossier-analysis.dto';
 import { Step } from './entities/step.entity';
+import { CloseDossierDto } from './dto/close-dossier.dto';
 
 
 
@@ -305,8 +306,8 @@ export class DossiersController {
     @CurrentUser() user: User,
   ) {
     return this.dossiersService.linkDocumentsToSubStage(
-      dto.documentIds,
-      dto.dossierId,
+      dto.document_ids,
+      dto.dossier_id,
       user.id
     );
   }
@@ -397,17 +398,34 @@ export class DossiersController {
       return this.dossiersService.executeDecision(+id, user);
     }
   
-    @Post(':id/close')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    async closeDossier(
-      @Param('id') id: string,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.closeDossier(+id, user);
-    }
+  // Dans dossiers.controller.ts
+  @Post(':id/close')
+  @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+  async closeDossier(
+    @Param('id') id: string,
+    @Body() closeDto: CloseDossierDto,
+    @CurrentUser() user: User
+  ) {
+    return this.dossiersService.closeDossier(+id, user, closeDto);
+  }
+
+  @Get(':dossierId/stage-visits')
+  @ApiOperation({ 
+    summary: 'Obtenir l\'historique des visites de stage',
+    description: 'Retourne l\'historique complet des visites de stage pour un dossier donné, avec les sous-étapes, documents, diligences, audiences et factures associés à chaque visite.'
+  })
+  @ApiParam({
+    name: 'dossierId',
+    description: 'ID du dossier',
+    type: Number,
+    example: 1
+  })
+  async getStageVisits(@Param('dossierId', ParseIntPipe) dossierId: number) {
+    return this.dossiersService.getStageVisits(dossierId);
+  }
 
 
-      @Get(':dossierId/steps/current')
+  @Get(':dossierId/steps/current')
   @ApiOperation({ 
     summary: 'Obtenir l\'étape courante',
     description: 'Retourne l\'étape actuellement en cours pour le dossier'

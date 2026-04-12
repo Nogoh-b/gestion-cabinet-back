@@ -48,6 +48,13 @@ export class CreateDocumentTypeDto {
 
   @ApiProperty({
     example: true,
+    description: 'Id\'s categories',
+  })
+  @IsOptional()
+  categoryIds?: string[];
+
+  @ApiProperty({
+    example: true,
     description: 'Indique si le document est obligatoire',
   })
   @IsOptional()

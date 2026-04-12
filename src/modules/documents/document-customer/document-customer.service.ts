@@ -30,6 +30,7 @@ import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-cu
 import { join } from 'path';
 import { StepsService } from 'src/modules/dossiers/step.service';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(
@@ -39,7 +40,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     @InjectRepository(DocumentType)
     private docTypeRepository: Repository<DocumentType>,    
     private procedureInstanceService: ProcedureInstanceService,
-
+    @InjectRepository(SubStageVisit)
+    private subStageVisitRepository: Repository<SubStageVisit>,
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
     @Inject(forwardRef(() => CustomersService))
@@ -438,9 +440,16 @@ async linkDocumentsToSubStage(
   }
 
   // Vérifier que le subStage existe
-  // const subStage = await this.subStageRepository.findOne({
-  //   where: { id: subStageId },
-  // });
+  const subStage = await this.subStageVisitRepository.findOne({
+    where: { id: currentSubStageVisitId },
+    relations: ['documents'] // Assurez-vous que la relation est chargée
+  });
+  const nonexistentDocIds = documentIds.filter(id => !subStage?.documents.some(doc => doc.id.toString() === id.toString()));
+  console.log('SubStage trouvé:', subStage?.documents.map(doc => doc.id) , ' pour les documents à lier:', documentIds , ' - Non trouvés:', nonexistentDocIds);
+  // if (nonexistentDocIds.length > 0) {
+  //   throw new NotFoundException(`Documents avec les IDs ${nonexistentDocIds.join(', ')} non trouvés pour ce subStage`);
+  // }
+  console.log('Documents à lier:', nonexistentDocIds);
 
   if (!currentSubStageVisitId) {
     throw new NotFoundException(`Sous étape non trouvé`);
@@ -450,10 +459,9 @@ async linkDocumentsToSubStage(
   await this.repository
     .createQueryBuilder()
     .relation('sub_stage_visits')
-    .of(documentIds) // 👈 tableau ici
+    .of(nonexistentDocIds) // 👈 tableau ici
     .add(currentSubStageVisitId);
 }
-
   /**
    * Crée l'entité document
    */
