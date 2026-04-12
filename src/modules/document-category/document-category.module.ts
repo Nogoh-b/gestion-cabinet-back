@@ -11,7 +11,7 @@ import { DocumentCategory } from './entities/document-category.entity';
         TypeOrmModule.forFeature([DocumentCategory]),
     
   ],
-  exports :[DocumentCategoryService],
+  exports :[DocumentCategoryService, TypeOrmModule],
   controllers: [DocumentCategoryController],
   providers: [DocumentCategoryService],
 })

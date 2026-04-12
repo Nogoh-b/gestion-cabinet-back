@@ -59,6 +59,11 @@ export class DocumentTypeResponseDto {
   @Expose()
   status: number;
 
+  
+  @Expose()
+  categories: any;
+  // categories: DocumentCategory[];
+
   // Relations : Type de client
   @ApiProperty({
     type: [Object],

@@ -22,7 +22,7 @@ import { CreateDossierDto } from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
-import { DangerLevel, Dossier } from './entities/dossier.entity';
+import { DangerLevel, Dossier, DossierOutcome } from './entities/dossier.entity';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
@@ -33,6 +33,7 @@ import { ProcedureInstanceService } from '../procedure/services/procedure-instan
 import { CreateProcedureInstanceDto } from '../procedure/dto/create-procedure-instance.dto';
 import { StageVisit } from '../procedure/entities/stage-visit.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
+import { CloseDossierDto } from './dto/close-dossier.dto';
 // import { DistributionItem, DossierStatsDto, EvolutionData, FinancialStats, LawyerStats, RecentDossier, TimelineStats, UrgentDossier } from 'src/core/types/base-stats.dto';
 
 
@@ -331,6 +332,7 @@ async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
       'lawyer.user',
       'factures',
       'procedure_type',
+      'procedureInstance',
       'procedure_subtype',
       'jurisdiction',
     ],
@@ -774,14 +776,15 @@ async getCollaboratorDossiers(
 
 async linkDocumentsToSubStage(  documentIds: number[], dossierId: any, userId: any): Promise<DossierResponseDto | null> {
   const dossier = await this.findOne(dossierId)
-  const currentSubStage = await this.getCurrentStageVisit(dossier);
-  await this.documentCustomerService.linkDocumentsToSubStage(documentIds, currentSubStage?.id || 0)
+  const currentStage = await this.getCurrentStageVisit(dossier);
+  console.log('Current SubStage:', dossierId,' ', documentIds, ' ', currentStage);
+  await this.documentCustomerService.linkDocumentsToSubStage(documentIds, currentStage?.currentSubStageVisitId || 0)
   return plainToInstance(DossierResponseDto, dossier);
 }
 async getCurrentStageVisit(dossier: Dossier): Promise<StageVisit | null> {
-
-  if(dossier?.procedureInstance?.id)
-    return await this.procedureInstanceService.getCurrentStageVisit(dossier?.procedureInstance?.id)
+  console.log('Getting current stage visit for dossier:', dossier?.procedureInstanceId);
+  if(dossier?.procedureInstanceId)
+    return await this.procedureInstanceService.getCurrentStageVisit(dossier?.procedureInstanceId)
   return null
 }
 
@@ -1404,9 +1407,13 @@ async executeDecision(id: number, user: User): Promise<DossierResponseDto> {
 /**
  * 🔒 Clôturer le dossier
  */
-async closeDossier(id: number, user: User): Promise<DossierResponseDto> {
+// Dans dossiers.service.ts
+async closeDossier(
+  id: number, 
+  user: User, 
+  closeDto: CloseDossierDto
+): Promise<DossierResponseDto> {
   const dossier = await this.findOneV1(id);
-
 
   if (!dossier) {
     throw new NotFoundException(`Dossier ${id} non trouvé`);
@@ -1414,17 +1421,176 @@ async closeDossier(id: number, user: User): Promise<DossierResponseDto> {
 
   this.checkDossierAccess(dossier, user);
 
-  if (dossier.status !== DossierStatus.EXECUTION && 
-      dossier.status !== DossierStatus.AMICABLE && 
-      dossier.status !== DossierStatus.ABANDONED) {
-    throw new BadRequestException('Impossible de clôturer le dossier dans son état actuel');
+  // Vérifier si le dossier peut être clôturé
+  const closableStatuses = [
+    DossierStatus.OPEN,
+    DossierStatus.AMICABLE,
+    DossierStatus.ABANDONED,
+    DossierStatus.JUDGMENT,
+    DossierStatus.CLOSED // Permettre la reclôture avec mise à jour
+  ];
+
+  if (!closableStatuses.includes(dossier.status)) {
+    throw new BadRequestException(
+      `Impossible de clôturer le dossier. Statut actuel: ${dossier.status}. ` +
+      `Statuts autorisés: ${closableStatuses.join(', ')}`
+    );
   }
 
+  // Si déjà clôturé, on met juste à jour le résultat
+  const wasAlreadyClosed = dossier.status === DossierStatus.CLOSED;
+
+  // Mettre à jour les informations de clôture
   dossier.status = DossierStatus.CLOSED;
   dossier.closing_date = new Date();
+  
+  // Mettre à jour le résultat du dossier
+  dossier.outcome = closeDto.outcome;
+  dossier.outcome_date = closeDto.outcome_date || new Date();
+  dossier.outcome_notes = closeDto.outcome_notes || '';
+  
+  // Gestion des champs selon le type de résultat
+  if (closeDto.outcome === DossierOutcome.WON) {
+    // Dossier gagné
+    if (closeDto.damages_awarded !== undefined) {
+      dossier.damages_awarded = closeDto.damages_awarded;
+    }
+    
+    if (closeDto.costs_awarded !== undefined) {
+      dossier.costs_awarded = closeDto.costs_awarded;
+    }
+    
+    // Réinitialiser les champs non pertinents
+    dossier.appeal_possibility = false;
+    dossier.appeal_deadline = null;
+    dossier.settlement_amount = null;
+    dossier.settlement_terms = null;
+    
+  } else if (closeDto.outcome === DossierOutcome.LOST) {
+    // Dossier perdu
+    if (closeDto.appeal_possibility !== undefined) {
+      dossier.appeal_possibility = closeDto.appeal_possibility;
+    }
+    
+    if (closeDto.appeal_deadline) {
+      dossier.appeal_deadline = new Date(closeDto.appeal_deadline);
+    }
+    
+    // Réinitialiser les champs non pertinents
+    dossier.damages_awarded = 0;
+    dossier.costs_awarded = 0;
+    dossier.settlement_amount = 0;
+    dossier.settlement_terms = '';
+    
+  } else if (closeDto.outcome === DossierOutcome.SETTLED) {
+    // Transaction
+    if (closeDto.settlement_amount !== undefined) {
+      dossier.settlement_amount = closeDto.settlement_amount;
+    }
+    
+    if (closeDto.settlement_terms) {
+      dossier.settlement_terms = closeDto.settlement_terms;
+    }
+    
+    // Réinitialiser les champs non pertinents
+    dossier.damages_awarded = 0;
+    dossier.costs_awarded = 0;
+    dossier.appeal_possibility = false;
+    dossier.appeal_deadline = null;
+    
+  } else if (closeDto.outcome === DossierOutcome.ABANDONED) {
+    // Dossier abandonné
+    // Réinitialiser tous les champs de résultat
+    dossier.damages_awarded = 0;
+    dossier.costs_awarded = 0;
+    dossier.appeal_possibility = false;
+    dossier.appeal_deadline = null;
+    dossier.settlement_amount = 0;
+    dossier.settlement_terms = '';
+  }
+  
+  // Gestion de la décision finale (commun à tous)
+  if (closeDto.final_decision_text) {
+    dossier.final_decision = closeDto.final_decision_text;
+  }
+  
+  // Gestion de la satisfaction client
+  if (closeDto.client_satisfaction) {
+    dossier.client_satisfaction = closeDto.client_satisfaction;
+  }
+  
+  // Envoi du rapport au client (à traiter séparément)
+  if (closeDto.send_report_to_client) {
+    try {
+      await this.sendClosureReport(dossier, user);
+    } catch (error) {
+      console.error('Erreur lors de l\'envoi du rapport:', error);
+      // Ne pas bloquer la clôture si l'envoi échoue
+    }
+  }
+
+  // Log l'action
+  await this.logDossierClosure(dossier, user, wasAlreadyClosed);
 
   const savedDossier = await this.dossierRepository.save(dossier);
+  
+  // Déclencher des événements
+  // await this.eventEmitter.emit('dossier.closed', { 
+  //   dossier: savedDossier, 
+  //   user,
+  //   wasAlreadyClosed 
+  // });
+  
   return this.mapToResponseDto(savedDossier);
+}
+
+// Méthodes auxiliaires privées
+private async logDossierClosure(
+  dossier: Dossier, 
+  user: User, 
+  wasAlreadyClosed: boolean
+): Promise<void> {
+  // Créer un log de l'action
+  const logMessage = wasAlreadyClosed 
+    ? `Mise à jour du résultat du dossier ${dossier.dossier_number} (${dossier.outcome}) par ${user.full_name}`
+    : `Clôture du dossier ${dossier.dossier_number} avec résultat ${dossier.outcome} par ${user.full_name}`;
+  
+  // Sauvegarder le log (à implémenter selon votre système de logging)
+  console.log(logMessage);
+  
+  // Optionnel: Sauvegarder dans une table de logs
+  // await this.logRepository.save({
+  //   action: wasAlreadyClosed ? 'UPDATE_OUTCOME' : 'CLOSE_DOSSIER',
+  //   dossier_id: dossier.id,
+  //   user_id: user.id,
+  //   message: logMessage,
+  //   metadata: {
+  //     outcome: dossier.outcome,
+  //     outcome_date: dossier.outcome_date,
+  //     damages_awarded: dossier.damages_awarded,
+  //     costs_awarded: dossier.costs_awarded
+  //   },
+  //   created_at: new Date()
+  // });
+}
+
+private async sendClosureReport(dossier: Dossier, user: User): Promise<void> {
+  // Implémenter l'envoi d'email au client
+  // Exemple:
+  // await this.emailService.sendClosureReport({
+  //   to: dossier.client.email,
+  //   subject: `Clôture du dossier ${dossier.dossier_number}`,
+  //   template: 'dossier-closure',
+  //   data: {
+  //     dossier_number: dossier.dossier_number,
+  //     client_name: dossier.client.full_name,
+  //     outcome: dossier.outcome,
+  //     outcome_date: dossier.outcome_date,
+  //     damages_awarded: dossier.damages_awarded,
+  //     final_decision: dossier.final_decision,
+  //     lawyer_name: user.full_name
+  //   }
+  // });
 }
 
 // ========== MÉTHODES PRIVÉES DE CRÉATION D'ÉTAPES ==========
@@ -1665,6 +1831,18 @@ async getDossierWorkflow(dossierId: number) {
   return this.stepsService.getDossierWorkflow(dossierId);
 }
 
+async getStageVisits(dossierId: number) {
+  const dossier = await this.repository.findOne({where: {id: dossierId}, relations: ['client', 'lawyer','collaborators']});
+  if(!dossier?.procedureInstanceId) {
+    throw new NotFoundException(`Dossier ${dossierId} n'a pas de procedure`);
+  }
+  const workflow = await this.procedureInstanceService.getStageVisitHistory(dossier?.procedureInstanceId);
+  const responseDossierDto = plainToInstance(DossierResponseDto, dossier);
+  return {
+    ...responseDossierDto,
+    workflow
+  }
+}
 
 
 }

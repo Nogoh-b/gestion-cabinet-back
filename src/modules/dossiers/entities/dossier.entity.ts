@@ -26,7 +26,20 @@ export enum DangerLevel {
   Critique = 3,
 }
 
-
+export enum ClientSatisfaction {
+  VERY_SATISFIED = 'very_satisfied',
+  SATISFIED = 'satisfied',
+  NEUTRAL = 'neutral',
+  DISSATISFIED = 'dissatisfied',
+  VERY_DISSATISFIED = 'very_dissatisfied'
+}
+export enum DossierOutcome {
+  WON = 'won',        // Gagné
+  LOST = 'lost',      // Perdu
+  UNKNOWN = 'unknown', // Inconnu (par défaut) 
+  SETTLED = 'settled', // Transaction/Arrangement à l'amiable
+  ABANDONED = 'abandoned' // Abandonné par le client
+}
 
 
 @Entity('dossiers')
@@ -216,6 +229,61 @@ export class Dossier extends BaseEntity {
     nullable: true 
   })
   execution_date: Date;
+
+
+  // Dans l'entité Dossier, ajoutez :
+@Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+settlement_amount?: number | null;
+@Column({ type: 'text', nullable: true })
+settlement_terms?: string | null;
+
+@Column({ 
+  name: 'client_satisfaction', 
+  type: 'enum', 
+  enum: ClientSatisfaction, 
+  default: ClientSatisfaction.NEUTRAL 
+})
+client_satisfaction: ClientSatisfaction;
+
+@Column({ 
+  name: 'outcome', 
+  type: 'enum', 
+  enum: DossierOutcome, 
+  default: DossierOutcome.UNKNOWN 
+})
+outcome: DossierOutcome;
+
+@Column({ 
+  name: 'outcome_date', 
+  type: 'date', 
+  nullable: true 
+})
+outcome_date: Date;
+
+@Column({ 
+  name: 'outcome_notes', 
+  type: 'text', 
+  nullable: true 
+})
+outcome_notes: string;
+
+@Column({ 
+  name: 'damages_awarded', 
+  type: 'decimal', 
+  precision: 12, 
+  scale: 2, 
+  nullable: true 
+})
+damages_awarded: number; // Montant des dommages et intérêts si gagné
+
+@Column({ 
+  name: 'costs_awarded', 
+  type: 'decimal', 
+  precision: 12, 
+  scale: 2, 
+  nullable: true 
+})
+costs_awarded: number; // Dépens/montant accordé
 
   // Relations principales (obligatoires selon R1)
   @ManyToOne(() => Customer, { nullable: false })
@@ -553,6 +621,34 @@ get stepsSummary(): {
     completed_steps: this.completedStepCount,
     progress: this.stepsProgress,
   };
+}
+
+// Dans la classe Dossier
+get is_won(): boolean {
+  return this.outcome === DossierOutcome.WON;
+}
+
+get is_lost(): boolean {
+  return this.outcome === DossierOutcome.LOST;
+}
+
+get has_outcome(): boolean {
+  return this.outcome !== DossierOutcome.UNKNOWN && 
+         this.outcome !== undefined;
+}
+
+// Méthode pour définir le résultat
+setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
+  this.outcome = outcome;
+  this.outcome_date = new Date();
+  if (notes) this.outcome_notes = notes;
+  if (damages) this.damages_awarded = damages;
+  
+  // Si le dossier est gagné ou perdu, on peut le clôturer
+  if (outcome === DossierOutcome.WON || outcome === DossierOutcome.LOST) {
+    this.status = DossierStatus.CLOSED;
+    this.closing_date = new Date();
+  }
 }
 
   @BeforeInsert()

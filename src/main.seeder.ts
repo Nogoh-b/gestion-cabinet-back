@@ -8,6 +8,7 @@ import JurisdictionSeeder from './modules/jurisdiction/seeder/jurisdiction.seede
 import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
 import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
 import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-template.seeder';
+import DocumentTypeSeeder from './modules/documents/document-type/seeder/document-type.seeder';
 // src/database/seeders/index.ts
 
 
@@ -19,6 +20,7 @@ export async function seedDatabase(dataSource: DataSource) {
       seeds: [
         JurisdictionSeeder,
         DocumentCategorySeeder,
+        DocumentTypeSeeder,
         AudienceTypeSeeder,
         InvoiceTypeSeeder,
         ProcedureTypeSeeder,

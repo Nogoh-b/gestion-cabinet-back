@@ -1,5 +1,6 @@
 import { Expose } from 'class-transformer';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany } from 'typeorm';
 
 
 @Entity('document_categories')
@@ -62,9 +63,10 @@ export class DocumentCategory {
     confidentiality_level?: 'public' | 'internal' | 'confidential' | 'strictly_confidential';
   };
 
-//   @OneToMany(() => DocumentType, documentType => documentType.documents)
-//   @Expose()
-//   document_types: DocumentType[];
+  // @OneToMany(() => DocumentType, (documentType) => documentType.category)
+  @ManyToMany(() => DocumentType, (documentType) => documentType.categories)
+
+  documentTypes: DocumentType[];
 
   @CreateDateColumn()
   @Expose()

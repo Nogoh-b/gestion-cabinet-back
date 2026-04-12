@@ -5,7 +5,18 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { Any } from 'typeorm';
-import { Controller, Post, Body, Get, Param, Put, Delete, UseGuards, Query, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Query,
+  ParseIntPipe,
+} from '@nestjs/common';
 
 
 
@@ -121,6 +132,25 @@ export class DocumentTypeController {
   @RequirePermissions('VIEW_DOCUMENT_TYPE')
   findAll() {
     return this.service.findAll();
+  }
+
+ /**
+   * POST /document-types/get/by/category
+   * Body: { filter: { categoryId: 2 } }
+   */
+  @Get('get/by/category')
+  // @HttpCode(HttpStatus.OK)
+  async getAllByCategory(
+    @Query() searchParams?: Record<string, any>,
+    // @Query() paginationParams?: PaginationParamsDto,
+  ): Promise<any> {
+    const category_id = searchParams?.category_id || {};
+    console.log('Received filter:',JSON.stringify(searchParams) );
+    if(!category_id) {
+      return null
+      // throw new BadRequestException('Le champ categoryId est requis dans le filtre');
+    }
+    return this.service.getAllByCategory(category_id);
   }
 
   @Get(':id')

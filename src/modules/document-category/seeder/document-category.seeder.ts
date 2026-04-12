@@ -22,11 +22,13 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 3650, // 10 ans
+          legal_retention_period_2026: '5 à 10 ans (prescription commerciale)',
           confidentiality_level: 'confidential',
           legal_importance: 'high',
           requires_signature: true,
           template_available: true,
           version_control: true,
+          applicable_laws: ['Code de Commerce', 'Code des Obligations'],
         },
       },
       {
@@ -40,11 +42,13 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300, // 20 ans
+          legal_retention_period_2026: '10 à 30 ans (selon objet)',
           confidentiality_level: 'strictly_confidential',
           legal_importance: 'critical',
           requires_legal_review: true,
           requires_signature: true,
           version_control: true,
+          board_approval: true,
         },
       },
       {
@@ -58,9 +62,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 3650,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           related_to: 'CONTRACT_BASIC,CONTRACT_COMPLEX',
           version_control: true,
+          requires_original_reference: true,
         },
       },
       {
@@ -74,8 +80,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 10950, // 30 ans
+          legal_retention_period_2026: '10 à 30 ans',
           confidentiality_level: 'strictly_confidential',
           legal_importance: 'critical',
+          international_laws: true,
+          conflict_of_laws: true,
+          translation_required: true,
         },
       },
 
@@ -91,9 +101,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '10 à 30 ans (dossier judiciaire)',
           confidentiality_level: 'confidential',
           legal_importance: 'critical',
           court_registration: true,
+          filing_deadlines: true,
+          proof_of_service: true,
         },
       },
       {
@@ -107,8 +120,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '10 ans minimum',
           confidentiality_level: 'confidential',
           filing_deadlines: true,
+          lawyer_privilege: true,
+          case_strategy: true,
         },
       },
       {
@@ -122,9 +138,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 10950,
+          legal_retention_period_2026: 'Permanent ou 30 ans+',
           confidentiality_level: 'confidential',
           legal_importance: 'critical',
           enforceability: true,
+          appeal_deadlines: true,
+          res_judicata: true,
         },
       },
       {
@@ -138,9 +157,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'strictly_confidential',
           requires_signature: true,
           finality_clause: true,
+          confidentiality_clause: true,
         },
       },
       {
@@ -154,9 +175,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 10950,
+          legal_retention_period_2026: '10 à 30 ans',
           confidentiality_level: 'confidential',
           appeal_deadlines: true,
           higher_court: true,
+          suspensive_effect: true,
         },
       },
 
@@ -172,10 +195,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 à 10 ans (selon pièce)',
           confidentiality_level: 'confidential',
           chain_of_custody: true,
           authenticity_verification: true,
           notarization_possible: true,
+          original_vs_copy: true,
         },
       },
       {
@@ -189,10 +214,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans (avec horodatage)',
           confidentiality_level: 'confidential',
           digital_forensics: true,
           hash_verification: true,
           timestamp_required: true,
+          electronic_signature: true,
         },
       },
       {
@@ -206,10 +233,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '10 ans',
           confidentiality_level: 'confidential',
           expert_qualification: true,
           cross_examination: true,
           requires_validation: true,
+          methodology_documented: true,
         },
       },
       {
@@ -223,9 +252,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           witness_identification: true,
           oath_required: true,
+          cross_examination: true,
         },
       },
 
@@ -241,10 +272,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'internal',
           regulatory_body: true,
           renewal_deadlines: true,
           compliance_audit: true,
+          gdpr_compliance: true,
         },
       },
       {
@@ -258,9 +291,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 3650,
+          legal_retention_period_2026: '5 ans',
           confidentiality_level: 'confidential',
           official_registration: true,
           response_deadlines: true,
+          administrative_law: true,
         },
       },
       {
@@ -274,9 +309,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: 'Jusqu\'à expiration + 5 ans',
           confidentiality_level: 'confidential',
           expiration_dates: true,
           renewal_required: true,
+          regulatory_fees: true,
         },
       },
 
@@ -292,10 +329,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 3650,
+          legal_retention_period_2026: '10 ans (comptable/fiscale)',
           confidentiality_level: 'confidential',
           tax_deduction: true,
           accounting_period: true,
           payment_terms: true,
+          vat_compliance: true,
         },
       },
       {
@@ -309,10 +348,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '10 ans après clôture',
           confidentiality_level: 'strictly_confidential',
           audited: true,
           fiscal_year: true,
           certification_required: true,
+          shareholder_approval: true,
         },
       },
       {
@@ -326,9 +367,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '10 ans',
           confidentiality_level: 'strictly_confidential',
           auditor_independence: true,
           management_representation: true,
+          audit_trail: true,
         },
       },
       {
@@ -342,10 +385,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '6 à 10 ans (jusqu\'à 10 en fraude)',
           confidentiality_level: 'strictly_confidential',
           tax_authority: true,
           statute_of_limitations: true,
           penalty_risks: true,
+          tax_withholding: true,
         },
       },
       {
@@ -359,9 +404,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'strictly_confidential',
           bank_secrecy: true,
           interest_calculation: true,
+          loan_guarantees: true,
         },
       },
 
@@ -377,6 +424,7 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 3650,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           legal_privilege: true,
           response_required: true,
@@ -394,9 +442,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 1825,
+          legal_retention_period_2026: '3 à 5 ans',
           confidentiality_level: 'internal',
           department_circulation: true,
           approval_workflow: true,
+          internal_policies: true,
         },
       },
       {
@@ -410,9 +460,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 3650,
+          legal_retention_period_2026: '5 ans',
           confidentiality_level: 'confidential',
           client_confidentiality: true,
           service_level_agreement: true,
+          complaint_handling: true,
         },
       },
 
@@ -428,10 +480,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 ans après fin de contrat (employeur) / À vie (salarié)',
           confidentiality_level: 'strictly_confidential',
           employee_consent: true,
           social_laws: true,
           termination_rules: true,
+          employee_rights: true,
         },
       },
       {
@@ -445,10 +499,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 ans après départ',
           confidentiality_level: 'strictly_confidential',
           gdpr_compliance: true,
           access_restricted: true,
           retention_specific: true,
+          employee_privacy: true,
         },
       },
       {
@@ -462,10 +518,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 ans (employeur) / À vie (salarié)',
           confidentiality_level: 'strictly_confidential',
           tax_withholding: true,
           social_security: true,
           employee_access: true,
+          pension_rights: true,
         },
       },
       {
@@ -479,9 +537,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 ans',
           confidentiality_level: 'strictly_confidential',
           employee_rights: true,
           appeal_process: true,
+          disciplinary_procedure: true,
         },
       },
 
@@ -497,10 +557,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           technical_validation: true,
           methodology_documented: true,
           peer_review: true,
+          quality_assurance: true,
         },
       },
       {
@@ -514,9 +576,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 14600, // 40 ans
+          legal_retention_period_2026: 'Durée de protection + 5 ans',
           confidentiality_level: 'strictly_confidential',
           intellectual_property: true,
           international_protection: true,
+          renewal_fees: true,
+          infringement_monitoring: true,
         },
       },
       {
@@ -530,9 +595,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'internal',
           version_control: true,
           compliance_certification: true,
+          industry_standards: true,
         },
       },
       {
@@ -546,6 +613,7 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           inspector_qualification: true,
           corrective_actions: true,
@@ -565,10 +633,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 10950,
+          legal_retention_period_2026: '10 ans minimum',
           confidentiality_level: 'strictly_confidential',
           board_approval: true,
           shareholder_rights: true,
           corporate_governance: true,
+          regulatory_compliance: true,
         },
       },
       {
@@ -582,6 +652,7 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 ans (après mise à jour)',
           confidentiality_level: 'internal',
           version_history: true,
           employee_acknowledgment: true,
@@ -599,10 +670,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           risk_assessment: true,
           mitigation_strategies: true,
           insurance_coverage: true,
+          business_continuity: true,
         },
       },
 
@@ -618,10 +691,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 10950,
+          legal_retention_period_2026: '30 ans (immobilier) ou permanent',
           confidentiality_level: 'strictly_confidential',
           notarization_required: true,
           land_registry: true,
           property_tax: true,
+          title_deed: true,
         },
       },
       {
@@ -635,6 +710,7 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '10 ans',
           confidentiality_level: 'confidential',
           asset_valuation: true,
           depreciation_schedule: true,
@@ -654,10 +730,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           customs_regulations: true,
           international_laws: true,
           currency_conversion: true,
+          incoterms: true,
         },
       },
       {
@@ -671,6 +749,7 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           certified_translator: true,
           source_document_link: true,
@@ -690,10 +769,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: '5 à 10 ans',
           confidentiality_level: 'confidential',
           regulatory_compliance: true,
           incident_reporting: true,
           training_records: true,
+          workplace_safety: true,
         },
       },
 
@@ -709,10 +790,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 7300,
+          legal_retention_period_2026: '5 ans après fin + durée clause',
           confidentiality_level: 'strictly_confidential',
           parties_bound: true,
           duration_specified: true,
           penalty_clauses: true,
+          trade_secrets: true,
         },
       },
 
@@ -728,10 +811,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 0, // Permanent
+          legal_retention_period_2026: 'Permanent',
           confidentiality_level: 'confidential',
           historical_value: true,
           preservation_required: true,
           access_restricted: true,
+          digitization_recommended: true,
         },
       },
       {
@@ -745,9 +830,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 1825,
+          legal_retention_period_2026: 'Variable',
           confidentiality_level: 'internal',
           destruction_scheduled: true,
           review_before_destruction: true,
+          secure_destruction: true,
         },
       },
       {
@@ -761,10 +848,12 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 5475,
+          legal_retention_period_2026: 'Selon nature originale',
           confidentiality_level: 'confidential',
           digital_preservation: true,
           format_migration: true,
           integrity_checks: true,
+          backup_policy: true,
         },
       },
 
@@ -780,9 +869,11 @@ export default class DocumentCategorySeeder implements Seeder {
         is_active: true,
         metadata: {
           retention_period: 1825,
+          legal_retention_period_2026: 'Variable',
           confidentiality_level: 'internal',
           review_required: true,
           recategorization_possible: true,
+          temporary_holding: true,
         },
       },
     ];
@@ -799,12 +890,12 @@ export default class DocumentCategorySeeder implements Seeder {
         category.created_at = new Date();
         category.updated_at = new Date();
         await repository.save(category);
-        console.log(`Catégorie de document créée: ${category.name}`);
+        console.log(`✅ Catégorie créée: ${category.name} (${category.code})`);
       } else {
-        console.log(`Catégorie de document déjà existante: ${categoryData.name}`);
+        console.log(`⏭️ Catégorie existante: ${existing.name}`);
       }
     }
 
-    console.log(`✅ ${categories.length} catégories de documents traitées`);
+    console.log(`\n📊 Résumé: ${categories.length} catégories de documents traitées`);
   }
 }

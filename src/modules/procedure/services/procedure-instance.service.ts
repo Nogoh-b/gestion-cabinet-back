@@ -645,6 +645,16 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     };
   }
 
+  async getStageVisitHistory(instanceId: string): Promise<StageVisit[]> {
+    const instance = await this.findOne(instanceId);
+    const stageVisits =  await this.stageVisitRepository.find({
+      where: { instanceId: instance.id },
+      relations: ['stage','subStageVisits','subStageVisits.subStage', 'subStageVisits.documents', 'subStageVisits.diligences',  'subStageVisits.audiences', 'subStageVisits.factures'],
+      order: { enteredAt: 'ASC' },
+    });
+    return stageVisits;//.sort((a, b) => a.visitNumber - b.visitNumber);
+  }
+
 
 
 
@@ -1039,7 +1049,8 @@ private async checkAndTriggerAutomaticTransitions(
     }
 
     // ✅ Vérifier les sous-étapes obligatoires
-    const mandatorySubStages = currentStageFromTemplate.subStages.filter(ss => ss.isMandatory);
+    const mandatorySubStages = currentStageFromTemplate.subStages;
+    // const mandatorySubStages = currentStageFromTemplate.subStages.filter(ss => ss.isMandatory);
     
     const allMandatoryCompleted = mandatorySubStages.length === 0 || 
       mandatorySubStages.every(mandatorySubStage => 

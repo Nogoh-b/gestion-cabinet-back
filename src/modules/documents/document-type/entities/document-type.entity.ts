@@ -8,6 +8,7 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable, OneToMan
 
 
 import { DocumentCustomer } from '../../document-customer/entities/document-customer.entity';
+import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 
 
 
@@ -55,6 +56,25 @@ export class DocumentType extends BaseEntity {
 
   @Column({ name: 'max_size', nullable: true, default: 1024 * 1024 * 3 })
   max_size: string;
+
+  
+  // === NOUVELLE RELATION ===
+  // @ManyToOne(() => DocumentCategory, (category) => category.documentTypes, { nullable: false })
+  // @JoinColumn({ name: 'document_category_id' })
+  // category: DocumentCategory;
+
+  @ManyToMany(() => DocumentCategory, (category) => category.documentTypes)
+  @JoinTable({
+    name: 'document_type_categories', // Table de liaison
+    joinColumn: { name: 'document_type_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'document_category_id', referencedColumnName: 'id' },
+  })
+  categories: DocumentCategory[];
+  documentCategoryCodes?: string[];
+
+  @Column({ name: 'document_category_id', nullable: true }) // Ajouter nullable: true
+  documentCategoryId: number;
+  // ========================
 
   @ManyToMany(() => TypeCustomer)
   @JoinTable({
