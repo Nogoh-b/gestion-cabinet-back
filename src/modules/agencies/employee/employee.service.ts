@@ -113,7 +113,8 @@ async createEmployee(
   if (!dto.password) {
     // throw new ConflictException('Mot de passe non defini');
   }
-
+    const plain_password = this.generate_temp_password(12);
+    const hashed_password = await bcrypt.hash(plain_password, 10);
   // Création de l'utilisateur
   const user = this.userRepo.create({
     first_name: dto.first_name,
@@ -121,7 +122,7 @@ async createEmployee(
     email: dto.email,
     username: dto.email,
     status: 1, // Actif par défaut
-    // password: await bcrypt.hash(dto.password, 12),
+    password: hashed_password,
     // phoneNumber: dto.phone_number,
     role: this.getUserRoleFromPosition(dto.position),
     // isActive: true,
