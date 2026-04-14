@@ -95,11 +95,11 @@ export class Employee extends BaseEntity {
   bio: string;
 
   @ApiProperty({ example: ['Français', 'Anglais', 'Espagnol'] })
-  @Column({ name: 'languages', type: 'json', nullable: true })
+  @Column({ name: 'languages', type: 'simple-json', nullable: true })
   languages: string[];
 
   @ApiProperty({ example: ['Droit des sociétés', 'Contrats', 'Propriété intellectuelle'] })
-  @Column({ name: 'expertise_areas', type: 'json', nullable: true })
+  @Column({ name: 'expertise_areas', type: 'simple-json', nullable: true })
   expertise_areas: string[];
 
   @ApiProperty({ example: 'EMP-2024-001' })
