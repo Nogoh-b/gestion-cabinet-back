@@ -128,7 +128,8 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     relations?: string[] | null,
     order?: FindOptionsOrder<T>
   ): Promise<PaginatedResult<R>> {
-    
+      console.log('Relation fields:', this.getDefaultSearchOptions().relationFields);
+
     this.debugConditions( criteria, {})
     
     const whereConditions = this.buildWhereConditionsV1(criteria, {}); 

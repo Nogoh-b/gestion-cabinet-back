@@ -17,7 +17,7 @@ export class District {
   @Column({ type: 'int', nullable: true })
   division_id: number;
 
-  @ManyToOne(() => Division, { nullable: true, eager: true  })
+  @ManyToOne(() => Division, { nullable: true  })
   @JoinColumn({ name: 'division_id' })
   division: Division;
 
@@ -32,8 +32,8 @@ export class District {
   population: string;
 
   @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
+  created_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
+  updated_at: Date;
 }

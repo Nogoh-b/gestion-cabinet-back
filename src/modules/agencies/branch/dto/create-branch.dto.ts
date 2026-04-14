@@ -20,11 +20,11 @@ export class CreateBranchDto {
 
   @IsInt()
   @ApiProperty()
-  opening_hour: number;
+  opening_hour: string;
   
   @IsInt()
   @ApiProperty()
-  closing_hour: number;
+  closing_hour: string;
 
  
   status: number;

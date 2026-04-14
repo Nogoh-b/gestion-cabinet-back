@@ -17,7 +17,7 @@ export class Division {
   @Column({ type: 'int', nullable: true })
   region_id: number;
 
-  @ManyToOne(() => Region, { nullable: true, eager: true  })
+  @ManyToOne(() => Region, { nullable: true })
   @JoinColumn({ name: 'region_id' })
   region: Region;
 
@@ -31,10 +31,10 @@ export class Division {
   population: string;
 
   @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
+  created_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
+  updated_at: Date;
 
   @Column({ type: 'tinyint', nullable: true })
   status: number;

@@ -12,6 +12,8 @@ import { Division } from '../divivion/entities/divivion.entity';
 import { CreateRegionDto } from './dto/create-region.dto';
 import { UpdateRegionDto } from './dto/update-region.dto';
 import { Region } from './entities/region.entity';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 
 
 
@@ -19,12 +21,16 @@ import { Region } from './entities/region.entity';
 
 
 @Injectable()
-export class RegionsService {
+export class RegionsService  extends BaseServiceV1<Region> {
   constructor(
+     protected readonly paginationService: PaginationServiceV1,
     @InjectRepository(Region)
-    private repository: Repository<Region>,
+    protected repository: Repository<Region>,
     private countriesService: CountriesService,
-  ) {}
+  ) {
+    super(repository, paginationService);
+
+  }
 
   async create(dto: CreateRegionDto): Promise<Region> {
     const country = await this.countriesService.findOne(dto.country_id);

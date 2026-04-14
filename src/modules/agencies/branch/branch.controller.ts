@@ -60,6 +60,7 @@ export class BranchController {
     @Query() searchParams?: SearchBranchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
+    // return this.branchService.testSearch()
     return this.branchService.searchWithTransformer(searchParams as SearchCriteria, BranchResponseDto, paginationParams);
   } 
   

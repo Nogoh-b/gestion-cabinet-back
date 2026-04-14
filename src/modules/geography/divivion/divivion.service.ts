@@ -9,17 +9,54 @@ import { RegionsService } from '../region/region.service';
 import { CreateDivisionDto } from './dto/create-divivion.dto';
 import { UpdateDivisionDto } from './dto/update-divivion.dto';
 import { Division } from './entities/divivion.entity';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 
 
 
 @Injectable()
-export class DivisionsService {
+export class DivisionsService   extends BaseServiceV1<Division> {
   constructor(
-    @InjectRepository(Division)
-    private repository: Repository<Division>,
-    private regionsService: RegionsService
-  ) {}
+     protected readonly paginationService: PaginationServiceV1,
 
+    @InjectRepository(Division)
+    protected repository: Repository<Division>,
+    private regionsService: RegionsService
+  ) {
+        super(repository, paginationService);
+
+  }
+// src/modules/divivion/division.service.ts
+protected getDefaultSearchOptions(): SearchOptions {
+  return {
+    // Champs pour la recherche globale
+    searchFields: [
+      'name',
+      'code',
+      'population',
+      'region.name',
+      'region.code',
+      'region.country.name'
+    ],
+    
+    // Champs pour recherche exacte
+    exactMatchFields: [
+      'id',
+      'code',
+      'region_id',
+      'status'
+    ],
+    
+
+    
+    // Champs de relations pour filtrage
+    relationFields: [
+      'region',
+      'region.country',
+      'districts'
+    ]
+  };
+}
   async create(dto: CreateDivisionDto): Promise<Division> {
     const region = await this.regionsService.findOne(dto.region_id);
     return this.repository.save({ ...dto, region });

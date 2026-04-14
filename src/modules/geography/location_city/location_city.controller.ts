@@ -1,5 +1,4 @@
 // location-cities.controller.ts
-import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -15,13 +14,13 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 
 
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query, DefaultValuePipe, ParseBoolPipe, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
 
 
 
 
 
-import { ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 
 
@@ -31,6 +30,8 @@ import { ResponseLocationCityDto } from './dto/response-location_city.dto';
 import { UpdateLocationCityDto } from './dto/update-location_city.dto';
 import { LocationCity } from './entities/location_city.entity';
 import { LocationCitiesService } from './location_city.service';
+import { LocationCitySearchDto } from './dto/location-city-search.dto';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 
 @Controller('location-cities')
@@ -38,35 +39,35 @@ import { LocationCitiesService } from './location_city.service';
 export class LocationCitiesController {
   constructor(private readonly service: LocationCitiesService) {}
 
-  @Get('search')
-  @ApiQuery({ name: 'term', required: true, type: String })
-  @ApiQuery({ name: 'exact', required: false, type: Boolean, example: false })
-  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
-  @ApiQuery({ name: 'take', required: false, type: Number, example: 10 })
-  @ApiQuery({ name: 'orderField', required: false, type: String, example: 'createdAt' })
-  @ApiQuery({ name: 'orderDir', required: false, enum: ['ASC', 'DESC'], example: 'ASC' })
-  async searchLoc(
-    @Query('term') term: string,
-    @Query('exact', new DefaultValuePipe(false), ParseBoolPipe) exact: boolean,
-    @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
-    @Query('take', new DefaultValuePipe(10), ParseIntPipe) take: number,
-    @Query('orderField', new DefaultValuePipe('createdAt')) orderField: string,
-    @Query('orderDir', new DefaultValuePipe('ASC')) orderDir: 'ASC' | 'DESC',
-  ) {
-    console.log('searchLoc', term, exact, skip, take, orderField, orderDir);
-    const locCities = await this.service.enhancedSearch({
-      alias: 'location_city',
-      searchTerm: term,
-      exactMatch: exact,
-      skip,
-      take,
-      orderBy: {
-        field: orderField,
-        direction: orderDir,
-      },
-    });
-    return plainToInstance(ResponseLocationCityDto, locCities);
-  }
+  // @Get('search')
+  // @ApiQuery({ name: 'term', required: true, type: String })
+  // @ApiQuery({ name: 'exact', required: false, type: Boolean, example: false })
+  // @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  // @ApiQuery({ name: 'take', required: false, type: Number, example: 10 })
+  // @ApiQuery({ name: 'orderField', required: false, type: String, example: 'createdAt' })
+  // @ApiQuery({ name: 'orderDir', required: false, enum: ['ASC', 'DESC'], example: 'ASC' })
+  // async searchLoc(
+  //   @Query('term') term: string,
+  //   @Query('exact', new DefaultValuePipe(false), ParseBoolPipe) exact: boolean,
+  //   @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
+  //   @Query('take', new DefaultValuePipe(10), ParseIntPipe) take: number,
+  //   @Query('orderField', new DefaultValuePipe('createdAt')) orderField: string,
+  //   @Query('orderDir', new DefaultValuePipe('ASC')) orderDir: 'ASC' | 'DESC',
+  // ) {
+  //   console.log('searchLoc', term, exact, skip, take, orderField, orderDir);
+  //   const locCities = await this.service.enhancedSearch({
+  //     alias: 'location_city',
+  //     searchTerm: term,
+  //     exactMatch: exact,
+  //     skip,
+  //     take,
+  //     orderBy: {
+  //       field: orderField,
+  //       direction: orderDir,
+  //     },
+  //   });
+  //   return plainToInstance(ResponseLocationCityDto, locCities);
+  // }
 
   @Post()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -81,17 +82,37 @@ export class LocationCitiesController {
     return this.service.findAll();
   }
 
+@Get('/search')
+  @ApiOperation({ summary: 'Rechercher les villes/quartiers' })
+  @ApiResponse({ status: 200, description: 'Liste des villes/quartiers', type: [LocationCity] })
+  async search(
+    @Query() searchParams?: LocationCitySearchDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.service.searchWithTransformer(searchParams as any, LocationCity, paginationParams);
+  }
+
+  // @Get('/search/by-full-address')
+  // @ApiOperation({ summary: 'Rechercher par adresse complète' })
+  // @ApiResponse({ status: 200, description: 'Liste des villes correspondantes', type: [LocationCity] })
+  // async searchByFullAddress(
+  //   @Query('address') address: string,
+  //   @Query() paginationParams?: PaginationParamsDto,
+  // ) {
+  //   return this.service.searchByFullAddress(address, LocationCity, paginationParams);
+  // }
+
   @Get(':id')
   @RequirePermissions('')
   findOne(@Param('id') id: number): Promise<ResponseLocationCityDto> {
     return this.service.findOne(id);
   }
 
-  @Get(':id/all')
-  @RequirePermissions('')
-  findAllS(@Param('id') id: number): Promise<any> {
-    return this.service.search()
-  }
+  // @Get(':id/all')
+  // @RequirePermissions('')
+  // findAllS(@Param('id') id: number): Promise<any> {
+  //   return this.service.search()
+  // }
 
 
   @Put(':id')

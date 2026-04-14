@@ -7,15 +7,51 @@ import { District } from './entities/district.entity';
 import { DivisionsService } from '../divivion/divivion.service';
 import { UpdateDistrictDto } from './dto/update-district.dto';
 import { LocationCity } from '../location_city/entities/location_city.entity';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
 @Injectable()
-export class DistrictsService {
+export class DistrictsService    extends BaseServiceV1<District>{
   constructor(
-    @InjectRepository(District)
-    private repository: Repository<District>,
-    private divisionsService: DivisionsService
-  ) {}
+         protected readonly paginationService: PaginationServiceV1,
 
+    @InjectRepository(District)
+    protected repository: Repository<District>,
+    private divisionsService: DivisionsService
+  ) {        super(repository, paginationService);
+}
+// src/modules/district/district.service.ts
+protected getDefaultSearchOptions(): SearchOptions {
+  return {
+    // Champs pour la recherche globale
+    searchFields: [
+      'name',
+      'code',
+      'population',
+      'division.name',
+      'division.code',
+      'division.region.name',
+      'division.region.code',
+      'division.region.country.name'
+    ],
+    
+    // Champs pour recherche exacte
+    exactMatchFields: [
+      'id',
+      'code',
+      'division_id'
+    ],
+ 
+    
+    // Champs de relations pour filtrage
+    relationFields: [
+      'division',
+      'division.region',
+      'division.region.country',
+      'location_cities'
+    ]
+  };
+}
   async create(dto: CreateDistrictDto): Promise<District> {
     const division = await this.divisionsService.findOne(dto.division_id);
     return this.repository.save({ ...dto, division });

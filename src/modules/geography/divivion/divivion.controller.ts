@@ -2,20 +2,33 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { District } from '../district/entities/district.entity';
 import { DivisionsService } from './divivion.service';
 import { CreateDivisionDto } from './dto/create-divivion.dto';
 import { UpdateDivisionDto } from './dto/update-divivion.dto';
 import { Division } from './entities/divivion.entity';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { DivisionSearchDto } from './dto/division-search.dto';
 
 
 @Controller('divisions')
 @ApiBearerAuth()
 export class DivisionsController {
   constructor(private readonly service: DivisionsService) {}
+
+  
+  @Get('/search')
+  @ApiOperation({ summary: 'Rechercher les divisions' })
+  @ApiResponse({ status: 200, description: 'Liste des divisions', type: [Division] })
+  async search(
+    @Query() searchParams?: DivisionSearchDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.service.searchWithTransformer(searchParams as any, Division, paginationParams);
+  }
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)

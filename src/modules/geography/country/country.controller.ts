@@ -2,8 +2,8 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 
 
@@ -13,6 +13,9 @@ import { CountriesService } from './country.service';
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { Country } from './entities/country.entity';
+import { CountrySearchDto } from './dto/country-search.dto';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
 
 
@@ -29,6 +32,18 @@ export class CountriesController {
   create(@Body() dto: CreateCountryDto): Promise<Country> {
     return this.service.create(dto);
   }
+
+  
+  @Get('/search')
+  @ApiOperation({ summary: 'Rechercher les pays' })
+  @ApiResponse({ status: 200, description: 'Liste des pays', type: [Country] })
+  async search(
+    @Query() searchParams?: CountrySearchDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.service.searchWithTransformer(searchParams as SearchCriteria, Country, paginationParams);
+  }
+
 
   @Get()
   @RequirePermissions('')
