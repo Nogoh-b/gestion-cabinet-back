@@ -111,7 +111,7 @@ async createEmployee(
     throw new ConflictException('Un utilisateur avec cet email existe déjà');
   }
   if (!dto.password) {
-    throw new ConflictException('Mot de passe non defini');
+    // throw new ConflictException('Mot de passe non defini');
   }
 
   // Création de l'utilisateur
