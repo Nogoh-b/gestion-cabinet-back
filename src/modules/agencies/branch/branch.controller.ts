@@ -47,7 +47,7 @@ export class BranchController {
   @ApiOperation({ summary: 'Create new branch' })
   @ApiResponse({ status: 201, description: 'Branch successfully created' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('CREATE_BRANCH')
+  // @RequirePermissions('CREATE_BRANCH')
   createBranch(@Body() dto: CreateBranchDto) {
     return this.branchService.createBranch(dto);
   }
