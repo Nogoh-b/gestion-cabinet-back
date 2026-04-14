@@ -119,7 +119,7 @@ async createEmployee(
     first_name: dto.first_name,
     last_name: dto.last_name,
     email: dto.email,
-    password: await bcrypt.hash(dto.password, 12),
+    // password: await bcrypt.hash(dto.password, 12),
     // phoneNumber: dto.phone_number,
     role: this.getUserRoleFromPosition(dto.position),
     // isActive: true,
