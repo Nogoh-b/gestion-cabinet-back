@@ -19,15 +19,18 @@ export class LocationCity {
   @Column({ type: 'bigint', nullable: true })
   population: string;
 
-  @ManyToOne(() => District, { nullable: true , eager: true })
+  @Column({ type: 'int', nullable: true })
+  districts_id: number;
+
+  @ManyToOne(() => District, { nullable: true  })
   @JoinColumn({ name: 'districts_id' })
   district: District;
 
   @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
+  created_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
+  updated_at: Date;
 
   @Expose()
   get full_address(): string {

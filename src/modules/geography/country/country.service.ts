@@ -8,16 +8,47 @@ import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { Country } from './entities/country.entity';
 import { Region } from '../region/entities/region.entity';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
 
 
 
 @Injectable()
-export class CountriesService {
+export class CountriesService extends BaseServiceV1<Country> {
   constructor(
+    protected readonly paginationService: PaginationServiceV1,
+    
     @InjectRepository(Country)
-    private repository: Repository<Country>,
-  ) {}
+    protected repository: Repository<Country>,
+  ) {
+    super(repository, paginationService);
+
+  }
+
+  // src/modules/country/country.service.ts
+protected getDefaultSearchOptions(): SearchOptions {
+  return {
+    // Champs pour la recherche globale
+    searchFields: [
+      'name',
+      'code',
+      'population'
+    ],
+    
+    // Champs pour recherche exacte
+    exactMatchFields: [
+      'id',
+      'code'
+    ],
+    
+    
+    // Champs de relations pour filtrage
+    relationFields: [
+      'regions'
+    ]
+  };
+}
 
   create(dto: CreateCountryDto): Promise<Country> {
     return this.repository.save(dto);

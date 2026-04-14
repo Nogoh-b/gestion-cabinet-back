@@ -56,7 +56,7 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 
-echo "src/core/config/" >> .gitignore
+# echo "src/core/config/" >> .gitignore
 uploads/
 src/core/config/database.config.ts
 ecosystem.config.js

@@ -1,0 +1,3448 @@
+{
+  "country": {
+    "id": 1,
+    "name": "Cameroun",
+    "code": "CMR",
+    "population": "26545863",
+    "regions": [
+      {
+        "id": 1,
+        "name": "Centre",
+        "code": "CE",
+        "country_id": 1,
+        "population": "4123598",
+        "divisions": [
+          {
+            "id": 1,
+            "name": "Mfoundi",
+            "code": "MF",
+            "region_id": 1,
+            "population": "1268653",
+            "status": 1,
+            "districts": [
+              {
+                "id": 1,
+                "name": "Yaoundé 1er",
+                "code": "YDE1",
+                "division_id": 1,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 1, "name": "Mvog-Mbi", "code": "MVG01", "districts_id": 1, "population": "25000" },
+                  { "id": 2, "name": "Elig-Essono", "code": "ELG01", "districts_id": 1, "population": "18000" },
+                  { "id": 3, "name": "Messa", "code": "MES01", "districts_id": 1, "population": "22000" },
+                  { "id": 4, "name": "Etoudi", "code": "ETD01", "districts_id": 1, "population": "15000" },
+                  { "id": 5, "name": "Ahala", "code": "AHL01", "districts_id": 1, "population": "12000" },
+                  { "id": 6, "name": "Ngoa-Ekélé", "code": "NGE01", "districts_id": 1, "population": "30000" },
+                  { "id": 7, "name": "Bastos", "code": "BST01", "districts_id": 1, "population": "8000" },
+                  { "id": 8, "name": "Mvog-Ada", "code": "MVA01", "districts_id": 1, "population": "20000" },
+                  { "id": 9, "name": "Oyom-Abang", "code": "OYA01", "districts_id": 1, "population": "25000" }
+                ]
+              },
+              {
+                "id": 2,
+                "name": "Yaoundé 2e",
+                "code": "YDE2",
+                "division_id": 1,
+                "population": "178000",
+                "location_cities": [
+                  { "id": 10, "name": "Mokolo", "code": "MOK01", "districts_id": 2, "population": "35000" },
+                  { "id": 11, "name": "Briqueterie", "code": "BRI01", "districts_id": 2, "population": "28000" },
+                  { "id": 12, "name": "Hippodrome", "code": "HIP01", "districts_id": 2, "population": "15000" },
+                  { "id": 13, "name": "Nkolbisson", "code": "NKB01", "districts_id": 2, "population": "32000" },
+                  { "id": 14, "name": "Efoulan", "code": "EFL01", "districts_id": 2, "population": "20000" },
+                  { "id": 15, "name": "Cité Verte", "code": "CTV01", "districts_id": 2, "population": "18000" },
+                  { "id": 16, "name": "Mvolyé", "code": "MVY01", "districts_id": 2, "population": "12000" },
+                  { "id": 17, "name": "Omnisports", "code": "OMS01", "districts_id": 2, "population": "10000" }
+                ]
+              },
+              {
+                "id": 3,
+                "name": "Yaoundé 3e",
+                "code": "YDE3",
+                "division_id": 1,
+                "population": "195000",
+                "location_cities": [
+                  { "id": 18, "name": "Essos", "code": "ESS01", "districts_id": 3, "population": "28000" },
+                  { "id": 19, "name": "Mfandena", "code": "MFD01", "districts_id": 3, "population": "15000" },
+                  { "id": 20, "name": "Nkolndongo", "code": "NKD01", "districts_id": 3, "population": "22000" },
+                  { "id": 21, "name": "Ekounou", "code": "EKO01", "districts_id": 3, "population": "35000" },
+                  { "id": 22, "name": "Emana", "code": "EMN01", "districts_id": 3, "population": "18000" },
+                  { "id": 23, "name": "Biteng", "code": "BIT01", "districts_id": 3, "population": "12000" },
+                  { "id": 24, "name": "Nkoabang", "code": "NKB02", "districts_id": 3, "population": "15000" }
+                ]
+              },
+              {
+                "id": 4,
+                "name": "Yaoundé 4e",
+                "code": "YDE4",
+                "division_id": 1,
+                "population": "210000",
+                "location_cities": [
+                  { "id": 25, "name": "Nkolnda", "code": "NLD01", "districts_id": 4, "population": "18000" },
+                  { "id": 26, "name": "Ngousso", "code": "NGS01", "districts_id": 4, "population": "25000" },
+                  { "id": 27, "name": "Kondengui", "code": "KDG01", "districts_id": 4, "population": "15000" },
+                  { "id": 28, "name": "Mvan", "code": "MVN01", "districts_id": 4, "population": "22000" },
+                  { "id": 29, "name": "Mfida", "code": "MFI01", "districts_id": 4, "population": "12000" },
+                  { "id": 30, "name": "Simessi", "code": "SIM01", "districts_id": 4, "population": "18000" },
+                  { "id": 31, "name": "Anguissa", "code": "ANG01", "districts_id": 4, "population": "15000" },
+                  { "id": 32, "name": "Mendong II", "code": "MDG02", "districts_id": 4, "population": "20000" }
+                ]
+              },
+              {
+                "id": 5,
+                "name": "Yaoundé 5e",
+                "code": "YDE5",
+                "division_id": 1,
+                "population": "198000",
+                "location_cities": [
+                  { "id": 33, "name": "Obobogo", "code": "OBO01", "districts_id": 5, "population": "25000" },
+                  { "id": 34, "name": "Nkolbikok", "code": "NBK01", "districts_id": 5, "population": "15000" },
+                  { "id": 35, "name": "Elig-Edzoa", "code": "ELZ01", "districts_id": 5, "population": "18000" },
+                  { "id": 36, "name": "Melen", "code": "MEL01", "districts_id": 5, "population": "28000" },
+                  { "id": 37, "name": "Nkoldongo", "code": "NKD02", "districts_id": 5, "population": "12000" },
+                  { "id": 38, "name": "Olembe", "code": "OLB01", "districts_id": 5, "population": "15000" }
+                ]
+              },
+              {
+                "id": 6,
+                "name": "Yaoundé 6e",
+                "code": "YDE6",
+                "division_id": 1,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 39, "name": "Mendong", "code": "MDG01", "districts_id": 6, "population": "32000" },
+                  { "id": 40, "name": "Simbok", "code": "SIM01", "districts_id": 6, "population": "18000" },
+                  { "id": 41, "name": "Etoug-Ebe", "code": "ETE01", "districts_id": 6, "population": "22000" },
+                  { "id": 42, "name": "Nkolbikok II", "code": "NBK02", "districts_id": 6, "population": "12000" },
+                  { "id": 43, "name": "Eba Biyem-Assi", "code": "EBA01", "districts_id": 6, "population": "15000" },
+                  { "id": 44, "name": "Mendong Village", "code": "MDV01", "districts_id": 6, "population": "10000" },
+                  { "id": 45, "name": "Mendong Camp SIC", "code": "MCS01", "districts_id": 6, "population": "8000" }
+                ]
+              },
+              {
+                "id": 7,
+                "name": "Yaoundé 7e",
+                "code": "YDE7",
+                "division_id": 1,
+                "population": "175000",
+                "location_cities": [
+                  { "id": 46, "name": "Nkolmesseng", "code": "NMS01", "districts_id": 7, "population": "15000" },
+                  { "id": 47, "name": "Ebomaf", "code": "EBM01", "districts_id": 7, "population": "12000" },
+                  { "id": 48, "name": "Mballa II", "code": "MBL01", "districts_id": 7, "population": "18000" },
+                  { "id": 49, "name": "Elat", "code": "ELA01", "districts_id": 7, "population": "10000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "name": "Lekié",
+            "code": "LEK",
+            "region_id": 1,
+            "population": "354658",
+            "status": 1,
+            "districts": [
+              {
+                "id": 8,
+                "name": "Monatélé",
+                "code": "MNT",
+                "division_id": 2,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 50, "name": "Monatélé Centre", "code": "MTC01", "districts_id": 8, "population": "25000" },
+                  { "id": 51, "name": "Obala", "code": "OBL01", "districts_id": 8, "population": "18000" },
+                  { "id": 52, "name": "Okola", "code": "OKL01", "districts_id": 8, "population": "12000" },
+                  { "id": 53, "name": "Sa'a", "code": "SAA01", "districts_id": 8, "population": "10000" },
+                  { "id": 54, "name": "Elig-Mfomo", "code": "EMF01", "districts_id": 8, "population": "8000" },
+                  { "id": 55, "name": "Evodoula", "code": "EVD01", "districts_id": 8, "population": "7000" }
+                ]
+              },
+              {
+                "id": 9,
+                "name": "Obala",
+                "code": "OBL",
+                "division_id": 2,
+                "population": "78000",
+                "location_cities": [
+                  { "id": 56, "name": "Obala Ville", "code": "OBV01", "districts_id": 9, "population": "22000" },
+                  { "id": 57, "name": "Ebebda", "code": "EBD01", "districts_id": 9, "population": "12000" },
+                  { "id": 58, "name": "Elig-Essomba", "code": "EES01", "districts_id": 9, "population": "8000" },
+                  { "id": 59, "name": "Mbankomo", "code": "MBK01", "districts_id": 9, "population": "10000" },
+                  { "id": 60, "name": "Nkometou", "code": "NKT01", "districts_id": 9, "population": "6000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "name": "Haute-Sanaga",
+            "code": "HSN",
+            "region_id": 1,
+            "population": "285456",
+            "status": 1,
+            "districts": [
+              {
+                "id": 10,
+                "name": "Nanga-Eboko",
+                "code": "NGE",
+                "division_id": 3,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 61, "name": "Nanga-Eboko Centre", "code": "NEC01", "districts_id": 10, "population": "28000" },
+                  { "id": 62, "name": "Bikok", "code": "BIK01", "districts_id": 10, "population": "12000" },
+                  { "id": 63, "name": "Lembe-Yezoum", "code": "LBY01", "districts_id": 10, "population": "8000" },
+                  { "id": 64, "name": "Mbandjock", "code": "MBJ01", "districts_id": 10, "population": "15000" },
+                  { "id": 65, "name": "Minta", "code": "MIN01", "districts_id": 10, "population": "10000" },
+                  { "id": 66, "name": "Nkolmetet", "code": "NKT02", "districts_id": 10, "population": "7000" }
+                ]
+              },
+              {
+                "id": 11,
+                "name": "Mbandjock",
+                "code": "MBJ",
+                "division_id": 3,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 67, "name": "Mbandjock Ville", "code": "MBV01", "districts_id": 11, "population": "18000" },
+                  { "id": 68, "name": "Messa", "code": "MES02", "districts_id": 11, "population": "8000" },
+                  { "id": 69, "name": "Ndjock", "code": "NDJ01", "districts_id": 11, "population": "6000" },
+                  { "id": 70, "name": "Bissiang", "code": "BIS01", "districts_id": 11, "population": "5000" },
+                  { "id": 71, "name": "Minkama", "code": "MNK01", "districts_id": 11, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "name": "Nyong-et-Kéllé",
+            "code": "NYK",
+            "region_id": 1,
+            "population": "245678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 12,
+                "name": "Eséka",
+                "code": "ESK",
+                "division_id": 4,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 72, "name": "Eséka Ville", "code": "ESV01", "districts_id": 12, "population": "35000" },
+                  { "id": 73, "name": "Bot-Makak", "code": "BMK01", "districts_id": 12, "population": "15000" },
+                  { "id": 74, "name": "Dibang", "code": "DIB01", "districts_id": 12, "population": "10000" },
+                  { "id": 75, "name": "Ngomedzap", "code": "NGZ01", "districts_id": 12, "population": "12000" },
+                  { "id": 76, "name": "Bondjock", "code": "BDJ01", "districts_id": 12, "population": "8000" },
+                  { "id": 77, "name": "Makak", "code": "MAK01", "districts_id": 12, "population": "9000" },
+                  { "id": 78, "name": "Messondo", "code": "MSD01", "districts_id": 12, "population": "7000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 5,
+            "name": "Nyong-et-Mfoumou",
+            "code": "NYM",
+            "region_id": 1,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 13,
+                "name": "Akonolinga",
+                "code": "AKO",
+                "division_id": 5,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 79, "name": "Akonolinga Centre", "code": "AKC01", "districts_id": 13, "population": "28000" },
+                  { "id": 80, "name": "Ayos", "code": "AYO01", "districts_id": 13, "population": "12000" },
+                  { "id": 81, "name": "Endom", "code": "END01", "districts_id": 13, "population": "10000" },
+                  { "id": 82, "name": "Kobdombo", "code": "KOB01", "districts_id": 13, "population": "8000" },
+                  { "id": 83, "name": "Mengang", "code": "MEG01", "districts_id": 13, "population": "9000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 6,
+            "name": "Nyong-et-So'o",
+            "code": "NYS",
+            "region_id": 1,
+            "population": "287654",
+            "status": 1,
+            "districts": [
+              {
+                "id": 14,
+                "name": "Mbalmayo",
+                "code": "MBY",
+                "division_id": 6,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 84, "name": "Mbalmayo Ville", "code": "MBV02", "districts_id": 14, "population": "45000" },
+                  { "id": 85, "name": "Biyouha", "code": "BYH01", "districts_id": 14, "population": "15000" },
+                  { "id": 86, "name": "Dzeng", "code": "DZE01", "districts_id": 14, "population": "12000" },
+                  { "id": 87, "name": "Mengueme", "code": "MGM01", "districts_id": 14, "population": "10000" }
+                ]
+              },
+              {
+                "id": 15,
+                "name": "Ngomedzap",
+                "code": "NGZ",
+                "division_id": 6,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 88, "name": "Ngomedzap Centre", "code": "NGC01", "districts_id": 15, "population": "18000" },
+                  { "id": 89, "name": "Nkolbisson", "code": "NKB03", "districts_id": 15, "population": "8000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 7,
+            "name": "Mbam-et-Inoubou",
+            "code": "MBI",
+            "region_id": 1,
+            "population": "215678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 16,
+                "name": "Bafia",
+                "code": "BAF",
+                "division_id": 7,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 90, "name": "Bafia Centre", "code": "BFC01", "districts_id": 16, "population": "32000" },
+                  { "id": 91, "name": "Kiang", "code": "KIA01", "districts_id": 16, "population": "12000" },
+                  { "id": 92, "name": "Ngoro", "code": "NGO01", "districts_id": 16, "population": "10000" },
+                  { "id": 93, "name": "Ombessa", "code": "OMB01", "districts_id": 16, "population": "9000" },
+                  { "id": 94, "name": "Bokito", "code": "BOK01", "districts_id": 16, "population": "11000" },
+                  { "id": 95, "name": "Deuk", "code": "DEU01", "districts_id": 16, "population": "7000" },
+                  { "id": 96, "name": "Makenene", "code": "MAK02", "districts_id": 16, "population": "8000" }
+                ]
+              },
+              {
+                "id": 17,
+                "name": "Bokito",
+                "code": "BKT",
+                "division_id": 7,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 97, "name": "Bokito Ville", "code": "BKV01", "districts_id": 17, "population": "18000" },
+                  { "id": 98, "name": "Kon-Yambetta", "code": "KNY01", "districts_id": 17, "population": "8000" },
+                  { "id": 99, "name": "Nitoukou", "code": "NIT01", "districts_id": 17, "population": "6000" },
+                  { "id": 100, "name": "Ndikinimeki", "code": "NDK01", "districts_id": 17, "population": "7000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 8,
+            "name": "Mbam-et-Kim",
+            "code": "MBK",
+            "region_id": 1,
+            "population": "165432",
+            "status": 1,
+            "districts": [
+              {
+                "id": 18,
+                "name": "Ntui",
+                "code": "NTU",
+                "division_id": 8,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 101, "name": "Ntui Centre", "code": "NTC01", "districts_id": 18, "population": "22000" },
+                  { "id": 102, "name": "Yoko", "code": "YOK01", "districts_id": 18, "population": "10000" },
+                  { "id": 103, "name": "Ebaka", "code": "EBA02", "districts_id": 18, "population": "7000" },
+                  { "id": 104, "name": "Ndokayo", "code": "NDY01", "districts_id": 18, "population": "6000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 9,
+            "name": "Méfou-et-Afamba",
+            "code": "MFA",
+            "region_id": 1,
+            "population": "225678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 19,
+                "name": "Mfou",
+                "code": "MFU",
+                "division_id": 9,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 105, "name": "Mfou Ville", "code": "MFV01", "districts_id": 19, "population": "25000" },
+                  { "id": 106, "name": "Awaé", "code": "AWA01", "districts_id": 19, "population": "12000" },
+                  { "id": 107, "name": "Edzendouan", "code": "EDZ01", "districts_id": 19, "population": "10000" },
+                  { "id": 108, "name": "Esse", "code": "ESS02", "districts_id": 19, "population": "9000" },
+                  { "id": 109, "name": "Nkolafamba", "code": "NAF01", "districts_id": 19, "population": "8000" },
+                  { "id": 110, "name": "Olanguina", "code": "OLA01", "districts_id": 19, "population": "7000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 10,
+            "name": "Méfou-et-Akono",
+            "code": "MAK",
+            "region_id": 1,
+            "population": "185432",
+            "status": 1,
+            "districts": [
+              {
+                "id": 20,
+                "name": "Ngoumou",
+                "code": "NGM",
+                "division_id": 10,
+                "population": "75000",
+                "location_cities": [
+                  { "id": 111, "name": "Ngoumou Centre", "code": "NGC02", "districts_id": 20, "population": "20000" },
+                  { "id": 112, "name": "Akono", "code": "AKN01", "districts_id": 20, "population": "12000" },
+                  { "id": 113, "name": "Mbankomo", "code": "MBK02", "districts_id": 20, "population": "10000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "name": "Littoral",
+        "code": "LT",
+        "country_id": 1,
+        "population": "3934770",
+        "divisions": [
+          {
+            "id": 11,
+            "name": "Wouri",
+            "code": "WOU",
+            "region_id": 2,
+            "population": "1853890",
+            "status": 1,
+            "districts": [
+              {
+                "id": 21,
+                "name": "Douala 1er",
+                "code": "DLA1",
+                "division_id": 11,
+                "population": "325000",
+                "location_cities": [
+                  { "id": 201, "name": "Akwa", "code": "AKW01", "districts_id": 21, "population": "85000" },
+                  { "id": 202, "name": "Bonanjo", "code": "BNJ01", "districts_id": 21, "population": "25000" },
+                  { "id": 203, "name": "Bonapriso", "code": "BPR01", "districts_id": 21, "population": "45000" },
+                  { "id": 204, "name": "Bonalembe", "code": "BLE01", "districts_id": 21, "population": "35000" },
+                  { "id": 205, "name": "Deido", "code": "DEI01", "districts_id": 21, "population": "55000" },
+                  { "id": 206, "name": "Village", "code": "VIL01", "districts_id": 21, "population": "30000" },
+                  { "id": 207, "name": "Bassa", "code": "BAS01", "districts_id": 21, "population": "50000" }
+                ]
+              },
+              {
+                "id": 22,
+                "name": "Douala 2e",
+                "code": "DLA2",
+                "division_id": 11,
+                "population": "410000",
+                "location_cities": [
+                  { "id": 208, "name": "Bepanda", "code": "BEP01", "districts_id": 22, "population": "120000" },
+                  { "id": 209, "name": "Bekoko", "code": "BEK01", "districts_id": 22, "population": "45000" },
+                  { "id": 210, "name": "Nyalla", "code": "NYA01", "districts_id": 22, "population": "55000" },
+                  { "id": 211, "name": "Logbaba", "code": "LOG01", "districts_id": 22, "population": "80000" },
+                  { "id": 212, "name": "Bilingue", "code": "BIL01", "districts_id": 22, "population": "35000" },
+                  { "id": 213, "name": "Bois des Singes", "code": "BDS01", "districts_id": 22, "population": "25000" },
+                  { "id": 214, "name": "Bonamoussadi", "code": "BMS01", "districts_id": 22, "population": "50000" }
+                ]
+              },
+              {
+                "id": 23,
+                "name": "Douala 3e",
+                "code": "DLA3",
+                "division_id": 11,
+                "population": "298000",
+                "location_cities": [
+                  { "id": 215, "name": "Ndogbong", "code": "NDG01", "districts_id": 23, "population": "55000" },
+                  { "id": 216, "name": "Japoma", "code": "JAP01", "districts_id": 23, "population": "48000" },
+                  { "id": 217, "name": "Makea", "code": "MAK03", "districts_id": 23, "population": "35000" },
+                  { "id": 218, "name": "Nditam", "code": "NDT01", "districts_id": 23, "population": "40000" },
+                  { "id": 219, "name": "Yassa", "code": "YAS01", "districts_id": 23, "population": "60000" },
+                  { "id": 220, "name": "Boko", "code": "BKO01", "districts_id": 23, "population": "30000" },
+                  { "id": 221, "name": "Ngodi", "code": "NGD01", "districts_id": 23, "population": "30000" }
+                ]
+              },
+              {
+                "id": 24,
+                "name": "Douala 4e",
+                "code": "DLA4",
+                "division_id": 11,
+                "population": "325000",
+                "location_cities": [
+                  { "id": 222, "name": "Bonabéri", "code": "BNB01", "districts_id": 24, "population": "85000" },
+                  { "id": 223, "name": "Bongongué", "code": "BGG01", "districts_id": 24, "population": "55000" },
+                  { "id": 224, "name": "Mbanga", "code": "MBA02", "districts_id": 24, "population": "65000" },
+                  { "id": 225, "name": "Mambanda", "code": "MBD01", "districts_id": 24, "population": "60000" },
+                  { "id": 226, "name": "Ngoumou", "code": "NGM02", "districts_id": 24, "population": "35000" },
+                  { "id": 227, "name": "Bonandam", "code": "BND01", "districts_id": 24, "population": "25000" }
+                ]
+              },
+              {
+                "id": 25,
+                "name": "Douala 5e",
+                "code": "DLA5",
+                "division_id": 11,
+                "population": "285000",
+                "location_cities": [
+                  { "id": 228, "name": "Ndogsimbi", "code": "NDS01", "districts_id": 25, "population": "65000" },
+                  { "id": 229, "name": "Kotto", "code": "KOT01", "districts_id": 25, "population": "55000" },
+                  { "id": 230, "name": "Eko", "code": "EKO02", "districts_id": 25, "population": "45000" },
+                  { "id": 231, "name": "Bassa", "code": "BAS02", "districts_id": 25, "population": "70000" },
+                  { "id": 232, "name": "Nyalla", "code": "NYA02", "districts_id": 25, "population": "50000" }
+                ]
+              },
+              {
+                "id": 26,
+                "name": "Douala 6e",
+                "code": "DLA6",
+                "division_id": 11,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 233, "name": "Manoka", "code": "MAN01", "districts_id": 26, "population": "35000" },
+                  { "id": 234, "name": "Cap Cameroun", "code": "CPC01", "districts_id": 26, "population": "25000" },
+                  { "id": 235, "name": "Île Manoka", "code": "ILM01", "districts_id": 26, "population": "15000" },
+                  { "id": 236, "name": "Boukaré", "code": "BKR01", "districts_id": 26, "population": "10000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 12,
+            "name": "Moungo",
+            "code": "MOU",
+            "region_id": 2,
+            "population": "895678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 27,
+                "name": "Nkongsamba 1er",
+                "code": "NKS1",
+                "division_id": 12,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 237, "name": "Nkongsamba Centre", "code": "NKC01", "districts_id": 27, "population": "35000" },
+                  { "id": 238, "name": "Baré-Bakem", "code": "BRB01", "districts_id": 27, "population": "15000" },
+                  { "id": 239, "name": "Bonaléa", "code": "BNL01", "districts_id": 27, "population": "12000" },
+                  { "id": 240, "name": "Dibombari", "code": "DIB02", "districts_id": 27, "population": "13000" },
+                  { "id": 241, "name": "Ebone", "code": "EBN01", "districts_id": 27, "population": "10000" }
+                ]
+              },
+              {
+                "id": 28,
+                "name": "Nkongsamba 2e",
+                "code": "NKS2",
+                "division_id": 12,
+                "population": "78000",
+                "location_cities": [
+                  { "id": 242, "name": "Loum", "code": "LOU01", "districts_id": 28, "population": "28000" },
+                  { "id": 243, "name": "Manjo", "code": "MJO01", "districts_id": 28, "population": "20000" },
+                  { "id": 244, "name": "Mbanga", "code": "MBA03", "districts_id": 28, "population": "18000" },
+                  { "id": 245, "name": "Melong", "code": "MEL02", "districts_id": 28, "population": "12000" }
+                ]
+              },
+              {
+                "id": 29,
+                "name": "Nkongsamba 3e",
+                "code": "NKS3",
+                "division_id": 12,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 246, "name": "Mombo", "code": "MOM01", "districts_id": 29, "population": "18000" },
+                  { "id": 247, "name": "Njombe-Penja", "code": "NJP01", "districts_id": 29, "population": "25000" },
+                  { "id": 248, "name": "Nlonako", "code": "NLO01", "districts_id": 29, "population": "12000" },
+                  { "id": 249, "name": "Penja", "code": "PEN01", "districts_id": 29, "population": "10000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 13,
+            "name": "Nkam",
+            "code": "NKA",
+            "region_id": 2,
+            "population": "456789",
+            "status": 1,
+            "districts": [
+              {
+                "id": 30,
+                "name": "Yabassi",
+                "code": "YAB",
+                "division_id": 13,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 250, "name": "Yabassi Centre", "code": "YBC01", "districts_id": 30, "population": "28000" },
+                  { "id": 251, "name": "Nkondjock", "code": "NKJ01", "districts_id": 30, "population": "18000" },
+                  { "id": 252, "name": "Yingui", "code": "YIN01", "districts_id": 30, "population": "12000" },
+                  { "id": 253, "name": "Massock-Songloulou", "code": "MSS01", "districts_id": 30, "population": "15000" },
+                  { "id": 254, "name": "Ngambe", "code": "NGA01", "districts_id": 30, "population": "12000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 14,
+            "name": "Sanaga-Maritime",
+            "code": "SAM",
+            "region_id": 2,
+            "population": "724413",
+            "status": 1,
+            "districts": [
+              {
+                "id": 31,
+                "name": "Edéa",
+                "code": "EDE",
+                "division_id": 14,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 255, "name": "Edéa Centre", "code": "EDC01", "districts_id": 31, "population": "65000" },
+                  { "id": 256, "name": "Dizangué", "code": "DIZ01", "districts_id": 31, "population": "35000" },
+                  { "id": 257, "name": "Mouanko", "code": "MOU02", "districts_id": 31, "population": "25000" },
+                  { "id": 258, "name": "Ndom", "code": "NDM01", "districts_id": 31, "population": "20000" },
+                  { "id": 259, "name": "Pouma", "code": "POU01", "districts_id": 31, "population": "22000" },
+                  { "id": 260, "name": "Sakbayeme", "code": "SAK01", "districts_id": 31, "population": "18000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "name": "Ouest",
+        "code": "OU",
+        "country_id": 1,
+        "population": "2480410",
+        "divisions": [
+          {
+            "id": 15,
+            "name": "Mifi",
+            "code": "MIF",
+            "region_id": 3,
+            "population": "456789",
+            "status": 1,
+            "districts": [
+              {
+                "id": 32,
+                "name": "Bafoussam 1er",
+                "code": "BFS1",
+                "division_id": 15,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 301, "name": "Ndiangdam", "code": "NDD01", "districts_id": 32, "population": "35000" },
+                  { "id": 302, "name": "Djemoun", "code": "DJM01", "districts_id": 32, "population": "28000" },
+                  { "id": 303, "name": "Famleng", "code": "FAM01", "districts_id": 32, "population": "25000" },
+                  { "id": 304, "name": "Banengo", "code": "BNG01", "districts_id": 32, "population": "45000" },
+                  { "id": 305, "name": "Toukouop", "code": "TKP01", "districts_id": 32, "population": "22000" },
+                  { "id": 306, "name": "Baleng", "code": "BAL01", "districts_id": 32, "population": "30000" }
+                ]
+              },
+              {
+                "id": 33,
+                "name": "Bafoussam 2e",
+                "code": "BFS2",
+                "division_id": 15,
+                "population": "165000",
+                "location_cities": [
+                  { "id": 307, "name": "Bamougoum", "code": "BMG01", "districts_id": 33, "population": "45000" },
+                  { "id": 308, "name": "Doumbouo", "code": "DMB01", "districts_id": 33, "population": "25000" },
+                  { "id": 309, "name": "Nden", "code": "NDE01", "districts_id": 33, "population": "20000" },
+                  { "id": 310, "name": "Sinkop", "code": "SIN01", "districts_id": 33, "population": "15000" },
+                  { "id": 311, "name": "Banefo", "code": "BNF01", "districts_id": 33, "population": "35000" },
+                  { "id": 312, "name": "Kengop", "code": "KGP01", "districts_id": 33, "population": "25000" }
+                ]
+              },
+              {
+                "id": 34,
+                "name": "Bafoussam 3e",
+                "code": "BFS3",
+                "division_id": 15,
+                "population": "145000",
+                "location_cities": [
+                  { "id": 313, "name": "Mbouda", "code": "MBD01", "districts_id": 34, "population": "55000" },
+                  { "id": 314, "name": "Hiala", "code": "HIA01", "districts_id": 34, "population": "20000" },
+                  { "id": 315, "name": "Foumbot", "code": "FBT01", "districts_id": 34, "population": "35000" },
+                  { "id": 316, "name": "Kouoptamo", "code": "KPT01", "districts_id": 34, "population": "18000" },
+                  { "id": 317, "name": "Bamendzi", "code": "BMZ01", "districts_id": 34, "population": "17000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 16,
+            "name": "Hauts-Plateaux",
+            "code": "HPL",
+            "region_id": 3,
+            "population": "456789",
+            "status": 1,
+            "districts": [
+              {
+                "id": 35,
+                "name": "Dschang",
+                "code": "DSC",
+                "division_id": 16,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 318, "name": "Dschang Centre", "code": "DSC01", "districts_id": 35, "population": "55000" },
+                  { "id": 319, "name": "Fokoué", "code": "FOK01", "districts_id": 35, "population": "25000" },
+                  { "id": 320, "name": "Santchou", "code": "SAN01", "districts_id": 35, "population": "22000" },
+                  { "id": 321, "name": "Foreke", "code": "FOR01", "districts_id": 35, "population": "18000" },
+                  { "id": 322, "name": "Nkong-Ni", "code": "NKN01", "districts_id": 35, "population": "35000" },
+                  { "id": 323, "name": "Foto", "code": "FOT01", "districts_id": 35, "population": "20000" },
+                  { "id": 324, "name": "Tonga", "code": "TON01", "districts_id": 35, "population": "10000" }
+                ]
+              },
+              {
+                "id": 36,
+                "name": "Baham",
+                "code": "BHM",
+                "division_id": 16,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 325, "name": "Baham Centre", "code": "BHM01", "districts_id": 36, "population": "25000" },
+                  { "id": 326, "name": "Bandjoun", "code": "BDJ02", "districts_id": 36, "population": "22000" },
+                  { "id": 327, "name": "Batié", "code": "BAT01", "districts_id": 36, "population": "18000" },
+                  { "id": 328, "name": "Foto", "code": "FOT02", "districts_id": 36, "population": "12000" },
+                  { "id": 329, "name": "Nkong", "code": "NKO01", "districts_id": 36, "population": "8000" }
+                ]
+              },
+              {
+                "id": 37,
+                "name": "Batié",
+                "code": "BTI",
+                "division_id": 16,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 330, "name": "Batié Centre", "code": "BTC01", "districts_id": 37, "population": "20000" },
+                  { "id": 331, "name": "Foto", "code": "FOT03", "districts_id": 37, "population": "15000" },
+                  { "id": 332, "name": "Bangangté", "code": "BGT01", "districts_id": 37, "population": "18000" },
+                  { "id": 333, "name": "Nkong", "code": "NKO02", "districts_id": 37, "population": "12000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 17,
+            "name": "Noun",
+            "code": "NOU",
+            "region_id": 3,
+            "population": "456789",
+            "status": 1,
+            "districts": [
+              {
+                "id": 38,
+                "name": "Foumban",
+                "code": "FMB",
+                "division_id": 17,
+                "population": "145000",
+                "location_cities": [
+                  { "id": 334, "name": "Foumban Centre", "code": "FMC01", "districts_id": 38, "population": "45000" },
+                  { "id": 335, "name": "Koutaba", "code": "KTB01", "districts_id": 38, "population": "25000" },
+                  { "id": 336, "name": "Malentouen", "code": "MLT01", "districts_id": 38, "population": "20000" },
+                  { "id": 337, "name": "Njimom", "code": "NJM01", "districts_id": 38, "population": "18000" },
+                  { "id": 338, "name": "Magba", "code": "MGB01", "districts_id": 38, "population": "22000" },
+                  { "id": 339, "name": "Massaing", "code": "MSG01", "districts_id": 38, "population": "15000" }
+                ]
+              },
+              {
+                "id": 39,
+                "name": "Foumbot",
+                "code": "FBT",
+                "division_id": 17,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 340, "name": "Foumbot Centre", "code": "FBC01", "districts_id": 39, "population": "28000" },
+                  { "id": 341, "name": "Koutaba", "code": "KTB02", "districts_id": 39, "population": "15000" },
+                  { "id": 342, "name": "Massaing", "code": "MSG02", "districts_id": 39, "population": "12000" },
+                  { "id": 343, "name": "Malentouen", "code": "MLT02", "districts_id": 39, "population": "18000" },
+                  { "id": 344, "name": "Njimom", "code": "NJM02", "districts_id": 39, "population": "12000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 18,
+            "name": "Ndé",
+            "code": "NDE",
+            "region_id": 3,
+            "population": "345678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 40,
+                "name": "Bangangté",
+                "code": "BGT",
+                "division_id": 18,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 345, "name": "Bangangté Centre", "code": "BGC01", "districts_id": 40, "population": "32000" },
+                  { "id": 346, "name": "Bassamba", "code": "BSB01", "districts_id": 40, "population": "12000" },
+                  { "id": 347, "name": "Bazou", "code": "BAZ01", "districts_id": 40, "population": "15000" },
+                  { "id": 348, "name": "Bokito", "code": "BKT01", "districts_id": 40, "population": "10000" },
+                  { "id": 349, "name": "Tonga", "code": "TON02", "districts_id": 40, "population": "8000" },
+                  { "id": 350, "name": "Nkong-Zem", "code": "NKZ01", "districts_id": 40, "population": "8000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 19,
+            "name": "Menoua",
+            "code": "MEN",
+            "region_id": 3,
+            "population": "289456",
+            "status": 1,
+            "districts": [
+              {
+                "id": 41,
+                "name": "Dschang",
+                "code": "DSC",
+                "division_id": 19,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 351, "name": "Dschang Centre", "code": "DSC02", "districts_id": 41, "population": "35000" },
+                  { "id": 352, "name": "Fokoue", "code": "FOK02", "districts_id": 41, "population": "20000" },
+                  { "id": 353, "name": "Santchou", "code": "SAN02", "districts_id": 41, "population": "18000" },
+                  { "id": 354, "name": "Foreke", "code": "FOR02", "districts_id": 41, "population": "12000" },
+                  { "id": 355, "name": "Nkong-Ni", "code": "NKN02", "districts_id": 41, "population": "10000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 20,
+            "name": "Bamboutos",
+            "code": "BAM",
+            "region_id": 3,
+            "population": "298345",
+            "status": 1,
+            "districts": [
+              {
+                "id": 42,
+                "name": "Mbouda",
+                "code": "MBD",
+                "division_id": 20,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 356, "name": "Mbouda Centre", "code": "MBC01", "districts_id": 42, "population": "45000" },
+                  { "id": 357, "name": "Bafounda", "code": "BFD01", "districts_id": 42, "population": "25000" },
+                  { "id": 358, "name": "Batcham", "code": "BTC02", "districts_id": 42, "population": "22000" },
+                  { "id": 359, "name": "Galim", "code": "GAL01", "districts_id": 42, "population": "18000" },
+                  { "id": 360, "name": "Bamendjing", "code": "BMJ01", "districts_id": 42, "population": "15000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 21,
+            "name": "Koung-Khi",
+            "code": "KHI",
+            "region_id": 3,
+            "population": "345678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 43,
+                "name": "Bandjoun",
+                "code": "BDJ",
+                "division_id": 21,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 361, "name": "Bandjoun Centre", "code": "BJC01", "districts_id": 43, "population": "32000" },
+                  { "id": 362, "name": "Bamendjou", "code": "BMJ02", "districts_id": 43, "population": "18000" },
+                  { "id": 363, "name": "Bamena", "code": "BMN01", "districts_id": 43, "population": "15000" },
+                  { "id": 364, "name": "Bangou", "code": "BGO01", "districts_id": 43, "population": "12000" },
+                  { "id": 365, "name": "Bayangam", "code": "BYG01", "districts_id": 43, "population": "10000" },
+                  { "id": 366, "name": "Demdeng", "code": "DEM01", "districts_id": 43, "population": "8000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "name": "Sud-Ouest",
+        "code": "SW",
+        "country_id": 1,
+        "population": "1654357",
+        "divisions": [
+          {
+            "id": 22,
+            "name": "Fako",
+            "code": "FAK",
+            "region_id": 4,
+            "population": "534854",
+            "status": 1,
+            "districts": [
+              {
+                "id": 44,
+                "name": "Buéa",
+                "code": "BUE",
+                "division_id": 22,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 401, "name": "Molyko", "code": "MLK01", "districts_id": 44, "population": "45000" },
+                  { "id": 402, "name": "Bonduma", "code": "BDM01", "districts_id": 44, "population": "28000" },
+                  { "id": 403, "name": "Great Soppo", "code": "GSP01", "districts_id": 44, "population": "32000" },
+                  { "id": 404, "name": "Mile 16", "code": "M16", "districts_id": 44, "population": "15000" },
+                  { "id": 405, "name": "Bova", "code": "BOV01", "districts_id": 44, "population": "12000" },
+                  { "id": 406, "name": "Tole", "code": "TOL01", "districts_id": 44, "population": "10000" },
+                  { "id": 407, "name": "Muea", "code": "MUE01", "districts_id": 44, "population": "25000" },
+                  { "id": 408, "name": "Buea Town", "code": "BTO01", "districts_id": 44, "population": "18000" }
+                ]
+              },
+              {
+                "id": 45,
+                "name": "Limbe 1er",
+                "code": "LIM1",
+                "division_id": 22,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 409, "name": "Down Beach", "code": "DBE01", "districts_id": 45, "population": "35000" },
+                  { "id": 410, "name": "Church Street", "code": "CHS01", "districts_id": 45, "population": "18000" },
+                  { "id": 411, "name": "Campo", "code": "CAM01", "districts_id": 45, "population": "22000" },
+                  { "id": 412, "name": "Bota", "code": "BOT01", "districts_id": 45, "population": "28000" },
+                  { "id": 413, "name": "Limbe Waterfront", "code": "LWF01", "districts_id": 45, "population": "12000" },
+                  { "id": 414, "name": "New Town", "code": "NTW01", "districts_id": 45, "population": "10000" }
+                ]
+              },
+              {
+                "id": 46,
+                "name": "Limbe 2e",
+                "code": "LIM2",
+                "division_id": 22,
+                "population": "98500",
+                "location_cities": [
+                  { "id": 415, "name": "Mile 4", "code": "M4", "districts_id": 46, "population": "25000" },
+                  { "id": 416, "name": "Mile 6", "code": "M6", "districts_id": 46, "population": "22000" },
+                  { "id": 417, "name": "Mabeta", "code": "MBT01", "districts_id": 46, "population": "18000" },
+                  { "id": 418, "name": "Batoke", "code": "BTK01", "districts_id": 46, "population": "15000" },
+                  { "id": 419, "name": "Idenau", "code": "IDE01", "districts_id": 46, "population": "12000" },
+                  { "id": 420, "name": "Bimbia", "code": "BIM01", "districts_id": 46, "population": "6500" }
+                ]
+              },
+              {
+                "id": 47,
+                "name": "Tiko",
+                "code": "TIK",
+                "division_id": 22,
+                "population": "112000",
+                "location_cities": [
+                  { "id": 421, "name": "Likomba", "code": "LIK01", "districts_id": 47, "population": "32000" },
+                  { "id": 422, "name": "Mudeka", "code": "MUD01", "districts_id": 47, "population": "18000" },
+                  { "id": 423, "name": "Holforth", "code": "HOL01", "districts_id": 47, "population": "15000" },
+                  { "id": 424, "name": "Kiakum", "code": "KIA01", "districts_id": 47, "population": "12000" },
+                  { "id": 425, "name": "Tiko Town", "code": "TKT01", "districts_id": 47, "population": "25000" },
+                  { "id": 426, "name": "Missellele", "code": "MIS01", "districts_id": 47, "population": "10000" }
+                ]
+              },
+              {
+                "id": 48,
+                "name": "Muyuka",
+                "code": "MUY",
+                "division_id": 22,
+                "population": "68500",
+                "location_cities": [
+                  { "id": 427, "name": "Muyuka Centre", "code": "MYC01", "districts_id": 48, "population": "22000" },
+                  { "id": 428, "name": "Ekona", "code": "EKO03", "districts_id": 48, "population": "15000" },
+                  { "id": 429, "name": "Buea Road", "code": "BRD01", "districts_id": 48, "population": "12000" },
+                  { "id": 430, "name": "Mbalangi", "code": "MBL02", "districts_id": 48, "population": "8000" },
+                  { "id": 431, "name": "Mokunda", "code": "MOK02", "districts_id": 48, "population": "6500" },
+                  { "id": 432, "name": "Mpundu", "code": "MPU01", "districts_id": 48, "population": "5000" }
+                ]
+              },
+              {
+                "id": 49,
+                "name": "West Coast",
+                "code": "WCS",
+                "division_id": 22,
+                "population": "45500",
+                "location_cities": [
+                  { "id": 433, "name": "Bamusso", "code": "BAM02", "districts_id": 49, "population": "12000" },
+                  { "id": 434, "name": "Isangele", "code": "ISA01", "districts_id": 49, "population": "8000" },
+                  { "id": 435, "name": "Kombo", "code": "KOM01", "districts_id": 49, "population": "7500" },
+                  { "id": 436, "name": "Mundemba", "code": "MUN01", "districts_id": 49, "population": "10000" },
+                  { "id": 437, "name": "Ndoi", "code": "NDO01", "districts_id": 49, "population": "5000" },
+                  { "id": 438, "name": "Seme", "code": "SEM01", "districts_id": 49, "population": "3000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 23,
+            "name": "Meme",
+            "code": "MEM",
+            "region_id": 4,
+            "population": "326857",
+            "status": 1,
+            "districts": [
+              {
+                "id": 50,
+                "name": "Kumba 1er",
+                "code": "KUM1",
+                "division_id": 23,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 439, "name": "Kumba Town", "code": "KTO01", "districts_id": 50, "population": "45000" },
+                  { "id": 440, "name": "Fiango", "code": "FIA01", "districts_id": 50, "population": "25000" },
+                  { "id": 441, "name": "Kake", "code": "KAK01", "districts_id": 50, "population": "18000" },
+                  { "id": 442, "name": "Mambanda", "code": "MBD02", "districts_id": 50, "population": "15000" },
+                  { "id": 443, "name": "Mbonge", "code": "MBO02", "districts_id": 50, "population": "12000" },
+                  { "id": 444, "name": "Ediki", "code": "EDI01", "districts_id": 50, "population": "10000" }
+                ]
+              },
+              {
+                "id": 51,
+                "name": "Kumba 2e",
+                "code": "KUM2",
+                "division_id": 23,
+                "population": "108000",
+                "location_cities": [
+                  { "id": 445, "name": "Buea Road", "code": "BRD02", "districts_id": 51, "population": "22000" },
+                  { "id": 446, "name": "Barombi Kang", "code": "BAR01", "districts_id": 51, "population": "18000" },
+                  { "id": 447, "name": "Kongolo", "code": "KON01", "districts_id": 51, "population": "15000" },
+                  { "id": 448, "name": "Mokolo", "code": "MOK03", "districts_id": 51, "population": "20000" },
+                  { "id": 449, "name": "Sasse", "code": "SAS01", "districts_id": 51, "population": "12000" },
+                  { "id": 450, "name": "Kosala", "code": "KOS01", "districts_id": 51, "population": "11000" },
+                  { "id": 451, "name": "Mekoma", "code": "MEK01", "districts_id": 51, "population": "10000" }
+                ]
+              },
+              {
+                "id": 52,
+                "name": "Kumba 3e",
+                "code": "KUM3",
+                "division_id": 23,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 452, "name": "Mbonge", "code": "MBO03", "districts_id": 52, "population": "25000" },
+                  { "id": 453, "name": "Bolo", "code": "BOL01", "districts_id": 52, "population": "15000" },
+                  { "id": 454, "name": "Bomana", "code": "BOM01", "districts_id": 52, "population": "12000" },
+                  { "id": 455, "name": "Ekombe", "code": "EKO04", "districts_id": 52, "population": "10000" },
+                  { "id": 456, "name": "Mambanda", "code": "MBD03", "districts_id": 52, "population": "13000" },
+                  { "id": 457, "name": "Soppo", "code": "SOP01", "districts_id": 52, "population": "10000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 24,
+            "name": "Manyu",
+            "code": "MAN",
+            "region_id": 4,
+            "population": "287456",
+            "status": 1,
+            "districts": [
+              {
+                "id": 53,
+                "name": "Mamfé",
+                "code": "MAM",
+                "division_id": 24,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 458, "name": "Mamfé Town", "code": "MTO01", "districts_id": 53, "population": "35000" },
+                  { "id": 459, "name": "Akwaya", "code": "AKW01", "districts_id": 53, "population": "18000" },
+                  { "id": 460, "name": "Eyumodjock", "code": "EYU01", "districts_id": 53, "population": "22000" },
+                  { "id": 461, "name": "Upper Bayang", "code": "UBA01", "districts_id": 53, "population": "15000" },
+                  { "id": 462, "name": "Bachuo", "code": "BAC01", "districts_id": 53, "population": "12000" },
+                  { "id": 463, "name": "Kendem", "code": "KEN01", "districts_id": 53, "population": "10000" },
+                  { "id": 464, "name": "Etoko", "code": "ETO01", "districts_id": 53, "population": "8000" }
+                ]
+              },
+              {
+                "id": 54,
+                "name": "Akwaya",
+                "code": "AKW",
+                "division_id": 24,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 465, "name": "Akwaya Centre", "code": "AKC01", "districts_id": 54, "population": "15000" },
+                  { "id": 466, "name": "Befang", "code": "BEF01", "districts_id": 54, "population": "12000" },
+                  { "id": 467, "name": "Nwang", "code": "NWA01", "districts_id": 54, "population": "10000" },
+                  { "id": 468, "name": "Asumbo", "code": "ASU01", "districts_id": 54, "population": "8000" },
+                  { "id": 469, "name": "Mbu", "code": "MBU01", "districts_id": 54, "population": "7000" },
+                  { "id": 470, "name": "Mfuni", "code": "MFU02", "districts_id": 54, "population": "5000" }
+                ]
+              },
+              {
+                "id": 55,
+                "name": "Eyumodjock",
+                "code": "EYU",
+                "division_id": 24,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 471, "name": "Eyumodjock Centre", "code": "EYC01", "districts_id": 55, "population": "12000" },
+                  { "id": 472, "name": "Ekok", "code": "EKO05", "districts_id": 55, "population": "8000" },
+                  { "id": 473, "name": "Kembong", "code": "KEM01", "districts_id": 55, "population": "10000" },
+                  { "id": 474, "name": "Mfeman", "code": "MFE01", "districts_id": 55, "population": "7000" },
+                  { "id": 475, "name": "Ekak", "code": "EKA01", "districts_id": 55, "population": "6000" },
+                  { "id": 476, "name": "Bokwa", "code": "BOK02", "districts_id": 55, "population": "5000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 25,
+            "name": "Ndian",
+            "code": "NDI",
+            "region_id": 4,
+            "population": "284576",
+            "status": 1,
+            "districts": [
+              {
+                "id": 56,
+                "name": "Mundemba",
+                "code": "MUN",
+                "division_id": 25,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 477, "name": "Mundemba Centre", "code": "MUC01", "districts_id": 56, "population": "22000" },
+                  { "id": 478, "name": "Bamusso", "code": "BAM03", "districts_id": 56, "population": "15000" },
+                  { "id": 479, "name": "Tokombéré", "code": "TOK02", "districts_id": 56, "population": "12000" },
+                  { "id": 480, "name": "Isangele", "code": "ISA02", "districts_id": 56, "population": "10000" },
+                  { "id": 481, "name": "Kombo-Abedimo", "code": "KAB01", "districts_id": 56, "population": "8000" },
+                  { "id": 482, "name": "Kombo-Itindi", "code": "KIT01", "districts_id": 56, "population": "7000" },
+                  { "id": 483, "name": "Bekora", "code": "BEK02", "districts_id": 56, "population": "6000" }
+                ]
+              },
+              {
+                "id": 57,
+                "name": "Bamusso",
+                "code": "BMS",
+                "division_id": 25,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 484, "name": "Bamusso Centre", "code": "BAC02", "districts_id": 57, "population": "12000" },
+                  { "id": 485, "name": "Dikome", "code": "DIK01", "districts_id": 57, "population": "8000" },
+                  { "id": 486, "name": "Eboko", "code": "EBO01", "districts_id": 57, "population": "7000" },
+                  { "id": 487, "name": "Ekondo Titi", "code": "EKT01", "districts_id": 57, "population": "6000" },
+                  { "id": 488, "name": "Mabonji", "code": "MAB01", "districts_id": 57, "population": "5000" },
+                  { "id": 489, "name": "Mofako", "code": "MOF01", "districts_id": 57, "population": "4000" }
+                ]
+              },
+              {
+                "id": 58,
+                "name": "Ekondo Titi",
+                "code": "EKT",
+                "division_id": 25,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 490, "name": "Ekondo Titi Centre", "code": "EKC01", "districts_id": 58, "population": "15000" },
+                  { "id": 491, "name": "Bai", "code": "BAI01", "districts_id": 58, "population": "8000" },
+                  { "id": 492, "name": "Masa", "code": "MAS01", "districts_id": 58, "population": "7000" },
+                  { "id": 493, "name": "Moki", "code": "MOK04", "districts_id": 58, "population": "6000" },
+                  { "id": 494, "name": "Mundame", "code": "MUN02", "districts_id": 58, "population": "5000" },
+                  { "id": 495, "name": "Tali", "code": "TAL01", "districts_id": 58, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 26,
+            "name": "Lebialem",
+            "code": "LEB",
+            "region_id": 4,
+            "population": "198456",
+            "status": 1,
+            "districts": [
+              {
+                "id": 59,
+                "name": "Menji",
+                "code": "MEN",
+                "division_id": 26,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 496, "name": "Menji Centre", "code": "MNC01", "districts_id": 59, "population": "25000" },
+                  { "id": 497, "name": "Fontem", "code": "FON01", "districts_id": 59, "population": "18000" },
+                  { "id": 498, "name": "Alou", "code": "ALO01", "districts_id": 59, "population": "15000" },
+                  { "id": 499, "name": "Wabane", "code": "WAB01", "districts_id": 59, "population": "12000" },
+                  { "id": 500, "name": "Becom", "code": "BEC01", "districts_id": 59, "population": "8000" },
+                  { "id": 501, "name": "Fosimondi", "code": "FOS01", "districts_id": 59, "population": "7000" }
+                ]
+              },
+              {
+                "id": 60,
+                "name": "Fontem",
+                "code": "FON",
+                "division_id": 26,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 502, "name": "Fontem Centre", "code": "FTC01", "districts_id": 60, "population": "15000" },
+                  { "id": 503, "name": "Eseka", "code": "ESE02", "districts_id": 60, "population": "10000" },
+                  { "id": 504, "name": "Nguti", "code": "NGU01", "districts_id": 60, "population": "8000" },
+                  { "id": 505, "name": "Mbetta", "code": "MBE01", "districts_id": 60, "population": "7000" },
+                  { "id": 506, "name": "Nkong", "code": "NKO03", "districts_id": 60, "population": "6000" },
+                  { "id": 507, "name": "Nwang", "code": "NWA02", "districts_id": 60, "population": "5000" }
+                ]
+              },
+              {
+                "id": 61,
+                "name": "Alou",
+                "code": "ALO",
+                "division_id": 26,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 508, "name": "Alou Centre", "code": "ALC01", "districts_id": 61, "population": "12000" },
+                  { "id": 509, "name": "Mekaf", "code": "MEK02", "districts_id": 61, "population": "8000" },
+                  { "id": 510, "name": "Nkwet", "code": "NKW01", "districts_id": 61, "population": "7000" },
+                  { "id": 511, "name": "Fongondeng", "code": "FON02", "districts_id": 61, "population": "6000" },
+                  { "id": 512, "name": "Mouankou", "code": "MOU03", "districts_id": 61, "population": "5000" },
+                  { "id": 513, "name": "Todd", "code": "TOD01", "districts_id": 61, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 27,
+            "name": "Koupé-Manengouba",
+            "code": "KMN",
+            "region_id": 4,
+            "population": "234567",
+            "status": 1,
+            "districts": [
+              {
+                "id": 62,
+                "name": "Bangem",
+                "code": "BAN",
+                "division_id": 27,
+                "population": "75000",
+                "location_cities": [
+                  { "id": 514, "name": "Bangem Centre", "code": "BAC03", "districts_id": 62, "population": "20000" },
+                  { "id": 515, "name": "Nguti", "code": "NGU02", "districts_id": 62, "population": "15000" },
+                  { "id": 516, "name": "Melong", "code": "MEL03", "districts_id": 62, "population": "12000" },
+                  { "id": 517, "name": "Nkongsamba", "code": "NKS04", "districts_id": 62, "population": "10000" },
+                  { "id": 518, "name": "Ebibou", "code": "EBI01", "districts_id": 62, "population": "8000" },
+                  { "id": 519, "name": "Manjo", "code": "MJO02", "districts_id": 62, "population": "10000" }
+                ]
+              },
+              {
+                "id": 63,
+                "name": "Tombel",
+                "code": "TOM",
+                "division_id": 27,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 520, "name": "Tombel Centre", "code": "TOC01", "districts_id": 63, "population": "18000" },
+                  { "id": 521, "name": "Baduma", "code": "BAD01", "districts_id": 63, "population": "12000" },
+                  { "id": 522, "name": "Konye", "code": "KON02", "districts_id": 63, "population": "10000" },
+                  { "id": 523, "name": "Mambanda", "code": "MBD04", "districts_id": 63, "population": "8000" },
+                  { "id": 524, "name": "Muyuka", "code": "MUY01", "districts_id": 63, "population": "7000" },
+                  { "id": 525, "name": "Ekombe", "code": "EKO06", "districts_id": 63, "population": "5000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "name": "Nord-Ouest",
+        "code": "NW",
+        "country_id": 1,
+        "population": "2046982",
+        "divisions": [
+          {
+            "id": 28,
+            "name": "Mezam",
+            "code": "MEZ",
+            "region_id": 5,
+            "population": "712543",
+            "status": 1,
+            "districts": [
+              {
+                "id": 64,
+                "name": "Bamenda 1er",
+                "code": "BDA1",
+                "division_id": 28,
+                "population": "165000",
+                "location_cities": [
+                  { "id": 601, "name": "Ntarinkon", "code": "NTK01", "districts_id": 64, "population": "35000" },
+                  { "id": 602, "name": "Bayelle", "code": "BAY01", "districts_id": 64, "population": "25000" },
+                  { "id": 603, "name": "Ntamulung", "code": "NTL01", "districts_id": 64, "population": "22000" },
+                  { "id": 604, "name": "Azire", "code": "AZI01", "districts_id": 64, "population": "28000" },
+                  { "id": 605, "name": "Atuakom", "code": "ATU01", "districts_id": 64, "population": "18000" },
+                  { "id": 606, "name": "Mankon", "code": "MAN02", "districts_id": 64, "population": "37000" }
+                ]
+              },
+              {
+                "id": 65,
+                "name": "Bamenda 2e",
+                "code": "BDA2",
+                "division_id": 28,
+                "population": "158000",
+                "location_cities": [
+                  { "id": 607, "name": "Mankon", "code": "MAN03", "districts_id": 65, "population": "42000" },
+                  { "id": 608, "name": "Bambili", "code": "BMB01", "districts_id": 65, "population": "28000" },
+                  { "id": 609, "name": "Nkwen", "code": "NKW02", "districts_id": 65, "population": "25000" },
+                  { "id": 610, "name": "Mendakwe", "code": "MDK01", "districts_id": 65, "population": "18000" },
+                  { "id": 611, "name": "Tubah", "code": "TUB01", "districts_id": 65, "population": "22000" },
+                  { "id": 612, "name": "Bafut", "code": "BAF02", "districts_id": 65, "population": "23000" }
+                ]
+              },
+              {
+                "id": 66,
+                "name": "Bamenda 3e",
+                "code": "BDA3",
+                "division_id": 28,
+                "population": "145000",
+                "location_cities": [
+                  { "id": 613, "name": "Bafut", "code": "BAF03", "districts_id": 66, "population": "35000" },
+                  { "id": 614, "name": "Nkwe", "code": "NKW03", "districts_id": 66, "population": "20000" },
+                  { "id": 615, "name": "Mbatu", "code": "MBT02", "districts_id": 66, "population": "18000" },
+                  { "id": 616, "name": "Alabukam", "code": "ALA01", "districts_id": 66, "population": "15000" },
+                  { "id": 617, "name": "Bamendankwe", "code": "BMD01", "districts_id": 66, "population": "17000" },
+                  { "id": 618, "name": "Chomba", "code": "CHO01", "districts_id": 66, "population": "12000" },
+                  { "id": 619, "name": "Mbu", "code": "MBU02", "districts_id": 66, "population": "18000" }
+                ]
+              },
+              {
+                "id": 67,
+                "name": "Bafut",
+                "code": "BFT",
+                "division_id": 28,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 620, "name": "Bafut Centre", "code": "BFC02", "districts_id": 67, "population": "25000" },
+                  { "id": 621, "name": "Bambili", "code": "BMB02", "districts_id": 67, "population": "18000" },
+                  { "id": 622, "name": "Bekaba", "code": "BEK03", "districts_id": 67, "population": "12000" },
+                  { "id": 623, "name": "Bufe", "code": "BUF01", "districts_id": 67, "population": "10000" },
+                  { "id": 624, "name": "Mankwi", "code": "MKW01", "districts_id": 67, "population": "8000" },
+                  { "id": 625, "name": "Nchum", "code": "NCH01", "districts_id": 67, "population": "7000" },
+                  { "id": 626, "name": "Widikum", "code": "WID01", "districts_id": 67, "population": "5000" }
+                ]
+              },
+              {
+                "id": 68,
+                "name": "Tubah",
+                "code": "TUB",
+                "division_id": 28,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 627, "name": "Tubah Centre", "code": "TUC01", "districts_id": 68, "population": "18000" },
+                  { "id": 628, "name": "Bambili", "code": "BMB03", "districts_id": 68, "population": "12000" },
+                  { "id": 629, "name": "Bafut", "code": "BAF04", "districts_id": 68, "population": "10000" },
+                  { "id": 630, "name": "Mendakwe", "code": "MDK02", "districts_id": 68, "population": "8000" },
+                  { "id": 631, "name": "Nkwen", "code": "NKW04", "districts_id": 68, "population": "7000" },
+                  { "id": 632, "name": "Bali", "code": "BAL02", "districts_id": 68, "population": "6000" },
+                  { "id": 633, "name": "Santa", "code": "SAN03", "districts_id": 68, "population": "4000" }
+                ]
+              },
+              {
+                "id": 69,
+                "name": "Bali",
+                "code": "BAL",
+                "division_id": 28,
+                "population": "75000",
+                "location_cities": [
+                  { "id": 634, "name": "Bali Centre", "code": "BLC01", "districts_id": 69, "population": "22000" },
+                  { "id": 635, "name": "Bafut", "code": "BAF05", "districts_id": 69, "population": "15000" },
+                  { "id": 636, "name": "Bambui", "code": "BBU01", "districts_id": 69, "population": "12000" },
+                  { "id": 637, "name": "Bamunka", "code": "BMK01", "districts_id": 69, "population": "10000" },
+                  { "id": 638, "name": "Ngie", "code": "NGI01", "districts_id": 69, "population": "8000" },
+                  { "id": 639, "name": "Mbei", "code": "MBE02", "districts_id": 69, "population": "8000" }
+                ]
+              },
+              {
+                "id": 70,
+                "name": "Santa",
+                "code": "SAN",
+                "division_id": 28,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 640, "name": "Santa Centre", "code": "SAC01", "districts_id": 70, "population": "15000" },
+                  { "id": 641, "name": "Bafut", "code": "BAF06", "districts_id": 70, "population": "10000" },
+                  { "id": 642, "name": "Bali", "code": "BAL03", "districts_id": 70, "population": "8000" },
+                  { "id": 643, "name": "Mbei", "code": "MBE03", "districts_id": 70, "population": "7000" },
+                  { "id": 644, "name": "Bambili", "code": "BMB04", "districts_id": 70, "population": "6000" },
+                  { "id": 645, "name": "Nkwen", "code": "NKW05", "districts_id": 70, "population": "5000" },
+                  { "id": 646, "name": "Tubah", "code": "TUB02", "districts_id": 70, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 29,
+            "name": "Bui",
+            "code": "BUI",
+            "region_id": 5,
+            "population": "345678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 71,
+                "name": "Kumbo",
+                "code": "KUM",
+                "division_id": 29,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 647, "name": "Kumbo Centre", "code": "KUC01", "districts_id": 71, "population": "35000" },
+                  { "id": 648, "name": "Jakiri", "code": "JAK01", "districts_id": 71, "population": "18000" },
+                  { "id": 649, "name": "Nkum", "code": "NKU01", "districts_id": 71, "population": "15000" },
+                  { "id": 650, "name": "Mbiame", "code": "MBI01", "districts_id": 71, "population": "12000" },
+                  { "id": 651, "name": "Nkor", "code": "NKO04", "districts_id": 71, "population": "10000" },
+                  { "id": 652, "name": "Tatum", "code": "TAT01", "districts_id": 71, "population": "8000" },
+                  { "id": 653, "name": "Mbve", "code": "MBV03", "districts_id": 71, "population": "7000" },
+                  { "id": 654, "name": "Binka", "code": "BIN01", "districts_id": 71, "population": "5000" }
+                ]
+              },
+              {
+                "id": 72,
+                "name": "Jakiri",
+                "code": "JAK",
+                "division_id": 29,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 655, "name": "Jakiri Centre", "code": "JAC01", "districts_id": 72, "population": "15000" },
+                  { "id": 656, "name": "Kumbo", "code": "KUM02", "districts_id": 72, "population": "10000" },
+                  { "id": 657, "name": "Nkum", "code": "NKU02", "districts_id": 72, "population": "8000" },
+                  { "id": 658, "name": "Mbiame", "code": "MBI02", "districts_id": 72, "population": "7000" },
+                  { "id": 659, "name": "Tatum", "code": "TAT02", "districts_id": 72, "population": "6000" },
+                  { "id": 660, "name": "Mbve", "code": "MBV04", "districts_id": 72, "population": "5000" },
+                  { "id": 661, "name": "Ngon", "code": "NGO02", "districts_id": 72, "population": "4000" },
+                  { "id": 662, "name": "Kikfu", "code": "KIK01", "districts_id": 72, "population": "3000" }
+                ]
+              },
+              {
+                "id": 73,
+                "name": "Nkum",
+                "code": "NKU",
+                "division_id": 29,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 663, "name": "Nkum Centre", "code": "NUC01", "districts_id": 73, "population": "12000" },
+                  { "id": 664, "name": "Kumbo", "code": "KUM03", "districts_id": 73, "population": "8000" },
+                  { "id": 665, "name": "Jakiri", "code": "JAK02", "districts_id": 73, "population": "7000" },
+                  { "id": 666, "name": "Mbiame", "code": "MBI03", "districts_id": 73, "population": "6000" },
+                  { "id": 667, "name": "Nkor", "code": "NKO05", "districts_id": 73, "population": "5000" },
+                  { "id": 668, "name": "Binka", "code": "BIN02", "districts_id": 73, "population": "4000" },
+                  { "id": 669, "name": "Mungong", "code": "MUN03", "districts_id": 73, "population": "3000" }
+                ]
+              },
+              {
+                "id": 74,
+                "name": "Mbiame",
+                "code": "MBM",
+                "division_id": 29,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 670, "name": "Mbiame Centre", "code": "MBC02", "districts_id": 74, "population": "12000" },
+                  { "id": 671, "name": "Kumbo", "code": "KUM04", "districts_id": 74, "population": "8000" },
+                  { "id": 672, "name": "Jakiri", "code": "JAK03", "districts_id": 74, "population": "6000" },
+                  { "id": 673, "name": "Nkum", "code": "NKU03", "districts_id": 74, "population": "5000" },
+                  { "id": 674, "name": "Tatum", "code": "TAT03", "districts_id": 74, "population": "4000" },
+                  { "id": 675, "name": "Mbve", "code": "MBV05", "districts_id": 74, "population": "3000" },
+                  { "id": 676, "name": "Ngon", "code": "NGO03", "districts_id": 74, "population": "2000" },
+                  { "id": 677, "name": "Kikfu", "code": "KIK02", "districts_id": 74, "population": "2000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 30,
+            "name": "Donga-Mantung",
+            "code": "DOM",
+            "region_id": 5,
+            "population": "389456",
+            "status": 1,
+            "districts": [
+              {
+                "id": 75,
+                "name": "Nkambé",
+                "code": "NKB",
+                "division_id": 30,
+                "population": "105000",
+                "location_cities": [
+                  { "id": 678, "name": "Nkambé Centre", "code": "NKC02", "districts_id": 75, "population": "28000" },
+                  { "id": 679, "name": "Ako", "code": "AKO02", "districts_id": 75, "population": "15000" },
+                  { "id": 680, "name": "Misaje", "code": "MIS02", "districts_id": 75, "population": "12000" },
+                  { "id": 681, "name": "Ndu", "code": "NDU01", "districts_id": 75, "population": "10000" },
+                  { "id": 682, "name": "Nwa", "code": "NWA03", "districts_id": 75, "population": "8000" },
+                  { "id": 683, "name": "Mfumte", "code": "MFU03", "districts_id": 75, "population": "7000" },
+                  { "id": 684, "name": "Lus", "code": "LUS01", "districts_id": 75, "population": "5000" }
+                ]
+              },
+              {
+                "id": 76,
+                "name": "Ako",
+                "code": "AKO",
+                "division_id": 30,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 685, "name": "Ako Centre", "code": "AKC02", "districts_id": 76, "population": "15000" },
+                  { "id": 686, "name": "Nkambé", "code": "NKB04", "districts_id": 76, "population": "10000" },
+                  { "id": 687, "name": "Misaje", "code": "MIS03", "districts_id": 76, "population": "8000" },
+                  { "id": 688, "name": "Ndu", "code": "NDU02", "districts_id": 76, "population": "7000" },
+                  { "id": 689, "name": "Nwa", "code": "NWA04", "districts_id": 76, "population": "5000" },
+                  { "id": 690, "name": "Mfumte", "code": "MFU04", "districts_id": 76, "population": "4000" },
+                  { "id": 691, "name": "Lus", "code": "LUS02", "districts_id": 76, "population": "3000" }
+                ]
+              },
+              {
+                "id": 77,
+                "name": "Misaje",
+                "code": "MIS",
+                "division_id": 30,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 692, "name": "Misaje Centre", "code": "MIC01", "districts_id": 77, "population": "12000" },
+                  { "id": 693, "name": "Nkambé", "code": "NKB05", "districts_id": 77, "population": "8000" },
+                  { "id": 694, "name": "Ako", "code": "AKO03", "districts_id": 77, "population": "6000" },
+                  { "id": 695, "name": "Ndu", "code": "NDU03", "districts_id": 77, "population": "5000" },
+                  { "id": 696, "name": "Nwa", "code": "NWA05", "districts_id": 77, "population": "4000" },
+                  { "id": 697, "name": "Mfumte", "code": "MFU05", "districts_id": 77, "population": "3000" },
+                  { "id": 698, "name": "Banka", "code": "BAN02", "districts_id": 77, "population": "2000" }
+                ]
+              },
+              {
+                "id": 78,
+                "name": "Ndu",
+                "code": "NDU",
+                "division_id": 30,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 699, "name": "Ndu Centre", "code": "NDC01", "districts_id": 78, "population": "18000" },
+                  { "id": 700, "name": "Nkambé", "code": "NKB06", "districts_id": 78, "population": "12000" },
+                  { "id": 701, "name": "Ako", "code": "AKO04", "districts_id": 78, "population": "10000" },
+                  { "id": 702, "name": "Misaje", "code": "MIS04", "districts_id": 78, "population": "8000" },
+                  { "id": 703, "name": "Nwa", "code": "NWA06", "districts_id": 78, "population": "6000" },
+                  { "id": 704, "name": "Mfumte", "code": "MFU06", "districts_id": 78, "population": "5000" },
+                  { "id": 705, "name": "Lus", "code": "LUS03", "districts_id": 78, "population": "3000" },
+                  { "id": 706, "name": "Mbiame", "code": "MBI04", "districts_id": 78, "population": "3000" }
+                ]
+              },
+              {
+                "id": 79,
+                "name": "Nwa",
+                "code": "NWA",
+                "division_id": 30,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 707, "name": "Nwa Centre", "code": "NWC01", "districts_id": 79, "population": "10000" },
+                  { "id": 708, "name": "Nkambé", "code": "NKB07", "districts_id": 79, "population": "6000" },
+                  { "id": 709, "name": "Ako", "code": "AKO05", "districts_id": 79, "population": "5000" },
+                  { "id": 710, "name": "Misaje", "code": "MIS05", "districts_id": 79, "population": "4000" },
+                  { "id": 711, "name": "Ndu", "code": "NDU04", "districts_id": 79, "population": "3000" },
+                  { "id": 712, "name": "Mfumte", "code": "MFU07", "districts_id": 79, "population": "2000" },
+                  { "id": 713, "name": "Lus", "code": "LUS04", "districts_id": 79, "population": "2000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 31,
+            "name": "Momo",
+            "code": "MOM",
+            "region_id": 5,
+            "population": "298765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 80,
+                "name": "Mbengwi",
+                "code": "MBW",
+                "division_id": 31,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 714, "name": "Mbengwi Centre", "code": "MBC03", "districts_id": 80, "population": "22000" },
+                  { "id": 715, "name": "Andek", "code": "AND01", "districts_id": 80, "population": "15000" },
+                  { "id": 716, "name": "Batibo", "code": "BAT02", "districts_id": 80, "population": "12000" },
+                  { "id": 717, "name": "Ngie", "code": "NGI02", "districts_id": 80, "population": "10000" },
+                  { "id": 718, "name": "Njikwa", "code": "NJK01", "districts_id": 80, "population": "8000" },
+                  { "id": 719, "name": "Widikum", "code": "WID02", "districts_id": 80, "population": "7000" },
+                  { "id": 720, "name": "Menka", "code": "MEN02", "districts_id": 80, "population": "5000" },
+                  { "id": 721, "name": "Enyoh", "code": "ENY01", "districts_id": 80, "population": "6000" }
+                ]
+              },
+              {
+                "id": 81,
+                "name": "Batibo",
+                "code": "BAT",
+                "division_id": 31,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 722, "name": "Batibo Centre", "code": "BTC03", "districts_id": 81, "population": "18000" },
+                  { "id": 723, "name": "Mbengwi", "code": "MBW02", "districts_id": 81, "population": "12000" },
+                  { "id": 724, "name": "Andek", "code": "AND02", "districts_id": 81, "population": "10000" },
+                  { "id": 725, "name": "Ngie", "code": "NGI03", "districts_id": 81, "population": "8000" },
+                  { "id": 726, "name": "Njikwa", "code": "NJK02", "districts_id": 81, "population": "6000" },
+                  { "id": 727, "name": "Widikum", "code": "WID03", "districts_id": 81, "population": "5000" },
+                  { "id": 728, "name": "Menka", "code": "MEN03", "districts_id": 81, "population": "3000" }
+                ]
+              },
+              {
+                "id": 82,
+                "name": "Ngie",
+                "code": "NGI",
+                "division_id": 31,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 729, "name": "Ngie Centre", "code": "NGC03", "districts_id": 82, "population": "12000" },
+                  { "id": 730, "name": "Mbengwi", "code": "MBW03", "districts_id": 82, "population": "8000" },
+                  { "id": 731, "name": "Batibo", "code": "BAT03", "districts_id": 82, "population": "6000" },
+                  { "id": 732, "name": "Andek", "code": "AND03", "districts_id": 82, "population": "5000" },
+                  { "id": 733, "name": "Njikwa", "code": "NJK03", "districts_id": 82, "population": "4000" },
+                  { "id": 734, "name": "Widikum", "code": "WID04", "districts_id": 82, "population": "3000" },
+                  { "id": 735, "name": "Menka", "code": "MEN04", "districts_id": 82, "population": "2000" }
+                ]
+              },
+              {
+                "id": 83,
+                "name": "Njikwa",
+                "code": "NJK",
+                "division_id": 31,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 736, "name": "Njikwa Centre", "code": "NJC01", "districts_id": 83, "population": "10000" },
+                  { "id": 737, "name": "Mbengwi", "code": "MBW04", "districts_id": 83, "population": "7000" },
+                  { "id": 738, "name": "Batibo", "code": "BAT04", "districts_id": 83, "population": "5000" },
+                  { "id": 739, "name": "Andek", "code": "AND04", "districts_id": 83, "population": "4000" },
+                  { "id": 740, "name": "Ngie", "code": "NGI04", "districts_id": 83, "population": "3000" },
+                  { "id": 741, "name": "Widikum", "code": "WID05", "districts_id": 83, "population": "3000" },
+                  { "id": 742, "name": "Menka", "code": "MEN05", "districts_id": 83, "population": "2000" }
+                ]
+              },
+              {
+                "id": 84,
+                "name": "Widikum",
+                "code": "WID",
+                "division_id": 31,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 743, "name": "Widikum Centre", "code": "WIC01", "districts_id": 84, "population": "12000" },
+                  { "id": 744, "name": "Mbengwi", "code": "MBW05", "districts_id": 84, "population": "8000" },
+                  { "id": 745, "name": "Batibo", "code": "BAT05", "districts_id": 84, "population": "6000" },
+                  { "id": 746, "name": "Andek", "code": "AND05", "districts_id": 84, "population": "5000" },
+                  { "id": 747, "name": "Ngie", "code": "NGI05", "districts_id": 84, "population": "4000" },
+                  { "id": 748, "name": "Njikwa", "code": "NJK04", "districts_id": 84, "population": "3000" },
+                  { "id": 749, "name": "Menka", "code": "MEN06", "districts_id": 84, "population": "2000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 32,
+            "name": "Boyo",
+            "code": "BOY",
+            "region_id": 5,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 85,
+                "name": "Fundong",
+                "code": "FUN",
+                "division_id": 32,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 750, "name": "Fundong Centre", "code": "FUC01", "districts_id": 85, "population": "22000" },
+                  { "id": 751, "name": "Belo", "code": "BEL01", "districts_id": 85, "population": "18000" },
+                  { "id": 752, "name": "Njinikom", "code": "NJK05", "districts_id": 85, "population": "15000" },
+                  { "id": 753, "name": "Bum", "code": "BUM01", "districts_id": 85, "population": "10000" },
+                  { "id": 754, "name": "Fungom", "code": "FUN02", "districts_id": 85, "population": "8000" },
+                  { "id": 755, "name": "Mbesa", "code": "MBE04", "districts_id": 85, "population": "7000" },
+                  { "id": 756, "name": "Kuk", "code": "KUK01", "districts_id": 85, "population": "5000" }
+                ]
+              },
+              {
+                "id": 86,
+                "name": "Belo",
+                "code": "BEL",
+                "division_id": 32,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 757, "name": "Belo Centre", "code": "BLC02", "districts_id": 86, "population": "15000" },
+                  { "id": 758, "name": "Fundong", "code": "FUN03", "districts_id": 86, "population": "10000" },
+                  { "id": 759, "name": "Njinikom", "code": "NJK06", "districts_id": 86, "population": "8000" },
+                  { "id": 760, "name": "Bum", "code": "BUM02", "districts_id": 86, "population": "6000" },
+                  { "id": 761, "name": "Fungom", "code": "FUN04", "districts_id": 86, "population": "5000" },
+                  { "id": 762, "name": "Mbesa", "code": "MBE05", "districts_id": 86, "population": "4000" },
+                  { "id": 763, "name": "Kuk", "code": "KUK02", "districts_id": 86, "population": "3000" }
+                ]
+              },
+              {
+                "id": 87,
+                "name": "Njinikom",
+                "code": "NJK",
+                "division_id": 32,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 764, "name": "Njinikom Centre", "code": "NJC02", "districts_id": 87, "population": "12000" },
+                  { "id": 765, "name": "Fundong", "code": "FUN05", "districts_id": 87, "population": "8000" },
+                  { "id": 766, "name": "Belo", "code": "BEL02", "districts_id": 87, "population": "7000" },
+                  { "id": 767, "name": "Bum", "code": "BUM03", "districts_id": 87, "population": "5000" },
+                  { "id": 768, "name": "Fungom", "code": "FUN06", "districts_id": 87, "population": "4000" },
+                  { "id": 769, "name": "Mbesa", "code": "MBE06", "districts_id": 87, "population": "3000" },
+                  { "id": 770, "name": "Kuk", "code": "KUK03", "districts_id": 87, "population": "2000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 33,
+            "name": "Ngo-Ketunjia",
+            "code": "NGK",
+            "region_id": 5,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 88,
+                "name": "Ndop",
+                "code": "NDP",
+                "division_id": 33,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 771, "name": "Ndop Centre", "code": "NDC02", "districts_id": 88, "population": "25000" },
+                  { "id": 772, "name": "Balikumbat", "code": "BLK01", "districts_id": 88, "population": "15000" },
+                  { "id": 773, "name": "Bamessing", "code": "BMS02", "districts_id": 88, "population": "12000" },
+                  { "id": 774, "name": "Bamunka", "code": "BMK02", "districts_id": 88, "population": "10000" },
+                  { "id": 775, "name": "Baba", "code": "BAB01", "districts_id": 88, "population": "8000" },
+                  { "id": 776, "name": "Bafanji", "code": "BAF07", "districts_id": 88, "population": "7000" },
+                  { "id": 777, "name": "Bamali", "code": "BML01", "districts_id": 88, "population": "8000" }
+                ]
+              },
+              {
+                "id": 89,
+                "name": "Balikumbat",
+                "code": "BLK",
+                "division_id": 33,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 778, "name": "Balikumbat Centre", "code": "BLC03", "districts_id": 89, "population": "12000" },
+                  { "id": 779, "name": "Ndop", "code": "NDP02", "districts_id": 89, "population": "8000" },
+                  { "id": 780, "name": "Bamessing", "code": "BMS03", "districts_id": 89, "population": "6000" },
+                  { "id": 781, "name": "Bamunka", "code": "BMK03", "districts_id": 89, "population": "5000" },
+                  { "id": 782, "name": "Baba", "code": "BAB02", "districts_id": 89, "population": "4000" },
+                  { "id": 783, "name": "Bafanji", "code": "BAF08", "districts_id": 89, "population": "3000" },
+                  { "id": 784, "name": "Bamali", "code": "BML02", "districts_id": 89, "population": "3000" }
+                ]
+              },
+              {
+                "id": 90,
+                "name": "Bamessing",
+                "code": "BMS",
+                "division_id": 33,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 785, "name": "Bamessing Centre", "code": "BMC01", "districts_id": 90, "population": "10000" },
+                  { "id": 786, "name": "Ndop", "code": "NDP03", "districts_id": 90, "population": "6000" },
+                  { "id": 787, "name": "Balikumbat", "code": "BLK02", "districts_id": 90, "population": "5000" },
+                  { "id": 788, "name": "Bamunka", "code": "BMK04", "districts_id": 90, "population": "4000" },
+                  { "id": 789, "name": "Baba", "code": "BAB03", "districts_id": 90, "population": "3000" },
+                  { "id": 790, "name": "Bafanji", "code": "BAF09", "districts_id": 90, "population": "2000" },
+                  { "id": 791, "name": "Bamali", "code": "BML03", "districts_id": 90, "population": "2000" }
+                ]
+              },
+              {
+                "id": 91,
+                "name": "Bamunka",
+                "code": "BMK",
+                "division_id": 33,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 792, "name": "Bamunka Centre", "code": "BMC02", "districts_id": 91, "population": "10000" },
+                  { "id": 793, "name": "Ndop", "code": "NDP04", "districts_id": 91, "population": "6000" },
+                  { "id": 794, "name": "Balikumbat", "code": "BLK03", "districts_id": 91, "population": "5000" },
+                  { "id": 795, "name": "Bamessing", "code": "BMS04", "districts_id": 91, "population": "4000" },
+                  { "id": 796, "name": "Baba", "code": "BAB04", "districts_id": 91, "population": "3000" },
+                  { "id": 797, "name": "Bafanji", "code": "BAF10", "districts_id": 91, "population": "2000" },
+                  { "id": 798, "name": "Bamali", "code": "BML04", "districts_id": 91, "population": "2000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "name": "Extrême-Nord",
+        "code": "EN",
+        "country_id": 1,
+        "population": "4869826",
+        "divisions": [
+          {
+            "id": 34,
+            "name": "Diamaré",
+            "code": "DIA",
+            "region_id": 6,
+            "population": "1123456",
+            "status": 1,
+            "districts": [
+              {
+                "id": 92,
+                "name": "Maroua 1er",
+                "code": "MAR1",
+                "division_id": 34,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 801, "name": "Domayo", "code": "DOM01", "districts_id": 92, "population": "35000" },
+                  { "id": 802, "name": "Dougo", "code": "DOU01", "districts_id": 92, "population": "28000" },
+                  { "id": 803, "name": "Roumde-Ajia", "code": "ROU01", "districts_id": 92, "population": "25000" },
+                  { "id": 804, "name": "Ouro-Tchéré", "code": "OUT01", "districts_id": 92, "population": "22000" },
+                  { "id": 805, "name": "Moutourwa", "code": "MOU04", "districts_id": 92, "population": "18000" },
+                  { "id": 806, "name": "Palar", "code": "PAL01", "districts_id": 92, "population": "15000" },
+                  { "id": 807, "name": "Djarengol", "code": "DJA01", "districts_id": 92, "population": "12000" },
+                  { "id": 808, "name": "Pitoa", "code": "PIT01", "districts_id": 92, "population": "30000" }
+                ]
+              },
+              {
+                "id": 93,
+                "name": "Maroua 2e",
+                "code": "MAR2",
+                "division_id": 34,
+                "population": "165000",
+                "location_cities": [
+                  { "id": 809, "name": "Djeleng", "code": "DJE01", "districts_id": 93, "population": "32000" },
+                  { "id": 810, "name": "Kodeck", "code": "KOD01", "districts_id": 93, "population": "25000" },
+                  { "id": 811, "name": "Moudou", "code": "MOU05", "districts_id": 93, "population": "22000" },
+                  { "id": 812, "name": "Gouna", "code": "GOU01", "districts_id": 93, "population": "18000" },
+                  { "id": 813, "name": "Gawaza", "code": "GAW01", "districts_id": 93, "population": "15000" },
+                  { "id": 814, "name": "Maga", "code": "MAG01", "districts_id": 93, "population": "28000" },
+                  { "id": 815, "name": "Zina", "code": "ZIN01", "districts_id": 93, "population": "12000" },
+                  { "id": 816, "name": "Goudjri", "code": "GOU02", "districts_id": 93, "population": "13000" }
+                ]
+              },
+              {
+                "id": 94,
+                "name": "Maroua 3e",
+                "code": "MAR3",
+                "division_id": 34,
+                "population": "145000",
+                "location_cities": [
+                  { "id": 817, "name": "Bogo", "code": "BOG01", "districts_id": 94, "population": "35000" },
+                  { "id": 818, "name": "Gawaza", "code": "GAW02", "districts_id": 94, "population": "22000" },
+                  { "id": 819, "name": "Dargala", "code": "DAR01", "districts_id": 94, "population": "18000" },
+                  { "id": 820, "name": "Mercy", "code": "MER01", "districts_id": 94, "population": "15000" },
+                  { "id": 821, "name": "Petté", "code": "PET01", "districts_id": 94, "population": "12000" },
+                  { "id": 822, "name": "Woutchaba", "code": "WOU01", "districts_id": 94, "population": "10000" },
+                  { "id": 823, "name": "Tchakamali", "code": "TCH01", "districts_id": 94, "population": "8000" },
+                  { "id": 824, "name": "Dakola", "code": "DAK01", "districts_id": 94, "population": "7000" }
+                ]
+              },
+              {
+                "id": 95,
+                "name": "Bogo",
+                "code": "BOG",
+                "division_id": 34,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 825, "name": "Bogo Centre", "code": "BGC01", "districts_id": 95, "population": "25000" },
+                  { "id": 826, "name": "Gawaza", "code": "GAW03", "districts_id": 95, "population": "15000" },
+                  { "id": 827, "name": "Dargala", "code": "DAR02", "districts_id": 95, "population": "12000" },
+                  { "id": 828, "name": "Mercy", "code": "MER02", "districts_id": 95, "population": "10000" },
+                  { "id": 829, "name": "Petté", "code": "PET02", "districts_id": 95, "population": "8000" },
+                  { "id": 830, "name": "Maga", "code": "MAG02", "districts_id": 95, "population": "7000" },
+                  { "id": 831, "name": "Goudjri", "code": "GOU03", "districts_id": 95, "population": "6000" }
+                ]
+              },
+              {
+                "id": 96,
+                "name": "Maga",
+                "code": "MAG",
+                "division_id": 34,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 832, "name": "Maga Centre", "code": "MGC01", "districts_id": 96, "population": "22000" },
+                  { "id": 833, "name": "Gawaza", "code": "GAW04", "districts_id": 96, "population": "12000" },
+                  { "id": 834, "name": "Dargala", "code": "DAR03", "districts_id": 96, "population": "10000" },
+                  { "id": 835, "name": "Bogo", "code": "BOG02", "districts_id": 96, "population": "8000" },
+                  { "id": 836, "name": "Petté", "code": "PET03", "districts_id": 96, "population": "7000" },
+                  { "id": 837, "name": "Gouna", "code": "GOU04", "districts_id": 96, "population": "6000" },
+                  { "id": 838, "name": "Zina", "code": "ZIN02", "districts_id": 96, "population": "5000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 35,
+            "name": "Mayo-Danay",
+            "code": "MDY",
+            "region_id": 6,
+            "population": "987654",
+            "status": 1,
+            "districts": [
+              {
+                "id": 97,
+                "name": "Yagoua",
+                "code": "YAG",
+                "division_id": 35,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 839, "name": "Yagoua Centre", "code": "YGC01", "districts_id": 97, "population": "35000" },
+                  { "id": 840, "name": "Kalfou", "code": "KAL01", "districts_id": 97, "population": "18000" },
+                  { "id": 841, "name": "Wina", "code": "WIN01", "districts_id": 97, "population": "15000" },
+                  { "id": 842, "name": "Doukoula", "code": "DOU02", "districts_id": 97, "population": "12000" },
+                  { "id": 843, "name": "Maga", "code": "MAG03", "districts_id": 97, "population": "10000" },
+                  { "id": 844, "name": "Kar-Hay", "code": "KAR01", "districts_id": 97, "population": "8000" },
+                  { "id": 845, "name": "Tchatibali", "code": "TCH02", "districts_id": 97, "population": "7000" },
+                  { "id": 846, "name": "Vele", "code": "VEL01", "districts_id": 97, "population": "5000" }
+                ]
+              },
+              {
+                "id": 98,
+                "name": "Kalfou",
+                "code": "KAL",
+                "division_id": 35,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 847, "name": "Kalfou Centre", "code": "KFC01", "districts_id": 98, "population": "18000" },
+                  { "id": 848, "name": "Yagoua", "code": "YAG02", "districts_id": 98, "population": "12000" },
+                  { "id": 849, "name": "Wina", "code": "WIN02", "districts_id": 98, "population": "10000" },
+                  { "id": 850, "name": "Doukoula", "code": "DOU03", "districts_id": 98, "population": "8000" },
+                  { "id": 851, "name": "Kar-Hay", "code": "KAR02", "districts_id": 98, "population": "6000" },
+                  { "id": 852, "name": "Vele", "code": "VEL02", "districts_id": 98, "population": "5000" },
+                  { "id": 853, "name": "Guingui", "code": "GUI01", "districts_id": 98, "population": "6000" }
+                ]
+              },
+              {
+                "id": 99,
+                "name": "Doukoula",
+                "code": "DOU",
+                "division_id": 35,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 854, "name": "Doukoula Centre", "code": "DOC01", "districts_id": 99, "population": "15000" },
+                  { "id": 855, "name": "Yagoua", "code": "YAG03", "districts_id": 99, "population": "10000" },
+                  { "id": 856, "name": "Kalfou", "code": "KAL02", "districts_id": 99, "population": "8000" },
+                  { "id": 857, "name": "Wina", "code": "WIN03", "districts_id": 99, "population": "7000" },
+                  { "id": 858, "name": "Kar-Hay", "code": "KAR03", "districts_id": 99, "population": "5000" },
+                  { "id": 859, "name": "Guingui", "code": "GUI02", "districts_id": 99, "population": "4000" },
+                  { "id": 860, "name": "Tchatibali", "code": "TCH03", "districts_id": 99, "population": "3000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 36,
+            "name": "Mayo-Kani",
+            "code": "MKN",
+            "region_id": 6,
+            "population": "876543",
+            "status": 1,
+            "districts": [
+              {
+                "id": 100,
+                "name": "Kaélé",
+                "code": "KAE",
+                "division_id": 36,
+                "population": "115000",
+                "location_cities": [
+                  { "id": 861, "name": "Kaélé Centre", "code": "KAC01", "districts_id": 100, "population": "32000" },
+                  { "id": 862, "name": "Moutourwa", "code": "MOU06", "districts_id": 100, "population": "18000" },
+                  { "id": 863, "name": "Guidiguis", "code": "GUI03", "districts_id": 100, "population": "15000" },
+                  { "id": 864, "name": "Doumoul", "code": "DOU04", "districts_id": 100, "population": "12000" },
+                  { "id": 865, "name": "Méri", "code": "MER03", "districts_id": 100, "population": "10000" },
+                  { "id": 866, "name": "Moulvoudaye", "code": "MOU07", "districts_id": 100, "population": "8000" },
+                  { "id": 867, "name": "Porhi", "code": "POR01", "districts_id": 100, "population": "7000" },
+                  { "id": 868, "name": "Taibong", "code": "TAI01", "districts_id": 100, "population": "13000" }
+                ]
+              },
+              {
+                "id": 101,
+                "name": "Moutourwa",
+                "code": "MOU",
+                "division_id": 36,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 869, "name": "Moutourwa Centre", "code": "MOC01", "districts_id": 101, "population": "18000" },
+                  { "id": 870, "name": "Kaélé", "code": "KAE02", "districts_id": 101, "population": "12000" },
+                  { "id": 871, "name": "Guidiguis", "code": "GUI04", "districts_id": 101, "population": "10000" },
+                  { "id": 872, "name": "Doumoul", "code": "DOU05", "districts_id": 101, "population": "8000" },
+                  { "id": 873, "name": "Méri", "code": "MER04", "districts_id": 101, "population": "7000" },
+                  { "id": 874, "name": "Moulvoudaye", "code": "MOU08", "districts_id": 101, "population": "5000" },
+                  { "id": 875, "name": "Porhi", "code": "POR02", "districts_id": 101, "population": "5000" }
+                ]
+              },
+              {
+                "id": 102,
+                "name": "Guidiguis",
+                "code": "GUI",
+                "division_id": 36,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 876, "name": "Guidiguis Centre", "code": "GUC01", "districts_id": 102, "population": "15000" },
+                  { "id": 877, "name": "Kaélé", "code": "KAE03", "districts_id": 102, "population": "10000" },
+                  { "id": 878, "name": "Moutourwa", "code": "MOU09", "districts_id": 102, "population": "8000" },
+                  { "id": 879, "name": "Doumoul", "code": "DOU06", "districts_id": 102, "population": "7000" },
+                  { "id": 880, "name": "Méri", "code": "MER05", "districts_id": 102, "population": "6000" },
+                  { "id": 881, "name": "Taibong", "code": "TAI02", "districts_id": 102, "population": "5000" },
+                  { "id": 882, "name": "Porhi", "code": "POR03", "districts_id": 102, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 37,
+            "name": "Logone-et-Chari",
+            "code": "LOC",
+            "region_id": 6,
+            "population": "765432",
+            "status": 1,
+            "districts": [
+              {
+                "id": 103,
+                "name": "Kousséri",
+                "code": "KOU",
+                "division_id": 37,
+                "population": "135000",
+                "location_cities": [
+                  { "id": 883, "name": "Kousséri Centre", "code": "KOC01", "districts_id": 103, "population": "45000" },
+                  { "id": 884, "name": "Logone-Birni", "code": "LOB01", "districts_id": 103, "population": "20000" },
+                  { "id": 885, "name": "Waza", "code": "WAZ01", "districts_id": 103, "population": "15000" },
+                  { "id": 886, "name": "Blangoua", "code": "BLA01", "districts_id": 103, "population": "12000" },
+                  { "id": 887, "name": "Darak", "code": "DAR04", "districts_id": 103, "population": "10000" },
+                  { "id": 888, "name": "Goulfey", "code": "GOL01", "districts_id": 103, "population": "8000" },
+                  { "id": 889, "name": "Makari", "code": "MAK04", "districts_id": 103, "population": "7000" },
+                  { "id": 890, "name": "Malgabé", "code": "MAL01", "districts_id": 103, "population": "8000" }
+                ]
+              },
+              {
+                "id": 104,
+                "name": "Logone-Birni",
+                "code": "LOB",
+                "division_id": 37,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 891, "name": "Logone-Birni Centre", "code": "LBC01", "districts_id": 104, "population": "22000" },
+                  { "id": 892, "name": "Kousséri", "code": "KOU02", "districts_id": 104, "population": "15000" },
+                  { "id": 893, "name": "Waza", "code": "WAZ02", "districts_id": 104, "population": "12000" },
+                  { "id": 894, "name": "Blangoua", "code": "BLA02", "districts_id": 104, "population": "10000" },
+                  { "id": 895, "name": "Darak", "code": "DAR05", "districts_id": 104, "population": "8000" },
+                  { "id": 896, "name": "Goulfey", "code": "GOL02", "districts_id": 104, "population": "6000" },
+                  { "id": 897, "name": "Makari", "code": "MAK05", "districts_id": 104, "population": "5000" },
+                  { "id": 898, "name": "Mora", "code": "MOR01", "districts_id": 104, "population": "7000" }
+                ]
+              },
+              {
+                "id": 105,
+                "name": "Waza",
+                "code": "WAZ",
+                "division_id": 37,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 899, "name": "Waza Centre", "code": "WZC01", "districts_id": 105, "population": "18000" },
+                  { "id": 900, "name": "Kousséri", "code": "KOU03", "districts_id": 105, "population": "12000" },
+                  { "id": 901, "name": "Logone-Birni", "code": "LOB02", "districts_id": 105, "population": "10000" },
+                  { "id": 902, "name": "Blangoua", "code": "BLA03", "districts_id": 105, "population": "8000" },
+                  { "id": 903, "name": "Darak", "code": "DAR06", "districts_id": 105, "population": "6000" },
+                  { "id": 904, "name": "Goulfey", "code": "GOL03", "districts_id": 105, "population": "5000" },
+                  { "id": 905, "name": "Mora", "code": "MOR02", "districts_id": 105, "population": "6000" }
+                ]
+              },
+              {
+                "id": 106,
+                "name": "Makari",
+                "code": "MAK",
+                "division_id": 37,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 906, "name": "Makari Centre", "code": "MAC01", "districts_id": 106, "population": "15000" },
+                  { "id": 907, "name": "Kousséri", "code": "KOU04", "districts_id": 106, "population": "10000" },
+                  { "id": 908, "name": "Logone-Birni", "code": "LOB03", "districts_id": 106, "population": "8000" },
+                  { "id": 909, "name": "Waza", "code": "WAZ03", "districts_id": 106, "population": "7000" },
+                  { "id": 910, "name": "Blangoua", "code": "BLA04", "districts_id": 106, "population": "6000" },
+                  { "id": 911, "name": "Goulfey", "code": "GOL04", "districts_id": 106, "population": "5000" },
+                  { "id": 912, "name": "Mora", "code": "MOR03", "districts_id": 106, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 38,
+            "name": "Mayo-Sava",
+            "code": "MSV",
+            "region_id": 6,
+            "population": "543210",
+            "status": 1,
+            "districts": [
+              {
+                "id": 107,
+                "name": "Mora",
+                "code": "MOR",
+                "division_id": 38,
+                "population": "105000",
+                "location_cities": [
+                  { "id": 913, "name": "Mora Centre", "code": "MRC01", "districts_id": 107, "population": "32000" },
+                  { "id": 914, "name": "Tokombéré", "code": "TOK03", "districts_id": 107, "population": "18000" },
+                  { "id": 915, "name": "Amchidé", "code": "AMC01", "districts_id": 107, "population": "15000" },
+                  { "id": 916, "name": "Kolofata", "code": "KOL01", "districts_id": 107, "population": "12000" },
+                  { "id": 917, "name": "Souledjea", "code": "SOU01", "districts_id": 107, "population": "8000" },
+                  { "id": 918, "name": "Makilingaye", "code": "MAK06", "districts_id": 107, "population": "7000" },
+                  { "id": 919, "name": "Zah", "code": "ZAH01", "districts_id": 107, "population": "5000" }
+                ]
+              },
+              {
+                "id": 108,
+                "name": "Tokombéré",
+                "code": "TOK",
+                "division_id": 38,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 920, "name": "Tokombéré Centre", "code": "TOC02", "districts_id": 108, "population": "18000" },
+                  { "id": 921, "name": "Mora", "code": "MOR04", "districts_id": 108, "population": "12000" },
+                  { "id": 922, "name": "Amchidé", "code": "AMC02", "districts_id": 108, "population": "10000" },
+                  { "id": 923, "name": "Kolofata", "code": "KOL02", "districts_id": 108, "population": "8000" },
+                  { "id": 924, "name": "Souledjea", "code": "SOU02", "districts_id": 108, "population": "6000" },
+                  { "id": 925, "name": "Makilingaye", "code": "MAK07", "districts_id": 108, "population": "5000" },
+                  { "id": 926, "name": "Zah", "code": "ZAH02", "districts_id": 108, "population": "4000" }
+                ]
+              },
+              {
+                "id": 109,
+                "name": "Kolofata",
+                "code": "KOL",
+                "division_id": 38,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 927, "name": "Kolofata Centre", "code": "KOC02", "districts_id": 109, "population": "15000" },
+                  { "id": 928, "name": "Mora", "code": "MOR05", "districts_id": 109, "population": "10000" },
+                  { "id": 929, "name": "Tokombéré", "code": "TOK04", "districts_id": 109, "population": "8000" },
+                  { "id": 930, "name": "Amchidé", "code": "AMC03", "districts_id": 109, "population": "7000" },
+                  { "id": 931, "name": "Souledjea", "code": "SOU03", "districts_id": 109, "population": "5000" },
+                  { "id": 932, "name": "Makilingaye", "code": "MAK08", "districts_id": 109, "population": "4000" },
+                  { "id": 933, "name": "Zah", "code": "ZAH03", "districts_id": 109, "population": "3000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 39,
+            "name": "Mayo-Tsanaga",
+            "code": "MTS",
+            "region_id": 6,
+            "population": "678901",
+            "status": 1,
+            "districts": [
+              {
+                "id": 110,
+                "name": "Mokolo",
+                "code": "MOK",
+                "division_id": 39,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 934, "name": "Mokolo Centre", "code": "MOC02", "districts_id": 110, "population": "35000" },
+                  { "id": 935, "name": "Bourrha", "code": "BOU01", "districts_id": 110, "population": "18000" },
+                  { "id": 936, "name": "Hina", "code": "HIN01", "districts_id": 110, "population": "15000" },
+                  { "id": 937, "name": "Koza", "code": "KOZ01", "districts_id": 110, "population": "12000" },
+                  { "id": 938, "name": "Mouyengue", "code": "MOU10", "districts_id": 110, "population": "10000" },
+                  { "id": 939, "name": "Roua", "code": "ROU02", "districts_id": 110, "population": "8000" },
+                  { "id": 940, "name": "Tchévi", "code": "TCH04", "districts_id": 110, "population": "7000" },
+                  { "id": 941, "name": "Tourou", "code": "TOU01", "districts_id": 110, "population": "5000" }
+                ]
+              },
+              {
+                "id": 111,
+                "name": "Bourrha",
+                "code": "BOU",
+                "division_id": 39,
+                "population": "75000",
+                "location_cities": [
+                  { "id": 942, "name": "Bourrha Centre", "code": "BOC01", "districts_id": 111, "population": "20000" },
+                  { "id": 943, "name": "Mokolo", "code": "MOK05", "districts_id": 111, "population": "12000" },
+                  { "id": 944, "name": "Hina", "code": "HIN02", "districts_id": 111, "population": "10000" },
+                  { "id": 945, "name": "Koza", "code": "KOZ02", "districts_id": 111, "population": "8000" },
+                  { "id": 946, "name": "Mouyengue", "code": "MOU11", "districts_id": 111, "population": "7000" },
+                  { "id": 947, "name": "Roua", "code": "ROU03", "districts_id": 111, "population": "6000" },
+                  { "id": 948, "name": "Tchévi", "code": "TCH05", "districts_id": 111, "population": "5000" }
+                ]
+              },
+              {
+                "id": 112,
+                "name": "Koza",
+                "code": "KOZ",
+                "division_id": 39,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 949, "name": "Koza Centre", "code": "KZC01", "districts_id": 112, "population": "18000" },
+                  { "id": 950, "name": "Mokolo", "code": "MOK06", "districts_id": 112, "population": "12000" },
+                  { "id": 951, "name": "Bourrha", "code": "BOU02", "districts_id": 112, "population": "10000" },
+                  { "id": 952, "name": "Hina", "code": "HIN03", "districts_id": 112, "population": "8000" },
+                  { "id": 953, "name": "Mouyengue", "code": "MOU12", "districts_id": 112, "population": "6000" },
+                  { "id": 954, "name": "Roua", "code": "ROU04", "districts_id": 112, "population": "5000" },
+                  { "id": 955, "name": "Tchévi", "code": "TCH06", "districts_id": 112, "population": "6000" }
+                ]
+              },
+              {
+                "id": 113,
+                "name": "Hina",
+                "code": "HIN",
+                "division_id": 39,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 956, "name": "Hina Centre", "code": "HIC01", "districts_id": 113, "population": "15000" },
+                  { "id": 957, "name": "Mokolo", "code": "MOK07", "districts_id": 113, "population": "10000" },
+                  { "id": 958, "name": "Bourrha", "code": "BOU03", "districts_id": 113, "population": "8000" },
+                  { "id": 959, "name": "Koza", "code": "KOZ03", "districts_id": 113, "population": "7000" },
+                  { "id": 960, "name": "Mouyengue", "code": "MOU13", "districts_id": 113, "population": "5000" },
+                  { "id": 961, "name": "Roua", "code": "ROU05", "districts_id": 113, "population": "4000" },
+                  { "id": 962, "name": "Tchévi", "code": "TCH07", "districts_id": 113, "population": "3000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "name": "Nord",
+        "code": "NO",
+        "country_id": 1,
+        "population": "2566364",
+        "divisions": [
+          {
+            "id": 40,
+            "name": "Bénoué",
+            "code": "BEN",
+            "region_id": 7,
+            "population": "1125678",
+            "status": 1,
+            "districts": [
+              {
+                "id": 114,
+                "name": "Garoua 1er",
+                "code": "GAR1",
+                "division_id": 40,
+                "population": "185000",
+                "location_cities": [
+                  { "id": 1001, "name": "Lopéré", "code": "LOP01", "districts_id": 114, "population": "35000" },
+                  { "id": 1002, "name": "Quartier Haussa", "code": "QHA01", "districts_id": 114, "population": "28000" },
+                  { "id": 1003, "name": "Poumpoumré", "code": "POU01", "districts_id": 114, "population": "25000" },
+                  { "id": 1004, "name": "Plateau", "code": "PLA01", "districts_id": 114, "population": "22000" },
+                  { "id": 1005, "name": "Roumde Adjia", "code": "ROU06", "districts_id": 114, "population": "30000" },
+                  { "id": 1006, "name": "Yola", "code": "YOL01", "districts_id": 114, "population": "18000" },
+                  { "id": 1007, "name": "Fignolé", "code": "FIG01", "districts_id": 114, "population": "15000" },
+                  { "id": 1008, "name": "Ouro Tchéré", "code": "OUT02", "districts_id": 114, "population": "12000" }
+                ]
+              },
+              {
+                "id": 115,
+                "name": "Garoua 2e",
+                "code": "GAR2",
+                "division_id": 40,
+                "population": "165000",
+                "location_cities": [
+                  { "id": 1009, "name": "Djamboutou", "code": "DJA02", "districts_id": 115, "population": "28000" },
+                  { "id": 1010, "name": "Bogda", "code": "BOG02", "districts_id": 115, "population": "22000" },
+                  { "id": 1011, "name": "Laindé", "code": "LAI01", "districts_id": 115, "population": "18000" },
+                  { "id": 1012, "name": "Bongor", "code": "BON01", "districts_id": 115, "population": "15000" },
+                  { "id": 1013, "name": "Mbe", "code": "MBE07", "districts_id": 115, "population": "12000" },
+                  { "id": 1014, "name": "Ngaoundéré", "code": "NGA03", "districts_id": 115, "population": "10000" },
+                  { "id": 1015, "name": "Pitoa", "code": "PIT02", "districts_id": 115, "population": "35000" },
+                  { "id": 1016, "name": "Lagdo", "code": "LAG01", "districts_id": 115, "population": "25000" }
+                ]
+              },
+              {
+                "id": 116,
+                "name": "Garoua 3e",
+                "code": "GAR3",
+                "division_id": 40,
+                "population": "145000",
+                "location_cities": [
+                  { "id": 1017, "name": "Basheo", "code": "BAS03", "districts_id": 116, "population": "22000" },
+                  { "id": 1018, "name": "Dembo", "code": "DEM02", "districts_id": 116, "population": "18000" },
+                  { "id": 1019, "name": "Demsa", "code": "DEM03", "districts_id": 116, "population": "15000" },
+                  { "id": 1020, "name": "Derain", "code": "DER01", "districts_id": 116, "population": "12000" },
+                  { "id": 1021, "name": "Gashiga", "code": "GAS01", "districts_id": 116, "population": "10000" },
+                  { "id": 1022, "name": "Mayo-Hourna", "code": "MAY01", "districts_id": 116, "population": "8000" },
+                  { "id": 1023, "name": "Tchamba", "code": "TCH08", "districts_id": 116, "population": "7000" },
+                  { "id": 1024, "name": "Touroua", "code": "TOU02", "districts_id": 116, "population": "23000" }
+                ]
+              },
+              {
+                "id": 117,
+                "name": "Pitoa",
+                "code": "PIT",
+                "division_id": 40,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 1025, "name": "Pitoa Centre", "code": "PIC01", "districts_id": 117, "population": "25000" },
+                  { "id": 1026, "name": "Garoua", "code": "GAR04", "districts_id": 117, "population": "15000" },
+                  { "id": 1027, "name": "Lagdo", "code": "LAG02", "districts_id": 117, "population": "12000" },
+                  { "id": 1028, "name": "Basheo", "code": "BAS04", "districts_id": 117, "population": "10000" },
+                  { "id": 1029, "name": "Dembo", "code": "DEM04", "districts_id": 117, "population": "8000" },
+                  { "id": 1030, "name": "Demsa", "code": "DEM05", "districts_id": 117, "population": "7000" },
+                  { "id": 1031, "name": "Mbe", "code": "MBE08", "districts_id": 117, "population": "8000" }
+                ]
+              },
+              {
+                "id": 118,
+                "name": "Lagdo",
+                "code": "LAG",
+                "division_id": 40,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 1032, "name": "Lagdo Centre", "code": "LGC01", "districts_id": 118, "population": "28000" },
+                  { "id": 1033, "name": "Garoua", "code": "GAR05", "districts_id": 118, "population": "18000" },
+                  { "id": 1034, "name": "Pitoa", "code": "PIT03", "districts_id": 118, "population": "12000" },
+                  { "id": 1035, "name": "Basheo", "code": "BAS05", "districts_id": 118, "population": "10000" },
+                  { "id": 1036, "name": "Tchamba", "code": "TCH09", "districts_id": 118, "population": "8000" },
+                  { "id": 1037, "name": "Touroua", "code": "TOU03", "districts_id": 118, "population": "7000" },
+                  { "id": 1038, "name": "Mbe", "code": "MBE09", "districts_id": 118, "population": "6000" }
+                ]
+              },
+              {
+                "id": 119,
+                "name": "Rey-Bouba",
+                "code": "REY",
+                "division_id": 40,
+                "population": "75000",
+                "location_cities": [
+                  { "id": 1039, "name": "Rey-Bouba Centre", "code": "RBC01", "districts_id": 119, "population": "22000" },
+                  { "id": 1040, "name": "Tcholliré", "code": "TCH10", "districts_id": 119, "population": "15000" },
+                  { "id": 1041, "name": "Madingrin", "code": "MAD01", "districts_id": 119, "population": "12000" },
+                  { "id": 1042, "name": "Mayo-Hourna", "code": "MAY02", "districts_id": 119, "population": "10000" },
+                  { "id": 1043, "name": "Bogda", "code": "BOG03", "districts_id": 119, "population": "8000" },
+                  { "id": 1044, "name": "Laindé", "code": "LAI02", "districts_id": 119, "population": "8000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 41,
+            "name": "Mayo-Louti",
+            "code": "MLO",
+            "region_id": 7,
+            "population": "456789",
+            "status": 1,
+            "districts": [
+              {
+                "id": 120,
+                "name": "Guider",
+                "code": "GUI",
+                "division_id": 41,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 1045, "name": "Guider Centre", "code": "GUC02", "districts_id": 120, "population": "35000" },
+                  { "id": 1046, "name": "Figuil", "code": "FIG02", "districts_id": 120, "population": "22000" },
+                  { "id": 1047, "name": "Mayo-Oulo", "code": "MAY03", "districts_id": 120, "population": "18000" },
+                  { "id": 1048, "name": "Godola", "code": "GOD01", "districts_id": 120, "population": "15000" },
+                  { "id": 1049, "name": "Kola", "code": "KOL03", "districts_id": 120, "population": "12000" },
+                  { "id": 1050, "name": "Douroum", "code": "DOU07", "districts_id": 120, "population": "10000" },
+                  { "id": 1051, "name": "Bibemi", "code": "BIB01", "districts_id": 120, "population": "8000" },
+                  { "id": 1052, "name": "Gaschiga", "code": "GAS02", "districts_id": 120, "population": "5000" }
+                ]
+              },
+              {
+                "id": 121,
+                "name": "Figuil",
+                "code": "FIG",
+                "division_id": 41,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1053, "name": "Figuil Centre", "code": "FIC01", "districts_id": 121, "population": "18000" },
+                  { "id": 1054, "name": "Guider", "code": "GUI05", "districts_id": 121, "population": "12000" },
+                  { "id": 1055, "name": "Mayo-Oulo", "code": "MAY04", "districts_id": 121, "population": "10000" },
+                  { "id": 1056, "name": "Godola", "code": "GOD02", "districts_id": 121, "population": "8000" },
+                  { "id": 1057, "name": "Kola", "code": "KOL04", "districts_id": 121, "population": "7000" },
+                  { "id": 1058, "name": "Douroum", "code": "DOU08", "districts_id": 121, "population": "5000" },
+                  { "id": 1059, "name": "Bibemi", "code": "BIB02", "districts_id": 121, "population": "5000" }
+                ]
+              },
+              {
+                "id": 122,
+                "name": "Mayo-Oulo",
+                "code": "MAY",
+                "division_id": 41,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1060, "name": "Mayo-Oulo Centre", "code": "MOC03", "districts_id": 122, "population": "15000" },
+                  { "id": 1061, "name": "Guider", "code": "GUI06", "districts_id": 122, "population": "10000" },
+                  { "id": 1062, "name": "Figuil", "code": "FIG03", "districts_id": 122, "population": "8000" },
+                  { "id": 1063, "name": "Godola", "code": "GOD03", "districts_id": 122, "population": "7000" },
+                  { "id": 1064, "name": "Kola", "code": "KOL05", "districts_id": 122, "population": "6000" },
+                  { "id": 1065, "name": "Douroum", "code": "DOU09", "districts_id": 122, "population": "5000" },
+                  { "id": 1066, "name": "Bibemi", "code": "BIB03", "districts_id": 122, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 42,
+            "name": "Mayo-Rey",
+            "code": "MRE",
+            "region_id": 7,
+            "population": "398765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 123,
+                "name": "Tcholliré",
+                "code": "TCH",
+                "division_id": 42,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 1067, "name": "Tcholliré Centre", "code": "TCC01", "districts_id": 123, "population": "28000" },
+                  { "id": 1068, "name": "Rey-Bouba", "code": "REY02", "districts_id": 123, "population": "18000" },
+                  { "id": 1069, "name": "Madingrin", "code": "MAD02", "districts_id": 123, "population": "15000" },
+                  { "id": 1070, "name": "Mayo-Hourna", "code": "MAY05", "districts_id": 123, "population": "12000" },
+                  { "id": 1071, "name": "Bogda", "code": "BOG04", "districts_id": 123, "population": "8000" },
+                  { "id": 1072, "name": "Laindé", "code": "LAI03", "districts_id": 123, "population": "7000" },
+                  { "id": 1073, "name": "Mbe", "code": "MBE10", "districts_id": 123, "population": "7000" }
+                ]
+              },
+              {
+                "id": 124,
+                "name": "Rey-Bouba",
+                "code": "REY",
+                "division_id": 42,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1074, "name": "Rey-Bouba Centre", "code": "RBC02", "districts_id": 124, "population": "20000" },
+                  { "id": 1075, "name": "Tcholliré", "code": "TCH11", "districts_id": 124, "population": "12000" },
+                  { "id": 1076, "name": "Madingrin", "code": "MAD03", "districts_id": 124, "population": "10000" },
+                  { "id": 1077, "name": "Mayo-Hourna", "code": "MAY06", "districts_id": 124, "population": "8000" },
+                  { "id": 1078, "name": "Bogda", "code": "BOG05", "districts_id": 124, "population": "6000" },
+                  { "id": 1079, "name": "Laindé", "code": "LAI04", "districts_id": 124, "population": "5000" },
+                  { "id": 1080, "name": "Mbe", "code": "MBE11", "districts_id": 124, "population": "4000" }
+                ]
+              },
+              {
+                "id": 125,
+                "name": "Madingrin",
+                "code": "MAD",
+                "division_id": 42,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1081, "name": "Madingrin Centre", "code": "MAC02", "districts_id": 125, "population": "12000" },
+                  { "id": 1082, "name": "Tcholliré", "code": "TCH12", "districts_id": 125, "population": "8000" },
+                  { "id": 1083, "name": "Rey-Bouba", "code": "REY03", "districts_id": 125, "population": "7000" },
+                  { "id": 1084, "name": "Mayo-Hourna", "code": "MAY07", "districts_id": 125, "population": "6000" },
+                  { "id": 1085, "name": "Bogda", "code": "BOG06", "districts_id": 125, "population": "5000" },
+                  { "id": 1086, "name": "Laindé", "code": "LAI05", "districts_id": 125, "population": "4000" },
+                  { "id": 1087, "name": "Mbe", "code": "MBE12", "districts_id": 125, "population": "3000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 43,
+            "name": "Faro",
+            "code": "FAR",
+            "region_id": 7,
+            "population": "298765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 126,
+                "name": "Polî",
+                "code": "POL",
+                "division_id": 43,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 1088, "name": "Polî Centre", "code": "POC01", "districts_id": 126, "population": "25000" },
+                  { "id": 1089, "name": "Bélel", "code": "BEL03", "districts_id": 126, "population": "18000" },
+                  { "id": 1090, "name": "Galim-Tignère", "code": "GAL02", "districts_id": 126, "population": "15000" },
+                  { "id": 1091, "name": "Kontcha", "code": "KON03", "districts_id": 126, "population": "12000" },
+                  { "id": 1092, "name": "Banyo", "code": "BAN03", "districts_id": 126, "population": "10000" },
+                  { "id": 1093, "name": "Mayo-Darlé", "code": "MAY08", "districts_id": 126, "population": "5000" }
+                ]
+              },
+              {
+                "id": 127,
+                "name": "Bélel",
+                "code": "BEL",
+                "division_id": 43,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1094, "name": "Bélel Centre", "code": "BEC02", "districts_id": 127, "population": "15000" },
+                  { "id": 1095, "name": "Polî", "code": "POL02", "districts_id": 127, "population": "10000" },
+                  { "id": 1096, "name": "Galim-Tignère", "code": "GAL03", "districts_id": 127, "population": "8000" },
+                  { "id": 1097, "name": "Kontcha", "code": "KON04", "districts_id": 127, "population": "7000" },
+                  { "id": 1098, "name": "Banyo", "code": "BAN04", "districts_id": 127, "population": "6000" },
+                  { "id": 1099, "name": "Mayo-Darlé", "code": "MAY09", "districts_id": 127, "population": "4000" }
+                ]
+              },
+              {
+                "id": 128,
+                "name": "Galim-Tignère",
+                "code": "GAL",
+                "division_id": 43,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1100, "name": "Galim-Tignère Centre", "code": "GTC01", "districts_id": 128, "population": "12000" },
+                  { "id": 1101, "name": "Polî", "code": "POL03", "districts_id": 128, "population": "8000" },
+                  { "id": 1102, "name": "Bélel", "code": "BEL04", "districts_id": 128, "population": "7000" },
+                  { "id": 1103, "name": "Kontcha", "code": "KON05", "districts_id": 128, "population": "6000" },
+                  { "id": 1104, "name": "Banyo", "code": "BAN05", "districts_id": 128, "population": "5000" },
+                  { "id": 1105, "name": "Mayo-Darlé", "code": "MAY10", "districts_id": 128, "population": "4000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "name": "Adamaoua",
+        "code": "AD",
+        "country_id": 1,
+        "population": "1425367",
+        "divisions": [
+          {
+            "id": 44,
+            "name": "Vina",
+            "code": "VIN",
+            "region_id": 8,
+            "population": "456789",
+            "status": 1,
+            "districts": [
+              {
+                "id": 129,
+                "name": "Ngaoundéré 1er",
+                "code": "NGA1",
+                "division_id": 44,
+                "population": "145000",
+                "location_cities": [
+                  { "id": 1201, "name": "Kosson", "code": "KOS01", "districts_id": 129, "population": "28000" },
+                  { "id": 1202, "name": "Woure", "code": "WOU02", "districts_id": 129, "population": "22000" },
+                  { "id": 1203, "name": "Kongola", "code": "KON06", "districts_id": 129, "population": "25000" },
+                  { "id": 1204, "name": "Haoussa", "code": "HAO01", "districts_id": 129, "population": "20000" },
+                  { "id": 1205, "name": "Plateau", "code": "PLA02", "districts_id": 129, "population": "18000" },
+                  { "id": 1206, "name": "Djohong", "code": "DJO01", "districts_id": 129, "population": "12000" },
+                  { "id": 1207, "name": "Mbe", "code": "MBE13", "districts_id": 129, "population": "10000" },
+                  { "id": 1208, "name": "Nyambaka", "code": "NYA03", "districts_id": 129, "population": "10000" }
+                ]
+              },
+              {
+                "id": 130,
+                "name": "Ngaoundéré 2e",
+                "code": "NGA2",
+                "division_id": 44,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 1209, "name": "Ngaoundal", "code": "NGD02", "districts_id": 130, "population": "25000" },
+                  { "id": 1210, "name": "Mbe", "code": "MBE14", "districts_id": 130, "population": "18000" },
+                  { "id": 1211, "name": "Martap", "code": "MAR01", "districts_id": 130, "population": "15000" },
+                  { "id": 1212, "name": "Nyambaka", "code": "NYA04", "districts_id": 130, "population": "12000" },
+                  { "id": 1213, "name": "Dibi", "code": "DIB03", "districts_id": 130, "population": "10000" },
+                  { "id": 1214, "name": "Belel", "code": "BEL05", "districts_id": 130, "population": "8000" },
+                  { "id": 1215, "name": "Tibati", "code": "TIB01", "districts_id": 130, "population": "27000" }
+                ]
+              },
+              {
+                "id": 131,
+                "name": "Ngaoundéré 3e",
+                "code": "NGA3",
+                "division_id": 44,
+                "population": "105000",
+                "location_cities": [
+                  { "id": 1216, "name": "Dibi", "code": "DIB04", "districts_id": 131, "population": "20000" },
+                  { "id": 1217, "name": "Belel", "code": "BEL06", "districts_id": 131, "population": "15000" },
+                  { "id": 1218, "name": "Tibati", "code": "TIB02", "districts_id": 131, "population": "12000" },
+                  { "id": 1219, "name": "Dir", "code": "DIR01", "districts_id": 131, "population": "10000" },
+                  { "id": 1220, "name": "Ngaoundal", "code": "NGD03", "districts_id": 131, "population": "8000" },
+                  { "id": 1221, "name": "Martap", "code": "MAR02", "districts_id": 131, "population": "8000" },
+                  { "id": 1222, "name": "Nyambaka", "code": "NYA05", "districts_id": 131, "population": "7000" },
+                  { "id": 1223, "name": "Mbe", "code": "MBE15", "districts_id": 131, "population": "15000" }
+                ]
+              },
+              {
+                "id": 132,
+                "name": "Martap",
+                "code": "MAR",
+                "division_id": 44,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1224, "name": "Martap Centre", "code": "MAC03", "districts_id": 132, "population": "15000" },
+                  { "id": 1225, "name": "Ngaoundéré", "code": "NGA04", "districts_id": 132, "population": "10000" },
+                  { "id": 1226, "name": "Mbe", "code": "MBE16", "districts_id": 132, "population": "8000" },
+                  { "id": 1227, "name": "Nyambaka", "code": "NYA06", "districts_id": 132, "population": "7000" },
+                  { "id": 1228, "name": "Dibi", "code": "DIB05", "districts_id": 132, "population": "6000" },
+                  { "id": 1229, "name": "Belel", "code": "BEL07", "districts_id": 132, "population": "5000" },
+                  { "id": 1230, "name": "Tibati", "code": "TIB03", "districts_id": 132, "population": "4000" }
+                ]
+              },
+              {
+                "id": 133,
+                "name": "Nyambaka",
+                "code": "NYA",
+                "division_id": 44,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1231, "name": "Nyambaka Centre", "code": "NYC01", "districts_id": 133, "population": "12000" },
+                  { "id": 1232, "name": "Ngaoundéré", "code": "NGA05", "districts_id": 133, "population": "8000" },
+                  { "id": 1233, "name": "Mbe", "code": "MBE17", "districts_id": 133, "population": "7000" },
+                  { "id": 1234, "name": "Martap", "code": "MAR03", "districts_id": 133, "population": "6000" },
+                  { "id": 1235, "name": "Dibi", "code": "DIB06", "districts_id": 133, "population": "5000" },
+                  { "id": 1236, "name": "Belel", "code": "BEL08", "districts_id": 133, "population": "4000" },
+                  { "id": 1237, "name": "Tibati", "code": "TIB04", "districts_id": 133, "population": "3000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 45,
+            "name": "Mbéré",
+            "code": "MBE",
+            "region_id": 8,
+            "population": "298765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 134,
+                "name": "Meiganga",
+                "code": "MEI",
+                "division_id": 45,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 1238, "name": "Meiganga Centre", "code": "MEC01", "districts_id": 134, "population": "35000" },
+                  { "id": 1239, "name": "Dir", "code": "DIR02", "districts_id": 134, "population": "18000" },
+                  { "id": 1240, "name": "Djohong", "code": "DJO02", "districts_id": 134, "population": "15000" },
+                  { "id": 1241, "name": "Mbe", "code": "MBE18", "districts_id": 134, "population": "12000" },
+                  { "id": 1242, "name": "Ngaoundal", "code": "NGD04", "districts_id": 134, "population": "10000" },
+                  { "id": 1243, "name": "Tibati", "code": "TIB05", "districts_id": 134, "population": "8000" },
+                  { "id": 1244, "name": "Banyo", "code": "BAN06", "districts_id": 134, "population": "7000" },
+                  { "id": 1245, "name": "Bankim", "code": "BAN07", "districts_id": 134, "population": "15000" }
+                ]
+              },
+              {
+                "id": 135,
+                "name": "Dir",
+                "code": "DIR",
+                "division_id": 45,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1246, "name": "Dir Centre", "code": "DIR03", "districts_id": 135, "population": "18000" },
+                  { "id": 1247, "name": "Meiganga", "code": "MEI02", "districts_id": 135, "population": "12000" },
+                  { "id": 1248, "name": "Djohong", "code": "DJO03", "districts_id": 135, "population": "10000" },
+                  { "id": 1249, "name": "Mbe", "code": "MBE19", "districts_id": 135, "population": "8000" },
+                  { "id": 1250, "name": "Ngaoundal", "code": "NGD05", "districts_id": 135, "population": "7000" },
+                  { "id": 1251, "name": "Tibati", "code": "TIB06", "districts_id": 135, "population": "5000" },
+                  { "id": 1252, "name": "Banyo", "code": "BAN08", "districts_id": 135, "population": "5000" }
+                ]
+              },
+              {
+                "id": 136,
+                "name": "Djohong",
+                "code": "DJO",
+                "division_id": 45,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1253, "name": "Djohong Centre", "code": "DJC01", "districts_id": 136, "population": "15000" },
+                  { "id": 1254, "name": "Meiganga", "code": "MEI03", "districts_id": 136, "population": "10000" },
+                  { "id": 1255, "name": "Dir", "code": "DIR04", "districts_id": 136, "population": "8000" },
+                  { "id": 1256, "name": "Mbe", "code": "MBE20", "districts_id": 136, "population": "7000" },
+                  { "id": 1257, "name": "Ngaoundal", "code": "NGD06", "districts_id": 136, "population": "6000" },
+                  { "id": 1258, "name": "Tibati", "code": "TIB07", "districts_id": 136, "population": "5000" },
+                  { "id": 1259, "name": "Banyo", "code": "BAN09", "districts_id": 136, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 46,
+            "name": "Djérem",
+            "code": "DJE",
+            "region_id": 8,
+            "population": "298765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 137,
+                "name": "Tibati",
+                "code": "TIB",
+                "division_id": 46,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 1260, "name": "Tibati Centre", "code": "TIC01", "districts_id": 137, "population": "28000" },
+                  { "id": 1261, "name": "Ngaoundal", "code": "NGD07", "districts_id": 137, "population": "18000" },
+                  { "id": 1262, "name": "Banyo", "code": "BAN10", "districts_id": 137, "population": "15000" },
+                  { "id": 1263, "name": "Bankim", "code": "BAN11", "districts_id": 137, "population": "12000" },
+                  { "id": 1264, "name": "Mayo-Darlé", "code": "MAY11", "districts_id": 137, "population": "8000" },
+                  { "id": 1265, "name": "Mbe", "code": "MBE21", "districts_id": 137, "population": "7000" },
+                  { "id": 1266, "name": "Djohong", "code": "DJO04", "districts_id": 137, "population": "7000" }
+                ]
+              },
+              {
+                "id": 138,
+                "name": "Ngaoundal",
+                "code": "NGD",
+                "division_id": 46,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1267, "name": "Ngaoundal Centre", "code": "NGC04", "districts_id": 138, "population": "18000" },
+                  { "id": 1268, "name": "Tibati", "code": "TIB08", "districts_id": 138, "population": "12000" },
+                  { "id": 1269, "name": "Banyo", "code": "BAN12", "districts_id": 138, "population": "10000" },
+                  { "id": 1270, "name": "Bankim", "code": "BAN13", "districts_id": 138, "population": "8000" },
+                  { "id": 1271, "name": "Mayo-Darlé", "code": "MAY12", "districts_id": 138, "population": "6000" },
+                  { "id": 1272, "name": "Mbe", "code": "MBE22", "districts_id": 138, "population": "5000" },
+                  { "id": 1273, "name": "Djohong", "code": "DJO05", "districts_id": 138, "population": "6000" }
+                ]
+              },
+              {
+                "id": 139,
+                "name": "Banyo",
+                "code": "BAN",
+                "division_id": 46,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 1274, "name": "Banyo Centre", "code": "BAC04", "districts_id": 139, "population": "25000" },
+                  { "id": 1275, "name": "Bankim", "code": "BAN14", "districts_id": 139, "population": "15000" },
+                  { "id": 1276, "name": "Mayo-Darlé", "code": "MAY13", "districts_id": 139, "population": "12000" },
+                  { "id": 1277, "name": "Tibati", "code": "TIB09", "districts_id": 139, "population": "10000" },
+                  { "id": 1278, "name": "Ngaoundal", "code": "NGD08", "districts_id": 139, "population": "8000" },
+                  { "id": 1279, "name": "Mbe", "code": "MBE23", "districts_id": 139, "population": "7000" },
+                  { "id": 1280, "name": "Djohong", "code": "DJO06", "districts_id": 139, "population": "8000" }
+                ]
+              },
+              {
+                "id": 140,
+                "name": "Bankim",
+                "code": "BNK",
+                "division_id": 46,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1281, "name": "Bankim Centre", "code": "BNC01", "districts_id": 140, "population": "15000" },
+                  { "id": 1282, "name": "Banyo", "code": "BAN15", "districts_id": 140, "population": "10000" },
+                  { "id": 1283, "name": "Mayo-Darlé", "code": "MAY14", "districts_id": 140, "population": "8000" },
+                  { "id": 1284, "name": "Tibati", "code": "TIB10", "districts_id": 140, "population": "7000" },
+                  { "id": 1285, "name": "Ngaoundal", "code": "NGD09", "districts_id": 140, "population": "6000" },
+                  { "id": 1286, "name": "Mbe", "code": "MBE24", "districts_id": 140, "population": "5000" },
+                  { "id": 1287, "name": "Djohong", "code": "DJO07", "districts_id": 140, "population": "4000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 47,
+            "name": "Mayo-Banyo",
+            "code": "MBA",
+            "region_id": 8,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 141,
+                "name": "Banyo",
+                "code": "BAN",
+                "division_id": 47,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1288, "name": "Banyo Centre", "code": "BAC05", "districts_id": 141, "population": "20000" },
+                  { "id": 1289, "name": "Bankim", "code": "BAN16", "districts_id": 141, "population": "12000" },
+                  { "id": 1290, "name": "Mayo-Darlé", "code": "MAY15", "districts_id": 141, "population": "10000" },
+                  { "id": 1291, "name": "Tibati", "code": "TIB11", "districts_id": 141, "population": "8000" },
+                  { "id": 1292, "name": "Ngaoundal", "code": "NGD10", "districts_id": 141, "population": "6000" },
+                  { "id": 1293, "name": "Mbe", "code": "MBE25", "districts_id": 141, "population": "5000" },
+                  { "id": 1294, "name": "Djohong", "code": "DJO08", "districts_id": 141, "population": "4000" }
+                ]
+              },
+              {
+                "id": 142,
+                "name": "Bankim",
+                "code": "BNK",
+                "division_id": 47,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1295, "name": "Bankim Centre", "code": "BNC02", "districts_id": 142, "population": "12000" },
+                  { "id": 1296, "name": "Banyo", "code": "BAN17", "districts_id": 142, "population": "8000" },
+                  { "id": 1297, "name": "Mayo-Darlé", "code": "MAY16", "districts_id": 142, "population": "7000" },
+                  { "id": 1298, "name": "Tibati", "code": "TIB12", "districts_id": 142, "population": "6000" },
+                  { "id": 1299, "name": "Ngaoundal", "code": "NGD11", "districts_id": 142, "population": "5000" },
+                  { "id": 1300, "name": "Mbe", "code": "MBE26", "districts_id": 142, "population": "4000" },
+                  { "id": 1301, "name": "Djohong", "code": "DJO09", "districts_id": 142, "population": "3000" }
+                ]
+              },
+              {
+                "id": 143,
+                "name": "Mayo-Darlé",
+                "code": "MAY",
+                "division_id": 47,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1302, "name": "Mayo-Darlé Centre", "code": "MDC01", "districts_id": 143, "population": "10000" },
+                  { "id": 1303, "name": "Banyo", "code": "BAN18", "districts_id": 143, "population": "6000" },
+                  { "id": 1304, "name": "Bankim", "code": "BAN19", "districts_id": 143, "population": "5000" },
+                  { "id": 1305, "name": "Tibati", "code": "TIB13", "districts_id": 143, "population": "4000" },
+                  { "id": 1306, "name": "Ngaoundal", "code": "NGD12", "districts_id": 143, "population": "3000" },
+                  { "id": 1307, "name": "Mbe", "code": "MBE27", "districts_id": 143, "population": "2000" },
+                  { "id": 1308, "name": "Djohong", "code": "DJO10", "districts_id": 143, "population": "2000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 48,
+            "name": "Faro-et-Déo",
+            "code": "FDE",
+            "region_id": 8,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 144,
+                "name": "Tignère",
+                "code": "TIG",
+                "division_id": 48,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1309, "name": "Tignère Centre", "code": "TIC02", "districts_id": 144, "population": "18000" },
+                  { "id": 1310, "name": "Galim-Tignère", "code": "GAL04", "districts_id": 144, "population": "12000" },
+                  { "id": 1311, "name": "Kontcha", "code": "KON07", "districts_id": 144, "population": "10000" },
+                  { "id": 1312, "name": "Polî", "code": "POL04", "districts_id": 144, "population": "8000" },
+                  { "id": 1313, "name": "Bélel", "code": "BEL09", "districts_id": 144, "population": "7000" },
+                  { "id": 1314, "name": "Banyo", "code": "BAN20", "districts_id": 144, "population": "6000" },
+                  { "id": 1315, "name": "Mayo-Darlé", "code": "MAY17", "districts_id": 144, "population": "4000" }
+                ]
+              },
+              {
+                "id": 145,
+                "name": "Galim-Tignère",
+                "code": "GAL",
+                "division_id": 48,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1316, "name": "Galim-Tignère Centre", "code": "GTC02", "districts_id": 145, "population": "12000" },
+                  { "id": 1317, "name": "Tignère", "code": "TIG02", "districts_id": 145, "population": "8000" },
+                  { "id": 1318, "name": "Kontcha", "code": "KON08", "districts_id": 145, "population": "7000" },
+                  { "id": 1319, "name": "Polî", "code": "POL05", "districts_id": 145, "population": "6000" },
+                  { "id": 1320, "name": "Bélel", "code": "BEL10", "districts_id": 145, "population": "5000" },
+                  { "id": 1321, "name": "Banyo", "code": "BAN21", "districts_id": 145, "population": "4000" },
+                  { "id": 1322, "name": "Mayo-Darlé", "code": "MAY18", "districts_id": 145, "population": "3000" }
+                ]
+              },
+              {
+                "id": 146,
+                "name": "Kontcha",
+                "code": "KON",
+                "division_id": 48,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1323, "name": "Kontcha Centre", "code": "KOC03", "districts_id": 146, "population": "10000" },
+                  { "id": 1324, "name": "Tignère", "code": "TIG03", "districts_id": 146, "population": "6000" },
+                  { "id": 1325, "name": "Galim-Tignère", "code": "GAL05", "districts_id": 146, "population": "5000" },
+                  { "id": 1326, "name": "Polî", "code": "POL06", "districts_id": 146, "population": "4000" },
+                  { "id": 1327, "name": "Bélel", "code": "BEL11", "districts_id": 146, "population": "3000" },
+                  { "id": 1328, "name": "Banyo", "code": "BAN22", "districts_id": 146, "population": "2000" },
+                  { "id": 1329, "name": "Mayo-Darlé", "code": "MAY19", "districts_id": 146, "population": "2000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "name": "Est",
+        "code": "ES",
+        "country_id": 1,
+        "population": "923672",
+        "divisions": [
+          {
+            "id": 49,
+            "name": "Lom-et-Djérem",
+            "code": "LJD",
+            "region_id": 9,
+            "population": "298765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 147,
+                "name": "Bertoua 1er",
+                "code": "BER1",
+                "division_id": 49,
+                "population": "125000",
+                "location_cities": [
+                  { "id": 1401, "name": "Boulembe", "code": "BOU02", "districts_id": 147, "population": "25000" },
+                  { "id": 1402, "name": "Bakassa", "code": "BAK01", "districts_id": 147, "population": "18000" },
+                  { "id": 1403, "name": "Mayo-Kaba", "code": "MAY20", "districts_id": 147, "population": "15000" },
+                  { "id": 1404, "name": "Bekoko", "code": "BEK04", "districts_id": 147, "population": "12000" },
+                  { "id": 1405, "name": "Kara", "code": "KAR04", "districts_id": 147, "population": "10000" },
+                  { "id": 1406, "name": "Mbet", "code": "MBE28", "districts_id": 147, "population": "8000" },
+                  { "id": 1407, "name": "Nguelemendouka", "code": "NGU02", "districts_id": 147, "population": "7000" },
+                  { "id": 1408, "name": "Dimako", "code": "DIM01", "districts_id": 147, "population": "20000" }
+                ]
+              },
+              {
+                "id": 148,
+                "name": "Bertoua 2e",
+                "code": "BER2",
+                "division_id": 49,
+                "population": "105000",
+                "location_cities": [
+                  { "id": 1409, "name": "Bélabo", "code": "BEL12", "districts_id": 148, "population": "22000" },
+                  { "id": 1410, "name": "Mboutou", "code": "MBT03", "districts_id": 148, "population": "15000" },
+                  { "id": 1411, "name": "Nguelemendouka", "code": "NGU03", "districts_id": 148, "population": "12000" },
+                  { "id": 1412, "name": "Bétaré-Oya", "code": "BET01", "districts_id": 148, "population": "10000" },
+                  { "id": 1413, "name": "Diang", "code": "DIA02", "districts_id": 148, "population": "8000" },
+                  { "id": 1414, "name": "Garga-Sarali", "code": "GAR06", "districts_id": 148, "population": "7000" },
+                  { "id": 1415, "name": "Mandra", "code": "MAN04", "districts_id": 148, "population": "6000" },
+                  { "id": 1416, "name": "Ngoura", "code": "NGO04", "districts_id": 148, "population": "15000" }
+                ]
+              },
+              {
+                "id": 149,
+                "name": "Bélabo",
+                "code": "BEL",
+                "division_id": 49,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1417, "name": "Bélabo Centre", "code": "BEC03", "districts_id": 149, "population": "15000" },
+                  { "id": 1418, "name": "Bertoua", "code": "BER03", "districts_id": 149, "population": "10000" },
+                  { "id": 1419, "name": "Mboutou", "code": "MBT04", "districts_id": 149, "population": "8000" },
+                  { "id": 1420, "name": "Nguelemendouka", "code": "NGU04", "districts_id": 149, "population": "7000" },
+                  { "id": 1421, "name": "Dimako", "code": "DIM02", "districts_id": 149, "population": "6000" },
+                  { "id": 1422, "name": "Bétaré-Oya", "code": "BET02", "districts_id": 149, "population": "5000" },
+                  { "id": 1423, "name": "Diang", "code": "DIA03", "districts_id": 149, "population": "4000" }
+                ]
+              },
+              {
+                "id": 150,
+                "name": "Dimako",
+                "code": "DIM",
+                "division_id": 49,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1424, "name": "Dimako Centre", "code": "DIC01", "districts_id": 150, "population": "12000" },
+                  { "id": 1425, "name": "Bertoua", "code": "BER04", "districts_id": 150, "population": "8000" },
+                  { "id": 1426, "name": "Bélabo", "code": "BEL13", "districts_id": 150, "population": "7000" },
+                  { "id": 1427, "name": "Nguelemendouka", "code": "NGU05", "districts_id": 150, "population": "6000" },
+                  { "id": 1428, "name": "Mboutou", "code": "MBT05", "districts_id": 150, "population": "5000" },
+                  { "id": 1429, "name": "Bétaré-Oya", "code": "BET03", "districts_id": 150, "population": "4000" },
+                  { "id": 1430, "name": "Diang", "code": "DIA04", "districts_id": 150, "population": "3000" }
+                ]
+              },
+              {
+                "id": 151,
+                "name": "Bétaré-Oya",
+                "code": "BET",
+                "division_id": 49,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1431, "name": "Bétaré-Oya Centre", "code": "BOC02", "districts_id": 151, "population": "10000" },
+                  { "id": 1432, "name": "Bertoua", "code": "BER05", "districts_id": 151, "population": "6000" },
+                  { "id": 1433, "name": "Bélabo", "code": "BEL14", "districts_id": 151, "population": "5000" },
+                  { "id": 1434, "name": "Dimako", "code": "DIM03", "districts_id": 151, "population": "4000" },
+                  { "id": 1435, "name": "Nguelemendouka", "code": "NGU06", "districts_id": 151, "population": "3000" },
+                  { "id": 1436, "name": "Diang", "code": "DIA05", "districts_id": 151, "population": "2000" },
+                  { "id": 1437, "name": "Mandra", "code": "MAN05", "districts_id": 151, "population": "3000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 50,
+            "name": "Haut-Nyong",
+            "code": "HNY",
+            "region_id": 9,
+            "population": "298765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 152,
+                "name": "Abong-Mbang",
+                "code": "ABO",
+                "division_id": 50,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 1438, "name": "Abong-Mbang Centre", "code": "ABC01", "districts_id": 152, "population": "25000" },
+                  { "id": 1439, "name": "Angossas", "code": "ANG02", "districts_id": 152, "population": "12000" },
+                  { "id": 1440, "name": "Atok", "code": "ATO01", "districts_id": 152, "population": "10000" },
+                  { "id": 1441, "name": "Dimako", "code": "DIM04", "districts_id": 152, "population": "8000" },
+                  { "id": 1442, "name": "Doumaintang", "code": "DOU10", "districts_id": 152, "population": "7000" },
+                  { "id": 1443, "name": "Lomié", "code": "LOM01", "districts_id": 152, "population": "6000" },
+                  { "id": 1444, "name": "Mbang", "code": "MBA04", "districts_id": 152, "population": "5000" },
+                  { "id": 1445, "name": "Messamena", "code": "MES03", "districts_id": 152, "population": "7000" }
+                ]
+              },
+              {
+                "id": 153,
+                "name": "Lomié",
+                "code": "LOM",
+                "division_id": 50,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1446, "name": "Lomié Centre", "code": "LOC02", "districts_id": 153, "population": "12000" },
+                  { "id": 1447, "name": "Abong-Mbang", "code": "ABO02", "districts_id": 153, "population": "8000" },
+                  { "id": 1448, "name": "Messamena", "code": "MES04", "districts_id": 153, "population": "7000" },
+                  { "id": 1449, "name": "Messok", "code": "MES05", "districts_id": 153, "population": "6000" },
+                  { "id": 1450, "name": "Mindourou", "code": "MIN02", "districts_id": 153, "population": "5000" },
+                  { "id": 1451, "name": "Ngoyla", "code": "NGO05", "districts_id": 153, "population": "4000" },
+                  { "id": 1452, "name": "Somolomo", "code": "SOM01", "districts_id": 153, "population": "3000" }
+                ]
+              },
+              {
+                "id": 154,
+                "name": "Mbang",
+                "code": "MBA",
+                "division_id": 50,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1453, "name": "Mbang Centre", "code": "MBC04", "districts_id": 154, "population": "15000" },
+                  { "id": 1454, "name": "Abong-Mbang", "code": "ABO03", "districts_id": 154, "population": "10000" },
+                  { "id": 1455, "name": "Angossas", "code": "ANG03", "districts_id": 154, "population": "8000" },
+                  { "id": 1456, "name": "Atok", "code": "ATO02", "districts_id": 154, "population": "7000" },
+                  { "id": 1457, "name": "Doumaintang", "code": "DOU11", "districts_id": 154, "population": "6000" },
+                  { "id": 1458, "name": "Messamena", "code": "MES06", "districts_id": 154, "population": "5000" },
+                  { "id": 1459, "name": "Messok", "code": "MES07", "districts_id": 154, "population": "4000" }
+                ]
+              },
+              {
+                "id": 155,
+                "name": "Messamena",
+                "code": "MES",
+                "division_id": 50,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1460, "name": "Messamena Centre", "code": "MEC02", "districts_id": 155, "population": "10000" },
+                  { "id": 1461, "name": "Abong-Mbang", "code": "ABO04", "districts_id": 155, "population": "6000" },
+                  { "id": 1462, "name": "Lomié", "code": "LOM02", "districts_id": 155, "population": "5000" },
+                  { "id": 1463, "name": "Messok", "code": "MES08", "districts_id": 155, "population": "4000" },
+                  { "id": 1464, "name": "Mindourou", "code": "MIN03", "districts_id": 155, "population": "3000" },
+                  { "id": 1465, "name": "Ngoyla", "code": "NGO06", "districts_id": 155, "population": "2000" },
+                  { "id": 1466, "name": "Somolomo", "code": "SOM02", "districts_id": 155, "population": "2000" }
+                ]
+              },
+              {
+                "id": 156,
+                "name": "Messok",
+                "code": "MES",
+                "division_id": 50,
+                "population": "25000",
+                "location_cities": [
+                  { "id": 1467, "name": "Messok Centre", "code": "MEC03", "districts_id": 156, "population": "8000" },
+                  { "id": 1468, "name": "Abong-Mbang", "code": "ABO05", "districts_id": 156, "population": "5000" },
+                  { "id": 1469, "name": "Lomié", "code": "LOM03", "districts_id": 156, "population": "4000" },
+                  { "id": 1470, "name": "Messamena", "code": "MES09", "districts_id": 156, "population": "3000" },
+                  { "id": 1471, "name": "Mindourou", "code": "MIN04", "districts_id": 156, "population": "2000" },
+                  { "id": 1472, "name": "Ngoyla", "code": "NGO07", "districts_id": 156, "population": "2000" },
+                  { "id": 1473, "name": "Somolomo", "code": "SOM03", "districts_id": 156, "population": "1000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 51,
+            "name": "Kadey",
+            "code": "KAD",
+            "region_id": 9,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 157,
+                "name": "Batouri",
+                "code": "BAT",
+                "division_id": 51,
+                "population": "95000",
+                "location_cities": [
+                  { "id": 1474, "name": "Batouri Centre", "code": "BTC04", "districts_id": 157, "population": "28000" },
+                  { "id": 1475, "name": "Kette", "code": "KET01", "districts_id": 157, "population": "15000" },
+                  { "id": 1476, "name": "Mbotoro", "code": "MBT06", "districts_id": 157, "population": "12000" },
+                  { "id": 1477, "name": "Mboutou", "code": "MBT07", "districts_id": 157, "population": "10000" },
+                  { "id": 1478, "name": "Ndelele", "code": "NDE02", "districts_id": 157, "population": "8000" },
+                  { "id": 1479, "name": "Nguelebok", "code": "NGU07", "districts_id": 157, "population": "7000" },
+                  { "id": 1480, "name": "Ouli", "code": "OUL01", "districts_id": 157, "population": "5000" },
+                  { "id": 1481, "name": "Kette", "code": "KET02", "districts_id": 157, "population": "10000" }
+                ]
+              },
+              {
+                "id": 158,
+                "name": "Ndelele",
+                "code": "NDE",
+                "division_id": 51,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1482, "name": "Ndelele Centre", "code": "NDC03", "districts_id": 158, "population": "12000" },
+                  { "id": 1483, "name": "Batouri", "code": "BAT07", "districts_id": 158, "population": "8000" },
+                  { "id": 1484, "name": "Kette", "code": "KET03", "districts_id": 158, "population": "7000" },
+                  { "id": 1485, "name": "Mbotoro", "code": "MBT08", "districts_id": 158, "population": "6000" },
+                  { "id": 1486, "name": "Nguelebok", "code": "NGU08", "districts_id": 158, "population": "5000" },
+                  { "id": 1487, "name": "Ouli", "code": "OUL02", "districts_id": 158, "population": "4000" },
+                  { "id": 1488, "name": "Mboutou", "code": "MBT09", "districts_id": 158, "population": "3000" }
+                ]
+              },
+              {
+                "id": 159,
+                "name": "Nguelebok",
+                "code": "NGU",
+                "division_id": 51,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1489, "name": "Nguelebok Centre", "code": "NGC05", "districts_id": 159, "population": "10000" },
+                  { "id": 1490, "name": "Batouri", "code": "BAT08", "districts_id": 159, "population": "6000" },
+                  { "id": 1491, "name": "Kette", "code": "KET04", "districts_id": 159, "population": "5000" },
+                  { "id": 1492, "name": "Mbotoro", "code": "MBT10", "districts_id": 159, "population": "4000" },
+                  { "id": 1493, "name": "Ndelele", "code": "NDE03", "districts_id": 159, "population": "3000" },
+                  { "id": 1494, "name": "Ouli", "code": "OUL03", "districts_id": 159, "population": "2000" },
+                  { "id": 1495, "name": "Mboutou", "code": "MBT11", "districts_id": 159, "population": "2000" }
+                ]
+              },
+              {
+                "id": 160,
+                "name": "Ouli",
+                "code": "OUL",
+                "division_id": 51,
+                "population": "25000",
+                "location_cities": [
+                  { "id": 1496, "name": "Ouli Centre", "code": "OUC01", "districts_id": 160, "population": "8000" },
+                  { "id": 1497, "name": "Batouri", "code": "BAT09", "districts_id": 160, "population": "5000" },
+                  { "id": 1498, "name": "Kette", "code": "KET05", "districts_id": 160, "population": "4000" },
+                  { "id": 1499, "name": "Mbotoro", "code": "MBT12", "districts_id": 160, "population": "3000" },
+                  { "id": 1500, "name": "Ndelele", "code": "NDE04", "districts_id": 160, "population": "2000" },
+                  { "id": 1501, "name": "Nguelebok", "code": "NGU09", "districts_id": 160, "population": "2000" },
+                  { "id": 1502, "name": "Mboutou", "code": "MBT13", "districts_id": 160, "population": "1000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 52,
+            "name": "Boumba-et-Ngoko",
+            "code": "BAN",
+            "region_id": 9,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 161,
+                "name": "Yokadouma",
+                "code": "YOK",
+                "division_id": 52,
+                "population": "75000",
+                "location_cities": [
+                  { "id": 1503, "name": "Yokadouma Centre", "code": "YOC01", "districts_id": 161, "population": "22000" },
+                  { "id": 1504, "name": "Gari-Gombo", "code": "GAR07", "districts_id": 161, "population": "15000" },
+                  { "id": 1505, "name": "Moloundou", "code": "MOL01", "districts_id": 161, "population": "12000" },
+                  { "id": 1506, "name": "Salapoumbé", "code": "SAL01", "districts_id": 161, "population": "10000" },
+                  { "id": 1507, "name": "Boumba", "code": "BOU03", "districts_id": 161, "population": "8000" },
+                  { "id": 1508, "name": "Ngoko", "code": "NGO08", "districts_id": 161, "population": "8000" }
+                ]
+              },
+              {
+                "id": 162,
+                "name": "Moloundou",
+                "code": "MOL",
+                "division_id": 52,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1509, "name": "Moloundou Centre", "code": "MOC04", "districts_id": 162, "population": "12000" },
+                  { "id": 1510, "name": "Yokadouma", "code": "YOK02", "districts_id": 162, "population": "8000" },
+                  { "id": 1511, "name": "Gari-Gombo", "code": "GAR08", "districts_id": 162, "population": "7000" },
+                  { "id": 1512, "name": "Salapoumbé", "code": "SAL02", "districts_id": 162, "population": "6000" },
+                  { "id": 1513, "name": "Boumba", "code": "BOU04", "districts_id": 162, "population": "5000" },
+                  { "id": 1514, "name": "Ngoko", "code": "NGO09", "districts_id": 162, "population": "4000" }
+                ]
+              },
+              {
+                "id": 163,
+                "name": "Gari-Gombo",
+                "code": "GAR",
+                "division_id": 52,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1515, "name": "Gari-Gombo Centre", "code": "GAC01", "districts_id": 163, "population": "10000" },
+                  { "id": 1516, "name": "Yokadouma", "code": "YOK03", "districts_id": 163, "population": "6000" },
+                  { "id": 1517, "name": "Moloundou", "code": "MOL02", "districts_id": 163, "population": "5000" },
+                  { "id": 1518, "name": "Salapoumbé", "code": "SAL03", "districts_id": 163, "population": "4000" },
+                  { "id": 1519, "name": "Boumba", "code": "BOU05", "districts_id": 163, "population": "3000" },
+                  { "id": 1520, "name": "Ngoko", "code": "NGO10", "districts_id": 163, "population": "3000" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "name": "Sud",
+        "code": "SU",
+        "country_id": 1,
+        "population": "782354",
+        "divisions": [
+          {
+            "id": 53,
+            "name": "Mvila",
+            "code": "MVI",
+            "region_id": 10,
+            "population": "256789",
+            "status": 1,
+            "districts": [
+              {
+                "id": 164,
+                "name": "Ebolowa 1er",
+                "code": "EBO1",
+                "division_id": 53,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 1601, "name": "Mvamou", "code": "MVA02", "districts_id": 164, "population": "18000" },
+                  { "id": 1602, "name": "Afan Edjeng", "code": "AFE01", "districts_id": 164, "population": "12000" },
+                  { "id": 1603, "name": "Abang Minko'o", "code": "ABM01", "districts_id": 164, "population": "10000" },
+                  { "id": 1604, "name": "Mekalat", "code": "MEK03", "districts_id": 164, "population": "8000" },
+                  { "id": 1605, "name": "Mangon", "code": "MAN06", "districts_id": 164, "population": "7000" },
+                  { "id": 1606, "name": "Nko'olong", "code": "NKO06", "districts_id": 164, "population": "6000" },
+                  { "id": 1607, "name": "Bikok", "code": "BIK02", "districts_id": 164, "population": "5000" },
+                  { "id": 1608, "name": "Ngoulemakong", "code": "NGU10", "districts_id": 164, "population": "12000" }
+                ]
+              },
+              {
+                "id": 165,
+                "name": "Ebolowa 2e",
+                "code": "EBO2",
+                "division_id": 53,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1609, "name": "Djoum", "code": "DJO11", "districts_id": 165, "population": "15000" },
+                  { "id": 1610, "name": "Mvangane", "code": "MVA03", "districts_id": 165, "population": "10000" },
+                  { "id": 1611, "name": "Ntem", "code": "NTE01", "districts_id": 165, "population": "8000" },
+                  { "id": 1612, "name": "Olanguina", "code": "OLA02", "districts_id": 165, "population": "7000" },
+                  { "id": 1613, "name": "Zoadibang", "code": "ZOA01", "districts_id": 165, "population": "6000" },
+                  { "id": 1614, "name": "Meyomessala", "code": "MEY01", "districts_id": 165, "population": "5000" },
+                  { "id": 1615, "name": "Meyomessi", "code": "MEY02", "districts_id": 165, "population": "4000" },
+                  { "id": 1616, "name": "Bengbis", "code": "BEN01", "districts_id": 165, "population": "10000" }
+                ]
+              },
+              {
+                "id": 166,
+                "name": "Djoum",
+                "code": "DJO",
+                "division_id": 53,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1617, "name": "Djoum Centre", "code": "DJC02", "districts_id": 166, "population": "15000" },
+                  { "id": 1618, "name": "Ebolowa", "code": "EBO03", "districts_id": 166, "population": "10000" },
+                  { "id": 1619, "name": "Meyomessala", "code": "MEY03", "districts_id": 166, "population": "8000" },
+                  { "id": 1620, "name": "Meyomessi", "code": "MEY04", "districts_id": 166, "population": "7000" },
+                  { "id": 1621, "name": "Mintom", "code": "MIN05", "districts_id": 166, "population": "6000" },
+                  { "id": 1622, "name": "Bengbis", "code": "BEN02", "districts_id": 166, "population": "5000" },
+                  { "id": 1623, "name": "Oveng", "code": "OVE01", "districts_id": 166, "population": "4000" }
+                ]
+              },
+              {
+                "id": 167,
+                "name": "Mvangan",
+                "code": "MVA",
+                "division_id": 53,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1624, "name": "Mvangan Centre", "code": "MVC01", "districts_id": 167, "population": "12000" },
+                  { "id": 1625, "name": "Ebolowa", "code": "EBO04", "districts_id": 167, "population": "8000" },
+                  { "id": 1626, "name": "Ngoulemakong", "code": "NGU11", "districts_id": 167, "population": "7000" },
+                  { "id": 1627, "name": "Ntem", "code": "NTE02", "districts_id": 167, "population": "6000" },
+                  { "id": 1628, "name": "Zoadibang", "code": "ZOA02", "districts_id": 167, "population": "5000" },
+                  { "id": 1629, "name": "Olanguina", "code": "OLA03", "districts_id": 167, "population": "4000" },
+                  { "id": 1630, "name": "Mekalat", "code": "MEK04", "districts_id": 167, "population": "3000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 54,
+            "name": "Dja-et-Lobo",
+            "code": "DJL",
+            "region_id": 10,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 168,
+                "name": "Sangmélima",
+                "code": "SAN",
+                "division_id": 54,
+                "population": "85000",
+                "location_cities": [
+                  { "id": 1631, "name": "Sangmélima Centre", "code": "SAC02", "districts_id": 168, "population": "25000" },
+                  { "id": 1632, "name": "Bengbis", "code": "BEN03", "districts_id": 168, "population": "12000" },
+                  { "id": 1633, "name": "Meyomessala", "code": "MEY05", "districts_id": 168, "population": "10000" },
+                  { "id": 1634, "name": "Meyomessi", "code": "MEY06", "districts_id": 168, "population": "8000" },
+                  { "id": 1635, "name": "Mintom", "code": "MIN06", "districts_id": 168, "population": "7000" },
+                  { "id": 1636, "name": "Oveng", "code": "OVE02", "districts_id": 168, "population": "6000" },
+                  { "id": 1637, "name": "Zoetele", "code": "ZOE01", "districts_id": 168, "population": "5000" },
+                  { "id": 1638, "name": "Djoum", "code": "DJO12", "districts_id": 168, "population": "12000" }
+                ]
+              },
+              {
+                "id": 169,
+                "name": "Bengbis",
+                "code": "BEN",
+                "division_id": 54,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1639, "name": "Bengbis Centre", "code": "BEC04", "districts_id": 169, "population": "12000" },
+                  { "id": 1640, "name": "Sangmélima", "code": "SAN04", "districts_id": 169, "population": "8000" },
+                  { "id": 1641, "name": "Meyomessala", "code": "MEY07", "districts_id": 169, "population": "7000" },
+                  { "id": 1642, "name": "Meyomessi", "code": "MEY08", "districts_id": 169, "population": "6000" },
+                  { "id": 1643, "name": "Mintom", "code": "MIN07", "districts_id": 169, "population": "5000" },
+                  { "id": 1644, "name": "Oveng", "code": "OVE03", "districts_id": 169, "population": "4000" },
+                  { "id": 1645, "name": "Zoetele", "code": "ZOE02", "districts_id": 169, "population": "3000" }
+                ]
+              },
+              {
+                "id": 170,
+                "name": "Meyomessala",
+                "code": "MEY",
+                "division_id": 54,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1646, "name": "Meyomessala Centre", "code": "MEC04", "districts_id": 170, "population": "10000" },
+                  { "id": 1647, "name": "Sangmélima", "code": "SAN05", "districts_id": 170, "population": "6000" },
+                  { "id": 1648, "name": "Bengbis", "code": "BEN04", "districts_id": 170, "population": "5000" },
+                  { "id": 1649, "name": "Meyomessi", "code": "MEY09", "districts_id": 170, "population": "4000" },
+                  { "id": 1650, "name": "Mintom", "code": "MIN08", "districts_id": 170, "population": "3000" },
+                  { "id": 1651, "name": "Oveng", "code": "OVE04", "districts_id": 170, "population": "2000" },
+                  { "id": 1652, "name": "Zoetele", "code": "ZOE03", "districts_id": 170, "population": "2000" }
+                ]
+              },
+              {
+                "id": 171,
+                "name": "Meyomessi",
+                "code": "MEY",
+                "division_id": 54,
+                "population": "25000",
+                "location_cities": [
+                  { "id": 1653, "name": "Meyomessi Centre", "code": "MEC05", "districts_id": 171, "population": "8000" },
+                  { "id": 1654, "name": "Sangmélima", "code": "SAN06", "districts_id": 171, "population": "5000" },
+                  { "id": 1655, "name": "Bengbis", "code": "BEN05", "districts_id": 171, "population": "4000" },
+                  { "id": 1656, "name": "Meyomessala", "code": "MEY10", "districts_id": 171, "population": "3000" },
+                  { "id": 1657, "name": "Mintom", "code": "MIN09", "districts_id": 171, "population": "2000" },
+                  { "id": 1658, "name": "Oveng", "code": "OVE05", "districts_id": 171, "population": "2000" },
+                  { "id": 1659, "name": "Zoetele", "code": "ZOE04", "districts_id": 171, "population": "1000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 55,
+            "name": "Océan",
+            "code": "OCE",
+            "region_id": 10,
+            "population": "198765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 172,
+                "name": "Kribi 1er",
+                "code": "KRI1",
+                "division_id": 55,
+                "population": "65000",
+                "location_cities": [
+                  { "id": 1660, "name": "Kribi Centre", "code": "KRC01", "districts_id": 172, "population": "20000" },
+                  { "id": 1661, "name": "Mvae", "code": "MVA04", "districts_id": 172, "population": "12000" },
+                  { "id": 1662, "name": "Niete", "code": "NIE01", "districts_id": 172, "population": "10000" },
+                  { "id": 1663, "name": "Bipindi", "code": "BIP01", "districts_id": 172, "population": "8000" },
+                  { "id": 1664, "name": "Campo", "code": "CAM02", "districts_id": 172, "population": "7000" },
+                  { "id": 1665, "name": "Lolodorf", "code": "LOL01", "districts_id": 172, "population": "8000" }
+                ]
+              },
+              {
+                "id": 173,
+                "name": "Kribi 2e",
+                "code": "KRI2",
+                "division_id": 55,
+                "population": "45000",
+                "location_cities": [
+                  { "id": 1666, "name": "Melong", "code": "MEL04", "districts_id": 173, "population": "12000" },
+                  { "id": 1667, "name": "Mvae", "code": "MVA05", "districts_id": 173, "population": "8000" },
+                  { "id": 1668, "name": "Niete", "code": "NIE02", "districts_id": 173, "population": "7000" },
+                  { "id": 1669, "name": "Akak", "code": "AKA01", "districts_id": 173, "population": "6000" },
+                  { "id": 1670, "name": "Mabi", "code": "MAB02", "districts_id": 173, "population": "5000" },
+                  { "id": 1671, "name": "Nyabizan", "code": "NYA07", "districts_id": 173, "population": "4000" },
+                  { "id": 1672, "name": "Mvengue", "code": "MVE01", "districts_id": 173, "population": "3000" }
+                ]
+              },
+              {
+                "id": 174,
+                "name": "Campo",
+                "code": "CAM",
+                "division_id": 55,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1673, "name": "Campo Centre", "code": "CAC01", "districts_id": 174, "population": "10000" },
+                  { "id": 1674, "name": "Kribi", "code": "KRI03", "districts_id": 174, "population": "7000" },
+                  { "id": 1675, "name": "Mvae", "code": "MVA06", "districts_id": 174, "population": "5000" },
+                  { "id": 1676, "name": "Niete", "code": "NIE03", "districts_id": 174, "population": "4000" },
+                  { "id": 1677, "name": "Bipindi", "code": "BIP02", "districts_id": 174, "population": "3000" },
+                  { "id": 1678, "name": "Lolodorf", "code": "LOL02", "districts_id": 174, "population": "3000" },
+                  { "id": 1679, "name": "Akak", "code": "AKA02", "districts_id": 174, "population": "2000" }
+                ]
+              },
+              {
+                "id": 175,
+                "name": "Lolodorf",
+                "code": "LOL",
+                "division_id": 55,
+                "population": "25000",
+                "location_cities": [
+                  { "id": 1680, "name": "Lolodorf Centre", "code": "LOC03", "districts_id": 175, "population": "8000" },
+                  { "id": 1681, "name": "Kribi", "code": "KRI04", "districts_id": 175, "population": "5000" },
+                  { "id": 1682, "name": "Bipindi", "code": "BIP03", "districts_id": 175, "population": "4000" },
+                  { "id": 1683, "name": "Mvae", "code": "MVA07", "districts_id": 175, "population": "3000" },
+                  { "id": 1684, "name": "Niete", "code": "NIE04", "districts_id": 175, "population": "2000" },
+                  { "id": 1685, "name": "Mabi", "code": "MAB03", "districts_id": 175, "population": "2000" },
+                  { "id": 1686, "name": "Nyabizan", "code": "NYA08", "districts_id": 175, "population": "1000" }
+                ]
+              }
+            ]
+          },
+          {
+            "id": 56,
+            "name": "Vallée-du-Ntem",
+            "code": "VNT",
+            "region_id": 10,
+            "population": "128765",
+            "status": 1,
+            "districts": [
+              {
+                "id": 176,
+                "name": "Ambam",
+                "code": "AMB",
+                "division_id": 56,
+                "population": "55000",
+                "location_cities": [
+                  { "id": 1687, "name": "Ambam Centre", "code": "AMC03", "districts_id": 176, "population": "15000" },
+                  { "id": 1688, "name": "Ma'an", "code": "MAA01", "districts_id": 176, "population": "10000" },
+                  { "id": 1689, "name": "Meyo-Centre", "code": "MEY11", "districts_id": 176, "population": "8000" },
+                  { "id": 1690, "name": "Mvae", "code": "MVA08", "districts_id": 176, "population": "7000" },
+                  { "id": 1691, "name": "Niete", "code": "NIE05", "districts_id": 176, "population": "6000" },
+                  { "id": 1692, "name": "Olamze", "code": "OLA04", "districts_id": 176, "population": "5000" },
+                  { "id": 1693, "name": "Mintom", "code": "MIN10", "districts_id": 176, "population": "4000" }
+                ]
+              },
+              {
+                "id": 177,
+                "name": "Ma'an",
+                "code": "MAA",
+                "division_id": 56,
+                "population": "35000",
+                "location_cities": [
+                  { "id": 1694, "name": "Ma'an Centre", "code": "MAC04", "districts_id": 177, "population": "10000" },
+                  { "id": 1695, "name": "Ambam", "code": "AMB02", "districts_id": 177, "population": "7000" },
+                  { "id": 1696, "name": "Meyo-Centre", "code": "MEY12", "districts_id": 177, "population": "5000" },
+                  { "id": 1697, "name": "Mvae", "code": "MVA09", "districts_id": 177, "population": "4000" },
+                  { "id": 1698, "name": "Niete", "code": "NIE06", "districts_id": 177, "population": "3000" },
+                  { "id": 1699, "name": "Olamze", "code": "OLA05", "districts_id": 177, "population": "3000" },
+                  { "id": 1700, "name": "Mintom", "code": "MIN11", "districts_id": 177, "population": "2000" }
+                ]
+              },
+              {
+                "id": 178,
+                "name": "Olamze",
+                "code": "OLA",
+                "division_id": 56,
+                "population": "25000",
+                "location_cities": [
+                  { "id": 1701, "name": "Olamze Centre", "code": "OLC01", "districts_id": 178, "population": "8000" },
+                  { "id": 1702, "name": "Ambam", "code": "AMB03", "districts_id": 178, "population": "5000" },
+                  { "id": 1703, "name": "Ma'an", "code": "MAA02", "districts_id": 178, "population": "4000" },
+                  { "id": 1704, "name": "Meyo-Centre", "code": "MEY13", "districts_id": 178, "population": "3000" },
+                  { "id": 1705, "name": "Mvae", "code": "MVA10", "districts_id": 178, "population": "2000" },
+                  { "id": 1706, "name": "Niete", "code": "NIE07", "districts_id": 178, "population": "2000" },
+                  { "id": 1707, "name": "Mintom", "code": "MIN12", "districts_id": 178, "population": "1000" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+
+    ]
+  }
+}

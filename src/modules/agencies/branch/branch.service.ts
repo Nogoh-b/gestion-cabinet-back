@@ -1,4 +1,3 @@
-import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
@@ -74,9 +73,19 @@ export class BranchService  extends BaseServiceV1<Branch> {
         ],*/
         
         // Champs de relations pour filtrage
-        relationFields: ['employees', 'customers', 'location_city']
+        relationFields: ['employees', 'customers', 'location_city','location_city.district','location_city.district.division','location_city.district.division.region','location_city.district.division.region.country']
       };
     }
+
+
+    async testSearch() {
+  const result = await this.branchRepository.find({
+    relations: ['location_city', 'location_city.district', 'location_city.district.division', 'employees']
+  });
+  console.log('First branch location_city:', result[0]?.location_city);
+  console.log('First branch district:', result[0]?.location_city?.district);
+  return result;
+}
 
 
   // Branches
@@ -98,7 +107,7 @@ export class BranchService  extends BaseServiceV1<Branch> {
       throw new Error('Échec de génération d’un code de la branche');
     }*/
     dto.code = await this.generateNextBranchCode();
-    await validateDto(CreateBranchDto, dto);
+    // await validateDto(CreateBranchDto, dto);
     const branch = this.branchRepository.create({
       ...dto,
       code,
