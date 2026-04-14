@@ -1,6 +1,5 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
@@ -84,7 +83,7 @@ export class BranchController {
   @Get(':id/employees')
   @ApiOperation({ summary: 'Get All Employees of a Branch' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
+  // @RequirePermissions('VIEW_BRANCH')
   findEmployees(@Param('id') id: number,     @Query() query: PaginationQueryDto
   ) {
     const { page, limit, term, fields, exact, from, to } = query;
@@ -98,7 +97,7 @@ export class BranchController {
   @Put(':id')
   @ApiOperation({ summary: 'Update branch' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('EDIT_BRANCH')
+  // @RequirePermissions('EDIT_BRANCH')
   updateBranch(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
     return this.branchService.updateBranch(+id, dto);
   }
@@ -113,7 +112,7 @@ export class BranchController {
   @Get('inactives')
   @ApiOperation({ summary: 'Get Inactive Branch' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
+  // @RequirePermissions('VIEW_BRANCH')
   findAllInactivesBranches() {
     return this.branchService.findAllBranches(0);
   }
@@ -121,7 +120,7 @@ export class BranchController {
   @Get('deactivate')
   @ApiOperation({ summary: 'Get Inactive Branch' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_BRANCH')
+  // @RequirePermissions('VIEW_BRANCH')
   deactivateBranch(@Param('id') id: number) {
     return this.branchService.deactivate(id);
   }
@@ -129,7 +128,7 @@ export class BranchController {
   @Get('activate')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiOperation({ summary: 'Get Inactive Branch' })
-  @RequirePermissions('VIEW_BRANCH')
+  // @RequirePermissions('VIEW_BRANCH')
   activateBranch(@Param('id') id: number) {
     return this.branchService.activate(id);
   }

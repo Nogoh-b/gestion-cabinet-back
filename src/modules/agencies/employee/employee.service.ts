@@ -124,7 +124,7 @@ async createEmployee(
     status: 1, // Actif par défaut
     password: hashed_password,
     // phoneNumber: dto.phone_number,
-    role: this.getUserRoleFromPosition(dto.position),
+    role: this.getUserRoleFromPosition(dto.position), 
     // isActive: true,
   });
 

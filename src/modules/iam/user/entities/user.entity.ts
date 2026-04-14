@@ -36,8 +36,8 @@ export class User {
   refreshToken: string;
 
   @Exclude()
-  @Column({ type: 'char', length: 60 })
-  password: string;
+  @Column({ type: 'char', length: 60, nullable: true})
+  password?: string | null;
 
   @OneToMany(() => UserRoleAssignment, (assignment) => assignment.user)
   roleAssignments: UserRoleAssignment[];
@@ -70,9 +70,13 @@ export class User {
   @Column({ name: 'is_online', default: true })
   is_online: boolean;
 
-  @Column({ name: 'lastSeen' })
-  lastSeen?: string;
-
+  @Column({ 
+    name: 'lastSeen', 
+    type: 'timestamp',  // Ajoutez ceci
+    default: () => 'CURRENT_TIMESTAMP' 
+  })
+  lastSeen?: string | null;
+  
   @ManyToOne(() => Customer, { nullable: true })
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
