@@ -11,6 +11,7 @@ import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-templa
 import DocumentTypeSeeder from './modules/documents/document-type/seeder/document-type.seeder';
 import TypeCustomerSeeder from './modules/customer/type-customer/seeder/type-customer.seeder';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
+import ChatGroupConversationSeeder from './modules/chat/seeder/chat-group-conversation.seeder';
 // src/database/seeders/index.ts
 
 
@@ -26,6 +27,7 @@ export async function seedDatabase(dataSource: DataSource) {
         LocationSeeder,
         AudienceTypeSeeder,
         TypeCustomerSeeder,
+        ChatGroupConversationSeeder,
         InvoiceTypeSeeder,
         ProcedureTypeSeeder,
         ProcedureSubtypeSeeder,

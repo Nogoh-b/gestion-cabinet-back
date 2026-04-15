@@ -330,6 +330,7 @@ async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
       'client',
       'lawyer',
       'lawyer.user',
+      'conversation',
       'factures',
       'procedure_type',
       'procedureInstance',

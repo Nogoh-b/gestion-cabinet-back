@@ -127,6 +127,9 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'next_steps', type: 'text', nullable: true })
   next_steps: string;
 
+  @Column({ name: 'conversation_id', type: 'int', nullable: true })
+  conversation_id?: number;
+
   @Column({ name: 'final_decision', type: 'text', nullable: true })
   final_decision: string | null;
 
