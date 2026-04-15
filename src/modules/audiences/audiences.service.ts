@@ -120,7 +120,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       notes: dto.notes,
       postponed_to: dto.postponed_to,
       audience_type,
-      type: audience_type.code as unknown as AudienceType1,
+      type: AudienceType1.HEARING ,//audience_type.code as unknown as AudienceType1,
       dossier: { id: dossier.id },
       status: AudienceStatus.SCHEDULED,
       procedure_instance_id: procedureInstance?.id,
