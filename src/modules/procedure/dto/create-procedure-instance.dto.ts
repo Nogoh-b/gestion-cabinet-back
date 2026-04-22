@@ -12,3 +12,13 @@ export class CreateProcedureInstanceDto {
   @IsObject()
   data?: Record<string, any>;
 }
+
+export class UpdateProcedureInstanceDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsObject()
+  data?: Record<string, any>;
+}

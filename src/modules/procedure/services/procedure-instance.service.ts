@@ -10,7 +10,7 @@ import { Cycle } from '../entities/cycle.entity';
 import { ProcedureTemplateService } from './procedure-template.service';
 import { WorkflowService } from './workflow.service';
 import { HistoryService } from './history.service';
-import { CreateProcedureInstanceDto } from '../dto/create-procedure-instance.dto';
+import { CreateProcedureInstanceDto, UpdateProcedureInstanceDto } from '../dto/create-procedure-instance.dto';
 import { EventType, InstanceStatus, TransitionType } from '../entities/enums/instance-status.enum';
 import { HistoryEntry } from '../entities/history-entry.entity';
 import { InstanceMapperService } from './instance-sub-stage.service';
@@ -572,6 +572,33 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
         instance.template, 
         currentVisit
       );
+  }
+
+
+  async update(id: string, dto: UpdateProcedureInstanceDto): Promise<ProcedureInstance> {
+    // Mise à jour directe sans find
+    const updateResult = await this.instanceRepository.update(id, {
+      // Mappez les champs du DTO vers l'entité
+      ...dto,
+      updatedAt: new Date(),
+      // Autres champs à mettre à jour
+    });
+
+    if (updateResult.affected === 0) {
+      throw new NotFoundException(`ProcedureInstance avec l'ID ${id} non trouvée`);
+    }
+
+    // Logger l'action (sans avoir l'instance complète)
+    // await this.historyService.log(
+    //   id, // ou instance.id si vous avez besoin d'autres propriétés
+    //   EventType.DECISION,
+    //   dto.currentStageId, // ou récupérer depuis le DTO
+    //   userId,
+    //   { status: dto.status, action: 'status_updated' },
+    // );
+
+    // Retourner l'entité mise à jour (optionnel)
+    return this.findOne(id);
   }
 
   async updateStatus(id: string, status: InstanceStatus, userId: string): Promise<ProcedureInstance> {
@@ -1306,7 +1333,7 @@ async getCurrentStageVisitEntity(instance: ProcedureInstance): Promise<StageVisi
     let visit = await this.stageVisitRepository.findOne({
       where: { instanceId, stageId: instance.currentStageId },
       order: { visitNumber: 'DESC' },
-      relations: ['subStageVisits'],
+      relations: ['subStageVisits', 'currentSubStageVisit', 'currentSubStageVisit.subStage'],
     });
 
     if (!visit) {

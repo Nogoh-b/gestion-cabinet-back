@@ -134,13 +134,15 @@ export class AudienceResponseDto {
     id: obj.dossier?.id,
     dossier_number: obj.dossier?.dossier_number,
     object: obj.dossier?.object,
-    full_name: obj.dossier?.full_name
+    full_name: obj.dossier?.full_name,
+    collaborators: obj.dossier?.collaborators
   }))
   dossier_details?: {
     id: number;
     dossier_number?: string;
     object?: string;
-    full_name?: string;
+    full_name?: string; 
+    collaborators: any
   };
 
   @ApiProperty({ 
@@ -246,6 +248,47 @@ export class AudienceResponseDto {
   @Expose()
   @Transform(({ obj }) => obj.code)
   type_label: string;
+
+
+
+  @ApiProperty({ 
+    description: "Date d'affichage (prend postponed_to si reportée, sinon audience_date)",
+    example: "2024-12-20" 
+  })
+  @Expose()
+
+  display_date: Date;
+
+  @ApiProperty({ 
+    description: "Heure d'affichage (extrait de postponed_to si reportée, sinon audience_time)",
+    example: "11:00" 
+  })
+  @Expose()
+
+  display_time: string;
+
+  @ApiProperty({ 
+    description: "Date et heure d'affichage combinées",
+    example: "2024-12-20T11:00:00.000Z" 
+  })
+  @Expose()
+
+  display_datetime: Date;
+
+  @ApiProperty({ 
+    description: "Date et heure d'affichage formatées (locale française)",
+    example: "vendredi 20 décembre 2024 à 11:00" 
+  })
+  @Expose()
+
+  display_datetime_formatted: string;
+
+  @ApiProperty({ 
+    description: "Indique si l'audience a été reportée",
+    example: false 
+  })
+  @Expose()
+  is_postponed: boolean;
 
 
   @ApiProperty({ example: "Planifiée" })

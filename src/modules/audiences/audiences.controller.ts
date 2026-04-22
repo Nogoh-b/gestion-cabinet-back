@@ -112,7 +112,24 @@ export class AudiencesController {
     @Param('id') id: string,
     @Body() decisionDto: DecisionAudienceDto,
   ) {
-    return await this.decisionService.addDecision(+id, decisionDto);
+    const decision =  await this.decisionService.addDecision(+id, decisionDto);
+    return await this.audiencesService.findOneV1(+id)
+  }
+
+  /**
+   * reprogramer audience
+   */
+  @Post(':id/postpone/to')
+  @ApiOperation({ summary: 'Ajouter une décision à une audience' })
+  @ApiResponse({ status: 201, type: AddDecisionResponseDto })
+  async postpone(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateAudienceDto,
+  ) {
+    console.log('updateDtoAA ', updateDto)
+
+    const audience =  await this.audiencesService.postpone(+id, updateDto);
+    return audience
   }
 
   /**
@@ -125,7 +142,8 @@ export class AudiencesController {
     @Param('id') id: string,
     @Body() decisionDto: DecisionAudienceDto,
   ) {
-    return await this.decisionService.updateDecision(+id, decisionDto);
+    const decision =   await this.decisionService.updateDecision(+id, decisionDto);
+        return await this.audiencesService.findOneV1(+id)
   }
 
   /**
@@ -135,6 +153,7 @@ export class AudiencesController {
   @ApiOperation({ summary: 'Récupérer la décision d\'une audience' })
   async getDecision(@Param('id') id: string) {
     return await this.decisionService.getDecision(+id);
+    
   }
 
   /**

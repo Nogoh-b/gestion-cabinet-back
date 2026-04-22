@@ -7,7 +7,6 @@ import InvoiceTypeSeeder from './modules/invoice-type/seeder/invoice-type.seeder
 import JurisdictionSeeder from './modules/jurisdiction/seeder/jurisdiction.seeder';
 import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
 import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
-import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-template.seeder';
 import DocumentTypeSeeder from './modules/documents/document-type/seeder/document-type.seeder';
 import TypeCustomerSeeder from './modules/customer/type-customer/seeder/type-customer.seeder';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
@@ -31,7 +30,7 @@ export async function seedDatabase(dataSource: DataSource) {
         InvoiceTypeSeeder,
         ProcedureTypeSeeder,
         ProcedureSubtypeSeeder,
-        ProcedureTemplateSeeder
+        // ProcedureTemplateSeeder
       ]
     });
 

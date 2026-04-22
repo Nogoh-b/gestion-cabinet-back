@@ -161,8 +161,8 @@ async createEmployee(
   );
   this.findOneV1(employee.id)
   const e : any = await this.findOneV1(employee.id, ['user', 'branch', 'managed_dossiers', 'collaborating_dossiers'], Employee)
-  e.email = 'nogohbrice@gmail.com'
-  console.log('merdddddddddde1 ', e)
+  // e.email = 'nogohbrice@gmail.com'
+  // console.log('merdddddddddde1 ', e)
 
   await this.mailService.sendActivationEmail(e,'Okkk')
   await this.mailService.sendResetPasswordEmail(e,'Okkk')

@@ -77,7 +77,7 @@ export class Audience extends BaseEntity {
   @Column({ name: 'decision', type: 'text', nullable: true })
   decision: string;
 
-  @Column({ name: 'postponed_to', type: 'date', nullable: true }) // ✅ Changé en 'date'
+  @Column({ name: 'postponed_to',  type: 'timestamp', nullable: true }) // ✅ Changé en 'date'
   postponed_to: Date;
 
   @Column({ name: 'reminder_sent', default: false })
@@ -220,14 +220,65 @@ export class Audience extends BaseEntity {
     return diffHours <= 48; // Rappel 48h avant
   }
 
-  // Méthodes
-  postpone(new_date: Date, reason?: string): void {
-    this.status = AudienceStatus.POSTPONED;
-    this.postponed_to = new_date;
-    if (reason) {
-      this.notes = `${this.notes || ''}\nReporté: ${reason}`.trim();
+
+  // NOUVEAUX GETTERS pour l'affichage conditionnel
+  get display_date(): Date {
+    // Si reportée, utiliser postponed_to, sinon audience_date
+    if (this.status === AudienceStatus.POSTPONED && this.postponed_to) {
+      return this.postponed_to;
     }
-    this.reminder_sent = false; // Réinitialiser pour le nouveau date
+    return this.audience_date;
+  }
+
+  get display_time(): string {
+    // Si reportée et postponed_to existe, extraire l'heure de postponed_to
+    if (this.status === AudienceStatus.POSTPONED && this.postponed_to) {
+      const hours = this.postponed_to.getHours().toString().padStart(2, '0');
+      const minutes = this.postponed_to.getMinutes().toString().padStart(2, '0');
+      return `${hours}:${minutes}`;
+    }
+    // Sinon utiliser audience_time originale
+    return this.audience_time;
+  }
+
+  get display_datetime(): Date {
+    // Combine display_date et display_time
+    if (this.status === AudienceStatus.POSTPONED && this.postponed_to) {
+      return this.postponed_to;
+    }
+    return new Date(`${this.audience_date}T${this.audience_time}`);
+  }
+
+  get display_datetime_formatted(): string {
+    const date = this.display_datetime;
+    return date.toLocaleString('fr-FR', {
+      dateStyle: 'full',
+      timeStyle: 'short'
+    });
+  }
+
+  // Pour savoir si c'est une audience reportée
+  get is_postponed(): boolean {
+    return this.status === AudienceStatus.POSTPONED && !!this.postponed_to;
+  }
+
+
+  // Méthodes
+  postpone(new_date: Date, new_hour: string, reason?: string): void {
+      this.status = AudienceStatus.POSTPONED;
+      
+      // Créer une nouvelle date pour ne pas modifier l'original
+      const [hours, minutes] = new_hour.split(':');
+      const newDateTime = new Date(new_date);
+      newDateTime.setHours(parseInt(hours), parseInt(minutes), 0);
+      this.postponed_to = newDateTime;
+      console.log('updateDto111222 ', this.postponed_to,' ',new_date,' ',new_hour);
+      
+      
+      if (reason) {
+        this.notes = `${this.notes || ''}\nReporté: ${reason}`.trim();
+      }
+      this.reminder_sent = false;
   }
 
   mark_as_held(decision?: string, outcome?: string): void {

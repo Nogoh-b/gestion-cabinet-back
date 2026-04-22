@@ -16,7 +16,10 @@ import {
   Delete,
   Query,
   UseGuards,
-  ParseIntPipe
+  ParseIntPipe,
+  UseInterceptors,
+  UploadedFiles,
+  Request
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
 
@@ -41,6 +44,8 @@ import { DossierStatsService } from './dossier-stats.service';
 import { ClientDecisionDto, JudgmentDto, PreliminaryAnalysisDto } from './dto/dossier-analysis.dto';
 import { Step } from './entities/step.entity';
 import { CloseDossierDto } from './dto/close-dossier.dto';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
 
 
 
@@ -311,6 +316,38 @@ export class DossiersController {
       user.id
     );
   }
+
+
+
+    @Post(':id/transitions/:transitionId/apply')
+    @UseInterceptors(FilesInterceptor('files', 10))
+    async applyTransition1(
+      @Param('id') id: string,
+      @Param('transitionId') transitionId: string,
+      @Body() dto: ApplyTransitionDto,
+      @UploadedFiles() files: Express.Multer.File[],
+      @Request() req: any,
+    ) {
+      const userId = req.user?.id || 'system';
+      
+      // Gérer les fichiers uploadés
+      let fileIds: number[] = [];
+      if (files && files.length > 0) {
+        // Uploader les fichiers et récupérer leurs IDs
+        // fileIds = await this.uploadService.uploadFiles(files);
+      }
+      
+      await this.dossiersService.applyTransition(
+        id,
+        transitionId,
+        userId,
+        dto,
+        // fileIds,
+        dto.comment,
+      );
+
+      return this.dossiersService.findOneByInstance(id)
+    }
 
 
 

@@ -34,6 +34,8 @@ import { CreateProcedureInstanceDto } from '../procedure/dto/create-procedure-in
 import { StageVisit } from '../procedure/entities/stage-visit.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { CloseDossierDto } from './dto/close-dossier.dto';
+import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
+import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 // import { DistributionItem, DossierStatsDto, EvolutionData, FinancialStats, LawyerStats, RecentDossier, TimelineStats, UrgentDossier } from 'src/core/types/base-stats.dto';
 
 
@@ -229,6 +231,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     console.log('DTO:', JSON.stringify(createDossierDto, null, 2));
     console.log('Entity before save:', dossier);
     const savedDossier = await this.dossierRepository.save(dossier);
+
+    this.procedureInstanceService.update(procedureInstance.id , {data:{id: savedDossier.id}})
     let mailDto = new CreateMailDto() 
     const dossierR = await this.mapToResponseDto(savedDossier);
     mailDto.templateName = "entities/dossier/dossier-created-creator"
@@ -361,6 +365,40 @@ async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
       //     dossier.procedureInstance.currentStage = stageWithSubStages;
       //   }
       // }
+    }
+  }
+
+  return plainToInstance(DossierResponseDto, dossier);
+}
+async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto | any> {
+  
+  // ✅ Charger UNIQUEMENT le dossier avec ses relations directes
+  const dossier = await this.dossierRepository.findOne({
+    where: { procedureInstanceId },
+    relations: [
+      'client',
+      'lawyer',
+      'lawyer.user',
+      'conversation',
+      'factures',
+      'procedure_type',
+      'procedureInstance',
+      'procedure_subtype',
+      'jurisdiction',
+    ],
+  });
+
+  if (!dossier) {
+    throw new NotFoundException(`Dossiernon trouvé`);
+  }
+
+  // ✅ Charger procedureInstance séparément si nécessaire
+  if (dossier.procedureInstanceId) {
+    const procedureInstance = await this.procedureInstanceService.getWorkflowStatus(dossier.procedureInstanceId);
+    
+    if (procedureInstance) {
+      dossier.procedureInstance = procedureInstance;
+      
     }
   }
 
@@ -1545,6 +1583,23 @@ async closeDossier(
   return this.mapToResponseDto(savedDossier);
 }
 
+
+async applyTransition(
+    instanceId: string,
+    transitionId: string,
+    userId: string,
+    dto: ApplyTransitionDto,
+    comment?: string,
+  ): Promise<ProcedureInstance> {
+      return this.procedureInstanceService.applyTransition(
+        instanceId,
+        transitionId,
+        userId,
+        dto.userInputs,
+        // fileIds,
+        comment,
+      );
+  }
 // Méthodes auxiliaires privées
 private async logDossierClosure(
   dossier: Dossier, 

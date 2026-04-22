@@ -26,7 +26,7 @@ export class AudienceSubscriber implements EntitySubscriberInterface<Audience> {
   }
 
   async afterInsert(event: InsertEvent<Audience>) {
-    console.log('AFTER INSERT ', event.entity.documents);
+    // console.log('AFTER INSERT ', event.entity.documents);
     await this.audienceService.sendEmails(event.entity.id, event.manager);
     return
 

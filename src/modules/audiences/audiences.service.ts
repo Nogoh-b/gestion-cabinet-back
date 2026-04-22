@@ -60,7 +60,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier', 'dossier.client','audience_type'],
       exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
-      relationFields: ['dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category','subStage'],
+      relationFields: ['dossier', 'dossier.client', 'dossier.collaborators', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category','subStage'],
     };
   }
 
@@ -121,7 +121,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       postponed_to: dto.postponed_to,
       audience_type,
       type: AudienceType1.HEARING ,//audience_type.code as unknown as AudienceType1,
-      dossier: { id: dossier.id },
+      dossier,
       status: AudienceStatus.SCHEDULED,
       procedure_instance_id: procedureInstance?.id,
       stageVisit_id: procedureInstance.currentVisit?.id,
@@ -204,7 +204,8 @@ private async updateDossierStatusOnAudience(audience: Audience, dossier: Dossier
   async findOne(id: number): Promise<AudienceResponseDto | any> {
     const audience = await this.repository.findOne({
       where: { id },
-      relations: ['dossier', 'dossier.client', 'documents',  'jurisdiction','audience_type','decision_documents'],
+      relations: this.getDefaultSearchOptions().relationFields,
+      // relations: ['dossier', 'dossier.client', 'dossier.collaborators', 'documents',  'jurisdiction','audience_type','decision_documents'],
     });
 
     if (!audience) {
@@ -264,7 +265,8 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
   // 🔥 IMPORTANT: Assigner les autres champs
   Object.assign(audience, otherFields);
   
-  return plainToInstance(AudienceResponseDto, await this.repository.save(audience));
+  const resp = plainToInstance(AudienceResponseDto, await this.repository.save(audience));
+  return await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
 }
 
   /**
@@ -278,10 +280,22 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
   /**
    * 🔁 Reporter une audience
    */
-  async postpone(id: number, newDate: Date, reason?: string): Promise<Audience> {
-    const audience = await this.findOne(id);
-    (plainToInstance(Audience , audience)).postpone(newDate, reason);
-    return this.repository.save((plainToInstance(Audience , audience)));
+  async postpone(id: number, dto: UpdateAudienceDto): Promise<Audience> {
+      const audience = await this.findOne(id);
+      console.log('updateDto ', dto);
+
+      if (dto.audience_date && dto.audience_time) {
+          // Convertir l'entité simple en instance de la classe Audience
+          const audienceInstance = plainToInstance(Audience, audience);
+          
+          // Appeler la méthode postpone sur l'instance
+          audienceInstance.postpone(new Date(dto.audience_date), dto.audience_time, dto.reason);
+          
+          // Sauvegarder l'instance modifiée
+          return this.repository.save(audienceInstance);
+      }
+      
+      return this.repository.save(audience);
   }
 
   /**
@@ -289,8 +303,10 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
    */
   async markAsHeld(id: number, decision?: string, outcome?: string): Promise<Audience> {
     const audience = await this.findOne(id);
-    (plainToInstance(Audience , audience)).mark_as_held(decision, outcome);
-    return this.repository.save((plainToInstance(Audience , audience)));
+    const audienceInstance = plainToInstance(Audience, audience);
+
+    (audienceInstance).mark_as_held(decision, outcome);
+    return this.repository.save((audienceInstance));
   }
 
   /**
@@ -298,8 +314,10 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
    */
   async cancel(id: number, reason?: string): Promise<Audience> {
     const audience = await this.findOne(id);
-    (plainToInstance(Audience , audience)).cancel(reason);
-    return this.repository.save((plainToInstance(Audience , audience)));
+    const audienceInstance = plainToInstance(Audience, audience);
+
+    (audienceInstance).cancel(reason);
+    return this.repository.save((audienceInstance));
   }
 
   /**
@@ -332,8 +350,8 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
   async markReminderSent(id: number): Promise<Audience> {
     const audience = await this.findOne(id);
     audience.reminder_sent = true;
-    (plainToInstance(Audience , audience)).reminder_sent_at = new Date();
-    return this.repository.save((plainToInstance(Audience , audience)));
+    (audience).reminder_sent_at = new Date();
+    return this.repository.save((audience));
   }
 
 
@@ -371,8 +389,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       .getOne();
       const audience = plainToInstance(AudienceResponseDto,data)
 // 'dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'
-      console.log('QueryBuilder result - documents count:', audience?.documents?.length);
-      console.log('QueryBuilder result - documents:', audience?.status_label);
+      // console.log('QueryBuilder result - documents count:', audience?.documents?.length);
+      // console.log('QueryBuilder result - documents:', audience?.status_label);
       if (!audience) {
         throw new Error(`Audience ${audienceId} non trouvée`);
       }
@@ -388,7 +406,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       mailDto.subject = "Creation de l'audience Concernant le dossier " + audience?.dossier_details?.dossier_number
       mailDto.attachments = attachments; // Ajouter les pièces jointes
 
-      console.log(mailDto.context.documents)
+      // console.log(mailDto.context.documents)
       await this.sendMail(mailDto, deduplicationKey)
       const deduplicationKey1 = `commande-${audience.id}-confirmation-${audience.status}-3`;
       mailDto.templateName = "entities/audience/audience-remider-3"

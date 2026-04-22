@@ -254,7 +254,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         customer,
         status : DocumentCustomerStatus.ACCEPTED,
         category : plainToInstance(DocumentCategory, category),
-        dossier: { id: dossier.id } as Dossier, // ou gardez l'objet tel quel
+        dossier: plainToInstance(Dossier, dossier), // ou gardez l'objet tel quel
         uploadedFile,
 
         uploadedByUserId

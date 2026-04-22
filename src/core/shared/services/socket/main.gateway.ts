@@ -261,10 +261,10 @@ async handleSendNotification(
 ) {
   try {
     const senderId = this.getUserIdBySocketId(client.id);
-    this.logger.log(`🔔 send_notification reçu de user ${senderId}:`, {
-      ...data,
-      user_ids: data.user_ids
-    });
+    // this.logger.log(`🔔 send_notification reçu de user ${senderId}:`, {
+    //   ...data,
+    //   user_ids: data.user_ids
+    // });
 
     // Validation des données
     if (!data.user_ids || !Array.isArray(data.user_ids) || data.user_ids.length === 0) {
@@ -422,7 +422,7 @@ async handleBroadcastNotification(
 ) {
   try {
     const senderId = this.getUserIdBySocketId(client.id);
-    this.logger.log(`📢 broadcast_notification reçu de user ${senderId}:`, data);
+    // this.logger.log(`📢 broadcast_notification reçu de user ${senderId}:`, data);
 
     // Validation
     if (!data.type || !data.title) {

@@ -71,6 +71,14 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   room?: string;
 
   @ApiProperty({
+    example: 'Raison',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiProperty({
     example: 'Hon. Ndongo Patrice',
     required: false,
   })
