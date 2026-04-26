@@ -7,7 +7,6 @@ import { Conversation } from 'src/modules/chat/entities/conversation.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
-import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
@@ -394,7 +393,7 @@ costs_awarded: number; // Dépens/montant accordé
   get paid_factures_amount(): number {
     if (!this.factures) return 0;
     return this.factures
-      .filter(facture => facture.status === StatutFacture.PAYEE)
+      // .filter(facture => facture.status === StatutFacture.PAYEE)
       .reduce((total, facture) => total + parseFloat(facture.montantTTC.toString()), 0);
   }
 

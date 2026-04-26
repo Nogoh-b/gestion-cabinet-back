@@ -11,6 +11,8 @@ import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 
+import * as fs from 'fs';
+import * as path from 'path';
 
 
 
@@ -27,6 +29,8 @@ import {
   UseGuards,
   Query,
   ParseIntPipe,
+  Res,
+  NotFoundException,
 } from '@nestjs/common';
 
 
@@ -48,6 +52,7 @@ import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
 import { DocumentStatsService } from './document-stats.service';
+import { Response } from 'express';
 
 
 
@@ -235,4 +240,87 @@ export class DocumentCustomerController {
     // traite comme tu veux dans le service
     return this.service.sync(dto);
   }
+
+// Dans votre controller (par exemple document-customer.controller.ts)
+@Get(':id/stream')
+@UseGuards(JwtAuthGuard)
+async streamDocument(
+  @Param('id') id: string,
+  @CurrentUser() user: User,
+  @Res() res: Response,
+) {
+  try {
+    const document = await this.service.findOne(+id);
+    
+    if (!document || !document.file_path) {
+      return res.status(404).json({ error: 'Document non trouvé' });
+    }
+    
+    // Vérifier les permissions
+    // await this.service.verifyAccess(id, user.id);
+    
+    // Rediriger vers l'URL publique si disponible
+    if (document.file_url && document.file_url.startsWith('http')) {
+      return res.redirect(document.file_url);
+    }
+    
+    // Sinon, servir le fichier localement
+    let filePath = document.file_path;
+    
+    // Remplacer les séparateurs pour Windows
+    filePath = filePath.replace(/\\/g, path.sep).replace(/\//g, path.sep);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Fichier non trouvé' });
+    }
+    
+    const mimeType = document.file_mimetype || this.service.getMimeType(filePath);
+    
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${document.original_name || 'document'}"`);
+    
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+    console.log(stream)
+    
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+}
+
+// Alternative plus simple - Endpoint pour obtenir l'URL de stream
+@Get(':id/stream-url')
+@UseGuards(JwtAuthGuard)
+async getStreamUrl(
+  @Param('id') id: string,
+  @CurrentUser() user: User,
+) {
+  // Vérifier les permissions
+  // await this.service.verifyAccess(id, user.id);
+  
+  // Retourner l'URL de stream (qui sera interceptée par le frontend)
+  return { 
+    url: `/api/document-customer/${id}/stream`,
+    fileUrl: `/api/document-customer/${id}/raw`
+  };
+}
+
+// Endpoint direct pour servir le fichier raw
+@Get(':id/raw')
+@UseGuards(JwtAuthGuard)
+async getRawFile(
+  @Param('id') id: string,
+  @CurrentUser() user: User,
+  @Res() res: Response,
+) {
+  const document = await this.service.findOne(+id);
+  
+  if (!document || !document.file_url) {
+    throw new NotFoundException('Document non trouvé');
+  }
+  
+  // Si vous avez déjà un file_url accessible publiquement
+  return res.redirect(document.file_url);
+}
 }

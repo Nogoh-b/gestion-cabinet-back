@@ -121,6 +121,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'documents',
         'audiences',
         'factures',
+        // 'factures.paiements',
         // 'steps',
         'jurisdiction',
         'collaborators',
@@ -128,11 +129,11 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
         'collaborators.user',
         'diligences'
         // 'comments',
-        // 'comments.user'
+        // 'comments.user' 
       ]
     };
-  }
 
+  }
   /**
    * Recherche avancée des clients avec relations
    */

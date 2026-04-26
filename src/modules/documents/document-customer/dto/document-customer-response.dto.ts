@@ -94,7 +94,7 @@ export class DocumentCustomerResponseDto {
     id: obj.dossier.id,
     dossier_number: obj.dossier.dossier_number,
     objet: obj.dossier.objet,
-    // name: obj.dossier.dossier_number,
+    name: obj.dossier.dossier_number,
   } : undefined)
   dossier?: {
     id: number;
@@ -297,6 +297,15 @@ export class DocumentCustomerResponseDto {
   @ApiProperty()
   @Expose()
   uploaded_at: Date;
+
+  
+  @ApiProperty()
+  @Expose()
+  file_name: string;
+  
+  @ApiProperty()
+  @Expose()
+  file_url: string;
 
   @ApiProperty()
   @Expose()

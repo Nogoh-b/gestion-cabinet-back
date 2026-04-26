@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { UPLOAD_DOCS_PATH, UPLOAD_PATH } from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
@@ -13,6 +13,8 @@ import { DossiersService } from 'src/modules/dossiers/dossiers.service';
 import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { Repository } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import {
   BadRequestException,
@@ -216,14 +218,15 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       if (hasSimilarDocs && !strict) return null;
 
       // 6. Validation du fichier
-      await this.validateFile(file, docType, strict);
+      await this.validateFile(file, docType!, strict);
       if (!file && strict) {
         throw new BadRequestException('Aucun fichier uploadé');
       }
       if (!file && !strict) return null;
-
+      
+      const dir = `${dossier.dossier_number}/${category.name}/${docType!.name}`
       // 7. Upload du fichier
-      const uploadedFile = await this.uploadFile(file, docType);
+      const uploadedFile = await this.uploadFile(file, dir);
 
         // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
     // let procedureInstance: ProcedureInstance | null = null;
@@ -250,7 +253,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       // 8. Création du document
       const document = await this.createDocument({
         ...restDto,
-        document_type: docType,
+        document_type: docType!,
         customer,
         status : DocumentCustomerStatus.ACCEPTED,
         category : plainToInstance(DocumentCategory, category),
@@ -260,15 +263,15 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         uploadedByUserId
       });
 
-        const currentStep = await this.stepsService.getCurrentStep(createDto.dossier_id);
+        // const currentStep = await this.stepsService.getCurrentStep(createDto.dossier_id);
   
-        // Lier automatiquement le document à l'étape courante (Many-to-Many)
-        if (currentStep) {
-          await this.stepsService.linkDocumentToStep(document.id, currentStep.id);
-        }
-        if (currentStep) {
-          await this.stepsService.syncActionWithStep('document', document.id, currentStep.id);
-        }
+        // // Lier automatiquement le document à l'étape courante (Many-to-Many)
+        // if (currentStep) {
+        //   await this.stepsService.linkDocumentToStep(document.id, currentStep.id);
+        // }
+        // if (currentStep) {
+        //   await this.stepsService.syncActionWithStep('document', document.id, currentStep.id);
+        // }
         // Si des diligences ou audiences sont spécifiées dans le formulaire
         // if (createDto.diligence_ids?.length) {
         //   await this.stepsService.linkDocumentToMultipleEntities(document.id, {
@@ -301,7 +304,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   private async validateDocumentType(
     documentTypeId: number, 
     strict: boolean
-  ): Promise<any> {
+  ): Promise<DocumentType | null> {
     const docType = await this.docTypeRepository.findOne({
       where: { id: documentTypeId }
     });
@@ -414,12 +417,12 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
    */
   private async uploadFile(
     file: Express.Multer.File,
-    docType: DocumentType
+    dir: string
   ): Promise<UploadedFileInfo> {
 
     try {
-      console.log(join(UPLOAD_DOCS_PATH, 'Dossier/Type'))
-      return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, 'Dossier/Type'),{
+      console.log(join(UPLOAD_DOCS_PATH, dir))
+      return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, dir),{
         maxSizeKB: 300, // 3MB
         quality: 70,
       });
@@ -494,7 +497,7 @@ async linkDocumentsToSubStage(
       customer,
       dossier,
       name: restParams.name ?? document_type.name,
-      file_path: uploadedFile.fileName,
+      file_path: uploadedFile.filePath,
       file_url: uploadedFile.fileUrl,
       file_size: uploadedFile.fileSize,
       file_mimetype: uploadedFile.mimeType,
@@ -657,6 +660,37 @@ async linkDocumentsToSubStage(
     //     }
     // }
     return r
+  }
+
+
+    async getDocumentStream(id: any, userId: any): Promise<{ stream: fs.ReadStream; mimeType: string; fileName: string }> {
+    const document = await this.findOne(id);
+    
+    // const uploadPath = this.configService.get('UPLOAD_PATH', './uploads');
+    const filePath = document.file_path ?? path.join(UPLOAD_PATH, document?.filename || '');
+    
+    if (!fs.existsSync(filePath)) {
+      console.log('Fichier physique non trouvé ' +filePath , ' ',document.file_path )
+      throw new NotFoundException('Fichier physique non trouvé ' + filePath);
+    }
+
+    const stream = fs.createReadStream(filePath);
+    const mimeType = this.getMimeType(document.file_mimetype || '');
+    
+    return { stream, mimeType, fileName: document.original_name };
+  }
+
+  getMimeType(fileType: string): string {
+    const mimeTypes = {
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+    };
+    return mimeTypes[fileType] || 'application/octet-stream';
   }
 
   

@@ -321,6 +321,12 @@ get has_previous_versions(): boolean {
   return !!this.previous_version;
 }
 
+get file_name(): string {
+  if (!this.file_path) return '';
+  // Utilise la bibliothèque path de Node.js (disponible côté serveur)
+  const path = require('path');
+  return path.basename(this.file_path);
+}
 // get is_procedural_document(): boolean {
 //   return this.category === DocumentCategory.PROCEDURAL;
 // }
