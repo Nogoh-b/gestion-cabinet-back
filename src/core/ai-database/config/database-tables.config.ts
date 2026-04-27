@@ -1,19 +1,22 @@
 export const DatabaseTablesConfig = {
   // Tables essentielles pour l'analyse (pour éviter de charger toutes les tables)
   essentialTables: [
-    'dossiers',
-    'customer',
-    'employee',
-    'audiences',
-    'step',
-    'factures',
-    'paiements',
-    'document_customer',
-    'diligences',
-    'findings',
-    'savings_account',
-    'transaction_savings_account',
-    'loan'
+    "dossiers",
+    "customer",
+    "employee",
+    "audiences",
+    "factures",
+    "paiements",
+    "document_customer",
+    "diligences",
+    "findings",
+    "stages",
+    "stage_visits",
+    "sub_stage_visits",
+    "sub_stages",
+    "procedure_instances",
+    "procedure_templates",
+    "transitions",
   ],
 
   // Tables à ignorer complètement

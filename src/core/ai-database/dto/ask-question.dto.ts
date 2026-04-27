@@ -9,7 +9,7 @@ export class AskQuestionDto {
   @IsString()
   @MinLength(5)
   @MaxLength(2000)
-  question: string;
+  question: string = '';
 
   @ApiProperty({ 
     description: 'Tables spécifiques à utiliser (optionnel)',
@@ -20,6 +20,8 @@ export class AskQuestionDto {
   @IsArray()
   @IsString({ each: true })
   specificTables?: string[];
+
+  analyzeOnly = true
 
   @ApiProperty({ 
     description: 'Mode verbose pour voir les étapes intermédiaires',

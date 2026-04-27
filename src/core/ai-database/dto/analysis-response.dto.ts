@@ -1,11 +1,13 @@
 export class AnalysisResponseDto {
-  success: boolean;
-  question: string;
+  success: boolean = true;
+  question: string = '';
   sqlQuery?: string;
   rawResults?: any[];
-  analysis: string;
+  analysis: string = '';
   tokensUsed?: number;
-  executionTimeMs: number;
+  results?: any;
+  rowCount?: any;
+  executionTimeMs: number = 1;
   recommendations?: string[];
   error?: string;
 }
