@@ -52,6 +52,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { helpers } from './utils/helper-template-maill';
 import { ProcedureModule } from './modules/procedure/procedure.module';
+import { AiDatabaseModule } from './core/ai-database/ai-database.module';
 
 
 
@@ -175,7 +176,8 @@ dotenv.config();
     FindingModule,
     StatsModule,
     DashboardModule,
-    ProcedureModule
+    ProcedureModule,
+    AiDatabaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

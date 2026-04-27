@@ -80,6 +80,7 @@ import { EmailsModule } from './shared/emails/emails.module';
 import { EmailService } from './shared/services/email/email.service copy';
 import { AuthToken } from './auth/entities/auth-token.entity';
 import { AuthTokenService } from './auth/auth-token.service';
+import { AiDatabaseModule } from './ai-database/ai-database.module';
 
 
 
@@ -155,7 +156,7 @@ import { AuthTokenService } from './auth/auth-token.service';
     forwardRef(() => NotificationModule) ,// Pour éviter les dépendances circulaires
     // forwardRef(() => NotificationModule),
     // SeedersModule,
-    ScheduleModule.forRoot(),
+    ScheduleModule.forRoot(), AiDatabaseModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [
