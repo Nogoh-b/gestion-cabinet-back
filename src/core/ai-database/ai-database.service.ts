@@ -488,10 +488,19 @@ private async getDefaultSchema(): Promise<string> {
     return schema;
   }
 
-  private async getTableInfoJson(table: string, relationships?: any): Promise<TableSchema | null | undefined> {
-    // ✅ Vérifier d'abord si la table a des métadonnées
-    if (!this.schemaMetadata.hasTableMetadata(table)) {
-      this.logger.debug(`⏭️ Table ignorée (pas de métadonnées): ${table}`);
+  private async getTableInfoJson(table: string, relationships?: any): Promise<TableSchema | null> {
+    // ✅ Vérifier si la table doit être incluse (basé sur les métadonnées)
+    const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
+    
+    // Si la table n'a PAS de métadonnées, elle ne doit pas être incluse
+    if (!tableMeta) {
+      this.logger.debug(`⏭️ Table sans métadonnées (ignorée): ${table}`);
+      return null;
+    }
+    
+    // Si la table est explicitement ignorée
+    if (tableMeta.ignored === true) {
+      this.logger.debug(`⏭️ Table explicitement ignorée: ${table}`);
       return null;
     }
     
@@ -515,7 +524,99 @@ private async getDefaultSchema(): Promise<string> {
     
     if (columns.length === 0) return null;
     
-    // ... reste du code inchangé
+    // ✅ Récupérer les métadonnées des colonnes depuis le cache
+    const columnMetadataMap = this.schemaMetadata.getColumnMetadataMap(table);
+    
+    // Compter les lignes
+    let rowCount = 0;
+    try {
+      const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);
+      rowCount = parseInt(countResult[0]?.count || '0');
+    } catch { /* ignore */ }
+    
+    const columnsSchema: ColumnSchema[] = [];
+    const primaryKeys: string[] = [];
+    const foreignKeysList: { column: string; references: { table: string; column: string } }[] = [];
+    
+    for (const col of columns) {
+      // ✅ Vérifier si la colonne doit être ignorée
+      const columnMeta = columnMetadataMap?.get(col.COLUMN_NAME);
+      if (columnMeta?.ignored === true) {
+        continue; // Ignorer cette colonne
+      }
+      
+      // Type détaillé
+      let detailedType = col.DATA_TYPE;
+      if (col.CHARACTER_MAXIMUM_LENGTH) {
+        detailedType += `(${col.CHARACTER_MAXIMUM_LENGTH})`;
+      } else if (col.NUMERIC_PRECISION) {
+        detailedType += `(${col.NUMERIC_PRECISION}`;
+        if (col.NUMERIC_SCALE) detailedType += `,${col.NUMERIC_SCALE}`;
+        detailedType += `)`;
+      }
+      
+      // Contraintes
+      const constraints: string[] = [];
+      if (col.COLUMN_KEY === 'PRI') {
+        constraints.push('PK');
+        primaryKeys.push(col.COLUMN_NAME);
+      }
+      if (col.COLUMN_KEY === 'MUL') constraints.push('FK');
+      if (col.IS_NULLABLE === 'NO') constraints.push('NOT NULL');
+      if (col.EXTRA?.includes('auto_increment')) constraints.push('AUTO_INCREMENT');
+      
+      // ✅ Libellé métier (priorité: décorateur > généré)
+      let businessLabel: string;
+      let description: string;
+      
+      if (columnMeta) {
+        businessLabel = columnMeta.label || this.schemaMetadata.formatTechnicalName(col.COLUMN_NAME);
+        description = columnMeta.description || col.COLUMN_COMMENT || '';
+      } else {
+        businessLabel = this.schemaMetadata.formatTechnicalName(col.COLUMN_NAME);
+        description = col.COLUMN_COMMENT || '';
+      }
+      
+      // Vérifier si c'est une FK
+      let isForeignKey = false;
+      let foreignKeyTo: { table: string; column: string } | undefined;
+      
+      if (relationships?.foreignKeys) {
+        const fk = relationships.foreignKeys.find((f: any) => f.column === col.COLUMN_NAME);
+        if (fk) {
+          isForeignKey = true;
+          foreignKeyTo = {
+            table: fk.referencedTable,
+            column: fk.referencedColumn
+          };
+          foreignKeysList.push({
+            column: col.COLUMN_NAME,
+            references: { table: fk.referencedTable, column: fk.referencedColumn }
+          });
+        }
+      }
+      
+      columnsSchema.push({
+        name: col.COLUMN_NAME,
+        type: detailedType,
+        constraints,
+        businessLabel,
+        description: description.substring(0, 200),
+        isForeignKey,
+        foreignKeyTo
+      });
+    }
+    
+    return {
+      name: table,
+      businessName: tableMeta.label,
+      description: tableMeta.description || '',
+      rowCount,
+      columns: columnsSchema,
+      primaryKeys,
+      foreignKeys: foreignKeysList,
+      indexedColumns: []
+    };
   }
 
   // Dans AiDatabaseService
@@ -787,98 +888,55 @@ Retourne UNIQUEMENT la requête corrigée.`;
 
   /**
   * Retourne le schéma complet de la base avec toutes les métadonnées
+  * Utilise les tables déjà sélectionnées par detectRelevantTables
   */
-  async getFullDatabaseSchema(): Promise<any> {
-    const allTables = await this.dataSource.query(`
-      SELECT TABLE_NAME 
-      FROM information_schema.TABLES 
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_TYPE = 'BASE TABLE'
-      ORDER BY TABLE_NAME
-    `);
+  async getFullDatabaseSchema(question?: string, specificTables?: string[]): Promise<any> {
+    // Si une question est fournie, utiliser les tables détectées
+    let tablesToUse: string[];
     
-    const tables = allTables.map(t => t.TABLE_NAME);
+    if (question) {
+      tablesToUse = await this.detectRelevantTables(question, specificTables);
+    } else {
+      // Sinon, utiliser les tables visibles (cellesfgetTableInfoJson avec métadonnées)
+      tablesToUse = this.schemaMetadata.getAllVisibleTables();
+    }
+    
+    this.logger.log(`📊 Génération du schéma JSON pour ${tablesToUse.length} tables`);
+    
     const result = {
       database: process.env.DB_NAME,
       generatedAt: new Date().toISOString(),
-      tables: {}
+      tables: {},
+      relationships: [] as any[]
     };
     
-    for (const table of tables) {
-      // Informations de la table
-      const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
-      
-      // Colonnes détaillées
-      const columns = await this.dataSource.query(`
-        SELECT 
-          COLUMN_NAME,
-          DATA_TYPE,
-          COLUMN_TYPE,
-          IS_NULLABLE,
-          COLUMN_KEY,
-          COLUMN_DEFAULT,
-          EXTRA,
-          CHARACTER_MAXIMUM_LENGTH,
-          NUMERIC_PRECISION,
-          NUMERIC_SCALE
-        FROM information_schema.COLUMNS 
-        WHERE TABLE_SCHEMA = DATABASE() 
-          AND TABLE_NAME = ?
-        ORDER BY ORDINAL_POSITION
-      `, [table]);
-      
-      // Relations (clés étrangères)
-      const relations = await this.dataSource.query(`
-        SELECT 
-          kcu.COLUMN_NAME as source_column,
-          kcu.REFERENCED_TABLE_NAME as target_table,
-          kcu.REFERENCED_COLUMN_NAME as target_column
-        FROM information_schema.KEY_COLUMN_USAGE kcu
-        WHERE kcu.CONSTRAINT_SCHEMA = DATABASE()
-          AND kcu.TABLE_NAME = ?
-          AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-      `, [table]);
-      
-      // Nombre de lignes
-      let rowCount = 0;
+    const relationships = this.relationshipsCache.get('all') || {};
+    
+    for (const table of tablesToUse) {
       try {
-        const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);
-        rowCount = parseInt(countResult[0]?.count || '0');
-      } catch { /* ignore */ }
-      
-      // Construire l'objet table
-      result.tables[table] = {
-        businessName: tableMeta?.label || table,
-        description: tableMeta?.description || '',
-        icon: tableMeta?.icon,
-        category: tableMeta?.category,
-        rowCount,
-        columns: {},
-        relations: {
-          foreignKeys: relations,
-          referencedBy: [] // à remplir si nécessaire
+        const tableSchema = await this.getTableInfoJson(table, relationships[table]);
+        if (tableSchema) {
+          result.tables[table] = tableSchema;
+          
+          // Ajouter les relations
+          if (relationships[table]?.foreignKeys) {
+            for (const fk of relationships[table].foreignKeys) {
+              result.relationships.push({
+                from: { table, column: fk.column },
+                to: { table: fk.referencedTable, column: fk.referencedColumn },
+                type: 'belongsTo'
+              });
+            }
+          }
+        } else {
+          this.logger.warn(`⚠️ Table ${table} ignorée (pas de schéma JSON généré)`);
         }
-      };
-      
-      // Ajouter chaque colonne avec ses métadonnées
-      for (const col of columns) {
-        const businessLabel = this.schemaMetadata.getBusinessLabel(table, col.COLUMN_NAME);
-        result.tables[table].columns[col.COLUMN_NAME] = {
-          technicalName: col.COLUMN_NAME,
-          businessLabel,
-          dataType: col.DATA_TYPE,
-          fullType: col.COLUMN_TYPE,
-          nullable: col.IS_NULLABLE === 'YES',
-          isPrimaryKey: col.COLUMN_KEY === 'PRI',
-          isForeignKey: relations.some(r => r.source_column === col.COLUMN_NAME),
-          defaultValue: col.COLUMN_DEFAULT,
-          autoIncrement: col.EXTRA?.includes('auto_increment') || false,
-          maxLength: col.CHARACTER_MAXIMUM_LENGTH,
-          numericPrecision: col.NUMERIC_PRECISION,
-          numericScale: col.NUMERIC_SCALE
-        };
+      } catch (error) {
+        this.logger.error(`❌ Erreur génération schéma pour ${table}: ${(error as any).message}`);
       }
     }
+    
+    this.logger.log(`✅ Schéma JSON généré: ${Object.keys(result.tables).length} tables, ${result.relationships.length} relations`);
     
     return result;
   }

@@ -23,8 +23,10 @@ export class SchemaMetadataService {
       
       // ✅ Vérifier si la table doit être ignorée
       let tableIgnored = true;
+      let tableMeta: BusinessTableMetadata | undefined;
+      
       try {
-        const tableMeta = Reflect.getMetadata(BUSINESS_METADATA_KEY, entityClass) as BusinessTableMetadata;
+        tableMeta = Reflect.getMetadata(BUSINESS_METADATA_KEY, entityClass) as BusinessTableMetadata;
         if (tableMeta) {
           tableIgnored = tableMeta.ignored === true; 
           if (!tableIgnored) {
@@ -32,11 +34,16 @@ export class SchemaMetadataService {
             this.logger.debug(`📋 Table: ${tableName} → ${tableMeta.label}`);
           } else {
             this.logger.debug(`⏭️ Table ignorée: ${tableName}`);
-            continue; // ✅ Passer à la table suivante
+            continue;
           }
+        } else {
+          // ❌ Pas de décorateur BusinessTable → table ignorée
+          this.logger.debug(`⏭️ Table sans décorateur BusinessTable (ignorée): ${tableName}`);
+          continue;
         }
       } catch (err) {
         this.logger.warn(`Impossible de lire métadonnées de table pour ${tableName}: ${(err as any).message}`);
+        continue;
       }
       
       // Métadonnées des colonnes
@@ -51,26 +58,47 @@ export class SchemaMetadataService {
           try {
             const columnMeta = Reflect.getMetadata(BUSINESS_METADATA_KEY, prototype, propName) as BusinessColumnMetadata;
             
-            // ✅ Vérifier si la colonne doit être ignorée
+            // ✅ TOUJOURS ajouter la colonne au cache, même si ignorée
+            // (pour que getTableInfoJson puisse la détecter et l'ignorer)
             if (columnMeta) {
-              if (columnMeta.ignored === true) {
-                this.logger.debug(`⏭️ Colonne ignorée: ${tableName}.${dbColumnName}`);
-                continue; // ✅ Ignorer cette colonne
-              }
-              
               columnMap.set(dbColumnName, columnMeta);
-              columnMap.set(propName, columnMeta);
-              this.logger.debug(`📝 Colonne: ${tableName}.${dbColumnName} → "${columnMeta.label}"`);
+              if (columnMeta.ignored === true) {
+                this.logger.debug(`⏭️ Colonne ignorée (mais en cache): ${tableName}.${dbColumnName}`);
+              } else {
+                this.logger.debug(`📝 Colonne: ${tableName}.${dbColumnName} → "${columnMeta.label}"`);
+              }
+            } else {
+              // Colonne sans décorateur - on l'ajoute quand même avec un libellé par défaut
+              columnMap.set(dbColumnName, {
+                label: this.formatTechnicalName(dbColumnName),
+                description: ''
+              });
+              this.logger.debug(`📝 Colonne (par défaut): ${tableName}.${dbColumnName} → "${this.formatTechnicalName(dbColumnName)}"`);
             }
           } catch (err) {
             this.logger.warn(`Impossible de lire métadonnée pour ${tableName}.${propName}: ${(err as any).message}`);
+            // Ajouter quand même avec libellé par défaut
+            columnMap.set(dbColumnName, {
+              label: this.formatTechnicalName(dbColumnName),
+              description: ''
+            });
           }
         }
       }
       
       this.columnMetadataCache.set(tableName, columnMap);
-      this.logger.log(`✅ ${tableName}: ${columnMap.size} colonnes métier chargées`);
+      this.logger.log(`✅ ${tableName}: ${columnMap.size} colonnes chargées (dont ${Array.from(columnMap.values()).filter(m => m.ignored).length} ignorées)`);
     }
+  }
+
+  debugColumnIgnored(tableName: string, columnName: string): boolean {
+    const columnMap = this.columnMetadataCache.get(tableName);
+    if (columnMap) {
+      const meta = columnMap.get(columnName);
+      this.logger.debug(`Colonne ${tableName}.${columnName}: ignored = ${meta?.ignored}`);
+      return meta?.ignored === true;
+    }
+    return false;
   }
 
   /**
@@ -191,7 +219,7 @@ getTableLabel(tableName: string): string {
   /**
    * Formate un nom technique (ex: "first_name" → "Prénom")
    */
-  private formatTechnicalName(name: string): string {
+  public formatTechnicalName(name: string): string {
     return name
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -229,6 +257,14 @@ getTableLabel(tableName: string): string {
     } catch {
       return date;
     }
+  }
+
+
+  /**
+  * Récupère la map des métadonnées des colonnes pour une table
+  */
+  getColumnMetadataMap(tableName: string): Map<string, BusinessColumnMetadata> | undefined {
+    return this.columnMetadataCache.get(tableName);
   }
 
     /**
