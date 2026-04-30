@@ -1,38 +1,52 @@
-// core/database/entities/base.ts
 import {
   BaseEntity as TypeORMBaseEntity,
-  DeleteDateColumn,
-  UpdateDateColumn,
   CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn
 } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+import { BusinessColumn } from '../decorators/business-metadata.decorator';
 
+export abstract class BaseEntity  extends TypeORMBaseEntity{
+  // @PrimaryGeneratedColumn()
+  // @BusinessColumn({
+  //   label: 'Identifiant',
+  //   description: 'Identifiant unique technique, généré automatiquement',
+  //   importance: 'low',
+  //   group: 'technique'
+  // })
+  // id: number;
 
-export abstract class BaseEntity extends TypeORMBaseEntity {
-
-  @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
-  @CreateDateColumn({ type: 'datetime', name: 'created_at', nullable: false, default: () => 'CURRENT_TIMESTAMP(6)' })
+  @CreateDateColumn({ name: 'created_at' })
+  @BusinessColumn({
+    label: 'Date de création',
+    description: 'Date et heure de création de l\'enregistrement',
+    format: 'date',
+    importance: 'medium',
+    group: 'audit'
+  })
   created_at: Date;
 
-  @ApiProperty({ example: '2023-01-01T00:00:00.000Z' })
-  @UpdateDateColumn({ type: 'datetime', name: 'updated_at', nullable: false, default: () => 'CURRENT_TIMESTAMP(6)', onUpdate: 'CURRENT_TIMESTAMP(6)' })
-  updated_at: Date;
-  @ApiProperty({ example: '2023-01-01T00:00:00.000Z', nullable: true })
-  @DeleteDateColumn({ type: 'timestamp',  name: 'deleted_at' })
-  deleted_at: Date | null;
- /* @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
-  @PrimaryGeneratedColumn()
-  id: number;
 
-  // --------------------------------------------------
-  // Lifecycle Hooks (Validation automatique)
-  // --------------------------------------------------
-  @BeforeInsert()
-  @BeforeUpdate()
-  async validate() {
-    await validateOrReject(this, {
-      validationError: { target: false },
-      forbidUnknownValues: true,
-    });
-  }*/
+  @UpdateDateColumn({ name: 'updated_at' })
+  @BusinessColumn({
+    label: 'Date de modification',
+    description: 'Date et heure de la dernière modification',
+    format: 'date',
+    importance: 'low',
+    group: 'audit'
+  })
+  updated_at: Date;
+
+
+  @DeleteDateColumn({ name: 'deleted_at', nullable: true })
+  @BusinessColumn({
+    label: 'Date de suppression',
+    description: 'Date de suppression logique (null = actif, non null = supprimé)',
+    format: 'date',
+    importance: 'medium',
+    group: 'audit',
+    ignored: true 
+  })
+  deleted_at: Date | null = null;
+
 }

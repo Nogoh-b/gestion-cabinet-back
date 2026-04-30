@@ -37,7 +37,7 @@ export const DatabaseTablesConfig = {
 
   // Métadonnées pour guider l'IA
   tableDescriptions: {
-    dossiers: "Dossiers contentieux du cabinet",
+    dossiers: "Dossiers contentieux du cabinet. Un dossier a une instance de procédure (procedureInstanceId → procedure_instances.id)",
     customer: "Clients (particuliers et entreprises)",
     employee: "Avocats et collaborateurs",
     audiences: "Audiences programmées",
@@ -45,6 +45,9 @@ export const DatabaseTablesConfig = {
     factures: "Factures émises",
     paiements: "Paiements reçus",
     savings_account: "Comptes épargne clients",
-    loan: "Prêts accordés"
-  }
+    loan: "Prêts accordés",
+    procedure_instances: "Instance de procédure d'un dossier. Liée à dossiers.procedureInstanceId",
+    stages: "Étapes d'une procédure",
+    stage_visits: "Visite d'une étape pour une instance. instanceId → procedure_instances.id, stageId → stages.id",
+  },
 };

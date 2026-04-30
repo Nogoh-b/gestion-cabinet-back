@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
@@ -44,5 +44,26 @@ export class AiDatabaseController {
       timestamp: new Date().toISOString(),
       agentReady: true
     };
+  }
+
+  @Get('schema')
+  @ApiOperation({ 
+    summary: 'Récupère le schéma complet de la base de données avec métadonnées métier',
+    description: 'Retourne la structure de toutes les tables avec libellés, descriptions, types, relations...'
+  })
+  @ApiResponse({ status: 200, description: 'Schéma retourné avec succès' })
+  async getDatabaseSchema() {
+    return this.aiDbService.getFullDatabaseSchema();
+  }
+
+
+  @Get('prompt-schema')
+  @ApiOperation({ 
+    summary: 'Récupère le schéma envoyé à l\'IA pour une question donnée',
+    description: 'Visualise exactement ce que l\'IA reçoit comme contexte'
+  })
+  async getPromptSchema(@Query('question') question: string, @Query('tables') tables?: string) {
+    const specificTables = tables ? tables.split(',') : undefined;
+    return this.aiDbService.getPromptSchema(question, specificTables);
   }
 }

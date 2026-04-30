@@ -5,7 +5,9 @@ import { ChatOpenAI } from '@langchain/openai';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto } from './dto/analysis-response.dto';
-
+import { SchemaMetadataService } from './schema-metadata.service';
+import { SqlValidatorService } from './sql-validator.service';
+import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -13,24 +15,33 @@ export class AiDatabaseService implements OnModuleInit {
   private llm!: ChatOpenAI;
   private schemaCache: Map<string, { schema: string; timestamp: number }> = new Map();
   private relationshipsCache: Map<string, any> = new Map();
+  private columnLabelsCache: Map<string, any> = new Map();
   private readonly CACHE_TTL = 3600000; // 1 heure
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
+  private readonly MAX_CHARS = 180000;
+
+
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly schemaMetadata: SchemaMetadataService,  
+    private readonly sqlValidator: SqlValidatorService,  
+
   ) {}
 
   async onModuleInit() {
     await this.initializeLLM();
     await this.loadDatabaseRelationships();
+      await this.schemaMetadata.initializeMetadata();  
+
     this.logger.log('✅ Service AI Database initialisé');
   }
 
   private async initializeLLM() {
     this.llm = new ChatOpenAI({
       model: 'deepseek-chat',
-      temperature: 0,
+      temperature: 0.3, // Légèrement augmenté pour plus de naturel
       maxTokens: this.MAX_TOKENS,
       apiKey: process.env.DEEPSEEK_API_KEY,
       configuration: {
@@ -48,7 +59,6 @@ export class AiDatabaseService implements OnModuleInit {
     try {
       this.logger.log('🔄 Chargement automatique des relations...');
       
-      // Récupérer toutes les foreign keys
       const foreignKeys = await this.dataSource.query(`
         SELECT 
           kcu.TABLE_NAME,
@@ -66,7 +76,6 @@ export class AiDatabaseService implements OnModuleInit {
         ORDER BY kcu.TABLE_NAME, kcu.COLUMN_NAME
       `);
       
-      // Organiser les relations par table
       const relationships = {};
       for (const fk of foreignKeys) {
         if (!relationships[fk.TABLE_NAME]) {
@@ -83,7 +92,6 @@ export class AiDatabaseService implements OnModuleInit {
           constraint: fk.CONSTRAINT_NAME
         });
         
-        // Relations inverses
         if (!relationships[fk.REFERENCED_TABLE_NAME]) {
           relationships[fk.REFERENCED_TABLE_NAME] = {
             foreignKeys: [],
@@ -112,25 +120,18 @@ export class AiDatabaseService implements OnModuleInit {
       this.logger.log(`📝 Question: ${dto.question.substring(0, 100)}...`);
       this.logger.log(`📊 Tables: ${dto.specificTables?.join(', ') || 'automatique'}`);
 
-      // 1. Déterminer les tables pertinentes
       const relevantTables = await this.detectRelevantTables(dto.question, dto.specificTables);
-      
-      // 2. Obtenir le schéma complet avec relations
       const schema = await this.getCompleteSchema(relevantTables);
-      
-      // 3. Générer la requête SQL
+      const schemaJSON = await this.getCompleteSchemaJson(relevantTables);
       const sqlQuery = await this.generateSQLQuery(dto.question, schema, relevantTables);
-      
-      // 4. Valider et corriger la requête
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables);
       
-      // 5. Exécuter la requête
       let results: any = null;
       let analysis = '';
 
       if (validatedQuery && !dto.analyzeOnly) {
         results = await this.executeSafeQuery(validatedQuery);
-        analysis = await this.analyzeResults(dto.question, validatedQuery, results);
+        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, relevantTables);
       }
 
       const executionTime = Date.now() - startTime;
@@ -140,6 +141,8 @@ export class AiDatabaseService implements OnModuleInit {
         question: dto.question,
         sqlQuery: validatedQuery,
         analysis,
+        schemaJSON,
+        schema,
         results: results?.data,
         executionTimeMs: executionTime,
         rowCount: results?.rowCount || 0,
@@ -157,39 +160,134 @@ export class AiDatabaseService implements OnModuleInit {
   }
 
   /**
-   * Détecte automatiquement les tables pertinentes
+   * Génère une analyse métier à partir des résultats
    */
-  private async detectRelevantTables(question: string, specificTables?: string[]): Promise<string[]> {
-    if (specificTables && specificTables.length > 0) {
-      return specificTables;
+  private async generateBusinessAnalysis(
+    question: string, 
+    sql: string, 
+    results: any, 
+    tables: string[]
+  ): Promise<string> {
+    if (!results.data || results.data.length === 0) {
+      return this.getNoResultsMessage(question, tables);
     }
 
-    // Extraire les mots-clés de la question
-    const keywords = question.toLowerCase().split(/\s+/);
+    // Transformer les résultats avec des libellés métier
+    const businessResults = this.transformToBusinessResults(results.data, tables);
     
-    // Récupérer toutes les tables de la base
-    const allTables = await this.dataSource.query(`
-      SELECT TABLE_NAME 
-      FROM information_schema.TABLES 
-      WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_TYPE = 'BASE TABLE'
-    `);
+    const prompt = `Tu es un expert métier spécialisé dans la gestion de dossiers contentieux et bancaires.
+
+QUESTION POSÉE PAR L'UTILISATEUR:
+"${question}"
+
+RÉSULTATS DES DONNÉES (présentés en termes métier):
+${JSON.stringify(businessResults, null, 2)}
+
+INSTRUCTIONS IMPORTANTES:
+1. Réponds comme si tu parlais à un collègue non technique (avocat, gestionnaire de dossier)
+2. N'utilise JAMAIS de termes techniques comme "SQL", "requête", "base de données", "colonne", "table", "JOIN", "SELECT", "LIMIT"
+3. Utilise des termes métier comme "dossier", "client", "étape", "procédure", "statut", "date"
+4. Pour les champs, utilise des noms lisibles comme "Numéro de dossier", "Nom de l'étape" au lieu de "id", "name"
+5. Si la réponse contient des dates, formate-les de façon lisible
+6. Sois concis mais précis (max 150 mots)
+7. Termine par une phrase d'action ou de recommandation si pertinent
+
+RÉPONSE (en français courant, langage métier):`;
+
+    const response = await this.llm.invoke(prompt);
+    return response.content as string;
+  }
+
+  /**
+   * Transforme les résultats techniques en résultats métier lisibles
+   */
+  private transformToBusinessResults(data: any[], tables: string[]): any[] {
+    // Pour chaque ligne, on doit deviner de quelle table provient la colonne
+    // Version simplifiée : on prend la première table de la liste comme contexte
+    const mainTable = tables[0];
+    return data.map(row => this.schemaMetadata.transformRowToBusiness(row, mainTable));
+  }
+
+  /**
+   * Formate une date de façon lisible
+   */
+  private formatDate(date: any): string {
+    try {
+      const d = new Date(date);
+      return d.toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+    } catch {
+      return date;
+    }
+  }
+
+  /**
+   * Message personnalisé quand aucun résultat n'est trouvé
+   */
+  private getNoResultsMessage(question: string, tables: string[]): string {
+    // Détecter le type de question
+    const lowerQuestion = question.toLowerCase();
     
-    // Calculer la pertinence de chaque table
-    const tableScores : any[] = [];
-    for (const table of allTables) {
-      const tableName = table.TABLE_NAME;
-      let score = 0;
+    if (lowerQuestion.includes('étape') || lowerQuestion.includes('step')) {
+      return "📋 **Aucune étape trouvée pour ce dossier.**\n\nCela peut signifier que :\n- Le dossier n'a pas encore commencé son parcours procédural\n- Le dossier n'est pas associé à une procédure active\n- L'identifiant du dossier est incorrect\n\n💡 **Recommandation :** Vérifiez l'identifiant du dossier ou consultez la fiche client pour confirmer la procédure associée.";
+    }
+    
+    if (lowerQuestion.includes('dossier') || lowerQuestion.includes('dossiers')) {
+      return "📁 **Aucun dossier trouvé correspondant à votre recherche.**\n\nCela peut être dû à :\n- Un numéro de dossier inexistant\n- Des critères de recherche trop restrictifs\n- Un dossier récemment archivé\n\n💡 **Recommandation :** Vérifiez le numéro de dossier ou élargissez vos critères de recherche.";
+    }
+    
+    if (lowerQuestion.includes('client') || lowerQuestion.includes('customer')) {
+      return "👤 **Aucun client trouvé correspondant à votre recherche.**\n\nVérifiez l'identifiant client ou les critères saisis.\n\n💡 **Recommandation :** Consultez l'annuaire clients ou contactez le service commercial.";
+    }
+    
+    return "ℹ️ **Aucun résultat trouvé** pour votre question.\n\nVérifiez les informations saisies ou reformulez votre demande avec plus de précision.";
+  }
+
+  /**
+   * Détecte automatiquement les tables pertinentes
+   */
+  /**
+  * Détecte automatiquement les tables pertinentes (UNIQUEMENT celles avec métadonnées)
+  */
+  private async detectRelevantTables(question: string, specificTables?: string[]): Promise<string[]> {
+    if (specificTables && specificTables.length > 0) {
+      // ✅ Filtrer les tables spécifiques qui ont des métadonnées
+      const validTables = specificTables.filter(table => 
+        this.schemaMetadata.hasTableMetadata(table)
+      );
       
-      // Vérifier si le nom de la table est dans les mots-clés
-      if (keywords.includes(tableName.toLowerCase())) {
-        score += 10;
+      if (validTables.length === 0) {
+        this.logger.warn(`⚠️ Aucune table spécifiée n'a de métadonnées, utilisation des tables par défaut`);
+        return this.getDefaultVisibleTables();
       }
       
-      // Vérifier les mots-clés partiels
+      return validTables;
+    }
+
+    const keywords = question.toLowerCase().split(/\s+/);
+    
+    // ✅ Récupérer UNIQUEMENT les tables qui ont des métadonnées
+    const visibleTables = this.schemaMetadata.getAllVisibleTables();
+    
+    const tableScores: any[] = [];
+    for (const tableName of visibleTables) {
+      let score = 0;
+      
+      if (keywords.includes(tableName.toLowerCase())) score += 10;
+      
+      // Récupérer le label métier pour améliorer la détection
+      const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(tableName);
+      const businessName = tableMeta?.label?.toLowerCase() || '';
+      
       for (const keyword of keywords) {
         if (tableName.toLowerCase().includes(keyword) || keyword.includes(tableName.toLowerCase())) {
           score += 5;
+        }
+        if (businessName.includes(keyword) || keyword.includes(businessName)) {
+          score += 7; // Score plus élevé pour le nom métier
         }
       }
       
@@ -198,35 +296,58 @@ export class AiDatabaseService implements OnModuleInit {
       }
     }
     
-    // Trier par score et prendre les 10 meilleures
     tableScores.sort((a, b) => b.score - a.score);
     const detectedTables = tableScores.slice(0, 10).map(t => t.name);
     
     this.logger.log(`🎯 Tables détectées: ${detectedTables.join(', ')}`);
-    return detectedTables.length > 0 ? detectedTables : DatabaseTablesConfig.essentialTables.slice(0, 10);
+    
+    // ✅ Si aucune table détectée, retourner les tables par défaut visibles
+    if (detectedTables.length === 0) {
+      return this.getDefaultVisibleTables();
+    }
+    
+    return detectedTables;
+  }
+
+  /**
+  * Retourne la liste des tables visibles par défaut
+  */
+  private getDefaultVisibleTables(): string[] {
+    const allVisible = this.schemaMetadata.getAllVisibleTables();
+    // Retourner les 10 premières tables visibles
+    return allVisible.slice(0, 10);
   }
 
   /**
    * Récupère un schéma complet avec toutes les relations
    */
   private async getCompleteSchema(tables: string[]): Promise<string> {
-    const cacheKey = tables.sort().join(',');
+    // ✅ Filtrer pour ne garder que les tables avec métadonnées
+    const validTables = tables.filter(table => 
+      this.schemaMetadata.hasTableMetadata(table)
+    );
+    
+    if (validTables.length === 0) {
+      this.logger.warn(`⚠️ Aucune table valide trouvée, utilisation des tables par défaut visibles`);
+      return this.getDefaultSchema();
+    }
+    
+    const cacheKey = validTables.sort().join(',');
     const cached = this.schemaCache.get(cacheKey);
     const now = Date.now();
     
     if (cached && (now - cached.timestamp) < this.CACHE_TTL) {
-      this.logger.debug(`📦 Utilisation du schéma caché pour ${tables.length} tables`);
+      this.logger.debug(`📦 Utilisation du schéma caché pour ${validTables.length} tables`);
       return cached.schema;
     }
     
-    this.logger.log(`🔄 Génération du schéma complet pour ${tables.length} tables...`);
+    this.logger.log(`🔄 Génération du schéma complet pour ${validTables.length} tables...`);
     
     let schema = '# SCHÉMA DE LA BASE DE DONNÉES\n\n';
     const relationships = this.relationshipsCache.get('all') || {};
     
-    for (const table of tables) {
+    for (const table of validTables) {
       try {
-        // Structure de la table
         const tableInfo = await this.getTableInfo(table, relationships[table]);
         if (tableInfo) {
           schema += tableInfo + '\n';
@@ -236,23 +357,17 @@ export class AiDatabaseService implements OnModuleInit {
       }
     }
     
-    // Ajouter une section des relations globales
     schema += '\n# RELATIONS ENTRE TABLES\n\n';
-    for (const table of tables) {
+    for (const table of validTables) {
       const rel = relationships[table];
       if (rel?.foreignKeys) {
         for (const fk of rel.foreignKeys) {
-          if (tables.includes(fk.referencedTable)) {
+          if (validTables.includes(fk.referencedTable)) {
             schema += `- ${table}.${fk.column} → ${fk.referencedTable}.${fk.referencedColumn}\n`;
           }
         }
       }
     }
-    
-    // Ajouter des exemples de requêtes génériques
-    schema += '\n# EXEMPLES DE JOINTURES STANDARDS\n';
-    schema += 'Pour joindre deux tables, utilisez la relation définie ci-dessus.\n';
-    schema += 'Exemple: SELECT * FROM table1 JOIN table2 ON table1.foreignKey = table2.id\n';
     
     const finalSchema = schema.substring(0, 8000);
     this.schemaCache.set(cacheKey, { schema: finalSchema, timestamp: now });
@@ -261,118 +376,276 @@ export class AiDatabaseService implements OnModuleInit {
     return finalSchema;
   }
 
+/**
+ * Génère un schéma par défaut avec les tables visibles
+ */
+private async getDefaultSchema(): Promise<string> {
+  const visibleTables = this.schemaMetadata.getAllVisibleTables();
+  if (visibleTables.length === 0) {
+    return "# Aucune table configurée\n\nVeuillez configurer les décorateurs BusinessTable sur vos entités.";
+  }
+  return this.getCompleteSchema(visibleTables);
+}
   /**
-   * Récupère les infos d'une table
-   */
+  * Récupère les infos d'une table avec TOUS les détails des colonnes
+  */
   private async getTableInfo(table: string, relationships?: any): Promise<string | null> {
-    // Colonnes
+    // Récupérer TOUTES les colonnes
     const columns = await this.dataSource.query(`
       SELECT 
         COLUMN_NAME,
         DATA_TYPE,
+        COLUMN_TYPE,
         COLUMN_KEY,
         IS_NULLABLE,
         COLUMN_DEFAULT,
-        EXTRA
+        EXTRA,
+        CHARACTER_MAXIMUM_LENGTH,
+        NUMERIC_PRECISION,
+        NUMERIC_SCALE,
+        COLUMN_COMMENT
       FROM information_schema.COLUMNS 
-      WHERE TABLE_SCHEMA = DATABASE() 
-        AND TABLE_NAME = ?
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
       ORDER BY ORDINAL_POSITION
-      LIMIT 30
     `, [table]);
     
     if (columns.length === 0) return null;
+    
+    // ✅ Récupérer les métadonnées pour savoir quelles colonnes ignorer
+    const columnMetadata = this.columnLabelsCache.get(table) || new Map();
+    
+    // ✅ Filtrer les colonnes ignorées
+    const visibleColumns = columns.filter(col => {
+      let meta;
+      if (columnMetadata instanceof Map) {
+        meta = columnMetadata.get(col.COLUMN_NAME);
+      }
+      // Si la colonne a ignored=true, on l'exclut
+      return !meta?.ignored;
+    });
     
     // Compter les lignes
     let rowCount = 0;
     try {
       const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);
       rowCount = parseInt(countResult[0]?.count || '0');
-    } catch (error) {
-      rowCount = -1;
-    }
+    } catch { /* ignore */ }
     
-    let schema = `## Table ${table}`;
-    if (rowCount >= 0) schema += ` (${rowCount.toLocaleString()} lignes)`;
-    schema += '\n\n';
+    // Construction du schéma enrichi
+    let schema = `## Table ${table} (${rowCount.toLocaleString()} lignes)\n\n`;
+    schema += '| Colonne technique | Type détaillé | Contraintes | Libellé métier | Description |\n';
+    schema += '|------------------|---------------|-------------|----------------|-------------|\n';
     
-    schema += '| Colonne | Type | Nullable | Clé |\n';
-    schema += '|---------|------|----------|-----|\n';
-    
-    for (const col of columns) {
-      let key = '';
-      if (col.COLUMN_KEY === 'PRI') key = 'PRIMARY KEY';
-      else if (col.COLUMN_KEY === 'MUL') key = 'FOREIGN KEY';
-      else if (col.COLUMN_KEY === 'UNI') key = 'UNIQUE';
+    for (const col of visibleColumns) {  // ✅ Utiliser visibleColumns
+      // Type détaillé
+      let detailedType = col.DATA_TYPE;
+      if (col.CHARACTER_MAXIMUM_LENGTH) {
+        detailedType += `(${col.CHARACTER_MAXIMUM_LENGTH})`;
+      } else if (col.NUMERIC_PRECISION) {
+        detailedType += `(${col.NUMERIC_PRECISION}`;
+        if (col.NUMERIC_SCALE) detailedType += `,${col.NUMERIC_SCALE}`;
+        detailedType += `)`;
+      }
       
-      schema += `| ${col.COLUMN_NAME} | ${col.DATA_TYPE} | ${col.IS_NULLABLE === 'YES' ? 'OUI' : 'NON'} | ${key} |\n`;
+      // Contraintes
+      const constraints: any[] = [];
+      if (col.COLUMN_KEY === 'PRI') constraints.push('🔑 PK');
+      if (col.COLUMN_KEY === 'MUL') constraints.push('🔗 FK');
+      if (col.IS_NULLABLE === 'NO') constraints.push('NOT NULL');
+      if (col.EXTRA?.includes('auto_increment')) constraints.push('AUTO_INCREMENT');
+      if (col.COLUMN_DEFAULT) constraints.push(`DEFAULT ${col.COLUMN_DEFAULT}`);
+      
+      // Libellé métier
+      const businessLabel = this.schemaMetadata.getBusinessLabel(table, col.COLUMN_NAME);
+      
+      // Description
+      let description = col.COLUMN_COMMENT || '';
+      if (!description) {
+        const metaDesc = this.schemaMetadata.getColumnDescription(table, col.COLUMN_NAME);
+        description = metaDesc || this.getDefaultDescription(col.COLUMN_NAME);
+      }
+      
+      schema += `| ${col.COLUMN_NAME} | ${detailedType} | ${constraints.join(', ') || '-'} | ${businessLabel} | ${description.substring(0, 60)}${description.length > 60 ? '...' : ''} |\n`;
     }
     
-    // Relations
+    // Ajouter les relations (filtrer aussi les colonnes FK ignorées)
     if (relationships?.foreignKeys?.length > 0) {
-      schema += '\n**Relations:**\n';
+      schema += '\n### 🔗 Clés étrangères\n\n';
       for (const fk of relationships.foreignKeys) {
-        schema += `- ${fk.column} → ${fk.referencedTable}.${fk.referencedColumn}\n`;
+        // ✅ Vérifier si la colonne FK n'est pas ignorée
+        let fkMeta;
+        if (columnMetadata instanceof Map) {
+          fkMeta = columnMetadata.get(fk.column);
+        }
+        if (!fkMeta?.ignored) {
+          const fkLabel = this.schemaMetadata.getBusinessLabel(table, fk.column);
+          const refTableLabel = this.schemaMetadata.getTableLabel(fk.referencedTable);
+          schema += `- **${fkLabel}** (${fk.column}) → **${refTableLabel}** (${fk.referencedTable}.${fk.referencedColumn})\n`;
+        }
       }
     }
     
-    schema += '\n';
     return schema;
   }
 
-  /**
-   * Génère une requête SQL générique
-   */
-  private async generateSQLQuery(question: string, schema: string, tables: string[]): Promise<string> {
-    const prompt = this.buildGenericPrompt(question, schema, tables);
+  private async getTableInfoJson(table: string, relationships?: any): Promise<TableSchema | null | undefined> {
+    // ✅ Vérifier d'abord si la table a des métadonnées
+    if (!this.schemaMetadata.hasTableMetadata(table)) {
+      this.logger.debug(`⏭️ Table ignorée (pas de métadonnées): ${table}`);
+      return null;
+    }
     
+    const columns = await this.dataSource.query(`
+      SELECT 
+        COLUMN_NAME,
+        DATA_TYPE,
+        COLUMN_TYPE,
+        COLUMN_KEY,
+        IS_NULLABLE,
+        COLUMN_DEFAULT,
+        EXTRA,
+        CHARACTER_MAXIMUM_LENGTH,
+        NUMERIC_PRECISION,
+        NUMERIC_SCALE,
+        COLUMN_COMMENT
+      FROM information_schema.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION
+    `, [table]);
+    
+    if (columns.length === 0) return null;
+    
+    // ... reste du code inchangé
+  }
+
+  // Dans AiDatabaseService
+  private async getCompleteSchemaJson(tables: string[]): Promise<DatabaseSchema> {
+    const relationships = this.relationshipsCache.get('all') || {};
+    const resultTables: TableSchema[] = [];
+    const allRelationships: { from: { table: string; column: string }; to: { table: string; column: string } }[] = [];
+    
+    for (const table of tables) {
+      // ✅ Vérifier si la table n'est pas ignorée
+      const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
+      this.logger.debug(`⏭️ Table (JSON): ${tableMeta}`);
+      if (tableMeta?.ignored) {
+        this.logger.debug(`⏭️ Table ignorée (JSON): ${table}`);
+        continue;  // Passer cette table
+      }
+      
+      const tableInfo = await this.getTableInfoJson(table, relationships[table]);
+      if (tableInfo) {
+        resultTables.push(tableInfo);
+        
+        // Ajouter les relations
+        for (const fk of tableInfo.foreignKeys) {
+          allRelationships.push({
+            from: { table: tableInfo.name, column: fk.column },
+            to: { table: fk.references.table, column: fk.references.column }
+          });
+        }
+      }
+    }
+    
+    return {
+      database: process.env.DB_NAME || 'unknown',
+      generatedAt: new Date().toISOString(),
+      tables: resultTables,
+      relationships: allRelationships
+    };
+  }
+
+  private async generateSQLQuery(question: string, schema: string, tables: string[]): Promise<string> {
+    // Utiliser le prompt validé
+    const prompt = await this.sqlValidator.buildValidatedPrompt(question, schema, tables);
     const response = await this.llm.invoke(prompt);
-    const sql = this.extractSQL(response.content as string);
+    let sql = this.extractSQL(response.content as string);
     
     if (!sql) {
       throw new Error('Impossible d\'extraire la requête SQL');
     }
     
-    return sql;
+    // Valider et corriger automatiquement
+    const validation = await this.sqlValidator.validateAndFixSql(sql, tables);
+    
+    if (!validation.valid) {
+      this.logger.warn(`⚠️ Corrections appliquées: ${validation.errors.join(', ')}`);
+    }
+    
+    return validation.fixedSql;
+  }
+  /**
+  * Récupère une description par défaut pour une colonne technique
+  */
+  private getDefaultDescription(columnName: string): string {
+    const descriptions: Record<string, string> = {
+      id: 'Identifiant unique',
+      created_at: 'Date de création',
+      updated_at: 'Date de dernière modification',
+      deleted_at: 'Date de suppression logique',
+      status: 'Statut de l\'enregistrement',
+      type: 'Type ou catégorie',
+      name: 'Nom',
+      title: 'Titre',
+      description: 'Description détaillée',
+      code: 'Code unique',
+      reference: 'Référence externe',
+      amount: 'Montant',
+      date: 'Date',
+      email: 'Adresse email',
+      phone: 'Numéro de téléphone',
+      address: 'Adresse postale',
+      is_active: 'Est actif',
+      is_deleted: 'Est supprimé',
+      priority: 'Priorité',
+      order: 'Ordre d\'affichage',
+    };
+    
+    for (const [key, desc] of Object.entries(descriptions)) {
+      if (columnName.toLowerCase().includes(key)) {
+        return desc;
+      }
+    }
+    return '—';
   }
 
-  /**
-   * Prompt générique
-   */
+  // Version améliorée du prompt
   private buildGenericPrompt(question: string, schema: string, tables: string[]): string {
-    return `Tu es un expert SQL. Génère une requête SELECT pour répondre à la question.
+    return `Tu es un expert SQL générant des requêtes POUR RÉPONDRE À UNE QUESTION MÉTIER.
 
-${schema}
+  ${schema}
 
-Question: ${question}
+  📋 **QUESTION MÉTIER :** "${question}"
 
-Tables disponibles: ${tables.join(', ')}
+  🎯 **RÈGLES CRITIQUES :**
 
-RÈGLES:
-1. UNIQUEMENT SELECT (pas de DELETE/UPDATE/INSERT/DROP)
-2. Ajoute LIMIT ${this.MAX_RESULTS} à la fin si pas déjà présent
-3. Utilise les relations définies dans le schéma pour les JOIN
-4. Utilise des alias de table (ex: dossiers d)
-5. Pour les dossiers, utilise toujours dossiers.id pour identifier un dossier spécifique
+  1. **IGNORE TOTALEMENT** les colonnes "deleted_at", "deleted_by", "deleted_date"
+  2. **NE JAMAIS filtrer** sur ces colonnes dans WHERE
+  3. Utilise des alias courts (d = dossiers, c = customers)
+  4. Ajoute toujours LIMIT ${this.MAX_RESULTS}
+  5. Pour les dates, utilise DATE() si comparaison partielle
 
-Retourne UNIQUEMENT la requête SQL dans un bloc \`\`\`sql
+  ❌ **STRICTEMENT INTERDIT :**
+  - DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
+  - Toute mention de "deleted_at" dans la requête
 
-Exemple de format:
-\`\`\`sql
-SELECT * FROM dossiers WHERE id = 61 LIMIT 1;
-\`\`\``;
+  ✅ **BONNE PRATIQUE :**
+  \`\`\`sql
+  SELECT d.id, d.reference, d.title 
+  FROM dossiers d 
+  WHERE d.status = 'active' 
+  LIMIT 10;
+  \`\`\`
+
+  📤 **RÉPONSE UNIQUEMENT** avec la requête SQL dans un bloc \`\`\`sql`;
   }
 
-  /**
-   * Valide et corrige automatiquement la requête
-   */
   private async validateAndFixQuery(sqlQuery: string, tables: string[]): Promise<string> {
     let currentQuery = sqlQuery;
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 2;
     
     while (attempts < maxAttempts) {
-      // Vérifier la syntaxe
       const validation = await this.validateQuery(currentQuery);
       
       if (validation.valid) {
@@ -381,18 +654,13 @@ SELECT * FROM dossiers WHERE id = 61 LIMIT 1;
       
       this.logger.warn(`Requête invalide (tentative ${attempts + 1}): ${validation.error}`);
       
-      // Demander au LLM de corriger
-      const fixPrompt = `La requête SQL suivante est incorrecte:
-
+      const fixPrompt = `Corrige cette requête SQL:
 \`\`\`sql
 ${currentQuery}
 \`\`\`
-
 Erreur: ${validation.error}
-
-Tables autorisées: ${tables.join(', ')}
-
-Corrige la requête en respectant le schéma. Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
+Tables: ${tables.join(', ')}
+Retourne UNIQUEMENT la requête corrigée.`;
       
       const response = await this.llm.invoke(fixPrompt);
       const fixedQuery = this.extractSQL(response.content as string);
@@ -404,42 +672,17 @@ Corrige la requête en respectant le schéma. Retourne UNIQUEMENT la requête SQ
       attempts++;
     }
     
-    // Dernière tentative avec correction basique
-    currentQuery = this.basicQueryFix(currentQuery);
     return currentQuery;
   }
 
-  /**
-   * Corrections basiques automatiques
-   */
   private basicQueryFix(sql: string): string {
     let fixed = sql;
-    
-    // Correction 1: Ajouter LIMIT
     if (!fixed.toLowerCase().includes('limit')) {
       fixed = fixed.replace(/;+$/, '') + ` LIMIT ${this.MAX_RESULTS}`;
     }
-    
-    // Correction 2: Remplacer les jointures incorrectes courantes
-    const commonFixes = [
-      {
-        pattern: /dossiers\s+\w+\s+JOIN\s+procedure_instances\s+\w+\s+ON\s+\w+\.id\s*=\s*\w+\.id/gi,
-        replacement: (match: string) => {
-          return match.replace(/\.id\s*=\s*(\w+)\.id/, '.procedureInstanceId = $1.id');
-        }
-      }
-    ];
-    
-    for (const fix of commonFixes) {
-      fixed = fixed.replace(fix.pattern, fix.replacement as any);
-    }
-    
     return fixed;
   }
 
-  /**
-   * Exécute une requête SQL de façon sécurisée
-   */
   private async executeSafeQuery(sqlQuery: string): Promise<{ data: any[]; rowCount: number }> {
     const normalizedQuery = sqlQuery.trim().toLowerCase();
     
@@ -447,12 +690,23 @@ Corrige la requête en respectant le schéma. Retourne UNIQUEMENT la requête SQ
       throw new Error('Seules les requêtes SELECT sont autorisées');
     }
     
-    const forbidden = ['drop', 'delete', 'update', 'insert', 'alter', 'create', 'truncate', 'exec', 'execute'];
-    for (const word of forbidden) {
-      if (normalizedQuery.includes(word)) {
-        throw new Error(`Mot interdit détecté: ${word}`);
+    const dangerousPatterns = [
+      /^\s*drop\s+/m,
+      /^\s*delete\s+from/m,
+      /^\s*update\s+\w+\s+set/m,
+      /^\s*insert\s+into/m,
+      /^\s*alter\s+table/m,
+      /^\s*create\s+/m,
+      /^\s*truncate\s+/m,
+      /^\s*exec(ute)?\s+/m
+    ];
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(normalizedQuery)) {
+        throw new Error(`Requête non autorisée détectée`);
       }
     }
+    
     
     try {
       const results = await this.dataSource.query(sqlQuery);
@@ -467,29 +721,6 @@ Corrige la requête en respectant le schéma. Retourne UNIQUEMENT la requête SQ
     }
   }
 
-  /**
-   * Analyse les résultats
-   */
-  private async analyzeResults(question: string, sql: string, results: any): Promise<string> {
-    if (!results.data || results.data.length === 0) {
-      return "La requête n'a retourné aucun résultat.";
-    }
-    
-    const prompt = `Analyse ces résultats:
-
-Question: ${question}
-Requête SQL: ${sql}
-Résultats (${results.rowCount} lignes): ${JSON.stringify(results.data.slice(0, 5), null, 2)}
-
-Réponds en français, de façon claire et concise. En des termes des personnes du domaine d'activité  et non coté code ( programation)`;
-    
-    const response = await this.llm.invoke(prompt);
-    return response.content as string;
-  }
-
-  /**
-   * Extrait la requête SQL
-   */
   private extractSQL(response: string): string | null {
     const patterns = [
       /```sql\n([\s\S]*?)\n```/i,
@@ -510,9 +741,6 @@ Réponds en français, de façon claire et concise. En des termes des personnes 
     return null;
   }
 
-  /**
-   * Valide une requête
-   */
   async validateQuery(sqlQuery: string): Promise<{ valid: boolean; error?: string }> {
     try {
       await this.dataSource.query(`EXPLAIN ${sqlQuery}`);
@@ -556,4 +784,156 @@ Réponds en français, de façon claire et concise. En des termes des personnes 
     await this.loadDatabaseRelationships();
     this.logger.log('✅ Caches vidés et relations rechargées');
   }
+
+  /**
+  * Retourne le schéma complet de la base avec toutes les métadonnées
+  */
+  async getFullDatabaseSchema(): Promise<any> {
+    const allTables = await this.dataSource.query(`
+      SELECT TABLE_NAME 
+      FROM information_schema.TABLES 
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_TYPE = 'BASE TABLE'
+      ORDER BY TABLE_NAME
+    `);
+    
+    const tables = allTables.map(t => t.TABLE_NAME);
+    const result = {
+      database: process.env.DB_NAME,
+      generatedAt: new Date().toISOString(),
+      tables: {}
+    };
+    
+    for (const table of tables) {
+      // Informations de la table
+      const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
+      
+      // Colonnes détaillées
+      const columns = await this.dataSource.query(`
+        SELECT 
+          COLUMN_NAME,
+          DATA_TYPE,
+          COLUMN_TYPE,
+          IS_NULLABLE,
+          COLUMN_KEY,
+          COLUMN_DEFAULT,
+          EXTRA,
+          CHARACTER_MAXIMUM_LENGTH,
+          NUMERIC_PRECISION,
+          NUMERIC_SCALE
+        FROM information_schema.COLUMNS 
+        WHERE TABLE_SCHEMA = DATABASE() 
+          AND TABLE_NAME = ?
+        ORDER BY ORDINAL_POSITION
+      `, [table]);
+      
+      // Relations (clés étrangères)
+      const relations = await this.dataSource.query(`
+        SELECT 
+          kcu.COLUMN_NAME as source_column,
+          kcu.REFERENCED_TABLE_NAME as target_table,
+          kcu.REFERENCED_COLUMN_NAME as target_column
+        FROM information_schema.KEY_COLUMN_USAGE kcu
+        WHERE kcu.CONSTRAINT_SCHEMA = DATABASE()
+          AND kcu.TABLE_NAME = ?
+          AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+      `, [table]);
+      
+      // Nombre de lignes
+      let rowCount = 0;
+      try {
+        const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);
+        rowCount = parseInt(countResult[0]?.count || '0');
+      } catch { /* ignore */ }
+      
+      // Construire l'objet table
+      result.tables[table] = {
+        businessName: tableMeta?.label || table,
+        description: tableMeta?.description || '',
+        icon: tableMeta?.icon,
+        category: tableMeta?.category,
+        rowCount,
+        columns: {},
+        relations: {
+          foreignKeys: relations,
+          referencedBy: [] // à remplir si nécessaire
+        }
+      };
+      
+      // Ajouter chaque colonne avec ses métadonnées
+      for (const col of columns) {
+        const businessLabel = this.schemaMetadata.getBusinessLabel(table, col.COLUMN_NAME);
+        result.tables[table].columns[col.COLUMN_NAME] = {
+          technicalName: col.COLUMN_NAME,
+          businessLabel,
+          dataType: col.DATA_TYPE,
+          fullType: col.COLUMN_TYPE,
+          nullable: col.IS_NULLABLE === 'YES',
+          isPrimaryKey: col.COLUMN_KEY === 'PRI',
+          isForeignKey: relations.some(r => r.source_column === col.COLUMN_NAME),
+          defaultValue: col.COLUMN_DEFAULT,
+          autoIncrement: col.EXTRA?.includes('auto_increment') || false,
+          maxLength: col.CHARACTER_MAXIMUM_LENGTH,
+          numericPrecision: col.NUMERIC_PRECISION,
+          numericScale: col.NUMERIC_SCALE
+        };
+      }
+    }
+    
+    return result;
+  }
+
+
+  /**
+ * Retourne exactement ce qui est envoyé au prompt de l'IA
+ * Utile pour debug et comprendre le contexte
+ */
+async getPromptSchema(question: string, specificTables?: string[]): Promise<any> {
+  const startTime = Date.now();
+  
+  // Détecter les tables pertinentes
+  const relevantTables = await this.detectRelevantTables(question, specificTables);
+  
+  // Générer le schéma complet (comme envoyé à l'IA)
+  const schema = await this.getCompleteSchema(relevantTables);
+  
+  // Générer le prompt complet qui serait envoyé
+  const prompt = this.buildGenericPrompt(question, schema, relevantTables);
+  
+  // Récupérer les métadonnées enrichies
+  const tableMetadata: Array<{
+    table: string;
+    businessName: string;
+    description: string;
+    icon?: string;
+    category?: string;
+  }> = [];
+  for (const table of relevantTables) {
+    const meta = this.schemaMetadata.getTableMetadataForPrompt(table);
+    if (meta) {
+      tableMetadata.push({
+        table,
+        businessName: meta.label,
+        description: meta.description,
+        icon: meta.icon,
+        category: meta.category
+      });
+    }
+  }
+  
+  return {
+    question,
+    relevantTables,
+    schemaPreview: schema.substring(0, 2000) + (schema.length > 2000 ? '\n... (tronqué)' : ''),
+    schemaLength: schema.length,
+    fullPrompt: prompt,
+    promptLength: prompt.length,
+    tableMetadata,
+    executionTimeMs: Date.now() - startTime,
+    // Version complète du schéma (optionnel, pour download)
+    fullSchema: schema,
+    // Relations entre tables
+    relations: this.relationshipsCache.get('all') || {}
+  };
+}
 }

@@ -32,3 +32,11 @@ export class AskQuestionDto {
   @IsBoolean()
   verbose?: boolean;
 }
+
+export interface QueryExecutionResult {
+  success: boolean;
+  data?: any[];
+  rowCount?: number;
+  error?: string;
+  sqlQuery?: string;
+}
