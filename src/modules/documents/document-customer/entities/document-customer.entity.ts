@@ -2,17 +2,8 @@ import { BaseEntity } from 'src/core/entities/baseEntity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
-
-
-
-
-
-
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-
-
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
   Entity,
@@ -27,9 +18,6 @@ import {
   JoinTable,
   BeforeInsert,
 } from 'typeorm';
-
-
-
 import { DocumentType } from '../../document-type/entities/document-type.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
@@ -39,20 +27,7 @@ import { Stage } from 'src/modules/procedure/entities/stage.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
-
-
-
-
-
-
-
-
-
-
-
-// import { Hearing } from 'src/modules/hearings/entities/hearing.entity';
-// import { User } from 'src/modules/users/entities/user.entity';
-// import { Comment } from 'src/modules/comments/entities/comment.entity';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
 export enum DocumentCustomerStatus {
   PENDING = 0,
@@ -62,99 +37,197 @@ export enum DocumentCustomerStatus {
   ARCHIVED = 4,
 }
 
-// export enum DocumentCategory {
-//   PROCEDURAL = 'procedural', // Actes de procédure officiels
-//   CLIENT = 'client', // Documents transmis par le client
-//   INTERNAL = 'internal', // Documents internes/annexes
-//   FINANCIAL = 'financial', // Documents financiers
-//   DECISION = 'decision', // Décisions de justice
-// }
-
 @Entity('document_customer')
+@BusinessTable({
+  label: 'Documents clients',
+  description: 'Gestion des documents uploadés par les clients ou par le cabinet. Un document peut être une pièce d\'identité, un contrat, une conclusion, un jugement, ou toute autre pièce jointe liée à un dossier ou à un client.',
+  icon: '📄',
+  category: 'document'
+})
 export class DocumentCustomer extends BaseEntity {
   @PrimaryGeneratedColumn()
+  @BusinessColumn({
+    label: 'Identifiant technique',
+    description: 'Numéro unique généré automatiquement',
+    importance: 'low',
+    group: 'technique',
+    ignored: true  // ✅ Ignoré car non utile pour l'IA
+  })
   id: number;
 
   @Column()
+  @BusinessColumn({
+    label: 'Nom du document',
+    description: 'Nom original du fichier uploadé. Utilisé pour rechercher un document par son nom.',
+    example: 'Contrat_MeDupont_2025.pdf',
+    importance: 'critical',
+    group: 'identification'
+  })
   name: string;
+
   @Column({ type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Type de document',
+    description: 'Identifiant du type de document (PIÈCE_IDENTITÉ, CONTRAT, CONCLUSION, JUGEMENT, etc.)',
+    importance: 'high',
+    group: 'classification',
+    ignored: true  // Relation gérée par document_type
+  })
   document_type_id?: number;
 
   @Column({ type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Client',
+    description: 'Identifiant du client propriétaire du document',
+    importance: 'critical',
+    group: 'relation'
+  })
   customer_id?: number;
 
   @Column({ type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Dossier',
+    description: 'Identifiant du dossier associé au document',
+    importance: 'critical',
+    group: 'relation'
+  })
   dossier_id?: number;
 
   @Column({ type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Uploadé par',
+    description: 'Identifiant de l\'utilisateur qui a uploadé le document',
+    importance: 'low',
+    group: 'audit',
+    ignored: true
+  })
   uploaded_by_id?: number;
 
-
   @Column({ type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Description',
+    description: 'Description textuelle du contenu ou de l\'objet du document',
+    example: 'Contrat de prestation signé le 15/03/2025',
+    importance: 'high',
+    group: 'contenu'
+  })
   description: string;
 
-  @ManyToOne(() => DocumentType, { eager: false  })
+  // Relations
+  @ManyToOne(() => DocumentType, { eager: false })
   @JoinColumn({ name: 'document_type_id' })
   document_type: DocumentType;
 
   @ManyToOne(() => Customer)
   @JoinColumn({ name: 'customer_id' })
+  @BusinessColumn({
+    label: 'Client',
+    description: 'Client auquel appartient le document',
+    importance: 'critical',
+    group: 'relation'
+  })
   customer: Customer;
-  
-  // @Column({
-  //   type: 'enum',
-  //   enum: DocumentCategory,
-  //   default: DocumentCategory.CLIENT
-  // })
-  @Column({ type: 'int', nullable: true })
-  category_id?: number;
 
+  @Column({ type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Catégorie',
+    description: 'Catégorie du document (procedural, client, internal, financial, decision)',
+    importance: 'high',
+    group: 'classification'
+  })
+  category_id?: number;
 
   @ManyToMany(() => Audience, (audience) => audience.decision_documents)
   decision_audiences: Audience[];
-  
-  @ManyToOne(() => DocumentCategory, { eager: false  })
-  @JoinColumn({ name: 'category_id' })
-  category: DocumentCategory; 
 
-  @Column({ 
+  @ManyToOne(() => DocumentCategory, { eager: false })
+  @JoinColumn({ name: 'category_id' })
+  category: DocumentCategory;
+
+  @Column({
     type: 'enum',
     enum: DocumentCustomerStatus,
     default: DocumentCustomerStatus.ACCEPTED
   })
+  @BusinessColumn({
+    label: 'Statut',
+    description: '0=En attente, 1=Validé, 2=Refusé, 3=Expiré, 4=Archivé',
+    example: '1 = Validé',
+    importance: 'high',
+    group: 'validation'
+  })
   status: DocumentCustomerStatus;
 
   @Column({ name: 'file_path', nullable: true })
+  @BusinessColumn({
+    label: 'Chemin du fichier',
+    description: 'Emplacement physique du fichier sur le serveur',
+    importance: 'low',
+    group: 'stockage',
+    ignored: true  // Technique, pas utile pour l'IA
+  })
   file_path: string;
 
   @Column({ name: 'file_url', nullable: true })
+  @BusinessColumn({
+    label: 'URL du fichier',
+    description: 'Lien de téléchargement du document',
+    importance: 'medium',
+    group: 'stockage'
+  })
   file_url: string;
 
   @Column({ name: 'file_size', nullable: true })
+  @BusinessColumn({
+    label: 'Taille',
+    description: 'Taille du fichier en octets',
+    unit: 'bytes',
+    importance: 'low',
+    group: 'stockage'
+  })
   file_size: number;
 
   @Column({ name: 'file_mimetype', nullable: true })
+  @BusinessColumn({
+    label: 'Type MIME',
+    description: 'Type de fichier (application/pdf, image/jpeg, etc.)',
+    importance: 'low',
+    group: 'stockage',
+    ignored: true
+  })
   file_mimetype: string;
 
   @Column({ name: 'version', default: 1 })
+  @BusinessColumn({
+    label: 'Version',
+    description: 'Numéro de version du document (incrémenté à chaque modification)',
+    importance: 'low',
+    group: 'versioning'
+  })
   version: number;
 
   @Column({ name: 'is_current_version', default: true })
+  @BusinessColumn({
+    label: 'Version courante',
+    description: 'True = version actuelle, False = version archivée',
+    importance: 'medium',
+    group: 'versioning'
+  })
   is_current_version: boolean;
 
   @ManyToOne(() => DocumentCustomer, { nullable: true })
   @JoinColumn({ name: 'previous_version_id' })
   previous_version: DocumentCustomer;
 
-
-
   @ManyToOne(() => Dossier, { nullable: false })
   @JoinColumn({ name: 'dossier_id' })
+  @BusinessColumn({
+    label: 'Dossier associé',
+    description: 'Dossier juridique auquel le document est rattaché',
+    importance: 'critical',
+    group: 'relation'
+  })
   dossier: Dossier;
-
-  // @ManyToOne(() => Hearing, { nullable: true })
-  // @JoinColumn({ name: 'hearing_id' })
-  // related_hearing: Hearing;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'uploaded_by_id' })
@@ -162,7 +235,7 @@ export class DocumentCustomer extends BaseEntity {
 
   @ManyToMany(() => Step, step => step.documents)
   @JoinTable({
-    name: 'step_documents',  // Table de jointure
+    name: 'step_documents',
     joinColumn: { name: 'document_id', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'step_id', referencedColumnName: 'id' }
   })
@@ -170,28 +243,82 @@ export class DocumentCustomer extends BaseEntity {
 
   @Column({ name: 'uploaded_at', type: 'timestamp' })
   @CreateDateColumn()
+  @BusinessColumn({
+    label: "Date d'upload",
+    description: 'Date et heure de téléchargement du document',
+    format: 'date',
+    importance: 'high',
+    group: 'dates'
+  })
   uploaded_at: Date;
- 
+
   @Column({ name: 'last_modified', type: 'timestamp' })
   @UpdateDateColumn()
+  @BusinessColumn({
+    label: 'Dernière modification',
+    description: 'Date et heure de la dernière modification',
+    format: 'date',
+    importance: 'medium',
+    group: 'dates'
+  })
   last_modified: Date;
 
   @Column({ name: 'date_validation', nullable: true })
+  @BusinessColumn({
+    label: 'Date de validation',
+    description: 'Date de validation officielle du document',
+    format: 'date',
+    importance: 'high',
+    group: 'validation'
+  })
   date_validation: Date;
 
   @Column({ name: 'date_ejected', nullable: true })
+  @BusinessColumn({
+    label: "Date de rejet",
+    description: 'Date de rejet si le document a été refusé',
+    format: 'date',
+    importance: 'medium',
+    group: 'validation'
+  })
   date_ejected: Date;
 
   @Column({ name: 'date_expired', nullable: true })
+  @BusinessColumn({
+    label: "Date d'expiration",
+    description: 'Date à laquelle le document expire (ex: pièce d\'identité)',
+    format: 'date',
+    importance: 'high',
+    group: 'validation'
+  })
   date_expired: Date;
 
   @Column({ name: 'required_for_hearing', default: false })
+  @BusinessColumn({
+    label: 'Requis pour audience',
+    description: 'True = document obligatoire pour une audience',
+    importance: 'high',
+    group: 'audience'
+  })
   required_for_hearing: boolean;
 
   @Column({ name: 'is_confidential', default: false })
+  @BusinessColumn({
+    label: 'Confidentiel',
+    description: 'True = document confidentiel (accès restreint)',
+    importance: 'high',
+    group: 'sécurité'
+  })
   is_confidential: boolean;
 
   @Column({ name: 'metadata', type: 'json', nullable: true })
+  @BusinessColumn({
+    label: 'Métadonnées',
+    description: 'Informations supplémentaires (mots-clés, nombre de pages, langue, etc.)',
+    importance: 'low',
+    group: 'technique',
+    ignored: true
+  })
   metadata: {
     keywords?: string[];
     page_count?: number;
@@ -208,173 +335,126 @@ export class DocumentCustomer extends BaseEntity {
   @ManyToMany(() => Audience, (audience) => audience.documents)
   audiences: Audience[];
 
-  // @ManyToMany(() => Step, step => step.documents)
-  // steps: Step[];
-  
   @ManyToMany(() => Diligence, (diligence) => diligence.documents)
   diligences: Diligence[];
 
-    // Many-to-Many avec ProcedureInstance
-    @ManyToMany(() => ProcedureInstance, (instance) => instance.documents)
-    procedureInstances: ProcedureInstance[];
+  @ManyToMany(() => ProcedureInstance, (instance) => instance.documents)
+  procedureInstances: ProcedureInstance[];
 
-    // Many-to-Many avec Stage (pour lier à des étapes spécifiques)
-    @ManyToMany(() => Stage, (stage) => stage.documents)
-    @JoinTable({
-      name: 'stage_documents',
-      joinColumn: { name: 'document_id', referencedColumnName: 'id' },
-      inverseJoinColumn: { name: 'stage_id', referencedColumnName: 'id' },
-    })
-    stages: Stage[];
+  @ManyToMany(() => Stage, (stage) => stage.documents)
+  @JoinTable({
+    name: 'stage_documents',
+    joinColumn: { name: 'document_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'stage_id', referencedColumnName: 'id' },
+  })
+  stages: Stage[];
 
-    @ManyToMany(() => StageVisit, (stage) => stage.documents)
-    @JoinTable({
-      name: 'stage_visit_documents',
-      joinColumn: { name: 'document_id', referencedColumnName: 'id' },
-      inverseJoinColumn: { name: 'stageVisit_id', referencedColumnName: 'id' },
-    })
-    stageVisits: StageVisit[];
+  @ManyToMany(() => StageVisit, (stage) => stage.documents)
+  @JoinTable({
+    name: 'stage_visit_documents',
+    joinColumn: { name: 'document_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'stageVisit_id', referencedColumnName: 'id' },
+  })
+  stageVisits: StageVisit[];
 
-    @ManyToMany(() => SubStageVisit, (subVisit) => subVisit.documents)
-    @JoinTable({
-      name: 'sub_stage_visit_documents',
-      joinColumn: {
-        name: 'document_id',
-        referencedColumnName: 'id',
-      },
-      inverseJoinColumn: {
-        name: 'sub_stage_visit_id',
-        referencedColumnName: 'id',
-      },
-    })
-    sub_stage_visits: SubStageVisit[];
+  @ManyToMany(() => SubStageVisit, (subVisit) => subVisit.documents)
+  @JoinTable({
+    name: 'sub_stage_visit_documents',
+    joinColumn: { name: 'document_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'sub_stage_visit_id', referencedColumnName: 'id' },
+  })
+  sub_stage_visits: SubStageVisit[];
 
-    @ManyToMany(() => SubStage, (subStage) => subStage.documents)
-    subStages: SubStage[];
-
-    
+  @ManyToMany(() => SubStage, (subStage) => subStage.documents)
+  subStages: SubStage[];
 
   @OneToMany(() => Finding, (finding) => finding.document)
   findings: Finding[];
 
-get status_label(): string {
-  const statusLabels = {
-    [DocumentCustomerStatus.PENDING]: 'En attente',
-    [DocumentCustomerStatus.ACCEPTED]: 'Validé',
-    [DocumentCustomerStatus.REFUSED]: 'Refusé', 
-    [DocumentCustomerStatus.EXPIRED]: 'Expiré',
-    [DocumentCustomerStatus.ARCHIVED]: 'Archivé',
-  };
-  return statusLabels[this.status] || 'Inconnu';
-}
+  // ==================== GETTERS MÉTIER ====================
 
-get file_size_formatted(): string {
-  if (!this.file_size) return '0 B';
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(this.file_size) / Math.log(1024));
-  return Math.round(this.file_size / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-get file_type_icon(): string {
-  const mimeIcons = {
-    'application/pdf': 'fa-file-pdf',
-    'image/': 'fa-file-image',
-    'text/': 'fa-file-text',
-    'application/msword': 'fa-file-word',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'fa-file-word',
-    'application/vnd.ms-excel': 'fa-file-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'fa-file-excel',
-    'default': 'fa-file'
-  };
-  
-  for (const [key, icon] of Object.entries(mimeIcons)) {
-    if (this.file_mimetype?.startsWith(key)) return icon;
+  get status_label(): string {
+    const statusLabels = {
+      [DocumentCustomerStatus.PENDING]: 'En attente',
+      [DocumentCustomerStatus.ACCEPTED]: 'Validé',
+      [DocumentCustomerStatus.REFUSED]: 'Refusé',
+      [DocumentCustomerStatus.EXPIRED]: 'Expiré',
+      [DocumentCustomerStatus.ARCHIVED]: 'Archivé',
+    };
+    return statusLabels[this.status] || 'Inconnu';
   }
-  return mimeIcons.default;
-}
 
-get is_validated(): boolean {
-  return this.status === DocumentCustomerStatus.ACCEPTED;
-}
+  get file_size_formatted(): string {
+    if (!this.file_size) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(this.file_size) / Math.log(1024));
+    return Math.round(this.file_size / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+  }
 
-get is_pending(): boolean {
-  return this.status === DocumentCustomerStatus.PENDING;
-}
+  get file_type_icon(): string {
+    const mimeIcons = {
+      'application/pdf': 'fa-file-pdf',
+      'image/': 'fa-file-image',
+      'text/': 'fa-file-text',
+      'application/msword': 'fa-file-word',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'fa-file-word',
+      'application/vnd.ms-excel': 'fa-file-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'fa-file-excel',
+      'default': 'fa-file'
+    };
 
-get is_rejected(): boolean {
-  return this.status === DocumentCustomerStatus.REFUSED;
-}
+    for (const [key, icon] of Object.entries(mimeIcons)) {
+      if (this.file_mimetype?.startsWith(key)) return icon;
+    }
+    return mimeIcons.default;
+  }
 
-get is_expired(): boolean {
-  return this.status === DocumentCustomerStatus.EXPIRED;
-}
+  get is_validated(): boolean {
+    return this.status === DocumentCustomerStatus.ACCEPTED;
+  }
 
-get can_be_downloaded(): boolean {
-  const allowedStatuses = [
-    DocumentCustomerStatus.PENDING,
-    DocumentCustomerStatus.ACCEPTED
-  ];
-  return allowedStatuses.includes(this.status) && !!this.file_path;
-}
+  get is_pending(): boolean {
+    return this.status === DocumentCustomerStatus.PENDING;
+  }
 
-get has_previous_versions(): boolean {
-  return !!this.previous_version;
-}
+  get is_rejected(): boolean {
+    return this.status === DocumentCustomerStatus.REFUSED;
+  }
 
-get file_name(): string {
-  if (!this.file_path) return '';
-  // Utilise la bibliothèque path de Node.js (disponible côté serveur)
-  const path = require('path');
-  return path.basename(this.file_path);
-}
-// get is_procedural_document(): boolean {
-//   return this.category === DocumentCategory.PROCEDURAL;
-// }
+  get is_expired(): boolean {
+    return this.status === DocumentCustomerStatus.EXPIRED;
+  }
 
-// get is_client_document(): boolean {
-//   return this.category === DocumentCategory.CLIENT;
-// }
+  get can_be_downloaded(): boolean {
+    const allowedStatuses = [
+      DocumentCustomerStatus.PENDING,
+      DocumentCustomerStatus.ACCEPTED
+    ];
+    return allowedStatuses.includes(this.status) && !!this.file_path;
+  }
 
-// get is_internal_document(): boolean {
-//   return this.category === DocumentCategory.INTERNAL;
-// }
+  get has_previous_versions(): boolean {
+    return !!this.previous_version;
+  }
 
-get can_be_modified(): boolean {
-  return this.status !== DocumentCustomerStatus.ARCHIVED && 
-         this.dossier?.status !== DossierStatus.CLOSED; // Adaptez selon votre statut de dossier
-}
+  get file_name(): string {
+    if (!this.file_path) return '';
+    const path = require('path');
+    return path.basename(this.file_path);
+  }
 
-// get requires_validation(): boolean {
-//   return this.is_procedural_document || this.is_client_document;
-// }
-  // @OneToMany(() => Comment, (comment) => comment.document)
-  // comments: Comment[];
-
-  // Méthodes utilitaires
-  // public isProceduralDocument(): boolean {
-  //   return this.category === DocumentCategory.PROCEDURAL;
-  // }
-
-  // public isClientDocument(): boolean {
-  //   return this.category === DocumentCategory.CLIENT;
-  // }
-
-  // public isInternalDocument(): boolean {
-  //   return this.category === DocumentCategory.INTERNAL;
-  // }
+  get can_be_modified(): boolean {
+    return this.status !== DocumentCustomerStatus.ARCHIVED &&
+           this.dossier?.status !== DossierStatus.CLOSED;
+  }
 
   public canBeModified(): boolean {
-    return this.status !== DocumentCustomerStatus.ARCHIVED && 
+    return this.status !== DocumentCustomerStatus.ARCHIVED &&
            this.dossier.status != 5;
   }
 
   @BeforeInsert()
   beforeCreate() {
     this.status = DocumentCustomerStatus.ACCEPTED;
-    // this.status = this.status ?? CustomerStatus.ACTIVE;
   }
-
-  // public requiresValidation(): boolean {
-  //   return this.isProceduralDocument() || this.isClientDocument();
-  // }
 }

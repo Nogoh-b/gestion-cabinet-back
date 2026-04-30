@@ -20,7 +20,9 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
   private readonly MAX_CHARS = 180000;
-
+  private conversationHistory: any[] = [];
+  private schemaInitialized = false;
+  private readonly SCHEMA_CACHE_KEY = 'database_schema_context';
 
 
   constructor(
@@ -33,24 +35,206 @@ export class AiDatabaseService implements OnModuleInit {
   async onModuleInit() {
     await this.initializeLLM();
     await this.loadDatabaseRelationships();
-      await this.schemaMetadata.initializeMetadata();  
-
-    this.logger.log('✅ Service AI Database initialisé');
+    await this.schemaMetadata.initializeMetadata();
+    
+    // ✅ CRUCIAL : Initialiser le contexte avec le schéma
+    await this.initializeSchemaContext();
+    
+    this.logger.log('✅ Service AI Database initialisé avec Thinking Mode');
   }
+    /**
+   * ✅ INITIALISATION UNIQUE : Envoyer le schéma une fois pour toutes
+   */
+    private async initializeSchemaContext(): Promise<void> {
+      this.logger.log('🔄 Initialisation du contexte avec le schéma (une seule fois)...');
+      
+      const allTables = this.schemaMetadata.getAllVisibleTables();
+      const schema = await this.getCompleteSchema(allTables);
+      
+      // ✅ Message système plus précis
+      const systemMessage = {
+        role: "system" as const,
+        content: `Tu es un expert SQL pour une base de données juridique.
+
+    Voici le schéma COMPLET de la base :
+
+    ${schema}
+
+    RÈGLES ABSOLUES :
+    1. IGNORE toujours les colonnes "deleted_at", "deleted_by", "deleted_date"
+    2. Ajoute systématiquement LIMIT ${this.MAX_RESULTS}
+    3. Utilise des alias courts
+    4. Ne génère JAMAIS de DELETE, UPDATE, INSERT
+    5. TOUTES les valeurs doivent être en dur (pas de placeholders :id, ?, etc.)
+
+    🎯 FORMAT DE RÉPONSE OBLIGATOIRE :
+    Tu DOIS répondre UNIQUEMENT avec un bloc de code SQL comme ceci :
+
+    \`\`\`sql
+    SELECT * FROM dossiers WHERE reference = 'ABC123' LIMIT 50;
+    \`\`\`
+
+    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`
+      };
+      
+      this.conversationHistory.push(systemMessage);
+      this.schemaInitialized = true;
+      
+      this.logger.log(`✅ Contexte initialisé avec ${allTables.length} tables (${schema.length} caractères)`);
+    }
+
+
+  /**
+  * ✅ POSER UNE QUESTION : Envoyer uniquement la question (pas le schéma)
+  */
+  async askQuestion(question: string): Promise<string> {
+    if (!this.schemaInitialized) {
+      await this.initializeSchemaContext();
+    }
+    
+    // Ajouter la question de l'utilisateur
+    this.conversationHistory.push({
+      role: "user" as const,
+      content: question
+    });
+    
+    this.logger.log(`📤 Envoi de la question à DeepSeek: ${question.substring(0, 100)}...`);
+    this.logger.debug(`📜 Historique complet: ${JSON.stringify(this.conversationHistory, null, 2)}`);
+    
+    try {
+      // Appeler l'API (DeepSeek utilise le contexte mémorisé)
+      const response = await this.llm.invoke(this.conversationHistory);
+      
+      // DEBUG: Log la réponse complète
+      this.logger.log(`📥 Réponse reçue de DeepSeek`);
+      // this.logger.debug(`📝 Contenu brut: ${JSON.stringify(response)}`);
+      
+      // Vérifier le type de réponse
+      let content = '';
+      if (typeof response.content === 'string') {
+        content = response.content;
+      } else if (response.content && typeof response.content === 'object') {
+        // Si c'est un tableau ou un objet, le convertir en string
+        content = JSON.stringify(response.content);
+      } else if (response.text) {
+        content = response.text;
+      }
+      
+      this.logger.log(`📄 Contenu extrait (${content.length} caractères): ${content.substring(0, 500)}`);
+      
+      // Extraire le raisonnement
+      const reasoning = response.additional_kwargs?.reasoning_content;
+      const reasoningString = typeof reasoning === 'string' ? reasoning : 
+                            (reasoning ? JSON.stringify(reasoning) : null);
+      
+      if (reasoningString) {
+        this.logger.debug(`🧠 Raisonnement: ${reasoningString.substring(0, 200)}...`);
+      }
+      
+      // Extraire le SQL
+      const sqlQuery = this.extractSQL(content);
+      
+      if (!sqlQuery) {
+        this.logger.error(`❌ Aucune requête SQL trouvée dans la réponse`);
+        this.logger.error(`📄 Réponse complète: ${content}`);
+        
+        // Tentative de récupération avec une approche plus souple
+        const fallbackSql = this.extractSQLRelaxed(content);
+        if (fallbackSql) {
+          this.logger.log(`✅ Fallback: SQL trouvé avec méthode relaxée: ${fallbackSql}`);
+          return fallbackSql;
+        }
+        
+        throw new Error('Impossible d\'extraire la requête SQL de la réponse DeepSeek');
+      }
+      
+      this.logger.log(`✅ SQL extrait: ${sqlQuery.substring(0, 200)}...`);
+      
+      // Ajouter la réponse à l'historique
+      const assistantMessage: any = {
+        role: "assistant" as const,
+        content: content,
+      };
+      
+      if (reasoningString) {
+        assistantMessage.reasoning_content = reasoningString;
+      }
+      
+      this.conversationHistory.push(assistantMessage);
+      
+      return sqlQuery;
+      
+    } catch (error) {
+      this.logger.error(`❌ Erreur lors de l'appel DeepSeek: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+  * ✅ Version relaxée de extractSQL pour récupérer même les mal formattés
+  */
+  private extractSQLRelaxed(response: string): string | null {
+    if (!response) return null;
+    
+    // Pattern plus permissif
+    const patterns = [
+      /```sql\n([\s\S]*?)\n```/i,
+      /```\n([\s\S]*?)\n```/i,
+      /```sql([\s\S]*?)```/i,
+      /SELECT\s+[\s\S]*?(?:;|$)/i,
+      /select\s+[\s\S]*?(?:;|$)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = response.match(pattern);
+      if (match) {
+        const sql = match[1] || match[0];
+        if (sql && /select/i.test(sql)) {
+          return sql.trim().replace(/;+$/, '');
+        }
+      }
+    }
+    
+    // Dernier recours : chercher tout ce qui ressemble à SELECT ... FROM
+    const selectMatch = response.match(/SELECT\s+.+?\s+FROM\s+[^\s;]+/i);
+    if (selectMatch) {
+      return selectMatch[0].trim();
+    }
+    
+    return null;
+  }
+
+  // private async initializeLLM() {
+  //   this.llm = new ChatOpenAI({
+  //     model: 'deepseek-reasoner',
+  //     temperature: 0.3,
+  //     maxTokens: this.MAX_TOKENS,
+  //     apiKey: process.env.DEEPSEEK_API_KEY,
+  //     configuration: {
+  //       baseURL: 'https://api.deepseek.com/v1',
+  //     },
+  //     modelKwargs: {
+  //       reasoning_effort: "low",  // ✅ "low" au lieu de "high" → beaucoup plus rapide
+  //       extra_body: {
+  //         thinking: { type: "enabled" }
+  //       }
+  //     }
+  //   });
+  // }
 
   private async initializeLLM() {
-    this.llm = new ChatOpenAI({
-      model: 'deepseek-chat',
-      temperature: 0.3, // Légèrement augmenté pour plus de naturel
-      maxTokens: this.MAX_TOKENS,
-      apiKey: process.env.DEEPSEEK_API_KEY,
-      configuration: {
-        baseURL: 'https://api.deepseek.com/v1',
-      },
-      timeout: 30000,
-      maxRetries: 2,
-    });
-  }
+  this.llm = new ChatOpenAI({
+    model: 'deepseek-chat',  // ✅ Beaucoup plus rapide
+    temperature: 0.1,        // ✅ Bas pour des réponses cohérentes
+    maxTokens: 1500,         // ✅ Suffisant pour une requête SQL
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    configuration: {
+      baseURL: 'https://api.deepseek.com/v1',
+    },
+    timeout: 15000,
+    maxRetries: 2,
+  });
+}
 
   /**
    * Charge automatiquement toutes les relations de la base de données
@@ -113,51 +297,59 @@ export class AiDatabaseService implements OnModuleInit {
     }
   }
 
+ /**
+   * ✅ MÉTHODE PRINCIPALE : Analyser une question
+   */
   async analyzeQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
-
+    const allTables = this.schemaMetadata.getAllVisibleTables();
+    const schemaJSON = await this.getCompleteSchemaJson(allTables)
+    const schema = await this.getCompleteSchema(allTables)
     try {
-      this.logger.log(`📝 Question: ${dto.question.substring(0, 100)}...`);
-      this.logger.log(`📊 Tables: ${dto.specificTables?.join(', ') || 'automatique'}`);
-
-      const relevantTables = await this.detectRelevantTables(dto.question, dto.specificTables);
-      const schema = await this.getCompleteSchema(relevantTables);
-      const schemaJSON = await this.getCompleteSchemaJson(relevantTables);
-      const sqlQuery = await this.generateSQLQuery(dto.question, schema, relevantTables);
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables);
+      // 🔥 MAGIE : Plus besoin d'envoyer le schéma !
+      const sqlQuery = await this.askQuestion(dto.question);
       
-      let results: any = null;
+      // Vérifier que sqlQuery n'est pas vide
+      if (!sqlQuery) {
+        throw new Error('Impossible de générer la requête SQL');
+      }
+      
+      // Valider et exécuter la requête
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      let results: { data: any[]; rowCount: number } | null = null;
       let analysis = '';
-
+      
       if (validatedQuery && !dto.analyzeOnly) {
         results = await this.executeSafeQuery(validatedQuery);
-        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, relevantTables);
+        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
       }
-
-      const executionTime = Date.now() - startTime;
-
+;
       return {
         success: true,
         question: dto.question,
         sqlQuery: validatedQuery,
         analysis,
-        schemaJSON,
-        schema,
+        schemaJSON,  // À adapter selon vos besoins
+        schema,        // À adapter selon vos besoins
         results: results?.data,
-        executionTimeMs: executionTime,
+        executionTimeMs: Date.now() - startTime,
         rowCount: results?.rowCount || 0,
       };
+      
     } catch (error) {
-      this.logger.error(`❌ Erreur: ${(error as unknown as any).message}`);
+      this.logger.error(`❌ Erreur: ${error.message}`);
       return {
         success: false,
         question: dto.question,
-        analysis: `Erreur: ${(error as unknown as any).message}`,
+        analysis: `Erreur: ${error.message}`,
+        schemaJSON,  // À adapter selon vos besoins
+        schema,        // À adapter selon vos besoins
         executionTimeMs: Date.now() - startTime,
-        error: (error as unknown as any).message,
+        error: error.message,
       };
     }
   }
+
 
   /**
    * Génère une analyse métier à partir des résultats
@@ -369,7 +561,7 @@ RÉPONSE (en français courant, langage métier):`;
       }
     }
     
-    const finalSchema = schema.substring(0, 8000);
+    const finalSchema = schema.substring(0, this.MAX_CHARS);
     this.schemaCache.set(cacheKey, { schema: finalSchema, timestamp: now });
     
     this.logger.log(`✅ Schéma généré (${finalSchema.length} caractères)`);
@@ -488,10 +680,19 @@ private async getDefaultSchema(): Promise<string> {
     return schema;
   }
 
-  private async getTableInfoJson(table: string, relationships?: any): Promise<TableSchema | null | undefined> {
-    // ✅ Vérifier d'abord si la table a des métadonnées
-    if (!this.schemaMetadata.hasTableMetadata(table)) {
-      this.logger.debug(`⏭️ Table ignorée (pas de métadonnées): ${table}`);
+  private async getTableInfoJson(table: string, relationships?: any): Promise<TableSchema | null> {
+    // ✅ Vérifier si la table doit être incluse (basé sur les métadonnées)
+    const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
+    
+    // Si la table n'a PAS de métadonnées, elle ne doit pas être incluse
+    if (!tableMeta) {
+      this.logger.debug(`⏭️ Table sans métadonnées (ignorée): ${table}`);
+      return null;
+    }
+    
+    // Si la table est explicitement ignorée
+    if (tableMeta.ignored === true) {
+      this.logger.debug(`⏭️ Table explicitement ignorée: ${table}`);
       return null;
     }
     
@@ -515,7 +716,99 @@ private async getDefaultSchema(): Promise<string> {
     
     if (columns.length === 0) return null;
     
-    // ... reste du code inchangé
+    // ✅ Récupérer les métadonnées des colonnes depuis le cache
+    const columnMetadataMap = this.schemaMetadata.getColumnMetadataMap(table);
+    
+    // Compter les lignes
+    let rowCount = 0;
+    try {
+      const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);
+      rowCount = parseInt(countResult[0]?.count || '0');
+    } catch { /* ignore */ }
+    
+    const columnsSchema: ColumnSchema[] = [];
+    const primaryKeys: string[] = [];
+    const foreignKeysList: { column: string; references: { table: string; column: string } }[] = [];
+    
+    for (const col of columns) {
+      // ✅ Vérifier si la colonne doit être ignorée
+      const columnMeta = columnMetadataMap?.get(col.COLUMN_NAME);
+      if (columnMeta?.ignored === true) {
+        continue; // Ignorer cette colonne
+      }
+      
+      // Type détaillé
+      let detailedType = col.DATA_TYPE;
+      if (col.CHARACTER_MAXIMUM_LENGTH) {
+        detailedType += `(${col.CHARACTER_MAXIMUM_LENGTH})`;
+      } else if (col.NUMERIC_PRECISION) {
+        detailedType += `(${col.NUMERIC_PRECISION}`;
+        if (col.NUMERIC_SCALE) detailedType += `,${col.NUMERIC_SCALE}`;
+        detailedType += `)`;
+      }
+      
+      // Contraintes
+      const constraints: string[] = [];
+      if (col.COLUMN_KEY === 'PRI') {
+        constraints.push('PK');
+        primaryKeys.push(col.COLUMN_NAME);
+      }
+      if (col.COLUMN_KEY === 'MUL') constraints.push('FK');
+      if (col.IS_NULLABLE === 'NO') constraints.push('NOT NULL');
+      if (col.EXTRA?.includes('auto_increment')) constraints.push('AUTO_INCREMENT');
+      
+      // ✅ Libellé métier (priorité: décorateur > généré)
+      let businessLabel: string;
+      let description: string;
+      
+      if (columnMeta) {
+        businessLabel = columnMeta.label || this.schemaMetadata.formatTechnicalName(col.COLUMN_NAME);
+        description = columnMeta.description || col.COLUMN_COMMENT || '';
+      } else {
+        businessLabel = this.schemaMetadata.formatTechnicalName(col.COLUMN_NAME);
+        description = col.COLUMN_COMMENT || '';
+      }
+      
+      // Vérifier si c'est une FK
+      let isForeignKey = false;
+      let foreignKeyTo: { table: string; column: string } | undefined;
+      
+      if (relationships?.foreignKeys) {
+        const fk = relationships.foreignKeys.find((f: any) => f.column === col.COLUMN_NAME);
+        if (fk) {
+          isForeignKey = true;
+          foreignKeyTo = {
+            table: fk.referencedTable,
+            column: fk.referencedColumn
+          };
+          foreignKeysList.push({
+            column: col.COLUMN_NAME,
+            references: { table: fk.referencedTable, column: fk.referencedColumn }
+          });
+        }
+      }
+      
+      columnsSchema.push({
+        name: col.COLUMN_NAME,
+        type: detailedType,
+        constraints,
+        businessLabel,
+        description: description.substring(0, 200),
+        isForeignKey,
+        foreignKeyTo
+      });
+    }
+    
+    return {
+      name: table,
+      businessName: tableMeta.label,
+      description: tableMeta.description || '',
+      rowCount,
+      columns: columnsSchema,
+      primaryKeys,
+      foreignKeys: foreignKeysList,
+      indexedColumns: []
+    };
   }
 
   // Dans AiDatabaseService
@@ -621,19 +914,23 @@ private async getDefaultSchema(): Promise<string> {
 
   1. **IGNORE TOTALEMENT** les colonnes "deleted_at", "deleted_by", "deleted_date"
   2. **NE JAMAIS filtrer** sur ces colonnes dans WHERE
-  3. Utilise des alias courts (d = dossiers, c = customers)
-  4. Ajoute toujours LIMIT ${this.MAX_RESULTS}
-  5. Pour les dates, utilise DATE() si comparaison partielle
+  3. **N'UTILISE JAMAIS** les paramètres nommés comme :dossier_id, :param, etc.
+  4. Utilise des alias courts (d = dossiers, c = customers)
+  5. Ajoute toujours LIMIT ${this.MAX_RESULTS}
+  6. Pour les dates, utilise DATE() si comparaison partielle
+  7. **TOUTES les valeurs doivent être en dur** (pas de placeholders)
 
   ❌ **STRICTEMENT INTERDIT :**
   - DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
   - Toute mention de "deleted_at" dans la requête
+  - Les paramètres nommés (:, @, $)
+  - Les placeholders (?) dans la requête
 
   ✅ **BONNE PRATIQUE :**
   \`\`\`sql
-  SELECT d.id, d.reference, d.title 
+  SELECT d.id, d.dossier_number, d.title 
   FROM dossiers d 
-  WHERE d.status = 'active' 
+  WHERE d.dossier_number = 'ABC123' AND d.status = 'active'
   LIMIT 10;
   \`\`\`
 
@@ -684,7 +981,20 @@ Retourne UNIQUEMENT la requête corrigée.`;
   }
 
   private async executeSafeQuery(sqlQuery: string): Promise<{ data: any[]; rowCount: number }> {
-    const normalizedQuery = sqlQuery.trim().toLowerCase();
+    let normalizedQuery = sqlQuery.trim();
+    
+    // ✅ Supprimer les paramètres nommés style :dossier_id, :param, etc.
+    normalizedQuery = normalizedQuery.replace(/:\w+/g, '');
+    
+    // ✅ Remplacer les ? par des valeurs NULL ou les supprimer si nécessaire
+    normalizedQuery = normalizedQuery.replace(/\?\s*,/g, '');
+    normalizedQuery = normalizedQuery.replace(/,\s*\?/g, '');
+    normalizedQuery = normalizedQuery.replace(/=\s*\?/g, '= NULL');
+    
+    // ✅ Nettoyer les parenthèses vides
+    normalizedQuery = normalizedQuery.replace(/\(\s*\)/g, '');
+    
+    normalizedQuery = normalizedQuery.toLowerCase();
     
     if (!normalizedQuery.startsWith('select')) {
       throw new Error('Seules les requêtes SELECT sont autorisées');
@@ -721,25 +1031,65 @@ Retourne UNIQUEMENT la requête corrigée.`;
     }
   }
 
-  private extractSQL(response: string): string | null {
-    const patterns = [
-      /```sql\n([\s\S]*?)\n```/i,
-      /```\n([\s\S]*?)\n```/i,
-      /SELECT\s+[\s\S]*?(?:;|$)/i
-    ];
-    
-    for (const pattern of patterns) {
-      const match = response.match(pattern);
-      if (match) {
-        const sql = match[1] || match[0];
-        if (sql.toLowerCase().includes('select')) {
-          return sql.trim().replace(/;+$/, '');
+  /**
+    * ✅ Version améliorée de extractSQL avec type checking
+    */
+    private extractSQL(response: string): string | null {
+      if (!response || typeof response !== 'string') {
+        this.logger.warn('Réponse invalide pour extractSQL');
+        return null;
+      }
+      
+      const patterns = [
+        /```sql\n([\s\S]*?)\n```/i,
+        /```\n([\s\S]*?)\n```/i,
+        /SELECT\s+[\s\S]*?(?:;|$)/i
+      ];
+      
+      for (const pattern of patterns) {
+        const match = response.match(pattern);
+        if (match) {
+          const sql = match[1] || match[0];
+          if (sql && sql.toLowerCase().includes('select')) {
+            return sql.trim().replace(/;+$/, '');
+          }
         }
       }
+      
+      return null;
     }
+
+     /**
+   * ✅ Pour les appels avec outils (Tool Calls)
+   */
+  async analyzeComplexQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
+    const tools = [
+      {
+        type: "function" as const,
+        function: {
+          name: "get_table_schema",
+          description: "Obtenir le schéma détaillé d'une table spécifique",
+          parameters: {
+            type: "object",
+            properties: {
+              table_name: { type: "string", description: "Nom de la table" }
+            },
+            required: ["table_name"]
+          }
+        }
+      }
+    ];
     
-    return null;
+    // Appel avec tools
+    const response = await this.llm.invoke([
+      ...this.conversationHistory,
+      { role: "user" as const, content: dto.question }
+    ]);
+    
+    // Traitement de la réponse...
+    return this.analyzeQuestion(dto);
   }
+
 
   async validateQuery(sqlQuery: string): Promise<{ valid: boolean; error?: string }> {
     try {
@@ -787,98 +1137,55 @@ Retourne UNIQUEMENT la requête corrigée.`;
 
   /**
   * Retourne le schéma complet de la base avec toutes les métadonnées
+  * Utilise les tables déjà sélectionnées par detectRelevantTables
   */
-  async getFullDatabaseSchema(): Promise<any> {
-    const allTables = await this.dataSource.query(`
-      SELECT TABLE_NAME 
-      FROM information_schema.TABLES 
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_TYPE = 'BASE TABLE'
-      ORDER BY TABLE_NAME
-    `);
+  async getFullDatabaseSchema(question?: string, specificTables?: string[]): Promise<any> {
+    // Si une question est fournie, utiliser les tables détectées
+    let tablesToUse: string[];
     
-    const tables = allTables.map(t => t.TABLE_NAME);
+    if (question) {
+      tablesToUse = await this.detectRelevantTables(question, specificTables);
+    } else {
+      // Sinon, utiliser les tables visibles (cellesfgetTableInfoJson avec métadonnées)
+      tablesToUse = this.schemaMetadata.getAllVisibleTables();
+    }
+    
+    this.logger.log(`📊 Génération du schéma JSON pour ${tablesToUse.length} tables`);
+    
     const result = {
       database: process.env.DB_NAME,
       generatedAt: new Date().toISOString(),
-      tables: {}
+      tables: {},
+      relationships: [] as any[]
     };
     
-    for (const table of tables) {
-      // Informations de la table
-      const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
-      
-      // Colonnes détaillées
-      const columns = await this.dataSource.query(`
-        SELECT 
-          COLUMN_NAME,
-          DATA_TYPE,
-          COLUMN_TYPE,
-          IS_NULLABLE,
-          COLUMN_KEY,
-          COLUMN_DEFAULT,
-          EXTRA,
-          CHARACTER_MAXIMUM_LENGTH,
-          NUMERIC_PRECISION,
-          NUMERIC_SCALE
-        FROM information_schema.COLUMNS 
-        WHERE TABLE_SCHEMA = DATABASE() 
-          AND TABLE_NAME = ?
-        ORDER BY ORDINAL_POSITION
-      `, [table]);
-      
-      // Relations (clés étrangères)
-      const relations = await this.dataSource.query(`
-        SELECT 
-          kcu.COLUMN_NAME as source_column,
-          kcu.REFERENCED_TABLE_NAME as target_table,
-          kcu.REFERENCED_COLUMN_NAME as target_column
-        FROM information_schema.KEY_COLUMN_USAGE kcu
-        WHERE kcu.CONSTRAINT_SCHEMA = DATABASE()
-          AND kcu.TABLE_NAME = ?
-          AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-      `, [table]);
-      
-      // Nombre de lignes
-      let rowCount = 0;
+    const relationships = this.relationshipsCache.get('all') || {};
+    
+    for (const table of tablesToUse) {
       try {
-        const countResult = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);
-        rowCount = parseInt(countResult[0]?.count || '0');
-      } catch { /* ignore */ }
-      
-      // Construire l'objet table
-      result.tables[table] = {
-        businessName: tableMeta?.label || table,
-        description: tableMeta?.description || '',
-        icon: tableMeta?.icon,
-        category: tableMeta?.category,
-        rowCount,
-        columns: {},
-        relations: {
-          foreignKeys: relations,
-          referencedBy: [] // à remplir si nécessaire
+        const tableSchema = await this.getTableInfoJson(table, relationships[table]);
+        if (tableSchema) {
+          result.tables[table] = tableSchema;
+          
+          // Ajouter les relations
+          if (relationships[table]?.foreignKeys) {
+            for (const fk of relationships[table].foreignKeys) {
+              result.relationships.push({
+                from: { table, column: fk.column },
+                to: { table: fk.referencedTable, column: fk.referencedColumn },
+                type: 'belongsTo'
+              });
+            }
+          }
+        } else {
+          this.logger.warn(`⚠️ Table ${table} ignorée (pas de schéma JSON généré)`);
         }
-      };
-      
-      // Ajouter chaque colonne avec ses métadonnées
-      for (const col of columns) {
-        const businessLabel = this.schemaMetadata.getBusinessLabel(table, col.COLUMN_NAME);
-        result.tables[table].columns[col.COLUMN_NAME] = {
-          technicalName: col.COLUMN_NAME,
-          businessLabel,
-          dataType: col.DATA_TYPE,
-          fullType: col.COLUMN_TYPE,
-          nullable: col.IS_NULLABLE === 'YES',
-          isPrimaryKey: col.COLUMN_KEY === 'PRI',
-          isForeignKey: relations.some(r => r.source_column === col.COLUMN_NAME),
-          defaultValue: col.COLUMN_DEFAULT,
-          autoIncrement: col.EXTRA?.includes('auto_increment') || false,
-          maxLength: col.CHARACTER_MAXIMUM_LENGTH,
-          numericPrecision: col.NUMERIC_PRECISION,
-          numericScale: col.NUMERIC_SCALE
-        };
+      } catch (error) {
+        this.logger.error(`❌ Erreur génération schéma pour ${table}: ${(error as any).message}`);
       }
     }
+    
+    this.logger.log(`✅ Schéma JSON généré: ${Object.keys(result.tables).length} tables, ${result.relationships.length} relations`);
     
     return result;
   }

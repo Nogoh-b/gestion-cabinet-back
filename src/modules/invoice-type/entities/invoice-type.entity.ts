@@ -1,13 +1,15 @@
+// invoice-type.entity.ts
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    OneToMany
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany
 } from 'typeorm';
 import { Expose } from 'class-transformer';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
 export enum InvoiceTypeCategory {
   LEGAL_FEES = 'legal_fees',
@@ -25,21 +27,54 @@ export enum TaxRate {
 }
 
 @Entity('invoice_types')
+@BusinessTable({
+  label: "Types d'honoraires",
+  description: 'Catégories d\'honoraires et de frais facturables aux clients.',
+  icon: '💰',
+  category: 'finance'
+})
 export class InvoiceType {
   @PrimaryGeneratedColumn()
   @Expose()
+  @BusinessColumn({
+    label: 'Identifiant',
+    description: 'Identifiant unique du type',
+    importance: 'low',
+    group: 'technique',
+    ignored: true
+  })
   id: number;
 
   @Column({ unique: true })
   @Expose()
+  @BusinessColumn({
+    label: 'Code',
+    description: 'Code unique du type d\'honoraire',
+    example: 'HON_FIXE, HON_HORAIRE, FRAIS_DIVERS',
+    importance: 'high',
+    group: 'identification'
+  })
   code: string;
 
   @Column()
   @Expose()
+  @BusinessColumn({
+    label: 'Nom',
+    description: 'Nom du type d\'honoraire',
+    example: 'Honoraires forfaitaires, Honoraires horaires, Frais de dossier',
+    importance: 'critical',
+    group: 'identification'
+  })
   name: string;
 
   @Column({ type: 'text', nullable: true })
   @Expose()
+  @BusinessColumn({
+    label: 'Description',
+    description: 'Description détaillée du type d\'honoraire',
+    importance: 'medium',
+    group: 'contenu'
+  })
   description: string;
 
   @Column({
@@ -48,6 +83,12 @@ export class InvoiceType {
     default: InvoiceTypeCategory.LEGAL_FEES
   })
   @Expose()
+  @BusinessColumn({
+    label: 'Catégorie',
+    description: 'legal_fees (Honoraires), expenses (Frais), advance (Provision), settlement (Transaction), other (Autre)',
+    importance: 'high',
+    group: 'classification'
+  })
   category: InvoiceTypeCategory;
 
   @Column({
@@ -56,26 +97,66 @@ export class InvoiceType {
     default: TaxRate.STANDARD
   })
   @Expose()
+  @BusinessColumn({
+    label: 'Taux TVA par défaut',
+    description: '0%, 5.5%, 10%, 20%',
+    unit: '%',
+    format: 'percentage',
+    importance: 'high',
+    group: 'financier'
+  })
   default_tax_rate: TaxRate;
 
   @Column({ default: true })
   @Expose()
+  @BusinessColumn({
+    label: 'Facturable',
+    description: 'True = ce type peut être facturé au client',
+    importance: 'medium',
+    group: 'règles'
+  })
   is_billable: boolean;
 
   @Column({ default: true })
   @Expose()
+  @BusinessColumn({
+    label: 'Nécessite approbation',
+    description: 'True = nécessite une validation avant facturation',
+    importance: 'medium',
+    group: 'règles'
+  })
   requires_approval: boolean;
 
   @Column({ default: 30 })
   @Expose()
+  @BusinessColumn({
+    label: 'Délai paiement par défaut',
+    description: 'Nombre de jours pour le paiement',
+    unit: 'jours',
+    importance: 'medium',
+    group: 'règles'
+  })
   default_payment_days: number;
 
   @Column({ default: true })
   @Expose()
+  @BusinessColumn({
+    label: 'Actif',
+    description: 'True = type actif et utilisable',
+    importance: 'high',
+    group: 'état'
+  })
   is_active: boolean;
 
   @Column({ type: 'json', nullable: true })
   @Expose()
+  @BusinessColumn({
+    label: 'Métadonnées',
+    description: 'Informations supplémentaires',
+    importance: 'low',
+    group: 'technique',
+    ignored: true
+  })
   metadata: {
     accounting_code?: string;
     default_unit?: 'hour' | 'day' | 'unit' | 'fixed';

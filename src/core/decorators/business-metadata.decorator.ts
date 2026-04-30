@@ -18,7 +18,7 @@ export interface BusinessTableMetadata {
   label: string;           // Nom métier de la table
   description: string;     // Description de ce que représente la table
   icon?: string;           // Icône pour l'UI
-  category?: 'client' | 'dossier' | 'finance' | 'procedure' | 'document';
+  category?: 'client' | 'dossier' | 'finance' | 'procedure' | 'document' | 'organisation' | 'audit' | 'other' | string; // Catégorie métier
   ignored?: boolean;  
 }
 

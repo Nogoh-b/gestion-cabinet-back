@@ -3,12 +3,16 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto } from './dto/analysis-response.dto';
+import { SchemaMetadataService } from './schema-metadata.service';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
 @ApiBearerAuth()
 export class AiDatabaseController {
-  constructor(private readonly aiDbService: AiDatabaseService) {}
+  constructor(
+    private readonly aiDbService: AiDatabaseService,
+    private readonly schemaMetadata: SchemaMetadataService,
+    ) {}
 
   @Post('ask')
   @HttpCode(HttpStatus.OK)
@@ -65,5 +69,18 @@ export class AiDatabaseController {
   async getPromptSchema(@Query('question') question: string, @Query('tables') tables?: string) {
     const specificTables = tables ? tables.split(',') : undefined;
     return this.aiDbService.getPromptSchema(question, specificTables);
+  }
+
+  @Get('visible-tables')
+  @ApiOperation({ summary: 'Liste les tables visibles (avec métadonnées)' })
+  async getVisibleTables() {
+    return {
+      count: this.schemaMetadata.getVisibleTablesCount(),
+      tables: this.schemaMetadata.getAllVisibleTables(),
+      details: this.schemaMetadata.getAllVisibleTables().map(table => ({
+        name: table,
+        metadata: this.schemaMetadata.getTableMetadataForPrompt(table)
+      }))
+    };
   }
 }
