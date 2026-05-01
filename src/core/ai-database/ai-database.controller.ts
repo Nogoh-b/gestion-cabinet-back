@@ -74,9 +74,11 @@ export class AiDatabaseController {
   @Get('visible-tables')
   @ApiOperation({ summary: 'Liste les tables visibles (avec métadonnées)' })
   async getVisibleTables() {
+    const tables = this.schemaMetadata.getAllVisibleTables()
     return {
       count: this.schemaMetadata.getVisibleTablesCount(),
-      tables: this.schemaMetadata.getAllVisibleTables(),
+      tables,
+      schemaJSON: await this.aiDbService.getCompleteSchemaJson(tables),
       details: this.schemaMetadata.getAllVisibleTables().map(table => ({
         name: table,
         metadata: this.schemaMetadata.getTableMetadataForPrompt(table)

@@ -107,7 +107,7 @@ export class AiDatabaseService implements OnModuleInit {
       
       // DEBUG: Log la réponse complète
       this.logger.log(`📥 Réponse reçue de DeepSeek`);
-      // this.logger.debug(`📝 Contenu brut: ${JSON.stringify(response)}`);
+      this.logger.debug(`📝 Contenu brut: ${JSON.stringify(response)}`);
       
       // Vérifier le type de réponse
       let content = '';
@@ -812,7 +812,7 @@ private async getDefaultSchema(): Promise<string> {
   }
 
   // Dans AiDatabaseService
-  private async getCompleteSchemaJson(tables: string[]): Promise<DatabaseSchema> {
+  public async getCompleteSchemaJson(tables: string[]): Promise<DatabaseSchema> {
     const relationships = this.relationshipsCache.get('all') || {};
     const resultTables: TableSchema[] = [];
     const allRelationships: { from: { table: string; column: string }; to: { table: string; column: string } }[] = [];
