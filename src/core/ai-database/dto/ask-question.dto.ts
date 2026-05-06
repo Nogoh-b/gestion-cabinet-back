@@ -2,6 +2,8 @@ import { IsString, IsOptional, IsArray, IsBoolean, MinLength, MaxLength } from '
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AskQuestionDto {
+
+  conversationId?: string;  // Optionnel : si non fourni, on crée une nouvelle conversation
   @ApiProperty({ 
     description: 'Question en langage naturel sur votre base de données',
     example: 'Quel est le taux de succès par avocat pour 2025 ?'

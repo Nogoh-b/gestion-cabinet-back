@@ -8,6 +8,7 @@ import { AnalysisResponseDto } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
+import { ConversationManagerService } from './conversation-manager.service';
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -20,15 +21,18 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
   private readonly MAX_CHARS = 180000;
-  private conversationHistory: any[] = [];
+  // private conversationHistory: any[] = [];
   private schemaInitialized = false;
   private readonly SCHEMA_CACHE_KEY = 'database_schema_context';
-
+  private schemaLoaded = false;
+  private cachedSystemPrompt: string | null = null;
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly schemaMetadata: SchemaMetadataService,  
     private readonly sqlValidator: SqlValidatorService,  
+    private readonly conversationManager: ConversationManagerService,
+
 
   ) {}
 
@@ -38,9 +42,262 @@ export class AiDatabaseService implements OnModuleInit {
     await this.schemaMetadata.initializeMetadata();
     
     // ✅ CRUCIAL : Initialiser le contexte avec le schéma
-    await this.initializeSchemaContext();
-    
+    // await this.initializeSchemaContext();
+     await this.preloadSystemPrompt();
+
     this.logger.log('✅ Service AI Database initialisé avec Thinking Mode');
+  }
+
+
+    /**
+   * Précharge le prompt système (schéma) une seule fois
+   */
+  public async preloadSystemPrompt(): Promise<any> {
+    this.logger.log('🔄 Préchargement du prompt système...');
+    const allTables = this.schemaMetadata.getAllVisibleTables();
+    const schema = await this.getCompleteSchema(allTables);
+    
+        this.cachedSystemPrompt = `Tu es un expert SQL pour une base de données juridique.
+
+    Voici le schéma COMPLET de la base :
+
+    ${schema}
+
+    RÈGLES ABSOLUES :
+    1. IGNORE toujours les colonnes "deleted_at", "deleted_by", "deleted_date"
+    2. Ajoute systématiquement LIMIT ${this.MAX_RESULTS}
+    3. Utilise des alias courts
+    4. Ne génère JAMAIS de DELETE, UPDATE, INSERT
+    5. TOUTES les valeurs doivent être en dur (pas de placeholders :id, ?, etc.)
+
+    🎯 FORMAT DE RÉPONSE OBLIGATOIRE :
+    Tu DOIS répondre UNIQUEMENT avec un bloc de code SQL comme ceci :
+
+    \`\`\`sql
+    SELECT * FROM dossiers WHERE reference = 'ABC123' LIMIT 50;
+    \`\`\`
+
+    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
+        
+    this.schemaLoaded = true;
+    return this.cachedSystemPrompt
+    // this.logger.log(`✅ Prompt système préchargé (${this.cachedSystemPrompt.length} caractères)`);
+  }
+
+
+
+  
+  /**
+   * ✅ NOUVELLE MÉTHODE : Pose une question dans une conversation spécifique
+   */
+async askQuestionWithSession(conversationId: string, question: string): Promise<string> {
+  // 1. Vérifier que la conversation existe
+  let conversation = await this.conversationManager.getConversation(conversationId);
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} non trouvée`);
+  }
+  
+  // 2. Vérifier le contexte système
+  const hasSystemMessage = await this.conversationManager.hasSystemMessage(conversationId);
+  if (!hasSystemMessage && this.cachedSystemPrompt) {
+    Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt préchargé...`);
+    await this.conversationManager.addSystemMessage(conversationId, this.cachedSystemPrompt);
+  }
+  
+  // 3. Ajouter la question
+  await this.conversationManager.addUserMessage(conversationId, question);
+  
+  // 4. Récupérer et envoyer l'historique
+  const history = await this.conversationManager.getFullHistory(conversationId);
+  const response = await this.llm.invoke(history);
+  let content = response.content as string;
+  
+  // 🔍 LOG CRITIQUE
+  this.logger.log(`📝 Réponse brute (200 premiers chars): ${content.substring(0, 200)}`);
+  
+  // 5. Extraction SQL avec fallback amélioré
+  let sqlQuery = this.extractSQL(content);
+  
+  if (!sqlQuery) {
+    this.logger.warn(`⚠️ Aucun bloc SQL trouvé, tentative avec regex plus permissif...`);
+    sqlQuery = this.extractSQLRelaxed(content);
+  }
+  
+  if (!sqlQuery && this.isNoResultsResponse(content)) {
+    // DeepSeek a répondu qu'il n'y a pas de résultats
+    sqlQuery = `-- Aucun résultat trouvé pour: ${question}\nSELECT NULL AS message WHERE 1=0;`;
+    this.logger.log(`ℹ️ Réponse "aucun résultat" détectée, SQL généré automatiquement`);
+  } else if (!sqlQuery) {
+    this.logger.warn(`⚠️ Pas de SQL trouvé, demande de reformatage...`);
+    sqlQuery = await this.askForSQLOnly(question);
+  }
+  
+  // 6. Vérifier que c'est bien une requête SELECT
+  if (sqlQuery) {
+    const normalizedLower = sqlQuery.toLowerCase().trim();
+    if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
+      this.logger.error(`❌ Requête non SELECT détectée: ${sqlQuery.substring(0, 100)}`);
+      sqlQuery = null;
+    }
+  }
+  
+  // 7. Dernier recours : générer une requête de recherche basée sur la question
+  if (!sqlQuery) {
+    sqlQuery = this.generateFallbackQuery(question);
+    this.logger.warn(`⚠️ Utilisation du fallback final: ${sqlQuery}`);
+  }
+  
+  // 8. Sauvegarder la réponse originale (pour debug)
+  await this.conversationManager.addAssistantMessage(conversationId, content);
+  
+  return sqlQuery;
+}
+
+/**
+ * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
+ */
+private isNoResultsResponse(content: string): boolean {
+  const lower = content.toLowerCase();
+  const noResultPatterns = [
+    'aucun dossier', 'aucun résultat', 'not found', 'no results',
+    'introuvable', 'existe pas', 'does not exist'
+  ];
+  return noResultPatterns.some(pattern => lower.includes(pattern));
+}
+
+/**
+ * Génère une requête SQL de fallback intelligente
+ */
+private generateFallbackQuery(question: string): string {
+  const lower = question.toLowerCase();
+  
+  // Détecter le type d'ID/reference
+  const refMatch = question.match(/[A-Z0-9-]{10,}/i);
+  if (refMatch) {
+    const ref = refMatch[0];
+    // Essayer plusieurs colonnes possibles
+    return `-- Recherche de la référence '${ref}'
+SELECT * FROM dossiers 
+WHERE reference = '${ref}' 
+   OR numero_dossier = '${ref}' 
+   OR id = '${ref}'
+LIMIT 10;`;
+  }
+  
+  // Fallback générique
+  return `-- Requête générée automatiquement
+SELECT NULL AS message 
+WHERE 1=0;
+-- Vérifiez que les données existent dans la base`;
+}
+
+/**
+ * Demande explicitement du SQL (avec meilleur prompt)
+ */
+private async askForSQLOnly(originalQuestion: string): Promise<string | null> {
+  const reformatPrompt = `La base de données contient une table "dossiers" avec les colonnes: id, reference, numero_dossier, titre, statut, created_at.
+
+La question est: "${originalQuestion}"
+
+Génère une requête SELECT pour répondre à cette question.
+Si la valeur recherchée est un numéro de dossier, cherche dans les colonnes "reference" OU "numero_dossier".
+
+RÈGLES:
+- UNIQUEMENT une requête SELECT
+- Pas d'explication, pas de texte
+- Ajoute LIMIT 10
+
+Requête SQL:`;
+
+  try {
+    const response = await this.llm.invoke([{
+      role: "user",
+      content: reformatPrompt
+    }]);
+    const content = response.content as string;
+    const sql = this.extractSQLRelaxed(content);
+    
+    if (sql && sql.toLowerCase().includes('select')) {
+      return sql;
+    }
+    return null;
+  } catch (error) {
+    this.logger.error(`Erreur reformatage: ${error.message}`);
+    return null;
+  }
+}
+
+
+
+
+  /**
+   * ✅ MÉTHODE PRINCIPALE MODIFIÉE : Analyser une question avec gestion de session
+   */
+  async analyzeQuestion(dto: AskQuestionDto, userId: string): Promise<AnalysisResponseDto> {
+    const startTime = Date.now();
+    const allTables = this.schemaMetadata.getAllVisibleTables();
+    const schemaJSON = await this.getCompleteSchemaJson(allTables);
+    const schema = await this.getCompleteSchema(allTables);
+    
+    try {
+      let conversationId = dto.conversationId;
+      
+      // Si pas de conversationId, créer une nouvelle conversation
+      if (!conversationId) {
+        const title = this.generateConversationTitle(dto.question);
+        const newConversation = await this.conversationManager.createConversation(userId, title);
+        conversationId = newConversation.id;
+        this.logger.log(`📝 Nouvelle conversation créée: ${conversationId}`);
+      }
+      
+      // Générer le SQL via la conversation
+      const sqlQuery = await this.askQuestionWithSession(conversationId, dto.question);
+      
+      // Valider et exécuter la requête
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      let results: { data: any[]; rowCount: number } | null = null;
+      let analysis = '';
+      
+      if (validatedQuery && !dto.analyzeOnly) {
+        results = await this.executeSafeQuery(validatedQuery);
+        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
+      }
+      
+      return {
+        success: true,
+        question: dto.question,
+        sqlQuery: validatedQuery,
+        analysis,
+        schemaJSON,
+        schema,
+        results: results?.data,
+        executionTimeMs: Date.now() - startTime,
+        rowCount: results?.rowCount || 0,
+        conversationId, // ← Ajouter l'ID dans la réponse
+      };
+      
+    } catch (error) {
+      this.logger.error(`❌ Erreur: ${error.message}`);
+      return {
+        success: false,
+        question: dto.question,
+        analysis: `Erreur: ${error.message}`,
+        schemaJSON,
+        schema,
+        executionTimeMs: Date.now() - startTime,
+        error: error.message,
+      };
+    }
+  }
+  
+  /**
+   * Génère un titre automatique pour la conversation
+   */
+  private generateConversationTitle(question: string): string {
+    // Prendre les 50 premiers caractères
+    let title = question.substring(0, 50);
+    if (question.length > 50) title += '...';
+    return title;
   }
     /**
    * ✅ INITIALISATION UNIQUE : Envoyer le schéma une fois pour toutes
@@ -77,7 +334,7 @@ export class AiDatabaseService implements OnModuleInit {
     Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`
       };
       
-      this.conversationHistory.push(systemMessage);
+      // this.conversationHistory.push(systemMessage);
       this.schemaInitialized = true;
       
       this.logger.log(`✅ Contexte initialisé avec ${allTables.length} tables (${schema.length} caractères)`);
@@ -87,88 +344,88 @@ export class AiDatabaseService implements OnModuleInit {
   /**
   * ✅ POSER UNE QUESTION : Envoyer uniquement la question (pas le schéma)
   */
-  async askQuestion(question: string): Promise<string> {
-    if (!this.schemaInitialized) {
-      await this.initializeSchemaContext();
-    }
+  // async askQuestion(question: string): Promise<string> {
+  //   if (!this.schemaInitialized) {
+  //     await this.initializeSchemaContext();
+  //   }
     
-    // Ajouter la question de l'utilisateur
-    this.conversationHistory.push({
-      role: "user" as const,
-      content: question
-    });
+  //   // Ajouter la question de l'utilisateur
+  //   this.conversationHistory.push({
+  //     role: "user" as const,
+  //     content: question
+  //   });
     
-    this.logger.log(`📤 Envoi de la question à DeepSeek: ${question.substring(0, 100)}...`);
-    this.logger.debug(`📜 Historique complet: ${JSON.stringify(this.conversationHistory, null, 2)}`);
+  //   this.logger.log(`📤 Envoi de la question à DeepSeek: ${question.substring(0, 100)}...`);
+  //   this.logger.debug(`📜 Historique complet: ${JSON.stringify(this.conversationHistory, null, 2)}`);
     
-    try {
-      // Appeler l'API (DeepSeek utilise le contexte mémorisé)
-      const response = await this.llm.invoke(this.conversationHistory);
+  //   try {
+  //     // Appeler l'API (DeepSeek utilise le contexte mémorisé)
+  //     const response = await this.llm.invoke(this.conversationHistory);
       
-      // DEBUG: Log la réponse complète
-      this.logger.log(`📥 Réponse reçue de DeepSeek`);
-      this.logger.debug(`📝 Contenu brut: ${JSON.stringify(response)}`);
+  //     // DEBUG: Log la réponse complète
+  //     this.logger.log(`📥 Réponse reçue de DeepSeek`);
+  //     this.logger.debug(`📝 Contenu brut: ${JSON.stringify(response)}`);
       
-      // Vérifier le type de réponse
-      let content = '';
-      if (typeof response.content === 'string') {
-        content = response.content;
-      } else if (response.content && typeof response.content === 'object') {
-        // Si c'est un tableau ou un objet, le convertir en string
-        content = JSON.stringify(response.content);
-      } else if (response.text) {
-        content = response.text;
-      }
+  //     // Vérifier le type de réponse
+  //     let content = '';
+  //     if (typeof response.content === 'string') {
+  //       content = response.content;
+  //     } else if (response.content && typeof response.content === 'object') {
+  //       // Si c'est un tableau ou un objet, le convertir en string
+  //       content = JSON.stringify(response.content);
+  //     } else if (response.text) {
+  //       content = response.text;
+  //     }
       
-      this.logger.log(`📄 Contenu extrait (${content.length} caractères): ${content.substring(0, 500)}`);
+  //     this.logger.log(`📄 Contenu extrait (${content.length} caractères): ${content.substring(0, 500)}`);
       
-      // Extraire le raisonnement
-      const reasoning = response.additional_kwargs?.reasoning_content;
-      const reasoningString = typeof reasoning === 'string' ? reasoning : 
-                            (reasoning ? JSON.stringify(reasoning) : null);
+  //     // Extraire le raisonnement
+  //     const reasoning = response.additional_kwargs?.reasoning_content;
+  //     const reasoningString = typeof reasoning === 'string' ? reasoning : 
+  //                           (reasoning ? JSON.stringify(reasoning) : null);
       
-      if (reasoningString) {
-        this.logger.debug(`🧠 Raisonnement: ${reasoningString.substring(0, 200)}...`);
-      }
+  //     if (reasoningString) {
+  //       this.logger.debug(`🧠 Raisonnement: ${reasoningString.substring(0, 200)}...`);
+  //     }
       
-      // Extraire le SQL
-      const sqlQuery = this.extractSQL(content);
+  //     // Extraire le SQL
+  //     const sqlQuery = this.extractSQL(content);
       
-      if (!sqlQuery) {
-        this.logger.error(`❌ Aucune requête SQL trouvée dans la réponse`);
-        this.logger.error(`📄 Réponse complète: ${content}`);
+  //     if (!sqlQuery) {
+  //       this.logger.error(`❌ Aucune requête SQL trouvée dans la réponse`);
+  //       this.logger.error(`📄 Réponse complète: ${content}`);
         
-        // Tentative de récupération avec une approche plus souple
-        const fallbackSql = this.extractSQLRelaxed(content);
-        if (fallbackSql) {
-          this.logger.log(`✅ Fallback: SQL trouvé avec méthode relaxée: ${fallbackSql}`);
-          return fallbackSql;
-        }
+  //       // Tentative de récupération avec une approche plus souple
+  //       const fallbackSql = this.extractSQLRelaxed(content);
+  //       if (fallbackSql) {
+  //         this.logger.log(`✅ Fallback: SQL trouvé avec méthode relaxée: ${fallbackSql}`);
+  //         return fallbackSql;
+  //       }
         
-        throw new Error('Impossible d\'extraire la requête SQL de la réponse DeepSeek');
-      }
+  //       throw new Error('Impossible d\'extraire la requête SQL de la réponse DeepSeek');
+  //     }
       
-      this.logger.log(`✅ SQL extrait: ${sqlQuery.substring(0, 200)}...`);
+  //     this.logger.log(`✅ SQL extrait: ${sqlQuery.substring(0, 200)}...`);
       
-      // Ajouter la réponse à l'historique
-      const assistantMessage: any = {
-        role: "assistant" as const,
-        content: content,
-      };
+  //     // Ajouter la réponse à l'historique
+  //     const assistantMessage: any = {
+  //       role: "assistant" as const,
+  //       content: content,
+  //     };
       
-      if (reasoningString) {
-        assistantMessage.reasoning_content = reasoningString;
-      }
+  //     if (reasoningString) {
+  //       assistantMessage.reasoning_content = reasoningString;
+  //     }
       
-      this.conversationHistory.push(assistantMessage);
+  //     this.conversationHistory.push(assistantMessage);
       
-      return sqlQuery;
+  //     return sqlQuery;
       
-    } catch (error) {
-      this.logger.error(`❌ Erreur lors de l'appel DeepSeek: ${error.message}`);
-      throw error;
-    }
-  }
+  //   } catch (error) {
+  //     this.logger.error(`❌ Erreur lors de l'appel DeepSeek: ${error.message}`);
+  //     throw error;
+  //   }
+  // }
 
   /**
   * ✅ Version relaxée de extractSQL pour récupérer même les mal formattés
@@ -300,55 +557,55 @@ export class AiDatabaseService implements OnModuleInit {
  /**
    * ✅ MÉTHODE PRINCIPALE : Analyser une question
    */
-  async analyzeQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-    const startTime = Date.now();
-    const allTables = this.schemaMetadata.getAllVisibleTables();
-    const schemaJSON = await this.getCompleteSchemaJson(allTables)
-    const schema = await this.getCompleteSchema(allTables)
-    try {
-      // 🔥 MAGIE : Plus besoin d'envoyer le schéma !
-      const sqlQuery = await this.askQuestion(dto.question);
+//   async analyzeQuestionV0(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
+//     const startTime = Date.now();
+//     const allTables = this.schemaMetadata.getAllVisibleTables();
+//     const schemaJSON = await this.getCompleteSchemaJson(allTables)
+//     const schema = await this.getCompleteSchema(allTables)
+//     try {
+//       // 🔥 MAGIE : Plus besoin d'envoyer le schéma !
+//       const sqlQuery = await this.askQuestion(dto.question);
       
-      // Vérifier que sqlQuery n'est pas vide
-      if (!sqlQuery) {
-        throw new Error('Impossible de générer la requête SQL');
-      }
+//       // Vérifier que sqlQuery n'est pas vide
+//       if (!sqlQuery) {
+//         throw new Error('Impossible de générer la requête SQL');
+//       }
       
-      // Valider et exécuter la requête
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
-      let results: { data: any[]; rowCount: number } | null = null;
-      let analysis = '';
+//       // Valider et exécuter la requête
+//       const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+//       let results: { data: any[]; rowCount: number } | null = null;
+//       let analysis = '';
       
-      if (validatedQuery && !dto.analyzeOnly) {
-        results = await this.executeSafeQuery(validatedQuery);
-        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
-      }
-;
-      return {
-        success: true,
-        question: dto.question,
-        sqlQuery: validatedQuery,
-        analysis,
-        schemaJSON,  // À adapter selon vos besoins
-        schema,        // À adapter selon vos besoins
-        results: results?.data,
-        executionTimeMs: Date.now() - startTime,
-        rowCount: results?.rowCount || 0,
-      };
+//       if (validatedQuery && !dto.analyzeOnly) {
+//         results = await this.executeSafeQuery(validatedQuery);
+//         analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
+//       }
+// ;
+//       return {
+//         success: true,
+//         question: dto.question,
+//         sqlQuery: validatedQuery,
+//         analysis,
+//         schemaJSON,  // À adapter selon vos besoins
+//         schema,        // À adapter selon vos besoins
+//         results: results?.data,
+//         executionTimeMs: Date.now() - startTime,
+//         rowCount: results?.rowCount || 0,
+//       };
       
-    } catch (error) {
-      this.logger.error(`❌ Erreur: ${error.message}`);
-      return {
-        success: false,
-        question: dto.question,
-        analysis: `Erreur: ${error.message}`,
-        schemaJSON,  // À adapter selon vos besoins
-        schema,        // À adapter selon vos besoins
-        executionTimeMs: Date.now() - startTime,
-        error: error.message,
-      };
-    }
-  }
+//     } catch (error) {
+//       this.logger.error(`❌ Erreur: ${error.message}`);
+//       return {
+//         success: false,
+//         question: dto.question,
+//         analysis: `Erreur: ${error.message}`,
+//         schemaJSON,  // À adapter selon vos besoins
+//         schema,        // À adapter selon vos besoins
+//         executionTimeMs: Date.now() - startTime,
+//         error: error.message,
+//       };
+//     }
+//   }
 
 
   /**
@@ -542,6 +799,7 @@ RÉPONSE (en français courant, langage métier):`;
       try {
         const tableInfo = await this.getTableInfo(table, relationships[table]);
         if (tableInfo) {
+          this.logger.log(`🔄 tableau info  ${table} tables...`)
           schema += tableInfo + '\n';
         }
       } catch (error) {
@@ -1062,33 +1320,33 @@ Retourne UNIQUEMENT la requête corrigée.`;
      /**
    * ✅ Pour les appels avec outils (Tool Calls)
    */
-  async analyzeComplexQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-    const tools = [
-      {
-        type: "function" as const,
-        function: {
-          name: "get_table_schema",
-          description: "Obtenir le schéma détaillé d'une table spécifique",
-          parameters: {
-            type: "object",
-            properties: {
-              table_name: { type: "string", description: "Nom de la table" }
-            },
-            required: ["table_name"]
-          }
-        }
-      }
-    ];
+  // async analyzeComplexQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
+  //   const tools = [
+  //     {
+  //       type: "function" as const,
+  //       function: {
+  //         name: "get_table_schema",
+  //         description: "Obtenir le schéma détaillé d'une table spécifique",
+  //         parameters: {
+  //           type: "object",
+  //           properties: {
+  //             table_name: { type: "string", description: "Nom de la table" }
+  //           },
+  //           required: ["table_name"]
+  //         }
+  //       }
+  //     }
+  //   ];
     
-    // Appel avec tools
-    const response = await this.llm.invoke([
-      ...this.conversationHistory,
-      { role: "user" as const, content: dto.question }
-    ]);
+  //   // Appel avec tools
+  //   const response = await this.llm.invoke([
+  //     ...this.conversationHistory,
+  //     { role: "user" as const, content: dto.question }
+  //   ]);
     
-    // Traitement de la réponse...
-    return this.analyzeQuestion(dto);
-  }
+  //   // Traitement de la réponse...
+  //   return this.analyzeQuestion(dto);
+  // }
 
 
   async validateQuery(sqlQuery: string): Promise<{ valid: boolean; error?: string }> {

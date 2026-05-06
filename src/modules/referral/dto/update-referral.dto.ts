@@ -1,4 +1,5 @@
+// update-referrer.dto.ts
 import { PartialType } from '@nestjs/swagger';
-import { CreateReferralDto } from './create-referral.dto';
+import { CreateReferrerDto } from './create-referral.dto';
 
-export class UpdateReferralDto extends PartialType(CreateReferralDto) {}
+export class UpdateReferrerDto extends PartialType(CreateReferrerDto) {}

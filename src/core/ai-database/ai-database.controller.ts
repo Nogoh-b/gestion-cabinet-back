@@ -1,17 +1,24 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query, UseGuards, Req, UnauthorizedException, Param, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../decorators/current-user.decorator';
+import { ConversationManagerService } from './conversation-manager.service';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
+  @UseGuards(JwtAuthGuard)
+
 @ApiBearerAuth()
 export class AiDatabaseController {
   constructor(
     private readonly aiDbService: AiDatabaseService,
     private readonly schemaMetadata: SchemaMetadataService,
+      private readonly conversationManager: ConversationManagerService,
+
     ) {}
 
   @Post('ask')
@@ -23,8 +30,11 @@ export class AiDatabaseController {
   @ApiResponse({ status: 200, description: 'Analyse réussie', type: AnalysisResponseDto })
   @ApiResponse({ status: 400, description: 'Question invalide' })
   @ApiResponse({ status: 500, description: 'Erreur serveur' })
-  async askQuestion(@Body() dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto);
+  @UseGuards(JwtAuthGuard)
+  
+  async askQuestion(@Body() dto: AskQuestionDto, @CurrentUser() user): Promise<AnalysisResponseDto> {
+    dto.conversationId = 'f71158b9-f94a-481b-a634-3e733ab3d147'
+    return this.aiDbService.analyzeQuestion(dto, user.id);
   }
 
   @Post('execute')
@@ -50,6 +60,15 @@ export class AiDatabaseController {
     };
   }
 
+  @Get('schema-json')
+  @ApiOperation({ 
+    summary: 'Récupère le schéma complet de la base de données avec métadonnées métier',
+    description: 'Retourne la structure de toutes les tables avec libellés, descriptions, types, relations...'
+  })
+  @ApiResponse({ status: 200, description: 'Schéma retourné avec succès' })
+  async getDatabaseSchemaJSON() {
+    return this.aiDbService.getFullDatabaseSchema();
+  }
   @Get('schema')
   @ApiOperation({ 
     summary: 'Récupère le schéma complet de la base de données avec métadonnées métier',
@@ -57,7 +76,39 @@ export class AiDatabaseController {
   })
   @ApiResponse({ status: 200, description: 'Schéma retourné avec succès' })
   async getDatabaseSchema() {
-    return this.aiDbService.getFullDatabaseSchema();
+        // const allTables = this.schemaMetadata.getAllVisibleTables();
+    // const schemaJSON = await this.aiDbService.getCompleteSchemaJson(allTables);
+    return await this.aiDbService.preloadSystemPrompt();
+  }
+
+   @Post('analyze')
+  async analyze(@Body() dto: AskQuestionDto, @Req() req) {
+    const userId = req.user?.id || 'anonymous'; // Ton système d'auth
+    return this.aiDbService.analyzeQuestion(dto, userId);
+  }
+  
+  @Get('conversations')
+  async getConversations(@Req() req) {
+    const userId = req.user?.id || 'anonymous';
+    return this.conversationManager.getUserConversations(userId);
+  } 
+
+  @Post('conversations')
+  async createConversation(@Req() req) {
+    const userId = req.user?.id || 'anonymous';
+    return this.conversationManager.createConversation(userId);
+  }
+  
+  @Get('conversations/:id/messages')
+  async getConversationMessages(@Param('id') conversationId: string, @Req() req) {
+    const userId = req.user?.id || 'anonymous';
+    // Vérifier que la conversation appartient à l'utilisateur
+    const conversation = await this.conversationManager.getConversation(conversationId);
+    if (!conversation || conversation.userId.toString() !== userId.toString()) {
+      Logger.warn(`⚠️ Accès non autorisé à la conversation ${conversationId} pour user ${userId} ${conversation?.userId}`);
+      throw new UnauthorizedException();
+    }
+    return this.conversationManager.getFullHistory(conversationId);
   }
 
 

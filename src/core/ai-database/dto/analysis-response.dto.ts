@@ -8,6 +8,7 @@ export class AnalysisResponseDto {
   analysis: string = '';
   tokensUsed?: number;
   results?: any;
+  conversationId?: any;
   rowCount?: any;
   executionTimeMs: number = 1;
   recommendations?: string[];
