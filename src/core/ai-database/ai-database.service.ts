@@ -9,6 +9,9 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
 import { ConversationManagerService } from './conversation-manager.service';
+import { IntentDetectionService } from './intent-detection.service';
+import { GenericWriteService } from './generic-write.service';
+import { WriteIntent } from './interface/write-intent.interface';
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -31,6 +34,8 @@ export class AiDatabaseService implements OnModuleInit {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly schemaMetadata: SchemaMetadataService,  
     private readonly sqlValidator: SqlValidatorService,  
+    private readonly intentDetectionService: IntentDetectionService,  
+    private readonly genericWriteService: GenericWriteService,  
     private readonly conversationManager: ConversationManagerService,
 
 
@@ -229,40 +234,199 @@ Requête SQL:`;
 
 
 
+  /**
+  * Extrait le contenu textuel d'un fichier uploadé
+  */
+  private async extractFileContent(file: Express.Multer.File): Promise<string> {
+    const { mimetype, buffer, originalname } = file;
+
+    // Fichiers texte / JSON / CSV
+    if (mimetype === 'text/plain' || mimetype === 'text/csv' || mimetype === 'application/json') {
+      return buffer.toString('utf-8');
+    }
+
+    // PDF : utiliser pdf-parse
+    if (mimetype === 'application/pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(buffer);
+      return data.text;
+    }
+
+    // Excel : utiliser xlsx
+    if (mimetype.includes('spreadsheetml') || mimetype.includes('ms-excel')) {
+      const XLSX = require('xlsx');
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      let text = '';
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        text += `\n--- Feuille: ${sheetName} ---\n`;
+        text += XLSX.utils.sheet_to_csv(sheet);
+      }
+      return text;
+    }
+
+    throw new Error(`Type de fichier non supporté: ${mimetype}`);
+  }
+
+
+  // Dans AiDatabaseService
+
+  async analyzeQuestionVO(
+    dto: AskQuestionDto,
+    userId: string,
+    file?: Express.Multer.File
+  ): Promise<AnalysisResponseDto | any> {
+    const startTime = Date.now();
+
+    // ── Détection d'intention ──────────────────────────────
+    const schema = await this.getCompleteSchema(
+      this.schemaMetadata.getAllVisibleTables()
+    );
+    
+    const intentResult = await this.intentDetectionService.detectIntent(
+      dto.question, this.llm, schema
+    );
+
+    // ── Branche WRITE ──────────────────────────────────────
+    if (intentResult.type === 'WRITE' && intentResult.writeIntent) {
+      const intent = intentResult.writeIntent;
+      this.logger.log('intentResult ' , intentResult)
+      // Si confirmation requise → retourner la demande de confirmation
+      if (intentResult?.requiresConfirmation) {
+        return {
+          success: true,
+          question: dto.question,
+          analysis: `⚠️ **Confirmation requise**\n\n${intent.humanReadable}\n\nOpération: **${intent.operation}** sur **${intent.entity}**`,
+          pendingWrite: intent,          // ← Frontend affiche bouton Confirmer/Annuler
+          requiresConfirmation: true,
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Confiance suffisante → exécuter
+      const writeResult = await this.genericWriteService.execute(intent, userId);
+      return {
+        success: writeResult.success,
+        question: dto.question,
+        analysis: writeResult.message,
+        executionTimeMs: Date.now() - startTime,
+        rowCount: writeResult.affected,
+        results: writeResult.data ? [writeResult.data] : [],
+      };
+    }
+
+    // ── Branche READ (comportement actuel) ────────────────
+    // ... votre code existant ...
+  }
+
+  // ── Endpoint de confirmation ──────────────────────────────
+  async confirmWrite(
+    pendingIntent: WriteIntent,
+    userId: string
+  ): Promise<AnalysisResponseDto> {
+    const writeResult = await this.genericWriteService.execute(pendingIntent, userId);
+    return {
+      success: writeResult.success,
+      question: 'Confirmation opération',
+      analysis: writeResult.message,
+      executionTimeMs: 0,
+      rowCount: writeResult.affected,
+      results: writeResult.data ? [writeResult.data] : [],
+    };
+  }
 
   /**
-   * ✅ MÉTHODE PRINCIPALE MODIFIÉE : Analyser une question avec gestion de session
-   */
-  async analyzeQuestion(dto: AskQuestionDto, userId: string): Promise<AnalysisResponseDto> {
+  * ✅ MÉTHODE PRINCIPALE MODIFIÉE : Analyser une question avec gestion de session + fichier
+  */
+  async analyzeQuestion(
+    dto: AskQuestionDto,
+    userId: string,
+    file?: Express.Multer.File  // ← Nouveau paramètre optionnel
+  ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
+
+    // ── Détection d'intention ──────────────────────────────
     const allTables = this.schemaMetadata.getAllVisibleTables();
-    const schemaJSON = await this.getCompleteSchemaJson(allTables);
     const schema = await this.getCompleteSchema(allTables);
+
     
+    const intentResult = await this.intentDetectionService.detectIntent(
+      dto.question, this.llm, schema
+    );
+
+    // ── Branche WRITE ──────────────────────────────────────
+    if (intentResult.type === 'WRITE' && intentResult.writeIntent) {
+      const intent = intentResult.writeIntent;
+      this.logger.log('intentResult ' , intentResult, ' ',schema)
+      // Si confirmation requise → retourner la demande de confirmation
+      if (intentResult?.requiresConfirmation) {
+        return {
+          success: true,
+          question: dto.question,
+          analysis: `⚠️ **Confirmation requise**\n\n${intent.humanReadable}\n\nOpération: **${intent.operation}** sur **${intent.entity}**`,
+          pendingWrite: intent,          // ← Frontend affiche bouton Confirmer/Annuler
+          requiresConfirmation: true,
+          schema,
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Confiance suffisante → exécuter
+      const writeResult = await this.genericWriteService.execute(intent, userId);
+      return {
+        success: writeResult.success,
+        question: dto.question,
+        analysis: writeResult.message,
+        executionTimeMs: Date.now() - startTime,
+        rowCount: writeResult.affected,
+        results: writeResult.data ? [writeResult.data] : [],
+      };
+    }
+    const schemaJSON = await this.getCompleteSchemaJson(allTables);
+
+    console.log('conversation bot ',dto)
+
     try {
       let conversationId = dto.conversationId;
-      
-      // Si pas de conversationId, créer une nouvelle conversation
+
       if (!conversationId) {
         const title = this.generateConversationTitle(dto.question);
         const newConversation = await this.conversationManager.createConversation(userId, title);
         conversationId = newConversation.id;
-        this.logger.log(`📝 Nouvelle conversation créée: ${conversationId}`);
       }
-      
-      // Générer le SQL via la conversation
-      const sqlQuery = await this.askQuestionWithSession(conversationId, dto.question);
-      
-      // Valider et exécuter la requête
+
+      // ✅ Si un fichier est fourni, enrichir la question avec son contenu
+      let enrichedQuestion = dto.question;
+      if (file) {
+        this.logger.log(`📎 Fichier reçu: ${file.originalname} (${file.mimetype}, ${file.size} octets)`);
+        try {
+          const fileContent = await this.extractFileContent(file);
+          const truncated = fileContent.substring(0, 5000); // Limiter pour le contexte
+          enrichedQuestion = `${dto.question}
+
+  --- CONTENU DU FICHIER: ${file.originalname} ---
+  ${truncated}
+  ${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractères]' : ''}
+  --- FIN DU FICHIER ---`;
+
+          this.logger.log(`✅ Contenu extrait du fichier (${fileContent.length} caractères)`);
+        } catch (fileError) {
+          this.logger.warn(`⚠️ Impossible de lire le fichier: ${fileError.message}`);
+          enrichedQuestion += `\n\n[Note: Le fichier ${file.originalname} a été reçu mais n'a pas pu être lu: ${fileError.message}]`;
+        }
+      }
+
+      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+
       let results: { data: any[]; rowCount: number } | null = null;
       let analysis = '';
-      
+
       if (validatedQuery && !dto.analyzeOnly) {
         results = await this.executeSafeQuery(validatedQuery);
         analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
       }
-      
+
       return {
         success: true,
         question: dto.question,
@@ -273,9 +437,17 @@ Requête SQL:`;
         results: results?.data,
         executionTimeMs: Date.now() - startTime,
         rowCount: results?.rowCount || 0,
-        conversationId, // ← Ajouter l'ID dans la réponse
+        conversationId,
+        // ✅ Ajouter infos sur le fichier si présent
+        ...(file && {
+          fileInfo: {
+            name: file.originalname,
+            size: file.size,
+            type: file.mimetype,
+          }
+        }),
       };
-      
+
     } catch (error) {
       this.logger.error(`❌ Erreur: ${error.message}`);
       return {
@@ -289,6 +461,8 @@ Requête SQL:`;
       };
     }
   }
+
+  
   
   /**
    * Génère un titre automatique pour la conversation
@@ -461,23 +635,6 @@ Requête SQL:`;
     return null;
   }
 
-  // private async initializeLLM() {
-  //   this.llm = new ChatOpenAI({
-  //     model: 'deepseek-reasoner',
-  //     temperature: 0.3,
-  //     maxTokens: this.MAX_TOKENS,
-  //     apiKey: process.env.DEEPSEEK_API_KEY,
-  //     configuration: {
-  //       baseURL: 'https://api.deepseek.com/v1',
-  //     },
-  //     modelKwargs: {
-  //       reasoning_effort: "low",  // ✅ "low" au lieu de "high" → beaucoup plus rapide
-  //       extra_body: {
-  //         thinking: { type: "enabled" }
-  //       }
-  //     }
-  //   });
-  // }
 
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
@@ -554,58 +711,7 @@ Requête SQL:`;
     }
   }
 
- /**
-   * ✅ MÉTHODE PRINCIPALE : Analyser une question
-   */
-//   async analyzeQuestionV0(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-//     const startTime = Date.now();
-//     const allTables = this.schemaMetadata.getAllVisibleTables();
-//     const schemaJSON = await this.getCompleteSchemaJson(allTables)
-//     const schema = await this.getCompleteSchema(allTables)
-//     try {
-//       // 🔥 MAGIE : Plus besoin d'envoyer le schéma !
-//       const sqlQuery = await this.askQuestion(dto.question);
-      
-//       // Vérifier que sqlQuery n'est pas vide
-//       if (!sqlQuery) {
-//         throw new Error('Impossible de générer la requête SQL');
-//       }
-      
-//       // Valider et exécuter la requête
-//       const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
-//       let results: { data: any[]; rowCount: number } | null = null;
-//       let analysis = '';
-      
-//       if (validatedQuery && !dto.analyzeOnly) {
-//         results = await this.executeSafeQuery(validatedQuery);
-//         analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
-//       }
-// ;
-//       return {
-//         success: true,
-//         question: dto.question,
-//         sqlQuery: validatedQuery,
-//         analysis,
-//         schemaJSON,  // À adapter selon vos besoins
-//         schema,        // À adapter selon vos besoins
-//         results: results?.data,
-//         executionTimeMs: Date.now() - startTime,
-//         rowCount: results?.rowCount || 0,
-//       };
-      
-//     } catch (error) {
-//       this.logger.error(`❌ Erreur: ${error.message}`);
-//       return {
-//         success: false,
-//         question: dto.question,
-//         analysis: `Erreur: ${error.message}`,
-//         schemaJSON,  // À adapter selon vos besoins
-//         schema,        // À adapter selon vos besoins
-//         executionTimeMs: Date.now() - startTime,
-//         error: error.message,
-//       };
-//     }
-//   }
+
 
 
   /**
@@ -638,7 +744,7 @@ INSTRUCTIONS IMPORTANTES:
 3. Utilise des termes métier comme "dossier", "client", "étape", "procédure", "statut", "date"
 4. Pour les champs, utilise des noms lisibles comme "Numéro de dossier", "Nom de l'étape" au lieu de "id", "name"
 5. Si la réponse contient des dates, formate-les de façon lisible
-6. Sois concis mais précis (max 150 mots)
+6. Sois concis mais précis (max 500 mots)
 7. Termine par une phrase d'action ou de recommandation si pertinent
 
 RÉPONSE (en français courant, langage métier):`;
@@ -863,7 +969,8 @@ private async getDefaultSchema(): Promise<string> {
     
     // ✅ Récupérer les métadonnées pour savoir quelles colonnes ignorer
     const columnMetadata = this.columnLabelsCache.get(table) || new Map();
-    
+    const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
+
     // ✅ Filtrer les colonnes ignorées
     const visibleColumns = columns.filter(col => {
       let meta;
@@ -883,6 +990,21 @@ private async getDefaultSchema(): Promise<string> {
     
     // Construction du schéma enrichi
     let schema = `## Table ${table} (${rowCount.toLocaleString()} lignes)\n\n`;
+
+     // ✅ AJOUTER LES INFORMATIONS BUSINESS TABLE
+    if (tableMeta) {
+      schema += `**📋 Métier:** ${tableMeta.label}\n`;
+      if (tableMeta.description) {
+        schema += `**📝 Description:** ${tableMeta.description}\n`;
+      }
+      if (tableMeta.icon) {
+        schema += `**🖼️ Icône:** ${tableMeta.icon}\n`;
+      }
+      if (tableMeta.category) {
+        schema += `**📁 Catégorie:** ${tableMeta.category}\n`;
+      }
+      schema += `\n`;
+    }
     schema += '| Colonne technique | Type détaillé | Contraintes | Libellé métier | Description |\n';
     schema += '|------------------|---------------|-------------|----------------|-------------|\n';
     

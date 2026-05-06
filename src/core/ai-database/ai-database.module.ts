@@ -7,6 +7,8 @@ import { ConversationManagerService } from './conversation-manager.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
+import { GenericWriteService } from './generic-write.service';
+import { IntentDetectionService } from './intent-detection.service';
 
 @Module({
 
@@ -17,7 +19,7 @@ import { ConversationMessage } from './entities/conversation-message.entity';
     ]),
   ],
   controllers: [AiDatabaseController],
-  providers: [AiDatabaseService, SchemaMetadataService,SqlValidatorService,ConversationManagerService],
+  providers: [AiDatabaseService, SchemaMetadataService,SqlValidatorService,ConversationManagerService,GenericWriteService, IntentDetectionService],
   exports:[AiDatabaseService]
 })
 export class AiDatabaseModule {}

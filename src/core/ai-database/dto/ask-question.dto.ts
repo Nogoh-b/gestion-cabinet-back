@@ -33,6 +33,14 @@ export class AskQuestionDto {
   @IsOptional()
   @IsBoolean()
   verbose?: boolean;
+  
+  @ApiProperty({ required: false, description: 'Fichier à analyser (PDF, TXT, etc.)' })
+  @IsOptional()
+  fileContent?: string;
+
+  @ApiProperty({ required: false, description: 'Nom du fichier' })
+  @IsOptional()
+  fileName?: string;
 }
 
 export interface QueryExecutionResult {

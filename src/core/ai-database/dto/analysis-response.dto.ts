@@ -8,6 +8,8 @@ export class AnalysisResponseDto {
   analysis: string = '';
   tokensUsed?: number;
   results?: any;
+  pendingWrite?: any;
+  requiresConfirmation?: boolean;
   conversationId?: any;
   rowCount?: any;
   executionTimeMs: number = 1;

@@ -1,5 +1,5 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query, UseGuards, Req, UnauthorizedException, Param, Logger } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query, UseGuards, Req, UnauthorizedException, Param, Logger, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto } from './dto/analysis-response.dto';
@@ -7,6 +7,9 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { WriteIntent } from './interface/write-intent.interface';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
@@ -20,21 +23,51 @@ export class AiDatabaseController {
       private readonly conversationManager: ConversationManagerService,
 
     ) {}
-
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
-    summary: 'Pose une question en langage naturel sur votre base de données',
-    description: 'L\'IA génère du SQL, exécute la requête et analyse les résultats'
-  })
-  @ApiResponse({ status: 200, description: 'Analyse réussie', type: AnalysisResponseDto })
-  @ApiResponse({ status: 400, description: 'Question invalide' })
-  @ApiResponse({ status: 500, description: 'Erreur serveur' })
   @UseGuards(JwtAuthGuard)
-  
-  async askQuestion(@Body() dto: AskQuestionDto, @CurrentUser() user): Promise<AnalysisResponseDto> {
-    dto.conversationId = 'f71158b9-f94a-481b-a634-3e733ab3d147'
-    return this.aiDbService.analyzeQuestion(dto, user.id);
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
+    fileFilter: (req, file, cb) => {
+      const allowed = ['application/pdf', 'text/csv', 'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain', 'application/json'];
+      if (allowed.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`Type de fichier non supporté: ${file.mimetype}`), false);
+      }
+    }
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+        conversationId: { type: 'string' },
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async askQuestion(
+    @Body() dto: AskQuestionDto,
+    @CurrentUser() user,
+    @UploadedFile() file?: Express.Multer.File
+  ): Promise<AnalysisResponseDto> {
+    return this.aiDbService.analyzeQuestion(dto, user.id, file);
+  }
+
+
+  @Post('write/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirme une opération d\'écriture' })
+  async confirmWrite(
+    @Body('pendingIntent') pendingIntent: WriteIntent,
+    @CurrentUser() user
+  ): Promise<AnalysisResponseDto> {
+    return this.aiDbService.confirmWrite(pendingIntent, user.id);
   }
 
   @Post('execute')
