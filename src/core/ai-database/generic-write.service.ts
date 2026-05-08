@@ -1,144 +1,204 @@
+// generic-write.service.ts
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { Employee } from "src/modules/agencies/employee/entities/employee.entity";
-import { Customer } from "src/modules/customer/customer/entities/customer.entity";
-import { Dossier } from "src/modules/dossiers/entities/dossier.entity";
-import { DataSource, Repository } from "typeorm";
+import { DataSource, QueryRunner } from "typeorm";
+import { WriteOperation, WritePlan } from "./dto/analysis-response.dto";
+import { WriteHandlerRegistry, WriteResult } from "./write/write-handler.registry";
+
+import { InjectDataSource } from "@nestjs/typeorm";
 import { WriteIntent } from "./interface/write-intent.interface";
 
-// generic-write.service.ts
 @Injectable()
 export class GenericWriteService {
   private readonly logger = new Logger(GenericWriteService.name);
 
-  // Mapping entity name → repository token
-  // À adapter selon vos entités réelles
-  private readonly ENTITY_MAP: Record<string, any> = {
-    dossier: Dossier,
-    customer: Customer,
-    employee: Employee,
-    // Ajoutez vos entités ici
-  };
-
-  // Champs protégés : le LLM ne peut JAMAIS les modifier
+  /** Champs qu'aucun handler ni le générique ne peut modifier */
   private readonly PROTECTED_FIELDS = new Set([
     'id', 'created_at', 'deleted_at', 'deleted_by',
-    'password', 'token', 'secret',
+    'password', 'token', 'secret', 'refreshToken',
   ]);
 
-  // Champs autorisés par entité (whitelist stricte)
-  private readonly ALLOWED_FIELDS: Record<string, Set<string>> = {
-    dossier: new Set([
-      'object', 'status', 'danger_level', 'priority_level',
-      'description', 'court_name', 'opposing_party_name',
-      'success_probability', 'budget_estimate', 'closing_date',
-      'analysis_notes', 'outcome', 'outcome_notes',
-      'client_satisfaction', 'final_decision',
-    ]),
-    customer: new Set([
-      'first_name', 'last_name', 'email', 'phone',
-      'address', 'company_name', 'status',
-    ]),
-    // Ajoutez selon vos besoins
-  };
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly registry: WriteHandlerRegistry,
+  ) {}
 
-  constructor(private readonly dataSource: DataSource) {}
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POINT D'ENTRÉE PRINCIPAL : exécution d'un plan multi-opérations
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  async execute(intent: WriteIntent, userId: string): Promise<WriteResult> {
-    const entityClass = this.ENTITY_MAP[intent.entity.toLowerCase()];
-    
-    if (!entityClass) {
-      throw new BadRequestException(
-        `Entité "${intent.entity}" non reconnue ou non autorisée pour l'écriture`
-      );
+  async executePlan(writePlan: WritePlan, userId: string): Promise<WriteResult[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    if (writePlan.transaction) {
+      await queryRunner.startTransaction();
+      this.logger.log('🔄 Transaction démarrée pour le plan d\'écriture');
     }
 
-    // Filtrer les champs autorisés
-    const safeFields = this.sanitizeFields(intent.entity, intent.fields);
-    
-    if (Object.keys(safeFields).length === 0) {
-      throw new BadRequestException('Aucun champ valide à modifier');
-    }
+    const results: WriteResult[] = [];
+    // tempId → entité créée (pour résoudre les références entre opérations)
+    const createdEntities = new Map<string, any>();
 
-    const repository = this.dataSource.getRepository(entityClass);
+    try {
+      for (let i = 0; i < writePlan.operations.length; i++) {
+        const operation = writePlan.operations[i];
 
-    switch (intent.operation) {
-      case 'INSERT':
-        return this.performInsert(repository, safeFields, userId);
-      
-      case 'UPDATE':
-        if (!intent.entityId) {
-          throw new BadRequestException('ID requis pour une mise à jour');
+        this.logger.log(
+          `📝 Opération ${i + 1}/${writePlan.operations.length}: ${operation.operation} ${operation.entity}`,
+        );
+
+        // Résoudre les références aux entités créées dans les opérations précédentes
+        const resolvedFields = this.resolveReferences(operation.fields, createdEntities);
+
+        // ✅ Exécution : handler enregistré en priorité, générique en fallback
+        const result = await this.executeOperation(
+          operation,
+          resolvedFields,
+          userId,
+          queryRunner,
+        );
+
+        results.push(result);
+
+        // Mémoriser l'entité créée pour les opérations suivantes
+        if (operation.tempId && result.entityId && result.data) {
+          createdEntities.set(operation.tempId, result.data);
+          this.logger.log(`🔗 Référence stockée: ${operation.tempId} → ID ${result.entityId}`);
         }
-        return this.performUpdate(repository, intent.entityId, safeFields, userId);
-      
+      }
+
+      if (writePlan.transaction) {
+        await queryRunner.commitTransaction();
+        this.logger.log('✅ Transaction validée');
+      }
+
+      return results;
+    } catch (error) {
+      if (writePlan.transaction) {
+        await queryRunner.rollbackTransaction();
+        this.logger.error(`❌ Transaction annulée: ${error.message}`);
+      }
+      throw new BadRequestException(`Échec du plan d'écriture: ${error.message}`);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // executeOperation — CŒUR DE LA PRIORITÉ HANDLER vs GÉNÉRIQUE
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  private async executeOperation(
+    operation: WriteOperation,
+    resolvedFields: Record<string, any>,
+    userId: string,
+    queryRunner: QueryRunner,
+  ): Promise<WriteResult> {
+
+    // ✅ 1. Chercher un handler enregistré pour cette entité
+    const handler = this.registry.getHandler(operation.entity);
+
+    if (handler) {
+      this.logger.log(
+        `🎯 Handler trouvé pour "${operation.entity}" → délégation au handler métier`,
+      );
+
+      // Construire un WriteIntent à partir de l'opération courante
+      const intent: WriteIntent = {
+        operation: operation.operation,
+        entity:    operation.entity,
+        entityId:  operation.entityId,
+        fields:    resolvedFields,
+        confidence: 1,
+        humanReadable: operation.humanReadable ?? '',
+      };
+
+      // Le handler gère validation + résolution des dépendances + persistance
+      // Il délègue lui-même au service métier (ex: DossiersService.create)
+      return handler.execute(intent, userId);
+    }
+
+    // ✅ 2. Pas de handler → chemin générique (TypeORM direct)
+    this.logger.log(
+      `⚙️ Aucun handler pour "${operation.entity}" → écriture générique TypeORM`,
+    );
+
+    return this.executeGeneric(operation, resolvedFields, userId, queryRunner);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // CHEMIN GÉNÉRIQUE (utilisé uniquement si aucun handler n'est enregistré)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  private async executeGeneric(
+    operation: WriteOperation,
+    fields: Record<string, any>,
+    userId: string,
+    queryRunner: QueryRunner,
+  ): Promise<WriteResult> {
+
+    const safeFields = this.sanitizeFields(fields);
+
+    if (Object.keys(safeFields).length === 0) {
+      throw new BadRequestException('Aucun champ valide à écrire après filtrage de sécurité');
+    }
+
+    switch (operation.operation) {
+      case 'INSERT':
+        return this.genericInsert(operation.entity, safeFields, userId, queryRunner);
+
+      case 'UPDATE':
+        if (!operation.entityId) {
+          throw new BadRequestException(`UPDATE sur "${operation.entity}" : entityId manquant`);
+        }
+        return this.genericUpdate(operation.entity, operation.entityId, safeFields, userId, queryRunner);
+
       case 'DELETE':
         throw new BadRequestException(
-          'La suppression via IA n\'est pas autorisée. Utilisez l\'interface dédiée.'
+          'La suppression via IA n\'est pas autorisée. Utilisez l\'interface dédiée.',
         );
-      
+
       default:
-        throw new BadRequestException(`Opération "${intent.operation}" non supportée`);
+        throw new BadRequestException(`Opération inconnue: ${operation.operation}`);
     }
   }
 
-  private sanitizeFields(
+  private async genericInsert(
     entity: string,
-    fields: Record<string, any>
-  ): Record<string, any> {
-    const allowed = this.ALLOWED_FIELDS[entity.toLowerCase()];
-    const safe: Record<string, any> = {};
-
-    for (const [key, value] of Object.entries(fields)) {
-      if (this.PROTECTED_FIELDS.has(key)) {
-        this.logger.warn(`Champ protégé ignoré: ${key}`);
-        continue;
-      }
-      if (allowed && !allowed.has(key)) {
-        this.logger.warn(`Champ non autorisé pour ${entity}: ${key}`);
-        continue;
-      }
-      safe[key] = value;
-    }
-
-    return safe;
-  }
-
-  private async performInsert(
-    repository: Repository<any>,
     fields: Record<string, any>,
-    userId: string
+    userId: string,
+    queryRunner: QueryRunner,
   ): Promise<WriteResult> {
-    const entity = repository.create({
-      ...fields,
-      created_by: userId,
-    });
+    const repo = queryRunner.manager.getRepository(entity);
+    const record = repo.create({ ...fields, created_by: userId });
+    const saved = await repo.save(record);
 
-    const saved = await repository.save(entity);
-    
     return {
       success: true,
       operation: 'INSERT',
       entityId: saved.id,
       affected: 1,
       data: saved,
-      message: `Enregistrement créé avec succès (ID: ${saved.id})`,
+      message: `Enregistrement créé (ID: ${saved.id}) dans "${entity}"`,
     };
   }
 
-  private async performUpdate(
-    repository: Repository<any>,
+  private async genericUpdate(
+    entity: string,
     entityId: string | number,
     fields: Record<string, any>,
-    userId: string
+    userId: string,
+    queryRunner: QueryRunner,
   ): Promise<WriteResult> {
-    const existing = await repository.findOne({ where: { id: entityId as any } });
-    
+    const repo = queryRunner.manager.getRepository(entity);
+    const existing = await repo.findOne({ where: { id: entityId as any } });
+
     if (!existing) {
-      throw new NotFoundException(`Enregistrement ID ${entityId} non trouvé`);
+      throw new NotFoundException(`Enregistrement ID ${entityId} introuvable dans "${entity}"`);
     }
 
     Object.assign(existing, fields, { updated_by: userId });
-    const saved = await repository.save(existing);
+    const saved = await repo.save(existing);
 
     return {
       success: true,
@@ -146,16 +206,82 @@ export class GenericWriteService {
       entityId: saved.id,
       affected: 1,
       data: saved,
-      message: `Enregistrement ${entityId} mis à jour avec succès`,
+      message: `Enregistrement ${entityId} mis à jour dans "${entity}"`,
     };
   }
-}
 
-export interface WriteResult {
-  success: boolean;
-  operation: 'INSERT' | 'UPDATE' | 'DELETE';
-  entityId?: string | number;
-  affected: number;
-  data?: any;
-  message: string;
+  // ─────────────────────────────────────────────────────────────────────────────
+  // UTILITAIRES
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Remplace les références temporaires par les vraies valeurs
+   * des entités créées dans les opérations précédentes.
+   *
+   * Supporte deux formats (pour compatibilité) :
+   * - {{tempId.field}}  (format LLM, standard)
+   * - $tempId.field      (format legacy)
+   *
+   * Exemple : fields.client_id = "{{new_customer.id}}"
+   *           → remplacé par l'ID réel du customer créé à l'étape précédente
+   */
+  private resolveReferences(
+    fields: Record<string, any>,
+    createdEntities: Map<string, any>,
+  ): Record<string, any> {
+    const resolved: Record<string, any> = {};
+    const mustacheRegex = /\{\{(\w+)\.(\w+)\}\}/g;
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (typeof value !== 'string') {
+        resolved[key] = value;
+        continue;
+      }
+
+      // ✅ Format principal : {{tempId.field}}
+      if (value.includes('{{')) {
+        resolved[key] = value.replace(mustacheRegex, (match, tempId, field) => {
+          const entity = createdEntities.get(tempId);
+          if (entity) {
+            this.logger.debug(`🔗 Référence résolue: ${match} → ${entity[field]}`);
+            return entity[field] ?? match;
+          }
+          this.logger.warn(`⚠️ Référence non résolue: ${match} (tempId "${tempId}" inconnu)`);
+          return match;
+        });
+        continue;
+      }
+
+      // ✅ Format legacy : $tempId.field
+      if (value.startsWith('$')) {
+        const [tempId, fieldName] = value.slice(1).split('.');
+        if (createdEntities.has(tempId)) {
+          const entity = createdEntities.get(tempId);
+          resolved[key] = fieldName ? entity[fieldName] : entity;
+          this.logger.debug(`🔗 Référence résolue (legacy): ${value} → ${resolved[key]}`);
+        } else {
+          this.logger.warn(`⚠️ Référence non résolue: ${value} (tempId "${tempId}" inconnu)`);
+          resolved[key] = value;
+        }
+        continue;
+      }
+
+      resolved[key] = value;
+    }
+
+    return resolved;
+  }
+
+  /** Filtre les champs protégés pour le chemin générique */
+  private sanitizeFields(fields: Record<string, any>): Record<string, any> {
+    const safe: Record<string, any> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (this.PROTECTED_FIELDS.has(key)) {
+        this.logger.warn(`🔒 Champ protégé ignoré: ${key}`);
+        continue;
+      }
+      safe[key] = value;
+    }
+    return safe;
+  }
 }

@@ -4,14 +4,14 @@ import { DataSource } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { AskQuestionDto } from './dto/ask-question.dto';
-import { AnalysisResponseDto } from './dto/analysis-response.dto';
+import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
 import { ConversationManagerService } from './conversation-manager.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { GenericWriteService } from './generic-write.service';
-import { WriteIntent } from './interface/write-intent.interface';
+import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -24,7 +24,6 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
   private readonly MAX_CHARS = 180000;
-  // private conversationHistory: any[] = [];
   private schemaInitialized = false;
   private readonly SCHEMA_CACHE_KEY = 'database_schema_context';
   private schemaLoaded = false;
@@ -32,13 +31,12 @@ export class AiDatabaseService implements OnModuleInit {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly schemaMetadata: SchemaMetadataService,  
-    private readonly sqlValidator: SqlValidatorService,  
-    private readonly intentDetectionService: IntentDetectionService,  
-    private readonly genericWriteService: GenericWriteService,  
+    private readonly schemaMetadata: SchemaMetadataService,
+    private readonly sqlValidator: SqlValidatorService,
+    private readonly intentDetectionService: IntentDetectionService,
+    private readonly genericWriteService: GenericWriteService,
     private readonly conversationManager: ConversationManagerService,
-
-
+    private readonly writeHandlerRegistry: WriteHandlerRegistry,
   ) {}
 
   async onModuleInit() {
@@ -89,148 +87,169 @@ export class AiDatabaseService implements OnModuleInit {
     // this.logger.log(`✅ Prompt système préchargé (${this.cachedSystemPrompt.length} caractères)`);
   }
 
-
+  /**
+   * Génère le schéma d'écriture à partir de tous les handlers enregistrés
+   */
+  private async getWriteSchema(): Promise<string> {
+    let schema = '# 📝 OPÉRATIONS D\'ÉCRITURE DISPONIBLES\n\n';
+    
+    for (const handler of this.writeHandlerRegistry.getAllHandlers()) {
+      const fields = await handler.getWriteableFieldsSchema();
+      schema += `## ${handler.entityName}\n`;
+      schema += `| Champ | Type | Requis | Description | Exemple |\n`;
+      schema += `|-------|------|--------|-------------|---------|\n`;
+      
+      for (const field of fields) {
+        schema += `| ${field.name} | ${field.type}`;
+        if (field.referenceEntity) schema += ` → ${field.referenceEntity}`;
+        schema += ` | ${field.required ? '✅' : '❌'} | ${field.description || ''} | ${field.example || ''} |\n`;
+      }
+      schema += `\n`;
+    }
+    
+    return schema;
+  }
 
   
   /**
    * ✅ NOUVELLE MÉTHODE : Pose une question dans une conversation spécifique
    */
-async askQuestionWithSession(conversationId: string, question: string): Promise<string> {
-  // 1. Vérifier que la conversation existe
-  let conversation = await this.conversationManager.getConversation(conversationId);
-  if (!conversation) {
-    throw new Error(`Conversation ${conversationId} non trouvée`);
-  }
-  
-  // 2. Vérifier le contexte système
-  const hasSystemMessage = await this.conversationManager.hasSystemMessage(conversationId);
-  if (!hasSystemMessage && this.cachedSystemPrompt) {
-    Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt préchargé...`);
-    await this.conversationManager.addSystemMessage(conversationId, this.cachedSystemPrompt);
-  }
-  
-  // 3. Ajouter la question
-  await this.conversationManager.addUserMessage(conversationId, question);
-  
-  // 4. Récupérer et envoyer l'historique
-  const history = await this.conversationManager.getFullHistory(conversationId);
-  const response = await this.llm.invoke(history);
-  let content = response.content as string;
-  
-  // 🔍 LOG CRITIQUE
-  this.logger.log(`📝 Réponse brute (200 premiers chars): ${content.substring(0, 200)}`);
-  
-  // 5. Extraction SQL avec fallback amélioré
-  let sqlQuery = this.extractSQL(content);
-  
-  if (!sqlQuery) {
-    this.logger.warn(`⚠️ Aucun bloc SQL trouvé, tentative avec regex plus permissif...`);
-    sqlQuery = this.extractSQLRelaxed(content);
-  }
-  
-  if (!sqlQuery && this.isNoResultsResponse(content)) {
-    // DeepSeek a répondu qu'il n'y a pas de résultats
-    sqlQuery = `-- Aucun résultat trouvé pour: ${question}\nSELECT NULL AS message WHERE 1=0;`;
-    this.logger.log(`ℹ️ Réponse "aucun résultat" détectée, SQL généré automatiquement`);
-  } else if (!sqlQuery) {
-    this.logger.warn(`⚠️ Pas de SQL trouvé, demande de reformatage...`);
-    sqlQuery = await this.askForSQLOnly(question);
-  }
-  
-  // 6. Vérifier que c'est bien une requête SELECT
-  if (sqlQuery) {
-    const normalizedLower = sqlQuery.toLowerCase().trim();
-    if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
-      this.logger.error(`❌ Requête non SELECT détectée: ${sqlQuery.substring(0, 100)}`);
-      sqlQuery = null;
+  async askQuestionWithSession(conversationId: string, question: string): Promise<string> {
+    // 1. Vérifier que la conversation existe
+    let conversation = await this.conversationManager.getConversation(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} non trouvée`);
     }
-  }
-  
-  // 7. Dernier recours : générer une requête de recherche basée sur la question
-  if (!sqlQuery) {
-    sqlQuery = this.generateFallbackQuery(question);
-    this.logger.warn(`⚠️ Utilisation du fallback final: ${sqlQuery}`);
-  }
-  
-  // 8. Sauvegarder la réponse originale (pour debug)
-  await this.conversationManager.addAssistantMessage(conversationId, content);
-  
-  return sqlQuery;
-}
-
-/**
- * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
- */
-private isNoResultsResponse(content: string): boolean {
-  const lower = content.toLowerCase();
-  const noResultPatterns = [
-    'aucun dossier', 'aucun résultat', 'not found', 'no results',
-    'introuvable', 'existe pas', 'does not exist'
-  ];
-  return noResultPatterns.some(pattern => lower.includes(pattern));
-}
-
-/**
- * Génère une requête SQL de fallback intelligente
- */
-private generateFallbackQuery(question: string): string {
-  const lower = question.toLowerCase();
-  
-  // Détecter le type d'ID/reference
-  const refMatch = question.match(/[A-Z0-9-]{10,}/i);
-  if (refMatch) {
-    const ref = refMatch[0];
-    // Essayer plusieurs colonnes possibles
-    return `-- Recherche de la référence '${ref}'
-SELECT * FROM dossiers 
-WHERE reference = '${ref}' 
-   OR numero_dossier = '${ref}' 
-   OR id = '${ref}'
-LIMIT 10;`;
-  }
-  
-  // Fallback générique
-  return `-- Requête générée automatiquement
-SELECT NULL AS message 
-WHERE 1=0;
--- Vérifiez que les données existent dans la base`;
-}
-
-/**
- * Demande explicitement du SQL (avec meilleur prompt)
- */
-private async askForSQLOnly(originalQuestion: string): Promise<string | null> {
-  const reformatPrompt = `La base de données contient une table "dossiers" avec les colonnes: id, reference, numero_dossier, titre, statut, created_at.
-
-La question est: "${originalQuestion}"
-
-Génère une requête SELECT pour répondre à cette question.
-Si la valeur recherchée est un numéro de dossier, cherche dans les colonnes "reference" OU "numero_dossier".
-
-RÈGLES:
-- UNIQUEMENT une requête SELECT
-- Pas d'explication, pas de texte
-- Ajoute LIMIT 10
-
-Requête SQL:`;
-
-  try {
-    const response = await this.llm.invoke([{
-      role: "user",
-      content: reformatPrompt
-    }]);
-    const content = response.content as string;
-    const sql = this.extractSQLRelaxed(content);
     
-    if (sql && sql.toLowerCase().includes('select')) {
-      return sql;
+    // 2. Vérifier le contexte système
+    const hasSystemMessage = await this.conversationManager.hasSystemMessage(conversationId);
+    if (!hasSystemMessage && this.cachedSystemPrompt) {
+      Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt préchargé...`);
+      await this.conversationManager.addSystemMessage(conversationId, this.cachedSystemPrompt);
     }
-    return null;
-  } catch (error) {
-    this.logger.error(`Erreur reformatage: ${error.message}`);
-    return null;
+    
+    // 3. Ajouter la question
+    await this.conversationManager.addUserMessage(conversationId, question);
+    
+    // 4. Récupérer et envoyer l'historique
+    const history = await this.conversationManager.getFullHistory(conversationId);
+    const response = await this.llm.invoke(history);
+    let content = response.content as string;
+    
+    // 🔍 LOG CRITIQUE
+    this.logger.log(`📝 Réponse brute (200 premiers chars): ${content.substring(0, 200)}`);
+    
+    // 5. Extraction SQL avec fallback amélioré
+    let sqlQuery = this.extractSQL(content);
+    
+    if (!sqlQuery) {
+      this.logger.warn(`⚠️ Aucun bloc SQL trouvé, tentative avec regex plus permissif...`);
+      sqlQuery = this.extractSQLRelaxed(content);
+    }
+    
+    if (!sqlQuery && this.isNoResultsResponse(content)) {
+      // DeepSeek a répondu qu'il n'y a pas de résultats
+      sqlQuery = `-- Aucun résultat trouvé pour: ${question}\nSELECT NULL AS message WHERE 1=0;`;
+      this.logger.log(`ℹ️ Réponse "aucun résultat" détectée, SQL généré automatiquement`);
+    } else if (!sqlQuery) {
+      this.logger.warn(`⚠️ Pas de SQL trouvé, demande de reformatage...`);
+      sqlQuery = await this.askForSQLOnly(question);
+    }
+    
+    // 6. Vérifier que c'est bien une requête SELECT
+    if (sqlQuery) {
+      const normalizedLower = sqlQuery.toLowerCase().trim();
+      if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
+        this.logger.error(`❌ Requête non SELECT détectée: ${sqlQuery.substring(0, 100)}`);
+        sqlQuery = null;
+      }
+    }
+    
+    // 7. Dernier recours : générer une requête de recherche basée sur la question
+    if (!sqlQuery) {
+      sqlQuery = this.generateFallbackQuery(question);
+      this.logger.warn(`⚠️ Utilisation du fallback final: ${sqlQuery}`);
+    }
+    
+    // 8. Sauvegarder la réponse originale (pour debug)
+    await this.conversationManager.addAssistantMessage(conversationId, content);
+    
+    return sqlQuery;
   }
-}
+
+  /**
+  * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
+  */
+  private isNoResultsResponse(content: string): boolean {
+    const lower = content.toLowerCase();
+    const noResultPatterns = [
+      'aucun dossier', 'aucun résultat', 'not found', 'no results',
+      'introuvable', 'existe pas', 'does not exist'
+    ];
+    return noResultPatterns.some(pattern => lower.includes(pattern));
+  }
+
+  /**
+  * Génère une requête SQL de fallback intelligente
+  */
+  private generateFallbackQuery(question: string): string {
+    const lower = question.toLowerCase();
+    
+    // Détecter le type d'ID/reference
+    const refMatch = question.match(/[A-Z0-9-]{10,}/i);
+    if (refMatch) {
+      const ref = refMatch[0];
+      // Essayer plusieurs colonnes possibles
+      return `-- Recherche de la référence '${ref}'
+  SELECT * FROM dossiers 
+  WHERE reference = '${ref}' 
+    OR numero_dossier = '${ref}' 
+    OR id = '${ref}'
+  LIMIT 10;`;
+    }
+    
+    // Fallback générique
+    return `-- Requête générée automatiquement
+  SELECT NULL AS message 
+  WHERE 1=0;
+  -- Vérifiez que les données existent dans la base`;
+  }
+
+  /**
+  * Demande explicitement du SQL (avec meilleur prompt)
+  */
+  private async askForSQLOnly(originalQuestion: string): Promise<string | null> {
+    const reformatPrompt = `La base de données contient une table "dossiers" avec les colonnes: id, reference, numero_dossier, titre, statut, created_at.
+
+  La question est: "${originalQuestion}"
+
+  Génère une requête SELECT pour répondre à cette question.
+  Si la valeur recherchée est un numéro de dossier, cherche dans les colonnes "reference" OU "numero_dossier".
+
+  RÈGLES:
+  - UNIQUEMENT une requête SELECT
+  - Pas d'explication, pas de texte
+  - Ajoute LIMIT 10
+
+  Requête SQL:`;
+
+    try {
+      const response = await this.llm.invoke([{
+        role: "user",
+        content: reformatPrompt
+      }]);
+      const content = response.content as string;
+      const sql = this.extractSQLRelaxed(content);
+      
+      if (sql && sql.toLowerCase().includes('select')) {
+        return sql;
+      }
+      return null;
+    } catch (error) {
+      this.logger.error(`Erreur reformatage: ${error.message}`);
+      return null;
+    }
+  }
 
 
 
@@ -269,72 +288,34 @@ Requête SQL:`;
   }
 
 
-  // Dans AiDatabaseService
-
-  async analyzeQuestionVO(
-    dto: AskQuestionDto,
-    userId: string,
-    file?: Express.Multer.File
-  ): Promise<AnalysisResponseDto | any> {
-    const startTime = Date.now();
-
-    // ── Détection d'intention ──────────────────────────────
-    const schema = await this.getCompleteSchema(
-      this.schemaMetadata.getAllVisibleTables()
-    );
-    
-    const intentResult = await this.intentDetectionService.detectIntent(
-      dto.question, this.llm, schema
-    );
-
-    // ── Branche WRITE ──────────────────────────────────────
-    if (intentResult.type === 'WRITE' && intentResult.writeIntent) {
-      const intent = intentResult.writeIntent;
-      this.logger.log('intentResult ' , intentResult)
-      // Si confirmation requise → retourner la demande de confirmation
-      if (intentResult?.requiresConfirmation) {
-        return {
-          success: true,
-          question: dto.question,
-          analysis: `⚠️ **Confirmation requise**\n\n${intent.humanReadable}\n\nOpération: **${intent.operation}** sur **${intent.entity}**`,
-          pendingWrite: intent,          // ← Frontend affiche bouton Confirmer/Annuler
-          requiresConfirmation: true,
-          executionTimeMs: Date.now() - startTime,
-        };
-      }
-
-      // Confiance suffisante → exécuter
-      const writeResult = await this.genericWriteService.execute(intent, userId);
-      return {
-        success: writeResult.success,
-        question: dto.question,
-        analysis: writeResult.message,
-        executionTimeMs: Date.now() - startTime,
-        rowCount: writeResult.affected,
-        results: writeResult.data ? [writeResult.data] : [],
-      };
-    }
-
-    // ── Branche READ (comportement actuel) ────────────────
-    // ... votre code existant ...
-  }
-
   // ── Endpoint de confirmation ──────────────────────────────
   async confirmWrite(
-    pendingIntent: WriteIntent,
+    pendingIntent: WritePlan,
     userId: string
   ): Promise<AnalysisResponseDto> {
-    const writeResult = await this.genericWriteService.execute(pendingIntent, userId);
+    const startTime = Date.now();
+
+    const writeResult = await this.genericWriteService.executePlan(pendingIntent, userId);
     return {
-      success: writeResult.success,
+      success: true,
       question: 'Confirmation opération',
-      analysis: writeResult.message,
-      executionTimeMs: 0,
-      rowCount: writeResult.affected,
-      results: writeResult.data ? [writeResult.data] : [],
+      analysis: this.formatPlanResults(writeResult),
+      executionTimeMs: Date.now() - startTime,
+      // rowCount: writeResult.affected,
+      results: writeResult,
     };
   }
-
+  
+  private formatPlanResults(results: WriteResult[]): string {
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    
+    if (failCount === 0) {
+      return `✅ **Opération réussie !**\n\n${results.length} opération(s) exécutée(s) avec succès.`;
+    } else {
+      return `⚠️ **Opération partiellement réussie**\n\n✅ ${successCount} succès\n❌ ${failCount} échecs`;
+    }
+  }
   /**
   * ✅ MÉTHODE PRINCIPALE MODIFIÉE : Analyser une question avec gestion de session + fichier
   */
@@ -349,39 +330,56 @@ Requête SQL:`;
     const allTables = this.schemaMetadata.getAllVisibleTables();
     const schema = await this.getCompleteSchema(allTables);
 
-    
+    // ✅ Passer le schéma READ pour le contexte relationnel
+    // (le schéma d'écriture est généré en interne par IntentDetectionService
+    //  via writeHandlerRegistry.generateGlobalWriteSchema())
     const intentResult = await this.intentDetectionService.detectIntent(
-      dto.question, this.llm, schema
+      dto.question,
+      this.llm,
+      schema,
     );
 
-    // ── Branche WRITE ──────────────────────────────────────
-    if (intentResult.type === 'WRITE' && intentResult.writeIntent) {
-      const intent = intentResult.writeIntent;
-      this.logger.log('intentResult ' , intentResult, ' ',schema)
-      // Si confirmation requise → retourner la demande de confirmation
-      if (intentResult?.requiresConfirmation) {
+    this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
+
+    // ──────────────────────────────────────────────────────
+    // 2️⃣ BRANCHE ÉCRITURE (avec plan)
+    // ──────────────────────────────────────────────────────
+    if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+      const plan = intentResult.writePlan;
+
+      if (intentResult.requiresConfirmation) {
         return {
           success: true,
           question: dto.question,
-          analysis: `⚠️ **Confirmation requise**\n\n${intent.humanReadable}\n\nOpération: **${intent.operation}** sur **${intent.entity}**`,
-          pendingWrite: intent,          // ← Frontend affiche bouton Confirmer/Annuler
+          analysis: `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`,
+          pendingWritePlan: plan,
           requiresConfirmation: true,
-          schema,
           executionTimeMs: Date.now() - startTime,
         };
       }
 
-      // Confiance suffisante → exécuter
-      const writeResult = await this.genericWriteService.execute(intent, userId);
-      return {
-        success: writeResult.success,
-        question: dto.question,
-        analysis: writeResult.message,
-        executionTimeMs: Date.now() - startTime,
-        rowCount: writeResult.affected,
-        results: writeResult.data ? [writeResult.data] : [],
-      };
+      // ✅ Exécution directe via genericWriteService (handler métier + fallback générique)
+      try {
+        const results = await this.genericWriteService.executePlan(plan, userId);
+        return {
+          success: true,
+          question: dto.question,
+          analysis: this.formatPlanResults(results),
+          results,
+          executionTimeMs: Date.now() - startTime,
+        };
+      } catch (error) {
+        this.logger.error(`❌ Erreur écriture: ${error.message}`);
+        return {
+          success: false,
+          question: dto.question,
+          analysis: `Erreur lors de l'exécution: ${error.message}`,
+          executionTimeMs: Date.now() - startTime,
+          error: error.message,
+        };
+      }
     }
+
     const schemaJSON = await this.getCompleteSchemaJson(allTables);
 
     console.log('conversation bot ',dto)
@@ -463,6 +461,49 @@ Requête SQL:`;
   }
 
   
+
+  // ai-database.service.ts
+  /**
+  * Formate un plan d'écriture pour l'affichage utilisateur
+  */
+  private formatPlanForDisplay(plan: WritePlan): string {
+    let display = `**Plan d'opérations à confirmer :**\n\n`;
+    display += `📋 **Description:** ${plan.humanReadable}\n\n`;
+    display += `**Confiance:** ${Math.round(plan.confidence * 100)}%\n\n`;
+    display += `**Opérations prévues:**\n`;
+    
+    for (let i = 0; i < plan.operations.length; i++) {
+      const op = plan.operations[i];
+      const emoji = op.operation === 'INSERT' ? '➕' : op.operation === 'UPDATE' ? '✏️' : '🗑️';
+      
+      display += `${i + 1}. ${emoji} **${op.operation}** sur **${op.entity}**`;
+      
+      if (op.entityId) {
+        display += ` (ID: ${op.entityId})`;
+      }
+      
+      display += `\n`;
+      
+      // Afficher les champs à modifier
+      const fieldKeys = Object.keys(op.fields);
+      if (fieldKeys.length > 0) {
+        display += `   📝 Champs: ${fieldKeys.map(k => `"${k}"`).join(', ')}\n`;
+      }
+      
+      // Afficher les dépendances
+      if (op.tempId) {
+        display += `   🔗 Référencé comme: **${op.tempId}**\n`;
+      }
+      
+      display += `\n`;
+    }
+    
+    display += `\n---\n`;
+    display += `⚠️ **Voulez-vous confirmer cette opération ?**\n`;
+    display += `✅ Confirmer | ❌ Annuler`;
+    
+    return display;
+  }
   
   /**
    * Génère un titre automatique pour la conversation
@@ -473,133 +514,6 @@ Requête SQL:`;
     if (question.length > 50) title += '...';
     return title;
   }
-    /**
-   * ✅ INITIALISATION UNIQUE : Envoyer le schéma une fois pour toutes
-   */
-    private async initializeSchemaContext(): Promise<void> {
-      this.logger.log('🔄 Initialisation du contexte avec le schéma (une seule fois)...');
-      
-      const allTables = this.schemaMetadata.getAllVisibleTables();
-      const schema = await this.getCompleteSchema(allTables);
-      
-      // ✅ Message système plus précis
-      const systemMessage = {
-        role: "system" as const,
-        content: `Tu es un expert SQL pour une base de données juridique.
-
-    Voici le schéma COMPLET de la base :
-
-    ${schema}
-
-    RÈGLES ABSOLUES :
-    1. IGNORE toujours les colonnes "deleted_at", "deleted_by", "deleted_date"
-    2. Ajoute systématiquement LIMIT ${this.MAX_RESULTS}
-    3. Utilise des alias courts
-    4. Ne génère JAMAIS de DELETE, UPDATE, INSERT
-    5. TOUTES les valeurs doivent être en dur (pas de placeholders :id, ?, etc.)
-
-    🎯 FORMAT DE RÉPONSE OBLIGATOIRE :
-    Tu DOIS répondre UNIQUEMENT avec un bloc de code SQL comme ceci :
-
-    \`\`\`sql
-    SELECT * FROM dossiers WHERE reference = 'ABC123' LIMIT 50;
-    \`\`\`
-
-    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`
-      };
-      
-      // this.conversationHistory.push(systemMessage);
-      this.schemaInitialized = true;
-      
-      this.logger.log(`✅ Contexte initialisé avec ${allTables.length} tables (${schema.length} caractères)`);
-    }
-
-
-  /**
-  * ✅ POSER UNE QUESTION : Envoyer uniquement la question (pas le schéma)
-  */
-  // async askQuestion(question: string): Promise<string> {
-  //   if (!this.schemaInitialized) {
-  //     await this.initializeSchemaContext();
-  //   }
-    
-  //   // Ajouter la question de l'utilisateur
-  //   this.conversationHistory.push({
-  //     role: "user" as const,
-  //     content: question
-  //   });
-    
-  //   this.logger.log(`📤 Envoi de la question à DeepSeek: ${question.substring(0, 100)}...`);
-  //   this.logger.debug(`📜 Historique complet: ${JSON.stringify(this.conversationHistory, null, 2)}`);
-    
-  //   try {
-  //     // Appeler l'API (DeepSeek utilise le contexte mémorisé)
-  //     const response = await this.llm.invoke(this.conversationHistory);
-      
-  //     // DEBUG: Log la réponse complète
-  //     this.logger.log(`📥 Réponse reçue de DeepSeek`);
-  //     this.logger.debug(`📝 Contenu brut: ${JSON.stringify(response)}`);
-      
-  //     // Vérifier le type de réponse
-  //     let content = '';
-  //     if (typeof response.content === 'string') {
-  //       content = response.content;
-  //     } else if (response.content && typeof response.content === 'object') {
-  //       // Si c'est un tableau ou un objet, le convertir en string
-  //       content = JSON.stringify(response.content);
-  //     } else if (response.text) {
-  //       content = response.text;
-  //     }
-      
-  //     this.logger.log(`📄 Contenu extrait (${content.length} caractères): ${content.substring(0, 500)}`);
-      
-  //     // Extraire le raisonnement
-  //     const reasoning = response.additional_kwargs?.reasoning_content;
-  //     const reasoningString = typeof reasoning === 'string' ? reasoning : 
-  //                           (reasoning ? JSON.stringify(reasoning) : null);
-      
-  //     if (reasoningString) {
-  //       this.logger.debug(`🧠 Raisonnement: ${reasoningString.substring(0, 200)}...`);
-  //     }
-      
-  //     // Extraire le SQL
-  //     const sqlQuery = this.extractSQL(content);
-      
-  //     if (!sqlQuery) {
-  //       this.logger.error(`❌ Aucune requête SQL trouvée dans la réponse`);
-  //       this.logger.error(`📄 Réponse complète: ${content}`);
-        
-  //       // Tentative de récupération avec une approche plus souple
-  //       const fallbackSql = this.extractSQLRelaxed(content);
-  //       if (fallbackSql) {
-  //         this.logger.log(`✅ Fallback: SQL trouvé avec méthode relaxée: ${fallbackSql}`);
-  //         return fallbackSql;
-  //       }
-        
-  //       throw new Error('Impossible d\'extraire la requête SQL de la réponse DeepSeek');
-  //     }
-      
-  //     this.logger.log(`✅ SQL extrait: ${sqlQuery.substring(0, 200)}...`);
-      
-  //     // Ajouter la réponse à l'historique
-  //     const assistantMessage: any = {
-  //       role: "assistant" as const,
-  //       content: content,
-  //     };
-      
-  //     if (reasoningString) {
-  //       assistantMessage.reasoning_content = reasoningString;
-  //     }
-      
-  //     this.conversationHistory.push(assistantMessage);
-      
-  //     return sqlQuery;
-      
-  //   } catch (error) {
-  //     this.logger.error(`❌ Erreur lors de l'appel DeepSeek: ${error.message}`);
-  //     throw error;
-  //   }
-  // }
 
   /**
   * ✅ Version relaxée de extractSQL pour récupérer même les mal formattés
@@ -638,14 +552,14 @@ Requête SQL:`;
 
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
-    model: 'deepseek-chat',  // ✅ Beaucoup plus rapide
-    temperature: 0.1,        // ✅ Bas pour des réponses cohérentes
-    maxTokens: 1500,         // ✅ Suffisant pour une requête SQL
+    model: 'deepseek-chat',
+    temperature: 0,            // ✅ Déterministe pour des analyses précises
+    maxTokens: 4000,           // ✅ Augmenté pour les plans d'écriture JSON complexes
     apiKey: process.env.DEEPSEEK_API_KEY,
     configuration: {
       baseURL: 'https://api.deepseek.com/v1',
     },
-    timeout: 15000,
+    timeout: 30000,            // ✅ 30s pour laisser le temps au raisonnement
     maxRetries: 2,
   });
 }
@@ -1438,38 +1352,6 @@ Retourne UNIQUEMENT la requête corrigée.`;
       
       return null;
     }
-
-     /**
-   * ✅ Pour les appels avec outils (Tool Calls)
-   */
-  // async analyzeComplexQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-  //   const tools = [
-  //     {
-  //       type: "function" as const,
-  //       function: {
-  //         name: "get_table_schema",
-  //         description: "Obtenir le schéma détaillé d'une table spécifique",
-  //         parameters: {
-  //           type: "object",
-  //           properties: {
-  //             table_name: { type: "string", description: "Nom de la table" }
-  //           },
-  //           required: ["table_name"]
-  //         }
-  //       }
-  //     }
-  //   ];
-    
-  //   // Appel avec tools
-  //   const response = await this.llm.invoke([
-  //     ...this.conversationHistory,
-  //     { role: "user" as const, content: dto.question }
-  //   ]);
-    
-  //   // Traitement de la réponse...
-  //   return this.analyzeQuestion(dto);
-  // }
-
 
   async validateQuery(sqlQuery: string): Promise<{ valid: boolean; error?: string }> {
     try {

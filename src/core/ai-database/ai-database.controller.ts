@@ -2,14 +2,13 @@ import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query, UseGuards, Re
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
-import { AnalysisResponseDto } from './dto/analysis-response.dto';
+import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { WriteIntent } from './interface/write-intent.interface';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
@@ -64,7 +63,7 @@ export class AiDatabaseController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Confirme une opération d\'écriture' })
   async confirmWrite(
-    @Body('pendingIntent') pendingIntent: WriteIntent,
+    @Body('pendingIntent') pendingIntent: WritePlan,
     @CurrentUser() user
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.confirmWrite(pendingIntent, user.id);
