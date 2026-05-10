@@ -50,7 +50,7 @@ export class GenericWriteService {
         // Résoudre les références aux entités créées dans les opérations précédentes
         const resolvedFields = this.resolveReferences(operation.fields, createdEntities);
 
-        // ✅ Exécution : handler enregistré en priorité, générique en fallback
+                // ✅ Exécution : handler enregistré en priorité, générique en fallback
         const result = await this.executeOperation(
           operation,
           resolvedFields,
@@ -65,6 +65,10 @@ export class GenericWriteService {
           createdEntities.set(operation.tempId, result.data);
           this.logger.log(`🔗 Référence stockée: ${operation.tempId} → ID ${result.entityId}`);
         }
+
+        // ✅ Propager les créations en cascade (entités créées automatiquement
+        // lors de la résolution des dépendances, ex: client créé pour un dossier)
+        this.propagateCascadeCreations(result, createdEntities);
       }
 
       if (writePlan.transaction) {
@@ -84,7 +88,7 @@ export class GenericWriteService {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────────
   // executeOperation — CŒUR DE LA PRIORITÉ HANDLER vs GÉNÉRIQUE
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -103,7 +107,7 @@ export class GenericWriteService {
         `🎯 Handler trouvé pour "${operation.entity}" → délégation au handler métier`,
       );
 
-      // Construire un WriteIntent à partir de l'opération courante
+            // Construire un WriteIntent à partir de l'opération courante
       const intent: WriteIntent = {
         operation: operation.operation,
         entity:    operation.entity,
@@ -111,6 +115,12 @@ export class GenericWriteService {
         fields:    resolvedFields,
         confidence: 1,
         humanReadable: operation.humanReadable ?? '',
+        // Propager la config de résolution si présente
+        resolveConfig: operation.resolveConfig ? {
+          mode: operation.resolveConfig.mode,
+          minScore: operation.resolveConfig.minScore,
+          ambiguityGap: operation.resolveConfig.ambiguityGap,
+        } : undefined,
       };
 
       // Le handler gère validation + résolution des dépendances + persistance
@@ -124,6 +134,29 @@ export class GenericWriteService {
     );
 
     return this.executeGeneric(operation, resolvedFields, userId, queryRunner);
+  }
+
+  /**
+   * Enrichit les résultats d'exécution avec les entités créées en cascade.
+   * Appelé après chaque opération pour propager les créations automatiques
+   * (ex: client créé automatiquement quand on crée un dossier avec son nom).
+   */
+  private propagateCascadeCreations(
+    result: WriteResult,
+    createdEntities: Map<string, any>,
+  ): void {
+    if (result.cascadeCreations && result.cascadeCreations.length > 0) {
+      for (const creation of result.cascadeCreations) {
+        const entityId = (creation.entity as any).id;
+        if (entityId) {
+          const tempId = `auto_${creation.entityName}_${entityId}`;
+          createdEntities.set(tempId, creation.entity);
+          this.logger.log(
+            `🔗 Cascade: "${creation.searchTerm}" → ${creation.entityName} ID ${entityId} (tempId: ${tempId})`,
+          );
+        }
+      }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

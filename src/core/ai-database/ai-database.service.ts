@@ -306,16 +306,33 @@ export class AiDatabaseService implements OnModuleInit {
     };
   }
   
-  private formatPlanResults(results: WriteResult[]): string {
-    const successCount = results.filter(r => r.success).length;
-    const failCount = results.filter(r => !r.success).length;
-    
-    if (failCount === 0) {
-      return `✅ **Opération réussie !**\n\n${results.length} opération(s) exécutée(s) avec succès.`;
-    } else {
-      return `⚠️ **Opération partiellement réussie**\n\n✅ ${successCount} succès\n❌ ${failCount} échecs`;
+    private formatPlanResults(results: WriteResult[]): string {
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
+      
+      // Compter les créations en cascade
+      const allCascadeCreations = results.flatMap(r => r.cascadeCreations || []);
+      
+      let message = '';
+      
+      if (failCount === 0) {
+        message = `✅ **Opération réussie !**\n\n${results.length} opération(s) exécutée(s) avec succès.`;
+      } else {
+        message = `⚠️ **Opération partiellement réussie**\n\n✅ ${successCount} succès\n❌ ${failCount} échecs`;
+      }
+      
+      // Ajouter les créations en cascade si présentes
+      if (allCascadeCreations.length > 0) {
+        message += `\n\n📦 **Entités créées automatiquement :**`;
+        for (const creation of allCascadeCreations) {
+          const entityLabel = this.schemaMetadata.getTableLabel(creation.entityName) || creation.entityName;
+          const entityId = (creation.entity as any)?.id || '?';
+          message += `\n   • ${entityLabel} "${creation.searchTerm}" (ID: ${entityId})`;
+        }
+      }
+      
+      return message;
     }
-  }
   /**
   * ✅ MÉTHODE PRINCIPALE MODIFIÉE : Analyser une question avec gestion de session + fichier
   */

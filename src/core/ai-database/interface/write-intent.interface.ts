@@ -12,6 +12,16 @@ export interface WriteIntent {
   fields: Record<string, any>; // Les champs à modifier
   confidence: number;       // 0-1, score de confiance du LLM
   humanReadable: string;    // Description lisible pour confirmation
+  /**
+   * Configuration de résolution des dépendances (FK).
+   * Permet de contrôler le comportement en cas d'ambiguïté.
+   * Si non fourni, le mode STRICT est utilisé (comportement actuel).
+   */
+  resolveConfig?: {
+    mode?: 'strict' | 'best_effort';
+    minScore?: number;
+    ambiguityGap?: number;
+  };
 }
 
 export interface IntentDetectionResult {

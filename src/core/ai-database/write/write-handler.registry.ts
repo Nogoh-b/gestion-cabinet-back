@@ -81,6 +81,12 @@ export interface WriteResult {
   affected: number;
   data?: any;
   message: string;
+  /** Entités créées automatiquement en cascade lors de la résolution des dépendances */
+  cascadeCreations?: Array<{
+    entityName: string;
+    entity: any;
+    searchTerm: string;
+  }>;
 }
 
 export interface IntentDetectionResult {

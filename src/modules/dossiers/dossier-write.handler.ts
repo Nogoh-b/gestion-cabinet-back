@@ -1,5 +1,5 @@
 // src/modules/dossiers/dossier-write.handler.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Dossier, DangerLevel } from './entities/dossier.entity';
@@ -63,6 +63,16 @@ export class DossierWriteHandler extends BaseWriteHandler {
         description: '0=Faible, 1=Normal, 2=Élevé, 3=Critique',
         example: '2',
       },
+      procedure_type_id: {
+        description: 'ID du type de procédure. Peut aussi fournir "procedure_type" avec le nom (ex: "Contentieux civil", "Droit des affaires").',
+        example: '1',
+        required: true,
+      },
+      procedure_subtype_id: {
+        description: 'ID du sous-type de procédure. Peut aussi fournir "procedure_subtype" avec le nom (ex: "Rupture conventionnelle", "Divorce").',
+        example: '1',
+        required: true,
+      },
     };
 
     for (const field of fields) {
@@ -82,16 +92,37 @@ export class DossierWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
+    this.logger.log('Validating dossier fields', { operation, fields });
 
     if (operation === 'INSERT') {
+      // Client requis
       if (!fields.client_id) {
         errors.push('Le client est requis pour créer un dossier (client_id ou client)');
       }
+
+      // Objet du litige requis
       if (!fields.object) {
         errors.push("L'objet du litige est requis");
       }
+
+      // Avocat référent requis
       if (!fields.lawyer_id) {
         errors.push("L'avocat référent est requis (lawyer_id ou lawyer)");
+      }
+
+      // Type de procédure requis
+      if (!fields.procedure_type_id) {
+        errors.push('Le type de procédure est requis (procedure_type_id ou procedure_type)');
+      }
+
+      // Sous-type de procédure requis
+      if (!fields.procedure_subtype_id) {
+        errors.push('Le sous-type de procédure est requis (procedure_subtype_id ou procedure_subtype)');
+      }
+    } else if (operation === 'UPDATE') {
+      // Vérifications spécifiques UPDATE : on peut modifier procedure_type mais pas le rendre vide
+      if (fields.procedure_type_id === null || fields.procedure_subtype_id === null) {
+        errors.push('Le type et sous-type de procédure ne peuvent pas être supprimés');
       }
     }
 
@@ -126,7 +157,15 @@ export class DossierWriteHandler extends BaseWriteHandler {
       status: safeFields.status !== undefined ? parseInt(safeFields.status) : DossierStatus.OPEN,
       priority_level: safeFields.priority_level || 0,
       danger_level: safeFields.danger_level || DangerLevel.Normal,
+      // S'assurer que procedure_type_id et procedure_subtype_id sont des nombres
+      procedure_type_id: safeFields.procedure_type_id ? Number(safeFields.procedure_type_id) : undefined,
+      procedure_subtype_id: safeFields.procedure_subtype_id ? Number(safeFields.procedure_subtype_id) : undefined,
     } as any;
+
+    // Supprimer les undefined pour laisser TypeORM gérer les defaults
+    Object.keys(dossierData).forEach(key => {
+      if (dossierData[key] === undefined) delete dossierData[key];
+    });
 
     const dossier = Object.assign(new Dossier(), dossierData);
     const saved = await this.dossierRepo.save(dossier);

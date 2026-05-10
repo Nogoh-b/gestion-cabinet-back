@@ -111,6 +111,20 @@ Décomposer cette demande en un PLAN d'opérations.
 - "{{today}}" → date du jour
 - "{{now}}" → timestamp actuel
 
+### 5. 🏛️ Règle CRITIQUE pour les DOSSIERS
+Quand tu crées un dossier, tu DOIS OBLIGATOIREMENT inclure :
+- **procedure_type** : le type de procédure (ex: "Contentieux civil", "Droit de la famille", "Droit des affaires")
+- **procedure_subtype** : le sous-type de procédure (ex: "Divorce", "Rupture conventionnelle", "Recouvrement")
+
+Ces deux champs sont OBLIGATOIRES. Si l'utilisateur mentionne "divorce", "contentieux",
+"recouvrement", "civil", etc., déduis le type et sous-type de procédure correspondants.
+
+### 6. 🔄 Résolution des ambiguïtés (optionnel)
+Si l'utilisateur dit "prends le plus probable" ou "je ne sais plus lequel",
+ajoute ceci dans l'opération concernée (dans le JSON du plan) :
+"resolveConfig": { "mode": "best_effort" }
+Cela permettra de prendre automatiquement la meilleure correspondance en cas d'homonymie.
+
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 
 Pour une LECTURE:
@@ -142,13 +156,15 @@ Pour une CRÉATION MULTI-ENTITÉS:
           "address": "Adresse de Monsieur Morel"
         }
       },
-      {
+            {
         "operation": "INSERT",
         "entity": "dossiers",
         "fields": {
           "client": "Alain Lefebvre",
-          "object": "Nuisances sonores",
+          "object": "Litige commercial",
           "lawyer": "Nogoh Brice",
+          "procedure_type": "Contentieux civil",
+          "procedure_subtype": "Divorce",
           "opposing_party_name": "Bernard Morel"
         }
       }
@@ -208,13 +224,15 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
         }
       }
 
-      return {
+            return {
         operation: op.operation,
         entity: op.entity.toLowerCase(),
         entityId: op.entityId || null,
         fields: cleanedFields,
         tempId: op.tempId || `op_${index}`,
         dependsOn: op.dependsOn || [],
+        // ✅ Préserver resolveConfig si fourni par le LLM
+        resolveConfig: op.resolveConfig || undefined,
       };
     });
 

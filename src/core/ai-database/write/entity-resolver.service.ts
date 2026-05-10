@@ -1,7 +1,7 @@
 // src/core/ai-database/write/entity-resolver.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, Like, ILike } from 'typeorm';
+import { DataSource, Repository, ILike } from 'typeorm';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { BUSINESS_METADATA_KEY, BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
@@ -21,6 +21,44 @@ export interface ResolveResult<T> {
   matchedOn: string;
   candidates: ResolveMatch<T>[];  // tous les candidats classés
   ambiguous: boolean;             // true si plusieurs candidats proches
+}
+
+/**
+ * Mode de résolution des ambiguïtés.
+ * - STRICT : (actuel) lève une erreur si ambiguïté détectée
+ * - BEST_EFFORT : prend automatiquement le meilleur score même si ambigu
+ */
+export enum ResolveMode {
+  STRICT = 'strict',
+  BEST_EFFORT = 'best_effort',
+}
+
+/**
+ * Configuration de résolution passée en paramètre.
+ * Permet de contrôler finement le comportement sans créer plusieurs méthodes.
+ */
+export interface ResolveConfig {
+  mode?: ResolveMode;
+  /** Score minimum pour considérer un candidat valide (défaut: 40) */
+  minScore?: number;
+  /**
+   * Écart minimum entre le 1er et 2ème score pour ne PAS déclarer ambiguïté.
+   * Plus la valeur est petite, plus on tolère des scores proches.
+   * Mettre à 0 pour BEST_EFFORT (toujours prendre le meilleur).
+   * Défaut: 15
+   */
+  ambiguityGap?: number;
+}
+
+/**
+ * Résultat enrichi pour resolveOrCreateEntity.
+ * Contient le résultat de la résolution ET l'entité créée si applicable.
+ */
+export interface ResolveOrCreateResult<T> {
+  resolved: ResolveResult<T>;
+  created: boolean;
+  newEntity?: T;
+  message: string;
 }
 
 // ─── Helpers scoring ─────────────────────────────────────────────────────────
@@ -101,7 +139,10 @@ export class EntityResolverService {
 
   // ─── CLIENT ────────────────────────────────────────────────────────────────
 
-  async resolveCustomer(input: string): Promise<ResolveResult<Customer>> {
+  async resolveCustomer(
+    input: string,
+    config?: ResolveConfig,
+  ): Promise<ResolveResult<Customer>> {
     this.logger.debug(`🔍 Résolution client: "${input}"`);
 
     const ni = normalize(input);
@@ -133,7 +174,7 @@ export class EntityResolverService {
     // 3. Scorer chaque candidat
     const scored = this.scoreCustomers(input, candidates);
 
-    return this.buildResult(scored, input, 'client');
+    return this.buildResult(scored, input, 'client', config);
   }
 
   private scoreCustomers(input: string, rows: Customer[]): ResolveMatch<Customer>[] {
@@ -174,7 +215,10 @@ export class EntityResolverService {
 
   // ─── EMPLOYÉ (AVOCAT) ──────────────────────────────────────────────────────
 
-  async resolveEmployee(input: string): Promise<ResolveResult<Employee>> {
+  async resolveEmployee(
+    input: string,
+    config?: ResolveConfig,
+  ): Promise<ResolveResult<Employee>> {
     this.logger.debug(`🔍 Résolution employé: "${input}"`);
 
     const ni = normalize(input);
@@ -217,7 +261,7 @@ export class EntityResolverService {
     // 2. Scorer
     const scored = this.scoreEmployees(input, candidates);
 
-    return this.buildResult(scored, input, 'employé');
+    return this.buildResult(scored, input, 'employé', config);
   }
 
   private scoreEmployees(input: string, rows: Employee[]): ResolveMatch<Employee>[] {
@@ -265,15 +309,16 @@ export class EntityResolverService {
   async resolveAnyEntity(
     tableName: string,
     searchTerm: string,
+    config?: ResolveConfig,
   ): Promise<ResolveResult<any>> {
     this.logger.debug(`🔍 resolveAnyEntity("${tableName}", "${searchTerm}")`);
 
     // ── 1. Resolvers spécialisés ──
     if (tableName === 'customer' || tableName === 'customers') {
-      return this.resolveCustomer(searchTerm);
+      return this.resolveCustomer(searchTerm, config);
     }
     if (tableName === 'employee' || tableName === 'employees') {
-      return this.resolveEmployee(searchTerm);
+      return this.resolveEmployee(searchTerm, config);
     }
 
     // ── 2. Résolution générique ──
@@ -356,7 +401,7 @@ export class EntityResolverService {
       .filter(m => m.score >= this.MIN_SCORE)
       .sort((a, b) => b.score - a.score);
 
-    return this.buildResult(scored, searchTerm, tableName);
+    return this.buildResult(scored, searchTerm, tableName, config);
   }
 
   /**
@@ -450,6 +495,274 @@ export class EntityResolverService {
     return fields;
   }
 
+  // ─── RÉSOLUTION AVEC CRÉATION AUTOMATIQUE (CASCADE) ────────────────────────
+
+  /**
+   * Résout une entité par son nom, et si introuvable, la crée automatiquement.
+   *
+   * Utilisé par BaseWriteHandler.resolveDependencies() quand une entité
+   * référencée par son nom n'existe pas encore en base.
+   *
+   * Scénario typique :
+   *   - L'utilisateur dit : "Crée un dossier pour Jean Dupont"
+   *   - Jean Dupont n'existe pas en base
+   *   - Cette méthode crée automatiquement le client "Jean Dupont"
+   *   - Retourne l'ID du nouveau client → utilisé pour le dossier
+   *
+   * @param tableName - Nom de la table (ex: "customer", "employee")
+   * @param searchTerm - Texte de recherche (ex: "Jean Dupont")
+   * @param userId - ID de l'utilisateur qui fait la demande
+   * @param contextFields - Champs additionnels fournis par le handler (optionnel)
+   */
+  async resolveOrCreateEntity(
+    tableName: string,
+    searchTerm: string,
+    userId: string,
+    contextFields?: Record<string, any>,
+    config?: ResolveConfig,
+  ): Promise<ResolveOrCreateResult<any>> {
+    if (!contextFields) contextFields = {};
+    this.logger.log(`🔄 resolveOrCreateEntity("${tableName}", "${searchTerm}")`);
+
+    // 1. D'abord, tenter une résolution normale (avec la config passée)
+    const resolved = await this.resolveAnyEntity(tableName, searchTerm, config);
+
+    if (resolved.found && !resolved.ambiguous) {
+      // ✅ Trouvé et non ambigu → retourner le résultat
+      return {
+        resolved,
+        created: false,
+        message: `${tableName} "${searchTerm}" trouvé(e) (ID: ${(resolved.best as any).id})`,
+      };
+    }
+
+    if (resolved.ambiguous) {
+      // ⚠️ Ambiguïté → on ne crée pas, on laisse l'utilisateur décider
+      const suggestions = resolved.candidates
+        .slice(0, 3)
+        .map(c => `"${c.matchedOn}" (score: ${c.score}%)`)
+        .join(', ');
+      this.logger.warn(`⚠️ Ambiguïté pour "${searchTerm}" dans ${tableName}: ${suggestions}`);
+      return {
+        resolved,
+        created: false,
+        message: `Plusieurs correspondances trouvées pour "${searchTerm}" dans ${tableName}. Veuillez préciser : ${suggestions}`,
+      };
+    }
+
+    // 🚫 Liste des entités qu'on ne crée JAMAIS automatiquement
+    // car elles ont des dépendances complexes (User, relations, etc.)
+    const NEVER_AUTO_CREATE = new Set([
+      'employee', 'employees', 'user', 'users',
+    ]);
+
+    if (NEVER_AUTO_CREATE.has(tableName)) {
+      this.logger.warn(`⛔ Création automatique refusée pour "${tableName}" (entité trop complexe)`);
+      const entityLabel = tableName === 'employee' || tableName === 'employees' ? 'avocat' : tableName;
+      return {
+        resolved,
+        created: false,
+        message: `"${searchTerm}" n'a pas été trouvé(e) comme ${entityLabel}. ` +
+          `Veuillez utiliser l'interface de gestion pour créer ce ${entityLabel}, ` +
+          `ou vérifier l'orthographe du nom.`,
+      };
+    }
+
+    // 2. ❌ Non trouvé → créer l'entité automatiquement
+    this.logger.log(`➕ Création automatique de "${searchTerm}" dans ${tableName}`);
+    try {
+      const newEntity = await this.createEntityFromText(tableName, searchTerm, userId, contextFields);
+      const entityId = (newEntity as any).id;
+
+      this.logger.log(`✅ Création automatique réussie: ${tableName} "${searchTerm}" → ID ${entityId}`);
+
+      // Retourner un ResolveResult simulé
+      const createdResult: ResolveResult<any> = {
+        found: true,
+        best: newEntity,
+        score: 100,
+        matchedOn: 'création automatique',
+        candidates: [],
+        ambiguous: false,
+      };
+
+      return {
+        resolved: createdResult,
+        created: true,
+        newEntity,
+        message: `${tableName} "${searchTerm}" créé(e) automatiquement (ID: ${entityId})`,
+      };
+    } catch (error) {
+      this.logger.error(`❌ Échec création automatique de "${searchTerm}" dans ${tableName}: ${(error as Error).message}`);
+      return {
+        resolved: { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false },
+        created: false,
+        message: `Impossible de créer "${searchTerm}" dans ${tableName}: ${(error as Error).message}`,
+      };
+    }
+  }
+
+  /**
+   * Crée une entité à partir d'un texte de recherche.
+   *
+   * Analyse intelligente du texte pour déterminer les champs :
+   *   - "Jean Dupont" → first_name="Jean", last_name="Dupont"
+   *   - "SARL Dupont et Fils" → company_name="SARL Dupont et Fils"
+   *   - "jean.dupont@email.com" → email="jean.dupont@email.com"
+   *
+   * Utilise les métadonnées TypeORM + @BusinessColumn pour ne remplir
+   * que les champs pertinents et laisser les defaults/auto-générés tranquilles.
+   */
+  async createEntityFromText(
+    tableName: string,
+    text: string,
+    userId: string,
+    contextFields?: Record<string, any>,
+  ): Promise<any> {
+    const entityMeta = this.dataSource.entityMetadatas.find(
+      m => m.tableName === tableName,
+    );
+    if (!entityMeta) {
+      throw new Error(`Table "${tableName}" inconnue dans TypeORM`);
+    }
+
+    const repo = this.dataSource.getRepository(entityMeta.target);
+    const fields = this.inferFieldsFromText(entityMeta, text);
+
+    // Fusionner avec les champs contextuels (fournis par le handler appelant)
+    if (contextFields) {
+      Object.assign(fields, contextFields);
+    }
+
+    // Ajouter created_by
+    fields.created_by = userId;
+
+    this.logger.debug(`📝 Création de ${tableName} avec les champs: ${JSON.stringify(fields)}`);
+
+    // Créer et sauvegarder
+    const record = repo.create(fields);
+    const saved = await repo.save(record);
+    return saved;
+  }
+
+  /**
+   * Infère les champs d'une entité à partir d'un texte brut.
+   *
+   * Stratégie :
+   *   1. Cherche les champs "name", "first_name", "last_name", "company_name"
+   *      dans les métadonnées TypeORM
+   *   2. Si aucun champ standard trouvé, regarde les relations ManyToOne/OneToOne
+   *      (ex: employee.user contient first_name/last_name)
+   *   3. Tente de splitter le texte en prénom + nom (si 2 tokens)
+   *   4. Détecte les emails, numéros, etc.
+   *   5. Dernier recours : utilise le premier champ varchar trouvé
+   */
+  private inferFieldsFromText(
+    entityMeta: import('typeorm').EntityMetadata,
+    text: string,
+  ): Record<string, any> {
+    const fields: Record<string, any> = {};
+    const columns = entityMeta.columns;
+    const columnNames = columns.map(c => c.databaseName);
+    const columnSet = new Set(columnNames);
+    const normalized = normalize(text);
+    const tokens = normalized.split(' ').filter(t => t.length > 0);
+
+    // Détection du type de contenu
+    const hasAtSymbol = text.includes('@');
+    const hasMultipleTokens = tokens.length >= 2;
+
+    // --- Regarder dans les relations si la table n'a pas first_name/last_name ---
+    // Ex: employee n'a pas first_name directement (c'est dans user)
+    // On va chercher à travers les relations pour trouver des champs textuels
+    const hasDirectNameCol = columnSet.has('first_name') || columnSet.has('last_name') || columnSet.has('name');
+    
+    // --- Gestion des différents cas ---
+
+    // Cas 1: C'est un email
+    if (hasAtSymbol && columnSet.has('email')) {
+      fields.email = text.trim();
+      const emailParts = text.split('@')[0].split('.');
+      if (emailParts.length >= 2) {
+        if (columnSet.has('first_name')) fields.first_name = this.capitalize(emailParts[0]);
+        if (columnSet.has('last_name')) fields.last_name = this.capitalize(emailParts.slice(1).join(' '));
+      }
+      return fields;
+    }
+
+    // Cas 2: C'est un nom d'entreprise ou une personne avec prénom + nom
+    const hasNameCol = columnSet.has('first_name') || columnSet.has('last_name');
+    const hasCompanyCol = columnSet.has('company_name');
+
+    if (hasNameCol && hasMultipleTokens && tokens.length <= 3) {
+      // Probablement une personne: "Jean Dupont", "Dupont Jean", "Jean Marc Dupont"
+      const originalTokens = text.trim().split(/\s+/).filter(t => t.length > 0);
+
+      if (originalTokens.length === 2) {
+        // "Prénom Nom" ou "Nom Prénom"
+        if (columnSet.has('first_name')) fields.first_name = this.capitalize(originalTokens[0]);
+        if (columnSet.has('last_name')) fields.last_name = this.capitalize(originalTokens[1]);
+      } else if (originalTokens.length >= 3) {
+        // "Prénom Nom" avec prénom composé: "Jean Marc Dupont"
+        if (columnSet.has('first_name')) fields.first_name = this.capitalize(originalTokens.slice(0, -1).join(' '));
+        if (columnSet.has('last_name')) fields.last_name = this.capitalize(originalTokens[originalTokens.length - 1]);
+      }
+    } else if (hasCompanyCol && tokens.length >= 2) {
+      // Texte long → probablement une entreprise
+      fields.company_name = text.trim();
+    } else if (hasNameCol && tokens.length === 1) {
+      // Un seul token → on le met dans last_name si disponible
+      if (columnSet.has('last_name')) fields.last_name = this.capitalize(text.trim());
+    }
+
+    // 🔥 CORRECTION : Si aucun champ n'a été trouvé MAIS que la table existe
+    // (ex: employee sans first_name/last_name car c'est dans une relation),
+    // on utilise le premier champ varchar disponible
+    if (Object.keys(fields).length === 0) {
+      // Essayer les colonnes de type texte standard
+      if (columnSet.has('name')) fields.name = text.trim();
+      else if (columnSet.has('label')) fields.label = text.trim();
+      else if (columnSet.has('title')) fields.title = text.trim();
+      else if (columnSet.has('full_name')) fields.full_name = text.trim();
+      else if (columnSet.has('code')) fields.code = text.trim();
+      else if (columnSet.has('last_name')) fields.last_name = this.capitalize(text.trim());
+      else if (columnSet.has('first_name')) fields.first_name = this.capitalize(text.trim());
+      else {
+        // Dernier recours : prendre le premier champ varchar non-système
+        for (const col of columns) {
+          const dbName = col.databaseName;
+          const colType = String(col.type).toLowerCase();
+          const isText = ['varchar', 'text', 'char'].includes(colType);
+          const isSystem = ['id', 'created_at', 'updated_at', 'deleted_at', 'password', 'token', 'secret'].includes(dbName);
+          if (isText && !isSystem && !col.isPrimary) {
+            fields[col.propertyName] = text.trim();
+            this.logger.debug(`📝 Fallback: champ "${col.propertyName}" ← "${text}"`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Si toujours aucun champ, on lève une erreur claire
+    if (Object.keys(fields).length === 0) {
+      throw new Error(
+        `Impossible de déterminer les champs à créer pour "${entityMeta.tableName}". ` +
+        `Aucune colonne textuelle (name, label, title, etc.) trouvée. ` +
+        `Veuillez fournir des informations plus précises.`
+      );
+    }
+
+    return fields;
+  }
+
+  /**
+   * Met la première lettre en majuscule, le reste en minuscule
+   */
+  private capitalize(str: string): string {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  }
+
   // ─── RÉSOLUTION PAR CHAMPS EXPLICITES (API directe) ───────────────────────
 
   /**
@@ -491,6 +804,7 @@ export class EntityResolverService {
     scored: ResolveMatch<T>[],
     input: string,
     entityLabel: string,
+    config?: ResolveConfig,
   ): ResolveResult<T> {
     if (scored.length === 0) {
       this.logger.warn(`❌ Aucun ${entityLabel} trouvé pour "${input}"`);
@@ -499,26 +813,64 @@ export class EntityResolverService {
 
     const best = scored[0];
     const second = scored[1];
-    const ambiguous =
-      !!second && (best.score - second.score) < this.AMBIGUITY_GAP && best.score < 90;
 
+    // Appliquer la config : mode BEST_EFFORT → prendre le meilleur même si ambigu
+    // Par défaut : STRICT (sûr) - l'utilisateur/LLM peut passer BEST_EFFORT
+    const mode = config?.mode || ResolveMode.STRICT;
+    const minScore = config?.minScore ?? this.MIN_SCORE;
+    const ambiguityGap = config?.ambiguityGap ?? this.AMBIGUITY_GAP;
+
+    // En BEST_EFFORT, l'ambiguïté est ignorée : on prend toujours le meilleur
+    // On réduit aussi le minScore pour être plus tolérant
+    const effectiveMinScore = mode === ResolveMode.BEST_EFFORT ? Math.max(minScore, 20) : minScore;
+    const effectiveGap = mode === ResolveMode.BEST_EFFORT ? 0 : ambiguityGap;
+
+    // Filtrer les candidats en dessous du score minimum
+    const valid = scored.filter(m => m.score >= effectiveMinScore);
+    if (valid.length === 0) {
+      this.logger.warn(`❌ Aucun ${entityLabel} valide trouvé pour "${input}" (score min: ${effectiveMinScore})`);
+      return { found: false, best: null, score: 0, matchedOn: '', candidates: scored, ambiguous: false };
+    }
+
+    const bestValid = valid[0];
+    const secondValid = valid[1];
+    const ambiguous = !!secondValid && (bestValid.score - secondValid.score) < effectiveGap && bestValid.score < 90;
+
+    if (mode === ResolveMode.BEST_EFFORT) {
+      // 🎯 BEST_EFFORT : on prend le meilleur score, ambigu ou pas
+      this.logger.log(
+        `🎯 ${entityLabel} résolu (BEST_EFFORT): "${input}" → ` +
+        `"${bestValid.matchedOn}" (score: ${bestValid.score})` +
+        (secondValid ? `, 2ème: "${secondValid.matchedOn}" (${secondValid.score})` : ''),
+      );
+      return {
+        found: true,
+        best: bestValid.entity,
+        score: bestValid.score,
+        matchedOn: bestValid.matchedOn,
+        candidates: valid,
+        ambiguous: false, // On force ambiguous=false pour ne pas bloquer
+      };
+    }
+
+    // STRICT (comportement actuel)
     if (ambiguous) {
       this.logger.warn(
         `⚠️ Ambiguïté détectée pour "${input}": ` +
-        scored.slice(0, 3).map(s => `${s.matchedOn}(${s.score})`).join(', ')
+        valid.slice(0, 3).map(s => `${s.matchedOn}(${s.score})`).join(', '),
       );
     } else {
       this.logger.log(
-        `✅ ${entityLabel} résolu: "${input}" → score ${best.score} via "${best.matchedOn}"`,
+        `✅ ${entityLabel} résolu: "${input}" → score ${bestValid.score} via "${bestValid.matchedOn}"`,
       );
     }
 
     return {
       found: true,
-      best: best.entity,
-      score: best.score,
-      matchedOn: best.matchedOn,
-      candidates: scored,
+      best: bestValid.entity,
+      score: bestValid.score,
+      matchedOn: bestValid.matchedOn,
+      candidates: valid,
       ambiguous,
     };
   }

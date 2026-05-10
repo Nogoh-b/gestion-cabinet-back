@@ -33,5 +33,15 @@ export interface WriteOperation {
   tempId?: string;
   dependsOn?: string[];
   humanReadable: string;    // Description lisible pour confirmation
-
+  /**
+   * Configuration de résolution des dépendances pour cette opération.
+   * Permet de contrôler comment les références (FK) sont résolues :
+   * - strict : (défaut) bloque en cas d'ambiguïté
+   * - best_effort : prend automatiquement le meilleur score
+   */
+  resolveConfig?: {
+    mode?: 'strict' | 'best_effort';
+    minScore?: number;
+    ambiguityGap?: number;
+  };
 }

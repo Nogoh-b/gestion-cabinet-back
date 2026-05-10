@@ -20,7 +20,7 @@ import { WriteIntent } from '../interface/write-intent.interface';
 import { WriteResult } from './write-handler.registry';
 import { SchemaMetadataService } from '../schema-metadata.service';
 import { EntityResolverService } from './entity-resolver.service';
-import { BUSINESS_METADATA_KEY, BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
+import { BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
 
 /** Colonnes système jamais modifiables par l'IA */
 const SYSTEM_COLUMNS = new Set([
@@ -165,19 +165,26 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     };
   }
 
-  // ─── RÉSOLUTION DES DÉPENDANCES ─────────────────────────────────────────────
+  // ─── RÉSOLUTION DES DÉPENDANCES AVEC CRÉATION AUTOMATIQUE ─────────────────
 
   /**
    * Pour chaque champ FK, tente de résoudre une valeur texte en ID.
-   * Ex: { client: "Nogoh Brice" } → { client_id: 42 }
+   * Si l'entité référencée n'existe pas, elle est CRÉÉE AUTOMATIQUEMENT.
    *
-   * Surchargez cette méthode dans un handler custom pour une logique spécifique.
+   * Ex: { client: "Nogoh Brice" } → client_id: 42 (créé si inexistant)
+   *     { lawyer: "Maître Dupont" } → lawyer_id: 15 (créé si inexistant)
+   *
+   * Le suivi des créations est conservé dans `createdEntities` pour que
+   * l'appelant (GenericWriteService) puisse les inclure dans le résultat final.
    */
   async resolveDependencies(
     fields: Record<string, any>,
     userId: string,
+    createdEntities?: Map<string, any>,
+    config?: import('./entity-resolver.service').ResolveConfig,
   ): Promise<Record<string, any>> {
     const resolved = { ...fields };
+    const creations: Array<{ entityName: string; entity: any }> = [];
 
     for (const [alias, info] of this.fkMap) {
       const value = fields[alias];
@@ -198,29 +205,48 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       }
 
       if (typeof value === 'string') {
-        // Résolution par texte
-        const result = await this.entityResolver.resolveAnyEntity(
+        // 🔄 RÉSOLUTION AVEC CRÉATION AUTOMATIQUE SI INTROUVABLE
+        const contextFields = this.extractContextFields(resolved, info.referencedTable);
+        const result = await this.entityResolver.resolveOrCreateEntity(
           info.referencedTable,
           value,
+          userId,
+          contextFields,
+          config, // ← propagation de la config
         );
 
-        if (result.found && result.best && !result.ambiguous) {
-          resolved[info.fkColumn] = (result.best as any).id;
+        if (result.resolved.found && result.resolved.best && !result.resolved.ambiguous) {
+          resolved[info.fkColumn] = (result.resolved.best as any).id;
           if (alias !== info.fkColumn) delete resolved[alias];
-          this.logger.log(
-            `✅ ${alias} résolu: "${value}" → ID ${(result.best as any).id} (score: ${result.score}, via "${result.matchedOn}")`,
-          );
-        } else if (result.ambiguous) {
-          const suggestions = result.candidates
+
+          if (result.created && result.newEntity) {
+            // ✅ L'entité a été créée automatiquement
+            creations.push({ entityName: info.referencedTable, entity: result.newEntity });
+            if (createdEntities) {
+              const tempId = `auto_${info.referencedTable}_${(result.newEntity as any).id}`;
+              createdEntities.set(tempId, result.newEntity);
+            }
+            this.logger.log(
+              `➕ Création auto: ${info.referencedTable} "${value}" → ID ${result.resolved.best.id}`,
+            );
+          } else {
+            this.logger.log(
+              `✅ ${alias} résolu: "${value}" → ID ${(result.resolved.best as any).id} (score: ${result.resolved.score})`,
+            );
+          }
+        } else if (result.resolved.ambiguous) {
+          // ⚠️ Ambiguïté → on ne crée pas automatiquement, on demande à l'utilisateur
+          const suggestions = result.resolved.candidates
             .slice(0, 3)
             .map((c: any) => `  - ${c.matchedOn} (score: ${c.score})`)
             .join('\n');
           throw new BadRequestException(
-            `Ambiguïté pour "${alias}": "${value}". Plusieurs correspondances :\n${suggestions}\nVeuillez préciser.`,
+            `Plusieurs correspondances pour "${alias}" avec "${value}":\n${suggestions}\nVeuillez préciser.`,
           );
         } else {
+          // ❌ Échec de la création (cas exceptionnel)
           throw new BadRequestException(
-            `${this.schemaMetadata.getBusinessLabel(this.entityName, info.fkColumn)} "${value}" introuvable. Vérifiez l'orthographe ou créez d'abord cette entité.`,
+            `Impossible de trouver ou créer ${info.referencedTable} "${value}": ${result.message}`,
           );
         }
       }
@@ -230,15 +256,22 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     for (const [alias, info] of this.fkMap) {
       const fkValue = resolved[info.fkColumn];
       if (typeof fkValue === 'string' && !fkValue.startsWith('{{') && !/^\d+$/.test(fkValue)) {
-        // Le champ FK contient du texte → tenter résolution
-        const result = await this.entityResolver.resolveAnyEntity(
+        const result = await this.entityResolver.resolveOrCreateEntity(
           info.referencedTable,
           fkValue,
+          userId,
+          undefined,
+          config,
         );
-        if (result.found && result.best && !result.ambiguous) {
-          resolved[info.fkColumn] = (result.best as any).id;
+        if (result.resolved.found && result.resolved.best && !result.resolved.ambiguous) {
+          resolved[info.fkColumn] = (result.resolved.best as any).id;
+          if (result.created && createdEntities) {
+            const tempId = `auto_${info.referencedTable}_${(result.resolved.best as any).id}`;
+            createdEntities.set(tempId, result.newEntity);
+          }
           this.logger.log(
-            `✅ ${info.fkColumn} résolu: "${fkValue}" → ID ${(result.best as any).id}`,
+            `✅ ${info.fkColumn} résolu: "${fkValue}" → ID ${(result.resolved.best as any).id}` +
+            (result.created ? ' (créé automatiquement)' : ''),
           );
         }
       }
@@ -247,11 +280,92 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     return resolved;
   }
 
+  /**
+   * Extrait les champs contextuels pour aider à la création d'une entité.
+   * Par exemple, si on crée un client "Jean Dupont" et qu'un email est fourni
+   * dans les champs du dossier, on peut le passer à la création du client.
+   */
+  private extractContextFields(
+    fields: Record<string, any>,
+    referencedTable: string,
+  ): Record<string, any> | undefined {
+    const context: Record<string, any> = {};
+
+    // Si l'entité référencée est un client, chercher des infos utiles
+    if (referencedTable === 'customer' || referencedTable === 'customers') {
+      if (fields.email) context.email = fields.email;
+      if (fields.number_phone_1) context.number_phone_1 = fields.number_phone_1;
+      if (fields.professional_phone) context.professional_phone = fields.professional_phone;
+      if (fields.address) context.address = fields.address;
+    }
+
+    // Si l'entité référencée est un employé
+    if (referencedTable === 'employee' || referencedTable === 'employees') {
+      if (fields.email) context.email = fields.email;
+      if (fields.specialization) context.specialization = fields.specialization;
+    }
+
+    return Object.keys(context).length > 0 ? context : undefined;
+  }
+
+  /**
+   * Enrichit le WriteResult avec les entités créées automatiquement en cascade.
+   * Appelé par execute() après resolveDependencies().
+   */
+  private buildWriteResultWithCascade(
+    baseResult: WriteResult,
+    createdEntities: Map<string, any>,
+    originalFields: Record<string, any>,
+  ): WriteResult {
+    const cascadeCreations: Array<{ entityName: string; entity: any; searchTerm: string }> = [];
+    
+    for (const [tempId, entity] of createdEntities) {
+      if (tempId.startsWith('auto_')) {
+        // Extraire le nom de l'entité et le terme de recherche depuis le tempId
+        const parts = tempId.split('_');
+        if (parts.length >= 3) {
+          const entityName = parts[1];
+          // Chercher le terme de recherche original dans les champs
+          let searchTerm = entityName;
+          for (const [, info] of this.fkMap) {
+            if (info.referencedTable === entityName) {
+              searchTerm = originalFields[info.fkColumn] || originalFields[this.getAliasForFkColumn(info.fkColumn) || ''] || entityName;
+              break;
+            }
+          }
+          cascadeCreations.push({ entityName, entity, searchTerm: String(searchTerm) });
+        }
+      }
+    }
+
+    if (cascadeCreations.length > 0) {
+      baseResult.cascadeCreations = cascadeCreations;
+    }
+
+    return baseResult;
+  }
+
   // ─── EXÉCUTION ──────────────────────────────────────────────────────────────
 
   async execute(intent: WriteIntent, userId: string): Promise<WriteResult> {
-    // 1. Résoudre les dépendances (noms → IDs)
-    const resolvedFields = await this.resolveDependencies(intent.fields, userId);
+    // 1. Résoudre les dépendances (noms → IDs) avec création automatique
+    const createdEntities = new Map<string, any>();
+
+    // Convertir la config du WriteIntent en ResolveConfig si présente
+    const resolveConfig = intent.resolveConfig
+      ? {
+          mode: intent.resolveConfig.mode as any,
+          minScore: intent.resolveConfig.minScore,
+          ambiguityGap: intent.resolveConfig.ambiguityGap,
+        }
+      : undefined;
+
+    const resolvedFields = await this.resolveDependencies(
+      intent.fields,
+      userId,
+      createdEntities,
+      resolveConfig,
+    );
 
     // 2. Valider
     const validation = await this.validateFields(resolvedFields, intent.operation as 'INSERT' | 'UPDATE');
@@ -264,14 +378,17 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     const fields = validation.transformedFields || resolvedFields;
 
     // 3. Exécuter
+    let result: WriteResult;
     switch (intent.operation) {
       case 'INSERT':
-        return this.doInsert(fields, userId);
+        result = await this.doInsert(fields, userId);
+        break;
       case 'UPDATE':
         if (!intent.entityId) {
           throw new BadRequestException(`ID requis pour UPDATE sur ${this.entityName}`);
         }
-        return this.doUpdate(intent.entityId, fields, userId);
+        result = await this.doUpdate(intent.entityId, fields, userId);
+        break;
       case 'DELETE':
         throw new BadRequestException(
           `La suppression via IA n'est pas autorisée pour "${this.entityName}". Utilisez l'interface dédiée.`,
@@ -279,6 +396,11 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       default:
         throw new BadRequestException(`Opération inconnue: ${intent.operation}`);
     }
+
+    // 4. Enrichir le résultat avec les créations en cascade
+    result = this.buildWriteResultWithCascade(result, createdEntities, intent.fields);
+
+    return result;
   }
 
   // ─── INSERT / UPDATE (surchargeable) ────────────────────────────────────────
