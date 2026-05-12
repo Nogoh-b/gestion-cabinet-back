@@ -408,6 +408,13 @@ export class AiDatabaseService implements OnModuleInit {
         const title = this.generateConversationTitle(dto.question);
         const newConversation = await this.conversationManager.createConversation(userId, title);
         conversationId = newConversation.id;
+      } else {
+        // ✅ Mettre à jour le titre si la conversation existe et a le titre par défaut
+        const existingConv = await this.conversationManager.getConversation(conversationId);
+        if (existingConv && (!existingConv.title || existingConv.title === 'Nouvelle conversation')) {
+          const newTitle = this.generateConversationTitle(dto.question);
+          await this.conversationManager.updateConversationTitle(conversationId, newTitle);
+        }
       }
 
       // ✅ Si un fichier est fourni, enrichir la question avec son contenu
@@ -440,6 +447,13 @@ export class AiDatabaseService implements OnModuleInit {
       if (validatedQuery && !dto.analyzeOnly) {
         results = await this.executeSafeQuery(validatedQuery);
         analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
+        
+        // ✅ Sauvegarder l'analyse métier dans l'historique de la conversation
+        await this.conversationManager.addAssistantMessage(
+          conversationId,
+          analysis,
+          undefined
+        );
       }
 
       return {

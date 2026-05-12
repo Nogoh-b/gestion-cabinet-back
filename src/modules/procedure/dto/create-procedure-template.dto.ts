@@ -154,10 +154,11 @@ export class CreateProcedureTemplateDto {
   @IsString()
   description?: string;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateStageDto)
-  stages: CreateStageDto[];
+  stages?: CreateStageDto[];
 
   // AJOUT : Configurations des stages
   @IsOptional()

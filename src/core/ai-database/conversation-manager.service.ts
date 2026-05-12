@@ -223,6 +223,14 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   }
 
   /**
+   * Met à jour le titre d'une conversation
+   */
+  async updateConversationTitle(conversationId: string, title: string): Promise<void> {
+    await this.conversationRepo.update(conversationId, { title });
+    this.logger.log(`📝 Titre mis à jour pour conv ${conversationId}: "${title}"`);
+  }
+
+  /**
    * Nettoie l'historique si trop long
    */
   async trimHistoryIfNeeded(conversationId: string, maxMessages: number = 20): Promise<void> {

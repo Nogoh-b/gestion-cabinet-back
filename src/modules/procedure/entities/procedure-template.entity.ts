@@ -1,4 +1,3 @@
-// entities/procedure-template.entity.ts
 import {
   Entity,
   Column,

@@ -51,22 +51,30 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
     const existingCode = await this.procedureTypeRepository.findOne({
       where: { code: createProcedureTypeDto.code }
     });
+
+    if (existingCode) {
+      throw new ConflictException('Un type de procédure avec ce code existe déjà');
+    }
+
     let template : ProcedureTemplate; 
     if(createProcedureTypeDto.procedure_template_id){
       template = await this.procedureTemplateService.findOne(createProcedureTypeDto.procedure_template_id);
       if(!template){
         throw new NotFoundException(`Template de procédure avec ID ${createProcedureTypeDto.procedure_template_id} non trouvé`);
       }
-    }
-
-    if (existingCode) {
-      throw new ConflictException('Un type de procédure avec ce code existe déjà');
+    } else {
+      // Créer automatiquement un template avec le même nom et description
+      template = await this.procedureTemplateService.create({
+        name: createProcedureTypeDto.name,
+        description: createProcedureTypeDto.description,
+      });
     }
 
     const procedureType = this.procedureTypeRepository.create({
       ...createProcedureTypeDto,
       is_subtype: false,
-      hierarchy_level: 1
+      hierarchy_level: 1,
+      procedure_template: template
     });
 
     const savedProcedure = await this.procedureTypeRepository.save(procedureType);
@@ -91,11 +99,26 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       throw new ConflictException('Un type de procédure avec ce code existe déjà');
     }
 
+    let template : ProcedureTemplate; 
+    if(createProcedureTypeDto.procedure_template_id){
+      template = await this.procedureTemplateService.findOne(createProcedureTypeDto.procedure_template_id);
+      if(!template){
+        throw new NotFoundException(`Template de procédure avec ID ${createProcedureTypeDto.procedure_template_id} non trouvé`);
+      }
+    } else {
+      // Créer automatiquement un template avec le même nom et description
+      template = await this.procedureTemplateService.create({
+        name: createProcedureTypeDto.name,
+        description: createProcedureTypeDto.description,
+      });
+    }
+
     const subtype = this.procedureTypeRepository.create({
       ...createProcedureTypeDto,
       is_subtype: true,
       hierarchy_level: 2,
-      parent: parent
+      parent: parent,
+      procedure_template: template
     });
 
     const savedSubtype = await this.procedureTypeRepository.save(subtype);
@@ -133,28 +156,58 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
     console.log('Search DTO:', where);
     const procedures = await this.procedureTypeRepository.find({
       where,
-      relations: ['parent', 'subtypes'],
+      relations: ['parent', 'subtypes', 'procedure_template'],
       order: { 
         hierarchy_level: 'ASC',
         name: 'ASC'
       }
     });
 
-    return Promise.all(procedures.map(procedure => this.mapToResponseDto(procedure)));
+    // Charger le template complet pour chaque procédure
+    const results: ProcedureTypeResponseDto[] = [];
+    for (const procedure of procedures) {
+      let procedureTemplateData = null;
+      if (procedure.procedure_template) {
+        const fullTemplate = await this.procedureTemplateService.findOne(procedure.procedure_template.id);
+        procedureTemplateData = JSON.parse(JSON.stringify(fullTemplate));
+      }
+
+      // Convertir l'entité en objet simple pour éviter les problèmes de sérialisation
+      const plainProcedure = JSON.parse(JSON.stringify(procedure));
+      plainProcedure.procedure_template = procedureTemplateData;
+
+      results.push(await this.mapToResponseDto(plainProcedure));
+    }
+
+    return results;
   }
+
 
   async findOne(id: number): Promise<ProcedureTypeResponseDto> {
     const procedureType = await this.procedureTypeRepository.findOne({
       where: { id },
-      relations: ['parent', 'subtypes' , 'dossiers']
+      relations: ['parent', 'subtypes' , 'dossiers', 'procedure_template']
     });
 
     if (!procedureType) {
       throw new NotFoundException(`Type de procédure ${id} non trouvé`);
     }
 
-    return plainToInstance(ProcedureTypeResponseDto,procedureType);
+    // Charger le template complet avec stages, sous-stages, transitions, cycles
+    let procedureTemplateData = null;
+    if (procedureType.procedure_template) {
+      const fullTemplate = await this.procedureTemplateService.findOne(procedureType.procedure_template.id);
+      // Convertir en objet simple pour éviter les problèmes de sérialisation
+      procedureTemplateData = JSON.parse(JSON.stringify(fullTemplate));
+    }
+
+    // Convertir l'entité en objet simple pour éviter les problèmes de sérialisation
+    const plainProcedureType = JSON.parse(JSON.stringify(procedureType));
+    plainProcedureType.procedure_template = procedureTemplateData;
+
+    return plainToInstance(ProcedureTypeResponseDto, plainProcedureType);
   }
+
 
   async getMainTypes(): Promise<ProcedureTypeResponseDto[]> {
     const mainTypes = await this.procedureTypeRepository.find({
@@ -162,11 +215,27 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
         is_subtype: false,
         is_active: true
       },
-      relations: ['subtypes'],
+      relations: ['subtypes', 'procedure_template'],
       order: { name: 'ASC' }
     });
 
-    return Promise.all(mainTypes.map(type => this.mapToResponseDto(type)));
+    // Charger le template complet pour chaque type principal
+    const results: ProcedureTypeResponseDto[] = [];
+    for (const type of mainTypes) {
+      let procedureTemplateData = null;
+      if (type.procedure_template) {
+        const fullTemplate = await this.procedureTemplateService.findOne(type.procedure_template.id);
+        procedureTemplateData = JSON.parse(JSON.stringify(fullTemplate));
+      }
+
+      // Convertir l'entité en objet simple
+      const plainType = JSON.parse(JSON.stringify(type));
+      plainType.procedure_template = procedureTemplateData;
+
+      results.push(await this.mapToResponseDto(plainType));
+    }
+
+    return results;
   }
 
   async getSubtypes(parentId: number): Promise<ProcedureTypeResponseDto[]> {
@@ -183,11 +252,29 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
         parent: { id: parentId },
         is_active: true
       },
+      relations: ['procedure_template'],
       order: { name: 'ASC' }
     });
 
-    return Promise.all(subtypes.map(subtype => this.mapToResponseDto(subtype)));
+    // Charger le template complet pour chaque sous-type
+    const results: ProcedureTypeResponseDto[] = [];
+    for (const subtype of subtypes) {
+      let procedureTemplateData = null;
+      if (subtype.procedure_template) {
+        const fullTemplate = await this.procedureTemplateService.findOne(subtype.procedure_template.id);
+        procedureTemplateData = JSON.parse(JSON.stringify(fullTemplate));
+      }
+
+      // Convertir l'entité en objet simple
+      const plainSubtype = JSON.parse(JSON.stringify(subtype));
+      plainSubtype.procedure_template = procedureTemplateData;
+
+      results.push(await this.mapToResponseDto(plainSubtype));
+    }
+
+    return results;
   }
+
 
  async update(id: number, updateProcedureTypeDto: UpdateProcedureTypeDto): Promise<ProcedureTypeResponseDto> {
   const procedureType = await this.procedureTypeRepository.findOne({
@@ -323,7 +410,7 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
     };
   }
 
-  private async mapToResponseDto(procedureType: ProcedureType): Promise<ProcedureTypeResponseDto> {
+  private async mapToResponseDto(procedureType: any): Promise<ProcedureTypeResponseDto> {
     const dossierCount = await this.dossierRepository.count({
       where: [
         { procedure_type: { id: procedureType.id } },
@@ -331,11 +418,34 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       ]
     });
 
+    // Calculer les getters qui sont perdus lors de la sérialisation JSON
+    const parent = procedureType.parent;
+    const subtypes = procedureType.subtypes || [];
+    const dossiers = procedureType.dossiers || [];
+    
+    const is_main_type = !procedureType.is_subtype && procedureType.hierarchy_level === 1;
+    const full_path = parent ? `${parent.name} > ${procedureType.name}` : procedureType.name;
+    const has_subtypes = subtypes.length > 0;
+    const subtypes_count = subtypes.length;
+    const is_leaf = !has_subtypes;
+    const document_count = (procedureType.required_documents || []).length;
+    const has_required_documents = document_count > 0;
+    const jurisdictions_count = (procedureType.specific_jurisdictions || []).length;
+    const has_specific_jurisdictions = jurisdictions_count > 0;
+
     return plainToInstance(ProcedureTypeResponseDto, {
       ...procedureType,
       dossier_count: dossierCount,
-      full_path: procedureType.full_path,
-      is_main_type: procedureType.is_main_type
+      full_path,
+      is_main_type,
+      has_subtypes,
+      subtypes_count,
+      is_leaf,
+      document_count,
+      has_required_documents,
+      jurisdictions_count,
+      has_specific_jurisdictions,
     });
   }
+
 }

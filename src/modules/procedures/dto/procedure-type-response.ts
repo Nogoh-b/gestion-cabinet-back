@@ -308,4 +308,11 @@ export class ProcedureTypeResponseDto {
   })
   @Expose()
   updated_at?: Date;
-} 
+
+  // ✅ Template de procédure complet avec stages, sous-stages, transitions, cycles
+  @ApiPropertyOptional({
+    description: 'Template de procédure complet'
+  })
+  @Expose()
+  procedure_template?: any;
+}
