@@ -3,10 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 
 
-
-
-
-
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { User } from '../iam/user/entities/user.entity';
@@ -22,6 +18,9 @@ import { AudiencesModule } from '../audiences/audiences.module';
 import { DiligenceModule } from '../diligence/diligence.module';
 import { FactureModule } from '../facture/facture.module';
 import { ProcedureModule } from '../procedure/procedure.module';
+import { DossierWriteHandler } from './dossier-write.handler';
+import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 
 
 
@@ -41,9 +40,19 @@ import { ProcedureModule } from '../procedure/procedure.module';
     forwardRef(() => ProcedureModule),
 
     TypeOrmModule.forFeature([Dossier,  User, ProcedureType, Step]),
+    AiDatabaseModule
   ],
   controllers: [DossiersController],
-  providers: [DossiersService,DossierStatsService, StepsService ],
+  providers: [DossiersService,DossierStatsService, StepsService, DossierWriteHandler ],
   exports: [DossiersService, DossierStatsService, TypeOrmModule, StepsService],
 })
-export class DossiersModule {}
+export class DossiersModule {
+  constructor(
+    private writeHandlerRegistry: WriteHandlerRegistry,
+    private dossierWriteHandler: DossierWriteHandler,
+  ) {}
+
+  onModuleInit() {
+    this.writeHandlerRegistry.register(this.dossierWriteHandler);
+  }
+}

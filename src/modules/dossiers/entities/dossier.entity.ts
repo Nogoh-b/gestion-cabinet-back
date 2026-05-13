@@ -361,41 +361,41 @@ export class Dossier extends BaseEntity {
   })
   appeal_deadline: Date | null;
 
-  @Column({ name: 'client_id', type: 'int', nullable: true })
+    @Column({ name: 'client_id', type: 'int', nullable: false })
   @BusinessColumn({
     label: 'Client',
     description: 'Identifiant du client propriétaire du dossier',
     importance: 'critical',
     group: 'parties'
   })
-  client_id?: number;
+  client_id: number;
 
-  @Column({ name: 'lawyer_id', type: 'int', nullable: true })
+    @Column({ name: 'lawyer_id', type: 'int', nullable: false })
   @BusinessColumn({
     label: 'Avocat référent',
     description: 'Identifiant de l\'avocat en charge',
     importance: 'critical',
     group: 'parties'
   })
-  lawyer_id?: number;
+  lawyer_id: number;
 
-  @Column({ name: 'procedure_type_id', type: 'int', nullable: true })
+    @Column({ name: 'procedure_type_id', type: 'int', nullable: false })
   @BusinessColumn({
     label: 'Type de procédure',
     description: 'Identifiant du type de procédure',
     importance: 'high',
     group: 'procédure'
   })
-  procedure_type_id?: number;
+  procedure_type_id: number;
 
-  @Column({ name: 'procedure_subtype_id', type: 'int', nullable: true })
+  @Column({ name: 'procedure_subtype_id', type: 'int', nullable: false })
   @BusinessColumn({
     label: 'Sous-type de procédure',
     description: 'Identifiant du sous-type de procédure',
     importance: 'medium',
     group: 'procédure'
   })
-  procedure_subtype_id?: number;
+  procedure_subtype_id: number;
 
   @Column({ 
     name: 'client_decision', 

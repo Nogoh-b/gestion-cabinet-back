@@ -11,7 +11,7 @@ module.exports = {
       instances: 1,
       env: {
         NODE_ENV:'development',
-        PORT: 3006,
+        PORT: parseInt(process.env.PORT || '3007', 10),
       },
     },
   ],

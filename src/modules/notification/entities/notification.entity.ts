@@ -1,19 +1,19 @@
 // src/modules/notification/entities/notification.entity.ts
 import {
-    Entity,
-    Column,
-    PrimaryGeneratedColumn,
-    CreateDateColumn,
-    ManyToOne,
-    JoinColumn,
-    Index,
-    OneToMany
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+  OneToMany
 } from 'typeorm';
 import { User } from '../../iam/user/entities/user.entity';
 import { NotificationPriority, NotificationType } from '../enum/notification-type.enum';
 import { UserNotification } from './user-notification.entity';
 
-@Entity('notifications')
+@Entity('notifications') 
 @Index(['user_id', 'read_at'])
 @Index(['user_id', 'created_at'])
 export class Notification {

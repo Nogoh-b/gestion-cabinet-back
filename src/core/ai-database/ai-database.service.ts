@@ -4,10 +4,14 @@ import { DataSource } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { AskQuestionDto } from './dto/ask-question.dto';
-import { AnalysisResponseDto } from './dto/analysis-response.dto';
+import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
+import { ConversationManagerService } from './conversation-manager.service';
+import { IntentDetectionService } from './intent-detection.service';
+import { GenericWriteService } from './generic-write.service';
+import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -20,16 +24,19 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
   private readonly MAX_CHARS = 180000;
-  private conversationHistory: any[] = [];
   private schemaInitialized = false;
   private readonly SCHEMA_CACHE_KEY = 'database_schema_context';
-
+  private schemaLoaded = false;
+  private cachedSystemPrompt: string | null = null;
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly schemaMetadata: SchemaMetadataService,  
-    private readonly sqlValidator: SqlValidatorService,  
-
+    private readonly schemaMetadata: SchemaMetadataService,
+    private readonly sqlValidator: SqlValidatorService,
+    private readonly intentDetectionService: IntentDetectionService,
+    private readonly genericWriteService: GenericWriteService,
+    private readonly conversationManager: ConversationManagerService,
+    private readonly writeHandlerRegistry: WriteHandlerRegistry,
   ) {}
 
   async onModuleInit() {
@@ -38,23 +45,22 @@ export class AiDatabaseService implements OnModuleInit {
     await this.schemaMetadata.initializeMetadata();
     
     // ✅ CRUCIAL : Initialiser le contexte avec le schéma
-    await this.initializeSchemaContext();
-    
+    // await this.initializeSchemaContext();
+     await this.preloadSystemPrompt();
+
     this.logger.log('✅ Service AI Database initialisé avec Thinking Mode');
   }
+
+
     /**
-   * ✅ INITIALISATION UNIQUE : Envoyer le schéma une fois pour toutes
+   * Précharge le prompt système (schéma) une seule fois
    */
-    private async initializeSchemaContext(): Promise<void> {
-      this.logger.log('🔄 Initialisation du contexte avec le schéma (une seule fois)...');
-      
-      const allTables = this.schemaMetadata.getAllVisibleTables();
-      const schema = await this.getCompleteSchema(allTables);
-      
-      // ✅ Message système plus précis
-      const systemMessage = {
-        role: "system" as const,
-        content: `Tu es un expert SQL pour une base de données juridique.
+  public async preloadSystemPrompt(): Promise<any> {
+    this.logger.log('🔄 Préchargement du prompt système...');
+    const allTables = this.schemaMetadata.getAllVisibleTables();
+    const schema = await this.getCompleteSchema(allTables);
+    
+        this.cachedSystemPrompt = `Tu es un expert SQL pour une base de données juridique.
 
     Voici le schéma COMPLET de la base :
 
@@ -74,100 +80,470 @@ export class AiDatabaseService implements OnModuleInit {
     SELECT * FROM dossiers WHERE reference = 'ABC123' LIMIT 50;
     \`\`\`
 
-    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`
-      };
+    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
+        
+    this.schemaLoaded = true;
+    return this.cachedSystemPrompt
+    // this.logger.log(`✅ Prompt système préchargé (${this.cachedSystemPrompt.length} caractères)`);
+  }
+
+  /**
+   * Génère le schéma d'écriture à partir de tous les handlers enregistrés
+   */
+  private async getWriteSchema(): Promise<string> {
+    let schema = '# 📝 OPÉRATIONS D\'ÉCRITURE DISPONIBLES\n\n';
+    
+    for (const handler of this.writeHandlerRegistry.getAllHandlers()) {
+      const fields = await handler.getWriteableFieldsSchema();
+      schema += `## ${handler.entityName}\n`;
+      schema += `| Champ | Type | Requis | Description | Exemple |\n`;
+      schema += `|-------|------|--------|-------------|---------|\n`;
       
-      this.conversationHistory.push(systemMessage);
-      this.schemaInitialized = true;
-      
-      this.logger.log(`✅ Contexte initialisé avec ${allTables.length} tables (${schema.length} caractères)`);
+      for (const field of fields) {
+        schema += `| ${field.name} | ${field.type}`;
+        if (field.referenceEntity) schema += ` → ${field.referenceEntity}`;
+        schema += ` | ${field.required ? '✅' : '❌'} | ${field.description || ''} | ${field.example || ''} |\n`;
+      }
+      schema += `\n`;
     }
+    
+    return schema;
+  }
+
+  
+  /**
+   * ✅ NOUVELLE MÉTHODE : Pose une question dans une conversation spécifique
+   */
+  async askQuestionWithSession(conversationId: string, question: string): Promise<string> {
+    // 1. Vérifier que la conversation existe
+    let conversation = await this.conversationManager.getConversation(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} non trouvée`);
+    }
+    
+    // 2. Vérifier le contexte système
+    const hasSystemMessage = await this.conversationManager.hasSystemMessage(conversationId);
+    if (!hasSystemMessage && this.cachedSystemPrompt) {
+      Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt préchargé...`);
+      await this.conversationManager.addSystemMessage(conversationId, this.cachedSystemPrompt);
+    }
+    
+    // 3. Ajouter la question
+    await this.conversationManager.addUserMessage(conversationId, question);
+    
+    // 4. Récupérer et envoyer l'historique
+    const history = await this.conversationManager.getFullHistory(conversationId);
+    const response = await this.llm.invoke(history);
+    let content = response.content as string;
+    
+    // 🔍 LOG CRITIQUE
+    this.logger.log(`📝 Réponse brute (200 premiers chars): ${content.substring(0, 200)}`);
+    
+    // 5. Extraction SQL avec fallback amélioré
+    let sqlQuery = this.extractSQL(content);
+    
+    if (!sqlQuery) {
+      this.logger.warn(`⚠️ Aucun bloc SQL trouvé, tentative avec regex plus permissif...`);
+      sqlQuery = this.extractSQLRelaxed(content);
+    }
+    
+    if (!sqlQuery && this.isNoResultsResponse(content)) {
+      // DeepSeek a répondu qu'il n'y a pas de résultats
+      sqlQuery = `-- Aucun résultat trouvé pour: ${question}\nSELECT NULL AS message WHERE 1=0;`;
+      this.logger.log(`ℹ️ Réponse "aucun résultat" détectée, SQL généré automatiquement`);
+    } else if (!sqlQuery) {
+      this.logger.warn(`⚠️ Pas de SQL trouvé, demande de reformatage...`);
+      sqlQuery = await this.askForSQLOnly(question);
+    }
+    
+    // 6. Vérifier que c'est bien une requête SELECT
+    if (sqlQuery) {
+      const normalizedLower = sqlQuery.toLowerCase().trim();
+      if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
+        this.logger.error(`❌ Requête non SELECT détectée: ${sqlQuery.substring(0, 100)}`);
+        sqlQuery = null;
+      }
+    }
+    
+    // 7. Dernier recours : générer une requête de recherche basée sur la question
+    if (!sqlQuery) {
+      sqlQuery = this.generateFallbackQuery(question);
+      this.logger.warn(`⚠️ Utilisation du fallback final: ${sqlQuery}`);
+    }
+    
+    // 8. Sauvegarder la réponse originale (pour debug)
+    await this.conversationManager.addAssistantMessage(conversationId, content);
+    
+    return sqlQuery;
+  }
+
+  /**
+  * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
+  */
+  private isNoResultsResponse(content: string): boolean {
+    const lower = content.toLowerCase();
+    const noResultPatterns = [
+      'aucun dossier', 'aucun résultat', 'not found', 'no results',
+      'introuvable', 'existe pas', 'does not exist'
+    ];
+    return noResultPatterns.some(pattern => lower.includes(pattern));
+  }
+
+  /**
+  * Génère une requête SQL de fallback intelligente
+  */
+  private generateFallbackQuery(question: string): string {
+    const lower = question.toLowerCase();
+    
+    // Détecter le type d'ID/reference
+    const refMatch = question.match(/[A-Z0-9-]{10,}/i);
+    if (refMatch) {
+      const ref = refMatch[0];
+      // Essayer plusieurs colonnes possibles
+      return `-- Recherche de la référence '${ref}'
+  SELECT * FROM dossiers 
+  WHERE reference = '${ref}' 
+    OR numero_dossier = '${ref}' 
+    OR id = '${ref}'
+  LIMIT 10;`;
+    }
+    
+    // Fallback générique
+    return `-- Requête générée automatiquement
+  SELECT NULL AS message 
+  WHERE 1=0;
+  -- Vérifiez que les données existent dans la base`;
+  }
+
+  /**
+  * Demande explicitement du SQL (avec meilleur prompt)
+  */
+  private async askForSQLOnly(originalQuestion: string): Promise<string | null> {
+    const reformatPrompt = `La base de données contient une table "dossiers" avec les colonnes: id, reference, numero_dossier, titre, statut, created_at.
+
+  La question est: "${originalQuestion}"
+
+  Génère une requête SELECT pour répondre à cette question.
+  Si la valeur recherchée est un numéro de dossier, cherche dans les colonnes "reference" OU "numero_dossier".
+
+  RÈGLES:
+  - UNIQUEMENT une requête SELECT
+  - Pas d'explication, pas de texte
+  - Ajoute LIMIT 10
+
+  Requête SQL:`;
+
+    try {
+      const response = await this.llm.invoke([{
+        role: "user",
+        content: reformatPrompt
+      }]);
+      const content = response.content as string;
+      const sql = this.extractSQLRelaxed(content);
+      
+      if (sql && sql.toLowerCase().includes('select')) {
+        return sql;
+      }
+      return null;
+    } catch (error) {
+      this.logger.error(`Erreur reformatage: ${error.message}`);
+      return null;
+    }
+  }
+
 
 
   /**
-  * ✅ POSER UNE QUESTION : Envoyer uniquement la question (pas le schéma)
+  * Extrait le contenu textuel d'un fichier uploadé
   */
-  async askQuestion(question: string): Promise<string> {
-    if (!this.schemaInitialized) {
-      await this.initializeSchemaContext();
+  private async extractFileContent(file: Express.Multer.File): Promise<string> {
+    const { mimetype, buffer, originalname } = file;
+
+    // Fichiers texte / JSON / CSV
+    if (mimetype === 'text/plain' || mimetype === 'text/csv' || mimetype === 'application/json') {
+      return buffer.toString('utf-8');
     }
-    
-    // Ajouter la question de l'utilisateur
-    this.conversationHistory.push({
-      role: "user" as const,
-      content: question
-    });
-    
-    this.logger.log(`📤 Envoi de la question à DeepSeek: ${question.substring(0, 100)}...`);
-    this.logger.debug(`📜 Historique complet: ${JSON.stringify(this.conversationHistory, null, 2)}`);
-    
-    try {
-      // Appeler l'API (DeepSeek utilise le contexte mémorisé)
-      const response = await this.llm.invoke(this.conversationHistory);
+
+    // PDF : utiliser pdf-parse
+    if (mimetype === 'application/pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(buffer);
+      return data.text;
+    }
+
+    // Excel : utiliser xlsx
+    if (mimetype.includes('spreadsheetml') || mimetype.includes('ms-excel')) {
+      const XLSX = require('xlsx');
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      let text = '';
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+        text += `\n--- Feuille: ${sheetName} ---\n`;
+        text += XLSX.utils.sheet_to_csv(sheet);
+      }
+      return text;
+    }
+
+    throw new Error(`Type de fichier non supporté: ${mimetype}`);
+  }
+
+
+  // ── Endpoint de confirmation ──────────────────────────────
+  async confirmWrite(
+    pendingIntent: WritePlan,
+    userId: string
+  ): Promise<AnalysisResponseDto> {
+    const startTime = Date.now();
+
+    const writeResult = await this.genericWriteService.executePlan(pendingIntent, userId);
+    return {
+      success: true,
+      question: 'Confirmation opération',
+      analysis: this.formatPlanResults(writeResult),
+      executionTimeMs: Date.now() - startTime,
+      // rowCount: writeResult.affected,
+      results: writeResult,
+    };
+  }
+  
+    private formatPlanResults(results: WriteResult[]): string {
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
       
-      // DEBUG: Log la réponse complète
-      this.logger.log(`📥 Réponse reçue de DeepSeek`);
-      // this.logger.debug(`📝 Contenu brut: ${JSON.stringify(response)}`);
+      // Compter les créations en cascade
+      const allCascadeCreations = results.flatMap(r => r.cascadeCreations || []);
       
-      // Vérifier le type de réponse
-      let content = '';
-      if (typeof response.content === 'string') {
-        content = response.content;
-      } else if (response.content && typeof response.content === 'object') {
-        // Si c'est un tableau ou un objet, le convertir en string
-        content = JSON.stringify(response.content);
-      } else if (response.text) {
-        content = response.text;
+      let message = '';
+      
+      if (failCount === 0) {
+        message = `✅ **Opération réussie !**\n\n${results.length} opération(s) exécutée(s) avec succès.`;
+      } else {
+        message = `⚠️ **Opération partiellement réussie**\n\n✅ ${successCount} succès\n❌ ${failCount} échecs`;
       }
       
-      this.logger.log(`📄 Contenu extrait (${content.length} caractères): ${content.substring(0, 500)}`);
-      
-      // Extraire le raisonnement
-      const reasoning = response.additional_kwargs?.reasoning_content;
-      const reasoningString = typeof reasoning === 'string' ? reasoning : 
-                            (reasoning ? JSON.stringify(reasoning) : null);
-      
-      if (reasoningString) {
-        this.logger.debug(`🧠 Raisonnement: ${reasoningString.substring(0, 200)}...`);
-      }
-      
-      // Extraire le SQL
-      const sqlQuery = this.extractSQL(content);
-      
-      if (!sqlQuery) {
-        this.logger.error(`❌ Aucune requête SQL trouvée dans la réponse`);
-        this.logger.error(`📄 Réponse complète: ${content}`);
-        
-        // Tentative de récupération avec une approche plus souple
-        const fallbackSql = this.extractSQLRelaxed(content);
-        if (fallbackSql) {
-          this.logger.log(`✅ Fallback: SQL trouvé avec méthode relaxée: ${fallbackSql}`);
-          return fallbackSql;
+      // Ajouter les créations en cascade si présentes
+      if (allCascadeCreations.length > 0) {
+        message += `\n\n📦 **Entités créées automatiquement :**`;
+        for (const creation of allCascadeCreations) {
+          const entityLabel = this.schemaMetadata.getTableLabel(creation.entityName) || creation.entityName;
+          const entityId = (creation.entity as any)?.id || '?';
+          message += `\n   • ${entityLabel} "${creation.searchTerm}" (ID: ${entityId})`;
         }
-        
-        throw new Error('Impossible d\'extraire la requête SQL de la réponse DeepSeek');
       }
       
-      this.logger.log(`✅ SQL extrait: ${sqlQuery.substring(0, 200)}...`);
-      
-      // Ajouter la réponse à l'historique
-      const assistantMessage: any = {
-        role: "assistant" as const,
-        content: content,
-      };
-      
-      if (reasoningString) {
-        assistantMessage.reasoning_content = reasoningString;
-      }
-      
-      this.conversationHistory.push(assistantMessage);
-      
-      return sqlQuery;
-      
-    } catch (error) {
-      this.logger.error(`❌ Erreur lors de l'appel DeepSeek: ${error.message}`);
-      throw error;
+      return message;
     }
+  /**
+  * ✅ MÉTHODE PRINCIPALE MODIFIÉE : Analyser une question avec gestion de session + fichier
+  */
+  async analyzeQuestion(
+    dto: AskQuestionDto,
+    userId: string,
+    file?: Express.Multer.File  // ← Nouveau paramètre optionnel
+  ): Promise<AnalysisResponseDto> {
+    const startTime = Date.now();
+
+    // ── Détection d'intention ──────────────────────────────
+    const allTables = this.schemaMetadata.getAllVisibleTables();
+    const schema = await this.getCompleteSchema(allTables);
+
+    // ✅ Passer le schéma READ pour le contexte relationnel
+    // (le schéma d'écriture est généré en interne par IntentDetectionService
+    //  via writeHandlerRegistry.generateGlobalWriteSchema())
+    const intentResult = await this.intentDetectionService.detectIntent(
+      dto.question,
+      this.llm,
+      schema,
+    );
+
+    this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
+
+    // ──────────────────────────────────────────────────────
+    // 2️⃣ BRANCHE ÉCRITURE (avec plan)
+    // ──────────────────────────────────────────────────────
+    if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+      const plan = intentResult.writePlan;
+
+      if (intentResult.requiresConfirmation) {
+        return {
+          success: true,
+          question: dto.question,
+          analysis: `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`,
+          pendingWritePlan: plan,
+          requiresConfirmation: true,
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // ✅ Exécution directe via genericWriteService (handler métier + fallback générique)
+      try {
+        const results = await this.genericWriteService.executePlan(plan, userId);
+        return {
+          success: true,
+          question: dto.question,
+          analysis: this.formatPlanResults(results),
+          results,
+          executionTimeMs: Date.now() - startTime,
+        };
+      } catch (error) {
+        this.logger.error(`❌ Erreur écriture: ${error.message}`);
+        return {
+          success: false,
+          question: dto.question,
+          analysis: `Erreur lors de l'exécution: ${error.message}`,
+          executionTimeMs: Date.now() - startTime,
+          error: error.message,
+        };
+      }
+    }
+
+    const schemaJSON = await this.getCompleteSchemaJson(allTables);
+
+    console.log('conversation bot ',dto)
+
+    try {
+      let conversationId = dto.conversationId;
+
+      if (!conversationId) {
+        const title = this.generateConversationTitle(dto.question);
+        const newConversation = await this.conversationManager.createConversation(userId, title);
+        conversationId = newConversation.id;
+      } else {
+        // ✅ Mettre à jour le titre si la conversation existe et a le titre par défaut
+        const existingConv = await this.conversationManager.getConversation(conversationId);
+        if (existingConv && (!existingConv.title || existingConv.title === 'Nouvelle conversation')) {
+          const newTitle = this.generateConversationTitle(dto.question);
+          await this.conversationManager.updateConversationTitle(conversationId, newTitle);
+        }
+      }
+
+      // ✅ Si un fichier est fourni, enrichir la question avec son contenu
+      let enrichedQuestion = dto.question;
+      if (file) {
+        this.logger.log(`📎 Fichier reçu: ${file.originalname} (${file.mimetype}, ${file.size} octets)`);
+        try {
+          const fileContent = await this.extractFileContent(file);
+          const truncated = fileContent.substring(0, 5000); // Limiter pour le contexte
+          enrichedQuestion = `${dto.question}
+
+  --- CONTENU DU FICHIER: ${file.originalname} ---
+  ${truncated}
+  ${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractères]' : ''}
+  --- FIN DU FICHIER ---`;
+
+          this.logger.log(`✅ Contenu extrait du fichier (${fileContent.length} caractères)`);
+        } catch (fileError) {
+          this.logger.warn(`⚠️ Impossible de lire le fichier: ${fileError.message}`);
+          enrichedQuestion += `\n\n[Note: Le fichier ${file.originalname} a été reçu mais n'a pas pu être lu: ${fileError.message}]`;
+        }
+      }
+
+      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+
+      let results: { data: any[]; rowCount: number } | null = null;
+      let analysis = '';
+
+      if (validatedQuery && !dto.analyzeOnly) {
+        results = await this.executeSafeQuery(validatedQuery);
+        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
+        
+        // ✅ Sauvegarder l'analyse métier dans l'historique de la conversation
+        await this.conversationManager.addAssistantMessage(
+          conversationId,
+          analysis,
+          undefined
+        );
+      }
+
+      return {
+        success: true,
+        question: dto.question,
+        sqlQuery: validatedQuery,
+        analysis,
+        schemaJSON,
+        schema,
+        results: results?.data,
+        executionTimeMs: Date.now() - startTime,
+        rowCount: results?.rowCount || 0,
+        conversationId,
+        // ✅ Ajouter infos sur le fichier si présent
+        ...(file && {
+          fileInfo: {
+            name: file.originalname,
+            size: file.size,
+            type: file.mimetype,
+          }
+        }),
+      };
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur: ${error.message}`);
+      return {
+        success: false,
+        question: dto.question,
+        analysis: `Erreur: ${error.message}`,
+        schemaJSON,
+        schema,
+        executionTimeMs: Date.now() - startTime,
+        error: error.message,
+      };
+    }
+  }
+
+  
+
+  // ai-database.service.ts
+  /**
+  * Formate un plan d'écriture pour l'affichage utilisateur
+  */
+  private formatPlanForDisplay(plan: WritePlan): string {
+    let display = `**Plan d'opérations à confirmer :**\n\n`;
+    display += `📋 **Description:** ${plan.humanReadable}\n\n`;
+    display += `**Confiance:** ${Math.round(plan.confidence * 100)}%\n\n`;
+    display += `**Opérations prévues:**\n`;
+    
+    for (let i = 0; i < plan.operations.length; i++) {
+      const op = plan.operations[i];
+      const emoji = op.operation === 'INSERT' ? '➕' : op.operation === 'UPDATE' ? '✏️' : '🗑️';
+      
+      display += `${i + 1}. ${emoji} **${op.operation}** sur **${op.entity}**`;
+      
+      if (op.entityId) {
+        display += ` (ID: ${op.entityId})`;
+      }
+      
+      display += `\n`;
+      
+      // Afficher les champs à modifier
+      const fieldKeys = Object.keys(op.fields);
+      if (fieldKeys.length > 0) {
+        display += `   📝 Champs: ${fieldKeys.map(k => `"${k}"`).join(', ')}\n`;
+      }
+      
+      // Afficher les dépendances
+      if (op.tempId) {
+        display += `   🔗 Référencé comme: **${op.tempId}**\n`;
+      }
+      
+      display += `\n`;
+    }
+    
+    display += `\n---\n`;
+    display += `⚠️ **Voulez-vous confirmer cette opération ?**\n`;
+    display += `✅ Confirmer | ❌ Annuler`;
+    
+    return display;
+  }
+  
+  /**
+   * Génère un titre automatique pour la conversation
+   */
+  private generateConversationTitle(question: string): string {
+    // Prendre les 50 premiers caractères
+    let title = question.substring(0, 50);
+    if (question.length > 50) title += '...';
+    return title;
   }
 
   /**
@@ -204,34 +580,17 @@ export class AiDatabaseService implements OnModuleInit {
     return null;
   }
 
-  // private async initializeLLM() {
-  //   this.llm = new ChatOpenAI({
-  //     model: 'deepseek-reasoner',
-  //     temperature: 0.3,
-  //     maxTokens: this.MAX_TOKENS,
-  //     apiKey: process.env.DEEPSEEK_API_KEY,
-  //     configuration: {
-  //       baseURL: 'https://api.deepseek.com/v1',
-  //     },
-  //     modelKwargs: {
-  //       reasoning_effort: "low",  // ✅ "low" au lieu de "high" → beaucoup plus rapide
-  //       extra_body: {
-  //         thinking: { type: "enabled" }
-  //       }
-  //     }
-  //   });
-  // }
 
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
-    model: 'deepseek-chat',  // ✅ Beaucoup plus rapide
-    temperature: 0.1,        // ✅ Bas pour des réponses cohérentes
-    maxTokens: 1500,         // ✅ Suffisant pour une requête SQL
+    model: 'deepseek-chat',
+    temperature: 0,            // ✅ Déterministe pour des analyses précises
+    maxTokens: 4000,           // ✅ Augmenté pour les plans d'écriture JSON complexes
     apiKey: process.env.DEEPSEEK_API_KEY,
     configuration: {
       baseURL: 'https://api.deepseek.com/v1',
     },
-    timeout: 15000,
+    timeout: 30000,            // ✅ 30s pour laisser le temps au raisonnement
     maxRetries: 2,
   });
 }
@@ -297,58 +656,7 @@ export class AiDatabaseService implements OnModuleInit {
     }
   }
 
- /**
-   * ✅ MÉTHODE PRINCIPALE : Analyser une question
-   */
-  async analyzeQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-    const startTime = Date.now();
-    const allTables = this.schemaMetadata.getAllVisibleTables();
-    const schemaJSON = await this.getCompleteSchemaJson(allTables)
-    const schema = await this.getCompleteSchema(allTables)
-    try {
-      // 🔥 MAGIE : Plus besoin d'envoyer le schéma !
-      const sqlQuery = await this.askQuestion(dto.question);
-      
-      // Vérifier que sqlQuery n'est pas vide
-      if (!sqlQuery) {
-        throw new Error('Impossible de générer la requête SQL');
-      }
-      
-      // Valider et exécuter la requête
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
-      let results: { data: any[]; rowCount: number } | null = null;
-      let analysis = '';
-      
-      if (validatedQuery && !dto.analyzeOnly) {
-        results = await this.executeSafeQuery(validatedQuery);
-        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
-      }
-;
-      return {
-        success: true,
-        question: dto.question,
-        sqlQuery: validatedQuery,
-        analysis,
-        schemaJSON,  // À adapter selon vos besoins
-        schema,        // À adapter selon vos besoins
-        results: results?.data,
-        executionTimeMs: Date.now() - startTime,
-        rowCount: results?.rowCount || 0,
-      };
-      
-    } catch (error) {
-      this.logger.error(`❌ Erreur: ${error.message}`);
-      return {
-        success: false,
-        question: dto.question,
-        analysis: `Erreur: ${error.message}`,
-        schemaJSON,  // À adapter selon vos besoins
-        schema,        // À adapter selon vos besoins
-        executionTimeMs: Date.now() - startTime,
-        error: error.message,
-      };
-    }
-  }
+
 
 
   /**
@@ -381,7 +689,7 @@ INSTRUCTIONS IMPORTANTES:
 3. Utilise des termes métier comme "dossier", "client", "étape", "procédure", "statut", "date"
 4. Pour les champs, utilise des noms lisibles comme "Numéro de dossier", "Nom de l'étape" au lieu de "id", "name"
 5. Si la réponse contient des dates, formate-les de façon lisible
-6. Sois concis mais précis (max 150 mots)
+6. Sois concis mais précis (max 500 mots)
 7. Termine par une phrase d'action ou de recommandation si pertinent
 
 RÉPONSE (en français courant, langage métier):`;
@@ -542,6 +850,7 @@ RÉPONSE (en français courant, langage métier):`;
       try {
         const tableInfo = await this.getTableInfo(table, relationships[table]);
         if (tableInfo) {
+          this.logger.log(`🔄 tableau info  ${table} tables...`)
           schema += tableInfo + '\n';
         }
       } catch (error) {
@@ -605,7 +914,8 @@ private async getDefaultSchema(): Promise<string> {
     
     // ✅ Récupérer les métadonnées pour savoir quelles colonnes ignorer
     const columnMetadata = this.columnLabelsCache.get(table) || new Map();
-    
+    const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
+
     // ✅ Filtrer les colonnes ignorées
     const visibleColumns = columns.filter(col => {
       let meta;
@@ -625,6 +935,21 @@ private async getDefaultSchema(): Promise<string> {
     
     // Construction du schéma enrichi
     let schema = `## Table ${table} (${rowCount.toLocaleString()} lignes)\n\n`;
+
+     // ✅ AJOUTER LES INFORMATIONS BUSINESS TABLE
+    if (tableMeta) {
+      schema += `**📋 Métier:** ${tableMeta.label}\n`;
+      if (tableMeta.description) {
+        schema += `**📝 Description:** ${tableMeta.description}\n`;
+      }
+      if (tableMeta.icon) {
+        schema += `**🖼️ Icône:** ${tableMeta.icon}\n`;
+      }
+      if (tableMeta.category) {
+        schema += `**📁 Catégorie:** ${tableMeta.category}\n`;
+      }
+      schema += `\n`;
+    }
     schema += '| Colonne technique | Type détaillé | Contraintes | Libellé métier | Description |\n';
     schema += '|------------------|---------------|-------------|----------------|-------------|\n';
     
@@ -812,7 +1137,7 @@ private async getDefaultSchema(): Promise<string> {
   }
 
   // Dans AiDatabaseService
-  private async getCompleteSchemaJson(tables: string[]): Promise<DatabaseSchema> {
+  public async getCompleteSchemaJson(tables: string[]): Promise<DatabaseSchema> {
     const relationships = this.relationshipsCache.get('all') || {};
     const resultTables: TableSchema[] = [];
     const allRelationships: { from: { table: string; column: string }; to: { table: string; column: string } }[] = [];
@@ -1058,38 +1383,6 @@ Retourne UNIQUEMENT la requête corrigée.`;
       
       return null;
     }
-
-     /**
-   * ✅ Pour les appels avec outils (Tool Calls)
-   */
-  async analyzeComplexQuestion(dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-    const tools = [
-      {
-        type: "function" as const,
-        function: {
-          name: "get_table_schema",
-          description: "Obtenir le schéma détaillé d'une table spécifique",
-          parameters: {
-            type: "object",
-            properties: {
-              table_name: { type: "string", description: "Nom de la table" }
-            },
-            required: ["table_name"]
-          }
-        }
-      }
-    ];
-    
-    // Appel avec tools
-    const response = await this.llm.invoke([
-      ...this.conversationHistory,
-      { role: "user" as const, content: dto.question }
-    ]);
-    
-    // Traitement de la réponse...
-    return this.analyzeQuestion(dto);
-  }
-
 
   async validateQuery(sqlQuery: string): Promise<{ valid: boolean; error?: string }> {
     try {

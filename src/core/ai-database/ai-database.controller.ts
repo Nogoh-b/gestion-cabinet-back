@@ -1,30 +1,72 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query, UseGuards, Req, UnauthorizedException, Param, Logger, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
-import { AnalysisResponseDto } from './dto/analysis-response.dto';
+import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../decorators/current-user.decorator';
+import { ConversationManagerService } from './conversation-manager.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
+  @UseGuards(JwtAuthGuard)
+
 @ApiBearerAuth()
 export class AiDatabaseController {
   constructor(
     private readonly aiDbService: AiDatabaseService,
     private readonly schemaMetadata: SchemaMetadataService,
-    ) {}
+      private readonly conversationManager: ConversationManagerService,
 
+    ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
-    summary: 'Pose une question en langage naturel sur votre base de données',
-    description: 'L\'IA génère du SQL, exécute la requête et analyse les résultats'
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
+    fileFilter: (req, file, cb) => {
+      const allowed = ['application/pdf', 'text/csv', 'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain', 'application/json'];
+      if (allowed.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`Type de fichier non supporté: ${file.mimetype}`), false);
+      }
+    }
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+        conversationId: { type: 'string' },
+        file: { type: 'string', format: 'binary' },
+      },
+    },
   })
-  @ApiResponse({ status: 200, description: 'Analyse réussie', type: AnalysisResponseDto })
-  @ApiResponse({ status: 400, description: 'Question invalide' })
-  @ApiResponse({ status: 500, description: 'Erreur serveur' })
-  async askQuestion(@Body() dto: AskQuestionDto): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto);
+  async askQuestion(
+    @Body() dto: AskQuestionDto,
+    @CurrentUser() user,
+    @UploadedFile() file?: Express.Multer.File
+  ): Promise<AnalysisResponseDto> {
+    return this.aiDbService.analyzeQuestion(dto, user.id, file);
+  }
+
+
+  @Post('write/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirme une opération d\'écriture' })
+  async confirmWrite(
+    @Body('pendingIntent') pendingIntent: WritePlan,
+    @CurrentUser() user
+  ): Promise<AnalysisResponseDto> {
+    return this.aiDbService.confirmWrite(pendingIntent, user.id);
   }
 
   @Post('execute')
@@ -50,6 +92,15 @@ export class AiDatabaseController {
     };
   }
 
+  @Get('schema-json')
+  @ApiOperation({ 
+    summary: 'Récupère le schéma complet de la base de données avec métadonnées métier',
+    description: 'Retourne la structure de toutes les tables avec libellés, descriptions, types, relations...'
+  })
+  @ApiResponse({ status: 200, description: 'Schéma retourné avec succès' })
+  async getDatabaseSchemaJSON() {
+    return this.aiDbService.getFullDatabaseSchema();
+  }
   @Get('schema')
   @ApiOperation({ 
     summary: 'Récupère le schéma complet de la base de données avec métadonnées métier',
@@ -57,7 +108,39 @@ export class AiDatabaseController {
   })
   @ApiResponse({ status: 200, description: 'Schéma retourné avec succès' })
   async getDatabaseSchema() {
-    return this.aiDbService.getFullDatabaseSchema();
+        // const allTables = this.schemaMetadata.getAllVisibleTables();
+    // const schemaJSON = await this.aiDbService.getCompleteSchemaJson(allTables);
+    return await this.aiDbService.preloadSystemPrompt();
+  }
+
+   @Post('analyze')
+  async analyze(@Body() dto: AskQuestionDto, @Req() req) {
+    const userId = req.user?.id || 'anonymous'; // Ton système d'auth
+    return this.aiDbService.analyzeQuestion(dto, userId);
+  }
+  
+  @Get('conversations')
+  async getConversations(@Req() req) {
+    const userId = req.user?.id || 'anonymous';
+    return this.conversationManager.getUserConversations(userId);
+  } 
+
+  @Post('conversations')
+  async createConversation(@Req() req) {
+    const userId = req.user?.id || 'anonymous';
+    return this.conversationManager.createConversation(userId);
+  }
+  
+  @Get('conversations/:id/messages')
+  async getConversationMessages(@Param('id') conversationId: string, @Req() req) {
+    const userId = req.user?.id || 'anonymous';
+    // Vérifier que la conversation appartient à l'utilisateur
+    const conversation = await this.conversationManager.getConversation(conversationId);
+    if (!conversation || conversation.userId.toString() !== userId.toString()) {
+      Logger.warn(`⚠️ Accès non autorisé à la conversation ${conversationId} pour user ${userId} ${conversation?.userId}`);
+      throw new UnauthorizedException();
+    }
+    return this.conversationManager.getFullHistory(conversationId);
   }
 
 
@@ -74,9 +157,11 @@ export class AiDatabaseController {
   @Get('visible-tables')
   @ApiOperation({ summary: 'Liste les tables visibles (avec métadonnées)' })
   async getVisibleTables() {
+    const tables = this.schemaMetadata.getAllVisibleTables()
     return {
       count: this.schemaMetadata.getVisibleTablesCount(),
-      tables: this.schemaMetadata.getAllVisibleTables(),
+      tables,
+      schemaJSON: await this.aiDbService.getCompleteSchemaJson(tables),
       details: this.schemaMetadata.getAllVisibleTables().map(table => ({
         name: table,
         metadata: this.schemaMetadata.getTableMetadataForPrompt(table)

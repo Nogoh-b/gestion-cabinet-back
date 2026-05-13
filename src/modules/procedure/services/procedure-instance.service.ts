@@ -1213,15 +1213,14 @@ private async checkAndTriggerAutomaticTransitions(
 /**
  * Récupérer les transitions disponibles (version enrichie avec inputs)
  */
-async getAvailableTransitionsWithInputs(instanceId: string): Promise<(Transition & { expectsUserInput: boolean; userInputs?: any[] })[]> {
+async getAvailableTransitionsWithInputs(instanceId: string): Promise<Array<Partial<Transition> & { expectsUserInput: boolean; userInputs?: any[] }>> {
   const transitions = await this.getAvailableTransitions(instanceId);
-  
   return transitions.map(transition => ({
     ...transition,
     expectsUserInput: transition.expectsUserInput || false,
-    userInputs: transition.userInputs,
+    userInputs: transition.userInputs, 
   }));
-}
+} 
 
 
 // services/procedure-instance.service.ts (ajout)

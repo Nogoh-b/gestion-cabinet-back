@@ -48,105 +48,109 @@ export class ProcedureTemplateService {
       // Map pour stocker les IDs des stages (pour les transitions/cycles)
       const stageIdMap = new Map<string, string>();
 
-      // 2. Créer les stages et sous-stages
-      for (let i = 0; i < dto.stages.length; i++) {
-        const stageDto = dto.stages[i];
-        const tempId = stageDto.id || `temp-${Date.now()}-${i}`;
-        
-        const stage = this.stageRepository.create({
-          templateId: template.id,
-          order: i,
-          name: stageDto.name,
-          description: stageDto.description,
-          canBeSkipped: stageDto.canBeSkipped ?? false,
-          canBeReentered: stageDto.canBeReentered ?? true,
-        });
-        await queryRunner.manager.save(stage);
-        
-        // Stocker le mapping ID temporaire -> ID réel
-        stageIdMap.set(tempId, stage.id);
-
-        // Créer les sous-stages
-        if (stageDto.subStages && stageDto.subStages.length > 0) {
-          for (let j = 0; j < stageDto.subStages.length; j++) {
-            const subStageDto = stageDto.subStages[j];
-            const subStage = this.subStageRepository.create({
-              stageId: stage.id,
-              order: j,
-              name: subStageDto.name,
-              description: subStageDto.description,
-              isMandatory: subStageDto.isMandatory ?? true,
-            });
-            await queryRunner.manager.save(subStage);
-          }
-        }
-
-        // Créer la configuration du stage si fournie
-        if (dto.stageConfigs && dto.stageConfigs[tempId]) {
-          const configDto = dto.stageConfigs[tempId];
-          const stageConfig = this.stageConfigRepository.create({
-            stageId: stage.id,
-            allowDocuments: configDto.allowDocuments ?? false,
-            allowDiligences: configDto.allowDiligences ?? false,
-            allowInvoices: configDto.allowInvoices ?? false,
-            allowHearings: configDto.allowHearings ?? false,
-            documentTypesAllowed: this.serializeJson(configDto.documentTypesAllowed ?? []),
-            diligenceConfig: this.serializeJson(configDto.diligenceConfig),
-            hearingConfig: this.serializeJson(configDto.hearingConfig),
-            invoiceConfig: this.serializeJson(configDto.invoiceConfig),
-          });
-          await queryRunner.manager.save(stageConfig);
-        }
-      }
-
-      // 3. Créer les transitions avec les nouveaux IDs
-      if (dto.transitions && dto.transitions.length > 0) {
-        for (const transitionDto of dto.transitions) {
-          const newFromStageId = stageIdMap.get(transitionDto.fromStageId);
-          const newToStageId = stageIdMap.get(transitionDto.toStageId);
+      // 2. Créer les stages et sous-stages (si des stages sont fournis)
+      if (dto.stages && dto.stages.length > 0) {
+        for (let i = 0; i < dto.stages.length; i++) {
+          const stageDto = dto.stages[i];
+          const tempId = stageDto.id || `temp-${Date.now()}-${i}`;
           
-          if (!newFromStageId || !newToStageId) {
-            console.warn(`Skipping transition: stage not found. From: ${transitionDto.fromStageId}, To: ${transitionDto.toStageId}`);
-            continue;
-          }
-          
-          const transition = this.transitionRepository.create({
-            fromStageId: newFromStageId,
-            toStageId: newToStageId,
-            type: transitionDto.type === 'AUTOMATIC' ? TransitionType.AUTOMATIC : TransitionType.MANUAL,
-            label: transitionDto.label || null,
-            condition: this.serializeJson(transitionDto.condition),
-            triggerEvent: transitionDto.triggerEvent || null,
-            triggerCondition: this.serializeJson(transitionDto.triggerCondition),
-            isDefault: transitionDto.isDefault ?? false,
-            requiresDecision: transitionDto.requiresDecision ?? true,
-            requiresValidation: transitionDto.requiresValidation ?? false,
-            onTransition: this.serializeJson(transitionDto.onTransition),
-          });
-          await queryRunner.manager.save(transition);
-        }
-      }
-
-      // 4. Créer les cycles avec les nouveaux IDs
-      if (dto.cycles && dto.cycles.length > 0) {
-        for (const cycleDto of dto.cycles) {
-          const newFromStageId = stageIdMap.get(cycleDto.fromStageId);
-          const newToStageId = stageIdMap.get(cycleDto.toStageId);
-          
-          if (!newFromStageId || !newToStageId) {
-            console.warn(`Skipping cycle: stage not found. From: ${cycleDto.fromStageId}, To: ${cycleDto.toStageId}`);
-            continue;
-          }
-          
-          const cycle = this.cycleRepository.create({
+          const stage = this.stageRepository.create({
             templateId: template.id,
-            fromStageId: newFromStageId,
-            toStageId: newToStageId,
-            label: cycleDto.label || null,
-            condition: this.serializeJson(cycleDto.condition),
-            maxLoops: cycleDto.maxLoops ?? 1,
+            order: i,
+            name: stageDto.name,
+            description: stageDto.description,
+            canBeSkipped: stageDto.canBeSkipped ?? false,
+            canBeReentered: stageDto.canBeReentered ?? true,
           });
-          await queryRunner.manager.save(cycle);
+          await queryRunner.manager.save(stage);
+          
+          // Stocker le mapping ID temporaire -> ID réel
+          stageIdMap.set(tempId, stage.id);
+
+          // Créer les sous-stages
+          if (stageDto.subStages && stageDto.subStages.length > 0) {
+            for (let j = 0; j < stageDto.subStages.length; j++) {
+              const subStageDto = stageDto.subStages[j];
+              const subStage = this.subStageRepository.create({
+                stageId: stage.id,
+                order: j,
+                name: subStageDto.name,
+                description: subStageDto.description,
+                isMandatory: subStageDto.isMandatory ?? true,
+              });
+              await queryRunner.manager.save(subStage);
+            }
+          }
+
+          // Créer la configuration du stage si fournie
+          if (dto.stageConfigs && dto.stageConfigs[tempId]) {
+            const configDto = dto.stageConfigs[tempId];
+            const stageConfig = this.stageConfigRepository.create({
+              stageId: stage.id,
+              allowDocuments: configDto.allowDocuments ?? false,
+              allowDiligences: configDto.allowDiligences ?? false,
+              allowInvoices: configDto.allowInvoices ?? false,
+              allowHearings: configDto.allowHearings ?? false,
+              documentTypesAllowed: this.serializeJson(configDto.documentTypesAllowed ?? []),
+              diligenceConfig: this.serializeJson(configDto.diligenceConfig),
+              hearingConfig: this.serializeJson(configDto.hearingConfig),
+              invoiceConfig: this.serializeJson(configDto.invoiceConfig),
+            });
+            await queryRunner.manager.save(stageConfig);
+          }
+        }
+
+        // 3. Créer les transitions avec les nouveaux IDs
+        if (dto.transitions && dto.transitions.length > 0) {
+          for (const transitionDto of dto.transitions) {
+            const newFromStageId = stageIdMap.get(transitionDto.fromStageId);
+            const newToStageId = stageIdMap.get(transitionDto.toStageId);
+            
+            if (!newFromStageId || !newToStageId) {
+              console.warn(`Skipping transition: stage not found. From: ${transitionDto.fromStageId}, To: ${transitionDto.toStageId}`);
+              continue;
+            }
+            
+            const transition = this.transitionRepository.create({
+              fromStageId: newFromStageId,
+              toStageId: newToStageId,
+              templateId: template.id,
+              type: transitionDto.type === 'AUTOMATIC' ? TransitionType.AUTOMATIC : TransitionType.MANUAL,
+              label: transitionDto.label || null,
+              condition: this.serializeJson(transitionDto.condition),
+              triggerEvent: transitionDto.triggerEvent || null,
+              triggerCondition: this.serializeJson(transitionDto.triggerCondition),
+              isDefault: transitionDto.isDefault ?? false,
+              requiresDecision: transitionDto.requiresDecision ?? true,
+              requiresValidation: transitionDto.requiresValidation ?? false,
+              onTransition: this.serializeJson(transitionDto.onTransition),
+            });
+
+            await queryRunner.manager.save(transition);
+          }
+        }
+
+        // 4. Créer les cycles avec les nouveaux IDs
+        if (dto.cycles && dto.cycles.length > 0) {
+          for (const cycleDto of dto.cycles) {
+            const newFromStageId = stageIdMap.get(cycleDto.fromStageId);
+            const newToStageId = stageIdMap.get(cycleDto.toStageId);
+            
+            if (!newFromStageId || !newToStageId) {
+              console.warn(`Skipping cycle: stage not found. From: ${cycleDto.fromStageId}, To: ${cycleDto.toStageId}`);
+              continue;
+            }
+            
+            const cycle = this.cycleRepository.create({
+              templateId: template.id,
+              fromStageId: newFromStageId,
+              toStageId: newToStageId,
+              label: cycleDto.label || null,
+              condition: this.serializeJson(cycleDto.condition),
+              maxLoops: cycleDto.maxLoops ?? 1,
+            });
+            await queryRunner.manager.save(cycle);
+          }
         }
       }
 
@@ -172,32 +176,28 @@ export class ProcedureTemplateService {
         where,
         relations: ['stages', 'stages.subStages', 'stages.config'],
         order: {
-          createdAt: 'DESC',
+          id: 'DESC',
           stages: { order: 'ASC' },
         },
       });
 
       // Charger les transitions et cycles pour chaque template
       for (const template of templates) {
-        const stageIds = template.stages.map(s => s.id);
+        // Charger les transitions par templateId (plus fiable)
+        const transitions = await this.transitionRepository.find({
+          where: { templateId: template.id },
+          relations: ['fromStage', 'toStage'],
+        });
         
-        if (stageIds.length > 0) {
-          const transitions = await this.transitionRepository.find({
-            where: { fromStageId: In(stageIds) },
-            relations: ['fromStage', 'toStage'],
-          });
-          
-          const cycles = await this.cycleRepository.find({
-            where: { templateId: template.id },
-          });
-          
-          (template as any).transitions = transitions;
-          (template as any).cycles = cycles;
-        } else {
-          (template as any).transitions = [];
-          (template as any).cycles = [];
-        }
+        // Charger les cycles par templateId
+        const cycles = await this.cycleRepository.find({
+          where: { templateId: template.id },
+        });
+        
+        (template as any).transitions = transitions;
+        (template as any).cycles = cycles;
       }
+
 
       return templates;
     } catch (error) {
@@ -212,7 +212,7 @@ export class ProcedureTemplateService {
         where: { id },
         relations: ['stages', 'stages.subStages', 'stages.config'],
       order: {
-        createdAt: 'DESC',
+        created_at: 'DESC', 
         stages: { order: 'ASC' },
       },
       });
@@ -221,21 +221,17 @@ export class ProcedureTemplateService {
         throw new NotFoundException(`Template with ID ${id} not found`);
       }
 
-      const stageIds = template.stages.map(s => s.id);
+      // Charger les transitions par templateId (plus fiable que par fromStageId)
+      const transitions = await this.transitionRepository.find({
+        where: { templateId: id },
+        relations: ['fromStage', 'toStage'],
+      });
       
-      let transitions: Transition[] = [];
-      let cycles: Cycle[] = [];
-      
-      if (stageIds.length > 0) {
-        transitions = await this.transitionRepository.find({
-          where: { fromStageId: In(stageIds) },
-          relations: ['fromStage', 'toStage'],
-        });
-        
-        cycles = await this.cycleRepository.find({
-          where: { templateId: id },
-        });
-      }
+      // Charger les cycles par templateId
+      const cycles = await this.cycleRepository.find({
+        where: { templateId: id },
+      });
+
 
       // Désérialiser les configurations JSON
       for (const stage of template.stages) {
@@ -247,11 +243,12 @@ export class ProcedureTemplateService {
         }
       }
 
+      // Retourner un objet simple avec toutes les propriétés pour éviter les problèmes de sérialisation
       return {
         ...template,
         transitions,
         cycles,
-      } as ProcedureTemplate;
+      } as unknown as ProcedureTemplate;
     } catch (error) {
       console.error('Error finding template:', error);
       throw error;

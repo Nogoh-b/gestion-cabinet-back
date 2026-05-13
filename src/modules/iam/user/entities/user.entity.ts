@@ -13,15 +13,16 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
 @Entity('user')
 @BusinessTable({
   label: 'Utilisateurs',
-  description: 'Comptes utilisateurs du système (avocats, secrétaires, clients, etc.).',
+  description: '  système (avocats, secrétaires, clients, etc.).',
   icon: '👤',
-  category: 'iam'
+  category: 'iam',
+  ignored: false
 })
 export class User {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'utilisateur',
+    description: 'Identifiant unique de l\'utilisateur, qui est le même que employée',
     importance: 'low',
     group: 'technique',
     ignored: true

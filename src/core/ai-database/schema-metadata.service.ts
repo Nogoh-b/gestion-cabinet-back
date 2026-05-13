@@ -33,7 +33,7 @@ export class SchemaMetadataService {
             this.tableMetadataCache.set(tableName, tableMeta);
             this.logger.debug(`📋 Table: ${tableName} → ${tableMeta.label}`);
           } else {
-            this.logger.debug(`⏭️ Table ignorée: ${tableName}`);
+            this.logger.debug(`⏭️ Table ignorée: ${tableName}`); 
             continue;
           }
         } else {
@@ -271,6 +271,7 @@ getTableLabel(tableName: string): string {
   * Vérifie si une table a des métadonnées (donc visible)
   */
   hasTableMetadata(tableName: string): boolean {
+    Logger.debug(`Vérification métadonnées pour table: ${tableName} → ${this.tableMetadataCache.has(tableName)}`);  
     return this.tableMetadataCache.has(tableName);
   }
 

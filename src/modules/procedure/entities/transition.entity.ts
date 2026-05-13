@@ -10,6 +10,8 @@ import {
 } from 'typeorm';
 import { Stage } from './stage.entity';
 import { ProcedureTemplate } from './procedure-template.entity';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 
 export enum TransitionType {
   AUTOMATIC = 'automatic',
@@ -17,11 +19,31 @@ export enum TransitionType {
 }
 
 @Entity('transitions')
-export class Transition {
+@BusinessTable({
+  label: 'Transitions',
+  description: 'Transitions entre les étapes d\'un modèle de procédure. Définissent les chemins possibles d\'une étape à une autre, avec conditions et actions.',
+  icon: '➡️',
+  category: 'procedure',
+})
+export class Transition extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
+  @BusinessColumn({
+    label: 'Identifiant',
+    description: 'Identifiant unique de la transition (format UUID)',
+    importance: 'low',
+    group: 'technique',
+    ignored: true,
+  })
   id: string;
 
   @Column({ name: 'fromStageId' })
+  @BusinessColumn({
+    label: 'Étape source',
+    description: 'Identifiant de l\'étape de départ',
+    importance: 'high',
+    group: 'relation',
+    ignored: true,
+  })
   fromStageId: string;
 
   @ManyToOne(() => Stage, { onDelete: 'CASCADE' })
@@ -29,6 +51,13 @@ export class Transition {
   fromStage: Stage;
 
   @Column({ name: 'toStageId' })
+  @BusinessColumn({
+    label: 'Étape destination',
+    description: 'Identifiant de l\'étape d\'arrivée',
+    importance: 'high',
+    group: 'relation',
+    ignored: true,
+  })
   toStageId: string;
 
   @ManyToOne(() => Stage, { onDelete: 'CASCADE' })
@@ -40,12 +69,32 @@ export class Transition {
     enum: TransitionType,
     default: TransitionType.MANUAL,
   })
+  @BusinessColumn({
+    label: 'Type',
+    description: 'automatic (Automatique) ou manual (Manuelle)',
+    importance: 'high',
+    group: 'règles',
+  })
   type: TransitionType;
 
   @Column({ type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Libellé',
+    description: 'Libellé de la transition affiché à l\'utilisateur',
+    example: 'Passer à l\'instruction',
+    importance: 'high',
+    group: 'identification',
+  })
   label: string | null;
 
   @Column({ type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Condition',
+    description: 'Condition JavaScript à évaluer pour autoriser la transition',
+    importance: 'low',
+    group: 'règles',
+    ignored: true,
+  })
   condition: string | null;
 
   @Column({ type: 'text', nullable: true })
@@ -55,9 +104,22 @@ export class Transition {
   triggerCondition: string | null;
 
   @Column({ type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Modèle',
+    description: 'Identifiant du modèle de procédure parent',
+    importance: 'high',
+    group: 'relation',
+    ignored: true,
+  })
   templateId: string | null;
 
   @Column({ type: 'boolean', default: false })
+  @BusinessColumn({
+    label: 'Par défaut',
+    description: 'Transition utilisée par défaut si aucune décision explicite',
+    importance: 'medium',
+    group: 'règles',
+  })
   isDefault: boolean;
 
   @ManyToOne(() => ProcedureTemplate, (template) => template.transitions)
@@ -65,9 +127,21 @@ export class Transition {
   template: ProcedureTemplate;
 
   @Column({ type: 'boolean', default: true })
+  @BusinessColumn({
+    label: 'Nécessite décision',
+    description: 'Si vrai, une décision explicite est requise pour cette transition',
+    importance: 'high',
+    group: 'règles',
+  })
   requiresDecision: boolean;
 
   @Column({ type: 'boolean', default: false })
+  @BusinessColumn({
+    label: 'Nécessite validation',
+    description: 'Si vrai, une validation supplémentaire est requise',
+    importance: 'medium',
+    group: 'règles',
+  })
   requiresValidation: boolean;
 
   @Column({ type: 'text', nullable: true })

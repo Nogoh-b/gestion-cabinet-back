@@ -116,7 +116,9 @@ export class ProceduresController {
   @ApiResponse({ status: 200, description: 'Type de procédure trouvé', type: ProcedureTypeResponseDto })
   @ApiResponse({ status: 404, description: 'Type de procédure non trouvé' })
   findOne(@Param('id', ParseIntPipe) id: string): any{
-    return this.proceduresService.findOneV1(+id,null,ProcedureTypeResponseDto);
+    const relations = ['subtypes', 'dossiers', 'procedure_template', 'procedure_template.stages', 'procedure_template.transitions', 'procedure_template.stages.subStages', 'procedure_template.stages.config'];
+    
+    return this.proceduresService.findOneV1(+id,relations,ProcedureTypeResponseDto);
     
   }
 
