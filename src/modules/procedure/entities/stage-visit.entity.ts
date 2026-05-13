@@ -17,13 +17,24 @@ import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { SubStageVisit } from './sub-stage-visit.entity';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { BaseEntity } from 'src/core/entities/baseEntity';
 
 @Entity('stage_visits')
-export class StageVisit {
-  @PrimaryGeneratedColumn('uuid')
+@BusinessTable({
+  label: 'Visites d\'étape',
+  description: 'Enregistrement des passages sur une étape durant le suivi d\'une instance de procédure',
+  icon: '👣',
+  category: 'procedure',
+  ignored: true,
+})
+export class StageVisit extends BaseEntity {
+    @PrimaryGeneratedColumn('uuid')
+  @BusinessColumn({ label: 'Identifiant', description: 'Identifiant unique', importance: 'low', group: 'technique', ignored: true })
   id: string;
 
   @Column()
+  @BusinessColumn({ label: 'Instance', description: 'Instance de procédure', importance: 'high', group: 'relation', ignored: true })
   instanceId: string;
 
   @ManyToOne(() => ProcedureInstance, instance => instance.stageVisits, { onDelete: 'CASCADE' })
@@ -31,6 +42,7 @@ export class StageVisit {
   instance: ProcedureInstance;
 
   @Column()
+  @BusinessColumn({ label: 'Étape', description: 'Étape visitée', importance: 'high', group: 'relation', ignored: true })
   stageId: string;
 
   @ManyToOne(() => Stage, { onDelete: 'CASCADE' })
@@ -38,24 +50,21 @@ export class StageVisit {
   stage: Stage;
 
   @Column()
-  visitNumber: number;           // 1 = première fois, 2 = deuxième fois, etc.
+  @BusinessColumn({ label: 'N° de visite', description: 'Numéro de visite (1=première)', importance: 'medium', group: 'suivi' })
+  visitNumber: number;
 
   @Column({ type: 'json', nullable: true })
-  completedSubStages: string[];  // Sous-étapes complétées pendant CETTE visite uniquement
-
+  completedSubStages: string[];
 
   @OneToMany(() => SubStageVisit, (subVisit) => subVisit.stageVisit, { cascade: true })
   subStageVisits: SubStageVisit[];
 
-
   @Column({ type: 'uuid', nullable: true })
   currentSubStageVisitId?: string | null;
 
-  // Relation optionnelle pour accéder facilement à la sous-étape en cours
   @ManyToOne(() => SubStageVisit, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'currentSubStageVisitId' })
   currentSubStageVisit?: SubStageVisit | null;
-
 
   @Column({ type: 'json', nullable: true })
   subStageMetadata: Record<string, any>;
@@ -66,7 +75,6 @@ export class StageVisit {
   @Column({ nullable: true })
   exitedAt: Date;
 
-  // Relations spécifiques à cette visite
   @OneToMany(() => Facture, facture => facture.stageVisit)
   factures: Facture[];
 

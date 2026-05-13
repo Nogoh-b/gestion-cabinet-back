@@ -176,7 +176,7 @@ export class ProcedureTemplateService {
         where,
         relations: ['stages', 'stages.subStages', 'stages.config'],
         order: {
-          createdAt: 'DESC',
+          id: 'DESC',
           stages: { order: 'ASC' },
         },
       });
@@ -212,7 +212,7 @@ export class ProcedureTemplateService {
         where: { id },
         relations: ['stages', 'stages.subStages', 'stages.config'],
       order: {
-        createdAt: 'DESC',
+        created_at: 'DESC', 
         stages: { order: 'ASC' },
       },
       });
