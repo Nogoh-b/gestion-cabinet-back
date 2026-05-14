@@ -6,6 +6,7 @@ import { WriteHandlerRegistry, WriteResult } from "./write/write-handler.registr
 
 import { InjectDataSource } from "@nestjs/typeorm";
 import { WriteIntent } from "./interface/write-intent.interface";
+import { AmbiguityException } from "./write/ambiguity.exception";
 
 @Injectable()
 export class GenericWriteService {
@@ -50,7 +51,7 @@ export class GenericWriteService {
         // Résoudre les références aux entités créées dans les opérations précédentes
         const resolvedFields = this.resolveReferences(operation.fields, createdEntities);
 
-                // ✅ Exécution : handler enregistré en priorité, générique en fallback
+        // ✅ Exécution : handler enregistré en priorité, générique en fallback
         const result = await this.executeOperation(
           operation,
           resolvedFields,
@@ -82,6 +83,17 @@ export class GenericWriteService {
         await queryRunner.rollbackTransaction();
         this.logger.error(`❌ Transaction annulée: ${error.message}`);
       }
+
+      // ── Ambiguïté : enrichir avec l'index et re-lancer SANS encapsuler
+      if (error instanceof AmbiguityException) {
+        // Chercher l'index de l'opération en cours si pas encore rempli
+        if (error.operationIndex === -1) {
+          // Déterminé par le nombre de résultats déjà accumulés
+          error.operationIndex = results.length;
+        }
+        throw error; // re-throw tel quel — pas BadRequestException
+      }
+
       throw new BadRequestException(`Échec du plan d'écriture: ${error.message}`);
     } finally {
       await queryRunner.release();

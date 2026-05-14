@@ -12,6 +12,7 @@ import { ConversationManagerService } from './conversation-manager.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { GenericWriteService } from './generic-write.service';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+import { AmbiguityException } from './write/ambiguity.exception';
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -334,72 +335,70 @@ export class AiDatabaseService implements OnModuleInit {
       return message;
     }
   /**
-  * ✅ MÉTHODE PRINCIPALE MODIFIÉE : Analyser une question avec gestion de session + fichier
-  */
+   * MÉTHODE PRINCIPALE : Analyser une question avec gestion de session + fichier.
+   *
+   * Ordre des opérations :
+   *  1. Extraire le contenu du fichier (si présent) → enrichir la question
+   *  2. Détection d'intention sur la question enrichie (READ vs WRITE)
+   *  3a. WRITE → exécution du plan, historique, gestion ambiguïté
+   *  3b. READ  → SQL → résultats → analyse métier → historique
+   */
   async analyzeQuestion(
     dto: AskQuestionDto,
     userId: string,
-    file?: Express.Multer.File  // ← Nouveau paramètre optionnel
+    file?: Express.Multer.File,
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
 
-    // ── Détection d'intention ──────────────────────────────
-    const allTables = this.schemaMetadata.getAllVisibleTables();
-    const schema = await this.getCompleteSchema(allTables);
+    // ── 1. Enrichissement par fichier (AVANT la détection d'intention) ────────
+    let enrichedQuestion = dto.question;
+    let fileInfo: any;
 
-    // ✅ Passer le schéma READ pour le contexte relationnel
-    // (le schéma d'écriture est généré en interne par IntentDetectionService
-    //  via writeHandlerRegistry.generateGlobalWriteSchema())
-    const intentResult = await this.intentDetectionService.detectIntent(
-      dto.question,
-      this.llm,
-      schema,
-    );
-
-    this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
-
-    // ──────────────────────────────────────────────────────
-    // 2️⃣ BRANCHE ÉCRITURE (avec plan)
-    // ──────────────────────────────────────────────────────
-    if (intentResult.type === 'WRITE' && intentResult.writePlan) {
-      const plan = intentResult.writePlan;
-
-      if (intentResult.requiresConfirmation) {
-        return {
-          success: true,
-          question: dto.question,
-          analysis: `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`,
-          pendingWritePlan: plan,
-          requiresConfirmation: true,
-          executionTimeMs: Date.now() - startTime,
-        };
-      }
-
-      // ✅ Exécution directe via genericWriteService (handler métier + fallback générique)
+    if (file) {
+      this.logger.log(`📎 Fichier reçu: ${file.originalname} (${file.mimetype}, ${file.size} octets)`);
       try {
-        const results = await this.genericWriteService.executePlan(plan, userId);
-        return {
-          success: true,
-          question: dto.question,
-          analysis: this.formatPlanResults(results),
-          results,
-          executionTimeMs: Date.now() - startTime,
-        };
-      } catch (error) {
-        this.logger.error(`❌ Erreur écriture: ${error.message}`);
-        return {
-          success: false,
-          question: dto.question,
-          analysis: `Erreur lors de l'exécution: ${error.message}`,
-          executionTimeMs: Date.now() - startTime,
-          error: error.message,
-        };
+        const fileContent = await this.extractFileContent(file);
+        const truncated = fileContent.substring(0, 5000);
+        enrichedQuestion = `${dto.question}
+
+--- CONTENU DU FICHIER: ${file.originalname} ---
+${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractères]' : ''}
+--- FIN DU FICHIER ---`;
+        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
+        this.logger.log(`✅ Contenu extrait du fichier (${fileContent.length} caractères)`);
+      } catch (fileError) {
+        this.logger.warn(`⚠️ Impossible de lire le fichier: ${fileError.message}`);
+        enrichedQuestion += `\n\n[Note: Le fichier ${file.originalname} n'a pas pu être lu: ${fileError.message}]`;
+        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype, error: fileError.message };
       }
     }
 
-    const schemaJSON = await this.getCompleteSchemaJson(allTables);
+    // ── 2. Détection d'intention sur la question enrichie ────────────────────
+    const allTables = this.schemaMetadata.getAllVisibleTables();
+    const schema = await this.getCompleteSchema(allTables);
 
-    console.log('conversation bot ',dto)
+    const intentResult = await this.intentDetectionService.detectIntent(
+      enrichedQuestion,
+      this.llm,
+      schema,
+    );
+    this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
+
+    // ── 3a. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
+    if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+      return this.handleWriteIntent(
+        intentResult.writePlan,
+        intentResult.requiresConfirmation ?? false,
+        enrichedQuestion,
+        dto,
+        userId,
+        startTime,
+        fileInfo,
+      );
+    }
+
+    // ── 3b. BRANCHE LECTURE ───────────────────────────────────────────────────
+    const schemaJSON = await this.getCompleteSchemaJson(allTables);
 
     try {
       let conversationId = dto.conversationId;
@@ -409,32 +408,12 @@ export class AiDatabaseService implements OnModuleInit {
         const newConversation = await this.conversationManager.createConversation(userId, title);
         conversationId = newConversation.id;
       } else {
-        // ✅ Mettre à jour le titre si la conversation existe et a le titre par défaut
         const existingConv = await this.conversationManager.getConversation(conversationId);
         if (existingConv && (!existingConv.title || existingConv.title === 'Nouvelle conversation')) {
-          const newTitle = this.generateConversationTitle(dto.question);
-          await this.conversationManager.updateConversationTitle(conversationId, newTitle);
-        }
-      }
-
-      // ✅ Si un fichier est fourni, enrichir la question avec son contenu
-      let enrichedQuestion = dto.question;
-      if (file) {
-        this.logger.log(`📎 Fichier reçu: ${file.originalname} (${file.mimetype}, ${file.size} octets)`);
-        try {
-          const fileContent = await this.extractFileContent(file);
-          const truncated = fileContent.substring(0, 5000); // Limiter pour le contexte
-          enrichedQuestion = `${dto.question}
-
-  --- CONTENU DU FICHIER: ${file.originalname} ---
-  ${truncated}
-  ${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractères]' : ''}
-  --- FIN DU FICHIER ---`;
-
-          this.logger.log(`✅ Contenu extrait du fichier (${fileContent.length} caractères)`);
-        } catch (fileError) {
-          this.logger.warn(`⚠️ Impossible de lire le fichier: ${fileError.message}`);
-          enrichedQuestion += `\n\n[Note: Le fichier ${file.originalname} a été reçu mais n'a pas pu être lu: ${fileError.message}]`;
+          await this.conversationManager.updateConversationTitle(
+            conversationId,
+            this.generateConversationTitle(dto.question),
+          );
         }
       }
 
@@ -446,14 +425,10 @@ export class AiDatabaseService implements OnModuleInit {
 
       if (validatedQuery && !dto.analyzeOnly) {
         results = await this.executeSafeQuery(validatedQuery);
-        analysis = await this.generateBusinessAnalysis(dto.question, validatedQuery, results, dto.specificTables || []);
-        
-        // ✅ Sauvegarder l'analyse métier dans l'historique de la conversation
-        await this.conversationManager.addAssistantMessage(
-          conversationId,
-          analysis,
-          undefined
+        analysis = await this.generateBusinessAnalysis(
+          dto.question, validatedQuery, results, dto.specificTables || [],
         );
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
       }
 
       return {
@@ -467,16 +442,8 @@ export class AiDatabaseService implements OnModuleInit {
         executionTimeMs: Date.now() - startTime,
         rowCount: results?.rowCount || 0,
         conversationId,
-        // ✅ Ajouter infos sur le fichier si présent
-        ...(file && {
-          fileInfo: {
-            name: file.originalname,
-            size: file.size,
-            type: file.mimetype,
-          }
-        }),
+        ...(fileInfo && { fileInfo }),
       };
-
     } catch (error) {
       this.logger.error(`❌ Erreur: ${error.message}`);
       return {
@@ -488,6 +455,368 @@ export class AiDatabaseService implements OnModuleInit {
         executionTimeMs: Date.now() - startTime,
         error: error.message,
       };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // BRANCHE WRITE : confirmation, ambiguïté, historique
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  private async handleWriteIntent(
+    plan: WritePlan,
+    requiresConfirmation: boolean,
+    enrichedQuestion: string,
+    dto: AskQuestionDto,
+    userId: string,
+    startTime: number,
+    fileInfo?: any,
+  ): Promise<AnalysisResponseDto> {
+
+    // ── Gérer / créer la conversation (historique write) ───────────────────
+    let conversationId = dto.conversationId;
+    if (!conversationId) {
+      const title = this.generateConversationTitle(dto.question);
+      const conv = await this.conversationManager.createConversation(userId, title);
+      conversationId = conv.id;
+    }
+    // Enregistrer la question dans l'historique
+    await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+
+    // ── Confirmation requise ────────────────────────────────────────────────
+    if (requiresConfirmation) {
+      const display = `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
+      await this.conversationManager.addAssistantMessage(conversationId, display, undefined);
+      return {
+        success: true,
+        question: dto.question,
+        analysis: display,
+        pendingWritePlan: plan,
+        requiresConfirmation: true,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+        ...(fileInfo && { fileInfo }),
+      };
+    }
+
+    // ── Exécution directe ──────────────────────────────────────────────────
+    try {
+      const results = await this.genericWriteService.executePlan(plan, userId);
+      const analysis = this.formatPlanResults(results);
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+
+      return {
+        success: true,
+        question: dto.question,
+        analysis,
+        results,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+        ...(fileInfo && { fileInfo }),
+      };
+    } catch (error) {
+      // ── Ambiguïté détectée : retourner les candidats au front ───────────
+      if (error instanceof AmbiguityException) {
+        this.logger.warn(
+          `⚠️ Ambiguïté: "${error.searchTerm}" dans "${error.entity}" ` +
+          `(${error.candidates.length} candidats, opération ${error.operationIndex})`,
+        );
+
+        const message =
+          `🔍 **Correspondances multiples pour "${error.searchTerm}"**\n\n` +
+          `Veuillez choisir parmi les ${error.candidates.length} résultats ci-dessous.`;
+
+        await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+
+        return {
+          success: true,          // ← pas une erreur : état normal en attente de choix
+          question: dto.question,
+          analysis: message,
+          pendingWritePlan: plan,
+          requiresAmbiguityResolution: true,
+          ambiguityContext: {
+            entity: error.entity,
+            fieldName: error.fieldName,
+            searchTerm: error.searchTerm,
+            candidates: error.candidates,
+            operationIndex: error.operationIndex,
+          },
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+          ...(fileInfo && { fileInfo }),
+        };
+      }
+
+      this.logger.error(`❌ Erreur écriture: ${error.message}`);
+      const errMsg = `❌ Erreur lors de l'exécution: ${error.message}`;
+      await this.conversationManager.addAssistantMessage(conversationId, errMsg, undefined);
+
+      return {
+        success: false,
+        question: dto.question,
+        analysis: errMsg,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+        error: error.message,
+        ...(fileInfo && { fileInfo }),
+      };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // REPRISE APRÈS AMBIGUÏTÉ
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Reprend l'exécution d'un WritePlan après que l'utilisateur a choisi
+   * l'entité souhaitée parmi les candidats ambigus.
+   *
+   * Stratégie :
+   *  - Injecte l'ID choisi dans le champ FK de l'opération concernée
+   *  - Ajoute resolveConfig.mode = 'best_effort' pour éviter une re-détection
+   *  - Relance executePlan depuis le début (transaction = tout ou rien)
+   *
+   * @param pendingPlan   Le WritePlan original (retourné lors de l'ambiguïté)
+   * @param operationIndex  Index de l'opération qui avait échoué
+   * @param fieldName       Alias FK à remplacer (ex: "client")
+   * @param resolvedId      ID de l'entité choisie par l'utilisateur
+   * @param userId          Utilisateur courant
+   * @param conversationId  Pour mise à jour de l'historique
+   */
+  async resumeAfterAmbiguity(
+    pendingPlan: WritePlan,
+    operationIndex: number,
+    fieldName: string,
+    resolvedId: string | number,
+    userId: string,
+    conversationId?: string,
+  ): Promise<AnalysisResponseDto> {
+    const startTime = Date.now();
+
+    // Injecter l'ID résolu dans l'opération concernée
+    const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pendingPlan)); // deep clone
+    const op = patchedPlan.operations[operationIndex];
+
+    if (!op) {
+      return {
+        success: false,
+        question: 'Reprise après ambiguïté',
+        analysis: `❌ Opération ${operationIndex} introuvable dans le plan`,
+        executionTimeMs: Date.now() - startTime,
+        error: 'operationIndex invalide',
+      };
+    }
+
+    // Remplacer la valeur textuelle par l'ID résolu
+    op.fields[fieldName] = resolvedId;
+
+    // Forcer best_effort pour les autres FK de cette opération
+    op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
+
+    this.logger.log(
+      `🔄 Reprise: opération ${operationIndex} "${op.entity}" — ` +
+      `"${fieldName}" → ID ${resolvedId}`,
+    );
+
+    try {
+      const results = await this.genericWriteService.executePlan(patchedPlan, userId);
+      const analysis = this.formatPlanResults(results);
+
+      if (conversationId) {
+        await this.conversationManager.addAssistantMessage(
+          conversationId,
+          `✅ Reprise réussie après sélection.\n\n${analysis}`,
+          undefined,
+        );
+      }
+
+      return {
+        success: true,
+        question: 'Reprise après ambiguïté',
+        analysis,
+        results,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+      };
+    } catch (error) {
+      // Nouvelle ambiguïté possible sur une autre opération
+      if (error instanceof AmbiguityException) {
+        const message =
+          `🔍 **Nouvelle ambiguïté: "${error.searchTerm}"**\n\n` +
+          `Veuillez choisir parmi les ${error.candidates.length} résultats ci-dessous.`;
+
+        if (conversationId) {
+          await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+        }
+
+        return {
+          success: true,          // ← pas une erreur : nouvelle ambiguïté en attente de choix
+          question: 'Reprise après ambiguïté',
+          analysis: message,
+          pendingWritePlan: patchedPlan,
+          requiresAmbiguityResolution: true,
+          ambiguityContext: {
+            entity: error.entity,
+            fieldName: error.fieldName,
+            searchTerm: error.searchTerm,
+            candidates: error.candidates,
+            operationIndex: error.operationIndex,
+          },
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+
+      return {
+        success: false,
+        question: 'Reprise après ambiguïté',
+        analysis: `❌ ${error.message}`,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+        error: error.message,
+      };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STREAMING SSE
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Version streaming de analyzeQuestion.
+   * Émet des événements SSE via `sendEvent` à chaque étape clé.
+   *
+   * Événements émis :
+   *   status          → progression textuelle (ex: "Analyse en cours...")
+   *   intent          → { type: 'READ'|'WRITE', plan? }
+   *   confirmation    → { plan } (write avec confirmation requise)
+   *   ambiguity       → { entity, fieldName, searchTerm, candidates, operationIndex }
+   *   result          → AnalysisResponseDto complet
+   *   error           → { message }
+   */
+  async analyzeQuestionStream(
+    dto: AskQuestionDto,
+    userId: string,
+    file: Express.Multer.File | undefined,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      // ── 1. Fichier ──────────────────────────────────────────────────────────
+      let enrichedQuestion = dto.question;
+      let fileInfo: any;
+
+      if (file) {
+        sendEvent('status', { message: `📎 Lecture du fichier ${file.originalname}...` });
+        try {
+          const content = await this.extractFileContent(file);
+          const truncated = content.substring(0, 5000);
+          enrichedQuestion = `${dto.question}\n\n--- CONTENU: ${file.originalname} ---\n${truncated}${content.length > 5000 ? '\n[tronqué]' : ''}\n---`;
+          fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
+          sendEvent('status', { message: `✅ Fichier lu (${content.length} caractères)` });
+        } catch (e) {
+          sendEvent('status', { message: `⚠️ Fichier illisible: ${e.message}` });
+        }
+      }
+
+      // ── 2. Détection d'intention ────────────────────────────────────────────
+      sendEvent('status', { message: '🔍 Analyse de l\'intention...' });
+      const allTables = this.schemaMetadata.getAllVisibleTables();
+      const schema = await this.getCompleteSchema(allTables);
+      const intentResult = await this.intentDetectionService.detectIntent(
+        enrichedQuestion, this.llm, schema,
+      );
+      sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
+
+      // ── 3a. WRITE ────────────────────────────────────────────────────────────
+      if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+        const plan = intentResult.writePlan;
+
+        let conversationId = dto.conversationId;
+        if (!conversationId) {
+          const conv = await this.conversationManager.createConversation(
+            userId, this.generateConversationTitle(dto.question),
+          );
+          conversationId = conv.id;
+        }
+        await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+
+        if (intentResult.requiresConfirmation) {
+          sendEvent('confirmation', { plan, conversationId });
+          const display = `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
+          await this.conversationManager.addAssistantMessage(conversationId, display, undefined);
+          sendEvent('result', {
+            success: true, question: dto.question, analysis: display,
+            pendingWritePlan: plan, requiresConfirmation: true,
+            conversationId, executionTimeMs: Date.now() - startTime,
+          });
+          return;
+        }
+
+        sendEvent('status', { message: `⚙️ Exécution de ${plan.operations.length} opération(s)...` });
+
+        try {
+          const results = await this.genericWriteService.executePlan(plan, userId);
+          const analysis = this.formatPlanResults(results);
+          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+          sendEvent('result', {
+            success: true, question: dto.question, analysis, results,
+            conversationId, executionTimeMs: Date.now() - startTime,
+            ...(fileInfo && { fileInfo }),
+          });
+        } catch (error) {
+          if (error instanceof AmbiguityException) {
+            sendEvent('ambiguity', {
+              entity: error.entity,
+              fieldName: error.fieldName,
+              searchTerm: error.searchTerm,
+              candidates: error.candidates,
+              operationIndex: error.operationIndex,
+              pendingWritePlan: plan,
+              conversationId,
+            });
+          } else {
+            sendEvent('error', { message: error.message });
+          }
+        }
+        return;
+      }
+
+      // ── 3b. READ ─────────────────────────────────────────────────────────────
+      sendEvent('status', { message: '🗄️ Génération de la requête SQL...' });
+      const schemaJSON = await this.getCompleteSchemaJson(allTables);
+
+      let conversationId = dto.conversationId;
+      if (!conversationId) {
+        const conv = await this.conversationManager.createConversation(
+          userId, this.generateConversationTitle(dto.question),
+        );
+        conversationId = conv.id;
+      }
+
+      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
+      sendEvent('status', { message: '✅ Requête générée, exécution...' });
+
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      const results = await this.executeSafeQuery(validatedQuery);
+
+      sendEvent('status', { message: '📊 Analyse des résultats...' });
+      const analysis = await this.generateBusinessAnalysis(
+        dto.question, validatedQuery, results, dto.specificTables || [],
+      );
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+
+      sendEvent('result', {
+        success: true, question: dto.question,
+        sqlQuery: validatedQuery, analysis, schemaJSON, schema,
+        results: results.data, rowCount: results.rowCount,
+        conversationId, executionTimeMs: Date.now() - startTime,
+        ...(fileInfo && { fileInfo }),
+      });
+
+    } catch (error) {
+      this.logger.error(`❌ Erreur streaming: ${error.message}`);
+      sendEvent('error', { message: error.message });
     }
   }
 

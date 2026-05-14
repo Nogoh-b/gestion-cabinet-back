@@ -21,6 +21,7 @@ import { WriteResult } from './write-handler.registry';
 import { SchemaMetadataService } from '../schema-metadata.service';
 import { EntityResolverService } from './entity-resolver.service';
 import { BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
+import { AmbiguityException } from './ambiguity.exception';
 
 /** Colonnes système jamais modifiables par l'IA */
 const SYSTEM_COLUMNS = new Set([
@@ -235,13 +236,18 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
             );
           }
         } else if (result.resolved.ambiguous) {
-          // ⚠️ Ambiguïté → on ne crée pas automatiquement, on demande à l'utilisateur
-          const suggestions = result.resolved.candidates
-            .slice(0, 3)
-            .map((c: any) => `  - ${c.matchedOn} (score: ${c.score})`)
-            .join('\n');
-          throw new BadRequestException(
-            `Plusieurs correspondances pour "${alias}" avec "${value}":\n${suggestions}\nVeuillez préciser.`,
+          // ⚠️ Ambiguïté → lever AmbiguityException (catchée par GenericWriteService)
+          const candidates = result.resolved.candidates.slice(0, 5).map((c: any) => ({
+            id: (c.entity as any).id,
+            label: c.matchedOn,
+            score: c.score,
+            data: c.entity,
+          }));
+          throw new AmbiguityException(
+            info.referencedTable,
+            alias,
+            value,
+            candidates,
           );
         } else {
           // ❌ Échec de la création (cas exceptionnel)

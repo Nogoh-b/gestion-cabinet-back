@@ -1,4 +1,9 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus, Query, UseGuards, Req, UnauthorizedException, Param, Logger, UseInterceptors, UploadedFile } from '@nestjs/common';
+import {
+  Controller, Post, Get, Body, HttpCode, HttpStatus,
+  Query, UseGuards, Req, UnauthorizedException, Param,
+  Logger, UseInterceptors, UploadedFile, Res,
+} from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
@@ -59,6 +64,64 @@ export class AiDatabaseController {
   }
 
 
+  // ── Streaming SSE ───────────────────────────────────────────────────────────
+
+  /**
+   * Version streaming de /ask.
+   * Retourne un flux text/event-stream avec les événements :
+   *   status        → progression
+   *   intent        → type READ/WRITE détecté
+   *   confirmation  → plan write à confirmer
+   *   ambiguity     → choix nécessaire (candidats multiples)
+   *   result        → réponse finale complète
+   *   error         → message d'erreur
+   *   done          → fin du flux
+   */
+  @Post('ask/stream')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      const allowed = [
+        'application/pdf', 'text/csv', 'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain', 'application/json',
+      ];
+      cb(allowed.includes(file.mimetype) ? null : new Error(`Type non supporté: ${file.mimetype}`), allowed.includes(file.mimetype));
+    },
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Version streaming (SSE) de /ask' })
+  async askStream(
+    @Body() dto: AskQuestionDto,
+    @CurrentUser() user,
+    @Res() res: Response,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<void> {
+    // Headers SSE
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // nginx : désactiver le buffer
+    res.flushHeaders();
+
+    const sendEvent = (event: string, data: any) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent);
+    } catch (err) {
+      sendEvent('error', { message: err.message });
+    } finally {
+      res.write('event: done\ndata: {}\n\n');
+      res.end();
+    }
+  }
+
+  // ── Confirmation write ───────────────────────────────────────────────────────
+
   @Post('write/confirm')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Confirme une opération d\'écriture' })
@@ -67,6 +130,42 @@ export class AiDatabaseController {
     @CurrentUser() user
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.confirmWrite(pendingIntent, user.id);
+  }
+
+  // ── Résolution d'ambiguïté ───────────────────────────────────────────────────
+
+  /**
+   * Reprend l'exécution d'un WritePlan après qu'un utilisateur a choisi
+   * l'entité parmi des candidats ambigus.
+   *
+   * Corps attendu :
+   * {
+   *   "pendingWritePlan": { ... },          ← plan retourné lors de l'ambiguïté
+   *   "operationIndex":  0,                 ← ambiguityContext.operationIndex
+   *   "fieldName":       "client",          ← ambiguityContext.fieldName
+   *   "resolvedId":      42,                ← ID de l'entité choisie
+   *   "conversationId":  "uuid"             ← optionnel, pour l'historique
+   * }
+   */
+  @Post('write/resolve-ambiguity')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reprend un plan d\'écriture après résolution d\'ambiguïté' })
+  async resolveAmbiguity(
+    @Body('pendingWritePlan') pendingWritePlan: WritePlan,
+    @Body('operationIndex') operationIndex: number,
+    @Body('fieldName') fieldName: string,
+    @Body('resolvedId') resolvedId: string | number,
+    @Body('conversationId') conversationId: string,
+    @CurrentUser() user,
+  ): Promise<AnalysisResponseDto> {
+    return this.aiDbService.resumeAfterAmbiguity(
+      pendingWritePlan,
+      operationIndex,
+      fieldName,
+      resolvedId,
+      user.id,
+      conversationId,
+    );
   }
 
   @Post('execute')

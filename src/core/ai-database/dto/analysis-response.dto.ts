@@ -15,7 +15,23 @@ export class AnalysisResponseDto {
   executionTimeMs: number = 1;
   recommendations?: string[];
   error?: string;
-  pendingWritePlan?: WritePlan;  // ← Nouveau
+  pendingWritePlan?: WritePlan;
+
+  // ── Ambiguïté de résolution ───────────────────────────────────────────────
+  /**
+   * true quand l'IA ne peut pas choisir seule parmi plusieurs entités.
+   * Le frontend doit afficher `ambiguityContext.candidates` et renvoyer
+   * POST /api/ai-database/write/resolve-ambiguity avec l'ID choisi.
+   */
+  requiresAmbiguityResolution?: boolean;
+  ambiguityContext?: {
+    entity: string;
+    fieldName: string;
+    searchTerm: string;
+    candidates: Array<{ id: any; label: string; score: number; data?: any }>;
+    /** Index de l'opération dans le WritePlan à reprendre */
+    operationIndex: number;
+  };
 }
 
 export interface WritePlan {
