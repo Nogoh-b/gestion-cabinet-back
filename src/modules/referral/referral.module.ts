@@ -19,8 +19,9 @@ import { PaiementModule } from '../paiement/paiement.module';
 import { CustomerModule } from '../customer/customer.module';
 import { ReferrersService } from './referral.service';
 import { ReferrersController } from './referral.controller';
-
-// Dépendances externes
+import { DossierReferralWriteHandler } from './dossier-referral-write.handler';
+import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ReferrersController } from './referral.controller';
     CustomerModule,
     FactureModule,
     PaiementModule,
+    AiDatabaseModule,
   ],
   controllers: [
     DossierReferralsController,
@@ -42,14 +44,22 @@ import { ReferrersController } from './referral.controller';
   providers: [
     DossierReferralsService,
     ReferralCommissionsService,
-    ReferrersService
-
+    ReferrersService,
+    DossierReferralWriteHandler,
   ],
   exports: [
     DossierReferralsService,
     ReferralCommissionsService,
-    ReferrersService
-
+    ReferrersService,
   ],
 })
-export class ReferralModule {}
+export class ReferralModule {
+  constructor(
+    private readonly registry: WriteHandlerRegistry,
+    private readonly handler: DossierReferralWriteHandler,
+  ) {}
+
+  onModuleInit() {
+    this.registry.register(this.handler);
+  }
+}

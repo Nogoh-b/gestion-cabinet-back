@@ -196,9 +196,9 @@ export class EntityResolverService {
 
         const best = scores.reduce((a, b) => a.score >= b.score ? a : b);
 
-        return { entity: c, score: best.score, matchedOn: best.label };
+        return { entity: c, score: best.score, matchedOn: `${best.label}: ${fullName || c.email || c.company_name || ''}`.slice(0, 80) };
       })
-      .filter(m => m.score >= this.MIN_SCORE)
+      // Pas de filtre score : on garde tout pour pouvoir retourner des suggestions
       .sort((a, b) => b.score - a.score);
   }
 
@@ -284,9 +284,8 @@ export class EntityResolverService {
 
         const best = scores.reduce((a, b) => a.score >= b.score ? a : b);
 
-        return { entity: e, score: best.score, matchedOn: best.label };
+        return { entity: e, score: best.score, matchedOn: `${best.label}: ${fullName || e.specialization || ''}`.slice(0, 80) };
       })
-      .filter(m => m.score >= this.MIN_SCORE)
       .sort((a, b) => b.score - a.score);
   }
 
@@ -310,6 +309,7 @@ export class EntityResolverService {
     tableName: string,
     searchTerm: string,
     config?: ResolveConfig,
+    additionalFilters?: Record<string, any>,
   ): Promise<ResolveResult<any>> {
     this.logger.debug(`🔍 resolveAnyEntity("${tableName}", "${searchTerm}")`);
 
@@ -342,8 +342,10 @@ export class EntityResolverService {
     const tokens = ni.split(' ').filter(t => t.length > 0);
 
     // Construire les conditions WHERE : chaque token × chaque champ
+    // additionalFilters est mergé sur chaque condition (ex: parent_id pour les sous-types)
+    const extra = additionalFilters ?? {};
     const conditions = searchFields.flatMap(field =>
-      tokens.map(token => ({ [field]: ILike(`%${token}%`) } as any)),
+      tokens.map(token => ({ [field]: ILike(`%${token}%`), ...extra } as any)),
     );
 
     let candidates: any[];
@@ -357,7 +359,7 @@ export class EntityResolverService {
     // Si aucun résultat, tenter une recherche encore plus large (premier token uniquement)
     if (candidates.length === 0 && tokens.length > 1) {
       const broadConditions = searchFields.map(field =>
-        ({ [field]: ILike(`%${tokens[0]}%`) } as any),
+        ({ [field]: ILike(`%${tokens[0]}%`), ...extra } as any),
       );
       try {
         candidates = await repo.find({ where: broadConditions, take: 30 });
@@ -398,7 +400,7 @@ export class EntityResolverService {
           matchedOn: `${bestField}: ${String(entity[bestField.split('+')[0]] ?? '').slice(0, 50)}`,
         };
       })
-      .filter(m => m.score >= this.MIN_SCORE)
+      // Pas de filtre score : on garde tout pour pouvoir retourner des suggestions
       .sort((a, b) => b.score - a.score);
 
     return this.buildResult(scored, searchTerm, tableName, config);
@@ -520,12 +522,13 @@ export class EntityResolverService {
     userId: string,
     contextFields?: Record<string, any>,
     config?: ResolveConfig,
+    additionalFilters?: Record<string, any>,
   ): Promise<ResolveOrCreateResult<any>> {
     if (!contextFields) contextFields = {};
     this.logger.log(`🔄 resolveOrCreateEntity("${tableName}", "${searchTerm}")`);
 
     // 1. D'abord, tenter une résolution normale (avec la config passée)
-    const resolved = await this.resolveAnyEntity(tableName, searchTerm, config);
+    const resolved = await this.resolveAnyEntity(tableName, searchTerm, config, additionalFilters);
 
     if (resolved.found && !resolved.ambiguous) {
       // ✅ Trouvé et non ambigu → retourner le résultat
@@ -551,20 +554,41 @@ export class EntityResolverService {
     }
 
     // 🚫 Liste des entités qu'on ne crée JAMAIS automatiquement
-    // car elles ont des dépendances complexes (User, relations, etc.)
     const NEVER_AUTO_CREATE = new Set([
       'employee', 'employees', 'user', 'users',
+      // Données de référence : doivent exister en base, jamais créées à la volée
+      'procedure_types', 'procedure_type',
+      'jurisdictions', 'jurisdiction',
+      'agencies', 'agency',
     ]);
 
     if (NEVER_AUTO_CREATE.has(tableName)) {
-      this.logger.warn(`⛔ Création automatique refusée pour "${tableName}" (entité trop complexe)`);
-      const entityLabel = tableName === 'employee' || tableName === 'employees' ? 'avocat' : tableName;
+      this.logger.warn(`⛔ Création automatique refusée pour "${tableName}" (donnée de référence)`);
+
+      // Chercher les meilleures suggestions sans seuil de score
+      const allCandidates = resolved.candidates.length > 0
+        ? resolved.candidates
+        : await this.searchAllCandidates(tableName, searchTerm, additionalFilters);
+
+      const suggestions = allCandidates
+        .slice(0, 3)
+        .map(c => `"${c.matchedOn}" (${c.score}%)`);
+
+      const isEmployee = tableName === 'employee' || tableName === 'employees';
+      const entityLabel = isEmployee ? 'avocat' : tableName;
+
+      let hint = isEmployee
+        ? `"${searchTerm}" n'a pas été trouvé(e) comme ${entityLabel}. Veuillez utiliser l'interface ou vérifier l'orthographe.`
+        : `"${searchTerm}" n'existe pas dans ${tableName}. Vérifiez l'orthographe ou ajoutez-le via l'interface.`;
+
+      if (suggestions.length > 0) {
+        hint += ` Résultats proches : ${suggestions.join(', ')}`;
+      }
+
       return {
         resolved,
         created: false,
-        message: `"${searchTerm}" n'a pas été trouvé(e) comme ${entityLabel}. ` +
-          `Veuillez utiliser l'interface de gestion pour créer ce ${entityLabel}, ` +
-          `ou vérifier l'orthographe du nom.`,
+        message: hint,
       };
     }
 
@@ -600,6 +624,47 @@ export class EntityResolverService {
         message: `Impossible de créer "${searchTerm}" dans ${tableName}: ${(error as Error).message}`,
       };
     }
+  }
+
+  /**
+   * Recherche tous les candidats pour un terme sans seuil de score minimum.
+   * Utilisé pour fournir des suggestions quand une entité de référence n'est pas trouvée.
+   */
+  private async searchAllCandidates(
+    tableName: string,
+    searchTerm: string,
+    additionalFilters?: Record<string, any>,
+  ): Promise<ResolveMatch<any>[]> {
+    const entityMeta = this.dataSource.entityMetadatas.find(m => m.tableName === tableName);
+    if (!entityMeta) return [];
+
+    const repo = this.dataSource.getRepository(entityMeta.target);
+    const searchFields = this.getSearchableFields(entityMeta);
+    const ni = normalize(searchTerm);
+    const tokens = ni.split(' ').filter(t => t.length > 0);
+    const extra = additionalFilters ?? {};
+
+    // Chercher avec le premier token uniquement (recherche large)
+    const conditions = searchFields.map(field =>
+      ({ [field]: ILike(`%${tokens[0] ?? searchTerm}%`), ...extra } as any),
+    );
+
+    let rows: any[] = [];
+    try {
+      rows = await repo.find({ where: conditions, take: 10 });
+    } catch { /* ignore */ }
+
+    return rows
+      .map(entity => {
+        let bestScore = 0;
+        let bestField = '';
+        for (const field of searchFields) {
+          const s = similarityScore(searchTerm, String(entity[field] ?? ''));
+          if (s > bestScore) { bestScore = s; bestField = `${field}: ${String(entity[field] ?? '').slice(0, 40)}`; }
+        }
+        return { entity, score: bestScore, matchedOn: bestField };
+      })
+      .sort((a, b) => b.score - a.score);
   }
 
   /**
@@ -828,8 +893,14 @@ export class EntityResolverService {
     // Filtrer les candidats en dessous du score minimum
     const valid = scored.filter(m => m.score >= effectiveMinScore);
     if (valid.length === 0) {
-      this.logger.warn(`❌ Aucun ${entityLabel} valide trouvé pour "${input}" (score min: ${effectiveMinScore})`);
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: scored, ambiguous: false };
+      // ⚠️ Aucun match concluant → retourner le top 10 comme suggestions
+      // pour que l'appelant puisse laisser l'utilisateur choisir
+      const suggestions = scored.slice(0, 10);
+      this.logger.warn(
+        `❌ Aucun ${entityLabel} valide pour "${input}" (score min: ${effectiveMinScore}). ` +
+        `Retour de ${suggestions.length} suggestions (top score: ${suggestions[0]?.score ?? 0}).`,
+      );
+      return { found: false, best: null, score: 0, matchedOn: '', candidates: suggestions, ambiguous: false };
     }
 
     const bestValid = valid[0];

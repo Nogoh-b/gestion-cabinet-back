@@ -13,17 +13,36 @@ import { TypeCustomersService } from './type-customer/type-customer.service';
 import { DocumentsModule } from '../documents/documents.module';
 import { CustomerStatsService } from './customer/customer-stats.service';
 import { TypeCustomerStatsService } from './type-customer/type-customer-stats.service';
+import { CustomerWriteHandler } from './customer/customer-write.handler';
+import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+
 @Module({
   imports: [
-    
-    // forwardRef(() => IamModule),
     forwardRef(() => DocumentsModule),
-    AgenciesModule, // Import direct
-    GeographyModule, // Import direct  
+    AgenciesModule,
+    GeographyModule,
     TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType]),
+    AiDatabaseModule,
   ],
   controllers: [TypeCustomersController, CustomerController],
-  providers: [TypeCustomersService, CustomersService, BranchService, CustomerStatsService, TypeCustomerStatsService],
+  providers: [
+    TypeCustomersService,
+    CustomersService,
+    BranchService,
+    CustomerStatsService,
+    TypeCustomerStatsService,
+    CustomerWriteHandler,
+  ],
   exports: [TypeCustomersService, CustomersService, TypeOrmModule, CustomerStatsService, TypeCustomerStatsService],
 })
-export class CustomerModule {}
+export class CustomerModule {
+  constructor(
+    private readonly registry: WriteHandlerRegistry,
+    private readonly handler: CustomerWriteHandler,
+  ) {}
+
+  onModuleInit() {
+    this.registry.register(this.handler);
+  }
+}

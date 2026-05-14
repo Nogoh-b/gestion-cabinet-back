@@ -296,15 +296,42 @@ export class AiDatabaseService implements OnModuleInit {
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
 
-    const writeResult = await this.genericWriteService.executePlan(pendingIntent, userId);
-    return {
-      success: true,
-      question: 'Confirmation opération',
-      analysis: this.formatPlanResults(writeResult),
-      executionTimeMs: Date.now() - startTime,
-      // rowCount: writeResult.affected,
-      results: writeResult,
-    };
+    try {
+      const writeResult = await this.genericWriteService.executePlan(pendingIntent, userId);
+      return {
+        success: true,
+        question: 'Confirmation opération',
+        analysis: this.formatPlanResults(writeResult),
+        executionTimeMs: Date.now() - startTime,
+        results: writeResult,
+      };
+    } catch (error) {
+      if (error instanceof AmbiguityException) {
+        this.logger.warn(
+          `⚠️ Ambiguïté (confirmWrite): "${error.searchTerm}" dans "${error.entity}" ` +
+          `(${error.candidates.length} candidats, opération ${error.operationIndex})`,
+        );
+        const message =
+          `🔍 **Correspondances multiples pour "${error.searchTerm}"**\n\n` +
+          `Veuillez choisir parmi les ${error.candidates.length} résultats ci-dessous.`;
+        return {
+          success: true,
+          question: 'Confirmation opération',
+          analysis: message,
+          pendingWritePlan: pendingIntent,
+          requiresAmbiguityResolution: true,
+          ambiguityContext: {
+            entity: error.entity,
+            fieldName: error.fieldName,
+            searchTerm: error.searchTerm,
+            candidates: error.candidates,
+            operationIndex: error.operationIndex,
+          },
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+      throw error;
+    }
   }
   
     private formatPlanResults(results: WriteResult[]): string {

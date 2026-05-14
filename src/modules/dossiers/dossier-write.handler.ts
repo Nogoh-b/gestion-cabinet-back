@@ -6,9 +6,10 @@ import { Dossier, DangerLevel } from './entities/dossier.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
-import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
+import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.exception';
 
 /**
  * Handler custom pour les dossiers.
@@ -133,6 +134,161 @@ export class DossierWriteHandler extends BaseWriteHandler {
     };
   }
 
+  // ── Résolution des dépendances : procedure_subtype filtré par procedure_type ──
+
+  async resolveDependencies(
+    fields: Record<string, any>,
+    userId: string,
+    createdEntities?: Map<string, any>,
+    config?: ResolveConfig,
+  ): Promise<Record<string, any>> {
+    // 1. Résoudre d'abord tous les champs sauf procedure_subtype
+    const withoutSubtype = { ...fields };
+    const subtypeValue = withoutSubtype.procedure_subtype;
+    delete withoutSubtype.procedure_subtype;
+
+    const resolved = await super.resolveDependencies(withoutSubtype, userId, createdEntities, config);
+
+    // 2. Résoudre procedure_subtype avec parent_id = procedure_type_id résolu
+    if (subtypeValue !== undefined) {
+      const parentId = resolved.procedure_subtype_id ?? resolved.procedure_type_id;
+
+      if (typeof subtypeValue === 'number' || (typeof subtypeValue === 'string' && /^\d+$/.test(subtypeValue))) {
+        resolved.procedure_subtype_id = Number(subtypeValue);
+      } else if (typeof subtypeValue === 'string') {
+        // 1ère tentative : filtre strict par parent_id
+        const strictFilter = parentId ? { parent_id: parentId } : undefined;
+        let result = await this.entityResolver.resolveOrCreateEntity(
+          'procedure_types',
+          subtypeValue,
+          userId,
+          undefined,
+          config,
+          strictFilter,
+        );
+
+        // 2ème tentative : sans filtre si rien trouvé avec parent_id (data inconsistante possible)
+        if (!result.resolved.found && !result.resolved.ambiguous && strictFilter) {
+          this.logger.log(`🔄 Sous-type non trouvé avec parent_id=${parentId}, nouvelle tentative sans filtre`);
+          result = await this.entityResolver.resolveOrCreateEntity(
+            'procedure_types',
+            subtypeValue,
+            userId,
+            undefined,
+            config,
+          );
+        }
+
+        if (result.resolved.found && result.resolved.best && !result.resolved.ambiguous) {
+          resolved.procedure_subtype_id = (result.resolved.best as any).id;
+          this.logger.log(`✅ procedure_subtype résolu: "${subtypeValue}" → ID ${resolved.procedure_subtype_id}`);
+        } else if (result.resolved.ambiguous || (result.resolved.candidates && result.resolved.candidates.length > 0)) {
+          // Ambiguïté OU suggestions à proposer (top 10) → laisser l'utilisateur choisir
+          const candidates = result.resolved.candidates.slice(0, 10).map((c: any) => ({
+            id: (c.entity as any).id,
+            label: c.matchedOn,
+            score: c.score,
+            data: c.entity,
+          }));
+          this.logger.warn(
+            `🔍 ${candidates.length} suggestion(s) pour le sous-type "${subtypeValue}" — choix utilisateur requis`,
+          );
+          throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, candidates);
+        } else {
+          throw new Error(`Impossible de trouver le sous-type "${subtypeValue}": ${result.message}`);
+        }
+      }
+    }
+
+    // ── Proposer des suggestions pour les FK requises mais absentes ──────────
+    // Si le LLM n'a pas fourni lawyer / client / procedure_type, on propose
+    // les options les plus pertinentes au lieu d'échouer en validation.
+
+    if (!resolved.lawyer_id) {
+      const candidates = await this.fetchTopEmployees();
+      if (candidates.length > 0) {
+        this.logger.warn(`🔍 lawyer manquant — proposition de ${candidates.length} avocats`);
+        throw new AmbiguityException('employee', 'lawyer', '(non spécifié)', candidates);
+      }
+    }
+
+    if (!resolved.procedure_type_id) {
+      const candidates = await this.fetchTopProcedureTypes(false);
+      if (candidates.length > 0) {
+        this.logger.warn(`🔍 procedure_type manquant — proposition de ${candidates.length} types`);
+        throw new AmbiguityException('procedure_types', 'procedure_type', '(non spécifié)', candidates);
+      }
+    }
+
+    if (!resolved.procedure_subtype_id) {
+      const parentId = resolved.procedure_type_id;
+      const candidates = await this.fetchTopProcedureTypes(true, parentId);
+      if (candidates.length > 0) {
+        this.logger.warn(`🔍 procedure_subtype manquant — proposition de ${candidates.length} sous-types`);
+        throw new AmbiguityException('procedure_types', 'procedure_subtype', '(non spécifié)', candidates);
+      }
+    }
+
+    return resolved;
+  }
+
+  /** Récupère les 10 employés les plus récents avec leur user (pour avocat) */
+  private async fetchTopEmployees(): Promise<Array<{ id: any; label: string; score: number; data: any }>> {
+    try {
+      const employees = await this.dataSource
+        .getRepository('employee')
+        .createQueryBuilder('e')
+        .leftJoinAndSelect('e.user', 'u')
+        .orderBy('e.id', 'DESC')
+        .limit(10)
+        .getMany();
+      return employees.map((e: any) => ({
+        id: e.id,
+        label: `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim() +
+          (e.specialization ? ` — ${e.specialization}` : ''),
+        score: 0,
+        data: e,
+      }));
+    } catch (err) {
+      this.logger.error(`Erreur récupération employés: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  /** Récupère les 10 procedure_types (types ou sous-types selon le filtre) */
+  private async fetchTopProcedureTypes(
+    isSubtype: boolean,
+    parentId?: number,
+  ): Promise<Array<{ id: any; label: string; score: number; data: any }>> {
+    try {
+      const qb = this.dataSource
+        .getRepository('procedure_types')
+        .createQueryBuilder('pt')
+        .where('pt.is_active = :active', { active: true });
+
+      if (isSubtype) {
+        if (parentId) {
+          qb.andWhere('pt.parent_id = :pid', { pid: parentId });
+        } else {
+          qb.andWhere('pt.is_subtype = :sub', { sub: true });
+        }
+      } else {
+        qb.andWhere('pt.is_subtype = :sub', { sub: false });
+      }
+
+      const rows = await qb.orderBy('pt.name', 'ASC').limit(10).getMany();
+      return rows.map((p: any) => ({
+        id: p.id,
+        label: `${p.name}${p.code ? ` (${p.code})` : ''}`,
+        score: 0,
+        data: p,
+      }));
+    } catch (err) {
+      this.logger.error(`Erreur récupération procedure_types: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
   // ── INSERT custom : génération du numéro de dossier ────────────────────────
 
   protected async doInsert(
@@ -140,15 +296,24 @@ export class DossierWriteHandler extends BaseWriteHandler {
     userId: string,
   ): Promise<WriteResult> {
     // Générer le numéro de dossier DOS-YYYY-XXXX
+    // Utilise le MAX existant pour éviter les collisions en cas de suppression
     const year = new Date().getFullYear();
-    const countThisYear = await this.dossierRepo
+    const prefix = `DOS-${year}-`;
+    const lastDossier = await this.dossierRepo
       .createQueryBuilder('d')
-      .where('YEAR(d.opening_date) = :year', { year })
-      .getCount();
-    const dossierNumber = `DOS-${year}-${(countThisYear + 1).toString().padStart(4, '0')}`;
+      .where('d.dossier_number LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('d.dossier_number', 'DESC')
+      .getOne();
+    let nextSeq = 1;
+    if (lastDossier?.dossier_number) {
+      const match = lastDossier.dossier_number.match(/DOS-\d{4}-(\d+)$/);
+      if (match) nextSeq = parseInt(match[1], 10) + 1;
+    }
+    const dossierNumber = `${prefix}${nextSeq.toString().padStart(4, '0')}`;
 
-    // Filtrer les champs connus + appliquer les valeurs par défaut
-    const safeFields = this.filterKnownColumns(fields);
+    // Filtrer les champs connus + stripper les champs auto-générés (codes, refs)
+    // → on ne veut pas que le LLM impose un dossier_number qui causerait collision
+    const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
 
     const dossierData = {
       ...safeFields,

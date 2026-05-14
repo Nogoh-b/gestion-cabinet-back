@@ -16,7 +16,7 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   description: '  système (avocats, secrétaires, clients, etc.).',
   icon: '👤',
   category: 'iam',
-  ignored: false
+  ignored: true, // 🔒 Sécurité : jamais créer un user via IA (mot de passe, rôles, FK user_role, etc.)
 })
 export class User {
   @PrimaryGeneratedColumn()
