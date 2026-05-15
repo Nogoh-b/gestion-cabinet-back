@@ -35,11 +35,18 @@ const SYSTEM_COLUMNS = new Set([
  * Ces colonnes sont gérées par des @BeforeInsert hooks ou des services métier.
  * Les inclure depuis l'IA causerait des duplications (le LLM produit toujours
  * la même valeur pour le même prompt → 2è exécution = collision unique).
+ *
+ * Contient à la fois les noms de colonnes DB (snake_case) ET les property names
+ * TypeORM (camelCase) pour couvrir les entités à convention mixte.
  */
 export const AUTO_GENERATED_FIELDS = new Set([
+  // snake_case (DB column names)
   'customer_code', 'dossier_number', 'reference',
   'code', 'slug', 'uuid',
   'public_key', 'private_key', 'api_key',
+  // camelCase (TypeORM property names)
+  'customerCode', 'dossierNumber',
+  'publicKey', 'privateKey', 'apiKey',
 ]);
 
 /**
@@ -96,6 +103,20 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
   protected readonly logger: Logger;
   protected readonly repo: Repository<any>;
   protected readonly entityMeta: EntityMetadata;
+
+  /**
+   * Renvoie true si la valeur ressemble à un ID (numérique entier ou UUID),
+   * ce qui signifie qu'elle ne doit PAS être passée au résolveur de texte.
+   */
+  static isAlreadyId(value: any): boolean {
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'number') return true;
+    if (typeof value === 'string') {
+      return /^\d+$/.test(value) ||
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+    }
+    return false;
+  }
 
   /** Mapping nom court → { fkColumn, referencedTable } */
   protected readonly fkMap: Map<string, { fkColumn: string; referencedTable: string }>;
@@ -253,6 +274,15 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       const value = fields[alias];
       if (value === undefined) continue;
 
+      // ⏭️ Si la FK column est déjà renseignée par un ID (numérique ou UUID),
+      // on ne tente pas de résoudre le texte alias : ça évite une requête DB inutile
+      // et empêche "Karima Bensalem" d'être cherché comme un numéro de dossier.
+      if (BaseWriteHandler.isAlreadyId(resolved[info.fkColumn])) {
+        if (alias !== info.fkColumn) delete resolved[alias];
+        this.logger.debug(`⏭️  FK "${alias}" ignorée — ${info.fkColumn} déjà résolu (${resolved[info.fkColumn]})`);
+        continue;
+      }
+
       if (typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value))) {
         // C'est déjà un ID numérique
         resolved[info.fkColumn] = Number(value);
@@ -348,9 +378,10 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     }
 
     // Aussi vérifier les champs FK directs (ex: client_id avec une valeur texte)
+    // On ne traite que les chaînes qui ne ressemblent pas à des IDs (numérique ou UUID)
     for (const [alias, info] of this.fkMap) {
       const fkValue = resolved[info.fkColumn];
-      if (typeof fkValue === 'string' && !fkValue.startsWith('{{') && !/^\d+$/.test(fkValue)) {
+      if (typeof fkValue === 'string' && !fkValue.startsWith('{{') && !BaseWriteHandler.isAlreadyId(fkValue)) {
         const result = await this.entityResolver.resolveOrCreateEntity(
           info.referencedTable,
           fkValue,
@@ -462,15 +493,21 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       resolveConfig,
     );
 
+    // 1b. Normaliser les noms de champs APRÈS la résolution FK mais AVANT la validation.
+    //     Cela convertit les noms DB (snake_case, ex: montant_ht) vers les property names
+    //     TypeORM (camelCase, ex: montantHT) pour que validateFields et doInsert
+    //     reçoivent des clés cohérentes quelle que soit la convention de l'entité.
+    const normalizedFields = this.filterKnownColumns(resolvedFields);
+
     // 2. Valider
-    const validation = await this.validateFields(resolvedFields, intent.operation as 'INSERT' | 'UPDATE');
+    const validation = await this.validateFields(normalizedFields, intent.operation as 'INSERT' | 'UPDATE');
     if (!validation.valid) {
       throw new BadRequestException(
         `Validation échouée pour ${this.entityName}: ${validation.errors?.join(', ')}`,
       );
     }
 
-    const fields = validation.transformedFields || resolvedFields;
+    const fields = validation.transformedFields || normalizedFields;
 
     // 3. Exécuter
     let result: WriteResult;
@@ -698,15 +735,30 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     return false; // par défaut on considère required (pour rester strict)
   }
 
-  /** Ne garde que les colonnes qui existent réellement dans la table */
+  /**
+   * Ne garde que les colonnes qui existent réellement dans la table.
+   *
+   * ⚠️  Normalisation : la sortie utilise TOUJOURS le propertyName TypeORM
+   * (ex: `montantHT`, `dateFacture`) et NON le nom de colonne DB (ex: `montant_ht`).
+   * Cela permet à TypeORM.create() de mapper correctement les valeurs sur
+   * les propriétés de l'entité, quelle que soit la convention de nommage.
+   *
+   * Accepte en entrée les deux formes (snake_case ou camelCase) :
+   *   { montant_ht: 2500 }  →  { montantHT: 2500 }
+   *   { montantHT: 2500 }   →  { montantHT: 2500 }
+   */
   protected filterKnownColumns(fields: Record<string, any>): Record<string, any> {
-    const knownColumns = new Set(
-      this.entityMeta.columns.map(c => c.databaseName),
-    );
     const safe: Record<string, any> = {};
-    for (const [key, value] of Object.entries(fields)) {
-      if (knownColumns.has(key) && !SYSTEM_COLUMNS.has(key)) {
-        safe[key] = value;
+    for (const column of this.entityMeta.columns) {
+      const dbName = column.databaseName;
+      const propName = column.propertyName;
+      if (SYSTEM_COLUMNS.has(dbName)) continue;
+
+      // Priorité au nom de colonne DB (snake_case), puis au property name (camelCase)
+      if (fields[dbName] !== undefined) {
+        safe[propName] = fields[dbName];
+      } else if (propName !== dbName && fields[propName] !== undefined) {
+        safe[propName] = fields[propName];
       }
     }
     return safe;

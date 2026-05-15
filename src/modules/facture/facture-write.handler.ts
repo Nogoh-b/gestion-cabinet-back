@@ -83,15 +83,21 @@ export class FactureWriteHandler extends BaseWriteHandler {
     const errors: string[] = [];
 
     if (operation === 'INSERT') {
+      // dossier_id peut arriver via : FK résolution (alias "dossier"), auto-injection plan,
+      // ou valeur directe. La normalisation filterKnownColumns est appliquée avant ici.
       if (!fields.dossier_id) errors.push('Le dossier est requis (dossier_id ou dossier)');
       if (!fields.client_id) errors.push('Le client est requis (client_id ou client)');
-      if (fields.montantHT === undefined || fields.montantHT === null) {
-        errors.push('Le montant HT est requis (montantHT)');
-      } else if (Number(fields.montantHT) <= 0) {
+
+      // montantHT est le property name TypeORM (normalisé par filterKnownColumns)
+      const ht = fields.montantHT ?? fields.montant_ht; // fallback sécurité
+      if (ht === undefined || ht === null) {
+        errors.push('Le montant HT est requis (montant_ht)');
+      } else if (Number(ht) <= 0) {
         errors.push('Le montant HT doit être strictement positif');
       }
     } else if (operation === 'UPDATE') {
-      if (fields.montantHT !== undefined && Number(fields.montantHT) <= 0) {
+      const ht = fields.montantHT ?? fields.montant_ht;
+      if (ht !== undefined && Number(ht) <= 0) {
         errors.push('Le montant HT doit être strictement positif');
       }
     }

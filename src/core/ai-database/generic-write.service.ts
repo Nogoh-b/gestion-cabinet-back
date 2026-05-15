@@ -38,8 +38,10 @@ export class GenericWriteService {
     }
 
     const results: WriteResult[] = [];
-    // tempId → entité créée (pour résoudre les références entre opérations)
+    // tempId → entité créée (pour résoudre les références {{tempId.field}})
     const createdEntities = new Map<string, any>();
+    // tableName → dernière entité créée dans ce plan (pour auto-injection des FKs)
+    const latestByEntity = new Map<string, any>();
 
     try {
       for (let i = 0; i < writePlan.operations.length; i++) {
@@ -49,13 +51,22 @@ export class GenericWriteService {
           `📝 Opération ${i + 1}/${writePlan.operations.length}: ${operation.operation} ${operation.entity}`,
         );
 
-        // Résoudre les références aux entités créées dans les opérations précédentes
+        // 1. Résoudre les références {{tempId.field}} aux entités précédentes
         const resolvedFields = this.resolveReferences(operation.fields, createdEntities);
+
+        // 2. Auto-injecter les FKs manquantes depuis les entités créées dans ce plan
+        //    (ex: dossier créé à l'op 2 → dossier_id auto-injecté dans facture op 4)
+        const enrichedFields = this.autoInjectFromPlanContext(
+          operation.entity,
+          operation.operation,
+          resolvedFields,
+          latestByEntity,
+        );
 
         // ✅ Exécution : handler enregistré en priorité, générique en fallback
         const result = await this.executeOperation(
           operation,
-          resolvedFields,
+          enrichedFields,
           userId,
           queryRunner,
         );
@@ -63,9 +74,15 @@ export class GenericWriteService {
         results.push(result);
 
         // Mémoriser l'entité créée pour les opérations suivantes
-        if (operation.tempId && result.entityId && result.data) {
-          createdEntities.set(operation.tempId, result.data);
-          this.logger.log(`🔗 Référence stockée: ${operation.tempId} → ID ${result.entityId}`);
+        if (result.entityId && result.data) {
+          // Par tempId (résolution {{tempId.field}})
+          if (operation.tempId) {
+            createdEntities.set(operation.tempId, result.data);
+            this.logger.log(`🔗 Référence stockée: ${operation.tempId} → ID ${result.entityId}`);
+          }
+          // Par nom de table (auto-injection FK)
+          latestByEntity.set(operation.entity, result.data);
+          this.logger.log(`📌 Plan context: ${operation.entity} → ID ${result.entityId}`);
         }
 
         // ✅ Propager les créations en cascade (entités créées automatiquement
@@ -280,6 +297,77 @@ export class GenericWriteService {
   // ─────────────────────────────────────────────────────────────────────────────
   // UTILITAIRES
   // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Auto-injecte les FKs manquantes depuis les entités créées plus tôt dans le plan.
+   *
+   * Pour chaque relation ManyToOne de l'entité cible, si la FK column n'est pas
+   * encore renseignée dans les champs, on cherche dans `latestByEntity` une entité
+   * du type référencé créée dans le même plan.
+   *
+   * Exemple :
+   *   Op 2 crée Dossier(id=43)  → latestByEntity['dossiers'] = Dossier(43)
+   *   Op 4 INSERT facture — dossier_id absent → auto-inject dossier_id=43
+   *
+   * N'écrase JAMAIS une valeur déjà fournie (y compris 0).
+   */
+  private autoInjectFromPlanContext(
+    entityName: string,
+    operation: string,
+    fields: Record<string, any>,
+    latestByEntity: Map<string, any>,
+  ): Record<string, any> {
+    if (operation !== 'INSERT' || latestByEntity.size === 0) return fields;
+
+    const meta = this.dataSource.entityMetadatas.find(m => m.tableName === entityName);
+    if (!meta) return fields;
+
+    const enriched = { ...fields };
+    let injected = 0;
+
+    for (const relation of meta.relations) {
+      if (relation.relationType !== 'many-to-one') continue;
+      const joinColumns = relation.joinColumns;
+      if (!joinColumns || joinColumns.length === 0) continue;
+
+      const fkColumn = joinColumns[0].databaseName;     // ex: 'dossier_id'
+      const propName = joinColumns[0].propertyName ?? fkColumn; // ex: 'dossier_id'
+      if (!fkColumn) continue;
+
+      // Ne pas écraser si la FK est déjà un vrai ID (numérique ou UUID).
+      // On ignore délibérément les textes-alias (ex: dossier: "Karima Bensalem")
+      // afin d'injecter le vrai ID du plan, qui prendra ensuite la priorité dans
+      // resolveDependencies (via le check isAlreadyId).
+      const isRealId = (v: any) =>
+        v !== undefined && v !== null && (
+          typeof v === 'number' ||
+          (typeof v === 'string' && (
+            /^\d+$/.test(v) ||
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+          ))
+        );
+      if (isRealId(enriched[fkColumn]) || isRealId(enriched[propName])) continue;
+
+      const referencedTable = relation.inverseEntityMetadata.tableName;
+      const latestEntity = latestByEntity.get(referencedTable);
+      if (latestEntity) {
+        const id = (latestEntity as any).id;
+        if (id !== undefined) {
+          enriched[fkColumn] = id;
+          injected++;
+          this.logger.log(
+            `🔗 Auto-injection FK: ${entityName}.${fkColumn} = ${id} (depuis ${referencedTable} du plan)`,
+          );
+        }
+      }
+    }
+
+    if (injected > 0) {
+      this.logger.log(`✅ ${injected} FK(s) auto-injectée(s) pour "${entityName}"`);
+    }
+
+    return enriched;
+  }
 
   /**
    * Remplace les références temporaires par les vraies valeurs

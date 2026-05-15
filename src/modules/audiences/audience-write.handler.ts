@@ -5,9 +5,10 @@ import { DataSource, Repository } from 'typeorm';
 import { Audience, AudienceStatus, AudienceType1 } from './entities/audience.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
-import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
+import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.exception';
 
 /**
  * Handler custom pour les audiences.
@@ -67,6 +68,48 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       // On laisse passer mais on log
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };
+  }
+
+  // ── Résolution des dépendances : propose top 10 juridictions si absentes ──
+
+  async resolveDependencies(
+    fields: Record<string, any>,
+    userId: string,
+    createdEntities?: Map<string, any>,
+    config?: ResolveConfig,
+  ): Promise<Record<string, any>> {
+    const resolved = await super.resolveDependencies(fields, userId, createdEntities, config);
+
+    if (!resolved.jurisdiction_id) {
+      const jurisdictions = await this.fetchTopJurisdictions();
+      if (jurisdictions.length > 0) {
+        this.logger.warn(`🔍 jurisdiction manquante — proposition de ${jurisdictions.length} juridictions`);
+        throw new AmbiguityException('jurisdictions', 'jurisdiction', '(non spécifiée)', jurisdictions);
+      }
+    }
+
+    return resolved;
+  }
+
+  /** Récupère les 10 premières juridictions actives (ordre alphabétique) */
+  private async fetchTopJurisdictions(): Promise<Array<{ id: any; label: string; score: number; data: any }>> {
+    try {
+      const rows = await this.dataSource
+        .getRepository('jurisdictions')
+        .createQueryBuilder('j')
+        .orderBy('j.name', 'ASC')
+        .limit(10)
+        .getMany();
+      return rows.map((j: any) => ({
+        id: j.id,
+        label: `${j.name}${j.code ? ` (${j.code})` : ''}${j.city ? ` — ${j.city}` : ''}`,
+        score: 0,
+        data: j,
+      }));
+    } catch (err) {
+      this.logger.error(`Erreur récupération juridictions: ${(err as Error).message}`);
+      return [];
+    }
   }
 
   protected async doInsert(fields: Record<string, any>, userId: string): Promise<WriteResult> {
