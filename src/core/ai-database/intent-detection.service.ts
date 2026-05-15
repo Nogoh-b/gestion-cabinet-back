@@ -113,8 +113,8 @@ Décomposer cette demande en un PLAN d'opérations.
 
 ### 5. 🏛️ Règle CRITIQUE pour les DOSSIERS
 Quand tu crées un dossier, tu DOIS OBLIGATOIREMENT inclure :
-- **procedure_type** : le type de procédure (ex: "Contentieux civil", "Droit de la famille", "Droit des affaires")
-- **procedure_subtype** : le sous-type de procédure (ex: "Divorce", "Rupture conventionnelle", "Recouvrement")
+- **procedure_type** : le type de procédure (ex: "Contentieux civil", "Droit de la famille", "Droit des affaires", "Droit des étrangers")
+- **procedure_subtype** : le sous-type de procédure (ex: "Divorce", "Rupture conventionnelle", "Recouvrement", "Refus de titre de séjour")
 
 Ces deux champs sont OBLIGATOIRES. Si l'utilisateur mentionne "divorce", "contentieux",
 "recouvrement", "civil", etc., déduis le type et sous-type de procédure correspondants.
@@ -125,12 +125,60 @@ ajoute ceci dans l'opération concernée (dans le JSON du plan) :
 "resolveConfig": { "mode": "best_effort" }
 Cela permettra de prendre automatiquement la meilleure correspondance en cas d'homonymie.
 
+### 7. 💰 Règle CRITIQUE pour les DONNÉES FINANCIÈRES
+Quand des données financières sont présentes dans le texte (honoraires, provisions, factures, paiements),
+tu DOIS créer les entités correspondantes APRÈS le dossier.
+
+**Mots déclencheurs à détecter** :
+"honoraires", "provision", "forfait", "HT", "TTC", "€", "euros", "réglé", "payé",
+"acompte", "solde", "facture", "paiement", "virement", "chèque".
+
+**Règles de création** :
+- **Facture** → INSERT dans l'entite "factures" avec :
+  - champ "montantHT" : montant HT en nombre (ex: 1800.00)
+  - champ "type" : 0=HONORAIRES (honoraires/forfait), 1=FRAIS_PROCEDURE, 2=DILIGENCES
+  - champ "description" : objet de la facture (ex: "Forfait recours gracieux + contentieux")
+  - champ "status" : 2=PARTIELLEMENT_PAYEE si provision reçue, 1=ENVOYEE sinon, 3=PAYEE si tout réglé
+  - Référence le dossier et le client via tempId
+
+- **Paiement** → INSERT dans l'entite "paiements" APRÈS la facture correspondante avec :
+  - champ "montant" : montant payé en nombre (ex: 900.00)
+  - champ "datePaiement" : date du paiement si mentionnée (format YYYY-MM-DD), sinon "{{today}}"
+  - champ "modePaiement" : 0=VIREMENT (défaut), 1=CHEQUE, 2=ESPECES, 3=CARTE
+  - champ "status" : 1=VALIDE si paiement déjà effectué
+  - Référence la facture via tempId
+
+**Exemple de plan financier** :
+  { "operation": "INSERT", "entity": "factures", "tempId": "facture_1",
+    "fields": { "montantHT": 1800.00, "type": "0", "description": "Forfait recours gracieux + contentieux",
+                "status": "2", "dossier": "{{new_dossier.id}}", "client": "{{new_client.id}}" } },
+  { "operation": "INSERT", "entity": "paiements", "tempId": "paiement_1",
+    "fields": { "montant": 900.00, "datePaiement": "2026-04-15", "modePaiement": "0",
+                "status": "1", "facture": "{{facture_1.id}}" } }
+
+### 8. 🗓️ Règle pour les AUDIENCES ET ÉCHÉANCES PROCÉDURALES
+Quand des dates de procédure, audiences, délais légaux ou échéances sont mentionnés,
+crée des entités "audiences" correspondantes APRÈS le dossier.
+
+**Mots déclencheurs à détecter** :
+"audience", "jugement", "délibération", "plaidoirie", "délai", "échéance", "rejet implicite",
+"convocation", "comparution", "conciliation", "rendez-vous tribunal".
+
+**Règles de création** :
+- INSERT dans l'entité "audiences" avec :
+  - champ "audience_date" : date au format YYYY-MM-DD
+  - champ "audience_time" : heure si mentionnée, sinon "09:00"
+  - champ "type" : 0=Plaidoirie (défaut), 1=Délibération, 2=Jugement, 3=Conciliation
+  - champ "status" : 0=Programmée (défaut)
+  - champ "notes" : contexte (ex: "Délai de réponse au recours gracieux")
+  - Référence le dossier via tempId
+
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 
 Pour une LECTURE:
 {"type": "READ"}
 
-Pour une CRÉATION MULTI-ENTITÉS:
+Pour une CRÉATION MULTI-ENTITÉS (avec finances et audiences) :
 {
   "type": "WRITE",
   "writePlan": {
@@ -139,38 +187,69 @@ Pour une CRÉATION MULTI-ENTITÉS:
       {
         "operation": "INSERT",
         "entity": "customer",
-        "tempId": "client_demandeur",
+        "tempId": "new_client",
         "fields": {
-          "first_name": "Alain",
-          "last_name": "Lefebvre",
-          "address": "Adresse de Monsieur Lefebvre"
+          "first_name": "Amir",
+          "last_name": "Ziani",
+          "email": "amir.ziani@gmail.com",
+          "phone": "0712345678"
         }
       },
       {
         "operation": "INSERT",
-        "entity": "customer",
-        "tempId": "client_defendeur",
+        "entity": "dossiers",
+        "tempId": "new_dossier",
         "fields": {
-          "first_name": "Bernard",
-          "last_name": "Morel",
-          "address": "Adresse de Monsieur Morel"
+          "client": "{{new_client.id}}",
+          "object": "Recours contre refus de renouvellement de titre de séjour Salarié",
+          "lawyer": "Nom Avocat",
+          "procedure_type": "Droit des étrangers",
+          "procedure_subtype": "Refus de titre de séjour",
+          "opposing_party_name": "Préfecture du Rhône",
+          "priority_level": 2
         }
       },
-            {
+      {
         "operation": "INSERT",
-        "entity": "dossiers",
+        "entity": "factures",
+        "tempId": "facture_honoraires",
         "fields": {
-          "client": "Alain Lefebvre",
-          "object": "Litige commercial",
-          "lawyer": "Nogoh Brice",
-          "procedure_type": "Contentieux civil",
-          "procedure_subtype": "Divorce",
-          "opposing_party_name": "Bernard Morel"
+          "dossier": "{{new_dossier.id}}",
+          "client": "{{new_client.id}}",
+          "montantHT": 1800.00,
+          "type": "0",
+          "description": "Forfait recours gracieux + contentieux",
+          "status": "2"
+        }
+      },
+      {
+        "operation": "INSERT",
+        "entity": "paiements",
+        "tempId": "paiement_provision",
+        "fields": {
+          "facture": "{{facture_honoraires.id}}",
+          "montant": 900.00,
+          "datePaiement": "2026-04-15",
+          "modePaiement": "0",
+          "status": "1"
+        }
+      },
+      {
+        "operation": "INSERT",
+        "entity": "audiences",
+        "tempId": "echeance_rejet",
+        "fields": {
+          "dossier": "{{new_dossier.id}}",
+          "audience_date": "2026-06-22",
+          "audience_time": "09:00",
+          "type": "0",
+          "status": "0",
+          "notes": "Délai de réponse au recours gracieux — silence vaut rejet implicite"
         }
       }
     ],
-    "humanReadable": "Créer deux clients et un dossier pour eux",
-    "confidence": 0.9
+    "humanReadable": "Créer le client, le dossier, la facture d'honoraires (1800€ HT), la provision reçue (900€) et l'échéance du recours gracieux",
+    "confidence": 0.92
   }
 }
 
@@ -287,6 +366,12 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       /j'aimerais\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       /il\s+faut\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       /(?:merci de|veuillez)\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
+      // Patterns d'analyse structurée avec données brutes → intent WRITE implicite
+      /cree\s+un\s+dossier/,
+      /dossier\s+(?:client|juridique|structure)/,
+      /INSTRUCTION\s*:/i,
+      /DONNEES\s+BRUTES/i,
+      /fiche\s+(?:client|de\s+synthese|synthetique)/,
     ];
 
     for (const pattern of patterns) {
