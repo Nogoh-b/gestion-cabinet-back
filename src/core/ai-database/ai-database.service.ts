@@ -311,9 +311,7 @@ export class AiDatabaseService implements OnModuleInit {
           `⚠️ Ambiguïté (confirmWrite): "${error.searchTerm}" dans "${error.entity}" ` +
           `(${error.candidates.length} candidats, opération ${error.operationIndex})`,
         );
-        const message =
-          `🔍 **Correspondances multiples pour "${error.searchTerm}"**\n\n` +
-          `Veuillez choisir parmi les ${error.candidates.length} résultats ci-dessous.`;
+        const message = this.buildAmbiguityMessage(error);
         return {
           success: true,
           question: 'Confirmation opération',
@@ -326,6 +324,7 @@ export class AiDatabaseService implements OnModuleInit {
             searchTerm: error.searchTerm,
             candidates: error.candidates,
             operationIndex: error.operationIndex,
+            parentEntity: error.parentEntity,
           },
           executionTimeMs: Date.now() - startTime,
         };
@@ -334,7 +333,77 @@ export class AiDatabaseService implements OnModuleInit {
     }
   }
   
-    private formatPlanResults(results: WriteResult[]): string {
+  /**
+   * Construit le message d'ambiguïté affiché à l'utilisateur.
+   * Contextualise en indiquant quelle entité est en cours de création
+   * et pourquoi ce champ est nécessaire.
+   *
+   * Exemples :
+   *   parentEntity=dossiers, fieldName=client, searchTerm="Jean Dupont"
+   *   → "La création du **dossier** nécessite de préciser le **client**.
+   *      Plusieurs correspondances ont été trouvées pour « Jean Dupont »."
+   *
+   *   parentEntity=dossiers, fieldName=lawyer, searchTerm="(non spécifié)"
+   *   → "La création du **dossier** nécessite de préciser l'**avocat référent**.
+   *      Veuillez choisir parmi les options disponibles."
+   */
+  private buildAmbiguityMessage(error: import('./write/ambiguity.exception').AmbiguityException): string {
+    const parentLabel = error.parentEntity
+      ? this.schemaMetadata.getTableLabel(error.parentEntity) || error.parentEntity
+      : null;
+
+    const fieldLabel = this.getFieldLabel(error.fieldName);
+    const isUnspecified = error.searchTerm === '(non spécifié)' || error.searchTerm === '(non spécifiée)';
+    const n = error.candidates.length;
+
+    let intro = '';
+    if (parentLabel) {
+      const article = this.getArticle(parentLabel);
+      const fieldArticle = this.getFieldArticle(error.fieldName);
+      intro = `La ${error.parentEntity?.includes('s') ? 'création' : 'création'} ${article} **${parentLabel.toLowerCase()}** nécessite de préciser ${fieldArticle}**${fieldLabel}**.\n\n`;
+    }
+
+    if (isUnspecified) {
+      return `🔍 ${intro}Veuillez choisir parmi les ${n} option(s) disponible(s) ci-dessous.`;
+    }
+
+    return `🔍 ${intro}Plusieurs correspondances ont été trouvées pour **« ${error.searchTerm} »** (${n} résultat(s)). Veuillez sélectionner le bon :`;
+  }
+
+  /** Libellé lisible pour un alias de champ FK */
+  private getFieldLabel(fieldName: string): string {
+    const labels: Record<string, string> = {
+      client: 'client',
+      lawyer: 'avocat référent',
+      procedure_type: 'type de procédure',
+      procedure_subtype: 'sous-type de procédure',
+      jurisdiction: 'juridiction',
+      dossier: 'dossier',
+      facture: 'facture',
+      employee: 'employé',
+      branch: 'agence',
+      referrer: 'apporteur d\'affaires',
+    };
+    return labels[fieldName] ?? fieldName.replace(/_/g, ' ');
+  }
+
+  /** Article défini adapté à la première lettre */
+  private getArticle(label: string): string {
+    const vowels = 'aeiouéèêëàâîï';
+    return vowels.includes(label[0]?.toLowerCase()) ? 'de l\'' : 'du ';
+  }
+
+  /** Article indéfini adapté au champ (le/la/l') */
+  private getFieldArticle(fieldName: string): string {
+    const feminine = ['jurisdiction', 'procedure_type', 'procedure_subtype'];
+    const vowelStart = ['employee', 'avocat'];
+    const label = this.getFieldLabel(fieldName);
+    if (vowelStart.some(v => label.startsWith(v))) return 'l\'';
+    if (feminine.includes(fieldName)) return 'la ';
+    return 'le ';
+  }
+
+  private formatPlanResults(results: WriteResult[]): string {
       const successCount = results.filter(r => r.success).length;
       const failCount = results.filter(r => !r.success).length;
       
@@ -548,9 +617,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
           `(${error.candidates.length} candidats, opération ${error.operationIndex})`,
         );
 
-        const message =
-          `🔍 **Correspondances multiples pour "${error.searchTerm}"**\n\n` +
-          `Veuillez choisir parmi les ${error.candidates.length} résultats ci-dessous.`;
+        const message = this.buildAmbiguityMessage(error);
 
         await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
 
@@ -566,6 +633,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
             searchTerm: error.searchTerm,
             candidates: error.candidates,
             operationIndex: error.operationIndex,
+            parentEntity: error.parentEntity,
           },
           conversationId,
           executionTimeMs: Date.now() - startTime,
@@ -667,9 +735,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     } catch (error) {
       // Nouvelle ambiguïté possible sur une autre opération
       if (error instanceof AmbiguityException) {
-        const message =
-          `🔍 **Nouvelle ambiguïté: "${error.searchTerm}"**\n\n` +
-          `Veuillez choisir parmi les ${error.candidates.length} résultats ci-dessous.`;
+        const message = this.buildAmbiguityMessage(error);
 
         if (conversationId) {
           await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
@@ -687,6 +753,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
             searchTerm: error.searchTerm,
             candidates: error.candidates,
             operationIndex: error.operationIndex,
+            parentEntity: error.parentEntity,
           },
           conversationId,
           executionTimeMs: Date.now() - startTime,
@@ -799,6 +866,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
               searchTerm: error.searchTerm,
               candidates: error.candidates,
               operationIndex: error.operationIndex,
+              parentEntity: error.parentEntity,
+              message: this.buildAmbiguityMessage(error),
               pendingWritePlan: plan,
               conversationId,
             });

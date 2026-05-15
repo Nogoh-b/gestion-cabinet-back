@@ -193,7 +193,7 @@ export class DossierWriteHandler extends BaseWriteHandler {
           this.logger.warn(
             `🔍 ${candidates.length} suggestion(s) pour le sous-type "${subtypeValue}" — choix utilisateur requis`,
           );
-          throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, candidates);
+          throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, candidates, -1, this.entityName);
         } else {
           throw new Error(`Impossible de trouver le sous-type "${subtypeValue}": ${result.message}`);
         }
@@ -208,7 +208,7 @@ export class DossierWriteHandler extends BaseWriteHandler {
       const candidates = await this.fetchTopEmployees();
       if (candidates.length > 0) {
         this.logger.warn(`🔍 lawyer manquant — proposition de ${candidates.length} avocats`);
-        throw new AmbiguityException('employee', 'lawyer', '(non spécifié)', candidates);
+        throw new AmbiguityException('employee', 'lawyer', '(non spécifié)', candidates, -1, this.entityName);
       }
     }
 
@@ -216,7 +216,7 @@ export class DossierWriteHandler extends BaseWriteHandler {
       const candidates = await this.fetchTopProcedureTypes(false);
       if (candidates.length > 0) {
         this.logger.warn(`🔍 procedure_type manquant — proposition de ${candidates.length} types`);
-        throw new AmbiguityException('procedure_types', 'procedure_type', '(non spécifié)', candidates);
+        throw new AmbiguityException('procedure_types', 'procedure_type', '(non spécifié)', candidates, -1, this.entityName);
       }
     }
 
@@ -225,7 +225,7 @@ export class DossierWriteHandler extends BaseWriteHandler {
       const candidates = await this.fetchTopProcedureTypes(true, parentId);
       if (candidates.length > 0) {
         this.logger.warn(`🔍 procedure_subtype manquant — proposition de ${candidates.length} sous-types`);
-        throw new AmbiguityException('procedure_types', 'procedure_subtype', '(non spécifié)', candidates);
+        throw new AmbiguityException('procedure_types', 'procedure_subtype', '(non spécifié)', candidates, -1, this.entityName);
       }
     }
 

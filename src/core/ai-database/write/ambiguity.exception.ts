@@ -27,7 +27,7 @@ export class AmbiguityException extends Error {
   readonly name = 'AmbiguityException';
 
   constructor(
-    /** Nom de la table TypeORM (ex: "customer") */
+    /** Nom de la table TypeORM référencée (ex: "customer") */
     public readonly entity: string,
     /** Alias FK dans les champs (ex: "client") */
     public readonly fieldName: string,
@@ -40,6 +40,11 @@ export class AmbiguityException extends Error {
      * Initialement -1, rempli par GenericWriteService au catch.
      */
     public operationIndex: number = -1,
+    /**
+     * Entité en cours d'écriture au moment de l'ambiguïté (ex: "dossiers").
+     * Permet au front d'afficher : "La création d'un dossier nécessite un client."
+     */
+    public readonly parentEntity?: string,
   ) {
     super(
       `Ambiguïté: "${searchTerm}" correspond à ${candidates.length} entités dans "${entity}". ` +

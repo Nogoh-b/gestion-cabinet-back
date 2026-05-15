@@ -31,6 +31,8 @@ export class AnalysisResponseDto {
     candidates: Array<{ id: any; label: string; score: number; data?: any }>;
     /** Index de l'opération dans le WritePlan à reprendre */
     operationIndex: number;
+    /** Entité en cours de création au moment de l'ambiguïté (ex: "dossiers") */
+    parentEntity?: string;
   };
 }
 

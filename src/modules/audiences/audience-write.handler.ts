@@ -84,7 +84,7 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       const jurisdictions = await this.fetchTopJurisdictions();
       if (jurisdictions.length > 0) {
         this.logger.warn(`🔍 jurisdiction manquante — proposition de ${jurisdictions.length} juridictions`);
-        throw new AmbiguityException('jurisdictions', 'jurisdiction', '(non spécifiée)', jurisdictions);
+        throw new AmbiguityException('jurisdictions', 'jurisdiction', '(non spécifiée)', jurisdictions, -1, this.entityName);
       }
     }
 

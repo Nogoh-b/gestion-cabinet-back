@@ -340,6 +340,8 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
             alias,
             value,
             candidates,
+            -1,
+            this.entityName,
           );
         } else if (this.isFkNullable(alias) && (!result.resolved.candidates || result.resolved.candidates.length === 0)) {
           // 🪶 FK optionnel et aucune suggestion → on ignore silencieusement
@@ -367,6 +369,8 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
             alias,
             value,
             candidates,
+            -1,
+            this.entityName,
           );
         } else {
           // ❌ Aucun candidat du tout — erreur
