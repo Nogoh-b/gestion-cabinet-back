@@ -12,16 +12,12 @@ import { IntentDetectionService } from './intent-detection.service';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { EntityResolverService } from './write/entity-resolver.service';
 import { AutoHandlerFactory } from './write/auto-handler-factory.service';
-import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Conversation,
       ConversationMessage,
-      Customer,
-      Employee,
     ]),
   ],
   controllers: [AiDatabaseController],

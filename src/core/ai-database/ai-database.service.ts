@@ -1,6 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
+import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { ChatOpenAI } from '@langchain/openai';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { AskQuestionDto } from './dto/ask-question.dto';
@@ -38,6 +40,8 @@ export class AiDatabaseService implements OnModuleInit {
     private readonly genericWriteService: GenericWriteService,
     private readonly conversationManager: ConversationManagerService,
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
+    @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
+    private readonly projectConfig?: AiDatabaseProjectConfig,
   ) {}
 
   async onModuleInit() {
@@ -374,19 +378,11 @@ export class AiDatabaseService implements OnModuleInit {
 
   /** Libellé lisible pour un alias de champ FK */
   private getFieldLabel(fieldName: string): string {
-    const labels: Record<string, string> = {
-      client: 'client',
-      lawyer: 'avocat référent',
-      procedure_type: 'type de procédure',
-      procedure_subtype: 'sous-type de procédure',
-      jurisdiction: 'juridiction',
-      dossier: 'dossier',
-      facture: 'facture',
-      employee: 'employé',
-      branch: 'agence',
-      referrer: 'apporteur d\'affaires',
-    };
-    return labels[fieldName] ?? fieldName.replace(/_/g, ' ');
+    // Le projet injecte ses labels via AI_DATABASE_PROJECT_CONFIG.fieldLabels
+    const projectLabel = this.projectConfig?.fieldLabels?.[fieldName];
+    if (projectLabel) return projectLabel;
+    // Fallback générique : snake_case → mots séparés
+    return fieldName.replace(/_/g, ' ');
   }
 
   /** Article défini adapté à la première lettre */
@@ -2047,7 +2043,8 @@ Retourne UNIQUEMENT la requête corrigée.`;
       lastAnalyzed: new Date(),
     };
     
-    const tables = DatabaseTablesConfig.essentialTables.slice(0, 10);
+    const effectiveTablesConfig = this.projectConfig?.databaseTablesConfig ?? DatabaseTablesConfig;
+    const tables = (effectiveTablesConfig.essentialTables ?? DatabaseTablesConfig.essentialTables).slice(0, 10);
     for (const table of tables) {
       try {
         const result = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);

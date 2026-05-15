@@ -86,7 +86,7 @@ export class FactureWriteHandler extends BaseWriteHandler {
       // dossier_id peut arriver via : FK résolution (alias "dossier"), auto-injection plan,
       // ou valeur directe. La normalisation filterKnownColumns est appliquée avant ici.
       if (!fields.dossier_id) errors.push('Le dossier est requis (dossier_id ou dossier)');
-      if (!fields.client_id) errors.push('Le client est requis (client_id ou client)');
+      // if (!fields.client_id) errors.push('Le client est requis (client_id ou client)');
 
       // montantHT est le property name TypeORM (normalisé par filterKnownColumns)
       const ht = fields.montantHT ?? fields.montant_ht; // fallback sécurité
