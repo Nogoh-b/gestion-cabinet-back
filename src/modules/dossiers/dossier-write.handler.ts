@@ -186,7 +186,12 @@ export class DossierWriteHandler extends BaseWriteHandler {
           this.logger.warn(`🔍 ${candidates.length} candidat(s) pour le type "${typeValue}"`);
           throw new AmbiguityException('procedure_types', 'procedure_type', typeValue, candidates, -1, this.entityName);
         } else {
-          throw new Error(`Impossible de trouver le type de procédure "${typeValue}": ${result.message}`);
+          // Type introuvable → proposer tous les types principaux disponibles.
+          // Même si la liste est vide, on lance l'AmbiguityException pour que
+          // le frontend affiche l'option "Autre" permettant la création.
+          this.logger.warn(`⚠️ Type de procédure "${typeValue}" introuvable — proposition des types disponibles`);
+          const fallbackCandidates = await this.fetchTopProcedureTypes(false);
+          throw new AmbiguityException('procedure_types', 'procedure_type', typeValue, fallbackCandidates, -1, this.entityName);
         }
       }
     }
@@ -238,7 +243,24 @@ export class DossierWriteHandler extends BaseWriteHandler {
           this.logger.warn(`🔍 ${candidates.length} suggestion(s) pour le sous-type "${subtypeValue}"`);
           throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, candidates, -1, this.entityName);
         } else {
-          throw new Error(`Impossible de trouver le sous-type "${subtypeValue}": ${result.message}`);
+          // Sous-type introuvable → proposer les sous-types disponibles pour ce parent.
+          // Si aucun sous-type n'existe encore pour ce parent (liste vide), on lance
+          // quand même l'AmbiguityException avec 0 candidats : le frontend affichera
+          // l'option "Autre" pour créer le sous-type.
+          const parentId = resolved.procedure_type_id;
+          this.logger.warn(`⚠️ Sous-type "${subtypeValue}" introuvable — proposition des sous-types pour parent_id=${parentId}`);
+          let fallbackCandidates = await this.fetchTopProcedureTypes(true, parentId);
+
+          // Si vraiment 0 sous-types pour ce parent → élargir à tous les sous-types
+          // pour donner quand même un contexte à l'utilisateur
+          if (fallbackCandidates.length === 0) {
+            this.logger.warn(`⚠️ Aucun sous-type pour parent_id=${parentId} — élargissement à tous les sous-types`);
+            fallbackCandidates = await this.fetchTopProcedureTypes(true);
+          }
+
+          // Dans tous les cas, on lance l'AmbiguityException :
+          // le frontend affiche les candidats (0..N) + l'option "Autre" (allowOther=true)
+          throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, fallbackCandidates, -1, this.entityName);
         }
       }
     }

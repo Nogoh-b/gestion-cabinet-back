@@ -138,13 +138,23 @@ export class AiDatabaseController {
    * Reprend l'exécution d'un WritePlan après qu'un utilisateur a choisi
    * l'entité parmi des candidats ambigus.
    *
-   * Corps attendu :
+   * Corps attendu — OPTION A (choix d'un candidat) :
    * {
    *   "pendingWritePlan": { ... },          ← plan retourné lors de l'ambiguïté
    *   "operationIndex":  0,                 ← ambiguityContext.operationIndex
    *   "fieldName":       "client",          ← ambiguityContext.fieldName
    *   "resolvedId":      42,                ← ID de l'entité choisie
    *   "conversationId":  "uuid"             ← optionnel, pour l'historique
+   * }
+   *
+   * Corps attendu — OPTION B (« Autre ») :
+   * {
+   *   "pendingWritePlan": { ... },
+   *   "operationIndex":  0,
+   *   "fieldName":       "jurisdiction",
+   *   "entity":          "jurisdictions",   ← ambiguityContext.entity
+   *   "customValue":     "TGI de Lyon",     ← texte libre saisi par l'utilisateur
+   *   "conversationId":  "uuid"
    * }
    */
   @Post('write/resolve-ambiguity')
@@ -156,6 +166,8 @@ export class AiDatabaseController {
     @Body('fieldName') fieldName: string,
     @Body('resolvedId') resolvedId: string | number,
     @Body('conversationId') conversationId: string,
+    @Body('customValue') customValue: string,
+    @Body('entity') entity: string,
     @CurrentUser() user,
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.resumeAfterAmbiguity(
@@ -165,6 +177,8 @@ export class AiDatabaseController {
       resolvedId,
       user.id,
       conversationId,
+      customValue,
+      entity,
     );
   }
 

@@ -325,6 +325,8 @@ export class AiDatabaseService implements OnModuleInit {
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
           },
           executionTimeMs: Date.now() - startTime,
         };
@@ -634,6 +636,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
           executionTimeMs: Date.now() - startTime,
@@ -681,14 +685,16 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     pendingPlan: WritePlan,
     operationIndex: number,
     fieldName: string,
-    resolvedId: string | number,
+    resolvedId: string | number | undefined,
     userId: string,
     conversationId?: string,
+    customValue?: string,
+    entity?: string,
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
 
-    // Injecter l'ID résolu dans l'opération concernée
-    const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pendingPlan)); // deep clone
+    // Deep clone du plan pour ne pas muter l'original
+    const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pendingPlan));
     const op = patchedPlan.operations[operationIndex];
 
     if (!op) {
@@ -701,10 +707,16 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       };
     }
 
-    // Remplacer la valeur textuelle par l'ID résolu
-    op.fields[fieldName] = resolvedId;
+    // ── Option « Autre » : customValue fourni ───────────────────────────────
+    if (customValue && !resolvedId) {
+      return this.handleOtherChoice(
+        patchedPlan, op, operationIndex, fieldName,
+        customValue, entity ?? '', userId, conversationId, startTime,
+      );
+    }
 
-    // Forcer best_effort pour les autres FK de cette opération
+    // ── Option classique : resolvedId fourni ────────────────────────────────
+    op.fields[fieldName] = resolvedId;
     op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
 
     this.logger.log(
@@ -712,9 +724,207 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       `"${fieldName}" → ID ${resolvedId}`,
     );
 
+    return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime);
+  }
+
+  // ── « Autre » : créer l'entité puis reprendre le plan ──────────────────────
+
+  private async handleOtherChoice(
+    patchedPlan: WritePlan,
+    op: import('./dto/analysis-response.dto').WriteOperation,
+    operationIndex: number,
+    fieldName: string,
+    customValue: string,
+    entityTable: string,
+    userId: string,
+    conversationId: string | undefined,
+    startTime: number,
+  ): Promise<AnalysisResponseDto> {
+    this.logger.log(
+      `🆕 Option "Autre" : création dans "${entityTable}" avec "${customValue}" ` +
+      `pour le champ "${fieldName}" (opération ${operationIndex})`,
+    );
+
+    // 1. Trouver le handler enregistré pour cette table
+    const handler = this.writeHandlerRegistry.getHandler(entityTable);
+    if (!handler) {
+      // Pas de handler → on injecte le texte brut et on laisse la résolution retenter
+      this.logger.warn(`⚠️ Aucun handler pour "${entityTable}" — injection du texte brut`);
+      op.fields[fieldName] = customValue;
+      op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
+      return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime);
+    }
+
+    // 2. Construire les champs minimaux pour la création
+    const createFields = await this.buildMinimalFields(entityTable, customValue, fieldName, op.fields);
+
+    try {
+      // 3. Exécuter l'INSERT via le handler
+      const writeResult = await handler.execute(
+        {
+          operation: 'INSERT',
+          entity: entityTable,
+          fields: createFields,
+          confidence: 1,
+          humanReadable: `Création de ${this.getFieldLabel(fieldName)} « ${customValue} » (choix « Autre »)`,
+        },
+        userId,
+      );
+
+      if (!writeResult.success || !writeResult.entityId) {
+        return {
+          success: false,
+          question: 'Reprise après ambiguïté — création',
+          analysis: `❌ Création échouée : ${writeResult.message}`,
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+          error: writeResult.message,
+        };
+      }
+
+      this.logger.log(`✅ Entité créée dans "${entityTable}" → ID ${writeResult.entityId}`);
+
+      // 4. Injecter l'ID dans le plan et reprendre
+      op.fields[fieldName] = writeResult.entityId;
+      op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
+
+      return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime,
+        `✅ **${this.getFieldLabel(fieldName)}** créé(e) : « ${customValue} » (ID: ${writeResult.entityId})\n\n`,
+      );
+    } catch (error) {
+      // Si le handler lève une ambiguïté (ex: FK manquante dans l'entité enfant)
+      if (error instanceof AmbiguityException) {
+        const message = this.buildAmbiguityMessage(error);
+        return {
+          success: true,
+          question: 'Reprise après ambiguïté — création',
+          analysis: `⚠️ La création nécessite des précisions supplémentaires :\n\n${message}`,
+          pendingWritePlan: patchedPlan,
+          requiresAmbiguityResolution: true,
+          ambiguityContext: {
+            entity: error.entity,
+            fieldName: error.fieldName,
+            searchTerm: error.searchTerm,
+            candidates: error.candidates,
+            operationIndex: error.operationIndex,
+            parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
+          },
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Erreur de validation → message clair
+      const msg = (error as Error).message;
+      this.logger.error(`❌ Création "${customValue}" dans "${entityTable}" échouée: ${msg}`);
+      return {
+        success: false,
+        question: 'Reprise après ambiguïté — création',
+        analysis: `❌ Impossible de créer « ${customValue} » dans ${entityTable} : ${msg}`,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+        error: msg,
+      };
+    }
+  }
+
+  /**
+   * Construit les champs minimaux pour créer une entité depuis l'option "Autre".
+   * Détecte le champ "nom" principal de la table et injecte le customValue.
+   * Injecte aussi les champs contextuels pertinents (ex: is_subtype, parent_id).
+   *
+   * Pour procedure_subtype : résout le procedure_type_id depuis les champs de l'opération
+   * (ID direct ou résolution texte) afin d'injecter parent_id automatiquement.
+   */
+  private async buildMinimalFields(
+    entityTable: string,
+    customValue: string,
+    fieldName: string,
+    operationFields: Record<string, any>,
+  ): Promise<Record<string, any>> {
+    const fields: Record<string, any> = {};
+
+    // Champ "nom" de l'entité cible
+    const nameField = this.guessNameField(entityTable);
+    fields[nameField] = customValue;
+
+    // ── Champs contextuels spécifiques ──────────────────────────────────────
+
+    if (fieldName === 'procedure_subtype') {
+      fields['is_subtype'] = true;
+      fields['hierarchy_level'] = 2;
+
+      // Résoudre le parent_id :
+      // 1. L'ID est directement dans les champs (cas idéal)
+      // 2. L'ID est dans procedure_type_id (parfois injecté dans le plan)
+      // 3. Le texte procedure_type est disponible → résolution par nom en BDD
+      let parentId: number | undefined =
+        operationFields.procedure_type_id
+        ?? operationFields.procedure_subtype_id   // fallback rare
+        ?? undefined;
+
+      if (!parentId && operationFields.procedure_type && typeof operationFields.procedure_type === 'string') {
+        try {
+          // Chercher le type principal par correspondance de nom (is_subtype=false)
+          const rows: any[] = await this.dataSource.query(
+            `SELECT id FROM procedure_types WHERE name LIKE ? AND is_subtype = 0 LIMIT 1`,
+            [`%${operationFields.procedure_type}%`],
+          );
+          if (rows.length > 0) {
+            parentId = rows[0].id;
+            this.logger.log(`🔗 parent_id résolu depuis procedure_type="${operationFields.procedure_type}" → ID ${parentId}`);
+          }
+        } catch (e) {
+          this.logger.warn(`⚠️ Impossible de résoudre procedure_type pour parent_id: ${(e as Error).message}`);
+        }
+      }
+
+      if (parentId) {
+        fields['parent_id'] = Number(parentId);
+      } else {
+        this.logger.warn(`⚠️ parent_id introuvable pour créer le sous-type "${customValue}"`);
+      }
+    }
+
+    if (fieldName === 'procedure_type') {
+      fields['is_subtype'] = false;
+      fields['hierarchy_level'] = 1;
+    }
+
+    return fields;
+  }
+
+  /**
+   * Devine le champ "nom" principal d'une entité.
+   * Cherche dans l'ordre : name, label, title, object, first_name.
+   */
+  private guessNameField(entityTable: string): string {
+    const meta = this.dataSource.entityMetadatas.find(m => m.tableName === entityTable);
+    if (!meta) return 'name';
+
+    const priorityFields = ['name', 'label', 'title', 'object', 'first_name'];
+    for (const pf of priorityFields) {
+      if (meta.columns.some(c => c.databaseName === pf || c.propertyName === pf)) {
+        return pf;
+      }
+    }
+    return 'name';
+  }
+
+  // ── Exécution du plan patché (factorisé) ──────────────────────────────────
+
+  private async executePatchedPlan(
+    patchedPlan: WritePlan,
+    userId: string,
+    conversationId: string | undefined,
+    startTime: number,
+    prefixMessage?: string,
+  ): Promise<AnalysisResponseDto> {
     try {
       const results = await this.genericWriteService.executePlan(patchedPlan, userId);
-      const analysis = this.formatPlanResults(results);
+      const analysis = (prefixMessage ?? '') + this.formatPlanResults(results);
 
       if (conversationId) {
         await this.conversationManager.addAssistantMessage(
@@ -733,7 +943,6 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         executionTimeMs: Date.now() - startTime,
       };
     } catch (error) {
-      // Nouvelle ambiguïté possible sur une autre opération
       if (error instanceof AmbiguityException) {
         const message = this.buildAmbiguityMessage(error);
 
@@ -742,7 +951,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         }
 
         return {
-          success: true,          // ← pas une erreur : nouvelle ambiguïté en attente de choix
+          success: true,
           question: 'Reprise après ambiguïté',
           analysis: message,
           pendingWritePlan: patchedPlan,
@@ -754,6 +963,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
           executionTimeMs: Date.now() - startTime,
@@ -763,10 +974,10 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       return {
         success: false,
         question: 'Reprise après ambiguïté',
-        analysis: `❌ ${error.message}`,
+        analysis: `❌ ${(error as Error).message}`,
         conversationId,
         executionTimeMs: Date.now() - startTime,
-        error: error.message,
+        error: (error as Error).message,
       };
     }
   }
@@ -870,6 +1081,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
               message: this.buildAmbiguityMessage(error),
               pendingWritePlan: plan,
               conversationId,
+              allowOther: true,
+              otherLabel: this.getFieldLabel(error.fieldName),
             });
           } else {
             sendEvent('error', { message: error.message });
