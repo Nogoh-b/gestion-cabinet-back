@@ -311,6 +311,14 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
             value,
             candidates,
           );
+        } else if (this.isFkNullable(alias) && (!result.resolved.candidates || result.resolved.candidates.length === 0)) {
+          // 🪶 FK optionnel et aucune suggestion → on ignore silencieusement
+          // (le LLM a probablement ajouté ce champ par bonus, on ne bloque pas la création)
+          this.logger.warn(
+            `🪶 FK optionnel "${alias}" non résolvable pour "${value}" dans "${info.referencedTable}" — ignoré`,
+          );
+          delete resolved[alias];
+          if (alias !== info.fkColumn) delete resolved[info.fkColumn];
         } else if (result.resolved.candidates && result.resolved.candidates.length > 0) {
           // 🔍 Pas de match concluant mais on a des suggestions → traiter comme ambiguïté
           // pour laisser l'utilisateur choisir parmi le top 10
@@ -665,6 +673,29 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       if (info.fkColumn === fkColumn) return alias;
     }
     return null;
+  }
+
+  /**
+   * Détermine si une FK (par son alias) est nullable, càd optionnelle en BDD.
+   * Utilisée pour décider si on peut silencieusement ignorer un FK non-résolvable
+   * au lieu de bloquer toute la création.
+   */
+  private isFkNullable(alias: string): boolean {
+    // 1) Chercher la relation TypeORM par propertyName (alias)
+    const relation = this.entityMeta.relations.find(r => r.propertyName === alias);
+    if (relation) {
+      // isNullable est sur la relation ; en fallback on regarde la colonne FK
+      if (typeof (relation as any).isNullable === 'boolean') {
+        return (relation as any).isNullable;
+      }
+    }
+    // 2) Fallback : chercher la colonne FK correspondante
+    const fkInfo = this.fkMap.get(alias);
+    if (fkInfo) {
+      const col = this.entityMeta.columns.find(c => c.databaseName === fkInfo.fkColumn);
+      if (col) return col.isNullable;
+    }
+    return false; // par défaut on considère required (pour rester strict)
   }
 
   /** Ne garde que les colonnes qui existent réellement dans la table */

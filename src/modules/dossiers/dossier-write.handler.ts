@@ -296,11 +296,14 @@ export class DossierWriteHandler extends BaseWriteHandler {
     userId: string,
   ): Promise<WriteResult> {
     // Générer le numéro de dossier DOS-YYYY-XXXX
-    // Utilise le MAX existant pour éviter les collisions en cas de suppression
+    // Utilise le MAX existant (y compris soft-deleted) pour éviter les collisions
+    // CRITICAL: .withDeleted() est obligatoire car la contrainte UNIQUE de la BDD
+    // s'applique même aux lignes soft-deleted (deleted_at != null).
     const year = new Date().getFullYear();
     const prefix = `DOS-${year}-`;
     const lastDossier = await this.dossierRepo
       .createQueryBuilder('d')
+      .withDeleted() // ← inclure les dossiers soft-deleted
       .where('d.dossier_number LIKE :prefix', { prefix: `${prefix}%` })
       .orderBy('d.dossier_number', 'DESC')
       .getOne();
@@ -309,7 +312,21 @@ export class DossierWriteHandler extends BaseWriteHandler {
       const match = lastDossier.dossier_number.match(/DOS-\d{4}-(\d+)$/);
       if (match) nextSeq = parseInt(match[1], 10) + 1;
     }
-    const dossierNumber = `${prefix}${nextSeq.toString().padStart(4, '0')}`;
+    let dossierNumber = `${prefix}${nextSeq.toString().padStart(4, '0')}`;
+
+    // Filet de sécurité : si malgré tout le numéro est déjà pris (race condition,
+    // ordre lexicographique ambigu, etc.), boucler jusqu'à trouver un numéro libre.
+    let safety = 0;
+    while (safety++ < 100) {
+      const existing = await this.dossierRepo
+        .createQueryBuilder('d')
+        .withDeleted()
+        .where('d.dossier_number = :n', { n: dossierNumber })
+        .getOne();
+      if (!existing) break;
+      nextSeq++;
+      dossierNumber = `${prefix}${nextSeq.toString().padStart(4, '0')}`;
+    }
 
     // Filtrer les champs connus + stripper les champs auto-générés (codes, refs)
     // → on ne veut pas que le LLM impose un dossier_number qui causerait collision
