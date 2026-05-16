@@ -42,6 +42,20 @@ export interface AiDatabaseProjectConfig {
   promptDomainExample?: string;
 
   /**
+   * Prompt système injecté dans le LLM pour les réponses conversationnelles (questions hors-BD).
+   * Si absent, un prompt générique est utilisé.
+   * Ex: "Tu es l'assistant IA d'un cabinet d'avocats. Réponds de façon professionnelle..."
+   */
+  conversationalSystemPrompt?: string;
+
+  /**
+   * Prompt système pour l'analyse métier des résultats SQL (READ).
+   * Injecté au début du prompt d'analyse. Si absent, un prompt générique est utilisé.
+   * Ex: "Tu es un expert métier spécialisé dans la gestion de dossiers juridiques..."
+   */
+  analysisSystemPrompt?: string;
+
+  /**
    * Labels lisibles pour les noms de champs (utilisés dans les messages d'ambiguïté).
    * Ex: { 'procedure_type': 'type de procédure', 'lawyer': 'avocat référent' }
    */

@@ -1390,13 +1390,18 @@ RÉPONSE (en français courant, langage métier):`;
   ): Promise<string> {
     if (!results.data || results.data.length === 0) {
       const msg = this.getNoResultsMessage(question, tables);
+      this.logger.debug(`📤 token (no-results): "${msg.substring(0, 60)}"`);
       sendEvent('token', { text: msg });
       return msg;
     }
 
     const businessResults = this.transformToBusinessResults(results.data, tables);
 
-    const prompt = `Tu es un expert métier spécialisé dans la gestion de dossiers contentieux et bancaires.
+    // Le rôle métier vient de projectConfig (logique externe) — générique par défaut
+    const expertRole = this.projectConfig?.analysisSystemPrompt
+      ?? `Tu es un assistant IA spécialisé dans l'analyse de données.`;
+
+    const prompt = `${expertRole}
 
 QUESTION POSÉE PAR L'UTILISATEUR:
 "${question}"
@@ -1405,30 +1410,39 @@ RÉSULTATS DES DONNÉES (présentés en termes métier):
 ${JSON.stringify(businessResults, null, 2)}
 
 INSTRUCTIONS IMPORTANTES:
-1. Réponds comme si tu parlais à un collègue non technique (avocat, gestionnaire de dossier)
+1. Réponds comme si tu parlais à un collègue non technique
 2. N'utilise JAMAIS de termes techniques comme "SQL", "requête", "base de données", "colonne", "table"
-3. Utilise des termes métier comme "dossier", "client", "étape", "procédure", "statut", "date"
+3. Utilise des termes métier adaptés au contexte
 4. Si la réponse contient des dates, formate-les de façon lisible
 5. Sois concis mais précis (max 500 mots)
 6. Termine par une phrase d'action ou de recommandation si pertinent
 
-RÉPONSE (en français courant, langage métier):`;
+RÉPONSE (en langage naturel):`;
 
     let fullText = '';
+    let tokenCount = 0;
+
+    this.logger.log(`🌊 [STREAM] Démarrage llm.stream() — prompt ${prompt.length} chars`);
     try {
       const stream = await this.llm.stream(prompt);
       for await (const chunk of stream) {
         const text = typeof chunk.content === 'string' ? chunk.content : '';
         if (text) {
           fullText += text;
+          tokenCount++;
+          // Log chaque 10 tokens pour ne pas spammer
+          if (tokenCount <= 3 || tokenCount % 10 === 0) {
+            this.logger.debug(`🔤 [STREAM] token #${tokenCount}: "${text.replace(/\n/g, '\\n').substring(0, 30)}"`);
+          }
           sendEvent('token', { text });
         }
       }
+      this.logger.log(`✅ [STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
     } catch (err) {
-      this.logger.warn(`⚠️ Streaming LLM échoué, fallback invoke: ${(err as Error).message}`);
-      // Fallback : invoke classique si stream non supporté par le modèle
+      this.logger.warn(`⚠️ [STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
       const response = await this.llm.invoke(prompt);
       fullText = response.content as string;
+      this.logger.debug(`📤 [FALLBACK] token unique: ${fullText.length} chars`);
       sendEvent('token', { text: fullText });
     }
 
@@ -1436,54 +1450,27 @@ RÉPONSE (en français courant, langage métier):`;
   }
 
   /**
-   * Stream une réponse conversationnelle token par token.
+   * Ré-émet un texte pré-généré mot par mot via des événements SSE `token`.
    *
-   * Contrairement à `generateConversationalResponse()` dans IntentDetectionService
-   * (qui utilise llm.invoke et retourne une chaîne complète),
-   * cette méthode utilise llm.stream() pour émettre des tokens via SSE.
-   *
-   * Si la réponse a déjà été générée (conversationalResponse non vide), on la
-   * re-émet caractère par caractère (pseudo-stream) pour garder la cohérence
-   * du protocole SSE côté front.
+   * Générique : aucune logique métier ici.
+   * Le texte a été produit par IntentDetectionService.generateConversationalResponse()
+   * dont le prompt système vient de projectConfig.conversationalSystemPrompt (externe).
    */
-  private async streamConversationalResponse(
+  private streamConversationalResponse(
     preGeneratedText: string,
     sendEvent: (event: string, data: any) => void,
-  ): Promise<string> {
-    // Si on a déjà le texte généré par lightClassify → on le réémet token-by-token
-    if (preGeneratedText) {
-      // Découpe en mots pour simuler un flux naturel
-      const words = preGeneratedText.split(/(\s+)/);
-      for (const word of words) {
-        if (word) sendEvent('token', { text: word });
+  ): string {
+    this.logger.debug(`💬 CONVERSATIONAL stream — ${preGeneratedText.length} chars`);
+    const words = preGeneratedText.split(/(\s+)/);
+    let emitted = 0;
+    for (const word of words) {
+      if (word) {
+        sendEvent('token', { text: word });
+        emitted++;
       }
-      return preGeneratedText;
     }
-
-    // Sinon, on génère via streaming (cas où conversationalResponse est vide)
-    const prompt = [
-      {
-        role: 'system' as const,
-        content: `Tu es l'assistant IA d'un cabinet d'avocats. Tu réponds aux questions générales et aux salutations de façon courtoise et professionnelle. Pour les questions métier (dossiers, clients, factures, audiences), tu invites l'utilisateur à poser une question précise.`,
-      },
-    ];
-
-    let fullText = '';
-    try {
-      const stream = await this.llm.stream(prompt);
-      for await (const chunk of stream) {
-        const text = typeof chunk.content === 'string' ? chunk.content : '';
-        if (text) {
-          fullText += text;
-          sendEvent('token', { text });
-        }
-      }
-    } catch {
-      const fallback = `Bonjour ! Je suis l'assistant du cabinet. Comment puis-je vous aider avec vos dossiers, clients ou factures ?`;
-      sendEvent('token', { text: fallback });
-      fullText = fallback;
-    }
-    return fullText;
+    this.logger.debug(`💬 CONVERSATIONAL stream — ${emitted} token events émis`);
+    return preGeneratedText;
   }
 
   /**

@@ -1,9 +1,16 @@
 /**
  * Règles métier spécifiques au cabinet juridique.
- * Injectées dans le prompt IA via AiDatabaseProjectConfig.promptDomainRules.
+ * Injectées dans le prompt IA via AiDatabaseProjectConfig.
  *
  * Ce fichier peut être modifié librement sans toucher au module core AiDatabase.
  */
+
+/**
+ * Prompt système pour l'analyse métier des résultats SQL.
+ * Injecté via AiDatabaseProjectConfig.analysisSystemPrompt.
+ */
+export const CABINET_JURIDIQUE_ANALYSIS_PROMPT = `Tu es un expert métier spécialisé dans la gestion \
+de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.`;
 
 export const CABINET_JURIDIQUE_PROMPT_RULES = `
 ### 9. 📄 Règle pour les DOCUMENTS
@@ -75,6 +82,15 @@ crée des entités "audiences" correspondantes APRÈS le dossier.
   - champ "notes" : contexte (ex: "Délai de réponse au recours gracieux")
   - Référence le dossier via tempId
 `;
+
+/**
+ * Prompt système pour les réponses conversationnelles (questions hors-BD).
+ * Injecté via AiDatabaseProjectConfig.conversationalSystemPrompt.
+ */
+export const CABINET_JURIDIQUE_CONVERSATIONAL_PROMPT = `Tu es l'assistant IA d'un cabinet d'avocats. \
+Tu réponds aux questions générales et aux salutations de façon courtoise et professionnelle. \
+Pour les questions métier spécifiques (consulter des dossiers, clients, factures, audiences, paiements), \
+tu invites l'utilisateur à reformuler sa demande de façon précise afin de pouvoir interroger la base de données.`;
 
 export const CABINET_JURIDIQUE_PROMPT_EXAMPLE = `{
   "type": "WRITE",

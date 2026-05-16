@@ -322,20 +322,21 @@ Réponds UNIQUEMENT avec READ, WRITE ou CHAT. Rien d'autre.`;
 
   /**
    * Génère une réponse directe pour les questions conversationnelles.
-   * L'IA répond en tant qu'assistant juridique sans interroger la BD.
+   * Le prompt système est fourni par projectConfig.conversationalSystemPrompt (logique métier externe).
+   * Un prompt générique est utilisé si aucune config n'est fournie.
    */
   private async generateConversationalResponse(question: string, llm: ChatOpenAI): Promise<string> {
+    const systemPrompt = this.projectConfig?.conversationalSystemPrompt
+      ?? `Tu es un assistant IA. Réponds aux questions générales et aux salutations de façon courtoise et professionnelle.`;
+
     try {
-      const response = await llm.invoke([{
-        role: 'system',
-        content: `Tu es l'assistant IA d'un cabinet d'avocats. Tu réponds aux questions générales et aux salutations de façon courtoise et professionnelle. Pour les questions métier (dossiers, clients, factures, audiences), tu invites l'utilisateur à poser une question précise.`,
-      }, {
-        role: 'user',
-        content: question,
-      }]);
+      const response = await llm.invoke([
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: question },
+      ]);
       return response.content as string;
     } catch {
-      return `Bonjour ! Je suis l'assistant du cabinet. Comment puis-je vous aider avec vos dossiers, clients ou factures ?`;
+      return `Bonjour ! Comment puis-je vous aider ?`;
     }
   }
 

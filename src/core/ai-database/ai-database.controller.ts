@@ -21,12 +21,13 @@ import { memoryStorage } from 'multer';
 
 @ApiBearerAuth()
 export class AiDatabaseController {
+  private readonly logger = new Logger(AiDatabaseController.name);
+
   constructor(
     private readonly aiDbService: AiDatabaseService,
     private readonly schemaMetadata: SchemaMetadataService,
-      private readonly conversationManager: ConversationManagerService,
-
-    ) {}
+    private readonly conversationManager: ConversationManagerService,
+  ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
@@ -118,21 +119,41 @@ export class AiDatabaseController {
      * Sans compression, res.write() flush déjà tout seul — mais flush() reste
      * no-op dans ce cas, donc l'appel est toujours sûr.
      */
+    const flushAvailable = typeof (res as any).flush === 'function';
+    this.logger.debug(`🔌 SSE connect — flush disponible: ${flushAvailable}`);
+
     const sendEvent = (event: string, data: any) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+      res.write(payload);
       // Force l'envoi immédiat du paquet TCP
-      if (typeof (res as any).flush === 'function') {
+      if (flushAvailable) {
         (res as any).flush();
+      }
+      // Log chaque event sauf 'token' (trop verbeux) — log les 3 premiers tokens
+      if (event !== 'token') {
+        this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
       }
     };
 
+    let tokenEmitCount = 0;
+    const sendEventWithTokenLog = (event: string, data: any) => {
+      if (event === 'token') {
+        tokenEmitCount++;
+        if (tokenEmitCount <= 3 || tokenEmitCount % 20 === 0) {
+          this.logger.debug(`📤 SSE → [token #${tokenEmitCount}] "${(data.text ?? '').substring(0, 30)}"`);
+        }
+      }
+      sendEvent(event, data);
+    };
+
     try {
-      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent);
+      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEventWithTokenLog);
     } catch (err) {
       sendEvent('error', { message: err.message });
     } finally {
+      this.logger.debug(`📤 SSE → [done] (${tokenEmitCount} tokens émis au total)`);
       res.write('event: done\ndata: {}\n\n');
-      if (typeof (res as any).flush === 'function') (res as any).flush();
+      if (flushAvailable) (res as any).flush();
       res.end();
     }
   }

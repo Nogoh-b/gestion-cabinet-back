@@ -56,6 +56,7 @@ import { AiDatabaseModule } from './core/ai-database/ai-database.module';
 import { ReferralModule } from './modules/referral/referral.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 
 
@@ -184,6 +185,7 @@ dotenv.config();
     ReferralModule,
     PayrollModule,
     SupplierModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
