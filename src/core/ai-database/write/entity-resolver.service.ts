@@ -183,6 +183,21 @@ export class EntityResolverService {
       return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
     }
 
+    // ── 0. Exact match en priorité (codes structurés : DOS-XXXX, REF-XXX, etc.) ──
+    const exactEntity = await this.tryExactMatch(repo, searchFields, searchTerm, additionalFilters);
+    if (exactEntity) {
+      this.logger.log(`✅ Exact match "${searchTerm}" dans "${tableName}" (ID: ${exactEntity.id})`);
+      const match: ResolveMatch<any> = { entity: exactEntity, score: 100, matchedOn: `correspondance exacte` };
+      return {
+        found: true,
+        best: exactEntity,
+        score: 100,
+        matchedOn: 'correspondance exacte',
+        candidates: [match],
+        ambiguous: false,
+      };
+    }
+
     const ni = normalize(searchTerm);
     const tokens = ni.split(' ').filter(t => t.length > 0);
 
@@ -701,6 +716,36 @@ export class EntityResolverService {
       .sort((a, b) => b.score - a.score);
 
     return this.buildResult(scored, input, repo.metadata.tableName);
+  }
+
+  // ─── EXACT MATCH ─────────────────────────────────────────────────────────
+
+  /**
+   * Tente une correspondance exacte (terme de recherche = valeur du champ) sur chaque
+   * champ searchable, dans l'ordre.
+   *
+   * Indispensable pour les codes structurés : numéros de dossier (DOS-XXXX-XXXX-XXXX),
+   * références (REF-XXX), codes juridiction, etc. Sans cela, le fuzzy matching tokenise
+   * les tirets et ne peut pas retrouver la correspondance exacte.
+   *
+   * Retourne la première entité trouvée, ou null si aucune.
+   */
+  private async tryExactMatch(
+    repo: import('typeorm').Repository<any>,
+    searchFields: string[],
+    searchTerm: string,
+    additionalFilters?: Record<string, any>,
+  ): Promise<any | null> {
+    const term = searchTerm.trim();
+    if (!term) return null;
+    const extra = additionalFilters ?? {};
+    for (const field of searchFields) {
+      try {
+        const found = await repo.findOne({ where: { [field]: term, ...extra } });
+        if (found) return found;
+      } catch { /* colonne incompatible (type), on ignore */ }
+    }
+    return null;
   }
 
   // ─── BUILDER DE RÉSULTAT ──────────────────────────────────────────────────

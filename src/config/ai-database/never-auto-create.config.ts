@@ -28,4 +28,7 @@ export const NEVER_AUTO_CREATE_ENTITIES: string[] = [
   'paiements', 'paiement',
   // Structurel, géré par admin
   'branch', 'branches',
+  // Documents : nécessitent un vrai fichier uploadé via l'interface dédiée
+  'documents', 'document', 'document_customers', 'document_customer',
+  'document_types', 'document_type',
 ];

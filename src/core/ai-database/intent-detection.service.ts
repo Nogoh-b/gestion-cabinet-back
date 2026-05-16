@@ -22,10 +22,24 @@ export class IntentDetectionService {
     llm: ChatOpenAI,
     readSchema: string,
   ): Promise<IntentDetectionResult> {
-    
-    // 1️⃣ Vérification rapide par mots-clés
-    if (!this.isWriteIntent(question)) {
-      return { type: 'READ', requiresConfirmation: false };
+
+    // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
+    const isObviousWrite = this.isWriteIntent(question);
+
+    if (!isObviousWrite) {
+      // 1b. Classification légère via LLM : READ | WRITE | CHAT
+      //     (plus fiable que des heuristiques statiques)
+      const lightClass = await this.lightClassify(question, llm);
+      this.logger.log(`🏷️ Light classify → ${lightClass}`);
+
+      if (lightClass === 'CHAT') {
+        const answer = await this.generateConversationalResponse(question, llm);
+        return { type: 'CONVERSATIONAL', requiresConfirmation: false, conversationalResponse: answer };
+      }
+      if (lightClass === 'READ') {
+        return { type: 'READ', requiresConfirmation: false };
+      }
+      // lightClass === 'WRITE' → on laisse tomber dans la branche WRITE ci-dessous
     }
 
     // 2️⃣ Générer le schéma d'écriture
@@ -270,6 +284,59 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     }
 
     return false;
+  }
+
+  /**
+   * Classification légère via LLM.
+   *
+   * Un seul appel court (prompt ~300 tokens, réponse 1 mot) qui distingue
+   * READ / WRITE / CHAT de façon fiable, sans avoir besoin de heuristiques fragiles.
+   *
+   * Appelé uniquement quand `isWriteIntent()` n'a pas trouvé de mots-clés évidents,
+   * donc pas de surcoût pour les WRITE évidents.
+   */
+  private async lightClassify(question: string, llm: ChatOpenAI): Promise<'READ' | 'WRITE' | 'CHAT'> {
+    const prompt = `Tu es un classificateur pour un assistant IA de cabinet d'avocats.
+Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, CHAT.
+
+READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...)
+WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer...)
+CHAT   = question générale sans lien avec les données du cabinet (salutation, remerciement, question de culture générale, demande d'explication hors-métier...)
+
+Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences.
+
+Demande : "${question.replace(/"/g, "'")}"
+
+Réponds UNIQUEMENT avec READ, WRITE ou CHAT. Rien d'autre.`;
+
+    try {
+      const response = await llm.invoke([{ role: 'user', content: prompt }]);
+      const raw = (response.content as string).trim().toUpperCase().replace(/[^A-Z]/g, '');
+      if (raw.startsWith('WRITE')) return 'WRITE';
+      if (raw.startsWith('CHAT')) return 'CHAT';
+      return 'READ'; // défaut sûr : on essaie le SQL
+    } catch {
+      return 'READ'; // en cas d'erreur, on tente le SQL
+    }
+  }
+
+  /**
+   * Génère une réponse directe pour les questions conversationnelles.
+   * L'IA répond en tant qu'assistant juridique sans interroger la BD.
+   */
+  private async generateConversationalResponse(question: string, llm: ChatOpenAI): Promise<string> {
+    try {
+      const response = await llm.invoke([{
+        role: 'system',
+        content: `Tu es l'assistant IA d'un cabinet d'avocats. Tu réponds aux questions générales et aux salutations de façon courtoise et professionnelle. Pour les questions métier (dossiers, clients, factures, audiences), tu invites l'utilisateur à poser une question précise.`,
+      }, {
+        role: 'user',
+        content: question,
+      }]);
+      return response.content as string;
+    } catch {
+      return `Bonjour ! Je suis l'assistant du cabinet. Comment puis-je vous aider avec vos dossiers, clients ou factures ?`;
+    }
   }
 
   /**

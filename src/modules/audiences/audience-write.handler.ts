@@ -80,6 +80,16 @@ export class AudienceWriteHandler extends BaseWriteHandler {
   ): Promise<Record<string, any>> {
     const resolved = await super.resolveDependencies(fields, userId, createdEntities, config);
 
+    // Auto-injection du contexte de stage visit courant
+    if (resolved.dossier_id) {
+      const stageInfo = await this.fetchCurrentStageVisitInfo(resolved.dossier_id);
+      if (stageInfo) {
+        if (!resolved.procedure_instance_id) resolved.procedure_instance_id = stageInfo.procedure_instance_id;
+        if (!resolved.stageVisit_id && stageInfo.stage_visit_id) resolved.stageVisit_id = stageInfo.stage_visit_id;
+        if (!resolved.sub_stage_visit_id && stageInfo.sub_stage_visit_id) resolved.sub_stage_visit_id = stageInfo.sub_stage_visit_id;
+      }
+    }
+
     if (!resolved.jurisdiction_id) {
       const jurisdictions = await this.fetchTopJurisdictions();
       if (jurisdictions.length > 0) {

@@ -6,6 +6,12 @@
  */
 
 export const CABINET_JURIDIQUE_PROMPT_RULES = `
+### 9. 📄 Règle pour les DOCUMENTS
+Les documents (pièces jointes, fichiers) NE PEUVENT PAS être créés via ce système.
+Pour ajouter un document à un dossier, l'utilisateur doit utiliser l'interface d'upload dédiée.
+Si l'utilisateur demande d'enregistrer, joindre ou ajouter un fichier/document, réponds :
+{ "type": "READ" } et génère un message explicatif (ne tente JAMAIS d'INSERT sur "documents").
+
 ### 5. 🏛️ Règle CRITIQUE pour les DOSSIERS
 Quand tu crées un dossier, tu DOIS OBLIGATOIREMENT inclure :
 - **procedure_type** : le type de procédure (ex: "Contentieux civil", "Droit de la famille", "Droit des affaires", "Droit des étrangers")
@@ -22,13 +28,18 @@ tu DOIS créer les entités correspondantes APRÈS le dossier.
 "honoraires", "provision", "forfait", "HT", "TTC", "€", "euros", "réglé", "payé",
 "acompte", "solde", "facture", "paiement", "virement", "chèque".
 
+**IMPORTANT - Référencer un dossier dans une facture** :
+Utilise TOUJOURS le champ "dossier" (jamais "procedure_instance") avec le numéro de dossier (ex: "DOS-2026-0018-649D").
+Le système résoudra automatiquement le numéro en ID.
+
 **Règles de création** :
 - **Facture** → INSERT dans l'entite "factures" avec :
+  - champ "dossier" : numéro du dossier (ex: "DOS-2026-0018-649D") — JAMAIS "procedure_instance"
   - champ "montantHT" : montant HT en nombre (ex: 1800.00)
-  - champ "type" : 0=HONORAIRES (honoraires/forfait), 1=FRAIS_PROCEDURE, 2=DILIGENCES
+  - champ "invoice_type" : nom du type de facture (ex: "Honoraires de Procédure", "Honoraires de Rédaction")
   - champ "description" : objet de la facture (ex: "Forfait recours gracieux + contentieux")
   - champ "status" : 2=PARTIELLEMENT_PAYEE si provision reçue, 1=ENVOYEE sinon, 3=PAYEE si tout réglé
-  - Référence le dossier et le client via tempId
+  - Référence le dossier via numéro ou tempId, le client via tempId ou nom
 
 - **Paiement** → INSERT dans l'entite "paiements" APRÈS la facture correspondante avec :
   - champ "montant" : montant payé en nombre (ex: 900.00)
@@ -39,8 +50,10 @@ tu DOIS créer les entités correspondantes APRÈS le dossier.
 
 **Exemple de plan financier** :
   { "operation": "INSERT", "entity": "factures", "tempId": "facture_1",
-    "fields": { "montantHT": 1800.00, "type": "0", "description": "Forfait recours gracieux + contentieux",
-                "status": "2", "dossier": "{{new_dossier.id}}", "client": "{{new_client.id}}" } },
+    "fields": { "dossier": "DOS-2026-0018-649D", "montantHT": 1800.00,
+                "invoice_type": "Honoraires de Procédure",
+                "description": "Forfait recours gracieux + contentieux",
+                "status": "2" } },
   { "operation": "INSERT", "entity": "paiements", "tempId": "paiement_1",
     "fields": { "montant": 900.00, "datePaiement": "2026-04-15", "modePaiement": "0",
                 "status": "1", "facture": "{{facture_1.id}}" } }

@@ -478,7 +478,18 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     );
     this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
 
-    // ── 3a. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
+    // ── 3a. BRANCHE CONVERSATIONNELLE ────────────────────────────────────────
+    if (intentResult.type === 'CONVERSATIONAL') {
+      return {
+        success: true,
+        question: dto.question,
+        analysis: intentResult.conversationalResponse ?? '',
+        executionTimeMs: Date.now() - startTime,
+        conversationId: dto.conversationId,
+      };
+    }
+
+    // ── 3b. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
     if (intentResult.type === 'WRITE' && intentResult.writePlan) {
       return this.handleWriteIntent(
         intentResult.writePlan,
@@ -491,7 +502,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       );
     }
 
-    // ── 3b. BRANCHE LECTURE ───────────────────────────────────────────────────
+    // ── 3c. BRANCHE LECTURE ───────────────────────────────────────────────────
     const schemaJSON = await this.getCompleteSchemaJson(allTables);
 
     try {
@@ -994,6 +1005,11 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
    *   result          → AnalysisResponseDto complet
    *   error           → { message }
    */
+  /** Pause entre événements SSE pour que le front ait le temps de les afficher */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async analyzeQuestionStream(
     dto: AskQuestionDto,
     userId: string,
@@ -1001,6 +1017,11 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
     const startTime = Date.now();
+    /** sendEvent avec délai : chaque status est visible ~200ms avant le suivant */
+    const emit = async (event: string, data: any, delayMs = 200) => {
+      sendEvent(event, data);
+      if (event === 'status') await this.sleep(delayMs);
+    };
 
     try {
       // ── 1. Fichier ──────────────────────────────────────────────────────────
@@ -1008,28 +1029,46 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       let fileInfo: any;
 
       if (file) {
-        sendEvent('status', { message: `📎 Lecture du fichier ${file.originalname}...` });
+        await emit('status', { message: `📎 Lecture du fichier ${file.originalname}...` });
         try {
           const content = await this.extractFileContent(file);
           const truncated = content.substring(0, 5000);
           enrichedQuestion = `${dto.question}\n\n--- CONTENU: ${file.originalname} ---\n${truncated}${content.length > 5000 ? '\n[tronqué]' : ''}\n---`;
           fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
-          sendEvent('status', { message: `✅ Fichier lu (${content.length} caractères)` });
+          await emit('status', { message: `✅ Fichier lu (${content.length} caractères)` });
         } catch (e) {
-          sendEvent('status', { message: `⚠️ Fichier illisible: ${e.message}` });
+          await emit('status', { message: `⚠️ Fichier illisible: ${e.message}` });
         }
       }
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
-      sendEvent('status', { message: '🔍 Analyse de l\'intention...' });
+      await emit('status', { message: '🔍 Analyse de la demande...' });
       const allTables = this.schemaMetadata.getAllVisibleTables();
       const schema = await this.getCompleteSchema(allTables);
       const intentResult = await this.intentDetectionService.detectIntent(
         enrichedQuestion, this.llm, schema,
       );
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
+      await this.sleep(150);
 
-      // ── 3a. WRITE ────────────────────────────────────────────────────────────
+      // ── 3a. CONVERSATIONAL ───────────────────────────────────────────────────
+      if (intentResult.type === 'CONVERSATIONAL') {
+        // Stream token-by-token (même comportement que READ)
+        const fullText = await this.streamConversationalResponse(
+          intentResult.conversationalResponse ?? '',
+          sendEvent,
+        );
+        sendEvent('result', {
+          success: true,
+          question: dto.question,
+          analysis: fullText,
+          executionTimeMs: Date.now() - startTime,
+          conversationId: dto.conversationId,
+        });
+        return;
+      }
+
+      // ── 3b. WRITE ────────────────────────────────────────────────────────────
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
         const plan = intentResult.writePlan;
 
@@ -1054,7 +1093,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
           return;
         }
 
-        sendEvent('status', { message: `⚙️ Exécution de ${plan.operations.length} opération(s)...` });
+        await emit('status', { message: `⚙️ Exécution de ${plan.operations.length} opération(s)...` });
 
         try {
           const results = await this.genericWriteService.executePlan(plan, userId);
@@ -1087,8 +1126,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         return;
       }
 
-      // ── 3b. READ ─────────────────────────────────────────────────────────────
-      sendEvent('status', { message: '🗄️ Génération de la requête SQL...' });
+      // ── 3c. READ ─────────────────────────────────────────────────────────────
+      await emit('status', { message: '🗄️ Génération de la requête SQL...' });
       const schemaJSON = await this.getCompleteSchemaJson(allTables);
 
       let conversationId = dto.conversationId;
@@ -1100,14 +1139,17 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       }
 
       const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
-      sendEvent('status', { message: '✅ Requête générée, exécution...' });
+      await emit('status', { message: '✅ Requête générée, exécution en cours...' });
 
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
       const results = await this.executeSafeQuery(validatedQuery);
 
-      sendEvent('status', { message: '📊 Analyse des résultats...' });
-      const analysis = await this.generateBusinessAnalysis(
+      await emit('status', { message: '📊 Analyse des résultats...' });
+
+      // Streaming token-by-token de l'analyse métier
+      const analysis = await this.generateBusinessAnalysisStream(
         dto.question, validatedQuery, results, dto.specificTables || [],
+        sendEvent,
       );
       await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
 
@@ -1330,6 +1372,118 @@ RÉPONSE (en français courant, langage métier):`;
 
     const response = await this.llm.invoke(prompt);
     return response.content as string;
+  }
+
+  /**
+   * Version streaming de generateBusinessAnalysis.
+   * Envoie chaque token via sendEvent('token', { text }) au fur et à mesure,
+   * puis retourne la réponse complète pour l'historique.
+   *
+   * Compatible avec l'endpoint SSE /ask/stream uniquement.
+   */
+  private async generateBusinessAnalysisStream(
+    question: string,
+    sql: string,
+    results: any,
+    tables: string[],
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    if (!results.data || results.data.length === 0) {
+      const msg = this.getNoResultsMessage(question, tables);
+      sendEvent('token', { text: msg });
+      return msg;
+    }
+
+    const businessResults = this.transformToBusinessResults(results.data, tables);
+
+    const prompt = `Tu es un expert métier spécialisé dans la gestion de dossiers contentieux et bancaires.
+
+QUESTION POSÉE PAR L'UTILISATEUR:
+"${question}"
+
+RÉSULTATS DES DONNÉES (présentés en termes métier):
+${JSON.stringify(businessResults, null, 2)}
+
+INSTRUCTIONS IMPORTANTES:
+1. Réponds comme si tu parlais à un collègue non technique (avocat, gestionnaire de dossier)
+2. N'utilise JAMAIS de termes techniques comme "SQL", "requête", "base de données", "colonne", "table"
+3. Utilise des termes métier comme "dossier", "client", "étape", "procédure", "statut", "date"
+4. Si la réponse contient des dates, formate-les de façon lisible
+5. Sois concis mais précis (max 500 mots)
+6. Termine par une phrase d'action ou de recommandation si pertinent
+
+RÉPONSE (en français courant, langage métier):`;
+
+    let fullText = '';
+    try {
+      const stream = await this.llm.stream(prompt);
+      for await (const chunk of stream) {
+        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        if (text) {
+          fullText += text;
+          sendEvent('token', { text });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`⚠️ Streaming LLM échoué, fallback invoke: ${(err as Error).message}`);
+      // Fallback : invoke classique si stream non supporté par le modèle
+      const response = await this.llm.invoke(prompt);
+      fullText = response.content as string;
+      sendEvent('token', { text: fullText });
+    }
+
+    return fullText;
+  }
+
+  /**
+   * Stream une réponse conversationnelle token par token.
+   *
+   * Contrairement à `generateConversationalResponse()` dans IntentDetectionService
+   * (qui utilise llm.invoke et retourne une chaîne complète),
+   * cette méthode utilise llm.stream() pour émettre des tokens via SSE.
+   *
+   * Si la réponse a déjà été générée (conversationalResponse non vide), on la
+   * re-émet caractère par caractère (pseudo-stream) pour garder la cohérence
+   * du protocole SSE côté front.
+   */
+  private async streamConversationalResponse(
+    preGeneratedText: string,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    // Si on a déjà le texte généré par lightClassify → on le réémet token-by-token
+    if (preGeneratedText) {
+      // Découpe en mots pour simuler un flux naturel
+      const words = preGeneratedText.split(/(\s+)/);
+      for (const word of words) {
+        if (word) sendEvent('token', { text: word });
+      }
+      return preGeneratedText;
+    }
+
+    // Sinon, on génère via streaming (cas où conversationalResponse est vide)
+    const prompt = [
+      {
+        role: 'system' as const,
+        content: `Tu es l'assistant IA d'un cabinet d'avocats. Tu réponds aux questions générales et aux salutations de façon courtoise et professionnelle. Pour les questions métier (dossiers, clients, factures, audiences), tu invites l'utilisateur à poser une question précise.`,
+      },
+    ];
+
+    let fullText = '';
+    try {
+      const stream = await this.llm.stream(prompt);
+      for await (const chunk of stream) {
+        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        if (text) {
+          fullText += text;
+          sendEvent('token', { text });
+        }
+      }
+    } catch {
+      const fallback = `Bonjour ! Je suis l'assistant du cabinet. Comment puis-je vous aider avec vos dossiers, clients ou factures ?`;
+      sendEvent('token', { text: fallback });
+      fullText = fallback;
+    }
+    return fullText;
   }
 
   /**

@@ -7,7 +7,7 @@ import { Facture } from './entities/facture.entity';
 import { StatutFacture, TypeFacture } from './dto/create-facture.dto';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
-import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
+import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
 
@@ -29,6 +29,80 @@ export class FactureWriteHandler extends BaseWriteHandler {
     private readonly factureRepo: Repository<Facture>,
   ) {
     super('factures', dataSource, schemaMetadata, entityResolver);
+  }
+
+  // ── Résolution des dépendances ─────────────────────────────────────────────
+
+  /**
+   * Surcharge pour corriger deux confusions fréquentes du LLM :
+   *
+   * 1. Le LLM met le numéro de dossier (DOS-XXXX) dans `procedure_instance`
+   *    au lieu de `dossier` — car les deux champs acceptent des identifiants.
+   *    → On détecte le pattern DOS- et on redirige vers `dossier`.
+   *
+   * 2. Le champ `dossier_id` est une colonne brute sans valeur par défaut.
+   *    → On résout directement par `dossier_number` si la valeur fournie
+   *      ressemble à un numéro de dossier plutôt qu'à un nom/texte libre.
+   */
+  async resolveDependencies(
+    fields: Record<string, any>,
+    userId: string,
+    createdEntities?: Map<string, any>,
+    config?: ResolveConfig,
+  ): Promise<Record<string, any>> {
+    const DOSSIER_NUMBER_PATTERN = /^DOS-/i;
+
+    // Correction : numéro de dossier mis dans procedure_instance par erreur
+    if (
+      !fields.dossier &&
+      fields.procedure_instance &&
+      DOSSIER_NUMBER_PATTERN.test(String(fields.procedure_instance))
+    ) {
+      fields.dossier = fields.procedure_instance;
+      delete fields.procedure_instance;
+    }
+
+    // Résolution dossier_number → dossier_id + injection automatique client_id
+    if (
+      !fields.dossier_id &&
+      fields.dossier &&
+      typeof fields.dossier === 'string' &&
+      DOSSIER_NUMBER_PATTERN.test(fields.dossier)
+    ) {
+      const rows = await this.dataSource.query(
+        'SELECT id, client_id FROM dossiers WHERE dossier_number = ? LIMIT 1',
+        [fields.dossier.trim()],
+      );
+      if (rows.length > 0) {
+        fields.dossier_id = rows[0].id;
+        // client_id hérité du dossier si non fourni explicitement
+        if (!fields.client_id && !fields.client) {
+          fields.client_id = rows[0].client_id;
+        }
+        delete fields.dossier; // évite une double résolution par super
+      }
+    }
+
+    // Même logique si dossier_id est déjà connu mais client_id manquant
+    if (fields.dossier_id && !fields.client_id && !fields.client) {
+      const rows = await this.dataSource.query(
+        'SELECT client_id FROM dossiers WHERE id = ? LIMIT 1',
+        [fields.dossier_id],
+      );
+      if (rows.length > 0) fields.client_id = rows[0].client_id;
+    }
+
+    // Auto-injection du contexte de stage visit courant (si le dossier a une procédure)
+    if (fields.dossier_id) {
+      const stageInfo = await this.fetchCurrentStageVisitInfo(fields.dossier_id);
+      if (stageInfo) {
+        if (!fields.procedure_instance_id) fields.procedure_instance_id = stageInfo.procedure_instance_id;
+        if (!fields.stageVisit_id && stageInfo.stage_visit_id) fields.stageVisit_id = stageInfo.stage_visit_id;
+        if (!fields.sub_stage_visit_id && stageInfo.sub_stage_visit_id) fields.sub_stage_visit_id = stageInfo.sub_stage_visit_id;
+      }
+    }
+
+    return super.resolveDependencies(fields, userId, createdEntities, config);
   }
 
   // ── Schema enrichi ─────────────────────────────────────────────────────────

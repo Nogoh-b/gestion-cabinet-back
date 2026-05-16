@@ -25,9 +25,12 @@ export interface WriteIntent {
 }
 
 export interface IntentDetectionResult {
-  type: 'READ' | 'WRITE';
+  /** READ = interrogation BD, WRITE = écriture BD, CONVERSATIONAL = réponse directe sans SQL */
+  type: 'READ' | 'WRITE' | 'CONVERSATIONAL';
   writeIntent?: WriteIntent;
   writePlan?: WritePlan;
   sqlQuery?: string;        // Si READ
   requiresConfirmation: boolean;
+  /** Réponse directe de l'IA (mode CONVERSATIONAL uniquement) */
+  conversationalResponse?: string;
 }

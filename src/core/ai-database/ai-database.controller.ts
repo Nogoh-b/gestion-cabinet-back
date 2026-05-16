@@ -101,13 +101,29 @@ export class AiDatabaseController {
   ): Promise<void> {
     // Headers SSE
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // nginx : désactiver le buffer
+    res.setHeader('X-Accel-Buffering', 'no');      // nginx
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.flushHeaders();
 
+    /**
+     * Écrit un event SSE ET vide immédiatement le buffer TCP.
+     *
+     * Sans flush() explicite, Node.js peut regrouper plusieurs res.write()
+     * dans le même paquet réseau → tous les events arrivent en bloc côté client
+     * malgré le sleep() serveur.
+     *
+     * res.flush() est injecté par le middleware `compression` de NestJS/Express.
+     * Sans compression, res.write() flush déjà tout seul — mais flush() reste
+     * no-op dans ce cas, donc l'appel est toujours sûr.
+     */
     const sendEvent = (event: string, data: any) => {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      // Force l'envoi immédiat du paquet TCP
+      if (typeof (res as any).flush === 'function') {
+        (res as any).flush();
+      }
     };
 
     try {
@@ -116,6 +132,7 @@ export class AiDatabaseController {
       sendEvent('error', { message: err.message });
     } finally {
       res.write('event: done\ndata: {}\n\n');
+      if (typeof (res as any).flush === 'function') (res as any).flush();
       res.end();
     }
   }
