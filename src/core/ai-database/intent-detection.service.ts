@@ -33,8 +33,9 @@ export class IntentDetectionService {
       this.logger.log(`🏷️ Light classify → ${lightClass}`);
 
       if (lightClass === 'CHAT') {
-        const answer = await this.generateConversationalResponse(question, llm);
-        return { type: 'CONVERSATIONAL', requiresConfirmation: false, conversationalResponse: answer };
+        // Ne pas pré-générer la réponse ici (appel bloquant).
+        // analyzeQuestionStream() streamera la réponse directement via llm.stream().
+        return { type: 'CONVERSATIONAL', requiresConfirmation: false };
       }
       if (lightClass === 'READ') {
         return { type: 'READ', requiresConfirmation: false };

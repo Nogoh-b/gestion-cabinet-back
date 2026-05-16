@@ -7,6 +7,12 @@ import { AppSettingsDto } from '../dto/app-settings.dto';
 const DEFAULT_APP_SETTINGS: Partial<AppSettings> = {
   cabinet_name: 'MonCabinet',
   cabinet_logo: null,
+  theme_primary_color: '#2563eb',
+  theme_secondary_color: '#7c3aed',
+  theme_accent_color: '#f59e0b',
+  theme_sidebar_color: '#1e293b',
+  theme_sidebar_text: '#ffffff',
+  theme_radius: '0.5rem',
   cabinet_address: '',
   cabinet_phone: '',
   cabinet_email: '',

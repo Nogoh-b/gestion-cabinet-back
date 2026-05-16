@@ -1017,6 +1017,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
     const startTime = Date.now();
+    const tLog = (label: string) => this.logger.log(`🕐 [STREAM] ${label} @ +${Date.now() - startTime}ms`);
+
     /** sendEvent avec délai : chaque status est visible ~200ms avant le suivant */
     const emit = async (event: string, data: any, delayMs = 200) => {
       sendEvent(event, data);
@@ -1024,6 +1026,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     };
 
     try {
+      tLog('service entré');
+
       // ── 1. Fichier ──────────────────────────────────────────────────────────
       let enrichedQuestion = dto.question;
       let fileInfo: any;
@@ -1042,20 +1046,25 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       }
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
+      tLog('avant status 🔍');
       await emit('status', { message: '🔍 Analyse de la demande...' });
+      tLog('après status sleep(200ms) — DeepSeek lightClassify démarre');
       const allTables = this.schemaMetadata.getAllVisibleTables();
       const schema = await this.getCompleteSchema(allTables);
+      tLog('schema prêt — appel detectIntent');
       const intentResult = await this.intentDetectionService.detectIntent(
         enrichedQuestion, this.llm, schema,
       );
+      tLog(`detectIntent retourné → ${intentResult.type}`);
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
       await this.sleep(150);
 
       // ── 3a. CONVERSATIONAL ───────────────────────────────────────────────────
       if (intentResult.type === 'CONVERSATIONAL') {
-        // Stream token-by-token (même comportement que READ)
-        const fullText = await this.streamConversationalResponse(
-          intentResult.conversationalResponse ?? '',
+        // Stream directement depuis le LLM (llm.stream), token par token en temps réel.
+        // On n'utilise plus conversationalResponse pré-générée (qui bloquait 30s).
+        const fullText = await this.generateConversationalResponseStream(
+          enrichedQuestion,
           sendEvent,
         );
         sendEvent('result', {
@@ -1450,26 +1459,59 @@ RÉPONSE (en langage naturel):`;
   }
 
   /**
-   * Ré-émet un texte pré-généré mot par mot via des événements SSE `token`.
-   *
-   * Générique : aucune logique métier ici.
-   * Le texte a été produit par IntentDetectionService.generateConversationalResponse()
-   * dont le prompt système vient de projectConfig.conversationalSystemPrompt (externe).
+   * Génère une réponse conversationnelle directement en streaming (llm.stream).
+   * Envoie chaque token SSE dès qu'il arrive — pas de pré-génération bloquante.
+   */
+  private async generateConversationalResponseStream(
+    question: string,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    const systemPrompt = this.projectConfig?.conversationalSystemPrompt
+      ?? `Tu es un assistant IA. Réponds aux questions générales et aux salutations de façon courtoise et professionnelle.`;
+
+    let fullText = '';
+    let tokenCount = 0;
+    this.logger.log(`🌊 [CONV STREAM] Démarrage llm.stream() pour réponse conversationnelle`);
+
+    try {
+      const stream = await this.llm.stream([
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: question },
+      ]);
+      for await (const chunk of stream) {
+        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        if (text) {
+          fullText += text;
+          tokenCount++;
+          sendEvent('token', { text });
+        }
+      }
+      this.logger.log(`✅ [CONV STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
+    } catch (err) {
+      this.logger.warn(`⚠️ [CONV STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
+      const response = await this.llm.invoke([
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: question },
+      ]);
+      fullText = response.content as string;
+      sendEvent('token', { text: fullText });
+    }
+
+    return fullText;
+  }
+
+  /**
+   * @deprecated — Remplacé par generateConversationalResponseStream (qui fait du vrai streaming LLM).
+   * Conservé pour compatibilité mais plus appelé depuis analyzeQuestionStream.
    */
   private streamConversationalResponse(
     preGeneratedText: string,
     sendEvent: (event: string, data: any) => void,
   ): string {
-    this.logger.debug(`💬 CONVERSATIONAL stream — ${preGeneratedText.length} chars`);
-    const words = preGeneratedText.split(/(\s+)/);
-    let emitted = 0;
-    for (const word of words) {
-      if (word) {
-        sendEvent('token', { text: word });
-        emitted++;
-      }
+    this.logger.debug(`💬 CONVERSATIONAL stream (legacy) — ${preGeneratedText.length} chars`);
+    for (const word of preGeneratedText.split(/(\s+)/)) {
+      if (word) sendEvent('token', { text: word });
     }
-    this.logger.debug(`💬 CONVERSATIONAL stream — ${emitted} token events émis`);
     return preGeneratedText;
   }
 

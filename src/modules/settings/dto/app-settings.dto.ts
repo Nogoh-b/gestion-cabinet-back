@@ -12,6 +12,37 @@ export class AppSettingsDto {
   @IsString()
   cabinet_logo?: string | null;
 
+  // 🎨 Couleurs du thème
+  @ApiProperty({ example: '#2563eb' })
+  @IsOptional()
+  @IsString()
+  theme_primary_color?: string;
+
+  @ApiProperty({ example: '#7c3aed' })
+  @IsOptional()
+  @IsString()
+  theme_secondary_color?: string;
+
+  @ApiProperty({ example: '#f59e0b' })
+  @IsOptional()
+  @IsString()
+  theme_accent_color?: string;
+
+  @ApiProperty({ example: '#1e293b' })
+  @IsOptional()
+  @IsString()
+  theme_sidebar_color?: string;
+
+  @ApiProperty({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  theme_sidebar_text?: string;
+
+  @ApiProperty({ example: '0.5rem' })
+  @IsOptional()
+  @IsString()
+  theme_radius?: string;
+
   @ApiProperty({ example: 'Yaoundé, Cameroun' })
   @IsOptional()
   @IsString()

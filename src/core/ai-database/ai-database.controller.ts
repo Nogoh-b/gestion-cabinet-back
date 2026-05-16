@@ -100,36 +100,46 @@ export class AiDatabaseController {
     @Res() res: Response,
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<void> {
+    const t0 = Date.now();
+    this.logger.log(`🕐 [SSE] askStream ENTRÉ à ${new Date().toISOString()}`);
+
     // Headers SSE
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');      // nginx
+    res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.flushHeaders();
+
+    // ── Désactiver le cork TCP pour ce socket ───────────────────────────────
+    const sock = (res as any).socket;
+    if (sock?.writable) {
+      sock.setNoDelay(true); // désactive Nagle
+      sock.uncork();         // vide le buffer TCP accumulé
+    }
+
+    res.flushHeaders(); // Envoie les headers HTTP immédiatement
+    this.logger.log(`🕐 [SSE] flushHeaders appelé @ +${Date.now() - t0}ms`);
+
+    // Yield l'event loop une fois pour s'assurer que les headers partent sur le réseau
+    // avant de commencer le travail async (appels LLM etc.)
+    await new Promise<void>(resolve => setImmediate(resolve));
+    this.logger.log(`🕐 [SSE] setImmediate passé (headers réseau) @ +${Date.now() - t0}ms`);
+
+    // Commentaire SSE de "prime" — force le proxy à commencer à streamer
+    res.write(': stream-start\n\n');
+
+    const flushAvailable = typeof (res as any).flush === 'function';
+    this.logger.debug(`🔌 SSE connect — flush disponible: ${flushAvailable}, socket: ${!!sock}`);
 
     /**
-     * Écrit un event SSE ET vide immédiatement le buffer TCP.
-     *
-     * Sans flush() explicite, Node.js peut regrouper plusieurs res.write()
-     * dans le même paquet réseau → tous les events arrivent en bloc côté client
-     * malgré le sleep() serveur.
-     *
-     * res.flush() est injecté par le middleware `compression` de NestJS/Express.
-     * Sans compression, res.write() flush déjà tout seul — mais flush() reste
-     * no-op dans ce cas, donc l'appel est toujours sûr.
+     * Écrit un event SSE et vide le buffer TCP immédiatement.
+     * Le socket est déjà uncork()'d, donc chaque write() part en réseau sans délai.
      */
-    const flushAvailable = typeof (res as any).flush === 'function';
-    this.logger.debug(`🔌 SSE connect — flush disponible: ${flushAvailable}`);
-
     const sendEvent = (event: string, data: any) => {
       const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
       res.write(payload);
-      // Force l'envoi immédiat du paquet TCP
-      if (flushAvailable) {
-        (res as any).flush();
-      }
-      // Log chaque event sauf 'token' (trop verbeux) — log les 3 premiers tokens
+      if (flushAvailable) (res as any).flush(); // compression middleware si présent
+      // Log chaque event sauf 'token' (trop verbeux)
       if (event !== 'token') {
         this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
       }
