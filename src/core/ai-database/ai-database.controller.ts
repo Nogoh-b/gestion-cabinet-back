@@ -107,14 +107,20 @@ export class AiDatabaseController {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Transfer-Encoding', 'chunked');
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Supprimer Content-Length si Express l'a pré-rempli (empêche le streaming)
+    res.removeHeader('Content-Length');
 
     // ── Désactiver le cork TCP pour ce socket ───────────────────────────────
     const sock = (res as any).socket;
     if (sock?.writable) {
       sock.setNoDelay(true); // désactive Nagle
-      sock.uncork();         // vide le buffer TCP accumulé
+      // Uncork autant de fois que nécessaire (NestJS/Express peut cork() plusieurs fois)
+      const corkCount: number = (sock as any)._writableState?.corked ?? 1;
+      this.logger.log(`🕐 [SSE] socket.corked=${corkCount} avant uncork`);
+      for (let i = 0; i < Math.max(corkCount, 1); i++) sock.uncork();
     }
 
     res.flushHeaders(); // Envoie les headers HTTP immédiatement
@@ -125,20 +131,46 @@ export class AiDatabaseController {
     await new Promise<void>(resolve => setImmediate(resolve));
     this.logger.log(`🕐 [SSE] setImmediate passé (headers réseau) @ +${Date.now() - t0}ms`);
 
-    // Commentaire SSE de "prime" — force le proxy à commencer à streamer
-    res.write(': stream-start\n\n');
-
     const flushAvailable = typeof (res as any).flush === 'function';
-    this.logger.debug(`🔌 SSE connect — flush disponible: ${flushAvailable}, socket: ${!!sock}`);
+    this.logger.log(`🔌 SSE connect — sockType: ${Object.getPrototypeOf(sock)?.constructor?.name ?? '?'}, flush: ${flushAvailable}, writable: ${sock?.writable}`);
+
+    // ── Helper pour forcer l'envoi immédiat sur le socket ──────────────────
+    const forceFlush = () => {
+      if (flushAvailable) (res as any).flush();
+      // Re-uncork à chaque write (NestJS/Express peut re-corker entre les writes)
+      if (sock?.writable) sock.uncork();
+    };
+
+    // Commentaire SSE de "prime" — force le browser à résoudre fetch() immédiatement
+    res.write(': stream-start\n\n', (err) => {
+      if (err) this.logger.warn(`⚠️ [SSE] Erreur write stream-start: ${err.message}`);
+      else this.logger.log(`🕐 [SSE] stream-start ACK socket @ +${Date.now() - t0}ms`);
+    });
+    forceFlush();
+
+    // ── Heartbeat toutes les 500ms ──────────────────────────────────────────
+    // Envoie `: ping\n\n` (commentaire SSE ignoré par le client) pour forcer
+    // Node.js à émettre un chunk HTTP et débloquer fetch() côté navigateur.
+    let heartbeatCount = 0;
+    const heartbeatTimer = setInterval(() => {
+      if (res.writableEnded) { clearInterval(heartbeatTimer); return; }
+      heartbeatCount++;
+      const n = heartbeatCount; // capturer la valeur, pas la référence
+      res.write(`: ping ${n}\n\n`, (err) => {
+        if (!err && n <= 3) {
+          this.logger.log(`🕐 [SSE] heartbeat #${n} ACK socket @ +${Date.now() - t0}ms`);
+        }
+      });
+      forceFlush();
+    }, 500);
 
     /**
      * Écrit un event SSE et vide le buffer TCP immédiatement.
-     * Le socket est déjà uncork()'d, donc chaque write() part en réseau sans délai.
      */
     const sendEvent = (event: string, data: any) => {
       const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
       res.write(payload);
-      if (flushAvailable) (res as any).flush(); // compression middleware si présent
+      forceFlush();
       // Log chaque event sauf 'token' (trop verbeux)
       if (event !== 'token') {
         this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
@@ -161,9 +193,10 @@ export class AiDatabaseController {
     } catch (err) {
       sendEvent('error', { message: err.message });
     } finally {
-      this.logger.debug(`📤 SSE → [done] (${tokenEmitCount} tokens émis au total)`);
+      clearInterval(heartbeatTimer);
+      this.logger.debug(`📤 SSE → [done] (${tokenEmitCount} tokens émis au total, ${heartbeatCount} heartbeats)`);
       res.write('event: done\ndata: {}\n\n');
-      if (flushAvailable) (res as any).flush();
+      forceFlush();
       res.end();
     }
   }

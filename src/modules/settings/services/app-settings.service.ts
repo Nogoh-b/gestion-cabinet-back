@@ -53,9 +53,15 @@ export class AppSettingsService {
       });
     }
 
-    let settings = await this.appSettingsRepository.findOne({
-      where: { cabinet_id: cabinetId },
+
+    const settingsList = await this.appSettingsRepository.find({
+      take: 1,
+      order: { id: 'ASC' }
     });
+    // let settings = await this.appSettingsRepository.findOne({
+    //   where: { cabinet_id: cabinetId },
+    // });
+    let settings = settingsList[0] || null;
 
     if (!settings) {
       settings = this.appSettingsRepository.create({

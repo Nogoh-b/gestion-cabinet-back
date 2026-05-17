@@ -40,6 +40,15 @@ async function bootstrap() {
 
 
   const app = await NestFactory.create(AppModule);
+
+  // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
+  // setNoDelay doit être activé DÈS la création du socket, avant tout traitement
+  // HTTP. Le faire dans le handler de requête (res.socket.setNoDelay) est trop
+  // tard — le kernel peut déjà avoir bufferisé le paquet SYN-ACK initial.
+  (app.getHttpServer() as import('http').Server).on('connection', (socket) => {
+    socket.setNoDelay(true);   // désactive Nagle → chaque write() = 1 paquet TCP
+    socket.uncork();           // vide tout buffer de stream interne
+  });
   const core = await NestFactory.createMicroservice(AppModule, {
     transport: Transport.TCP,
     options: {

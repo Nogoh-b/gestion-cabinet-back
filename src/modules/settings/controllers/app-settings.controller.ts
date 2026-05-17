@@ -16,7 +16,8 @@ export class AppSettingsController {
   @ApiOperation({ summary: 'Récupérer les paramètres du cabinet' })
   async get(@Req() req: Request) {
     const cabinetId = (req.user as any)?.branch?.id;
-    return this.appSettingsService.findByCabinet(cabinetId);
+    return this.appSettingsService.findByCabinet(1);
+    // return this.appSettingsService.findByCabinet(cabinetId);
   }
 
   @Put()
