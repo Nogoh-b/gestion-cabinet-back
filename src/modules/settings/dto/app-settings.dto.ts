@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, IsObject } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsObject, IsIn } from 'class-validator';
+
+const THEME_NAMES = ['ocean', 'silver', 'yellow', 'forest', 'sunset', 'rose'] as const;
+type ThemeName = (typeof THEME_NAMES)[number];
 
 export class AppSettingsDto {
   @ApiProperty({ example: 'Cabinet Me Nogoh' })
@@ -12,36 +15,11 @@ export class AppSettingsDto {
   @IsString()
   cabinet_logo?: string | null;
 
-  // 🎨 Couleurs du thème
-  @ApiProperty({ example: '#2563eb' })
+  // 🎨 Thème nommé — palette pré-configurée (light mode uniquement)
+  @ApiPropertyOptional({ enum: THEME_NAMES, example: 'ocean' })
   @IsOptional()
-  @IsString()
-  theme_primary_color?: string;
-
-  @ApiProperty({ example: '#7c3aed' })
-  @IsOptional()
-  @IsString()
-  theme_secondary_color?: string;
-
-  @ApiProperty({ example: '#f59e0b' })
-  @IsOptional()
-  @IsString()
-  theme_accent_color?: string;
-
-  @ApiProperty({ example: '#1e293b' })
-  @IsOptional()
-  @IsString()
-  theme_sidebar_color?: string;
-
-  @ApiProperty({ example: '#ffffff' })
-  @IsOptional()
-  @IsString()
-  theme_sidebar_text?: string;
-
-  @ApiProperty({ example: '0.5rem' })
-  @IsOptional()
-  @IsString()
-  theme_radius?: string;
+  @IsIn(THEME_NAMES as unknown as string[])
+  theme_name?: ThemeName;
 
   @ApiProperty({ example: 'Yaoundé, Cameroun' })
   @IsOptional()

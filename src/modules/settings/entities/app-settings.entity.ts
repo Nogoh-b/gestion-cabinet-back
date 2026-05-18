@@ -24,30 +24,21 @@ export class AppSettings extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   cabinet_logo: string | null;
 
-  // 🎨 Couleurs du thème personnalisables
-  @ApiProperty({ example: '#2563eb' })
-  @Column({ length: 7, default: '#2563eb' })
-  theme_primary_color: string;
-
-  @ApiProperty({ example: '#7c3aed' })
-  @Column({ length: 7, default: '#7c3aed' })
-  theme_secondary_color: string;
-
-  @ApiProperty({ example: '#f59e0b' })
-  @Column({ length: 7, default: '#f59e0b' })
-  theme_accent_color: string;
-
-  @ApiProperty({ example: '#1e293b' })
-  @Column({ length: 7, default: '#1e293b' })
-  theme_sidebar_color: string;
-
-  @ApiProperty({ example: '#ffffff' })
-  @Column({ length: 7, default: '#ffffff' })
-  theme_sidebar_text: string;
-
-  @ApiProperty({ example: '0.5rem' })
-  @Column({ length: 10, default: '0.5rem' })
-  theme_radius: string;
+  /**
+   * 🎨 Thème nommé (palette de couleurs).
+   * S'applique uniquement en mode clair côté front.
+   * En mode sombre, la palette dark fixe est utilisée et theme_name est ignoré.
+   */
+  @ApiProperty({
+    enum: ['ocean', 'silver', 'yellow', 'forest', 'sunset', 'rose'],
+    example: 'ocean',
+  })
+  @Column({
+    type: 'enum',
+    enum: ['ocean', 'silver', 'yellow', 'forest', 'sunset', 'rose'],
+    default: 'ocean',
+  })
+  theme_name: 'ocean' | 'silver' | 'yellow' | 'forest' | 'sunset' | 'rose';
 
   @ApiProperty({ example: '' })
   @Column({ type: 'text', default: '' })
