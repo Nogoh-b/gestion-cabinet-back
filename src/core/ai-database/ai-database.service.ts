@@ -1,6 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
+import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { ChatOpenAI } from '@langchain/openai';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { AskQuestionDto } from './dto/ask-question.dto';
@@ -38,6 +40,8 @@ export class AiDatabaseService implements OnModuleInit {
     private readonly genericWriteService: GenericWriteService,
     private readonly conversationManager: ConversationManagerService,
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
+    @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
+    private readonly projectConfig?: AiDatabaseProjectConfig,
   ) {}
 
   async onModuleInit() {
@@ -325,6 +329,8 @@ export class AiDatabaseService implements OnModuleInit {
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
           },
           executionTimeMs: Date.now() - startTime,
         };
@@ -372,19 +378,11 @@ export class AiDatabaseService implements OnModuleInit {
 
   /** Libellé lisible pour un alias de champ FK */
   private getFieldLabel(fieldName: string): string {
-    const labels: Record<string, string> = {
-      client: 'client',
-      lawyer: 'avocat référent',
-      procedure_type: 'type de procédure',
-      procedure_subtype: 'sous-type de procédure',
-      jurisdiction: 'juridiction',
-      dossier: 'dossier',
-      facture: 'facture',
-      employee: 'employé',
-      branch: 'agence',
-      referrer: 'apporteur d\'affaires',
-    };
-    return labels[fieldName] ?? fieldName.replace(/_/g, ' ');
+    // Le projet injecte ses labels via AI_DATABASE_PROJECT_CONFIG.fieldLabels
+    const projectLabel = this.projectConfig?.fieldLabels?.[fieldName];
+    if (projectLabel) return projectLabel;
+    // Fallback générique : snake_case → mots séparés
+    return fieldName.replace(/_/g, ' ');
   }
 
   /** Article défini adapté à la première lettre */
@@ -480,7 +478,18 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     );
     this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
 
-    // ── 3a. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
+    // ── 3a. BRANCHE CONVERSATIONNELLE ────────────────────────────────────────
+    if (intentResult.type === 'CONVERSATIONAL') {
+      return {
+        success: true,
+        question: dto.question,
+        analysis: intentResult.conversationalResponse ?? '',
+        executionTimeMs: Date.now() - startTime,
+        conversationId: dto.conversationId,
+      };
+    }
+
+    // ── 3b. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
     if (intentResult.type === 'WRITE' && intentResult.writePlan) {
       return this.handleWriteIntent(
         intentResult.writePlan,
@@ -493,7 +502,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       );
     }
 
-    // ── 3b. BRANCHE LECTURE ───────────────────────────────────────────────────
+    // ── 3c. BRANCHE LECTURE ───────────────────────────────────────────────────
     const schemaJSON = await this.getCompleteSchemaJson(allTables);
 
     try {
@@ -634,6 +643,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
           executionTimeMs: Date.now() - startTime,
@@ -681,14 +692,16 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     pendingPlan: WritePlan,
     operationIndex: number,
     fieldName: string,
-    resolvedId: string | number,
+    resolvedId: string | number | undefined,
     userId: string,
     conversationId?: string,
+    customValue?: string,
+    entity?: string,
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
 
-    // Injecter l'ID résolu dans l'opération concernée
-    const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pendingPlan)); // deep clone
+    // Deep clone du plan pour ne pas muter l'original
+    const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pendingPlan));
     const op = patchedPlan.operations[operationIndex];
 
     if (!op) {
@@ -701,10 +714,16 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       };
     }
 
-    // Remplacer la valeur textuelle par l'ID résolu
-    op.fields[fieldName] = resolvedId;
+    // ── Option « Autre » : customValue fourni ───────────────────────────────
+    if (customValue && !resolvedId) {
+      return this.handleOtherChoice(
+        patchedPlan, op, operationIndex, fieldName,
+        customValue, entity ?? '', userId, conversationId, startTime,
+      );
+    }
 
-    // Forcer best_effort pour les autres FK de cette opération
+    // ── Option classique : resolvedId fourni ────────────────────────────────
+    op.fields[fieldName] = resolvedId;
     op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
 
     this.logger.log(
@@ -712,9 +731,207 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       `"${fieldName}" → ID ${resolvedId}`,
     );
 
+    return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime);
+  }
+
+  // ── « Autre » : créer l'entité puis reprendre le plan ──────────────────────
+
+  private async handleOtherChoice(
+    patchedPlan: WritePlan,
+    op: import('./dto/analysis-response.dto').WriteOperation,
+    operationIndex: number,
+    fieldName: string,
+    customValue: string,
+    entityTable: string,
+    userId: string,
+    conversationId: string | undefined,
+    startTime: number,
+  ): Promise<AnalysisResponseDto> {
+    this.logger.log(
+      `🆕 Option "Autre" : création dans "${entityTable}" avec "${customValue}" ` +
+      `pour le champ "${fieldName}" (opération ${operationIndex})`,
+    );
+
+    // 1. Trouver le handler enregistré pour cette table
+    const handler = this.writeHandlerRegistry.getHandler(entityTable);
+    if (!handler) {
+      // Pas de handler → on injecte le texte brut et on laisse la résolution retenter
+      this.logger.warn(`⚠️ Aucun handler pour "${entityTable}" — injection du texte brut`);
+      op.fields[fieldName] = customValue;
+      op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
+      return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime);
+    }
+
+    // 2. Construire les champs minimaux pour la création
+    const createFields = await this.buildMinimalFields(entityTable, customValue, fieldName, op.fields);
+
+    try {
+      // 3. Exécuter l'INSERT via le handler
+      const writeResult = await handler.execute(
+        {
+          operation: 'INSERT',
+          entity: entityTable,
+          fields: createFields,
+          confidence: 1,
+          humanReadable: `Création de ${this.getFieldLabel(fieldName)} « ${customValue} » (choix « Autre »)`,
+        },
+        userId,
+      );
+
+      if (!writeResult.success || !writeResult.entityId) {
+        return {
+          success: false,
+          question: 'Reprise après ambiguïté — création',
+          analysis: `❌ Création échouée : ${writeResult.message}`,
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+          error: writeResult.message,
+        };
+      }
+
+      this.logger.log(`✅ Entité créée dans "${entityTable}" → ID ${writeResult.entityId}`);
+
+      // 4. Injecter l'ID dans le plan et reprendre
+      op.fields[fieldName] = writeResult.entityId;
+      op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
+
+      return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime,
+        `✅ **${this.getFieldLabel(fieldName)}** créé(e) : « ${customValue} » (ID: ${writeResult.entityId})\n\n`,
+      );
+    } catch (error) {
+      // Si le handler lève une ambiguïté (ex: FK manquante dans l'entité enfant)
+      if (error instanceof AmbiguityException) {
+        const message = this.buildAmbiguityMessage(error);
+        return {
+          success: true,
+          question: 'Reprise après ambiguïté — création',
+          analysis: `⚠️ La création nécessite des précisions supplémentaires :\n\n${message}`,
+          pendingWritePlan: patchedPlan,
+          requiresAmbiguityResolution: true,
+          ambiguityContext: {
+            entity: error.entity,
+            fieldName: error.fieldName,
+            searchTerm: error.searchTerm,
+            candidates: error.candidates,
+            operationIndex: error.operationIndex,
+            parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
+          },
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Erreur de validation → message clair
+      const msg = (error as Error).message;
+      this.logger.error(`❌ Création "${customValue}" dans "${entityTable}" échouée: ${msg}`);
+      return {
+        success: false,
+        question: 'Reprise après ambiguïté — création',
+        analysis: `❌ Impossible de créer « ${customValue} » dans ${entityTable} : ${msg}`,
+        conversationId,
+        executionTimeMs: Date.now() - startTime,
+        error: msg,
+      };
+    }
+  }
+
+  /**
+   * Construit les champs minimaux pour créer une entité depuis l'option "Autre".
+   * Détecte le champ "nom" principal de la table et injecte le customValue.
+   * Injecte aussi les champs contextuels pertinents (ex: is_subtype, parent_id).
+   *
+   * Pour procedure_subtype : résout le procedure_type_id depuis les champs de l'opération
+   * (ID direct ou résolution texte) afin d'injecter parent_id automatiquement.
+   */
+  private async buildMinimalFields(
+    entityTable: string,
+    customValue: string,
+    fieldName: string,
+    operationFields: Record<string, any>,
+  ): Promise<Record<string, any>> {
+    const fields: Record<string, any> = {};
+
+    // Champ "nom" de l'entité cible
+    const nameField = this.guessNameField(entityTable);
+    fields[nameField] = customValue;
+
+    // ── Champs contextuels spécifiques ──────────────────────────────────────
+
+    if (fieldName === 'procedure_subtype') {
+      fields['is_subtype'] = true;
+      fields['hierarchy_level'] = 2;
+
+      // Résoudre le parent_id :
+      // 1. L'ID est directement dans les champs (cas idéal)
+      // 2. L'ID est dans procedure_type_id (parfois injecté dans le plan)
+      // 3. Le texte procedure_type est disponible → résolution par nom en BDD
+      let parentId: number | undefined =
+        operationFields.procedure_type_id
+        ?? operationFields.procedure_subtype_id   // fallback rare
+        ?? undefined;
+
+      if (!parentId && operationFields.procedure_type && typeof operationFields.procedure_type === 'string') {
+        try {
+          // Chercher le type principal par correspondance de nom (is_subtype=false)
+          const rows: any[] = await this.dataSource.query(
+            `SELECT id FROM procedure_types WHERE name LIKE ? AND is_subtype = 0 LIMIT 1`,
+            [`%${operationFields.procedure_type}%`],
+          );
+          if (rows.length > 0) {
+            parentId = rows[0].id;
+            this.logger.log(`🔗 parent_id résolu depuis procedure_type="${operationFields.procedure_type}" → ID ${parentId}`);
+          }
+        } catch (e) {
+          this.logger.warn(`⚠️ Impossible de résoudre procedure_type pour parent_id: ${(e as Error).message}`);
+        }
+      }
+
+      if (parentId) {
+        fields['parent_id'] = Number(parentId);
+      } else {
+        this.logger.warn(`⚠️ parent_id introuvable pour créer le sous-type "${customValue}"`);
+      }
+    }
+
+    if (fieldName === 'procedure_type') {
+      fields['is_subtype'] = false;
+      fields['hierarchy_level'] = 1;
+    }
+
+    return fields;
+  }
+
+  /**
+   * Devine le champ "nom" principal d'une entité.
+   * Cherche dans l'ordre : name, label, title, object, first_name.
+   */
+  private guessNameField(entityTable: string): string {
+    const meta = this.dataSource.entityMetadatas.find(m => m.tableName === entityTable);
+    if (!meta) return 'name';
+
+    const priorityFields = ['name', 'label', 'title', 'object', 'first_name'];
+    for (const pf of priorityFields) {
+      if (meta.columns.some(c => c.databaseName === pf || c.propertyName === pf)) {
+        return pf;
+      }
+    }
+    return 'name';
+  }
+
+  // ── Exécution du plan patché (factorisé) ──────────────────────────────────
+
+  private async executePatchedPlan(
+    patchedPlan: WritePlan,
+    userId: string,
+    conversationId: string | undefined,
+    startTime: number,
+    prefixMessage?: string,
+  ): Promise<AnalysisResponseDto> {
     try {
       const results = await this.genericWriteService.executePlan(patchedPlan, userId);
-      const analysis = this.formatPlanResults(results);
+      const analysis = (prefixMessage ?? '') + this.formatPlanResults(results);
 
       if (conversationId) {
         await this.conversationManager.addAssistantMessage(
@@ -733,7 +950,6 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         executionTimeMs: Date.now() - startTime,
       };
     } catch (error) {
-      // Nouvelle ambiguïté possible sur une autre opération
       if (error instanceof AmbiguityException) {
         const message = this.buildAmbiguityMessage(error);
 
@@ -742,7 +958,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         }
 
         return {
-          success: true,          // ← pas une erreur : nouvelle ambiguïté en attente de choix
+          success: true,
           question: 'Reprise après ambiguïté',
           analysis: message,
           pendingWritePlan: patchedPlan,
@@ -754,6 +970,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
+            allowOther: true,
+            otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
           executionTimeMs: Date.now() - startTime,
@@ -763,10 +981,10 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       return {
         success: false,
         question: 'Reprise après ambiguïté',
-        analysis: `❌ ${error.message}`,
+        analysis: `❌ ${(error as Error).message}`,
         conversationId,
         executionTimeMs: Date.now() - startTime,
-        error: error.message,
+        error: (error as Error).message,
       };
     }
   }
@@ -787,6 +1005,11 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
    *   result          → AnalysisResponseDto complet
    *   error           → { message }
    */
+  /** Pause entre événements SSE pour que le front ait le temps de les afficher */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async analyzeQuestionStream(
     dto: AskQuestionDto,
     userId: string,
@@ -794,35 +1017,67 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
     const startTime = Date.now();
+    const tLog = (label: string) => this.logger.log(`🕐 [STREAM] ${label} @ +${Date.now() - startTime}ms`);
+
+    /** sendEvent avec délai : chaque status est visible ~200ms avant le suivant */
+    const emit = async (event: string, data: any, delayMs = 200) => {
+      sendEvent(event, data);
+      if (event === 'status') await this.sleep(delayMs);
+    };
 
     try {
+      tLog('service entré');
+
       // ── 1. Fichier ──────────────────────────────────────────────────────────
       let enrichedQuestion = dto.question;
       let fileInfo: any;
 
       if (file) {
-        sendEvent('status', { message: `📎 Lecture du fichier ${file.originalname}...` });
+        await emit('status', { message: `📎 Lecture du fichier ${file.originalname}...` });
         try {
           const content = await this.extractFileContent(file);
           const truncated = content.substring(0, 5000);
           enrichedQuestion = `${dto.question}\n\n--- CONTENU: ${file.originalname} ---\n${truncated}${content.length > 5000 ? '\n[tronqué]' : ''}\n---`;
           fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
-          sendEvent('status', { message: `✅ Fichier lu (${content.length} caractères)` });
+          await emit('status', { message: `✅ Fichier lu (${content.length} caractères)` });
         } catch (e) {
-          sendEvent('status', { message: `⚠️ Fichier illisible: ${e.message}` });
+          await emit('status', { message: `⚠️ Fichier illisible: ${e.message}` });
         }
       }
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
-      sendEvent('status', { message: '🔍 Analyse de l\'intention...' });
+      tLog('avant status 🔍');
+      await emit('status', { message: '🔍 Analyse de la demande...' });
+      tLog('après status sleep(200ms) — DeepSeek lightClassify démarre');
       const allTables = this.schemaMetadata.getAllVisibleTables();
       const schema = await this.getCompleteSchema(allTables);
+      tLog('schema prêt — appel detectIntent');
       const intentResult = await this.intentDetectionService.detectIntent(
         enrichedQuestion, this.llm, schema,
       );
+      tLog(`detectIntent retourné → ${intentResult.type}`);
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
+      await this.sleep(150);
 
-      // ── 3a. WRITE ────────────────────────────────────────────────────────────
+      // ── 3a. CONVERSATIONAL ───────────────────────────────────────────────────
+      if (intentResult.type === 'CONVERSATIONAL') {
+        // Stream directement depuis le LLM (llm.stream), token par token en temps réel.
+        // On n'utilise plus conversationalResponse pré-générée (qui bloquait 30s).
+        const fullText = await this.generateConversationalResponseStream(
+          enrichedQuestion,
+          sendEvent,
+        );
+        sendEvent('result', {
+          success: true,
+          question: dto.question,
+          analysis: fullText,
+          executionTimeMs: Date.now() - startTime,
+          conversationId: dto.conversationId,
+        });
+        return;
+      }
+
+      // ── 3b. WRITE ────────────────────────────────────────────────────────────
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
         const plan = intentResult.writePlan;
 
@@ -847,7 +1102,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
           return;
         }
 
-        sendEvent('status', { message: `⚙️ Exécution de ${plan.operations.length} opération(s)...` });
+        await emit('status', { message: `⚙️ Exécution de ${plan.operations.length} opération(s)...` });
 
         try {
           const results = await this.genericWriteService.executePlan(plan, userId);
@@ -870,6 +1125,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
               message: this.buildAmbiguityMessage(error),
               pendingWritePlan: plan,
               conversationId,
+              allowOther: true,
+              otherLabel: this.getFieldLabel(error.fieldName),
             });
           } else {
             sendEvent('error', { message: error.message });
@@ -878,8 +1135,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         return;
       }
 
-      // ── 3b. READ ─────────────────────────────────────────────────────────────
-      sendEvent('status', { message: '🗄️ Génération de la requête SQL...' });
+      // ── 3c. READ ─────────────────────────────────────────────────────────────
+      await emit('status', { message: '🗄️ Génération de la requête SQL...' });
       const schemaJSON = await this.getCompleteSchemaJson(allTables);
 
       let conversationId = dto.conversationId;
@@ -891,14 +1148,17 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       }
 
       const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
-      sendEvent('status', { message: '✅ Requête générée, exécution...' });
+      await emit('status', { message: '✅ Requête générée, exécution en cours...' });
 
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
       const results = await this.executeSafeQuery(validatedQuery);
 
-      sendEvent('status', { message: '📊 Analyse des résultats...' });
-      const analysis = await this.generateBusinessAnalysis(
+      await emit('status', { message: '📊 Analyse des résultats...' });
+
+      // Streaming token-by-token de l'analyse métier
+      const analysis = await this.generateBusinessAnalysisStream(
         dto.question, validatedQuery, results, dto.specificTables || [],
+        sendEvent,
       );
       await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
 
@@ -1121,6 +1381,138 @@ RÉPONSE (en français courant, langage métier):`;
 
     const response = await this.llm.invoke(prompt);
     return response.content as string;
+  }
+
+  /**
+   * Version streaming de generateBusinessAnalysis.
+   * Envoie chaque token via sendEvent('token', { text }) au fur et à mesure,
+   * puis retourne la réponse complète pour l'historique.
+   *
+   * Compatible avec l'endpoint SSE /ask/stream uniquement.
+   */
+  private async generateBusinessAnalysisStream(
+    question: string,
+    sql: string,
+    results: any,
+    tables: string[],
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    if (!results.data || results.data.length === 0) {
+      const msg = this.getNoResultsMessage(question, tables);
+      this.logger.debug(`📤 token (no-results): "${msg.substring(0, 60)}"`);
+      sendEvent('token', { text: msg });
+      return msg;
+    }
+
+    const businessResults = this.transformToBusinessResults(results.data, tables);
+
+    // Le rôle métier vient de projectConfig (logique externe) — générique par défaut
+    const expertRole = this.projectConfig?.analysisSystemPrompt
+      ?? `Tu es un assistant IA spécialisé dans l'analyse de données.`;
+
+    const prompt = `${expertRole}
+
+QUESTION POSÉE PAR L'UTILISATEUR:
+"${question}"
+
+RÉSULTATS DES DONNÉES (présentés en termes métier):
+${JSON.stringify(businessResults, null, 2)}
+
+INSTRUCTIONS IMPORTANTES:
+1. Réponds comme si tu parlais à un collègue non technique
+2. N'utilise JAMAIS de termes techniques comme "SQL", "requête", "base de données", "colonne", "table"
+3. Utilise des termes métier adaptés au contexte
+4. Si la réponse contient des dates, formate-les de façon lisible
+5. Sois concis mais précis (max 500 mots)
+6. Termine par une phrase d'action ou de recommandation si pertinent
+
+RÉPONSE (en langage naturel):`;
+
+    let fullText = '';
+    let tokenCount = 0;
+
+    this.logger.log(`🌊 [STREAM] Démarrage llm.stream() — prompt ${prompt.length} chars`);
+    try {
+      const stream = await this.llm.stream(prompt);
+      for await (const chunk of stream) {
+        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        if (text) {
+          fullText += text;
+          tokenCount++;
+          // Log chaque 10 tokens pour ne pas spammer
+          if (tokenCount <= 3 || tokenCount % 10 === 0) {
+            this.logger.debug(`🔤 [STREAM] token #${tokenCount}: "${text.replace(/\n/g, '\\n').substring(0, 30)}"`);
+          }
+          sendEvent('token', { text });
+        }
+      }
+      this.logger.log(`✅ [STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
+    } catch (err) {
+      this.logger.warn(`⚠️ [STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
+      const response = await this.llm.invoke(prompt);
+      fullText = response.content as string;
+      this.logger.debug(`📤 [FALLBACK] token unique: ${fullText.length} chars`);
+      sendEvent('token', { text: fullText });
+    }
+
+    return fullText;
+  }
+
+  /**
+   * Génère une réponse conversationnelle directement en streaming (llm.stream).
+   * Envoie chaque token SSE dès qu'il arrive — pas de pré-génération bloquante.
+   */
+  private async generateConversationalResponseStream(
+    question: string,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    const systemPrompt = this.projectConfig?.conversationalSystemPrompt
+      ?? `Tu es un assistant IA. Réponds aux questions générales et aux salutations de façon courtoise et professionnelle.`;
+
+    let fullText = '';
+    let tokenCount = 0;
+    this.logger.log(`🌊 [CONV STREAM] Démarrage llm.stream() pour réponse conversationnelle`);
+
+    try {
+      const stream = await this.llm.stream([
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: question },
+      ]);
+      for await (const chunk of stream) {
+        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        if (text) {
+          fullText += text;
+          tokenCount++;
+          sendEvent('token', { text });
+        }
+      }
+      this.logger.log(`✅ [CONV STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
+    } catch (err) {
+      this.logger.warn(`⚠️ [CONV STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
+      const response = await this.llm.invoke([
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: question },
+      ]);
+      fullText = response.content as string;
+      sendEvent('token', { text: fullText });
+    }
+
+    return fullText;
+  }
+
+  /**
+   * @deprecated — Remplacé par generateConversationalResponseStream (qui fait du vrai streaming LLM).
+   * Conservé pour compatibilité mais plus appelé depuis analyzeQuestionStream.
+   */
+  private streamConversationalResponse(
+    preGeneratedText: string,
+    sendEvent: (event: string, data: any) => void,
+  ): string {
+    this.logger.debug(`💬 CONVERSATIONAL stream (legacy) — ${preGeneratedText.length} chars`);
+    for (const word of preGeneratedText.split(/(\s+)/)) {
+      if (word) sendEvent('token', { text: word });
+    }
+    return preGeneratedText;
   }
 
   /**
@@ -1834,7 +2226,8 @@ Retourne UNIQUEMENT la requête corrigée.`;
       lastAnalyzed: new Date(),
     };
     
-    const tables = DatabaseTablesConfig.essentialTables.slice(0, 10);
+    const effectiveTablesConfig = this.projectConfig?.databaseTablesConfig ?? DatabaseTablesConfig;
+    const tables = (effectiveTablesConfig.essentialTables ?? DatabaseTablesConfig.essentialTables).slice(0, 10);
     for (const table of tables) {
       try {
         const result = await this.dataSource.query(`SELECT COUNT(*) as count FROM ${table}`);

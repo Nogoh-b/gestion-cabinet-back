@@ -1,25 +1,46 @@
-// src/modules/ai/intent-detection/intent-detection.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+// src/core/ai-database/intent-detection.service.ts
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
 import { IntentDetectionResult } from './interface/write-intent.interface';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { WriteOperation, WritePlan } from './dto/analysis-response.dto';
+import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
+import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 
 @Injectable()
 export class IntentDetectionService {
   private readonly logger = new Logger(IntentDetectionService.name);
-  
-  constructor(private readonly writeHandlerRegistry: WriteHandlerRegistry) {}
+
+  constructor(
+    private readonly writeHandlerRegistry: WriteHandlerRegistry,
+    @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
+    private readonly projectConfig?: AiDatabaseProjectConfig,
+  ) {}
 
   async detectIntent(
     question: string,
     llm: ChatOpenAI,
     readSchema: string,
   ): Promise<IntentDetectionResult> {
-    
-    // 1️⃣ Vérification rapide par mots-clés
-    if (!this.isWriteIntent(question)) {
-      return { type: 'READ', requiresConfirmation: false };
+
+    // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
+    const isObviousWrite = this.isWriteIntent(question);
+
+    if (!isObviousWrite) {
+      // 1b. Classification légère via LLM : READ | WRITE | CHAT
+      //     (plus fiable que des heuristiques statiques)
+      const lightClass = await this.lightClassify(question, llm);
+      this.logger.log(`🏷️ Light classify → ${lightClass}`);
+
+      if (lightClass === 'CHAT') {
+        // Ne pas pré-générer la réponse ici (appel bloquant).
+        // analyzeQuestionStream() streamera la réponse directement via llm.stream().
+        return { type: 'CONVERSATIONAL', requiresConfirmation: false };
+      }
+      if (lightClass === 'READ') {
+        return { type: 'READ', requiresConfirmation: false };
+      }
+      // lightClass === 'WRITE' → on laisse tomber dans la branche WRITE ci-dessous
     }
 
     // 2️⃣ Générer le schéma d'écriture
@@ -67,7 +88,20 @@ export class IntentDetectionService {
    * Prompt avancé pour la détection multi-opérations
    */
   private buildAdvancedDetectionPrompt(question: string, readSchema: string, writeSchema: string): string {
-    return `Tu es un expert en analyse de demandes pour une base de données juridique.
+    const genericWriteExample = `{
+  "type": "WRITE",
+  "writePlan": {
+    "transaction": true,
+    "operations": [
+      { "operation": "INSERT", "entity": "customer", "tempId": "new_client",
+        "fields": { "first_name": "Jean", "last_name": "Dupont", "email": "jean@example.com" } }
+    ],
+    "humanReadable": "Créer le client Jean Dupont",
+    "confidence": 0.95
+  }
+}`;
+
+    return `Tu es un expert en analyse de demandes pour une base de données.
 
 ## 🧠 RÉFLEXION
 Avant de répondre, analyse soigneusement :
@@ -111,69 +145,17 @@ Décomposer cette demande en un PLAN d'opérations.
 - "{{today}}" → date du jour
 - "{{now}}" → timestamp actuel
 
-### 5. 🏛️ Règle CRITIQUE pour les DOSSIERS
-Quand tu crées un dossier, tu DOIS OBLIGATOIREMENT inclure :
-- **procedure_type** : le type de procédure (ex: "Contentieux civil", "Droit de la famille", "Droit des affaires")
-- **procedure_subtype** : le sous-type de procédure (ex: "Divorce", "Rupture conventionnelle", "Recouvrement")
-
-Ces deux champs sont OBLIGATOIRES. Si l'utilisateur mentionne "divorce", "contentieux",
-"recouvrement", "civil", etc., déduis le type et sous-type de procédure correspondants.
-
 ### 6. 🔄 Résolution des ambiguïtés (optionnel)
 Si l'utilisateur dit "prends le plus probable" ou "je ne sais plus lequel",
 ajoute ceci dans l'opération concernée (dans le JSON du plan) :
 "resolveConfig": { "mode": "best_effort" }
 Cela permettra de prendre automatiquement la meilleure correspondance en cas d'homonymie.
-
+${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRules}\n` : ''}
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 
 Pour une LECTURE:
 {"type": "READ"}
-
-Pour une CRÉATION MULTI-ENTITÉS:
-{
-  "type": "WRITE",
-  "writePlan": {
-    "transaction": true,
-    "operations": [
-      {
-        "operation": "INSERT",
-        "entity": "customer",
-        "tempId": "client_demandeur",
-        "fields": {
-          "first_name": "Alain",
-          "last_name": "Lefebvre",
-          "address": "Adresse de Monsieur Lefebvre"
-        }
-      },
-      {
-        "operation": "INSERT",
-        "entity": "customer",
-        "tempId": "client_defendeur",
-        "fields": {
-          "first_name": "Bernard",
-          "last_name": "Morel",
-          "address": "Adresse de Monsieur Morel"
-        }
-      },
-            {
-        "operation": "INSERT",
-        "entity": "dossiers",
-        "fields": {
-          "client": "Alain Lefebvre",
-          "object": "Litige commercial",
-          "lawyer": "Nogoh Brice",
-          "procedure_type": "Contentieux civil",
-          "procedure_subtype": "Divorce",
-          "opposing_party_name": "Bernard Morel"
-        }
-      }
-    ],
-    "humanReadable": "Créer deux clients et un dossier pour eux",
-    "confidence": 0.9
-  }
-}
-
+${this.projectConfig?.promptDomainExample ? `\nPour une CRÉATION MULTI-ENTITÉS:\n${this.projectConfig.promptDomainExample}\n` : `\nPour une CRÉATION:\n${genericWriteExample}\n`}
 Pour une MODIFICATION:
 {
   "type": "WRITE",
@@ -287,6 +269,12 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       /j'aimerais\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       /il\s+faut\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       /(?:merci de|veuillez)\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
+      // Patterns d'analyse structurée avec données brutes → intent WRITE implicite
+      /cree\s+un\s+dossier/,
+      /dossier\s+(?:client|juridique|structure)/,
+      /INSTRUCTION\s*:/i,
+      /DONNEES\s+BRUTES/i,
+      /fiche\s+(?:client|de\s+synthese|synthetique)/,
     ];
 
     for (const pattern of patterns) {
@@ -297,6 +285,60 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     }
 
     return false;
+  }
+
+  /**
+   * Classification légère via LLM.
+   *
+   * Un seul appel court (prompt ~300 tokens, réponse 1 mot) qui distingue
+   * READ / WRITE / CHAT de façon fiable, sans avoir besoin de heuristiques fragiles.
+   *
+   * Appelé uniquement quand `isWriteIntent()` n'a pas trouvé de mots-clés évidents,
+   * donc pas de surcoût pour les WRITE évidents.
+   */
+  private async lightClassify(question: string, llm: ChatOpenAI): Promise<'READ' | 'WRITE' | 'CHAT'> {
+    const prompt = `Tu es un classificateur pour un assistant IA de cabinet d'avocats.
+Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, CHAT.
+
+READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...)
+WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer...)
+CHAT   = question générale sans lien avec les données du cabinet (salutation, remerciement, question de culture générale, demande d'explication hors-métier...)
+
+Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences.
+
+Demande : "${question.replace(/"/g, "'")}"
+
+Réponds UNIQUEMENT avec READ, WRITE ou CHAT. Rien d'autre.`;
+
+    try {
+      const response = await llm.invoke([{ role: 'user', content: prompt }]);
+      const raw = (response.content as string).trim().toUpperCase().replace(/[^A-Z]/g, '');
+      if (raw.startsWith('WRITE')) return 'WRITE';
+      if (raw.startsWith('CHAT')) return 'CHAT';
+      return 'READ'; // défaut sûr : on essaie le SQL
+    } catch {
+      return 'READ'; // en cas d'erreur, on tente le SQL
+    }
+  }
+
+  /**
+   * Génère une réponse directe pour les questions conversationnelles.
+   * Le prompt système est fourni par projectConfig.conversationalSystemPrompt (logique métier externe).
+   * Un prompt générique est utilisé si aucune config n'est fournie.
+   */
+  private async generateConversationalResponse(question: string, llm: ChatOpenAI): Promise<string> {
+    const systemPrompt = this.projectConfig?.conversationalSystemPrompt
+      ?? `Tu es un assistant IA. Réponds aux questions générales et aux salutations de façon courtoise et professionnelle.`;
+
+    try {
+      const response = await llm.invoke([
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: question },
+      ]);
+      return response.content as string;
+    } catch {
+      return `Bonjour ! Comment puis-je vous aider ?`;
+    }
   }
 
   /**

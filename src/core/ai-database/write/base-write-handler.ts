@@ -667,6 +667,55 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     };
   }
 
+  // ─── HELPERS MÉTIER PARTAGÉS ────────────────────────────────────────────────
+
+  /**
+   * Récupère le contexte de stage visit courant depuis un dossier.
+   *
+   * Chaîne : dossier → procedure_instance (currentStageId) → stage_visits
+   *                                                         → currentSubStageVisitId
+   *
+   * Retourne null si le dossier n'a pas de procedureInstance, ou si la requête échoue.
+   * Toujours optionnel : utilisé pour enrichir automatiquement les entités liées
+   * (factures, diligences, audiences) sans bloquer la création si absent.
+   */
+  protected async fetchCurrentStageVisitInfo(dossierId: string | number): Promise<{
+    procedure_instance_id: string | null;
+    stage_visit_id: string | null;
+    sub_stage_visit_id: string | null;
+  } | null> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT
+           d.procedureInstanceId  AS procedure_instance_id,
+           sv.id                  AS stage_visit_id,
+           sv.currentSubStageVisitId AS sub_stage_visit_id
+         FROM dossiers d
+         LEFT JOIN procedure_instances pi
+               ON pi.id = d.procedureInstanceId
+         LEFT JOIN stage_visits sv
+               ON sv.instanceId = pi.id
+              AND sv.stageId    = pi.currentStageId
+         WHERE d.id = ?
+         LIMIT 1`,
+        [dossierId],
+      );
+      if (!rows || rows.length === 0) return null;
+      const row = rows[0];
+      if (!row.procedure_instance_id) return null;   // pas de procédure associée
+      return {
+        procedure_instance_id: row.procedure_instance_id ?? null,
+        stage_visit_id:        row.stage_visit_id        ?? null,
+        sub_stage_visit_id:    row.sub_stage_visit_id    ?? null,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `⚠️  fetchCurrentStageVisitInfo(${dossierId}) échouée: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   // ─── UTILITAIRES INTERNES ───────────────────────────────────────────────────
 
   /**

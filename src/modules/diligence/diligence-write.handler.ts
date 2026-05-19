@@ -5,7 +5,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Diligence, DiligenceStatus, DiligencePriority, DiligenceType } from './entities/diligence.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
-import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
+import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
 
@@ -47,6 +47,29 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);
     }
     return fields;
+  }
+
+  // ── Résolution des dépendances : injection stage visit courant ──────────────
+
+  async resolveDependencies(
+    fields: Record<string, any>,
+    userId: string,
+    createdEntities?: Map<string, any>,
+    config?: ResolveConfig,
+  ): Promise<Record<string, any>> {
+    const resolved = await super.resolveDependencies(fields, userId, createdEntities, config);
+
+    // Auto-injection du contexte de stage visit courant (si le dossier a une procédure)
+    if (resolved.dossier_id) {
+      const stageInfo = await this.fetchCurrentStageVisitInfo(resolved.dossier_id);
+      if (stageInfo) {
+        if (!resolved.procedure_instance_id) resolved.procedure_instance_id = stageInfo.procedure_instance_id;
+        if (!resolved.stageVisit_id && stageInfo.stage_visit_id) resolved.stageVisit_id = stageInfo.stage_visit_id;
+        if (!resolved.sub_stage_visit_id && stageInfo.sub_stage_visit_id) resolved.sub_stage_visit_id = stageInfo.sub_stage_visit_id;
+      }
+    }
+
+    return resolved;
   }
 
   async validateFields(

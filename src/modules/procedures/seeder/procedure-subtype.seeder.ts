@@ -24,7 +24,7 @@ export default class ProcedureSubtypeSeeder implements Seeder {
     const procedureSubtypes = [
       // Sous-types Procédure Civile Ordinaire
       {
-        name: 'Contentieux civil - Procédure ordinaire',
+        name: 'Contentieux civil - Procédure ordinaire', 
         code: 'CIVIL_CONTENTIOUS',
         description: 'Procédure civile standard devant le tribunal judiciaire avec toutes les étapes',
         required_documents: ['assignation', 'conclusions', 'pieces', 'dossier_plaidoirie'],
@@ -255,6 +255,19 @@ export default class ProcedureSubtypeSeeder implements Seeder {
         hierarchy_level: 2,
         parent_id: criminalParent?.id,
         order: 1
+      },
+      {
+        name: 'Infractions routières', 
+        code: 'TRAFFIC_OFFENSES',
+        description: 'Contentieux lié aux infractions au code de la route (excès de vitesse, défaut de permis, alcoolémie, accidents)',
+        required_documents: ['procès_verbal', 'permis_conduire', 'carte_grise', 'certificat_médical'],
+        average_duration: 60,
+        specific_jurisdictions: ['Tribunal de Police', 'Tribunal Correctionnel'],
+        is_active: true,
+        is_subtype: true,
+        hierarchy_level: 2,
+        parent_id: criminalParent?.id,
+        order: 2
       },
 
       // Sous-types Procédure Commerciale & OHADA

@@ -33,6 +33,14 @@ export class AnalysisResponseDto {
     operationIndex: number;
     /** Entité en cours de création au moment de l'ambiguïté (ex: "dossiers") */
     parentEntity?: string;
+    /**
+     * true → le frontend peut proposer une option « Autre » quand aucun
+     * candidat ne convient. L'utilisateur saisit un texte libre (customValue)
+     * envoyé à POST resolve-ambiguity pour créer l'entité ou relancer la résolution.
+     */
+    allowOther?: boolean;
+    /** Libellé lisible de l'entité cible (ex: "juridiction", "type de procédure") */
+    otherLabel?: string;
   };
 }
 

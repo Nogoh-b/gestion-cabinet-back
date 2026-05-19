@@ -1,10 +1,9 @@
 // src/core/ai-database/write/entity-resolver.service.ts
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository, ILike } from 'typeorm';
-import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
-import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { DataSource, ILike, Repository } from 'typeorm';
 import { BUSINESS_METADATA_KEY, BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
+import { AI_DATABASE_PROJECT_CONFIG } from '../ai-database.tokens';
+import { AiDatabaseProjectConfig } from '../interfaces/ai-database-project-config.interface';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -131,163 +130,9 @@ export class EntityResolverService {
 
   constructor(
     private readonly dataSource: DataSource,
-    @InjectRepository(Customer)
-    private readonly customerRepo: Repository<Customer>,
-    @InjectRepository(Employee)
-    private readonly employeeRepo: Repository<Employee>,
+    @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
+    private readonly projectConfig?: AiDatabaseProjectConfig,
   ) {}
-
-  // ─── CLIENT ────────────────────────────────────────────────────────────────
-
-  async resolveCustomer(
-    input: string,
-    config?: ResolveConfig,
-  ): Promise<ResolveResult<Customer>> {
-    this.logger.debug(`🔍 Résolution client: "${input}"`);
-
-    const ni = normalize(input);
-    const parts = ni.split(' ');
-    const first = parts[0];
-    const rest = parts.slice(1).join(' ');
-
-    // 1. Requête large pour ramener les candidats
-    const candidates = await this.customerRepo.find({
-      where: [
-        { first_name: ILike(`%${first}%`) },
-        { last_name: ILike(`%${first}%`) },
-        ...(rest ? [
-          { first_name: ILike(`%${rest}%`) },
-          { last_name: ILike(`%${rest}%`) },
-        ] : []),
-        { company_name: ILike(`%${input}%`) },
-        { email: ILike(`%${input}%`) },
-      ],
-      take: 20,
-    });
-
-    if (candidates.length === 0) {
-      // 2. Fallback : requête encore plus large token par token
-      const fallback = await this.broadCustomerSearch(parts);
-      candidates.push(...fallback);
-    }
-
-    // 3. Scorer chaque candidat
-    const scored = this.scoreCustomers(input, candidates);
-
-    return this.buildResult(scored, input, 'client', config);
-  }
-
-  private scoreCustomers(input: string, rows: Customer[]): ResolveMatch<Customer>[] {
-    return rows
-      .map(c => {
-        const fullName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
-        const reverseName = `${c.last_name ?? ''} ${c.first_name ?? ''}`.trim();
-
-        const scores: { score: number; label: string }[] = [
-          { score: similarityScore(input, fullName),        label: 'prénom+nom' },
-          { score: similarityScore(input, reverseName),     label: 'nom+prénom' },
-          { score: similarityScore(input, c.first_name),   label: 'prénom' },
-          { score: similarityScore(input, c.last_name),    label: 'nom' },
-          { score: similarityScore(input, c.company_name), label: 'entreprise' },
-          { score: similarityScore(input, c.email),        label: 'email' },
-          // Bonus si l'email contient un token du nom
-          ...(input.includes('@') ? [{ score: c.email?.toLowerCase().includes(normalize(input)) ? 95 : 0, label: 'email exact' }] : []),
-        ];
-
-        const best = scores.reduce((a, b) => a.score >= b.score ? a : b);
-
-        return { entity: c, score: best.score, matchedOn: `${best.label}: ${fullName || c.email || c.company_name || ''}`.slice(0, 80) };
-      })
-      // Pas de filtre score : on garde tout pour pouvoir retourner des suggestions
-      .sort((a, b) => b.score - a.score);
-  }
-
-  private async broadCustomerSearch(tokens: string[]): Promise<Customer[]> {
-    // Cherche n'importe quel token dans tous les champs texte
-    const conditions = tokens.flatMap(t => [
-      { first_name: ILike(`%${t}%`) },
-      { last_name: ILike(`%${t}%`) },
-      { company_name: ILike(`%${t}%`) },
-    ]);
-
-    return this.customerRepo.find({ where: conditions, take: 20 });
-  }
-
-  // ─── EMPLOYÉ (AVOCAT) ──────────────────────────────────────────────────────
-
-  async resolveEmployee(
-    input: string,
-    config?: ResolveConfig,
-  ): Promise<ResolveResult<Employee>> {
-    this.logger.debug(`🔍 Résolution employé: "${input}"`);
-
-    const ni = normalize(input);
-    const parts = ni.split(' ');
-    const first = parts[0];
-    const rest = parts.slice(1).join(' ');
-
-    // 1. Requête large via QueryBuilder (join avec user)
-    const qb = this.employeeRepo
-      .createQueryBuilder('e')
-      .leftJoinAndSelect('e.user', 'u')
-      .where('1=1');
-
-    // Construire les conditions OR dynamiquement
-    const orConditions: string[] = [];
-    const params: Record<string, string> = {};
-
-    orConditions.push('LOWER(u.first_name) LIKE :f0', 'LOWER(u.last_name) LIKE :f0');
-    params['f0'] = `%${first}%`;
-
-    if (rest) {
-      orConditions.push('LOWER(u.first_name) LIKE :r0', 'LOWER(u.last_name) LIKE :r0');
-      params['r0'] = `%${rest}%`;
-    }
-
-    orConditions.push('LOWER(e.specialization) LIKE :full');
-    params['full'] = `%${ni}%`;
-
-    // Token par token pour la spécialisation
-    parts.forEach((p, i) => {
-      orConditions.push(`LOWER(e.specialization) LIKE :sp${i}`);
-      params[`sp${i}`] = `%${p}%`;
-    });
-
-    qb.andWhere(`(${orConditions.join(' OR ')})`, params);
-    qb.take(20);
-
-    const candidates = await qb.getMany();
-
-    // 2. Scorer
-    const scored = this.scoreEmployees(input, candidates);
-
-    return this.buildResult(scored, input, 'employé', config);
-  }
-
-  private scoreEmployees(input: string, rows: Employee[]): ResolveMatch<Employee>[] {
-    return rows
-      .map(e => {
-        const user = (e as any).user;
-        const firstName = user?.first_name ?? '';
-        const lastName  = user?.last_name  ?? '';
-        const fullName  = `${firstName} ${lastName}`.trim();
-        const reverseName = `${lastName} ${firstName}`.trim();
-
-        const scores: { score: number; label: string }[] = [
-          { score: similarityScore(input, fullName),         label: 'prénom+nom' },
-          { score: similarityScore(input, reverseName),      label: 'nom+prénom' },
-          { score: similarityScore(input, firstName),        label: 'prénom' },
-          { score: similarityScore(input, lastName),         label: 'nom' },
-          { score: similarityScore(input, e.specialization), label: 'spécialisation' },
-          { score: similarityScore(input, e.bar_association_city), label: 'ville barreau' },
-        ];
-
-        const best = scores.reduce((a, b) => a.score >= b.score ? a : b);
-
-        return { entity: e, score: best.score, matchedOn: `${best.label}: ${fullName || e.specialization || ''}`.slice(0, 80) };
-      })
-      .sort((a, b) => b.score - a.score);
-  }
 
   // ─── RÉSOLUTION GÉNÉRIQUE PAR NOM DE TABLE ─────────────────────────────────
 
@@ -313,12 +158,12 @@ export class EntityResolverService {
   ): Promise<ResolveResult<any>> {
     this.logger.debug(`🔍 resolveAnyEntity("${tableName}", "${searchTerm}")`);
 
-    // ── 1. Resolvers spécialisés ──
-    if (tableName === 'customer' || tableName === 'customers') {
-      return this.resolveCustomer(searchTerm, config);
-    }
-    if (tableName === 'employee' || tableName === 'employees') {
-      return this.resolveEmployee(searchTerm, config);
+    // ── 1. Resolvers spécialisés (injectés via AI_DATABASE_PROJECT_CONFIG) ──
+    const specializedResolver = this.projectConfig?.specializedResolvers?.find(
+      r => r.tables.includes(tableName),
+    );
+    if (specializedResolver) {
+      return specializedResolver.resolve(searchTerm, config);
     }
 
     // ── 2. Résolution générique ──
@@ -336,6 +181,21 @@ export class EntityResolverService {
     if (searchFields.length === 0) {
       this.logger.warn(`⚠️ Aucun champ searchable trouvé pour "${tableName}"`);
       return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
+    }
+
+    // ── 0. Exact match en priorité (codes structurés : DOS-XXXX, REF-XXX, etc.) ──
+    const exactEntity = await this.tryExactMatch(repo, searchFields, searchTerm, additionalFilters);
+    if (exactEntity) {
+      this.logger.log(`✅ Exact match "${searchTerm}" dans "${tableName}" (ID: ${exactEntity.id})`);
+      const match: ResolveMatch<any> = { entity: exactEntity, score: 100, matchedOn: `correspondance exacte` };
+      return {
+        found: true,
+        best: exactEntity,
+        score: 100,
+        matchedOn: 'correspondance exacte',
+        candidates: [match],
+        ambiguous: false,
+      };
     }
 
     const ni = normalize(searchTerm);
@@ -554,33 +414,10 @@ export class EntityResolverService {
     }
 
     // 🚫 Liste des entités qu'on ne crée JAMAIS automatiquement
-    const NEVER_AUTO_CREATE = new Set([
-      // Identité/sécurité : dépendances complexes (mots de passe, rôles, etc.)
-      'employee', 'employees', 'user', 'users',
-      // Données de référence : doivent exister en base, jamais créées à la volée
-      'procedure_types', 'procedure_type',
-      'jurisdictions', 'jurisdiction',
-      'agencies', 'agency',
-      // Workflow : FK obligatoires (templateId, stageId, etc.) impossibles à
-      // déduire d'un simple texte → création explicite via handler dédié uniquement
-      'procedure_instances', 'procedure_instance',
-      'procedure_templates', 'procedure_template',
-      'stages', 'stage',
-      'sub_stages', 'sub_stage',
-      'transitions', 'transition',
-      'cycles', 'cycle',
-      'tasks', 'task',
-      'stage_visits', 'sub_stage_visits',
-      'history_entries', 'history_entry',
-      // Entités avec FK obligatoires sur autres entités sensibles
-      'payslip', 'payslips',
-      'payslip_line', 'payslip_lines',
-      'payroll_period', 'payroll_periods',
-      'expense_report', 'expense_reports',
-      'expense_line', 'expense_lines',
-      'paiements', 'paiement',
-      // Branches/agences : structurel, géré par admin
-      'branch', 'branches',
+    // La liste de base (core générique) + additions du projet via projectConfig
+    const NEVER_AUTO_CREATE = new Set<string>([
+      'user', 'users', // toujours protégés dans le core
+      ...(this.projectConfig?.neverAutoCreate ?? []),
     ]);
 
     if (NEVER_AUTO_CREATE.has(tableName)) {
@@ -595,12 +432,9 @@ export class EntityResolverService {
         .slice(0, 3)
         .map(c => `"${c.matchedOn}" (${c.score}%)`);
 
-      const isEmployee = tableName === 'employee' || tableName === 'employees';
-      const entityLabel = isEmployee ? 'avocat' : tableName;
+      const entityLabel = tableName;
 
-      let hint = isEmployee
-        ? `"${searchTerm}" n'a pas été trouvé(e) comme ${entityLabel}. Veuillez utiliser l'interface ou vérifier l'orthographe.`
-        : `"${searchTerm}" n'existe pas dans ${tableName}. Vérifiez l'orthographe ou ajoutez-le via l'interface.`;
+      let hint = `"${searchTerm}" n'existe pas dans ${tableName}. Vérifiez l'orthographe ou ajoutez-le via l'interface.`;
 
       if (suggestions.length > 0) {
         hint += ` Résultats proches : ${suggestions.join(', ')}`;
@@ -882,6 +716,36 @@ export class EntityResolverService {
       .sort((a, b) => b.score - a.score);
 
     return this.buildResult(scored, input, repo.metadata.tableName);
+  }
+
+  // ─── EXACT MATCH ─────────────────────────────────────────────────────────
+
+  /**
+   * Tente une correspondance exacte (terme de recherche = valeur du champ) sur chaque
+   * champ searchable, dans l'ordre.
+   *
+   * Indispensable pour les codes structurés : numéros de dossier (DOS-XXXX-XXXX-XXXX),
+   * références (REF-XXX), codes juridiction, etc. Sans cela, le fuzzy matching tokenise
+   * les tirets et ne peut pas retrouver la correspondance exacte.
+   *
+   * Retourne la première entité trouvée, ou null si aucune.
+   */
+  private async tryExactMatch(
+    repo: import('typeorm').Repository<any>,
+    searchFields: string[],
+    searchTerm: string,
+    additionalFilters?: Record<string, any>,
+  ): Promise<any | null> {
+    const term = searchTerm.trim();
+    if (!term) return null;
+    const extra = additionalFilters ?? {};
+    for (const field of searchFields) {
+      try {
+        const found = await repo.findOne({ where: { [field]: term, ...extra } });
+        if (found) return found;
+      } catch { /* colonne incompatible (type), on ignore */ }
+    }
+    return null;
   }
 
   // ─── BUILDER DE RÉSULTAT ──────────────────────────────────────────────────

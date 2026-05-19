@@ -134,7 +134,13 @@ export class DossierWriteHandler extends BaseWriteHandler {
     };
   }
 
-  // ── Résolution des dépendances : procedure_subtype filtré par procedure_type ──
+  // ── Résolution des dépendances : procedure_type / subtype filtrés par is_subtype ──
+  //
+  // Les deux FK (procedure_type_id, procedure_subtype_id) pointent vers la
+  // MÊME table procedure_types. Le base handler ne sait pas distinguer les
+  // types (is_subtype=false) des sous-types (is_subtype=true).
+  // On extrait les alias texte AVANT super et on les résout manuellement
+  // avec les bons filtres.
 
   async resolveDependencies(
     fields: Record<string, any>,
@@ -142,22 +148,65 @@ export class DossierWriteHandler extends BaseWriteHandler {
     createdEntities?: Map<string, any>,
     config?: ResolveConfig,
   ): Promise<Record<string, any>> {
-    // 1. Résoudre d'abord tous les champs sauf procedure_subtype
-    const withoutSubtype = { ...fields };
-    const subtypeValue = withoutSubtype.procedure_subtype;
-    delete withoutSubtype.procedure_subtype;
+    // ── 1. Extraire les alias texte procedure_type / procedure_subtype ──────
+    //    pour éviter que super.resolveDependencies les résolve sans filtre
+    const withoutProcedure = { ...fields };
+    const typeValue = withoutProcedure.procedure_type;
+    const subtypeValue = withoutProcedure.procedure_subtype;
+    delete withoutProcedure.procedure_type;
+    delete withoutProcedure.procedure_subtype;
 
-    const resolved = await super.resolveDependencies(withoutSubtype, userId, createdEntities, config);
+    // ── 2. Résoudre les autres FK (client, lawyer, etc.) ────────────────────
+    const resolved = await super.resolveDependencies(withoutProcedure, userId, createdEntities, config);
 
-    // 2. Résoudre procedure_subtype avec parent_id = procedure_type_id résolu
-    if (subtypeValue !== undefined) {
-      const parentId = resolved.procedure_subtype_id ?? resolved.procedure_type_id;
+    // ── 3. Résoudre procedure_type (is_subtype = false) ─────────────────────
+    if (typeValue !== undefined && !BaseWriteHandler.isAlreadyId(resolved.procedure_type_id)) {
+      if (BaseWriteHandler.isAlreadyId(typeValue)) {
+        resolved.procedure_type_id = Number(typeValue);
+      } else if (typeof typeValue === 'string') {
+        const result = await this.entityResolver.resolveOrCreateEntity(
+          'procedure_types',
+          typeValue,
+          userId,
+          undefined,
+          config,
+          { is_subtype: false },   // ← filtre types principaux uniquement
+        );
 
-      if (typeof subtypeValue === 'number' || (typeof subtypeValue === 'string' && /^\d+$/.test(subtypeValue))) {
+        if (result.resolved.found && result.resolved.best && !result.resolved.ambiguous) {
+          resolved.procedure_type_id = (result.resolved.best as any).id;
+          this.logger.log(`✅ procedure_type résolu: "${typeValue}" → ID ${resolved.procedure_type_id}`);
+        } else if (result.resolved.ambiguous || (result.resolved.candidates && result.resolved.candidates.length > 0)) {
+          const candidates = result.resolved.candidates.slice(0, 10).map((c: any) => ({
+            id: (c.entity as any).id,
+            label: c.matchedOn,
+            score: c.score,
+            data: c.entity,
+          }));
+          this.logger.warn(`🔍 ${candidates.length} candidat(s) pour le type "${typeValue}"`);
+          throw new AmbiguityException('procedure_types', 'procedure_type', typeValue, candidates, -1, this.entityName);
+        } else {
+          // Type introuvable → proposer tous les types principaux disponibles.
+          // Même si la liste est vide, on lance l'AmbiguityException pour que
+          // le frontend affiche l'option "Autre" permettant la création.
+          this.logger.warn(`⚠️ Type de procédure "${typeValue}" introuvable — proposition des types disponibles`);
+          const fallbackCandidates = await this.fetchTopProcedureTypes(false);
+          throw new AmbiguityException('procedure_types', 'procedure_type', typeValue, fallbackCandidates, -1, this.entityName);
+        }
+      }
+    }
+
+    // ── 4. Résoudre procedure_subtype (is_subtype = true + parent_id) ───────
+    if (subtypeValue !== undefined && !BaseWriteHandler.isAlreadyId(resolved.procedure_subtype_id)) {
+      if (BaseWriteHandler.isAlreadyId(subtypeValue)) {
         resolved.procedure_subtype_id = Number(subtypeValue);
       } else if (typeof subtypeValue === 'string') {
-        // 1ère tentative : filtre strict par parent_id
-        const strictFilter = parentId ? { parent_id: parentId } : undefined;
+        const parentId = resolved.procedure_type_id;
+
+        // 1ère tentative : is_subtype=true + parent_id (filtre le plus précis)
+        const strictFilter: Record<string, any> = { is_subtype: true };
+        if (parentId) strictFilter.parent_id = parentId;
+
         let result = await this.entityResolver.resolveOrCreateEntity(
           'procedure_types',
           subtypeValue,
@@ -167,15 +216,17 @@ export class DossierWriteHandler extends BaseWriteHandler {
           strictFilter,
         );
 
-        // 2ème tentative : sans filtre si rien trouvé avec parent_id (data inconsistante possible)
-        if (!result.resolved.found && !result.resolved.ambiguous && strictFilter) {
-          this.logger.log(`🔄 Sous-type non trouvé avec parent_id=${parentId}, nouvelle tentative sans filtre`);
+        // 2ème tentative : is_subtype=true seulement (sans parent_id)
+        // Utile si les données sont incohérentes ou si le type principal n'est pas encore résolu
+        if (!result.resolved.found && !result.resolved.ambiguous && parentId) {
+          this.logger.log(`🔄 Sous-type non trouvé avec parent_id=${parentId}, tentative is_subtype=true seul`);
           result = await this.entityResolver.resolveOrCreateEntity(
             'procedure_types',
             subtypeValue,
             userId,
             undefined,
             config,
+            { is_subtype: true },
           );
         }
 
@@ -183,26 +234,38 @@ export class DossierWriteHandler extends BaseWriteHandler {
           resolved.procedure_subtype_id = (result.resolved.best as any).id;
           this.logger.log(`✅ procedure_subtype résolu: "${subtypeValue}" → ID ${resolved.procedure_subtype_id}`);
         } else if (result.resolved.ambiguous || (result.resolved.candidates && result.resolved.candidates.length > 0)) {
-          // Ambiguïté OU suggestions à proposer (top 10) → laisser l'utilisateur choisir
           const candidates = result.resolved.candidates.slice(0, 10).map((c: any) => ({
             id: (c.entity as any).id,
             label: c.matchedOn,
             score: c.score,
             data: c.entity,
           }));
-          this.logger.warn(
-            `🔍 ${candidates.length} suggestion(s) pour le sous-type "${subtypeValue}" — choix utilisateur requis`,
-          );
+          this.logger.warn(`🔍 ${candidates.length} suggestion(s) pour le sous-type "${subtypeValue}"`);
           throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, candidates, -1, this.entityName);
         } else {
-          throw new Error(`Impossible de trouver le sous-type "${subtypeValue}": ${result.message}`);
+          // Sous-type introuvable → proposer les sous-types disponibles pour ce parent.
+          // Si aucun sous-type n'existe encore pour ce parent (liste vide), on lance
+          // quand même l'AmbiguityException avec 0 candidats : le frontend affichera
+          // l'option "Autre" pour créer le sous-type.
+          const parentId = resolved.procedure_type_id;
+          this.logger.warn(`⚠️ Sous-type "${subtypeValue}" introuvable — proposition des sous-types pour parent_id=${parentId}`);
+          let fallbackCandidates = await this.fetchTopProcedureTypes(true, parentId);
+
+          // Si vraiment 0 sous-types pour ce parent → élargir à tous les sous-types
+          // pour donner quand même un contexte à l'utilisateur
+          if (fallbackCandidates.length === 0) {
+            this.logger.warn(`⚠️ Aucun sous-type pour parent_id=${parentId} — élargissement à tous les sous-types`);
+            fallbackCandidates = await this.fetchTopProcedureTypes(true);
+          }
+
+          // Dans tous les cas, on lance l'AmbiguityException :
+          // le frontend affiche les candidats (0..N) + l'option "Autre" (allowOther=true)
+          throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, fallbackCandidates, -1, this.entityName);
         }
       }
     }
 
-    // ── Proposer des suggestions pour les FK requises mais absentes ──────────
-    // Si le LLM n'a pas fourni lawyer / client / procedure_type, on propose
-    // les options les plus pertinentes au lieu d'échouer en validation.
+    // ── 5. Proposer des suggestions pour les FK requises mais absentes ───────
 
     if (!resolved.lawyer_id) {
       const candidates = await this.fetchTopEmployees();

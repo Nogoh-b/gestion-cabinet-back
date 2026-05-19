@@ -886,10 +886,10 @@ private getUserSockets(userId: number): string[] {
   // ========== INJECTION DES SERVICES ==========
   constructor(
     @Inject(forwardRef(() => ChatService))
-    private chatService: ChatService,
+    private chatService: ChatService, 
     private notificationService: NotificationService,
     private userService: UsersService
-  ) {
+  ) { 
     console.log(forwardRef)
   }
 }

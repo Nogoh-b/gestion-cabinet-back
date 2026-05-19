@@ -21,12 +21,13 @@ import { memoryStorage } from 'multer';
 
 @ApiBearerAuth()
 export class AiDatabaseController {
+  private readonly logger = new Logger(AiDatabaseController.name);
+
   constructor(
     private readonly aiDbService: AiDatabaseService,
     private readonly schemaMetadata: SchemaMetadataService,
-      private readonly conversationManager: ConversationManagerService,
-
-    ) {}
+    private readonly conversationManager: ConversationManagerService,
+  ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
@@ -99,23 +100,103 @@ export class AiDatabaseController {
     @Res() res: Response,
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<void> {
+    const t0 = Date.now();
+    this.logger.log(`🕐 [SSE] askStream ENTRÉ à ${new Date().toISOString()}`);
+
     // Headers SSE
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // nginx : désactiver le buffer
-    res.flushHeaders();
+    res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Supprimer Content-Length si Express l'a pré-rempli (empêche le streaming)
+    res.removeHeader('Content-Length');
 
+    // ── Désactiver le cork TCP pour ce socket ───────────────────────────────
+    const sock = (res as any).socket;
+    if (sock?.writable) {
+      sock.setNoDelay(true); // désactive Nagle
+      // Uncork autant de fois que nécessaire (NestJS/Express peut cork() plusieurs fois)
+      const corkCount: number = (sock as any)._writableState?.corked ?? 1;
+      this.logger.log(`🕐 [SSE] socket.corked=${corkCount} avant uncork`);
+      for (let i = 0; i < Math.max(corkCount, 1); i++) sock.uncork();
+    }
+
+    res.flushHeaders(); // Envoie les headers HTTP immédiatement
+    this.logger.log(`🕐 [SSE] flushHeaders appelé @ +${Date.now() - t0}ms`);
+
+    // Yield l'event loop une fois pour s'assurer que les headers partent sur le réseau
+    // avant de commencer le travail async (appels LLM etc.)
+    await new Promise<void>(resolve => setImmediate(resolve));
+    this.logger.log(`🕐 [SSE] setImmediate passé (headers réseau) @ +${Date.now() - t0}ms`);
+
+    const flushAvailable = typeof (res as any).flush === 'function';
+    this.logger.log(`🔌 SSE connect — sockType: ${Object.getPrototypeOf(sock)?.constructor?.name ?? '?'}, flush: ${flushAvailable}, writable: ${sock?.writable}`);
+
+    // ── Helper pour forcer l'envoi immédiat sur le socket ──────────────────
+    const forceFlush = () => {
+      if (flushAvailable) (res as any).flush();
+      // Re-uncork à chaque write (NestJS/Express peut re-corker entre les writes)
+      if (sock?.writable) sock.uncork();
+    };
+
+    // Commentaire SSE de "prime" — force le browser à résoudre fetch() immédiatement
+    res.write(': stream-start\n\n', (err) => {
+      if (err) this.logger.warn(`⚠️ [SSE] Erreur write stream-start: ${err.message}`);
+      else this.logger.log(`🕐 [SSE] stream-start ACK socket @ +${Date.now() - t0}ms`);
+    });
+    forceFlush();
+
+    // ── Heartbeat toutes les 500ms ──────────────────────────────────────────
+    // Envoie `: ping\n\n` (commentaire SSE ignoré par le client) pour forcer
+    // Node.js à émettre un chunk HTTP et débloquer fetch() côté navigateur.
+    let heartbeatCount = 0;
+    const heartbeatTimer = setInterval(() => {
+      if (res.writableEnded) { clearInterval(heartbeatTimer); return; }
+      heartbeatCount++;
+      const n = heartbeatCount; // capturer la valeur, pas la référence
+      res.write(`: ping ${n}\n\n`, (err) => {
+        if (!err && n <= 3) {
+          this.logger.log(`🕐 [SSE] heartbeat #${n} ACK socket @ +${Date.now() - t0}ms`);
+        }
+      });
+      forceFlush();
+    }, 500);
+
+    /**
+     * Écrit un event SSE et vide le buffer TCP immédiatement.
+     */
     const sendEvent = (event: string, data: any) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+      res.write(payload);
+      forceFlush();
+      // Log chaque event sauf 'token' (trop verbeux)
+      if (event !== 'token') {
+        this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
+      }
+    };
+
+    let tokenEmitCount = 0;
+    const sendEventWithTokenLog = (event: string, data: any) => {
+      if (event === 'token') {
+        tokenEmitCount++;
+        if (tokenEmitCount <= 3 || tokenEmitCount % 20 === 0) {
+          this.logger.debug(`📤 SSE → [token #${tokenEmitCount}] "${(data.text ?? '').substring(0, 30)}"`);
+        }
+      }
+      sendEvent(event, data);
     };
 
     try {
-      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent);
+      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEventWithTokenLog);
     } catch (err) {
       sendEvent('error', { message: err.message });
     } finally {
+      clearInterval(heartbeatTimer);
+      this.logger.debug(`📤 SSE → [done] (${tokenEmitCount} tokens émis au total, ${heartbeatCount} heartbeats)`);
       res.write('event: done\ndata: {}\n\n');
+      forceFlush();
       res.end();
     }
   }
@@ -138,13 +219,23 @@ export class AiDatabaseController {
    * Reprend l'exécution d'un WritePlan après qu'un utilisateur a choisi
    * l'entité parmi des candidats ambigus.
    *
-   * Corps attendu :
+   * Corps attendu — OPTION A (choix d'un candidat) :
    * {
    *   "pendingWritePlan": { ... },          ← plan retourné lors de l'ambiguïté
    *   "operationIndex":  0,                 ← ambiguityContext.operationIndex
    *   "fieldName":       "client",          ← ambiguityContext.fieldName
    *   "resolvedId":      42,                ← ID de l'entité choisie
    *   "conversationId":  "uuid"             ← optionnel, pour l'historique
+   * }
+   *
+   * Corps attendu — OPTION B (« Autre ») :
+   * {
+   *   "pendingWritePlan": { ... },
+   *   "operationIndex":  0,
+   *   "fieldName":       "jurisdiction",
+   *   "entity":          "jurisdictions",   ← ambiguityContext.entity
+   *   "customValue":     "TGI de Lyon",     ← texte libre saisi par l'utilisateur
+   *   "conversationId":  "uuid"
    * }
    */
   @Post('write/resolve-ambiguity')
@@ -156,6 +247,8 @@ export class AiDatabaseController {
     @Body('fieldName') fieldName: string,
     @Body('resolvedId') resolvedId: string | number,
     @Body('conversationId') conversationId: string,
+    @Body('customValue') customValue: string,
+    @Body('entity') entity: string,
     @CurrentUser() user,
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.resumeAfterAmbiguity(
@@ -165,6 +258,8 @@ export class AiDatabaseController {
       resolvedId,
       user.id,
       conversationId,
+      customValue,
+      entity,
     );
   }
 
