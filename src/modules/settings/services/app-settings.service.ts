@@ -6,7 +6,7 @@ import { AppSettingsDto } from '../dto/app-settings.dto';
 
 const DEFAULT_APP_SETTINGS: Partial<AppSettings> = {
   cabinet_name: 'MonCabinet',
-  cabinet_logo: null,
+  cabinet_logo: '',
   theme_name: 'ocean',
   cabinet_address: '',
   cabinet_phone: '',
@@ -75,11 +75,16 @@ export class AppSettingsService {
     });
 
     if (!settings) {
-      settings = this.appSettingsRepository.create({
-        cabinet_id: cabinetId,
-        ...DEFAULT_APP_SETTINGS,
-        ...dto,
-      });
+      // Convertir null en undefined
+      const cleanDto = Object.fromEntries(
+        Object.entries({
+          cabinet_id: cabinetId,
+          ...DEFAULT_APP_SETTINGS,
+          ...dto,
+        }).map(([key, value]) => [key, value === null ? undefined : value])
+      );
+      
+      settings = this.appSettingsRepository.create(cleanDto);
     } else {
       Object.assign(settings, dto);
     }
@@ -103,4 +108,4 @@ export class AppSettingsService {
 
     return this.appSettingsRepository.save(settings);
   }
-}
+} 

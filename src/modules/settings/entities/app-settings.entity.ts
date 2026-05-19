@@ -19,11 +19,15 @@ export class AppSettings extends BaseEntity {
   @ApiProperty({ example: 'MonCabinet' })
   @Column({ length: 255, default: 'MonCabinet' })
   cabinet_name: string;
-
+  
   @ApiProperty({ example: null, nullable: true })
-  @Column({ type: 'text', nullable: true })
-  cabinet_logo: string | null;
-
+  @Column({ 
+    nullable: true,
+    // type: 'mediumtext', 
+    length: 1000000,
+    default: '',
+  }) 
+  cabinet_logo: string;
   /**
    * 🎨 Thème nommé (palette de couleurs).
    * S'applique uniquement en mode clair côté front.
@@ -41,7 +45,7 @@ export class AppSettings extends BaseEntity {
   theme_name: 'ocean' | 'silver' | 'yellow' | 'forest' | 'sunset' | 'rose';
 
   @ApiProperty({ example: '' })
-  @Column({ type: 'text', default: '' })
+  @Column({ type: 'text', default: '' }) 
   cabinet_address: string;
 
   @ApiProperty({ example: '' })
