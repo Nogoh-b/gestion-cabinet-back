@@ -23,8 +23,8 @@ export class AppSettings extends BaseEntity {
   @ApiProperty({ example: null, nullable: true })
   @Column({ 
     nullable: true,
-    // type: 'mediumtext', 
-    length: 1000000,
+    type: 'longtext', 
+    // length: 1000000,
     default: '',
   }) 
   cabinet_logo: string;
