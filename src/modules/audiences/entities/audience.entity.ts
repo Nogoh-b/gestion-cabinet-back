@@ -303,6 +303,57 @@ export class Audience extends BaseEntity {
   @JoinColumn({ name: 'procedure_instance_id' })
   procedureInstance: ProcedureInstance;
 
+  // ── Filiation : audience née d'un report ─────────────────────────────────
+  @Column({ name: 'parent_audience_id', type: 'int', nullable: true })
+  @BusinessColumn({
+    label: 'Audience parente',
+    description: 'Audience d\'origine si celle-ci a été créée suite à un report',
+    importance: 'medium',
+    group: 'relation',
+  })
+  parent_audience_id: number;
+
+  @ManyToOne(() => Audience, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'parent_audience_id' })
+  parent_audience: Audience;
+
+  // ── Rapport d'audience (procès-verbal — distinct de la décision) ─────────
+  @Column({ name: 'report_content', type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Rapport d\'audience',
+    description: 'Procès-verbal détaillé du déroulement de l\'audience',
+    importance: 'high',
+    group: 'résultat',
+  })
+  report_content: string;
+
+  @Column({ name: 'report_date', type: 'timestamp', nullable: true })
+  @BusinessColumn({
+    label: 'Date du rapport',
+    description: 'Date à laquelle le rapport d\'audience a été rédigé',
+    format: 'date',
+    importance: 'medium',
+    group: 'dates',
+  })
+  report_date: Date;
+
+  @Column({ name: 'report_author_id', length: 64, nullable: true })
+  @BusinessColumn({
+    label: 'Auteur du rapport',
+    description: 'Identifiant de l\'utilisateur ayant rédigé le rapport',
+    importance: 'medium',
+    group: 'personnes',
+  })
+  report_author_id: string;
+
+  @ManyToMany(() => DocumentCustomer, { cascade: true })
+  @JoinTable({
+    name: 'audience_report_documents',
+    joinColumn: { name: 'audience_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
+  })
+  report_documents: DocumentCustomer[];
+
   // ==================== GETTERS MÉTIER ====================
 
   @BusinessColumn({

@@ -99,18 +99,8 @@ async completeSubStage(
     const instance = await this.findOne(instanceId);
     let currentStageVisit = await this.getCurrentStageVisitEntity(instance);
 
-    // Vérifier que c'est bien la sous-étape en cours
-    if (currentStageVisit.currentSubStageVisitId) {
-      const ongoingSubStage = await queryRunner.manager.findOne(SubStageVisit, {
-        where: { id: currentStageVisit.currentSubStageVisitId }
-      });
-      
-      if (ongoingSubStage && ongoingSubStage.subStageId !== subStageId) {
-        throw new BadRequestException(
-          `Vous ne pouvez pas compléter cette sous-étape car "${ongoingSubStage.subStageId}" est en cours.`
-        );
-      }
-    }
+    // 🔥 On autorise la complétion de n'importe quelle sous-étape en cours
+    // (plusieurs sous-étapes peuvent être démarrées simultanément).
 
     // Trouver ou créer SubStageVisit
     let subStageVisit = await this.subStageVisitRepository.findOne({
@@ -137,10 +127,15 @@ async completeSubStage(
 
     await queryRunner.manager.save(subStageVisit);
 
-    // 🔥 Nettoyer le champ currentSubStageVisitId
+    // 🔥 Si on terminait la "current" sous-étape, repointer vers une autre
+    // sous-étape encore en cours (s'il en reste), sinon nettoyer.
     if (currentStageVisit.currentSubStageVisitId === subStageVisit.id) {
+      const anotherOngoing = await queryRunner.manager.findOne(SubStageVisit, {
+        where: { stageVisitId: currentStageVisit.id, isCompleted: false },
+        order: { startedAt: 'DESC' },
+      });
       await queryRunner.manager.update(StageVisit, currentStageVisit.id, {
-        currentSubStageVisitId: null,
+        currentSubStageVisitId: anotherOngoing?.id ?? null,
       });
     }
 
@@ -704,18 +699,10 @@ async startSubStage(
     const instance = await this.findOne(instanceId);
     let currentStageVisit = await this.getCurrentStageVisitEntity(instance);
 
-    // 🔥 Vérifier s'il y a déjà une sous-étape en cours (via le nouveau champ)
-    if (currentStageVisit.currentSubStageVisitId) {
-      const ongoingSubStage = await queryRunner.manager.findOne(SubStageVisit, {
-        where: { id: currentStageVisit.currentSubStageVisitId }
-      });
-      
-      if (ongoingSubStage && !ongoingSubStage.isCompleted) {
-        throw new BadRequestException(
-          `Une sous-étape est déjà en cours. Veuillez la compléter avant d'en démarrer une nouvelle.`
-        );
-      }
-    }
+    // 🔥 Plusieurs sous-étapes peuvent être en cours simultanément.
+    // On ne bloque plus si une autre sous-étape est en cours — on garde
+    // simplement `currentSubStageVisitId` comme pointeur vers la dernière
+    // démarrée (pour la rétrocompatibilité avec le code existant).
 
     // Vérifier si la sous-étape n'est pas déjà complétée
     const existingSubStageVisit = await queryRunner.manager.findOne(SubStageVisit, {

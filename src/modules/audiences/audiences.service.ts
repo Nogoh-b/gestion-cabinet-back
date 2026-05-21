@@ -222,11 +222,20 @@ private async updateDossierStatusOnAudience(audience: Audience, dossier: Dossier
   // Dans votre service
 async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceResponseDto | any> {
   const audience = await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, Audience);
-  
+
   if (!audience) {
     return null;
   }
-  
+
+  // ✅ VERROU : une audience reportée est figée — toute modification est refusée
+  // (sauf consultation et ajout/édition du rapport via les endpoints dédiés).
+  if (audience.status === AudienceStatus.POSTPONED) {
+    throw new BadRequestException(
+      `Cette audience a été reportée et ne peut plus être modifiée. ` +
+      `Consultez l'audience de remplacement.`
+    );
+  }
+
   // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
   if (dto.status !== undefined && dto.status === AudienceStatus.HELD) {
     const now = new Date();
@@ -279,23 +288,135 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
 
   /**
    * 🔁 Reporter une audience
+   *
+   * Comportement :
+   *   1. L'audience d'origine est marquée POSTPONED → figée (update() la refusera)
+   *   2. Une NOUVELLE audience est créée, héritant des champs métier
+   *      (dossier, juridiction, type, salle, juge…) à la nouvelle date/heure
+   *   3. La nouvelle référence l'ancienne via `parent_audience_id`
+   *
+   * Renvoie un objet { original, replacement } pour que le front puisse afficher
+   * les deux.
    */
-  async postpone(id: number, dto: UpdateAudienceDto): Promise<Audience> {
-      const audience = await this.findOne(id);
-      console.log('updateDto ', dto);
+  async postpone(id: number, dto: UpdateAudienceDto): Promise<{ original: Audience; replacement: Audience }> {
+    if (!dto.audience_date || !dto.audience_time) {
+      throw new BadRequestException(
+        `La nouvelle date et la nouvelle heure de l'audience sont requises pour effectuer un report.`
+      );
+    }
 
-      if (dto.audience_date && dto.audience_time) {
-          // Convertir l'entité simple en instance de la classe Audience
-          const audienceInstance = plainToInstance(Audience, audience);
-          
-          // Appeler la méthode postpone sur l'instance
-          audienceInstance.postpone(new Date(dto.audience_date), dto.audience_time, dto.reason);
-          
-          // Sauvegarder l'instance modifiée
-          return this.repository.save(audienceInstance);
-      }
-      
-      return this.repository.save(audience);
+    const audience = await this.repository.findOne({
+      where: { id },
+      relations: this.getDefaultSearchOptions().relationFields,
+    });
+    if (!audience) {
+      throw new NotFoundException(`Audience ${id} introuvable`);
+    }
+    if (audience.status === AudienceStatus.POSTPONED) {
+      throw new BadRequestException(`Cette audience a déjà été reportée.`);
+    }
+    if (audience.status === AudienceStatus.CANCELLED) {
+      throw new BadRequestException(`Une audience annulée ne peut pas être reportée.`);
+    }
+
+    // 1. Figer l'audience d'origine
+    const original = plainToInstance(Audience, audience);
+    original.postpone(new Date(dto.audience_date), dto.audience_time, dto.reason);
+    await this.repository.save(original);
+
+    // 2. Créer l'audience de remplacement héritée
+    const replacement = this.repository.create({
+      audience_date: dto.audience_date as any,
+      audience_time: dto.audience_time,
+      jurisdiction: audience.jurisdiction,
+      jurisdiction_id: audience.jurisdiction_id,
+      room: dto.room ?? audience.room,
+      type: audience.type,
+      audience_type: audience.audience_type,
+      audience_type_id: audience.audience_type_id,
+      judge_name: dto.judge_name ?? audience.judge_name,
+      duration_minutes: dto.duration_minutes ?? audience.duration_minutes,
+      notes: dto.reason
+        ? `Audience issue du report de #${audience.id}. Motif : ${dto.reason}`
+        : `Audience issue du report de #${audience.id}.`,
+      dossier: audience.dossier,
+      dossier_id: audience.dossier_id,
+      status: AudienceStatus.SCHEDULED,
+      procedure_instance_id: audience.procedure_instance_id,
+      stageVisit_id: audience.stageVisit_id,
+      sub_stage_visit_id: audience.sub_stage_visit_id,
+      sub_stage_id: audience.sub_stage_id,
+      step_id: audience.step_id,
+      parent_audience_id: audience.id,
+    });
+    const savedReplacement = await this.repository.save(replacement);
+
+    return { original, replacement: savedReplacement };
+  }
+
+  /**
+   * 📝 Rapport d'audience (procès-verbal)
+   */
+  async addReport(
+    id: number,
+    payload: { report_content: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+  ): Promise<Audience> {
+    const audience = await this.repository.findOne({
+      where: { id },
+      relations: ['report_documents'],
+    });
+    if (!audience) throw new NotFoundException(`Audience ${id} introuvable`);
+
+    audience.report_content   = payload.report_content;
+    audience.report_date      = payload.report_date ?? new Date();
+    audience.report_author_id = payload.report_author_id ?? audience.report_author_id;
+
+    if (payload.document_ids?.length) {
+      const docs = await this.documentCustomerService.findByIds(payload.document_ids);
+      audience.report_documents = [...(audience.report_documents ?? []), ...docs];
+    }
+
+    return this.repository.save(audience);
+  }
+
+  async updateReport(
+    id: number,
+    payload: { report_content?: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+  ): Promise<Audience> {
+    const audience = await this.repository.findOne({
+      where: { id },
+      relations: ['report_documents'],
+    });
+    if (!audience) throw new NotFoundException(`Audience ${id} introuvable`);
+
+    if (payload.report_content !== undefined)   audience.report_content   = payload.report_content;
+    if (payload.report_date    !== undefined)   audience.report_date      = payload.report_date;
+    if (payload.report_author_id !== undefined) audience.report_author_id = payload.report_author_id;
+
+    if (payload.document_ids) {
+      audience.report_documents = await this.documentCustomerService.findByIds(payload.document_ids);
+    }
+
+    return this.repository.save(audience);
+  }
+
+  async getReport(id: number): Promise<{
+    report_content: string;
+    report_date: Date;
+    report_author_id: string;
+    report_documents: any[];
+  }> {
+    const audience = await this.repository.findOne({
+      where: { id },
+      relations: ['report_documents'],
+    });
+    if (!audience) throw new NotFoundException(`Audience ${id} introuvable`);
+    return {
+      report_content:    audience.report_content,
+      report_date:       audience.report_date,
+      report_author_id:  audience.report_author_id,
+      report_documents:  audience.report_documents ?? [],
+    };
   }
 
   /**

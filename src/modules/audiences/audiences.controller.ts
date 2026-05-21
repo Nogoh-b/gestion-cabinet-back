@@ -167,4 +167,29 @@ export class AudiencesController {
   ) {
     return await this.decisionService.removeDecisionDocument(+id, +documentId);
   }
+
+  // ── Rapport d'audience (procès-verbal) ────────────────────────────────────
+  @Post(':id/report')
+  @ApiOperation({ summary: 'Ajouter un rapport d\'audience' })
+  async addReport(
+    @Param('id') id: string,
+    @Body() payload: { report_content: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+  ) {
+    return await this.audiencesService.addReport(+id, payload);
+  }
+
+  @Patch(':id/report')
+  @ApiOperation({ summary: 'Mettre à jour le rapport d\'audience' })
+  async updateReport(
+    @Param('id') id: string,
+    @Body() payload: { report_content?: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+  ) {
+    return await this.audiencesService.updateReport(+id, payload);
+  }
+
+  @Get(':id/report')
+  @ApiOperation({ summary: 'Récupérer le rapport d\'audience' })
+  async getReport(@Param('id') id: string) {
+    return await this.audiencesService.getReport(+id);
+  }
 }

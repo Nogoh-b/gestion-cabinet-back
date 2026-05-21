@@ -46,8 +46,35 @@ export class AudienceResponseDto {
   @Expose()  
   decision_notes: string;
 
-  @Expose()  
+  @Expose()
   decision_documents: any[];
+
+  // ── Rapport d'audience (procès-verbal) ──────────────────────────────────
+  @Expose()
+  report_content: string;
+
+  @Expose()
+  report_date: Date;
+
+  @Expose()
+  report_author_id: string;
+
+  @Expose()
+  @Transform(({ obj }) => {
+    if (!obj.report_documents) return [];
+    return obj.report_documents.map((doc: any) => ({
+      id: doc.id,
+      name: doc.name,
+      file_url: doc.file_url,
+      file_mimetype: doc.file_mimetype,
+    }));
+  })
+  report_documents: any[];
+
+  // ── Filiation report ────────────────────────────────────────────────────
+  @ApiProperty({ example: 42, required: false, description: "ID de l'audience d'origine si celle-ci est née d'un report" })
+  @Expose()
+  parent_audience_id: number;
 
 
  @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })

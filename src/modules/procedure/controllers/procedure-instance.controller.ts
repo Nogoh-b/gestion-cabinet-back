@@ -129,12 +129,16 @@ async completeSubStageInPreviousStage(
   async completeSubStage(
     @Param('id') id: string,
     @Param('subStageId') subStageId: string,
-    @Param('notes') notes: string,
-    @Param('skipAutoTransitions') skipAutoTransitions: boolean,
+    @Query('notes') queryNotes: string,
+    @Query('skipAutoTransitions') skipAutoTransitions: string,
+    @Body() body: { notes?: string; skipAutoTransitions?: boolean },
     @Request() req: any,
   ) {
     const userId = req.user?.id || 'system';
-    return this.instanceService.completeSubStage(id, subStageId, userId,notes,skipAutoTransitions);
+    // Le front peut envoyer la note via query OU via body — on accepte les deux.
+    const notes = body?.notes ?? queryNotes;
+    const skipAuto = body?.skipAutoTransitions ?? skipAutoTransitions === 'true';
+    return this.instanceService.completeSubStage(id, subStageId, userId, notes, skipAuto);
   }
 
   @Post(':id/sub-stages/:subStageId/start')

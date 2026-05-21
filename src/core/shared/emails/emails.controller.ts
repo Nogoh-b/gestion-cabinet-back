@@ -81,4 +81,36 @@ export class MailController {
     await this.mailService.sendMail(id);
     return { id, message: 'Envoi déclenché' };
   }
+
+  /**
+   * Envoi direct (sans persistance) — utilisé par le front pour les emails
+   * "à la volée" qui n'ont pas vocation à être reprogrammés.
+   *
+   * Si `scheduledAt` est fourni dans le body, on bascule sur `create()` qui
+   * persiste et laisse le cron envoyer plus tard.
+   */
+  @Post('send-direct')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Envoyer immédiatement un email sans le persister (ou le programmer)' })
+  @ApiBody({ type: CreateMailDto })
+  async sendDirect(@Body() dto: CreateMailDto): Promise<{ status: string; message: string; id?: string }> {
+    // Programmation explicite → on passe par create() pour persister
+    if (dto.scheduledAt) {
+      const mail = await this.mailService.create(dto);
+      return { id: mail.id, status: mail.status, message: 'Email programmé' };
+    }
+
+    await this.mailService.sendDirect({
+      to:           dto.to,
+      cc:           dto.cc,
+      bcc:          dto.bcc,
+      subject:      dto.subject,
+      html:         dto.html,
+      text:         dto.text,
+      templateName: dto.templateName,
+      context:      dto.context,
+      attachments:  dto.attachments as any,
+    });
+    return { status: 'sent', message: 'Email envoyé directement' };
+  }
 }
