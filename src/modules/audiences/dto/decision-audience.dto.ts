@@ -3,9 +3,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsOptional, IsString, IsArray, IsDateString } from 'class-validator';
 
 export class DecisionAudienceDto {
-  @ApiProperty({ description: 'Texte de la décision' })
+  @ApiProperty({ description: 'Texte de la décision', required: false })
+  @IsOptional()
   @IsString()
-  decision: string;
+  decision?: string;
 
   @ApiProperty({ description: 'Issue de la décision', required: false })
   @IsOptional()

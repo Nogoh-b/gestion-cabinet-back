@@ -10,7 +10,7 @@ import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { Stage } from 'src/modules/procedure/entities/stage.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
 export enum AudienceStatus {
@@ -313,9 +313,13 @@ export class Audience extends BaseEntity {
   })
   parent_audience_id: number;
 
-  @ManyToOne(() => Audience, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Audience, (a) => a.children_audiences, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'parent_audience_id' })
   parent_audience: Audience;
+
+  // Inverse — toutes les audiences nées d'un report de celle-ci (chaîne possible)
+  @OneToMany(() => Audience, (a) => a.parent_audience)
+  children_audiences: Audience[];
 
   // ── Rapport d'audience (procès-verbal — distinct de la décision) ─────────
   @Column({ name: 'report_content', type: 'text', nullable: true })

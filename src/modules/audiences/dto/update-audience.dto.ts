@@ -121,4 +121,13 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
 
   @IsOptional()
   status?: AudienceStatus;
+
+  // ── Rapport d'audience (obligatoire avant un report) ─────────────────────
+  @ApiProperty({
+    description: "Rapport d'audience (procès-verbal). Requis avant report si absent.",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  report_content?: string;
 }

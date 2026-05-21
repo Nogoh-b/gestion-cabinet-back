@@ -45,11 +45,11 @@ export class AudienceDecisionService {
       );
     }
 
-    // Mettre à jour les champs de décision
-    audience.decision_text = decisionDto.decision;
-    audience.decision_outcome = decisionDto.outcome || audience.outcome;
-    audience.decision_date = decisionDto.decision_date || new Date();
-    audience.decision_notes = decisionDto.notes || '';
+    // Mettre à jour les champs de décision (tous optionnels)
+    if (decisionDto.decision !== undefined)      audience.decision_text    = decisionDto.decision;
+    if (decisionDto.outcome !== undefined)       audience.decision_outcome = decisionDto.outcome;
+    if (decisionDto.decision_date !== undefined) audience.decision_date    = decisionDto.decision_date;
+    if (decisionDto.notes !== undefined)         audience.decision_notes   = decisionDto.notes;
 
     // Gérer les documents de décision
     if (decisionDto.document_decision_ids && decisionDto.document_decision_ids.length > 0) {

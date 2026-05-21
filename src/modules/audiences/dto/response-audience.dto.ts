@@ -76,6 +76,44 @@ export class AudienceResponseDto {
   @Expose()
   parent_audience_id: number;
 
+  /** Audience parente (résumé) — présente si cette audience est issue d'un report */
+  @ApiProperty({ required: false })
+  @Expose()
+  @Transform(({ obj }) => {
+    const p = obj?.parent_audience;
+    if (!p) return null;
+    return { id: p.id, audience_date: p.audience_date, audience_time: p.audience_time, status: p.status };
+  })
+  parent_audience_summary: { id: number; audience_date: Date; audience_time: string; status: number } | null;
+
+  /** ID de l'audience de remplacement (la plus récente née d'un report de celle-ci) */
+  @ApiProperty({ example: 57, required: false, description: "ID de l'audience qui remplace celle-ci suite à un report" })
+  @Expose()
+  @Transform(({ obj }) => {
+    const list = obj?.children_audiences;
+    if (!Array.isArray(list) || list.length === 0) return null;
+    const sorted = [...list].sort(
+      (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
+    );
+    return sorted[0]?.id ?? null;
+  })
+  replacement_audience_id: number | null;
+
+  /** Résumé de l'audience de remplacement */
+  @ApiProperty({ required: false })
+  @Expose()
+  @Transform(({ obj }) => {
+    const list = obj?.children_audiences;
+    if (!Array.isArray(list) || list.length === 0) return null;
+    const sorted = [...list].sort(
+      (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime(),
+    );
+    const c = sorted[0];
+    if (!c) return null;
+    return { id: c.id, audience_date: c.audience_date, audience_time: c.audience_time, status: c.status };
+  })
+  replacement_audience_summary: { id: number; audience_date: Date; audience_time: string; status: number } | null;
+
 
  @ApiProperty({ example: "Tribunal de Grande Instance de Paris" })
   @Expose()

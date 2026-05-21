@@ -60,7 +60,14 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier', 'dossier.client','audience_type'],
       exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
-      relationFields: ['dossier', 'dossier.client', 'dossier.collaborators', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category','subStage'],
+      relationFields: [
+        'dossier', 'dossier.client', 'dossier.collaborators',
+        'jurisdiction','audience_type',
+        'documents', 'documents.document_type', 'documents.category',
+        'subStage',
+        // Filiation report : parent + enfants (audiences de remplacement)
+        'parent_audience', 'children_audiences',
+      ],
     };
   }
 
@@ -319,8 +326,23 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
       throw new BadRequestException(`Une audience annulée ne peut pas être reportée.`);
     }
 
-    // 1. Figer l'audience d'origine
+    // 🚦 Le rapport d'audience est OBLIGATOIRE avant tout report.
+    // Soit déjà saisi (audience.report_content), soit fourni dans le DTO (dto.report_content).
+    const incomingReport = (dto as any).report_content as string | undefined;
+    const hasReport = (incomingReport && incomingReport.trim().length > 0)
+                   || (audience.report_content && audience.report_content.trim().length > 0);
+    if (!hasReport) {
+      throw new BadRequestException(
+        `Le rapport d'audience doit être rédigé avant de reporter cette audience.`
+      );
+    }
+
+    // 1. Figer l'audience d'origine (en sauvant le rapport s'il vient d'arriver)
     const original = plainToInstance(Audience, audience);
+    if (incomingReport && incomingReport.trim().length > 0) {
+      original.report_content   = incomingReport;
+      original.report_date      = original.report_date ?? new Date();
+    }
     original.postpone(new Date(dto.audience_date), dto.audience_time, dto.reason);
     await this.repository.save(original);
 
