@@ -259,6 +259,24 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
   }
 
   /**
+   * Liste les mails liés à une entité métier via `metadata.linkedEntity.{type,id}`.
+   * Convention de stockage : `metadata = { linkedEntity: { type: 'dossier', id: 42 } }`.
+   * Utilise une requête JSON (compatible MySQL 5.7+).
+   */
+  async findByEntity(entityType: string, entityId: string | number): Promise<Mail[]> {
+    return this.mailRepository
+      .createQueryBuilder('mail')
+      .where(`JSON_EXTRACT(mail.metadata, '$.linkedEntity.type') = :type`, { type: entityType })
+      .andWhere(
+        `(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :id ` +
+        ` OR JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :idStr)`,
+        { id: Number(entityId) || -1, idStr: String(entityId) },
+      )
+      .orderBy('mail.createdAt', 'DESC')
+      .getMany();
+  }
+
+  /**
    * Récupère un mail par ID
    */
   async findOne(id: string): Promise<Mail | null> {
