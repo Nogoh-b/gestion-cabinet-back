@@ -44,6 +44,19 @@ export class AppSettings extends BaseEntity {
   })
   theme_name: 'ocean' | 'silver' | 'yellow' | 'forest' | 'sunset' | 'rose';
 
+  /* ── Polices configurables (clé de FONTS côté front) ─────────────────── */
+  @ApiProperty({ example: 'inter' })
+  @Column({ length: 50, default: 'inter' })
+  font_ui: string;
+
+  @ApiProperty({ example: 'inter' })
+  @Column({ length: 50, default: 'inter' })
+  font_heading: string;
+
+  @ApiProperty({ example: 'jetbrains_mono' })
+  @Column({ length: 50, default: 'jetbrains_mono' })
+  font_mono: string;
+
   @ApiProperty({ example: '' })
   @Column({ type: 'text', default: '' }) 
   cabinet_address: string;

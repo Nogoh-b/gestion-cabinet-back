@@ -21,6 +21,22 @@ export class AppSettingsDto {
   @IsIn(THEME_NAMES as unknown as string[])
   theme_name?: ThemeName;
 
+  /* ── Polices (clé d'identification côté front) ──────────────────────── */
+  @ApiPropertyOptional({ example: 'inter' })
+  @IsOptional()
+  @IsString()
+  font_ui?: string;
+
+  @ApiPropertyOptional({ example: 'inter' })
+  @IsOptional()
+  @IsString()
+  font_heading?: string;
+
+  @ApiPropertyOptional({ example: 'jetbrains_mono' })
+  @IsOptional()
+  @IsString()
+  font_mono?: string;
+
   @ApiProperty({ example: 'Yaoundé, Cameroun' })
   @IsOptional()
   @IsString()
