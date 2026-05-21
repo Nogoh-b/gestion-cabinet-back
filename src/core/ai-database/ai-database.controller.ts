@@ -69,12 +69,16 @@ export class AiDatabaseController {
 
   /**
    * Version streaming de /ask.
-   * Retourne un flux text/event-stream avec les événements :
+   * Écrit directement dans la réponse HTTP (text/event-stream).
+   * Headers anti-buffering nginx envoyés immédiatement via res.flushHeaders().
+   *
+   * Événements :
    *   status        → progression
    *   intent        → type READ/WRITE détecté
    *   confirmation  → plan write à confirmer
    *   ambiguity     → choix nécessaire (candidats multiples)
    *   result        → réponse finale complète
+   *   token         → fragment de texte (streaming LLM)
    *   error         → message d'erreur
    *   done          → fin du flux
    */
@@ -97,106 +101,45 @@ export class AiDatabaseController {
   async askStream(
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
+    @UploadedFile() file: Express.Multer.File,
     @Res() res: Response,
-    @UploadedFile() file?: Express.Multer.File,
   ): Promise<void> {
     const t0 = Date.now();
     this.logger.log(`🕐 [SSE] askStream ENTRÉ à ${new Date().toISOString()}`);
 
-    // Headers SSE
+    // ── Headers SSE — envoyés AVANT tout proxy ────────────────────────────
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');   // désactive le buffer nginx
     res.setHeader('Transfer-Encoding', 'chunked');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    // Supprimer Content-Length si Express l'a pré-rempli (empêche le streaming)
-    res.removeHeader('Content-Length');
-
-    // ── Désactiver le cork TCP pour ce socket ───────────────────────────────
-    const sock = (res as any).socket;
-    if (sock?.writable) {
-      sock.setNoDelay(true); // désactive Nagle
-      // Uncork autant de fois que nécessaire (NestJS/Express peut cork() plusieurs fois)
-      const corkCount: number = (sock as any)._writableState?.corked ?? 1;
-      this.logger.log(`🕐 [SSE] socket.corked=${corkCount} avant uncork`);
-      for (let i = 0; i < Math.max(corkCount, 1); i++) sock.uncork();
-    }
-
-    res.flushHeaders(); // Envoie les headers HTTP immédiatement
-    this.logger.log(`🕐 [SSE] flushHeaders appelé @ +${Date.now() - t0}ms`);
-
-    // Yield l'event loop une fois pour s'assurer que les headers partent sur le réseau
-    // avant de commencer le travail async (appels LLM etc.)
-    await new Promise<void>(resolve => setImmediate(resolve));
-    this.logger.log(`🕐 [SSE] setImmediate passé (headers réseau) @ +${Date.now() - t0}ms`);
-
-    const flushAvailable = typeof (res as any).flush === 'function';
-    this.logger.log(`🔌 SSE connect — sockType: ${Object.getPrototypeOf(sock)?.constructor?.name ?? '?'}, flush: ${flushAvailable}, writable: ${sock?.writable}`);
-
-    // ── Helper pour forcer l'envoi immédiat sur le socket ──────────────────
-    const forceFlush = () => {
-      if (flushAvailable) (res as any).flush();
-      // Re-uncork à chaque write (NestJS/Express peut re-corker entre les writes)
-      if (sock?.writable) sock.uncork();
-    };
-
-    // Commentaire SSE de "prime" — force le browser à résoudre fetch() immédiatement
-    res.write(': stream-start\n\n', (err) => {
-      if (err) this.logger.warn(`⚠️ [SSE] Erreur write stream-start: ${err.message}`);
-      else this.logger.log(`🕐 [SSE] stream-start ACK socket @ +${Date.now() - t0}ms`);
-    });
-    forceFlush();
-
-    // ── Heartbeat toutes les 500ms ──────────────────────────────────────────
-    // Envoie `: ping\n\n` (commentaire SSE ignoré par le client) pour forcer
-    // Node.js à émettre un chunk HTTP et débloquer fetch() côté navigateur.
-    let heartbeatCount = 0;
-    const heartbeatTimer = setInterval(() => {
-      if (res.writableEnded) { clearInterval(heartbeatTimer); return; }
-      heartbeatCount++;
-      const n = heartbeatCount; // capturer la valeur, pas la référence
-      res.write(`: ping ${n}\n\n`, (err) => {
-        if (!err && n <= 3) {
-          this.logger.log(`🕐 [SSE] heartbeat #${n} ACK socket @ +${Date.now() - t0}ms`);
-        }
-      });
-      forceFlush();
-    }, 500);
-
-    /**
-     * Écrit un event SSE et vide le buffer TCP immédiatement.
-     */
-    const sendEvent = (event: string, data: any) => {
-      const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-      res.write(payload);
-      forceFlush();
-      // Log chaque event sauf 'token' (trop verbeux)
-      if (event !== 'token') {
-        this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
-      }
-    };
+    res.flushHeaders();                          // flush immédiat vers le client
 
     let tokenEmitCount = 0;
-    const sendEventWithTokenLog = (event: string, data: any) => {
+    const sendEvent = (event: string, data: any) => {
+      if (res.writableEnded) return;             // connexion déjà fermée
+
       if (event === 'token') {
         tokenEmitCount++;
         if (tokenEmitCount <= 3 || tokenEmitCount % 20 === 0) {
-          this.logger.debug(`📤 SSE → [token #${tokenEmitCount}] "${(data.text ?? '').substring(0, 30)}"`);
+          this.logger.debug(`📤 SSE → [token #${tokenEmitCount}] "${(data?.text ?? '').toString().substring(0, 30)}"`);
         }
+      } else {
+        this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
       }
-      sendEvent(event, data);
+
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      // Forcer le flush si compression/passthrough middleware présent
+      if (typeof (res as any).flush === 'function') (res as any).flush();
     };
 
     try {
-      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEventWithTokenLog);
+      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent);
     } catch (err) {
-      sendEvent('error', { message: err.message });
+      sendEvent('error', { message: err?.message ?? String(err) });
     } finally {
-      clearInterval(heartbeatTimer);
-      this.logger.debug(`📤 SSE → [done] (${tokenEmitCount} tokens émis au total, ${heartbeatCount} heartbeats)`);
-      res.write('event: done\ndata: {}\n\n');
-      forceFlush();
+      this.logger.debug(`📤 SSE → [done] (${tokenEmitCount} tokens, +${Date.now() - t0}ms)`);
+      sendEvent('done', {});
       res.end();
     }
   }
