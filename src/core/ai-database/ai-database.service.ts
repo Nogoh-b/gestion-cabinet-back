@@ -467,6 +467,41 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       }
     }
 
+    // ── 1bis. Mode "génération de texte pure" — court-circuite la détection ──
+    // Utilisé par la modale IA des éditeurs (corps d'email, notes…). Aucune
+    // opération en base, juste appel direct au LLM avec la question complète
+    // (le prompt côté front spécifie déjà le format de sortie HTML/texte).
+    if (dto.textGenerationOnly) {
+      this.logger.log(`✍️ Mode textGenerationOnly — détection d'intention désactivée`);
+      try {
+        const llmResponse = await this.llm.invoke([
+          { role: 'user', content: enrichedQuestion },
+        ]);
+        const rawContent = typeof (llmResponse as any).content === 'string'
+          ? (llmResponse as any).content
+          : Array.isArray((llmResponse as any).content)
+            ? (llmResponse as any).content.map((c: any) => c?.text ?? c).join('')
+            : String((llmResponse as any).content ?? '');
+        return {
+          success:         true,
+          question:        dto.question,
+          analysis:        rawContent,
+          executionTimeMs: Date.now() - startTime,
+          conversationId:  dto.conversationId,
+        } as any;
+      } catch (err: any) {
+        this.logger.error(`textGenerationOnly: ${err?.message}`);
+        return {
+          success:         false,
+          question:        dto.question,
+          analysis:        '',
+          error:           err?.message ?? 'Erreur de génération de texte',
+          executionTimeMs: Date.now() - startTime,
+          conversationId:  dto.conversationId,
+        } as any;
+      }
+    }
+
     // ── 2. Détection d'intention sur la question enrichie ────────────────────
     const allTables = this.schemaMetadata.getAllVisibleTables();
     const schema = await this.getCompleteSchema(allTables);

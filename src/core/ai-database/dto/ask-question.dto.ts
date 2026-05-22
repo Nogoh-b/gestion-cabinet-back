@@ -11,7 +11,7 @@ export class AskQuestionDto {
   @IsString()
   @MinLength(5)
   @MaxLength(2000)
-  question: string = '';
+  question: string = ''; 
 
   @ApiProperty({ 
     description: 'Tables spécifiques à utiliser (optionnel)',
@@ -41,6 +41,22 @@ export class AskQuestionDto {
   @ApiProperty({ required: false, description: 'Nom du fichier' })
   @IsOptional()
   fileName?: string;
+
+  /**
+   * Mode "génération de texte uniquement".
+   * Court-circuite la détection d'intention (READ/WRITE/CONVERSATIONAL)
+   * et appelle directement le LLM pour générer du texte (HTML, plain…).
+   * Utilisé par la modale de génération IA des éditeurs (ex: corps d'email),
+   * où la sortie attendue est un texte à afficher, jamais une opération en base.
+   */
+  @ApiProperty({
+    required: false,
+    description: "Mode 'génération de texte pure' — désactive la détection d'intention.",
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  textGenerationOnly?: boolean;
 }
 
 export interface QueryExecutionResult {

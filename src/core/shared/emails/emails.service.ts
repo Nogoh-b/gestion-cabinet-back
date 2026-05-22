@@ -280,43 +280,71 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
   }
 
   /**
-   * Liste tous les mails liés à un client : soit via
-   * `metadata.linkedEntity.type = 'client'`, soit via un dossier dont le
-   * `client_id` correspond au client.
+   * Liste tous les mails liés à un client :
+   *   - soit directement (`linkedEntity.type = 'client'` + id du client)
+   *   - soit via un dossier dont le `client_id` correspond au client
+   *
+   * On utilise `JSON_UNQUOTE` partout pour garantir une comparaison en string,
+   * peu importe si l'id est stocké comme int ou string dans la metadata JSON.
    */
   async findByClient(clientId: string | number): Promise<Mail[]> {
     const idNum = Number(clientId);
     const idStr = String(clientId);
 
-    // 1. Récupère les ids de dossiers appartenant à ce client
-    const dossiers = await this.dossierRepository.find({
-      where: { client_id: Number.isFinite(idNum) ? idNum : (clientId as any) },
-      select: ['id'],
-    });
-    const dossierIds = dossiers.map(d => String(d.id));
+    // 1. Récupère les ids de dossiers appartenant à ce client via raw SQL
+    // (contourne tout mapping TypeORM / problème de colonne)
+    const rawRows: Array<{ id: number }> = await this.dossierRepository.query(
+      'SELECT id FROM dossiers WHERE client_id = ? AND deleted_at IS NULL',
+      [idNum],
+    );
+    const dossierIds = rawRows.map(r => String(r.id));
+
+    this.logger.debug(
+      `[findByClient] clientId=${idStr} → ${rawRows.length} dossier(s) : [${dossierIds.join(', ')}]`,
+    );
+
+    // Diagnostic : si toujours 0, loguer quels client_ids ont des dossiers avec des mails
+    if (rawRows.length === 0) {
+      const sample: Array<{ client_id: number; cnt: string }> = await this.dossierRepository.query(
+        `SELECT d.client_id, COUNT(d.id) as cnt
+         FROM dossiers d
+         WHERE d.deleted_at IS NULL
+           AND EXISTS (
+             SELECT 1 FROM mails m
+             WHERE JSON_UNQUOTE(JSON_EXTRACT(m.metadata, '$.linkedEntity.type')) = 'dossier'
+               AND JSON_UNQUOTE(JSON_EXTRACT(m.metadata, '$.linkedEntity.id')) = CAST(d.id AS CHAR)
+           )
+         GROUP BY d.client_id
+         ORDER BY cnt DESC
+         LIMIT 20`,
+      );
+      this.logger.debug(
+        `[findByClient] DEBUG — clients ayant des dossiers avec mails : ` +
+        sample.map(r => `client_id=${r.client_id}(${r.cnt} dossiers)`).join(', '),
+      );
+    }
 
     const qb = this.mailRepository
       .createQueryBuilder('mail')
       .where(
         // Mail directement lié au client
-        `(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type') = 'client'
-          AND (JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :idNum
-            OR JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :idStr))`,
-        { idNum: Number.isFinite(idNum) ? idNum : -1, idStr },
+        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = 'client'
+          AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id')) = :idStr)`,
+        { idStr },
       );
 
     if (dossierIds.length > 0) {
-      // Mail lié à l'un des dossiers du client
-      const numIds = dossierIds.map(s => Number(s)).filter(Number.isFinite);
       qb.orWhere(
-        `(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type') = 'dossier'
-          AND (JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') IN (:...numIds)
-            OR JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') IN (:...strIds)))`,
-        { numIds: numIds.length ? numIds : [-1], strIds: dossierIds },
+        // Mail lié à l'un des dossiers du client
+        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = 'dossier'
+          AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id')) IN (:...dossierIds))`,
+        { dossierIds },
       );
     }
 
-    return qb.orderBy('mail.createdAt', 'DESC').getMany();
+    const results = await qb.orderBy('mail.createdAt', 'DESC').getMany();
+    this.logger.debug(`[findByClient] ${results.length} mail(s) trouvé(s)`);
+    return results;
   }
 
   /**
