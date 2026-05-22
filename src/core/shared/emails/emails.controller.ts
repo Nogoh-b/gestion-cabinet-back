@@ -116,4 +116,14 @@ export class MailController {
   ) {
     return this.mailService.findByEntity(entityType, entityId);
   }
+
+  /**
+   * Lister tous les mails d'un client (directs ou via ses dossiers).
+   */
+  @Get('by-client/:clientId')
+  @ApiOperation({ summary: 'Lister tous les mails liés à un client (direct ou via ses dossiers)' })
+  @ApiParam({ name: 'clientId', type: String })
+  async findByClient(@Param('clientId') clientId: string) {
+    return this.mailService.findByClient(clientId);
+  }
 }

@@ -4,6 +4,7 @@ import { Repository, LessThanOrEqual } from 'typeorm';
 import { MailerService } from '@nestjs-modules/mailer';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AttachmentMail, Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { CreateMailDto } from './dto/create-mail.dto';
 import { helpers } from 'src/utils/helper-template-maill';
 
@@ -14,6 +15,8 @@ export class MailService {
   constructor(
     @InjectRepository(Mail)
     private mailRepository: Repository<Mail>,
+    @InjectRepository(Dossier)
+    private dossierRepository: Repository<Dossier>,
     private mailerService: MailerService,
   ) {}
 
@@ -274,6 +277,46 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
       )
       .orderBy('mail.createdAt', 'DESC')
       .getMany();
+  }
+
+  /**
+   * Liste tous les mails liés à un client : soit via
+   * `metadata.linkedEntity.type = 'client'`, soit via un dossier dont le
+   * `client_id` correspond au client.
+   */
+  async findByClient(clientId: string | number): Promise<Mail[]> {
+    const idNum = Number(clientId);
+    const idStr = String(clientId);
+
+    // 1. Récupère les ids de dossiers appartenant à ce client
+    const dossiers = await this.dossierRepository.find({
+      where: { client_id: Number.isFinite(idNum) ? idNum : (clientId as any) },
+      select: ['id'],
+    });
+    const dossierIds = dossiers.map(d => String(d.id));
+
+    const qb = this.mailRepository
+      .createQueryBuilder('mail')
+      .where(
+        // Mail directement lié au client
+        `(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type') = 'client'
+          AND (JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :idNum
+            OR JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :idStr))`,
+        { idNum: Number.isFinite(idNum) ? idNum : -1, idStr },
+      );
+
+    if (dossierIds.length > 0) {
+      // Mail lié à l'un des dossiers du client
+      const numIds = dossierIds.map(s => Number(s)).filter(Number.isFinite);
+      qb.orWhere(
+        `(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type') = 'dossier'
+          AND (JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') IN (:...numIds)
+            OR JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') IN (:...strIds)))`,
+        { numIds: numIds.length ? numIds : [-1], strIds: dossierIds },
+      );
+    }
+
+    return qb.orderBy('mail.createdAt', 'DESC').getMany();
   }
 
   /**
