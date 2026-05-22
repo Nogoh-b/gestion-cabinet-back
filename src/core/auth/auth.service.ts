@@ -53,16 +53,20 @@ export class AuthService {
       throw new UnauthorizedException('Utilisateur inexistant');
     }
     const role: string | null = (await this.usersService.findOne(data.id))?.role;
+    const permissionObjects = await this.usersService.getUserPermissions(data.id);
+    const permissions = permissionObjects.map((p: any) => p.code);
 
-    const payload: JwtPayload = { 
+    const payload: JwtPayload = {
       sub: user.id,
       username: user.email,
-      role: role
+      role,
+      permissions,
     };
-    
+
     return {
       access_token: this.jwtService.sign(payload),
-      user
+      user,
+      permissions,
     };
   }
 
@@ -159,13 +163,16 @@ export class AuthService {
     // Optionnel: Générer un nouveau token JWT pour connecter l'utilisateur automatiquement
     const employee = await this.employeeService.findByEmail(email);
     const role = user.role;
-    
+    const permissionObjects = await this.usersService.getUserPermissions(user.id);
+    const permissions = permissionObjects.map((p: any) => p.code);
+
     const payload: JwtPayload = {
       sub: employee?.id || user.id,
       username: user.email,
-      role: role,
+      role,
+      permissions,
     };
-    
+
     const accessToken = this.jwtService.sign(payload);
 
     return {
@@ -174,6 +181,7 @@ export class AuthService {
       data: {
         access_token: accessToken,
         user: employee || user,
+        permissions,
       },
     };
   }
@@ -219,13 +227,16 @@ export class AuthService {
     // Générer un token JWT pour connecter l'utilisateur automatiquement
     const employee = await this.employeeService.findByEmail(email);
     const role = user.role;
-    
+    const permissionObjects = await this.usersService.getUserPermissions(user.id);
+    const permissions = permissionObjects.map((p: any) => p.code);
+
     const payload: JwtPayload = {
       sub: employee?.id || user.id,
       username: user.email,
-      role: role,
+      role,
+      permissions,
     };
-    
+
     const accessToken = this.jwtService.sign(payload);
 
     // Envoyer un email de confirmation
@@ -244,6 +255,7 @@ export class AuthService {
       data: {
         access_token: accessToken,
         user: employee || user,
+        permissions,
       },
     };
   }

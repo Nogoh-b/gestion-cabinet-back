@@ -10,7 +10,7 @@ export class PermissionsGuard implements CanActivate {
     private userService: UsersService,
   ) {}
 
-async canActivate(context: ExecutionContext): Promise<boolean> {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredPermissions = this.reflector.get<string[]>(
       PERMISSIONS_KEY,
       context.getHandler(),
@@ -19,13 +19,16 @@ async canActivate(context: ExecutionContext): Promise<boolean> {
     if (!requiredPermissions) return true;
 
     const { user } = context.switchToHttp().getRequest();
-    const userPermissions = await this.userService.getUserPermissions(user.userId);
-    
-    // Extraire les codes de permission de chaque objet Permission
-    const userPermissionCodes = userPermissions.map(perm => perm.code);
-      console.log(user);
-    // Vérifier que toutes les permissions requises sont présentes
-    return true
-    return requiredPermissions.every((perm) => userPermissionCodes.includes(perm)) || userPermissionCodes.includes('SUPER_ADMIN');
-}
+
+    // Priorité 1 : permissions embarquées dans le JWT (0 appel DB)
+    // Priorité 2 : fallback DB pour les tokens émis avant la migration
+    const userPermissionCodes: string[] = Array.isArray(user.permissions)
+      ? user.permissions
+      : (await this.userService.getUserPermissions(user.userId)).map((p: any) => p.code);
+
+    return (
+      userPermissionCodes.includes('SUPER_ADMIN') ||
+      requiredPermissions.every((perm) => userPermissionCodes.includes(perm))
+    );
+  }
 }

@@ -35,20 +35,25 @@ export class AuthController {
     return this.authService.login(loginUserDto);
   }*/
 
+  @Public()
   @UseGuards(LocalAuthGuard)
   @Post('login')
   async login(@Request() req) {
     return this.authService.login(req.user);
   }
 
-  // @UseGuards(LocalAuthGuard)
-  @ApiBearerAuth('access_token') // même nom que plus haut
   @UseGuards(JwtAuthGuard)
   @Get('profile')
+  @ApiBearerAuth('access_token')
   getProfile(@Request() req) {
-    // console.log('req.user', req.user);
-    // req.user contient le payload du JWT
     return req.user;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/permissions')
+  @ApiOperation({ summary: 'Récupérer les permissions de l\'utilisateur connecté' })
+  getMyPermissions(@Request() req) {
+    return { permissions: req.user.permissions ?? [] };
   }
   
   @Public()
@@ -66,7 +71,8 @@ export class AuthController {
   }
 
 
-    @Post('forgot-password')
+  @Public()
+  @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Demander la réinitialisation du mot de passe' })
   @ApiResponse({ status: 200, description: 'Email envoyé avec succès' })
@@ -74,6 +80,7 @@ export class AuthController {
     return this.authService.forgotPassword(forgotPasswordDto);
   }
 
+  @Public()
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Vérifier le code OTP' })
@@ -82,6 +89,7 @@ export class AuthController {
     return this.authService.verifyOTP(verifyOtpDto);
   }
 
+  @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Réinitialiser le mot de passe' })
@@ -90,6 +98,7 @@ export class AuthController {
     return this.authService.resetPassword(resetPasswordDto);
   }
 
+  @Public()
   @Post('set-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Créer le mot de passe (invitation)' })
