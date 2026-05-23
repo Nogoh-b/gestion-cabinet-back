@@ -2223,8 +2223,10 @@ Retourne UNIQUEMENT la requête corrigée.`;
     // Construire la map alias → tableName pour les tables tenant-aware
     const aliasMap = new Map<string, string>(); // alias → tableName
 
-    // FROM table [AS] alias
-    const fromRe = /\bFROM\s+`?(\w+)`?\s+(?:AS\s+)?([a-zA-Z_]\w*)?\b/gi;
+    // FIX 1 — l'alias est entièrement optionnel : `(?:\s+(?:AS\s+)?alias)?`
+    // Avant : `\s+` était obligatoire → `FROM table` (fin de string) ne matchait pas.
+    // FROM table [AS alias]
+    const fromRe = /\bFROM\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
     let m: RegExpExecArray | null;
     while ((m = fromRe.exec(sql)) !== null) {
       const tbl = m[1].toLowerCase();
@@ -2232,31 +2234,46 @@ Retourne UNIQUEMENT la requête corrigée.`;
       if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
     }
 
-    // [LEFT|RIGHT|INNER|OUTER|CROSS] JOIN table [AS] alias
-    const joinRe = /\bJOIN\s+`?(\w+)`?\s+(?:AS\s+)?([a-zA-Z_]\w*)?\b/gi;
+    // [LEFT|RIGHT|INNER|OUTER|CROSS] JOIN table [AS alias]
+    const joinRe = /\bJOIN\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
     while ((m = joinRe.exec(sql)) !== null) {
       const tbl = m[1].toLowerCase();
       const alias = resolveAlias(tbl, m[2]);
       if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
     }
 
-    if (aliasMap.size === 0) return sql;
+    if (aliasMap.size === 0) {
+      this.logger.warn(`[Tenant] ⚠️ Aucune table tenant détectée dans la requête — injection impossible`);
+      return sql;
+    }
 
-    // Filtrer les alias pour lesquels la condition tenant_id n'est pas déjà présente
+    // FIX 2 — idempotence : ne sauter que si le BON tenant_id est déjà présent.
+    // Avant : `tenant_id =` sans valeur → le LLM pouvait mettre tenant_id = 0 et
+    // tromper le check. On vérifie maintenant `alias.tenant_id = <tenantId>` exact.
     const newConditions = Array.from(aliasMap.entries())
       .filter(([alias]) => {
-        const pattern = new RegExp(`\\b${alias}\\.tenant_id\\s*=`, 'i');
+        const pattern = new RegExp(`\\b${alias}\\.tenant_id\\s*=\\s*${tenantId}\\b`, 'i');
         return !pattern.test(sql);
       })
       .map(([alias]) => `${alias}.tenant_id = ${tenantId}`);
 
-    if (newConditions.length === 0) return sql; // déjà filtré par le LLM ✅
+    if (newConditions.length === 0) return sql; // déjà correctement filtré ✅
 
     const conditions = newConditions.join(' AND ');
     this.logger.debug(`[Tenant] injection SQL tenant_id=${tenantId}: ${conditions}`);
 
     if (/\bWHERE\b/i.test(sql)) {
-      // Ajouter au début de la clause WHERE existante
+      // FIX 3 — protection OR-bypass : on enveloppe la condition existante entre ()
+      // Avant : `WHERE ${cond} AND <existing>` — si <existing> = `x OR 1=1`,
+      // résultat = `WHERE (cond AND x) OR 1=1` → retourne tout.
+      // Après  : `WHERE (<existing>) AND (${cond})` — la parenthèse isole le OR.
+      const whereRe = /^([\s\S]*?\bWHERE\b\s*)([\s\S]*?)(\s*(?:\b(?:ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT)\b[\s\S]*)?;?\s*)$/i;
+      const wm = whereRe.exec(sql);
+      if (wm) {
+        const existingCond = wm[2].trim();
+        return `${wm[1]}(${existingCond}) AND (${conditions})${wm[3]}`;
+      }
+      // Fallback (ne devrait pas arriver)
       return sql.replace(/\bWHERE\b\s*/i, `WHERE ${conditions} AND `);
     }
 
@@ -2266,7 +2283,7 @@ Retourne UNIQUEMENT la requête corrigée.`;
       return sql.replace(insertBefore, (_, kw) => `WHERE ${conditions}\n${kw}`);
     }
 
-    // Dernier recours : ajouter en fin de requête (avant le LIMIT éventuel)
+    // Dernier recours : ajouter en fin de requête
     return sql.trimEnd().replace(/;?\s*$/, ` WHERE ${conditions}`);
   }
 
