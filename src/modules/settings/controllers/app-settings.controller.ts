@@ -15,16 +15,16 @@ export class AppSettingsController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Récupérer les paramètres du cabinet' })
   async get(@Req() req: Request) {
-    const cabinetId = (req.user as any)?.branch?.id;
-    return this.appSettingsService.findByCabinet(1);
-    // return this.appSettingsService.findByCabinet(cabinetId);
+    // tenantId est posé par JwtStrategy depuis le payload JWT
+    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
+    return this.appSettingsService.findByCabinet(cabinetId);
   }
 
   @Put()
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Mettre à jour les paramètres du cabinet' })
   async update(@Req() req: Request, @Body() dto: AppSettingsDto) {
-    const cabinetId = (req.user as any)?.branch?.id;
+    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
     return this.appSettingsService.update(cabinetId, dto);
   }
 
@@ -32,7 +32,7 @@ export class AppSettingsController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Réinitialiser les paramètres du cabinet' })
   async reset(@Req() req: Request) {
-    const cabinetId = (req.user as any)?.branch?.id;
+    const cabinetId: number = (req.user as any)?.tenantId ?? 1;
     return this.appSettingsService.reset(cabinetId);
   }
 }

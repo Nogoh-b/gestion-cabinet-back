@@ -1,6 +1,6 @@
 import {
   Controller, Post, Get, Body, HttpCode, HttpStatus,
-  Query, UseGuards, Req, UnauthorizedException, Param,
+  Query, UseGuards, Req, UnauthorizedException, NotFoundException, Param,
   Logger, UseInterceptors, UploadedFile, Res,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -271,12 +271,26 @@ export class AiDatabaseController {
   @Get('conversations/:id/messages')
   async getConversationMessages(@Param('id') conversationId: string, @Req() req) {
     const userId = req.user?.id || 'anonymous';
-    // Vérifier que la conversation appartient à l'utilisateur
-    const conversation = await this.conversationManager.getConversation(conversationId);
-    if (!conversation || conversation.userId.toString() !== userId.toString()) {
-      Logger.warn(`⚠️ Accès non autorisé à la conversation ${conversationId} pour user ${userId} ${conversation?.userId}`);
-      throw new UnauthorizedException();
+
+    // Cherche la conversation sans filtre de statut pour distinguer 404 vs 403
+    const conversation = await this.conversationManager.getConversationAny(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundException(`Conversation ${conversationId} introuvable`);
     }
+
+    // Si la conversation était créée en mode anonyme et que l'utilisateur est maintenant authentifié,
+    // on ré-associe automatiquement la conversation à l'utilisateur connecté.
+    if (conversation.userId === 'anonymous' && userId !== 'anonymous') {
+      await this.conversationManager.reassignConversation(conversationId, String(userId));
+    } else if (conversation.userId.toString() !== userId.toString()) {
+      this.logger.warn(
+        `⚠️ Accès refusé à la conversation ${conversationId}: ` +
+        `owner=${conversation.userId}, requester=${userId}`
+      );
+      throw new UnauthorizedException('Cette conversation ne vous appartient pas.');
+    }
+
     return this.conversationManager.getFullHistory(conversationId);
   }
 

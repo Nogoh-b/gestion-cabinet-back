@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { ChatOpenAI } from '@langchain/openai';
@@ -125,12 +126,14 @@ export class AiDatabaseService implements OnModuleInit {
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} non trouvée`);
     }
-    
-    // 2. Vérifier le contexte système
+
+    // 2. Vérifier le contexte système — injecter un prompt tenant-aware si manquant
     const hasSystemMessage = await this.conversationManager.hasSystemMessage(conversationId);
     if (!hasSystemMessage && this.cachedSystemPrompt) {
-      Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt préchargé...`);
-      await this.conversationManager.addSystemMessage(conversationId, this.cachedSystemPrompt);
+      const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+      const tenantPrompt = this.buildTenantAwareSystemPrompt(tenantId);
+      Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt (tenant=${tenantId ?? 'global'})...`);
+      await this.conversationManager.addSystemMessage(conversationId, tenantPrompt);
     }
     
     // 3. Ajouter la question
@@ -910,9 +913,12 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       if (!parentId && operationFields.procedure_type && typeof operationFields.procedure_type === 'string') {
         try {
           // Chercher le type principal par correspondance de nom (is_subtype=false)
+          const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+          const tenantClause = activeTenantId ? ' AND tenant_id = ?' : '';
+          const tenantParams = activeTenantId ? [`%${operationFields.procedure_type}%`, activeTenantId] : [`%${operationFields.procedure_type}%`];
           const rows: any[] = await this.dataSource.query(
-            `SELECT id FROM procedure_types WHERE name LIKE ? AND is_subtype = 0 LIMIT 1`,
-            [`%${operationFields.procedure_type}%`],
+            `SELECT id FROM procedure_types WHERE name LIKE ? AND is_subtype = 0${tenantClause} LIMIT 1`,
+            tenantParams,
           );
           if (rows.length > 0) {
             parentId = rows[0].id;
@@ -2157,21 +2163,174 @@ Retourne UNIQUEMENT la requête corrigée.`;
     return fixed;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ISOLATION TENANT — lecture de requêtes SQL générées par l'IA
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retourne l'ensemble des noms de tables qui ont une colonne tenant_id
+   * (= toutes les entités qui étendent TenantEntity).
+   * Résultat mis en cache dans la propriété privée.
+   */
+  private _tenantTablesCache: Set<string> | null = null;
+  private getTenantTables(): Set<string> {
+    if (this._tenantTablesCache) return this._tenantTablesCache;
+    const tables = new Set<string>();
+    for (const meta of this.dataSource.entityMetadatas) {
+      const hasTenant = meta.columns.some(
+        c => c.propertyName === 'tenant_id' || c.databaseName === 'tenant_id',
+      );
+      if (hasTenant && meta.tableName) {
+        tables.add(meta.tableName.toLowerCase());
+      }
+    }
+    this._tenantTablesCache = tables;
+    return tables;
+  }
+
+  /**
+   * Post-processeur SQL : injecte automatiquement les conditions tenant_id
+   * sur toutes les tables référencées dans le SELECT qui ont cette colonne.
+   *
+   * Exemple :
+   *   SELECT d.id FROM dossiers d JOIN customers c ON d.customer_id = c.id WHERE d.statut='actif'
+   *   → WHERE d.tenant_id = 5 AND c.tenant_id = 5 AND d.statut='actif'
+   *
+   * Idempotent : si la condition existe déjà pour un alias, elle n'est pas dupliquée.
+   */
+  private injectTenantConditions(sql: string, tenantId: number): string {
+    if (!tenantId || tenantId === 1) return sql; // tenant 1 = accès global (admin)
+    const tenantTables = this.getTenantTables();
+    if (tenantTables.size === 0) return sql;
+
+    // Mots-clés SQL réservés qui ne peuvent PAS être des alias de table
+    const SQL_KEYWORDS = new Set([
+      'where', 'on', 'set', 'limit', 'order', 'group', 'having', 'union',
+      'left', 'right', 'inner', 'outer', 'cross', 'join', 'select', 'from',
+      'and', 'or', 'not', 'in', 'is', 'null', 'like', 'between', 'exists',
+      'case', 'when', 'then', 'else', 'end', 'as', 'by', 'asc', 'desc',
+      'distinct', 'all', 'any', 'into', 'values', 'insert', 'update',
+      'delete', 'create', 'drop', 'alter', 'index', 'table', 'view',
+    ]);
+
+    /** Résout l'alias d'une table : si le mot capturé est un mot-clé SQL, ignore-le. */
+    const resolveAlias = (tableName: string, captured: string | undefined): string => {
+      const raw = captured?.toLowerCase();
+      if (raw && !SQL_KEYWORDS.has(raw)) return raw;
+      return tableName.toLowerCase(); // pas d'alias → utiliser le nom de table
+    };
+
+    // Construire la map alias → tableName pour les tables tenant-aware
+    const aliasMap = new Map<string, string>(); // alias → tableName
+
+    // FROM table [AS] alias
+    const fromRe = /\bFROM\s+`?(\w+)`?\s+(?:AS\s+)?([a-zA-Z_]\w*)?\b/gi;
+    let m: RegExpExecArray | null;
+    while ((m = fromRe.exec(sql)) !== null) {
+      const tbl = m[1].toLowerCase();
+      const alias = resolveAlias(tbl, m[2]);
+      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+    }
+
+    // [LEFT|RIGHT|INNER|OUTER|CROSS] JOIN table [AS] alias
+    const joinRe = /\bJOIN\s+`?(\w+)`?\s+(?:AS\s+)?([a-zA-Z_]\w*)?\b/gi;
+    while ((m = joinRe.exec(sql)) !== null) {
+      const tbl = m[1].toLowerCase();
+      const alias = resolveAlias(tbl, m[2]);
+      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+    }
+
+    if (aliasMap.size === 0) return sql;
+
+    // Filtrer les alias pour lesquels la condition tenant_id n'est pas déjà présente
+    const newConditions = Array.from(aliasMap.entries())
+      .filter(([alias]) => {
+        const pattern = new RegExp(`\\b${alias}\\.tenant_id\\s*=`, 'i');
+        return !pattern.test(sql);
+      })
+      .map(([alias]) => `${alias}.tenant_id = ${tenantId}`);
+
+    if (newConditions.length === 0) return sql; // déjà filtré par le LLM ✅
+
+    const conditions = newConditions.join(' AND ');
+    this.logger.debug(`[Tenant] injection SQL tenant_id=${tenantId}: ${conditions}`);
+
+    if (/\bWHERE\b/i.test(sql)) {
+      // Ajouter au début de la clause WHERE existante
+      return sql.replace(/\bWHERE\b\s*/i, `WHERE ${conditions} AND `);
+    }
+
+    // Pas de WHERE : insérer avant ORDER BY / GROUP BY / HAVING / LIMIT
+    const insertBefore = /\b(ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT)\b/i;
+    if (insertBefore.test(sql)) {
+      return sql.replace(insertBefore, (_, kw) => `WHERE ${conditions}\n${kw}`);
+    }
+
+    // Dernier recours : ajouter en fin de requête (avant le LIMIT éventuel)
+    return sql.trimEnd().replace(/;?\s*$/, ` WHERE ${conditions}`);
+  }
+
+  /**
+   * Construit le prompt système tenant-aware.
+   * Si un tenantId actif est détecté, injecte une règle explicite :
+   * "toutes les requêtes DOIVENT filtrer par tenant_id = X".
+   */
+  private buildTenantAwareSystemPrompt(tenantId: number | null): string {
+    const base = this.cachedSystemPrompt ?? '';
+    if (!tenantId || tenantId === 1) return base;
+
+    const tenantRule = `
+    ⚠️ RÈGLE TENANT OBLIGATOIRE (ne jamais ignorer) :
+    Cette session appartient au cabinet avec tenant_id = ${tenantId}.
+    CHAQUE table métier possède une colonne tenant_id.
+    Tu DOIS filtrer par tenant_id = ${tenantId} pour CHAQUE table mentionnée dans tes requêtes.
+
+    Exemple CORRECT :
+    \`\`\`sql
+    SELECT d.id, d.reference FROM dossiers d
+    LEFT JOIN customers c ON d.customer_id = c.id AND c.tenant_id = ${tenantId}
+    WHERE d.tenant_id = ${tenantId} AND d.statut = 'actif'
+    LIMIT ${this.MAX_RESULTS};
+    \`\`\`
+    Exemple INTERDIT (oubli du tenant_id) :
+    \`\`\`sql
+    SELECT d.id FROM dossiers d WHERE d.statut = 'actif'; -- ❌
+    \`\`\`
+
+    `;
+
+    // Injecter la règle tenant juste avant les RÈGLES ABSOLUES
+    return base.replace(
+      /RÈGLES ABSOLUES\s*:/i,
+      `${tenantRule}    RÈGLES ABSOLUES :`,
+    );
+  }
+
   private async executeSafeQuery(sqlQuery: string): Promise<{ data: any[]; rowCount: number }> {
-    let normalizedQuery = sqlQuery.trim();
-    
+    // execQuery est la requête nettoyée + enrichie qui sera réellement exécutée
+    let execQuery = sqlQuery.trim();
+
     // ✅ Supprimer les paramètres nommés style :dossier_id, :param, etc.
-    normalizedQuery = normalizedQuery.replace(/:\w+/g, '');
-    
+    execQuery = execQuery.replace(/:\w+/g, '');
+
     // ✅ Remplacer les ? par des valeurs NULL ou les supprimer si nécessaire
-    normalizedQuery = normalizedQuery.replace(/\?\s*,/g, '');
-    normalizedQuery = normalizedQuery.replace(/,\s*\?/g, '');
-    normalizedQuery = normalizedQuery.replace(/=\s*\?/g, '= NULL');
-    
+    execQuery = execQuery.replace(/\?\s*,/g, '');
+    execQuery = execQuery.replace(/,\s*\?/g, '');
+    execQuery = execQuery.replace(/=\s*\?/g, '= NULL');
+
     // ✅ Nettoyer les parenthèses vides
-    normalizedQuery = normalizedQuery.replace(/\(\s*\)/g, '');
-    
-    normalizedQuery = normalizedQuery.toLowerCase();
+    execQuery = execQuery.replace(/\(\s*\)/g, '');
+
+    // ── Injection tenant_id (couche de sécurité — avant validation et exécution)
+    // Même si le LLM oublie de filtrer par tenant, on l'injecte systématiquement.
+    const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    if (activeTenantId && activeTenantId !== 1) {
+      execQuery = this.injectTenantConditions(execQuery, activeTenantId);
+      this.logger.debug(`[Tenant] Requête après injection tenant_id=${activeTenantId}:\n${execQuery.substring(0, 300)}`);
+    }
+
+    // normalizedQuery (lowercase) sert uniquement à la validation de sécurité
+    const normalizedQuery = execQuery.toLowerCase();
     
     if (!normalizedQuery.startsWith('select')) {
       throw new Error('Seules les requêtes SELECT sont autorisées');
@@ -2196,9 +2355,10 @@ Retourne UNIQUEMENT la requête corrigée.`;
     
     
     try {
-      const results = await this.dataSource.query(sqlQuery);
+      // Exécuter execQuery (nettoyée + tenant injecté), pas sqlQuery (l'original brut)
+      const results = await this.dataSource.query(execQuery);
       const limitedResults = results.slice(0, this.MAX_RESULTS);
-      
+
       return {
         data: limitedResults,
         rowCount: limitedResults.length,

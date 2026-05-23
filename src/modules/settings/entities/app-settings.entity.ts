@@ -1,6 +1,6 @@
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
-import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { ApiProperty } from '@nestjs/swagger';
 
 @Entity('app_settings')
@@ -9,12 +9,16 @@ export class AppSettings extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  /**
+   * Référence vers le cabinet (tenant) propriétaire de ces paramètres.
+   * cabinet_id = cabinets.id (PK du cabinet, alias tenant_id dans TenantEntity).
+   */
   @Column({ name: 'cabinet_id', type: 'int', nullable: true, unique: true })
   cabinet_id: number;
 
-  @OneToOne(() => Branch)
+  @OneToOne(() => Cabinet)
   @JoinColumn({ name: 'cabinet_id' })
-  branch: Branch;
+  cabinet: Cabinet;
 
   @ApiProperty({ example: 'MonCabinet' })
   @Column({ length: 255, default: 'MonCabinet' })

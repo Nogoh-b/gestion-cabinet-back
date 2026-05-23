@@ -1,6 +1,7 @@
 // src/chat/entities/attachment.entity.ts
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
 import { Message } from './messages.entity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 export enum AttachmentType {
   IMAGE = 'image',
@@ -11,7 +12,7 @@ export enum AttachmentType {
 }
 
 @Entity()
-export class Attachment {
+export class Attachment extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 

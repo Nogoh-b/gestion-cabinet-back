@@ -3,12 +3,13 @@ import { Employee } from 'src/modules/agencies/employee/entities/employee.entity
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne } from 'typeorm';
 
 import { Message } from './messages.entity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 
 // message-read.entity.ts
 
 @Entity()
-export class MessageRead {
+export class MessageRead extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 

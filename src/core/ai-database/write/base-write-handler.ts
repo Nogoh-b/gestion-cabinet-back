@@ -22,6 +22,7 @@ import { SchemaMetadataService } from '../schema-metadata.service';
 import { EntityResolverService } from './entity-resolver.service';
 import { BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
 import { AmbiguityException } from './ambiguity.exception';
+import { getCurrentTenantId, hasActiveTenant } from '../../tenant/tenant.context';
 
 /** Colonnes système jamais modifiables par l'IA */
 const SYSTEM_COLUMNS = new Set([
@@ -685,6 +686,9 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     sub_stage_visit_id: string | null;
   } | null> {
     try {
+      const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+      const tenantClause = activeTenantId ? ' AND d.tenant_id = ?' : '';
+      const queryParams = activeTenantId ? [dossierId, activeTenantId] : [dossierId];
       const rows = await this.dataSource.query(
         `SELECT
            d.procedureInstanceId  AS procedure_instance_id,
@@ -696,9 +700,9 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
          LEFT JOIN stage_visits sv
                ON sv.instanceId = pi.id
               AND sv.stageId    = pi.currentStageId
-         WHERE d.id = ?
+         WHERE d.id = ?${tenantClause}
          LIMIT 1`,
-        [dossierId],
+        queryParams,
       );
       if (!rows || rows.length === 0) return null;
       const row = rows[0];

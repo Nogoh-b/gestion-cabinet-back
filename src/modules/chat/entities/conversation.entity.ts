@@ -6,10 +6,11 @@ import { Message } from './messages.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { Expose } from 'class-transformer';
 
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 
 @Entity()
-export class Conversation {
+export class Conversation extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 

@@ -1,9 +1,10 @@
 // conversation-message.entity.ts
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne } from 'typeorm';
 import { Conversation } from './conversation.entity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('conversation_messages')
-export class ConversationMessage {
+export class ConversationMessage extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -22,8 +23,8 @@ export class ConversationMessage {
   @Column({ name: 'tokens_used', type: 'int', default: 0 })
   tokensUsed: number;
 
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  // created_at hérité de BaseEntity → pas de redéclaration
+  get createdAt(): Date { return this.created_at; }
 
   @ManyToOne(() => Conversation, conv => conv.messages)
   conversation: Conversation;

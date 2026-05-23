@@ -2,6 +2,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, Repository } from 'typeorm';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 import { randomUUID } from 'crypto';
 import { Facture } from './entities/facture.entity';
 import { StatutFacture, TypeFacture } from './dto/create-facture.dto';
@@ -69,9 +70,11 @@ export class FactureWriteHandler extends BaseWriteHandler {
       typeof fields.dossier === 'string' &&
       DOSSIER_NUMBER_PATTERN.test(fields.dossier)
     ) {
+      const _tenantId1 = hasActiveTenant() ? getCurrentTenantId() : null;
+      const _tenantClause1 = _tenantId1 ? ' AND tenant_id = ?' : '';
       const rows = await this.dataSource.query(
-        'SELECT id, client_id FROM dossiers WHERE dossier_number = ? LIMIT 1',
-        [fields.dossier.trim()],
+        `SELECT id, client_id FROM dossiers WHERE dossier_number = ?${_tenantClause1} LIMIT 1`,
+        _tenantId1 ? [fields.dossier.trim(), _tenantId1] : [fields.dossier.trim()],
       );
       if (rows.length > 0) {
         fields.dossier_id = rows[0].id;
@@ -85,9 +88,11 @@ export class FactureWriteHandler extends BaseWriteHandler {
 
     // Même logique si dossier_id est déjà connu mais client_id manquant
     if (fields.dossier_id && !fields.client_id && !fields.client) {
+      const _tenantId2 = hasActiveTenant() ? getCurrentTenantId() : null;
+      const _tenantClause2 = _tenantId2 ? ' AND tenant_id = ?' : '';
       const rows = await this.dataSource.query(
-        'SELECT client_id FROM dossiers WHERE id = ? LIMIT 1',
-        [fields.dossier_id],
+        `SELECT client_id FROM dossiers WHERE id = ?${_tenantClause2} LIMIT 1`,
+        _tenantId2 ? [fields.dossier_id, _tenantId2] : [fields.dossier_id],
       );
       if (rows.length > 0) fields.client_id = rows[0].client_id;
     }

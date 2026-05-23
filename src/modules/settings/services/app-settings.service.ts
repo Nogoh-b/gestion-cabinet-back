@@ -38,29 +38,19 @@ export class AppSettingsService {
     private readonly appSettingsRepository: Repository<AppSettings>,
   ) {}
 
-  async findByCabinet(cabinetId?: number): Promise<AppSettings> {
-    if (!cabinetId) {
-      // Retourner les valeurs par défaut si pas de cabinet
-      return Object.assign(new AppSettings(), {
-        ...DEFAULT_APP_SETTINGS,
-        id: undefined,
-        cabinet_id: undefined,
-      });
-    }
-
-
-    const settingsList = await this.appSettingsRepository.find({
-      take: 1,
-      order: { id: 'ASC' }
+  /**
+   * Récupère les paramètres du cabinet identifié par son ID (= tenant_id = cabinet.id).
+   * Crée un enregistrement par défaut s'il n'en existe pas encore.
+   */
+  async findByCabinet(cabinetId: number): Promise<AppSettings> {
+    let settings = await this.appSettingsRepository.findOne({
+      where: { cabinet_id: cabinetId },
     });
-    // let settings = await this.appSettingsRepository.findOne({
-    //   where: { cabinet_id: cabinetId },
-    // });
-    let settings = settingsList[0] || null;
 
     if (!settings) {
       settings = this.appSettingsRepository.create({
         cabinet_id: cabinetId,
+        tenant_id:  cabinetId, // TenantEntity.tenant_id = cabinet.id
         ...DEFAULT_APP_SETTINGS,
       });
       settings = await this.appSettingsRepository.save(settings);
@@ -75,15 +65,14 @@ export class AppSettingsService {
     });
 
     if (!settings) {
-      // Convertir null en undefined
       const cleanDto = Object.fromEntries(
         Object.entries({
           cabinet_id: cabinetId,
+          tenant_id:  cabinetId,
           ...DEFAULT_APP_SETTINGS,
           ...dto,
-        }).map(([key, value]) => [key, value === null ? undefined : value])
+        }).map(([k, v]) => [k, v === null ? undefined : v])
       );
-      
       settings = this.appSettingsRepository.create(cleanDto);
     } else {
       Object.assign(settings, dto);
@@ -100,6 +89,7 @@ export class AppSettingsService {
     if (!settings) {
       settings = this.appSettingsRepository.create({
         cabinet_id: cabinetId,
+        tenant_id:  cabinetId,
         ...DEFAULT_APP_SETTINGS,
       });
     } else {
@@ -108,4 +98,4 @@ export class AppSettingsService {
 
     return this.appSettingsRepository.save(settings);
   }
-} 
+}
