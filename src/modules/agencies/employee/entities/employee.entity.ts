@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {

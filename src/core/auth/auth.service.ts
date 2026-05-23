@@ -68,11 +68,12 @@ export class AuthService {
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
-      sub: user.id,
-      username: user.email,
+      sub:        user.id,
+      username:   user.email,
       role,
       permissions,
       customerId: (data as any).customer?.id ?? null,
+      tenantId:   (data as any).tenant_id   ?? 1,
     };
 
     return {
@@ -179,10 +180,11 @@ export class AuthService {
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
-      sub: employee?.id || user.id,
+      sub:      employee?.id || user.id,
       username: user.email,
       role,
       permissions,
+      tenantId: (employee as any)?.tenant_id ?? (user as any)?.tenant_id ?? 1,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -243,10 +245,11 @@ export class AuthService {
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
-      sub: employee?.id || user.id,
+      sub:      employee?.id || user.id,
       username: user.email,
       role,
       permissions,
+      tenantId: (employee as any)?.tenant_id ?? (user as any)?.tenant_id ?? 1,
     };
 
     const accessToken = this.jwtService.sign(payload);

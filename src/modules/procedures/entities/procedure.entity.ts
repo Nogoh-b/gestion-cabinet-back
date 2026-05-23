@@ -1,5 +1,5 @@
 // src/modules/procedures/entities/procedure_type.entity.ts
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';

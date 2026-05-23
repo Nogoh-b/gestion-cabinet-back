@@ -11,7 +11,7 @@ import {
 import { ProcedureInstance } from './procedure-instance.entity';
 import { TaskStatus } from './enums/instance-status.enum';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('tasks')
 @BusinessTable({

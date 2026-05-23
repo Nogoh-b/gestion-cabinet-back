@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { ApiProperty } from '@nestjs/swagger';

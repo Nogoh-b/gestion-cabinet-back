@@ -1,4 +1,4 @@
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { ClientDecision, DossierStatus, RecommendationType } from 'src/core/enums/dossier-status.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';

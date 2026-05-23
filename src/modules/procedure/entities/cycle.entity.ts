@@ -11,7 +11,7 @@ import {
 import { ProcedureTemplate } from './procedure-template.entity';
 import { Stage } from './stage.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('cycles')
 @BusinessTable({

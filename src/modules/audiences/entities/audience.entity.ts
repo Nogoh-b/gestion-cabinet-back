@@ -1,5 +1,5 @@
 // src/modules/audiences/entities/audience.entity.ts
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { AudienceType } from 'src/modules/audience-type/entities/audience-type.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';

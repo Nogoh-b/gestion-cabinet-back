@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity, OneToMany, BeforeInsert } from 'typeorm';

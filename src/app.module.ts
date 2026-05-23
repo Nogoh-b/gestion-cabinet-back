@@ -3,7 +3,7 @@ import { ExpressAdapter } from '@bull-board/express';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
@@ -21,11 +21,13 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { TenantResolverMiddleware } from './core/tenant/tenant-resolver.middleware';
 import {
   UPLOAD_FOLDER_NAME,
   UPLOAD_PATH,
 } from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
+import { CabinetModule } from './modules/cabinet/cabinet.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AudiencesModule } from './modules/audiences/audiences.module';
@@ -76,7 +78,8 @@ dotenv.config();
       },
     }),
      CoreModule,
-    
+    CabinetModule,
+
     // 2. Modules indépendants
     IamModule,
     GeographyModule,
@@ -191,10 +194,10 @@ dotenv.config();
   providers: [AppService],
   exports: [MailerModule],
 })
-export class AppModule {
-  /*configure(consumer: MiddlewareConsumer) {
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(AuthMiddleware)
-      .forRoutes('*'); // ou seulement les routes protégées
-  }*/
+      .apply(TenantResolverMiddleware)
+      .forRoutes('*'); // Résolution tenant sur toutes les routes
+  }
 }

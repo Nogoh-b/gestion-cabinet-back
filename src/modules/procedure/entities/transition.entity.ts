@@ -11,7 +11,7 @@ import {
 import { Stage } from './stage.entity';
 import { ProcedureTemplate } from './procedure-template.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 export enum TransitionType {
   AUTOMATIC = 'automatic',

@@ -42,7 +42,7 @@ import { forwardRef, Global, Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { JwtModule } from '@nestjs/jwt';
 
@@ -76,6 +76,10 @@ import { PaginationService as MyPaginationService, PaginationService } from './s
 import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
 import { SocketService } from './shared/services/socket/socket.service';
 import { MainGateway } from './shared/services/socket/main.gateway';
+import { TenantContext } from './tenant/tenant.context';
+import { TenantInterceptor } from './tenant/tenant.interceptor';
+import { TenantRepositoryPatch } from './tenant/tenant-repository.patch';
+import { TenantResolverMiddleware } from './tenant/tenant-resolver.middleware';
 import { ChatModule } from 'src/modules/chat/chat.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 import { EmailsModule } from './shared/emails/emails.module';
@@ -190,6 +194,10 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     AuthTokenService,
     EmailService,
     MainGateway,
+    TenantContext,
+    TenantRepositoryPatch,
+    TenantResolverMiddleware,
+    { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
     TypeOrmModule
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
@@ -215,7 +223,8 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     // JwtAuthGuard,
     KeyGeneratorService,
     SocketService,
-    MainGateway
+    MainGateway,
+    TenantContext
   ],
 })
 export class CoreModule {}

@@ -17,7 +17,7 @@ import { Transition } from './transition.entity';
 import { StageConfig } from './stage-config.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('stages')
 @BusinessTable({
