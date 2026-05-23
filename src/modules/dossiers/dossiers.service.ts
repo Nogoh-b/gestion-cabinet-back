@@ -245,8 +245,10 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
   }
 
   async findAll(searchDto: DossierSearchDto, user: User): Promise<any[]> {
+    const whereConditions = this.buildWhereConditions(searchDto, user);
 
     const dossiers = await this.dossierRepository.find({
+      where: whereConditions.length > 0 ? whereConditions : undefined,
       relations: [
         'client',
         'lawyer',
@@ -260,8 +262,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       ]
     });
 
-    
-    return dossiers
+    return dossiers;
   }
 
   async findAllPaginated(
@@ -291,10 +292,17 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 
   private buildWhereConditions(searchDto: DossierSearchDto, user: User): FindOptionsWhere<Dossier>[] {
     const conditions: FindOptionsWhere<Dossier>[] = [];
+    const authUser = user as any;
 
-    // Filtrage par rôle
-    if (user.role === UserRole.AVOCAT) {
-      conditions.push({ lawyer: { id: user.id } });
+    // Filtrage par rôle : avocat voit ses propres dossiers
+    if (authUser.role === UserRole.AVOCAT) {
+      conditions.push({ lawyer: { id: authUser.id } });
+    }
+
+    // Filtrage par rôle : client voit uniquement ses propres dossiers
+    if (authUser.role === UserRole.CLIENT) {
+      if (!authUser.customerId) return [{ client_id: -1 }]; // aucun résultat si customerId absent
+      conditions.push({ client_id: authUser.customerId });
     }
 
     // Filtres de recherche
@@ -346,6 +354,11 @@ async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
 
   if (!dossier) {
     throw new NotFoundException(`Dossier ${id} non trouvé`);
+  }
+
+  // Contrôle d'accès : client ne peut voir que ses propres dossiers
+  if (user) {
+    this.checkDossierAccess(dossier, user);
   }
 
   // ✅ Charger procedureInstance séparément si nécessaire
@@ -664,12 +677,24 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
   }
 
   private checkDossierAccess(dossier: Dossier, user: User): void {
-    const isOwner = dossier.lawyer.id === user.id;
-    const isCollaborator = dossier.collaborators?.some(collab => collab.id === user.id);
-    const isAdmin = user.role === 'admin';
-    const isClient = dossier.client.id === user.id;
+    const authUser = user as any;
 
-    if (!isOwner && !isCollaborator && !isAdmin && !isClient) { 
+    // Admin : accès total
+    if (authUser.role === UserRole.ADMIN) return;
+
+    // Client : accès uniquement à ses propres dossiers (via customerId du JWT)
+    if (authUser.role === UserRole.CLIENT) {
+      if (!authUser.customerId || dossier.client_id !== authUser.customerId) {
+        throw new ForbiddenException('Accès non autorisé à ce dossier');
+      }
+      return;
+    }
+
+    // Avocat / autres rôles internes : doit être l'avocat référent ou collaborateur
+    const isOwner = dossier.lawyer?.id === authUser.id;
+    const isCollaborator = dossier.collaborators?.some(c => c.id === authUser.id) ?? false;
+
+    if (!isOwner && !isCollaborator) {
       throw new ForbiddenException('Accès non autorisé à ce dossier');
     }
   }

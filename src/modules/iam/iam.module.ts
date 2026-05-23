@@ -58,11 +58,11 @@ import { UsersService } from './user/user.service';
   ],
      providers:[
      PermissionsService,
-     UserRolesService, 
-     RolePermissionService, 
-     UsersService, 
-     ActivitiesUserService, 
-     UserRoleAssignmentService, 
+     UserRolesService,
+     RolePermissionService,
+     UsersService,
+     ActivitiesUserService,
+     UserRoleAssignmentService,
      ],
      exports:[
       PermissionsService,

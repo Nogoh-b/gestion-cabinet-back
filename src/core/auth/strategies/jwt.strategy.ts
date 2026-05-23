@@ -32,16 +32,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }*/
 
   async validate(payload: any) {
-    // Retourne directement le payload JWT sans appel DB.
-    // Le JWT est déjà signé et vérifié par passport-jwt (secret + expiration).
-    // Aucune requête base de données = 0ms de délai pour toutes les routes.
-    // Pour accéder au profil complet, utiliser AuthService.getUserProfile() dans le controller si nécessaire.
     return {
       id: payload.sub,
       userId: payload.sub,
       username: payload.username,
       email: payload.email,
       role: payload.role,
+      permissions: payload.permissions ?? [],
+      customerId: payload.customerId ?? null,
     };
   }
 }

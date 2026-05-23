@@ -24,35 +24,35 @@ export class UsersController {
   @Post()
   @ApiOperation({ summary: 'Creation d\'un nouvel utilisateur' })
   @ApiResponse({ status: 201, description: 'User created', type: User })
-  @RequirePermissions('CREATE_EMPLOYEE')
+  @RequirePermissions('create_user')
     create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
     return this.usersService.create(createUserDto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Récuperer les utilisateurs avec leurs roles' })
-  @RequirePermissions('VIEW_EMPLOYEE')
+  @RequirePermissions('view_users')
   findAll(): Promise<UserResponseDto[]> {
     return this.usersService.findAll();
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Récupérer un utilisateur avec son role' })
-  @RequirePermissions('VIEW_EMPLOYEE')
+  @RequirePermissions('view_users')
   findOne(@Param('id') id: string): Promise<UserResponseDto> {
     return this.usersService.findOne(+id);
   }
 
   @Post(':id/desable')
   @ApiOperation({ summary: 'Supression d\'un utilisateur' })
-  @RequirePermissions('EDIT_EMPLOYEE')
+  @RequirePermissions('edit_user')
   remove(@Param('id') id: string): Promise<User> {
     return this.usersService.descativeUser(+id);
   }
 
   @Post(':id/enable')
   @ApiOperation({ summary: 'Supression d\'un utilisateur' })
-  @RequirePermissions('DELETE_EMPLOYEE')
+  @RequirePermissions('delete_user')
   add(@Param('id') id: string): Promise<User> {
     return this.usersService.descativeUser(+id);
   }
@@ -64,6 +64,7 @@ export class UsersController {
    * - Commentaires en français
    */
   @Post('send-new-password')
+  @RequirePermissions('edit_user')
   async sendNewPassword(@Body() dto: ResetPasswordRequestDto) {
     return this.usersService.send_new_password({
       id: dto.id
@@ -74,6 +75,7 @@ export class UsersController {
    * Variante: réinitialisation par id directement dans l'URL.
    */
   @Post(':id/send-new-password')
+  @RequirePermissions('edit_user')
   async sendNewPasswordById(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.send_new_password({ id });
   }

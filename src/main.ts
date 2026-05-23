@@ -11,6 +11,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
+import { RoleSeeder } from './core/auth/seeders/role.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
 import { seedDatabase } from './main.seeder';
 import { DataSource } from 'typeorm';
@@ -62,7 +63,9 @@ async function bootstrap() {
       } as tls.TlsOptions,
     },
   });
-  const seeder = app.get(PermissionSeeder);
+  // ── Seeders : permissions puis rôles (ordre important) ──────────────────
+  await app.get(PermissionSeeder).seed();
+  await app.get(RoleSeeder).seed();
 
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector)),

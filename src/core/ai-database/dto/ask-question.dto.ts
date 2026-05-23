@@ -14,7 +14,7 @@ export class AskQuestionDto {
   question: string = ''; 
 
   @ApiProperty({ 
-    description: 'Tables spécifiques à utiliser (optionnel)',
+    description: 'Tables spécifiques à utiliser (optionnel)', 
     required: false,
     example: ['dossiers', 'employee', 'audiences']
   })

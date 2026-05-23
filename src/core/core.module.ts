@@ -42,7 +42,7 @@ import { forwardRef, Global, Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 
 import { JwtModule } from '@nestjs/jwt';
 
@@ -56,10 +56,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
+import { RoleSeeder } from './auth/seeders/role.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { PublicGuard } from './decorators/public.guard';
 import { databaseConfig } from './config/database.config';
 import { OtpCode, OtpOnlineLink } from './entities/otp-code.entity';
 import { InitService } from './init/init.service';
@@ -163,6 +165,7 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     AuthService,
     LocalStrategy,
     PermissionSeeder,
+    RoleSeeder,
     JwtStrategy,
     McotiService,
     OtpService,
@@ -172,9 +175,9 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     PermissionsService,
     RolePermissionService,// RolesGuard,
     PermissionsGuard,
-    // JwtAuthGuard,
-    // { provide: 'APP_GUARD', useClass: JwtAuthGuard },
-    { provide: APP_FILTER,     useClass: TypeOrmExceptionFilter },
+    PublicGuard,
+    { provide: APP_GUARD, useClass: PublicGuard },
+    { provide: APP_FILTER, useClass: TypeOrmExceptionFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: QueryLoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
@@ -204,6 +207,7 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     AuthService,
     McotiService,
     PermissionSeeder,
+    RoleSeeder,
     PermissionsGuard,
     MyPaginationService,
     PaginationService,

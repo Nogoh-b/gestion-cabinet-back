@@ -72,6 +72,7 @@ export class DocumentCustomerController {
 
   @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_documents')
   async getStats(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -86,6 +87,7 @@ export class DocumentCustomerController {
 
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_documents')
   @ApiOperation({ summary: 'Obtenir les statistiques d\'un document spécifique' })
   @ApiParam({ name: 'id', description: 'ID du document' })
   async getStatsForDocument(
@@ -96,6 +98,7 @@ export class DocumentCustomerController {
 
   @Get('pending')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_documents')
   async getPendingDocuments() {
     const stats = await this.statsService.getStats({});
     return (stats as any).pendingDocuments;
@@ -103,12 +106,14 @@ export class DocumentCustomerController {
 
   @Get('storage')
   // @Roles(UserRole.ADMIN)
+  @RequirePermissions('view_documents')
   async getStorageStats() {
     const stats = await this.statsService.getStats({});
     return (stats as any).storageStats;
   }
 
   @Get('get/:id')
+  @RequirePermissions('view_documents')
   @ApiOperation({ summary: 'Récupérer un document client par ID' })
   @ApiResponse({ status: 200, type: DocumentCustomerResponseDto })
   async findOne(@Param('id') id: number): Promise<DocumentCustomerResponseDto> {
@@ -116,6 +121,7 @@ export class DocumentCustomerController {
   }
 
   @Get('search')
+  @RequirePermissions('view_documents')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
   @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [DocumentCustomerResponseDto]  })
   async search(
@@ -138,7 +144,7 @@ export class DocumentCustomerController {
   })
   
   @ApiResponse({ status: 201, description: 'Document créé' })
-  @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  @RequirePermissions('upload_document')
   async create(
     @Body() dto: CreateDocumentCustomerDto,
     @CurrentUser() user: User,
@@ -157,7 +163,7 @@ export class DocumentCustomerController {
   })
   
   @ApiResponse({ status: 201, description: 'Document créé' })
-  @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  @RequirePermissions('upload_document')
   async createByCode(
     @Param('code') code: string,
     @CurrentUser() user: User,
@@ -171,7 +177,7 @@ export class DocumentCustomerController {
   @Get('/validate-document/:document_id')
   @ApiResponse({ status: 201, description: 'Document créé' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  @RequirePermissions('validate_document')
   async validate(
     @Param('customer_id') customer_id: number,
 
@@ -183,7 +189,7 @@ export class DocumentCustomerController {
   @Get('/refuse-document/:document_id')
   @ApiResponse({ status: 201, description: 'Document créé' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  @RequirePermissions('reject_document')
   async refuse(@Param('document_id') document_id: number) {
     return this.service.refuse(document_id);
   }
@@ -224,7 +230,7 @@ export class DocumentCustomerController {
 
   @Get()
   @ApiOperation({ summary: "Lister les documents d'un client" })
-  @RequirePermissions('VERIFY_CUSTOMER_KYC')
+  @RequirePermissions('view_documents')
   async findAll(    @Query() searchParams?: SearchDocumentCustomerDto,
     @Query() paginationParams?: PaginationParamsDto, @Param('customer_id') customer_id?: number) {
     return plainToInstance(DocumentCustomerResponseDto,this.service.findAllV1())

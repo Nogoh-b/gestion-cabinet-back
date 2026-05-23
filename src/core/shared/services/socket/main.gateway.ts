@@ -769,6 +769,30 @@ private getUserSockets(userId: number): string[] {
     client.emit('my_rooms', rooms);
   }
 
+  // ========== PERMISSIONS EN TEMPS RÉEL ==========
+  /**
+   * Notifie tous les utilisateurs connectés qu'un rôle vient d'être modifié.
+   * Chaque client vérifie si son propre rôle correspond et rafraîchit ses permissions.
+   */
+  notifyPermissionsUpdated(roleCode: string) {
+    const connectedSockets = this.server.sockets.sockets.size;
+    this.logger.log(`🔐 [WS] notifyPermissionsUpdated → roleCode="${roleCode}" | sockets connectés: ${connectedSockets}`);
+
+    if (connectedSockets === 0) {
+      this.logger.warn(`[WS] ⚠️  Aucun socket connecté — l'événement ne sera reçu par personne`);
+    } else {
+      // Log détaillé des userId connectés (via socketToUser interne)
+      const userIds: number[] = [];
+      for (const [, uid] of this.socketToUser.entries()) {
+        if (!userIds.includes(uid)) userIds.push(uid);
+      }
+      this.logger.log(`[WS] 👥 Utilisateurs connectés: [${userIds.join(', ')}]`);
+    }
+
+    this.server.emit('permissions_updated', { roleCode });
+    this.logger.log(`🔐 [WS] ✅ permissions_updated émis à ${connectedSockets} socket(s)`);
+  }
+
   // ========== MÉTHODES D'ENVOI ==========
   async sendToUser(userId: number, event: string, data: any) {
     const room = `user_${userId}`;

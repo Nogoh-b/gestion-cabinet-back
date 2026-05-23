@@ -45,6 +45,7 @@ export class CustomerController {
 
   @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_clients')
   @ApiOperation({ summary: 'Obtenir les statistiques des clients' })
   async getStats(
     @Query('startDate') startDate?: string,
@@ -60,6 +61,7 @@ export class CustomerController {
 
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_clients')
   @ApiOperation({ summary: 'Obtenir les statistiques d\'un client spécifique' })
   @ApiParam({ name: 'id', description: 'ID du client' })
   async getStatsForCustomer(
@@ -70,6 +72,7 @@ export class CustomerController {
 
   @Get('stats/top')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_clients')
   async getTopClients() {
     const stats = await this.statsService.getStats({});
     return (stats as any).topClients;
@@ -77,6 +80,7 @@ export class CustomerController {
 
   @Get('stats/without-dossier')
   // @Roles(UserRole.ADMIN)
+  @RequirePermissions('view_clients')
   async getCustomersWithoutDossier() {
     const stats = await this.statsService.getStats({});
     return (stats as any).customersWithoutDossier;
@@ -85,7 +89,7 @@ export class CustomerController {
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
   @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
-  @RequirePermissions('CREATE_CUSTOMER')
+  @RequirePermissions('create_client')
   async create(@Body() createCustomerDto: CreateCustomerDto): Promise<any> {
     console.log(createCustomerDto)
     return await this.customerService.create(createCustomerDto);
@@ -93,7 +97,7 @@ export class CustomerController {
 
   @Get('/search')
   // @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('VIEW_CUSTOMER')
+  @RequirePermissions('view_clients')
   @ApiOperation({ summary: 'Rechercher customer' })
   @ApiResponse({ status: 201, description: 'Liste' , type: [CustomerResponseDto] })
 
@@ -123,7 +127,7 @@ export class CustomerController {
   @Get()
   @ApiOperation({ summary: 'Get all customers' })
   @ApiResponse({ status: 200, description: 'List of customers', type: [CustomerResponseDto] })
-  @RequirePermissions('VIEW_CUSTOMER')
+  @RequirePermissions('view_clients')
   async findAll(): Promise<CustomerResponseDto[]> {
     return await this.customerService.findAll();
   }
@@ -132,7 +136,7 @@ export class CustomerController {
   @Get("v2")
   @ApiOperation({ summary: 'Get all customers' })
   @ApiResponse({ status: 200, description: 'List of customers', type: [CustomerResponseDto] })
-  @RequirePermissions('VIEW_CUSTOMER')
+  @RequirePermissions('view_clients')
   async findAllV1( @Query() query: PaginationQueryCustomerDto): Promise<any> {
     const { page, limit, term, fields, exact, from, to, type_code } = query;
     const fieldList = fields ? fields.split(',') : undefined;
@@ -152,7 +156,7 @@ export class CustomerController {
   @ApiOperation({ summary: 'Get a customer by ID' })
   @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  // @RequirePermissions('VIEW_CUSTOMER')
+  // @RequirePermissions('view_clients')
   async findOne(@Param('id') id: string): Promise<CustomerResponseDto> {
     return await this.customerService.findOne(+id);
   }
@@ -161,7 +165,7 @@ export class CustomerController {
   @ApiOperation({ summary: 'Get a customer by customer_code' })
   @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  // @RequirePermissions('VIEW_CUSTOMER')
+  // @RequirePermissions('view_clients')
   async findOneDocs(@Param('customer_code') customer_code: string): Promise<CustomerResponseDto> {
     return await this.customerService.findDocumentsOne(customer_code);
   }
@@ -170,7 +174,7 @@ export class CustomerController {
   @ApiOperation({ summary: 'Get a customer by ID' })
   @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  // @RequirePermissions('VIEW_CUSTOMER')
+  // @RequirePermissions('view_clients')
   async findOneStats(@Param('id') id: string): Promise<CustomerResponseDto> {
     return await this.customerService.findOneStats(+id);
   }
@@ -180,7 +184,7 @@ export class CustomerController {
   @ApiOperation({ summary: 'Update a customer' })
   @ApiResponse({ status: 200, description: 'Customer updated', type: CustomerResponseDto })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  @RequirePermissions('EDIT_CUSTOMER')
+  @RequirePermissions('edit_client')
   async update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
@@ -193,7 +197,7 @@ export class CustomerController {
   @ApiOperation({ summary: 'Delete a customer' })
   @ApiResponse({ status: 204, description: 'Customer deleted' })
   @ApiResponse({ status: 404, description: 'Customer not found' })
-  @RequirePermissions('DELETE_CUSTOMER')
+  @RequirePermissions('delete_client')
   async remove(@Param('id') id: string): Promise<void> {
     return await this.customerService.remove(+id);
   }
