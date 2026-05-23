@@ -47,7 +47,7 @@ export class UserRolesController {
 
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete role' })
+  @ApiOperation({ summary: 'Delete role' }) 
   @RequirePermissions('manage_roles')
   remove(@Param('id') id: number): Promise<void> {
     return this.service.remove(id);

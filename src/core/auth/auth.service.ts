@@ -47,6 +47,16 @@ export class AuthService {
     return result;
   }
 
+  /**
+   * Retourne le profil de l'utilisateur avec les permissions FRAÎCHES issues de la DB.
+   * Appelé par GET /auth/profile pour éviter que le JWT (snapshot login) serve de source de vérité.
+   */
+  async getFreshProfile(userId: number) {
+    const permissionObjects = await this.usersService.getUserPermissions(userId);
+    const permissions = permissionObjects.map((p: any) => p.code);
+    return { permissions };
+  }
+
   async login(data: any) {
     const user: EmployeeResponseDto | null = await this.employeeService.findByEmail(data.email);
     if (!user) {

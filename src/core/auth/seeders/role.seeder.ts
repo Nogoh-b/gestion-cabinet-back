@@ -241,9 +241,11 @@ export class RoleSeeder {
     this.logger.log('Seeding roles & role-permissions...');
 
     for (const config of ROLES_CONFIG) {
-      // 1. Créer ou récupérer le rôle
+      // 1. Créer le rôle s'il n'existe pas
       let role = await this.roleRepo.findOne({ where: { code: config.code } });
-      if (!role) {
+      const isNew = !role;
+
+      if (isNew) {
         role = await this.roleRepo.save(
           this.roleRepo.create({
             code: config.code,
@@ -256,7 +258,15 @@ export class RoleSeeder {
         this.logger.log(`Rôle créé : ${config.code}`);
       }
 
-      // 2. Récupérer les permissions correspondantes en DB
+      // 2. N'assigner les permissions par défaut QUE pour les nouveaux rôles.
+      //    Pour les rôles existants, les modifications manuelles (via l'UI) sont
+      //    la source de vérité — on ne les écrase jamais au redémarrage.
+      if (!isNew) {
+        this.logger.log(`Rôle "${config.code}" : déjà existant, permissions non modifiées.`);
+        continue;
+      }
+
+      // 3. Récupérer les permissions correspondantes en DB
       const permissions = await this.permissionRepo.find({
         where: { code: In(config.permissions) },
       });
@@ -269,26 +279,19 @@ export class RoleSeeder {
         );
       }
 
-      // 3. Assigner chaque permission au rôle (si pas déjà fait)
-      let assigned = 0;
+      // 4. Assigner les permissions par défaut au nouveau rôle
       for (const permission of permissions) {
-        const exists = await this.rolePermissionRepo.findOne({
-          where: { role_id: role.id, permission_id: permission.id },
-        });
-        if (!exists) {
-          await this.rolePermissionRepo.save(
-            this.rolePermissionRepo.create({
-              role_id: role.id,
-              permission_id: permission.id,
-              status: 1,
-            }),
-          );
-          assigned++;
-        }
+        await this.rolePermissionRepo.save(
+          this.rolePermissionRepo.create({
+            role_id: role.id,
+            permission_id: permission.id,
+            status: 1,
+          }),
+        );
       }
 
       this.logger.log(
-        `Rôle "${config.code}" : ${assigned} permissions assignées, ${permissions.length - assigned} déjà présentes.`,
+        `Rôle "${config.code}" (nouveau) : ${permissions.length} permissions assignées par défaut.`,
       );
     }
 

@@ -23,46 +23,26 @@ export class RolePermissionService {
 
 
   async createRolesPermissions(createDto: CreateRolePermissionDto): Promise<any> {
-    // Vérifier l'existence du rôle et de la permission
+    await validateDto(CreateRolePermissionDto, createDto);
     const role = await this.userRolesService.findOne(createDto.role_id);
-    const role_permissions: RolePermission[] = []
-    await validateDto(CreateRolePermissionDto, createDto)
 
     for (const element of createDto.permissions_ids) {
-      const permission = await this.permissionsService.findOne(element);
-      // Vérifier si l'association existe déjà
+      // Ignorer silencieusement les permissions déjà assignées (idempotent)
       const exists = await this.rolePermissionRepository.findOne({
-        where: {
-          role_id: createDto.role_id,
-          permission_id: element,
-          status: 1
-        }
+        where: { role_id: createDto.role_id, permission_id: element },
       });
+      if (exists) continue;
 
-      if (exists) {
-        throw new ConflictException(
-          `La permission ${element} est déjà assignée au rôle ${createDto.role_id}`,
-        );
-      }
-
-      // Créer la nouvelle association
+      const permission = await this.permissionsService.findOne(element);
       const rolePermission = this.rolePermissionRepository.create({
         role_id: createDto.role_id,
         permission_id: element,
-        status:  1
+        status: 1,
       });
-
-      role_permissions.push(
-        await this.rolePermissionRepository.save({
-          ...rolePermission,
-          role,
-          permission,
-        }),
-      );
-      
+      await this.rolePermissionRepository.save({ ...rolePermission, role, permission });
     }
-    return this.userRolesService.findOne(createDto.role_id);
 
+    return this.userRolesService.findOne(createDto.role_id);
   }
 
   async remove(role_id: number, permission_id: number): Promise<void> {

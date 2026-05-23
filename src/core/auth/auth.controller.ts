@@ -45,15 +45,20 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   @ApiBearerAuth('access_token')
-  getProfile(@Request() req) {
-    return req.user;
+  async getProfile(@Request() req) {
+    // Fusionner le payload JWT avec les permissions fraîches issues de la DB.
+    // Sans ça, les changements de permissions d'un rôle ne sont reflétés
+    // qu'à la prochaine connexion (JWT = snapshot au moment du login).
+    const fresh = await this.authService.getFreshProfile(req.user.sub);
+    return { ...req.user, ...fresh };
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('me/permissions')
   @ApiOperation({ summary: 'Récupérer les permissions de l\'utilisateur connecté' })
-  getMyPermissions(@Request() req) {
-    return { permissions: req.user.permissions ?? [] };
+  async getMyPermissions(@Request() req) {
+    const fresh = await this.authService.getFreshProfile(req.user.sub);
+    return { permissions: fresh.permissions };
   }
   
   @Public()
