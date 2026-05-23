@@ -1,4 +1,5 @@
 import * as bcrypt from 'bcrypt';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { plainToInstance } from 'class-transformer';
 import { UserRole } from 'src/core/enums/user-role.enum';
 
@@ -192,7 +193,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
   async findAllEmployees(
     branch_id: number = 0,
   ): Promise<EmployeeResponseDto[]> {
-    const employees = await this.employeeRepository
+    let qb = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('employee.collaborating_dossiers', 'collaborating_dossiers')
@@ -209,8 +210,10 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
         branch_id != 0 ? 'branch.id = :branch_id' : '',
         { branch_id },
       )
-      .where('user.status = 1')
-      .getMany();
+      .where('user.status = 1');
+
+    qb = addTenantCondition(qb, 'employee');
+    const employees = await qb.getMany();
     return plainToInstance(EmployeeResponseDto, employees);
   }
 
@@ -218,7 +221,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     username: string,
     is_strict = true,
   ): Promise<EmployeeResponseDto> {
-    const employee = await this.employeeRepository
+    let qb = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('user.customer', 'customer')
@@ -230,8 +233,10 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
       .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
       .leftJoinAndSelect('employee.branch', 'branch')
       .where('user.username = :username', { username })
-      .andWhere('user.status = 1')
-      .getOne();
+      .andWhere('user.status = 1');
+
+    qb = addTenantCondition(qb, 'employee');
+    const employee = await qb.getOne();
 
     if (!employee && is_strict) {
       throw new NotFoundException(
@@ -245,7 +250,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     email: string,
     is_strict = true,
   ): Promise<EmployeeResponseDto> {
-    const employee = await this.employeeRepository
+    let qb = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('user.customer', 'customer')
@@ -257,8 +262,16 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
       .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
       .leftJoinAndSelect('employee.branch', 'branch')
       .where('user.email = :email', { email })
-      .andWhere('user.status = 1')
-      .getOne();
+      .andWhere('user.status = 1');
+
+    // ── Filtre tenant obligatoire ─────────────────────────────────────────
+    // Les QueryBuilders ne passent pas par TenantRepositoryPatch (qui ne couvre
+    // que les méthodes find* du Repository). addTenantCondition injecte
+    // WHERE employee.tenant_id = <currentTenantId> en lisant AsyncLocalStorage.
+    qb = addTenantCondition(qb, 'employee');
+    // ─────────────────────────────────────────────────────────────────────
+
+    const employee = await qb.getOne();
 
     if (!employee && is_strict) {
       throw new NotFoundException(

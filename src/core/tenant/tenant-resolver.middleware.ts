@@ -43,15 +43,7 @@ export class TenantResolverMiddleware implements NestMiddleware {
       }
     }
 
-    /**
-     * CRITIQUE — appeler next() DANS tenantContext.run() et non après.
-     *
-     * Les guards NestJS s'exécutent AVANT les interceptors.
-     * Si on appelait next() en dehors, le LocalAuthGuard (et validateUser)
-     * tourneraient avec tenant_id = défaut, permettant une connexion
-     * cross-tenant. En enveloppant next() ici, tout le pipeline NestJS
-     * (guards → interceptors → handler) hérite du bon contexte AsyncLocalStorage.
-     */
+    this.logger.debug(`[Tenant] run() → tenant_id=${tenantId}, calling next() inside ALS context`);
     this.tenantContext.run(tenantId, next);
   }
 

@@ -3,7 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { TenantContext } from 'src/core/tenant/tenant.context';
 
 import {
   ForbiddenException,
@@ -32,15 +32,26 @@ export class AuthService {
     private jwtService: JwtService,
     private mailService: MailService,
     private authTokenService: AuthTokenService,
+    private tenantContext: TenantContext,
   ) {}
 
-  async validateUser(username: string, pass: string): Promise<any> {
-    // ── 1. Recherche de l'utilisateur (User est global, pas tenant-scoped) ──
+  /**
+   * Valide les identifiants ET vérifie l'appartenance au cabinet.
+   *
+   * @param username  Email de l'utilisateur
+   * @param pass      Mot de passe en clair
+   * @param tenantId  ID du cabinet cible — transmis par LocalStrategy via req['resolvedTenantId'].
+   *                  Indépendant d'AsyncLocalStorage (qui ne se propage pas toujours à travers
+   *                  l'infrastructure Passport/NestJS au niveau des guards).
+   */
+  async validateUser(username: string, pass: string, tenantId = 1): Promise<any> {
+    this.logger.debug(`[validateUser] email="${username}" tenantId=${tenantId}`);
+
+    // ── 1. Recherche de l'utilisateur (User est global, sans tenant_id) ────
     let user: any;
     try {
       user = await this.usersService.findByEmail(username);
     } catch {
-      // findByEmail lance NotFoundException si introuvable
       throw new UnauthorizedException('Identifiants invalides');
     }
 
@@ -54,36 +65,30 @@ export class AuthService {
       throw new UnauthorizedException('Identifiants invalides');
     }
 
-    // ── 3. Vérification tenant ─────────────────────────────────────────────
+    // ── 3. Vérification d'appartenance au cabinet ───────────────────────────
     //
-    // User n'est pas une entité tenant-scoped (pas de tenant_id).
-    // La vérification d'appartenance au cabinet se fait via Employee,
-    // qui EST tenant-scoped (TenantRepositoryPatch ajoute WHERE tenant_id = ?).
-    //
-    // Le TenantResolverMiddleware appelle maintenant next() DANS
-    // tenantContext.run(), donc getCurrentTenantId() retourne ici le
-    // bon cabinet dès l'étape guard — avant même que l'interceptor tourne.
-    const currentTenantId = getCurrentTenantId();
-
-    // Ne pas bloquer si aucun tenant résolu (routes système, tests, etc.)
-    if (currentTenantId && currentTenantId !== 1) {
+    // User n'est pas tenant-scoped → on vérifie via Employee (qui l'est).
+    // On injecte manuellement le tenantId dans AsyncLocalStorage pour que
+    // employeeService.findByEmail() (qui utilise addTenantCondition) filtre
+    // dans le bon cabinet.
+    if (tenantId && tenantId !== 1) {
       let employee: any = null;
-      try {
-        employee = await this.employeeService.findByEmail(username);
-      } catch {
-        employee = null;
-      }
+      await this.tenantContext.run(tenantId, async () => {
+        try {
+          employee = await this.employeeService.findByEmail(username, false);
+        } catch {
+          employee = null;
+        }
+      });
 
       if (!employee) {
-        // Message générique — ne pas révéler si le compte existe dans un autre cabinet
         this.logger.warn(
-          `[Auth] Tentative cross-tenant: email="${username}" ` +
-          `n'est pas un employé du cabinet tenant_id=${currentTenantId}`,
+          `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
+          `absent du cabinet tenant_id=${tenantId}`,
         );
         throw new UnauthorizedException('Identifiants invalides');
       }
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     const { password, ...result } = user;
     return result;
