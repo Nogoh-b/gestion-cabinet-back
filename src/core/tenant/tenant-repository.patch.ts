@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Repository, FindManyOptions, FindOneOptions } from 'typeorm';
+import { Repository, FindManyOptions, FindOneOptions, SaveOptions, RemoveOptions } from 'typeorm';
 import { getCurrentTenantId, hasActiveTenant } from './tenant.context';
 
 /**
@@ -53,6 +53,11 @@ export class TenantRepositoryPatch implements OnModuleInit {
       count:         Repository.prototype.count,
       countBy:       Repository.prototype.countBy,
       exists:        (Repository.prototype as any).exists,
+      save:          Repository.prototype.save,
+      update:        (Repository.prototype as any).update,
+      delete:        (Repository.prototype as any).delete,
+      softDelete:    (Repository.prototype as any).softDelete,
+      restore:       (Repository.prototype as any).restore,
     };
 
     Repository.prototype.find = function (options?: FindManyOptions<any>) {
@@ -94,7 +99,87 @@ export class TenantRepositoryPatch implements OnModuleInit {
       };
     }
 
-    logger.log('✅ Repository.prototype patché — filtre tenant_id automatique actif');
+    // ── ÉCRITURE : save ────────────────────────────────────────────────────────
+    // @BeforeInsert sur TenantEntity gère le tenant_id pour les nouvelles entités.
+    // Pour save() sur des entités existantes (UPDATE), on s'assure que
+    // tenant_id n'est pas écrasé par une valeur étrangère.
+    Repository.prototype.save = function (entity: any, options?: SaveOptions) {
+      if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
+        const tenantId = getCurrentTenantId();
+        if (Array.isArray(entity)) {
+          entity.forEach(e => { e.tenant_id = tenantId; });
+        } else {
+          entity.tenant_id = tenantId;
+        }
+      }
+      return orig.save.call(this, entity, options);
+    };
+
+    // ── ÉCRITURE : update ──────────────────────────────────────────────────────
+    // Ajoute tenant_id dans le criteria pour éviter de modifier des lignes
+    // d'un autre cabinet. Retire tenant_id du partialEntity pour empêcher
+    // qu'un appelant le change accidentellement.
+    (Repository.prototype as any).update = function (criteria: any, partialEntity: any) {
+      if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
+        const tenantId = getCurrentTenantId();
+        // Empêche d'écraser le tenant_id dans les données mises à jour
+        const { tenant_id: _ignored, ...safePartial } = partialEntity ?? {};
+        // Ajoute le filtre tenant dans le criteria
+        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
+          ? { id: criteria, tenant_id: tenantId }
+          : Array.isArray(criteria)
+            ? criteria // tableau d'IDs — TypeORM gère comme IN(ids), pas de mélange avec obj
+            : { ...criteria, tenant_id: tenantId };
+        return orig.update.call(this, safeCriteria, safePartial);
+      }
+      return orig.update.call(this, criteria, partialEntity);
+    };
+
+    // ── SUPPRESSION : delete ───────────────────────────────────────────────────
+    // Ajoute tenant_id dans le criteria pour ne supprimer que dans le bon cabinet.
+    (Repository.prototype as any).delete = function (criteria: any) {
+      if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
+        const tenantId = getCurrentTenantId();
+        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
+          ? { id: criteria, tenant_id: tenantId }
+          : Array.isArray(criteria)
+            ? criteria
+            : { ...criteria, tenant_id: tenantId };
+        return orig.delete.call(this, safeCriteria);
+      }
+      return orig.delete.call(this, criteria);
+    };
+
+    // ── SUPPRESSION LOGIQUE : softDelete / restore ─────────────────────────────
+    (Repository.prototype as any).softDelete = function (criteria: any) {
+      if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
+        const tenantId = getCurrentTenantId();
+        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
+          ? { id: criteria, tenant_id: tenantId }
+          : Array.isArray(criteria)
+            ? criteria
+            : { ...criteria, tenant_id: tenantId };
+        return orig.softDelete.call(this, safeCriteria);
+      }
+      return orig.softDelete.call(this, criteria);
+    };
+
+    if (orig.restore) {
+      (Repository.prototype as any).restore = function (criteria: any) {
+        if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
+          const tenantId = getCurrentTenantId();
+          const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
+            ? { id: criteria, tenant_id: tenantId }
+            : Array.isArray(criteria)
+              ? criteria
+              : { ...criteria, tenant_id: tenantId };
+          return orig.restore.call(this, safeCriteria);
+        }
+        return orig.restore.call(this, criteria);
+      };
+    }
+
+    logger.log('✅ Repository.prototype patché — filtre tenant_id automatique actif (lecture + écriture)');
   }
 }
 

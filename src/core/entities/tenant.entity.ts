@@ -1,5 +1,6 @@
-import { Column, Index } from 'typeorm';
+import { Column, Index, BeforeInsert } from 'typeorm';
 import { BaseEntity } from './baseEntity';
+import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 
 /**
  * Classe de base pour toutes les entités métier multi-tenant.
@@ -24,4 +25,16 @@ export abstract class TenantEntity extends BaseEntity {
   @Column({ name: 'tenant_id', default: 1 })
   @Index()
   tenant_id: number;
+
+  /**
+   * Injecte automatiquement le tenant_id du contexte courant avant chaque INSERT.
+   * Évite que les services aient à le setter manuellement.
+   * Sans contexte actif (script, migration) → laisse la valeur existante ou le default DB.
+   */
+  @BeforeInsert()
+  protected _injectTenantId(): void {
+    if (hasActiveTenant()) {
+      this.tenant_id = getCurrentTenantId();
+    }
+  }
 }
