@@ -20,6 +20,9 @@ export class PermissionsGuard implements CanActivate {
 
     const { user } = context.switchToHttp().getRequest();
 
+    // Bypass admin : le rôle admin a accès à toutes les routes sans vérification
+    if (user.role === 'admin') return true;
+
     // Priorité 1 : permissions embarquées dans le JWT (0 appel DB)
     // Priorité 2 : fallback DB pour les tokens émis avant la migration
     const userPermissionCodes: string[] = Array.isArray(user.permissions)

@@ -283,7 +283,7 @@ export class RoleSeeder {
       for (const permission of permissions) {
         await this.rolePermissionRepo.save(
           this.rolePermissionRepo.create({
-            role_id: role.id,
+            role_id: role?.id,
             permission_id: permission.id,
             status: 1,
           }),

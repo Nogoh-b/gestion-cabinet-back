@@ -17,9 +17,7 @@ export class RolePermissionService {
     @Inject(forwardRef(() => UserRolesService))
     private readonly userRolesService: UserRolesService,
     private readonly permissionsService: PermissionsService,
-  ) {
-    console.log(forwardRef)
-  }
+  ) {}
 
 
   async createRolesPermissions(createDto: CreateRolePermissionDto): Promise<any> {
@@ -46,11 +44,8 @@ export class RolePermissionService {
   }
 
   async remove(role_id: number, permission_id: number): Promise<void> {
-    const result = await this.rolePermissionRepository.delete({
-      role_id,
-      permission_id
-    });
-    
+    const result = await this.rolePermissionRepository.delete({ role_id, permission_id });
+
     if (result.affected === 0) {
       throw new NotFoundException('Association rôle-permission non trouvée');
     }

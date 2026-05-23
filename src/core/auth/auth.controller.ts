@@ -46,10 +46,10 @@ export class AuthController {
   @Get('profile')
   @ApiBearerAuth('access_token')
   async getProfile(@Request() req) {
-    // Fusionner le payload JWT avec les permissions fraîches issues de la DB.
-    // Sans ça, les changements de permissions d'un rôle ne sont reflétés
-    // qu'à la prochaine connexion (JWT = snapshot au moment du login).
-    const fresh = await this.authService.getFreshProfile(req.user.sub);
+    // req.user.sub est undefined ici : JwtStrategy remmappe payload.sub → id/userId.
+    // On utilise req.user.userId (= employee ID) pour relire les permissions en DB.
+    const userId = req.user.userId ?? req.user.id;
+    const fresh = await this.authService.getFreshProfile(userId);
     return { ...req.user, ...fresh };
   }
 
@@ -57,7 +57,8 @@ export class AuthController {
   @Get('me/permissions')
   @ApiOperation({ summary: 'Récupérer les permissions de l\'utilisateur connecté' })
   async getMyPermissions(@Request() req) {
-    const fresh = await this.authService.getFreshProfile(req.user.sub);
+    const userId = req.user.userId ?? req.user.id;
+    const fresh = await this.authService.getFreshProfile(userId);
     return { permissions: fresh.permissions };
   }
   

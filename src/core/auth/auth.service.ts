@@ -54,6 +54,7 @@ export class AuthService {
   async getFreshProfile(userId: number) {
     const permissionObjects = await this.usersService.getUserPermissions(userId);
     const permissions = permissionObjects.map((p: any) => p.code);
+    console.log(`[getFreshProfile] userId=${userId} → ${permissions.length} permissions`);
     return { permissions };
   }
 
