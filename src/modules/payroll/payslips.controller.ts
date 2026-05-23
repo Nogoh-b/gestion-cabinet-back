@@ -26,13 +26,15 @@ export class PayslipsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_PAYROLL')
+  @RequirePermissions('generate_payslip')
   @ApiOperation({ summary: 'Créer une fiche de paie' })
   create(@Body() dto: CreatePayslipDto) {
     return this.service.create(dto);
   }
 
   @Get('/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Rechercher les fiches de paie' })
   @ApiResponse({ status: 200, description: 'Liste des fiches de paie', type: [Payslip] })
   async search(
@@ -47,28 +49,32 @@ export class PayslipsController {
   }
 
   @Get('/period/:periodId')
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Fiches de paie d\'une période' })
   findByPeriod(@Param('periodId') periodId: string) {
     return this.service.findByPeriod(+periodId);
   }
 
   @Get('/employee/:employeeId')
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Fiches de paie d\'un employé' })
   findByEmployee(@Param('employeeId') employeeId: string) {
     return this.service.findByEmployee(+employeeId);
   }
 
   @Get()
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Lister toutes les fiches de paie' })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Détail d\'une fiche de paie' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
@@ -76,7 +82,7 @@ export class PayslipsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_PAYROLL')
+  @RequirePermissions('edit_payslip')
   @ApiOperation({ summary: 'Modifier une fiche de paie' })
   update(@Param('id') id: string, @Body() dto: CreatePayslipDto) {
     return this.service.update(+id, dto);
@@ -84,7 +90,7 @@ export class PayslipsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_PAYROLL')
+  @RequirePermissions('edit_payslip')
   @ApiOperation({ summary: 'Supprimer une fiche de paie' })
   remove(@Param('id') id: string) {
     return this.service.remove(+id);

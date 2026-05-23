@@ -49,7 +49,7 @@ export class EmployeeService  extends BaseServiceV1<Employee> {
     return {
       // Champs pour la recherche globale
       searchFields: [
-        'dossier_number',
+        'managed_dossiers.dossier_number',
         'object',
         'jurisdiction',
         'jurisdiction.name',

@@ -27,13 +27,14 @@ export class SupplierInvoicesController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('create_supplier_invoice')
   @ApiOperation({ summary: 'Enregistrer une facture fournisseur' })
   create(@Body() dto: CreateSupplierInvoiceDto) {
     return this.service.create(dto);
   }
 
   @Get('/search')
+  @RequirePermissions('view_supplier_invoices')
   @ApiOperation({ summary: 'Rechercher les factures fournisseurs' })
   @ApiResponse({
     status: 200,
@@ -52,21 +53,21 @@ export class SupplierInvoicesController {
   }
 
   @Get('/supplier/:supplierId')
-  // @RequirePermissions('')
+  @RequirePermissions('view_supplier_invoices')
   @ApiOperation({ summary: 'Factures d\'un fournisseur' })
   findBySupplier(@Param('supplierId') supplierId: string) {
     return this.service.findBySupplier(+supplierId);
   }
 
   @Get()
-  // @RequirePermissions('')
+  @RequirePermissions('view_supplier_invoices')
   @ApiOperation({ summary: 'Lister toutes les factures fournisseurs' })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  // @RequirePermissions('')
+  @RequirePermissions('view_supplier_invoices')
   @ApiOperation({ summary: 'Détail d\'une facture fournisseur' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
@@ -74,7 +75,7 @@ export class SupplierInvoicesController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  // @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('edit_supplier_invoice')
   @ApiOperation({ summary: 'Modifier une facture fournisseur' })
   update(@Param('id') id: string, @Body() dto: UpdateSupplierInvoiceDto) {
     return this.service.update(+id, dto);
@@ -82,7 +83,7 @@ export class SupplierInvoicesController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  // @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('delete_supplier_invoice')
   @ApiOperation({ summary: 'Supprimer une facture fournisseur' })
   remove(@Param('id') id: string) {
     return this.service.remove(+id);

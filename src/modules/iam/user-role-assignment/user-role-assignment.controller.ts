@@ -19,14 +19,14 @@ export class UserRoleAssignmentController {
   @Post()
   @ApiOperation({ summary: 'Assigner un rôle à un utilisateur' })
   @ApiResponse({ status: 201, description: 'Rôle assigné', type: UserRoleAssignment })
-  @RequirePermissions('MANAGE_ROLE')
+  @RequirePermissions('manage_roles')
     create(@Body() dto: CreateUserRoleAssignmentDto) {
     return this.service.create(dto);
   }
 
   @Delete(':userId/:roleId')
   @ApiOperation({ summary: 'Retirer un rôle à un utilisateur' })
-  @RequirePermissions('MANAGE_ROLE')
+  @RequirePermissions('manage_roles')
   remove(
     @Param('userId') userId: number,
     @Param('roleId') roleId: number,
@@ -36,6 +36,7 @@ export class UserRoleAssignmentController {
 
   @Get('user/:userId')
   @ApiOperation({ summary: 'Lister les rôles d\'un utilisateur' })
+  @RequirePermissions('manage_roles')
   findByUser(@Param('userId') userId: number) {
     return this.service.findByUser(userId);
   }

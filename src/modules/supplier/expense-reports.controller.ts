@@ -27,13 +27,14 @@ export class ExpenseReportsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('create_expense_report')
   @ApiOperation({ summary: 'Créer une note de frais' })
   create(@Body() dto: CreateExpenseReportDto) {
     return this.service.create(dto);
   }
 
   @Get('/search')
+  @RequirePermissions('view_expense_reports')
   @ApiOperation({ summary: 'Rechercher les notes de frais' })
   @ApiResponse({
     status: 200,
@@ -52,21 +53,21 @@ export class ExpenseReportsController {
   }
 
   @Get('/employee/:employeeId')
-  @RequirePermissions('')
+  @RequirePermissions('view_expense_reports')
   @ApiOperation({ summary: 'Notes de frais d\'un employé' })
   findByEmployee(@Param('employeeId') employeeId: string) {
     return this.service.findByEmployee(+employeeId);
   }
 
   @Get()
-  @RequirePermissions('')
+  @RequirePermissions('view_expense_reports')
   @ApiOperation({ summary: 'Lister toutes les notes de frais' })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('')
+  @RequirePermissions('view_expense_reports')
   @ApiOperation({ summary: 'Détail d\'une note de frais' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
@@ -74,7 +75,7 @@ export class ExpenseReportsController {
 
   @Patch(':id/approve')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('validate_expense_report')
   @ApiOperation({ summary: 'Approuver une note de frais' })
   approve(@Param('id') id: string, @Body('userId') userId: number) {
     return this.service.approve(+id, userId);
@@ -82,7 +83,7 @@ export class ExpenseReportsController {
 
   @Patch(':id/reject')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('validate_expense_report')
   @ApiOperation({ summary: 'Rejeter une note de frais' })
   reject(
     @Param('id') id: string,
@@ -94,7 +95,7 @@ export class ExpenseReportsController {
 
   @Patch(':id/reimburse')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('reimburse_expense_report')
   @ApiOperation({ summary: 'Marquer comme remboursée' })
   markReimbursed(@Param('id') id: string) {
     return this.service.markReimbursed(+id);
@@ -102,7 +103,7 @@ export class ExpenseReportsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('edit_expense_report')
   @ApiOperation({ summary: 'Modifier une note de frais' })
   update(@Param('id') id: string, @Body() dto: UpdateExpenseReportDto) {
     return this.service.update(+id, dto);
@@ -110,7 +111,7 @@ export class ExpenseReportsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('delete_expense_report')
   @ApiOperation({ summary: 'Supprimer une note de frais' })
   remove(@Param('id') id: string) {
     return this.service.remove(+id);

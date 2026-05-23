@@ -27,12 +27,14 @@ export class ReferrersController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_REFERRERS')
+  @RequirePermissions('create_referrer')
   create(@Body() dto: CreateReferrerDto) {
     return this.service.create(dto);
   }
 
   @Get('/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_referrers')
   @ApiOperation({ summary: 'Rechercher les apporteurs' })
   @ApiResponse({ status: 200, description: 'Liste des apporteurs', type: [Referrer] })
   async search(
@@ -47,27 +49,29 @@ export class ReferrersController {
   }
 
   @Get()
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_referrers')
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_referrers')
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_REFERRERS')
+  @RequirePermissions('edit_referrer')
   update(@Param('id') id: string, @Body() dto: UpdateReferrerDto) {
     return this.service.update(+id, dto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_REFERRERS')
+  @RequirePermissions('delete_referrer')
   remove(@Param('id') id: string) {
     return this.service.remove(+id);
   }

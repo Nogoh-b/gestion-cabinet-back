@@ -27,13 +27,14 @@ export class SuppliersController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('create_supplier')
   @ApiOperation({ summary: 'Créer un fournisseur' })
   create(@Body() dto: CreateSupplierDto) {
     return this.service.create(dto);
   }
 
   @Get('/search')
+  @RequirePermissions('view_suppliers')
   @ApiOperation({ summary: 'Rechercher les fournisseurs' })
   @ApiResponse({ status: 200, description: 'Liste des fournisseurs', type: [Supplier] })
   async search(
@@ -48,14 +49,14 @@ export class SuppliersController {
   }
 
   @Get()
-  @RequirePermissions('')
+  @RequirePermissions('view_suppliers')
   @ApiOperation({ summary: 'Lister tous les fournisseurs actifs' })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('')
+  @RequirePermissions('view_suppliers')
   @ApiOperation({ summary: 'Détail d\'un fournisseur' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
@@ -63,7 +64,7 @@ export class SuppliersController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('edit_supplier')
   @ApiOperation({ summary: 'Modifier un fournisseur' })
   update(@Param('id') id: string, @Body() dto: UpdateSupplierDto) {
     return this.service.update(+id, dto);
@@ -71,7 +72,7 @@ export class SuppliersController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_EXPENSES')
+  @RequirePermissions('delete_supplier')
   @ApiOperation({ summary: 'Supprimer un fournisseur' })
   remove(@Param('id') id: string) {
     return this.service.remove(+id);

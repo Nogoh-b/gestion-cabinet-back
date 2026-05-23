@@ -56,6 +56,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { PermissionSeeder } from './auth/seeders/permission.seeder';
+import { RoleSeeder } from './auth/seeders/role.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
@@ -164,6 +165,7 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     AuthService,
     LocalStrategy,
     PermissionSeeder,
+    RoleSeeder,
     JwtStrategy,
     McotiService,
     OtpService,
@@ -205,6 +207,7 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     AuthService,
     McotiService,
     PermissionSeeder,
+    RoleSeeder,
     PermissionsGuard,
     MyPaginationService,
     PaginationService,

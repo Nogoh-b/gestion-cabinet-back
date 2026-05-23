@@ -24,21 +24,21 @@ export class UserRolesController {
   @Post()
   @ApiOperation({ summary: 'Create new user role' })
   @ApiResponse({ status: 201, description: 'Role created', type: UserRole })
-  @RequirePermissions('MANAGE_ROLE')
+  @RequirePermissions('manage_roles')
     create(@Body() dto: CreateUserRoleDto) {
     return this.service.create(dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all roles with permissions' })
-  // @RequirePermissions('')
+  @RequirePermissions('manage_roles')
   async findAll(): Promise<RoleResponseDto[]> {
     return this.service.findAllWithPermissions();
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get role by ID with permissions' })
-  @RequirePermissions('')
+  @RequirePermissions('manage_roles')
   async findOne(@Param('id') id: number): Promise<any> {
     return this.service.findOneWithPermissions(id);
   }
@@ -48,7 +48,7 @@ export class UserRolesController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete role' })
-  @RequirePermissions('MANAGE_ROLE')
+  @RequirePermissions('manage_roles')
   remove(@Param('id') id: number): Promise<void> {
     return this.service.remove(id);
   }

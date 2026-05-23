@@ -1,137 +1,250 @@
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
 import { Repository } from 'typeorm';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
 
 @Injectable()
 export class PermissionSeeder {
+  private readonly logger = new Logger(PermissionSeeder.name);
+
   constructor(
     @InjectRepository(Permission)
     private readonly permissionRepo: Repository<Permission>,
   ) {}
 
   async seed() {
-    const permissions = [
-    // ==================== IAM (Gestion des accès) ====================
-    { code: 'CREATE_USER', description: 'Créer un nouvel utilisateur' },
-    { code: 'VIEW_USER', description: 'Voir les détails d\'un utilisateur' },
-    { code: 'EDIT_USER', description: 'Modifier un utilisateur' },
-    { code: 'DELETE_USER', description: 'Supprimer un utilisateur' },
-    { code: 'RESET_USER_PASSWORD', description: 'Réinitialiser un mot de passe utilisateur' },
-    { code: 'LOCK_UNLOCK_USER', description: 'Bloquer/Débloquer un utilisateur' },
+    this.logger.log('Seeding permissions...');
 
-    { code: 'CREATE_ROLE', description: 'Créer un rôle' },
-    { code: 'VIEW_ROLE', description: 'Voir la liste des rôles' },
-    { code: 'EDIT_ROLE', description: 'Modifier un rôle' },
-    { code: 'DELETE_ROLE', description: 'Supprimer un rôle' },
-    { code: 'ASSIGN_PERMISSIONS_TO_ROLE', description: 'Attribuer des permissions à un rôle' },
-    { code: 'ASSIGN_ROLES_TO_USER', description: 'Attribuer des rôles à un utilisateur' },
+    const permissions: { code: string; description: string; canChange?: number }[] = [
 
-    { code: 'VIEW_AUDIT_LOGS', description: 'Consulter les logs d\'activité' },
-    { code: 'MANAGE_2FA', description: 'Gérer l\'authentification à deux facteurs' },
+      // ===================================================================
+      // CABINET — DOSSIERS
+      // ===================================================================
+      { code: 'view_dossiers',           description: 'Voir les dossiers' },
+      { code: 'create_dossier',          description: 'Créer un dossier' },
+      { code: 'edit_dossier',            description: 'Modifier un dossier' },
+      { code: 'delete_dossier',          description: 'Supprimer un dossier' },
+      { code: 'assign_dossier',          description: 'Assigner un dossier à un avocat' },
+      { code: 'view_dossier_confidential', description: 'Voir les informations confidentielles d\'un dossier' },
 
+      // ===================================================================
+      // CABINET — AUDIENCES
+      // ===================================================================
+      { code: 'view_audiences',          description: 'Voir les audiences' },
+      { code: 'create_audience',         description: 'Créer une audience' },
+      { code: 'edit_audience',           description: 'Modifier une audience' },
+      { code: 'delete_audience',         description: 'Supprimer une audience' },
+      { code: 'cancel_audience',         description: 'Annuler une audience' },
+      { code: 'export_audience',         description: 'Exporter les audiences' },
+      { code: 'confirm_audience',        description: 'Confirmer une audience' },
+      { code: 'postpone_audience',       description: 'Reporter une audience' },
+      { code: 'mark_audience_held',      description: 'Marquer une audience comme tenue' },
 
-    { code: 'CREATE_TYPE_CUSTOMER', description: '' },
-    { code: 'GET_TYPE_CUSTOMER', description: '' },
-    { code: 'GET_TYPE_CUSTOMER', description: '' },
-    { code: 'UPDATE_TYPE_CUSTOMER', description: '' },
-    { code: 'ASSIGN_TYPE_CUSTOMER', description: '' },
-    { code: 'GET_TYPE_CUSTOMER', description: '' },
+      // ===================================================================
+      // CABINET — FACTURES & FINANCES
+      // ===================================================================
+      { code: 'view_factures',           description: 'Voir les factures' },
+      { code: 'create_facture',          description: 'Créer une facture' },
+      { code: 'edit_facture',            description: 'Modifier une facture' },
+      { code: 'delete_facture',          description: 'Supprimer une facture' },
+      { code: 'archive_facture',         description: 'Archiver une facture' },
+      { code: 'print_facture',           description: 'Imprimer une facture' },
+      { code: 'email_facture',           description: 'Envoyer une facture par email' },
+      { code: 'download_facture',        description: 'Télécharger une facture' },
+      { code: 'view_financial_reports',  description: 'Voir les rapports financiers' },
+      { code: 'manage_payments',         description: 'Gérer les paiements' },
+      { code: 'create_paiement',         description: 'Enregistrer un paiement' },
+      { code: 'edit_paiement',           description: 'Modifier un paiement' },
+      { code: 'delete_paiement',         description: 'Supprimer un paiement' },
 
-    { code: 'CREATE_DOCUMENT_TYPE', description: '' },
-    { code: 'VIEW_DOCUMENT_TYPE', description: '' },
-    { code: 'VIEW_DOCUMENT_TYPE', description: '' },
-    { code: 'EDIT_DOCUMENT_TYPE', description: '' },
-    { code: 'DELETE_DOCUMENT_TYPE', description: '' },
+      // ===================================================================
+      // CABINET — DILIGENCES
+      // ===================================================================
+      { code: 'view_diligences',             description: 'Voir les diligences' },
+      { code: 'create_diligence',            description: 'Créer une diligence' },
+      { code: 'edit_diligence',              description: 'Modifier une diligence' },
+      { code: 'delete_diligence',            description: 'Supprimer une diligence' },
+      { code: 'complete_diligence',          description: 'Marquer une diligence comme terminée' },
+      { code: 'assign_diligence',            description: 'Assigner une diligence' },
+      { code: 'generate_diligence_report',   description: 'Générer un rapport de diligence' },
+      { code: 'download_diligence_report',   description: 'Télécharger un rapport de diligence' },
+      { code: 'view_diligence_findings',     description: 'Voir les findings de diligence' },
+      { code: 'create_diligence_finding',    description: 'Créer un finding de diligence' },
+      { code: 'edit_diligence_finding',      description: 'Modifier un finding de diligence' },
+      { code: 'delete_diligence_finding',    description: 'Supprimer un finding de diligence' },
+      { code: 'attach_document_to_diligence', description: 'Attacher un document à une diligence' },
+      { code: 'add_diligence_note',          description: 'Ajouter une note à une diligence' },
 
+      // ===================================================================
+      // CABINET — CLIENTS
+      // ===================================================================
+      { code: 'view_clients',            description: 'Voir les clients' },
+      { code: 'create_client',           description: 'Créer un client' },
+      { code: 'edit_client',             description: 'Modifier un client' },
+      { code: 'delete_client',           description: 'Supprimer un client' },
+      { code: 'import_clients',          description: 'Importer des clients' },
+      { code: 'export_clients',          description: 'Exporter des clients' },
 
-    { code: 'MANAGE_LOCATION', description: 'Gestion des locations' },
-    { code: 'MANAGE_ROLE', description: 'Gestion des locations' },
+      // ===================================================================
+      // CABINET — DOCUMENTS
+      // ===================================================================
+      { code: 'view_documents',          description: 'Voir les documents' },
+      { code: 'upload_document',         description: 'Uploader un document' },
+      { code: 'edit_document',           description: 'Modifier un document' },
+      { code: 'delete_document',         description: 'Supprimer un document' },
+      { code: 'sign_document',           description: 'Signer un document' },
+      { code: 'share_document',          description: 'Partager un document' },
+      { code: 'archive_document',        description: 'Archiver un document' },
+      { code: 'validate_document',       description: 'Valider un document' },
+      { code: 'reject_document',         description: 'Rejeter un document' },
+      { code: 'download_document',       description: 'Télécharger un document' },
+      { code: 'restore_document',        description: 'Restaurer un document archivé' },
 
-    // ==================== Gestion des Clients ====================
-    { code: 'CREATE_CUSTOMER', description: 'Créer un nouveau client' },
-    { code: 'VIEW_CUSTOMER', description: 'Voir les informations d\'un client' },
-    { code: 'EDIT_CUSTOMER', description: 'Modifier un client' },
-    { code: 'DELETE_CUSTOMER', description: 'Supprimer un client (archivage)' },
-    { code: 'VERIFY_CUSTOMER_KYC', description: 'Valider l\'identité client (KYC)' },
-    { code: 'BLOCK_UNBLOCK_CUSTOMER', description: 'Bloquer/Débloquer un client' },
+      // ===================================================================
+      // CABINET — AGENDA & ÉVÉNEMENTS
+      // ===================================================================
+      { code: 'view_agenda',             description: 'Voir l\'agenda' },
+      { code: 'create_event',            description: 'Créer un événement' },
+      { code: 'edit_event',              description: 'Modifier un événement' },
+      { code: 'delete_event',            description: 'Supprimer un événement' },
+      { code: 'view_all_agendas',        description: 'Voir tous les agendas du cabinet' },
 
-    // ==================== Comptes Bancaires ====================
-    { code: 'CREATE_ACCOUNT', description: 'Ouvrir un compte bancaire' },
-    { code: 'VIEW_ACCOUNT', description: 'Voir les détails d\'un compte' },
-    { code: 'EDIT_ACCOUNT', description: 'Modifier un compte (solde, statut, etc.)' },
-    { code: 'CLOSE_ACCOUNT', description: 'Fermer un compte' },
-    { code: 'FREEZE_UNFREEZE_ACCOUNT', description: 'Geler/Dégeler un compte' },
+      // ===================================================================
+      // CABINET — UTILISATEURS & ADMINISTRATION
+      // ===================================================================
+      { code: 'view_users',              description: 'Voir les utilisateurs' },
+      { code: 'create_user',             description: 'Créer un utilisateur' },
+      { code: 'edit_user',               description: 'Modifier un utilisateur' },
+      { code: 'delete_user',             description: 'Supprimer un utilisateur' },
+      { code: 'manage_roles',            description: 'Gérer les rôles et permissions' },
+      { code: 'view_audit_logs',         description: 'Voir les logs d\'audit' },
+      { code: 'manage_settings',         description: 'Gérer les paramètres du cabinet' },
 
-    // ==================== Transactions ====================
-    { code: 'PROCESS_TRANSACTION', description: 'Effectuer une transaction' },
-    { code: 'APPROVE_TRANSACTION', description: 'Approuver une transaction (si validation requise)' },
-    { code: 'REVERSE_TRANSACTION', description: 'Annuler une transaction' },
-    { code: 'VIEW_TRANSACTION_HISTORY', description: 'Consulter l\'historique des transactions' },
+      // ===================================================================
+      // CABINET — COMMUNICATIONS
+      // ===================================================================
+      { code: 'view_messages',           description: 'Voir les messages' },
+      { code: 'send_message',            description: 'Envoyer un message' },
+      { code: 'delete_message',          description: 'Supprimer un message' },
+      { code: 'view_all_messages',       description: 'Voir tous les messages du cabinet' },
 
-    // ==================== Agences (Branches) ====================
-    { code: 'CREATE_BRANCH', description: 'Créer une nouvelle agence' },
-    { code: 'VIEW_BRANCH', description: 'Voir les détails d\'une agence' },
-    { code: 'EDIT_BRANCH', description: 'Modifier une agence' },
-    { code: 'DELETE_BRANCH', description: 'Supprimer une agence' },
-    { code: 'MANAGE_BRANCH_SCHEDULE', description: 'Gérer les horaires d\'ouverture' },
+      // ===================================================================
+      // CABINET — RAPPORTS & STATISTIQUES
+      // ===================================================================
+      { code: 'view_reports',            description: 'Voir les rapports' },
+      { code: 'create_reports',          description: 'Créer des rapports' },
+      { code: 'export_reports',          description: 'Exporter des rapports' },
+      { code: 'view_dashboard',          description: 'Voir le tableau de bord' },
+      { code: 'view_analytics',          description: 'Voir les statistiques avancées' },
 
-    // ==================== Employés ====================
-    { code: 'CREATE_EMPLOYEE', description: 'Ajouter un employé' },
-    { code: 'VIEW_EMPLOYEE', description: 'Voir les informations employé' },
-    { code: 'EDIT_EMPLOYEE', description: 'Modifier un employé' },
-    { code: 'DELETE_EMPLOYEE', description: 'Supprimer un employé' },
+      // ===================================================================
+      // CABINET — APPORTEURS (REFERRERS)
+      // ===================================================================
+      { code: 'view_referrers',              description: 'Voir les apporteurs' },
+      { code: 'create_referrer',             description: 'Créer un apporteur' },
+      { code: 'edit_referrer',               description: 'Modifier un apporteur' },
+      { code: 'delete_referrer',             description: 'Supprimer un apporteur' },
+      { code: 'view_dossier_referrals',      description: 'Voir les apports liés aux dossiers' },
+      { code: 'create_dossier_referral',     description: 'Lier un apporteur à un dossier' },
+      { code: 'edit_dossier_referral',       description: 'Modifier un apport dossier' },
+      { code: 'delete_dossier_referral',     description: 'Supprimer un apport dossier' },
+      { code: 'view_referral_commissions',   description: 'Voir les commissions d\'apporteur' },
+      { code: 'create_referral_commission',  description: 'Créer une commission d\'apporteur' },
+      { code: 'edit_referral_commission',    description: 'Modifier une commission d\'apporteur' },
+      { code: 'validate_referral_commission', description: 'Valider une commission d\'apporteur' },
+      { code: 'pay_referral_commission',     description: 'Payer une commission d\'apporteur' },
 
+      // ===================================================================
+      // CABINET — PAIE (PAYROLL)
+      // ===================================================================
+      { code: 'view_payroll',            description: 'Voir la section paie' },
+      { code: 'view_payroll_periods',    description: 'Voir les périodes de paie' },
+      { code: 'create_payroll_period',   description: 'Créer une période de paie' },
+      { code: 'edit_payroll_period',     description: 'Modifier une période de paie' },
+      { code: 'close_payroll_period',    description: 'Clôturer une période de paie' },
+      { code: 'view_payslips',           description: 'Voir les bulletins de paie' },
+      { code: 'generate_payslip',        description: 'Générer un bulletin de paie' },
+      { code: 'edit_payslip',            description: 'Modifier un bulletin de paie' },
+      { code: 'download_payslip',        description: 'Télécharger un bulletin de paie' },
+      { code: 'email_payslip',           description: 'Envoyer un bulletin de paie par email' },
 
-        // Permissions pour Type de compte épargne
-    { code: 'CREATE_TYPE_SAVINGS_ACCOUNT', description: 'Ajouter un type de compte épargne' },
-    { code: 'VIEW_TYPE_SAVINGS_ACCOUNT', description: 'Voir les informations sur les types de comptes épargne' },
-    { code: 'EDIT_TYPE_SAVINGS_ACCOUNT', description: 'Modifier un type de compte épargne' },
-    { code: 'DELETE_TYPE_SAVINGS_ACCOUNT', description: 'Supprimer un type de compte épargne' },
+      // ===================================================================
+      // CABINET — DÉPENSES (EXPENSES)
+      // ===================================================================
+      { code: 'view_expenses',               description: 'Voir les dépenses' },
+      { code: 'view_suppliers',              description: 'Voir les fournisseurs' },
+      { code: 'create_supplier',             description: 'Créer un fournisseur' },
+      { code: 'edit_supplier',               description: 'Modifier un fournisseur' },
+      { code: 'delete_supplier',             description: 'Supprimer un fournisseur' },
+      { code: 'view_supplier_invoices',      description: 'Voir les factures fournisseur' },
+      { code: 'create_supplier_invoice',     description: 'Créer une facture fournisseur' },
+      { code: 'edit_supplier_invoice',       description: 'Modifier une facture fournisseur' },
+      { code: 'delete_supplier_invoice',     description: 'Supprimer une facture fournisseur' },
+      { code: 'validate_supplier_invoice',   description: 'Valider une facture fournisseur' },
+      { code: 'pay_supplier_invoice',        description: 'Payer une facture fournisseur' },
+      { code: 'view_expense_reports',        description: 'Voir les notes de frais' },
+      { code: 'create_expense_report',       description: 'Créer une note de frais' },
+      { code: 'edit_expense_report',         description: 'Modifier une note de frais' },
+      { code: 'delete_expense_report',       description: 'Supprimer une note de frais' },
+      { code: 'validate_expense_report',     description: 'Valider une note de frais' },
+      { code: 'reimburse_expense_report',    description: 'Rembourser une note de frais' },
 
-    // Permissions pour Personnel
-    { code: 'CREATE_PERSONNEL', description: 'Ajouter un personnel' },
-    { code: 'VIEW_PERSONNEL', description: 'Voir les informations du personnel' },
-    { code: 'EDIT_PERSONNEL', description: 'Modifier un personnel' },
-    { code: 'DELETE_PERSONNEL', description: 'Supprimer un personnel' },
-    { code: 'BUY_PERSONNEL', description: 'Payer un personnel' },
+      // ===================================================================
+      // SYSTÈME — Permissions spéciales (non modifiables)
+      // ===================================================================
+      { code: 'SUPER_ADMIN',    description: 'Accès total au système',        canChange: 0 },
+      { code: 'AUDIT_SYSTEM',   description: 'Auditer toutes les actions',    canChange: 0 },
 
-    // Permissions pour Ressource
-    { code: 'CREATE_RESSOURCE', description: 'Ajouter une ressource' },
-    { code: 'VIEW_RESSOURCE', description: 'Voir les informations d’une ressource' },
-    { code: 'EDIT_RESSOURCE', description: 'Modifier une ressource' },
-    { code: 'DELETE_RESSOURCE', description: 'Supprimer une ressource' },
-
-    { code: 'CREATE_TYPE_RESSOURCE', description: 'Ajouter un type de ressource' },
-    { code: 'VIEW_TYPE_RESSOURCE', description: 'Voir les informations sur les types de ressources' },
-    { code: 'EDIT_TYPE_RESSOURCE', description: 'Modifier un type de ressource' },
-    { code: 'DELETE_TYPE_RESSOURCE', description: 'Supprimer un type de ressource' },
-
-    // Type de personnel
-    { code: 'CREATE_TYPE_PERSONNEL', description: 'Ajouter un type de personnel' },
-    { code: 'VIEW_TYPE_PERSONNEL', description: 'Voir les informations sur les types de personnel' },
-    { code: 'EDIT_TYPE_PERSONNEL', description: 'Modifier un type de personnel' },
-    { code: 'DELETE_TYPE_PERSONNEL', description: 'Supprimer un type de personnel' },
-    // ==================== Localisations ====================
-    /*{ code: 'CREATE_LOCATION', description: 'Ajouter un pays/ville' },
-    { code: 'VIEW_LOCATION', description: 'Voir les localisations' },
-    { code: 'EDIT_LOCATION', description: 'Modifier une localisation' },
-    { code: 'DELETE_LOCATION', description: 'Supprimer une localisation' },*/
-
-    // ==================== Permissions Spéciales ====================
-    { code: 'SUPER_ADMIN', description: 'Accès total au système' ,canChange: 0  },
-    { code: 'AUDIT_SYSTEM', description: 'Auditer toutes les actions' ,canChange: 0  },
-    { code: 'EXPORT_DATA', description: 'Exporter des données (rapports)' }
+      // ===================================================================
+      // LEGACY — Codes utilisés par les controllers existants (conservés pour compatibilité)
+      // ===================================================================
+      { code: 'MANAGE_ROLE',              description: '[legacy] Gestion des rôles' },
+      { code: 'MANAGE_LOCATION',          description: '[legacy] Gestion des localisations' },
+      { code: 'MANAGE_JURISDICTIONS',     description: '[legacy] Gestion des juridictions' },
+      { code: 'MANAGE_INVOICE_TYPES',     description: '[legacy] Gestion des types de facture' },
+      { code: 'MANAGE_AUDIENCE_TYPES',    description: '[legacy] Gestion des types d\'audience' },
+      { code: 'MANAGE_DOCUMENT_CATEGORIES', description: '[legacy] Gestion des catégories de document' },
+      { code: 'MANAGE_EXPENSES',          description: '[legacy] Gestion des dépenses' },
+      { code: 'MANAGE_PAYROLL',           description: '[legacy] Gestion de la paie' },
+      { code: 'MANAGE_REFERRERS',         description: '[legacy] Gestion des apporteurs' },
+      { code: 'CREATE_EMPLOYEE',          description: '[legacy] Créer un employé' },
+      { code: 'VIEW_EMPLOYEE',            description: '[legacy] Voir les employés' },
+      { code: 'EDIT_EMPLOYEE',            description: '[legacy] Modifier un employé' },
+      { code: 'DELETE_EMPLOYEE',          description: '[legacy] Supprimer un employé' },
+      { code: 'CREATE_CUSTOMER',          description: '[legacy] Créer un client' },
+      { code: 'VIEW_CUSTOMER',            description: '[legacy] Voir les clients' },
+      { code: 'EDIT_CUSTOMER',            description: '[legacy] Modifier un client' },
+      { code: 'DELETE_CUSTOMER',          description: '[legacy] Supprimer un client' },
+      { code: 'VERIFY_CUSTOMER_KYC',      description: '[legacy] Valider le KYC client' },
+      { code: 'CREATE_DOCUMENT_TYPE',     description: '[legacy] Créer un type de document' },
+      { code: 'VIEW_DOCUMENT_TYPE',       description: '[legacy] Voir les types de document' },
+      { code: 'EDIT_DOCUMENT_TYPE',       description: '[legacy] Modifier un type de document' },
+      { code: 'DELETE_DOCUMENT_TYPE',     description: '[legacy] Supprimer un type de document' },
+      { code: 'CREATE_TYPE_CUSTOMER',     description: '[legacy] Créer un type client' },
+      { code: 'GET_TYPE_CUSTOMER',        description: '[legacy] Voir les types client' },
+      { code: 'UPDATE_TYPE_CUSTOMER',     description: '[legacy] Modifier un type client' },
+      { code: 'ASSIGN_TYPE_CUSTOMER',     description: '[legacy] Assigner un type client' },
+      { code: 'CREATE_RESSOURCE',         description: '[legacy] Créer une ressource' },
+      { code: 'DELETE_RESSOURCE',         description: '[legacy] Supprimer une ressource' },
+      { code: 'CREATE_TYPE_RESSOURCE',    description: '[legacy] Créer un type de ressource' },
+      { code: 'EDIT_TYPE_RESSOURCE',      description: '[legacy] Modifier un type de ressource' },
+      { code: 'DELETE_TYPE_RESSOURCE',    description: '[legacy] Supprimer un type de ressource' },
+      { code: 'DELETE_BRANCH',            description: '[legacy] Supprimer une agence' },
     ];
 
+    let created = 0;
+    let skipped = 0;
+
     for (const perm of permissions) {
-        console.log(`Creating permission: ${perm.code}`);
-        // Check if the permission already exists
       const exists = await this.permissionRepo.findOne({ where: { code: perm.code } });
       if (!exists) {
         await this.permissionRepo.save(this.permissionRepo.create(perm));
+        created++;
+      } else {
+        skipped++;
       }
     }
+
+    this.logger.log(`Permissions: ${created} créées, ${skipped} déjà existantes.`);
   }
 }

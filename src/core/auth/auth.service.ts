@@ -61,6 +61,7 @@ export class AuthService {
       username: user.email,
       role,
       permissions,
+      customerId: (data as any).customer?.id ?? null,
     };
 
     return {

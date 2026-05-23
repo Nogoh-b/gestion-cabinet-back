@@ -1,7 +1,9 @@
 // src/modules/dossiers/dossiers.controller.ts
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { Roles } from 'src/core/decorators/roles.decorator';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
@@ -60,13 +62,14 @@ import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.d
 @ApiTags('dossiers')
 @ApiBearerAuth()
 @Controller('dossiers')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class DossiersController {
   constructor(private readonly dossiersService: DossiersService,
   private readonly statsService: DossierStatsService) {}
 
     @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les statistiques des dossiers' })
   @ApiResponse({ status: 200, type: DossierStatsDto })
   @ApiQuery({ name: 'startDate', required: false, type: Date })
@@ -93,6 +96,7 @@ export class DossiersController {
 
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les statistiques d\'un dossier spécifique' })
   @ApiParam({ name: 'id', description: 'ID du dossier' })
   async getStatsForDossier(
@@ -111,6 +115,7 @@ export class DossiersController {
 
   @Get('urgent')
   @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les dossiers urgents' })
   async getUrgentDossiers() {
     const stats = await this.statsService.getStats({});
@@ -120,6 +125,7 @@ export class DossiersController {
 
   @Post()
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT, UserRole.SECRETAIRE)
+  @RequirePermissions('create_dossier')
   @ApiOperation({ summary: 'Créer un nouveau dossier' })
   @ApiResponse({ status: 201, description: 'Dossier créé avec succès', type: DossierResponseDto })
   @ApiResponse({ status: 400, description: 'Données invalides' })
@@ -134,11 +140,13 @@ export class DossiersController {
   }
   @Get('summary')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('view_dossiers')
   async getSummary() {
     // return this.dossiersService.getStats({});
   }
 
   @Get('search')
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
   @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [DossierResponseDto]  })
   async search(
@@ -150,6 +158,7 @@ export class DossiersController {
   }
 
   @Get()
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Lister tous les dossiers (avec filtres)' })
   @ApiResponse({ status: 200, description: 'Liste des dossiers', type: [DossierResponseDto] })
   findAll(
@@ -160,7 +169,8 @@ export class DossiersController {
   }
 
   @Get('paginated')
-  @ApiOperation({ 
+  @RequirePermissions('view_dossiers')
+  @ApiOperation({
     summary: 'Lister les dossiers avec pagination',
     description: 'Retourne les dossiers avec des métadonnées de pagination'
   })
@@ -197,6 +207,7 @@ export class DossiersController {
   }
 
   @Get('statistics')
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les statistiques des dossiers' })
   @ApiResponse({ status: 200, description: 'Statistiques des dossiers' })
   getStatistics(@CurrentUser() user: User): Promise<any> {
@@ -204,6 +215,7 @@ export class DossiersController {
   }
 
   @Get(':id')
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir un dossier par son ID' })
   @ApiResponse({ status: 200, description: 'Dossier trouvé', type: DossierResponseDto })
   @ApiResponse({ status: 404, description: 'Dossier non trouvé' })
@@ -216,6 +228,7 @@ export class DossiersController {
 
   @Patch(':id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT, UserRole.SECRETAIRE)
+  @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Mettre à jour un dossier' })
   @ApiResponse({ status: 200, description: 'Dossier mis à jour', type: DossierResponseDto })
   @ApiResponse({ status: 404, description: 'Dossier non trouvé' })
@@ -230,6 +243,7 @@ export class DossiersController {
 
   @Patch(':id/status')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Changer le statut d\'un dossier' })
   @ApiResponse({ status: 200, description: 'Statut mis à jour', type: DossierResponseDto })
   @ApiResponse({ status: 400, description: 'Transition de statut non autorisée' })
@@ -243,6 +257,7 @@ export class DossiersController {
 
   @Post(':id/archive')
   @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Archiver un dossier' })
   @ApiResponse({ status: 200, description: 'Dossier archivé', type: DossierResponseDto })
   @ApiResponse({ status: 400, description: 'Impossible d\'archiver le dossier' })
@@ -256,6 +271,7 @@ export class DossiersController {
 
   @Delete(':id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @RequirePermissions('delete_dossier')
   @ApiOperation({ summary: 'Supprimer un dossier' })
   @ApiResponse({ status: 200, description: 'Dossier supprimé' })
   @ApiResponse({ status: 400, description: 'Impossible de supprimer le dossier' })
@@ -267,6 +283,7 @@ export class DossiersController {
   }
 
   @Get('collaborator/:collaboratorId')
+  @RequirePermissions('view_dossiers')
   async getDossiersByCollaborator(
     @Param('collaboratorId') collaboratorId: number,
     @Query() paginationParams: PaginationParamsDto
@@ -276,6 +293,7 @@ export class DossiersController {
 
   // Endpoints spécifiques pour les relations
   @Get(':id/documents')
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les documents d\'un dossier' })
   getDocuments(@Param('id', ParseIntPipe) id: string, @CurrentUser() user: User) {
     // Implémentation dans le service Documents
@@ -283,6 +301,7 @@ export class DossiersController {
   }
 
   @Get(':id/audiences')
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les audiences d\'un dossier' })
   getAudiences(@Param('id', ParseIntPipe) id: string, @CurrentUser() user: User) {
     // Implémentation dans le service Audiences
@@ -290,6 +309,7 @@ export class DossiersController {
   }
 
   @Get(':id/factures')
+  @RequirePermissions('view_dossiers')
   @ApiOperation({ summary: 'Obtenir les factures d\'un dossier' })
   getFactures(@Param('id', ParseIntPipe) id: string, @CurrentUser() user: User) {
     // Implémentation dans le service Finances
@@ -301,11 +321,11 @@ export class DossiersController {
    * Lier des documents existants à une sous-étape de procédure
    */
   @Post('link/documents/to/substage')
+  @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Lier des documents à une sous-étape de procédure' })
   @ApiResponse({ status: 200, description: 'Documents liés avec succès' })
   @ApiResponse({ status: 404, description: 'Sous-étape ou dossier non trouvé' })
   @ApiBody({ type: LinkDocumentsToSubStageDto })
-  // @RequirePermissions('VERIFY_CUSTOMER_KYC')
   async linkDocumentsToSubStage(
     @Body() dto: LinkDocumentsToSubStageDto,
     @CurrentUser() user: User,
@@ -320,6 +340,7 @@ export class DossiersController {
 
 
     @Post(':id/transitions/:transitionId/apply')
+    @RequirePermissions('edit_dossier')
     @UseInterceptors(FilesInterceptor('files', 10))
     async applyTransition1(
       @Param('id') id: string,
@@ -353,6 +374,7 @@ export class DossiersController {
 
    @Post(':id/analysis')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async performAnalysis(
       @Param('id') id: string,
       @Body() dto: PreliminaryAnalysisDto,
@@ -369,6 +391,7 @@ export class DossiersController {
   
     @Post(':id/client-decision')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async clientDecision(
       @Param('id') id: string,
       @Body() dto: ClientDecisionDto,
@@ -379,6 +402,7 @@ export class DossiersController {
   
     @Post(':id/judgment')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async registerJudgment(
       @Param('id') id: string,
       @Body() dto: JudgmentDto,
@@ -389,6 +413,7 @@ export class DossiersController {
 
     @Post(':id/register/apeal/decision')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async registerAppealDecision(
       @Param('id') id: string,
       @Body() dto: JudgmentDto,
@@ -400,6 +425,7 @@ export class DossiersController {
 
     @Post(':id/register/cassation/decision')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async registerCassationDecision(
       @Param('id') id: string,
       @Body() dto: JudgmentDto,
@@ -410,6 +436,7 @@ export class DossiersController {
   
     @Post(':id/appeal')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async fileAppeal(
       @Param('id') id: string,
       @CurrentUser() user: User
@@ -419,6 +446,7 @@ export class DossiersController {
   
     @Post(':id/cassation')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async fileCassation(
       @Param('id') id: string,
       @CurrentUser() user: User
@@ -428,6 +456,7 @@ export class DossiersController {
   
     @Post(':id/execute')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+    @RequirePermissions('edit_dossier')
     async executeDecision(
       @Param('id') id: string,
       @CurrentUser() user: User
@@ -438,6 +467,7 @@ export class DossiersController {
   // Dans dossiers.controller.ts
   @Post(':id/close')
   @Roles(UserRole.AVOCAT, UserRole.ADMIN)
+  @RequirePermissions('edit_dossier')
   async closeDossier(
     @Param('id') id: string,
     @Body() closeDto: CloseDossierDto,
@@ -447,7 +477,8 @@ export class DossiersController {
   }
 
   @Get(':dossierId/stage-visits')
-  @ApiOperation({ 
+  @RequirePermissions('view_dossiers')
+  @ApiOperation({
     summary: 'Obtenir l\'historique des visites de stage',
     description: 'Retourne l\'historique complet des visites de stage pour un dossier donné, avec les sous-étapes, documents, diligences, audiences et factures associés à chaque visite.'
   })
@@ -463,7 +494,8 @@ export class DossiersController {
 
 
   @Get(':dossierId/steps/current')
-  @ApiOperation({ 
+  @RequirePermissions('view_dossiers')
+  @ApiOperation({
     summary: 'Obtenir l\'étape courante',
     description: 'Retourne l\'étape actuellement en cours pour le dossier'
   })
@@ -487,7 +519,8 @@ export class DossiersController {
   }
 
   @Get(':dossierId/steps/workflow')
-  @ApiOperation({ 
+  @RequirePermissions('view_dossiers')
+  @ApiOperation({
     summary: 'Obtenir le workflow complet du dossier',
     description: 'Retourne toutes les étapes du dossier dans l\'ordre chronologique'
   })

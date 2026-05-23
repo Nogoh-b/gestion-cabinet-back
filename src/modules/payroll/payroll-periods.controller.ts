@@ -26,13 +26,15 @@ export class PayrollPeriodsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_PAYROLL')
+  @RequirePermissions('create_payroll_period')
   @ApiOperation({ summary: 'Créer une période de paie' })
   create(@Body() dto: CreatePayrollPeriodDto) {
     return this.service.create(dto);
   }
 
   @Get('/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payroll_periods')
   @ApiOperation({ summary: 'Rechercher les périodes de paie' })
   @ApiResponse({ status: 200, description: 'Liste des périodes', type: [PayrollPeriod] })
   async search(
@@ -47,14 +49,16 @@ export class PayrollPeriodsController {
   }
 
   @Get()
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payroll_periods')
   @ApiOperation({ summary: 'Lister toutes les périodes de paie' })
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
-  @RequirePermissions('')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('view_payroll_periods')
   @ApiOperation({ summary: 'Détail d\'une période de paie' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
@@ -62,7 +66,7 @@ export class PayrollPeriodsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_PAYROLL')
+  @RequirePermissions('edit_payroll_period')
   @ApiOperation({ summary: 'Modifier une période de paie' })
   update(@Param('id') id: string, @Body() dto: CreatePayrollPeriodDto) {
     return this.service.update(+id, dto);
@@ -70,7 +74,7 @@ export class PayrollPeriodsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('MANAGE_PAYROLL')
+  @RequirePermissions('edit_payroll_period')
   @ApiOperation({ summary: 'Supprimer une période de paie' })
   remove(@Param('id') id: string) {
     return this.service.remove(+id);

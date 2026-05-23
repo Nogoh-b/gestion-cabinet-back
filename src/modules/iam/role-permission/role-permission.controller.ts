@@ -27,7 +27,7 @@ export class RolePermissionController {
   @Post('assign-roles')
   @ApiOperation({ summary: 'Assigner une ou des  permissions à un rôle' })
   @ApiResponse({ status: 201, description: 'Permission assignée', type: RolePermission })
-  @RequirePermissions('MANAGE_ROLE')
+  @RequirePermissions('manage_roles')
   createRolesPermissions(@Body() dto: CreateRolePermissionDto) {
     return this.service.createRolesPermissions(dto);
   }
@@ -35,7 +35,7 @@ export class RolePermissionController {
 
   @Delete(':roleId/:permissionId')
   @ApiOperation({ summary: 'Retirer une permission d\'un rôle' })
-  @RequirePermissions('MANAGE_ROLE')
+  @RequirePermissions('manage_roles')
   remove(
     @Param('roleId') roleId: number,
     @Param('permissionId') permissionId: number,
@@ -47,7 +47,7 @@ export class RolePermissionController {
   @ApiOperation({ summary: "Récupérer les permissions d'un rôle" })
   @ApiResponse({ status: 200, description: 'Permissions récupérées avec succès' })
   @ApiResponse({ status: 404, description: 'Rôle non trouvé' })
-  @RequirePermissions('')
+  @RequirePermissions('manage_roles')
   async getRolePermissions(@Param('id') roleId: number) {
     return this.service.getRolePermissions(roleId);
   }
