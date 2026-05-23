@@ -20,6 +20,14 @@ export function getCurrentTenantId(): number {
 }
 
 /**
+ * Retourne true si un contexte tenant est actif dans l'AsyncLocalStorage courant.
+ * false = exécution hors requête HTTP (script, cron, migration...).
+ */
+export function hasActiveTenant(): boolean {
+  return _storage.getStore() !== undefined;
+}
+
+/**
  * TenantContext — stocke le tenantId courant par requête HTTP.
  *
  * Utilise AsyncLocalStorage (Node.js built-in) : chaque requête async

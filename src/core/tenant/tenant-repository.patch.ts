@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Repository, FindManyOptions, FindOneOptions } from 'typeorm';
-import { getCurrentTenantId } from './tenant.context';
+import { getCurrentTenantId, hasActiveTenant } from './tenant.context';
 
 /**
  * TenantRepositoryPatch — patch unique de Repository.prototype au démarrage.
@@ -37,6 +37,7 @@ export class TenantRepositoryPatch implements OnModuleInit {
     /** Ajoute tenant_id à un objet where (simple, tableau ou undefined) */
     function mergeTenantWhere(metadata: any, where: any): any {
       if (!hasTenantColumn(metadata)) return where; // entité non-tenante — pas de filtre
+      if (!hasActiveTenant()) return where;          // hors contexte HTTP → accès complet
       const tenantId = getCurrentTenantId();
       if (!where)                   return { tenant_id: tenantId };
       if (Array.isArray(where))     return where.map((w) => ({ ...w, tenant_id: tenantId }));
@@ -114,7 +115,8 @@ export function addTenantCondition<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   alias: string,
 ): SelectQueryBuilder<T> {
-  return qb.andWhere(`${alias}.tenant_id = :_tenantId`, {
-    _tenantId: getCurrentTenantId(),
-  });
+  // N'applique le filtre que si un contexte tenant est réellement actif (requête HTTP normale).
+  // Sans contexte (script, cron, migration, super-admin global) → pas de filtre, accès complet.
+  if (!hasActiveTenant()) return qb;
+  return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: getCurrentTenantId() });
 }

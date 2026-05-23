@@ -2,6 +2,7 @@
 import { Repository, SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 @Injectable()
 export abstract class BaseStatsService<T extends ObjectLiteral> {
@@ -14,6 +15,9 @@ export abstract class BaseStatsService<T extends ObjectLiteral> {
     filters?: StatsFilterDto,
     alias: string = 'entity',
   ): SelectQueryBuilder<T> {
+    // Toujours appliquer le filtre tenant, même sans autres filtres
+    addTenantCondition(query, alias);
+
     if (!filters) return query;
     const fieldToUseForDate = filters.fieldToUseForDate ?? 'created_at'
     if (filters.startDate) {

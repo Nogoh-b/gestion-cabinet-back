@@ -3,7 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
-import { TenantContext } from 'src/core/tenant/tenant.context';
+import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 import {
   ForbiddenException,
@@ -66,11 +66,9 @@ export class AuthService {
     }
 
     // ── 3. Vérification d'appartenance au cabinet ───────────────────────────
-    //
-    // User n'est pas tenant-scoped → on vérifie via Employee (qui l'est).
-    // On injecte manuellement le tenantId dans AsyncLocalStorage pour que
-    // employeeService.findByEmail() (qui utilise addTenantCondition) filtre
-    // dans le bon cabinet.
+    // User n'a pas de tenant_id → on vérifie + récupère le tenant via Employee.
+    let resolvedTenantId = tenantId;
+
     if (tenantId && tenantId !== 1) {
       let employee: any = null;
       await this.tenantContext.run(tenantId, async () => {
@@ -88,9 +86,14 @@ export class AuthService {
         );
         throw new UnauthorizedException('Identifiants invalides');
       }
+
+      // tenant_id de l'employee (source de vérité pour le JWT)
+      resolvedTenantId = (employee as any).tenant_id ?? tenantId;
     }
 
     const { password, ...result } = user;
+    // Attacher le tenantId résolu pour que login() puisse l'injecter dans le JWT
+    (result as any)._resolvedTenantId = resolvedTenantId;
     return result;
   }
 
@@ -114,13 +117,26 @@ export class AuthService {
     const permissionObjects = await this.usersService.getUserPermissions(data.id);
     const permissions = permissionObjects.map((p: any) => p.code);
 
+    // Priorité pour le tenantId du JWT :
+    //  1. _resolvedTenantId posé par validateUser() (source la plus fiable — vient du guard)
+    //  2. getCurrentTenantId()  (contexte AsyncLocalStorage posé par TenantInterceptor)
+    //  3. tenant_id de l'employee (entity TypeORM si disponible)
+    //  4. Fallback 1
+    const tenantId: number =
+      (data as any)._resolvedTenantId
+      ?? getCurrentTenantId()
+      ?? (user as any).tenant_id
+      ?? 1;
+
+    this.logger.log(`[login] email="${data.email}" → JWT tenantId=${tenantId}`);
+
     const payload: JwtPayload = {
       sub:        user.id,
       username:   user.email,
       role,
       permissions,
       customerId: (data as any).customer?.id ?? null,
-      tenantId:   (data as any).tenant_id   ?? 1,
+      tenantId,
     };
 
     return {

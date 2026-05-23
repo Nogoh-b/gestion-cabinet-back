@@ -7,10 +7,14 @@ import { MinimalDossierResponseDto } from 'src/modules/dossiers/dto/dossier-resp
 
 export class EmployeeResponseDto {
   // =========== PROPRIÉTÉS DE BASE ===========
-  
+
   @ApiProperty({ example: 1, description: 'ID unique de l\'employé' })
   @Expose()
   id: number;
+
+  @ApiProperty({ example: 3, description: 'ID du cabinet (tenant)' })
+  @Expose()
+  tenant_id: number;
 
   @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
   @Expose()
