@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { DataSource } from 'typeorm';
+import { TenantContext } from './tenant.context';
 
 /**
  * TenantResolverMiddleware — résout le cabinet (tenant) depuis la requête HTTP.
@@ -22,14 +23,19 @@ export class TenantResolverMiddleware implements NestMiddleware {
   /** Cache mémoire simple code → id pour éviter les requêtes DB répétées */
   private readonly cache = new Map<string, number>();
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly tenantContext: TenantContext,
+  ) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
     const code = this.extractCode(req);
+    let tenantId = 1; // défaut (cabinet système)
 
     if (code) {
-      const tenantId = await this.resolveCode(code);
-      if (tenantId) {
+      const resolved = await this.resolveCode(code);
+      if (resolved) {
+        tenantId = resolved;
         (req as any)['resolvedTenantId'] = tenantId;
         this.logger.debug(`[Tenant] code="${code}" → tenant_id=${tenantId}`);
       } else {
@@ -37,7 +43,16 @@ export class TenantResolverMiddleware implements NestMiddleware {
       }
     }
 
-    next();
+    /**
+     * CRITIQUE — appeler next() DANS tenantContext.run() et non après.
+     *
+     * Les guards NestJS s'exécutent AVANT les interceptors.
+     * Si on appelait next() en dehors, le LocalAuthGuard (et validateUser)
+     * tourneraient avec tenant_id = défaut, permettant une connexion
+     * cross-tenant. En enveloppant next() ici, tout le pipeline NestJS
+     * (guards → interceptors → handler) hérite du bon contexte AsyncLocalStorage.
+     */
+    this.tenantContext.run(tenantId, next);
   }
 
   // ── Extraction du code ────────────────────────────────────────────

@@ -3,10 +3,12 @@ import * as bcrypt from 'bcrypt';
 import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException
@@ -22,6 +24,8 @@ import { MailService } from '../shared/emails/emails.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private employeeService: EmployeeService,
@@ -31,17 +35,55 @@ export class AuthService {
   ) {}
 
   async validateUser(username: string, pass: string): Promise<any> {
-    const user = await this.usersService.findByEmail(username);
-    
-    if (!user || !user.password) {
-      throw new UnauthorizedException('Utilisateur inexistant');
+    // ── 1. Recherche de l'utilisateur (User est global, pas tenant-scoped) ──
+    let user: any;
+    try {
+      user = await this.usersService.findByEmail(username);
+    } catch {
+      // findByEmail lance NotFoundException si introuvable
+      throw new UnauthorizedException('Identifiants invalides');
     }
 
-    const isPasswordValid = await bcrypt.compare(pass, user.password);
-    
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Mot de passe incorrect');
+    if (!user || !user.password) {
+      throw new UnauthorizedException('Identifiants invalides');
     }
+
+    // ── 2. Vérification du mot de passe ────────────────────────────────────
+    const isPasswordValid = await bcrypt.compare(pass, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Identifiants invalides');
+    }
+
+    // ── 3. Vérification tenant ─────────────────────────────────────────────
+    //
+    // User n'est pas une entité tenant-scoped (pas de tenant_id).
+    // La vérification d'appartenance au cabinet se fait via Employee,
+    // qui EST tenant-scoped (TenantRepositoryPatch ajoute WHERE tenant_id = ?).
+    //
+    // Le TenantResolverMiddleware appelle maintenant next() DANS
+    // tenantContext.run(), donc getCurrentTenantId() retourne ici le
+    // bon cabinet dès l'étape guard — avant même que l'interceptor tourne.
+    const currentTenantId = getCurrentTenantId();
+
+    // Ne pas bloquer si aucun tenant résolu (routes système, tests, etc.)
+    if (currentTenantId && currentTenantId !== 1) {
+      let employee: any = null;
+      try {
+        employee = await this.employeeService.findByEmail(username);
+      } catch {
+        employee = null;
+      }
+
+      if (!employee) {
+        // Message générique — ne pas révéler si le compte existe dans un autre cabinet
+        this.logger.warn(
+          `[Auth] Tentative cross-tenant: email="${username}" ` +
+          `n'est pas un employé du cabinet tenant_id=${currentTenantId}`,
+        );
+        throw new UnauthorizedException('Identifiants invalides');
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const { password, ...result } = user;
     return result;

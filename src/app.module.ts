@@ -28,6 +28,7 @@ import {
 } from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
 import { CabinetModule } from './modules/cabinet/cabinet.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AgenciesModule } from './modules/agencies/agencies.module';
 import { AudiencesModule } from './modules/audiences/audiences.module';
@@ -79,6 +80,7 @@ dotenv.config();
     }),
      CoreModule,
     CabinetModule,
+    OnboardingModule,
 
     // 2. Modules indépendants
     IamModule,

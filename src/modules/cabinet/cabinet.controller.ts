@@ -5,6 +5,7 @@ import { Cabinet } from './entities/cabinet.entity';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { Public } from 'src/core/decorators/public.decorator';
 
 @ApiTags('Cabinets (SaaS)')
 @ApiBearerAuth()
@@ -12,6 +13,32 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 @Controller('cabinets')
 export class CabinetController {
   constructor(private readonly service: CabinetService) {}
+
+  /**
+   * ⚠️ Routes statiques EN PREMIER — avant les routes paramétriques (:id).
+   * NestJS mappe dans l'ordre de définition. Si @Get(':id') était avant,
+   * il intercepterait "resolve" et échouerait sur ParseIntPipe.
+   */
+
+  /** Résolution publique d'un code → infos basiques du cabinet (pour le login screen) */
+  @Get('resolve/:code')
+  @Public()                      // pas d'auth requise
+  @ApiOperation({ summary: 'Résoudre un code cabinet → nom, statut (public)' })
+  async resolve(@Param('code') code: string) {
+    const cabinet = await this.service.findByCode(code);
+    if (!cabinet) return { found: false };
+    return {
+      data: {
+        id:           cabinet.id,
+        code:         cabinet.code,
+        name:         cabinet.name,
+        status:       cabinet.status,
+        plan:         cabinet.plan,
+        routing_mode: cabinet.routing_mode,
+      },
+      found: true,
+    };
+  }
 
   @Get()
   @RequirePermissions('manage_cabinets')
@@ -42,19 +69,5 @@ export class CabinetController {
   @RequirePermissions('manage_cabinets')
   suspend(@Param('id', ParseIntPipe) id: number): Promise<Cabinet> {
     return this.service.suspend(id);
-  }
-
-  /** Résolution publique d'un code → infos basiques du cabinet (pour le login screen) */
-  @Get('resolve/:code')
-  @ApiOperation({ summary: 'Résoudre un code cabinet → nom, statut' })
-  async resolve(@Param('code') code: string) {
-    const cabinet = await this.service.findByCode(code);
-    if (!cabinet) return { found: false };
-    return {
-      found:  true,
-      name:   cabinet.name,
-      status: cabinet.status,
-      mode:   cabinet.routing_mode,
-    };
   }
 }
