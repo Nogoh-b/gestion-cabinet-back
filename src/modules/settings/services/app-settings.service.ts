@@ -43,6 +43,7 @@ export class AppSettingsService {
    * Crée un enregistrement par défaut s'il n'en existe pas encore.
    */
   async findByCabinet(cabinetId: number): Promise<AppSettings> {
+    console.log('cabinetId ', cabinetId)
     let settings = await this.appSettingsRepository.findOne({
       where: { cabinet_id: cabinetId },
     });
@@ -50,7 +51,7 @@ export class AppSettingsService {
     if (!settings) {
       settings = this.appSettingsRepository.create({
         cabinet_id: cabinetId,
-        tenant_id:  cabinetId, // TenantEntity.tenant_id = cabinet.id
+        // tenant_id:  cabinetId, // TenantEntity.tenant_id = cabinet.id
         ...DEFAULT_APP_SETTINGS,
       });
       settings = await this.appSettingsRepository.save(settings);
@@ -89,7 +90,7 @@ export class AppSettingsService {
     if (!settings) {
       settings = this.appSettingsRepository.create({
         cabinet_id: cabinetId,
-        tenant_id:  cabinetId,
+        // tenant_id:  cabinetId,
         ...DEFAULT_APP_SETTINGS,
       });
     } else {

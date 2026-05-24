@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cabinet, CabinetPlan, CabinetStatus } from './entities/cabinet.entity';
+import { Cabinet, CabinetPlan } from './entities/cabinet.entity';
+import { AppSettingsService } from '../settings/services/app-settings.service';
 
 @Injectable()
 export class CabinetService implements OnModuleInit {
@@ -10,6 +11,7 @@ export class CabinetService implements OnModuleInit {
   constructor(
     @InjectRepository(Cabinet)
     private readonly repo: Repository<Cabinet>,
+    private readonly appSettingsService: AppSettingsService,
   ) {}
 
   /**
@@ -60,6 +62,57 @@ export class CabinetService implements OnModuleInit {
 
   async findByCode(code: string): Promise<Cabinet | null> {
     return this.repo.findOne({ where: { code } });
+  }
+
+  /**
+   * Résout un code cabinet ET merge les AppSettings (logo, slogan, name…).
+   *
+   * Ordre de priorité (le premier non-vide gagne) :
+   *   1. AppSettings.cabinet_xxx (settings personnalisés du cabinet)
+   *   2. Cabinet.xxx (valeurs brutes de l'entité)
+   *
+   * Utilisé par l'endpoint public GET /cabinets/resolve/:code
+   * pour fournir au frontend le branding complet avant authentification.
+   */
+  async resolveWithSettings(code: string): Promise<{
+    id:           number;
+    code:         string;
+    name:         string;
+    status:       string;
+    plan:         string;
+    routing_mode: string;
+    logo:         string | null;
+    slogan:       string | null;
+  } | null> {
+    const cabinet = await this.findByCode(code);
+    if (!cabinet) return null;
+
+    // Récupération des settings (créés par défaut si inexistants)
+    const settings = await this.appSettingsService.findByCabinet(cabinet.id);
+    console.log('settings ', settings)
+    // Fusion : settings (prioritaire) → cabinet (fallback) → null
+    const name = (settings.cabinet_name && settings.cabinet_name !== 'MonCabinet')
+      ? settings.cabinet_name
+      : cabinet.name;
+
+    const logo = (settings.cabinet_logo && settings.cabinet_logo.trim())
+      ? settings.cabinet_logo
+      : null;
+
+    const slogan = (settings.cabinet_slogan && settings.cabinet_slogan.trim())
+      ? settings.cabinet_slogan
+      : null;
+
+    return {
+      id:           cabinet.id,
+      code:         cabinet.code,
+      name,
+      status:       cabinet.status,
+      plan:         cabinet.plan,
+      routing_mode: cabinet.routing_mode,
+      logo,
+      slogan,
+    };
   }
 
   async update(id: number, data: Partial<Pick<Cabinet, 'name' | 'status' | 'plan' | 'routing_mode'>>): Promise<Cabinet> {

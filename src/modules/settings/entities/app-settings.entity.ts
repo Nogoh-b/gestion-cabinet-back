@@ -1,10 +1,9 @@
-import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { ApiProperty } from '@nestjs/swagger';
 
 @Entity('app_settings')
-export class AppSettings extends BaseEntity {
+export class AppSettings  {
   @ApiProperty()
   @PrimaryGeneratedColumn('uuid')
   id: string;

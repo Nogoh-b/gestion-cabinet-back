@@ -20,22 +20,17 @@ export class CabinetController {
    * il intercepterait "resolve" et échouerait sur ParseIntPipe.
    */
 
-  /** Résolution publique d'un code → infos basiques du cabinet (pour le login screen) */
+  /** Résolution publique d'un code → branding complet du cabinet (logo, slogan, nom…)
+   *  pour la page de login (avant authentification).
+   *  Fusionne les AppSettings (prioritaires) avec les données du cabinet. */
   @Get('resolve/:code')
   @Public()                      // pas d'auth requise
-  @ApiOperation({ summary: 'Résoudre un code cabinet → nom, statut (public)' })
+  @ApiOperation({ summary: 'Résoudre un code cabinet → branding complet (nom, logo, slogan, statut)' })
   async resolve(@Param('code') code: string) {
-    const cabinet = await this.service.findByCode(code);
-    if (!cabinet) return { found: false };
+    const merged = await this.service.resolveWithSettings(code);
+    if (!merged) return { found: false };
     return {
-      data: {
-        id:           cabinet.id,
-        code:         cabinet.code,
-        name:         cabinet.name,
-        status:       cabinet.status,
-        plan:         cabinet.plan,
-        routing_mode: cabinet.routing_mode,
-      },
+      data: merged,
       found: true,
     };
   }

@@ -151,9 +151,14 @@ export class AuthService {
       tenantId,
     };
 
+    // Écraser user.role (position de l'Employee = "avocat") avec le rôle RBAC réel
+    // (User.role = "admin"|"secretaire"|…) pour que le frontend n'affiche pas
+    // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile.
+    const userWithRole = role ? { ...user, role } : user;
+
     return {
       access_token: this.jwtService.sign(payload),
-      user,
+      user: userWithRole,
       permissions,
     };
   }

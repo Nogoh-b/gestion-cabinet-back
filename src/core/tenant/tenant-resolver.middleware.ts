@@ -68,6 +68,10 @@ export class TenantResolverMiddleware implements NestMiddleware {
     const match = req.path.match(/^\/t\/([a-z0-9]+)(\/|$)/);
     if (match) return match[1];
 
+    // 4. Path /cabinets/resolve/:code — route publique de résolution
+    const resolveMatch = req.path.match(/^\/cabinets\/resolve\/([a-z0-9]+)(\/|$)/);
+    if (resolveMatch) return resolveMatch[1];
+
     return null;
   }
 
