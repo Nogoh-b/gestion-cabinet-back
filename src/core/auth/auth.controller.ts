@@ -48,8 +48,9 @@ export class AuthController {
   async getProfile(@Request() req) {
     // req.user.sub est undefined ici : JwtStrategy remmappe payload.sub → id/userId.
     // On utilise req.user.userId (= employee ID) pour relire les permissions en DB.
-    const userId = req.user.userId ?? req.user.id;
-    const fresh = await this.authService.getFreshProfile(userId);
+    const userId   = req.user.userId ?? req.user.id;
+    const roleCode = req.user.role ?? null; // issu du JWT — évite un SELECT user inutile
+    const fresh = await this.authService.getFreshProfile(userId, roleCode);
     return { ...req.user, ...fresh };
   }
 
@@ -57,8 +58,9 @@ export class AuthController {
   @Get('me/permissions')
   @ApiOperation({ summary: 'Récupérer les permissions de l\'utilisateur connecté' })
   async getMyPermissions(@Request() req) {
-    const userId = req.user.userId ?? req.user.id;
-    const fresh = await this.authService.getFreshProfile(userId);
+    const userId   = req.user.userId ?? req.user.id;
+    const roleCode = req.user.role ?? null;
+    const fresh = await this.authService.getFreshProfile(userId, roleCode);
     return { permissions: fresh.permissions };
   }
   

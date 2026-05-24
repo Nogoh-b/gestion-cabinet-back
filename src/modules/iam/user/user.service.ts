@@ -151,8 +151,16 @@ export class UsersService {
     userId: number
   ): Promise<any> {
     const role = (await this.findOne(userId))?.role;
-    return this.roleService.getPermissionsByCode(role)
+    return this.roleService.getPermissionsByCode(role);
+  }
 
+  /**
+   * Version optimisée : récupère les permissions directement depuis le code de rôle,
+   * sans recharger l'utilisateur depuis la DB (utile quand le rôle est déjà connu).
+   */
+  async getPermissionsByRoleCode(roleCode: string | null): Promise<any[]> {
+    if (!roleCode) return [];
+    return this.roleService.getPermissionsByCode(roleCode);
   }
 
   

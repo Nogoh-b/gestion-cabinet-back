@@ -33,6 +33,8 @@ import { join } from 'path';
 import { StepsService } from 'src/modules/dossiers/step.service';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
+import { CabinetService } from 'src/modules/cabinet/cabinet.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(
@@ -54,7 +56,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     private documentCategoryService: DocumentCategoryService,
     @Inject(forwardRef(() => StepsService))
     private stepsService: StepsService,
-  ) {    
+    private cabinetService: CabinetService,
+  ) {
         super(docRepository, paginationService);console.log(forwardRef)
   }
 
@@ -224,9 +227,22 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       }
       if (!file && !strict) return null;
       
-      const dir = `${dossier.dossier_number}/${category.name}/${docType!.name}`
-      // 7. Upload du fichier
-      const uploadedFile = await this.uploadFile(file, dir);
+      // 7. Récupération du nom du cabinet depuis le tenant
+      const tenantId = getCurrentTenantId();
+      let cabinetName = 'cabinet';
+      try {
+        const cabinet = await this.cabinetService.findById(tenantId);
+        if (cabinet?.name) {
+          cabinetName = FilesUtil.sanitizeName(cabinet.name).toLowerCase();
+        }
+      } catch {
+        cabinetName = 'cabinet';
+      }
+
+      const dir = `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType!.name}`
+      // 8. Upload du fichier
+      const docName = restDto.name || docType!.name;
+      const uploadedFile = await this.uploadFile(file, dir, docName);
 
         // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
     // let procedureInstance: ProcedureInstance | null = null;
@@ -299,14 +315,16 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   }
 
   /**
-   * Valide le type de document
+   * Valide le type de document.
+   * Le TenantRepositoryPatch injecte automatiquement tenant_id IN (1, tenantId) :
+   * types du cabinet courant + types globaux seedés sont inclus.
    */
   private async validateDocumentType(
-    documentTypeId: number, 
+    documentTypeId: number,
     strict: boolean
   ): Promise<DocumentType | null> {
     const docType = await this.docTypeRepository.findOne({
-      where: { id: documentTypeId }
+      where: { id: documentTypeId },
     });
 
     if (!docType && strict) {
@@ -417,7 +435,8 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
    */
   private async uploadFile(
     file: Express.Multer.File,
-    dir: string
+    dir: string,
+    fileName?: string
   ): Promise<UploadedFileInfo> {
 
     try {
@@ -425,6 +444,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, dir),{
         maxSizeKB: 300, // 3MB
         quality: 70,
+        ...(fileName && { fileName }),
       });
     } catch (error) {
       throw new InternalServerErrorException(

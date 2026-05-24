@@ -1,5 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CabinetModule } from '../cabinet/cabinet.module';
 
 
 
@@ -45,7 +46,7 @@ import { ProcedureModule } from '../procedure/procedure.module';
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),
     forwardRef(() => ProcedureModule),
-    
+    CabinetModule,
     forwardRef(() => IamModule),
     
 

@@ -98,24 +98,36 @@ export class AuthService {
   }
 
   /**
-   * Retourne le profil de l'utilisateur avec les permissions FRAÎCHES issues de la DB.
+   * Retourne les permissions FRAÎCHES depuis la DB.
    * Appelé par GET /auth/profile pour éviter que le JWT (snapshot login) serve de source de vérité.
+   *
+   * @param userId    ID de l'utilisateur (fallback si roleCode absent)
+   * @param roleCode  Code de rôle issu du JWT — évite un SELECT user inutile quand disponible
    */
-  async getFreshProfile(userId: number) {
-    const permissionObjects = await this.usersService.getUserPermissions(userId);
-    const permissions = permissionObjects.map((p: any) => p.code);
-    console.log(`[getFreshProfile] userId=${userId} → ${permissions.length} permissions`);
+  async getFreshProfile(userId: number, roleCode?: string) {
+    const permissionObjects = roleCode
+      ? await this.usersService.getPermissionsByRoleCode(roleCode)
+      : await this.usersService.getUserPermissions(userId);
+    const permissions = (permissionObjects ?? []).map((p: any) => p.code);
+    console.log(`[getFreshProfile] userId=${userId} role=${roleCode} → ${permissions.length} permissions`);
     return { permissions };
   }
 
   async login(data: any) {
-    const user: EmployeeResponseDto | null = await this.employeeService.findByEmail(data.email);
+    // data EST l'entité User issue de validateUser() — data.role est déjà là.
+    // On évite les doublons : findOne(userId) x2 + findByEmail(employee) x2.
+    const role: string | null = data.role ?? null;
+
+    // Paralléliser : employee (pour payload JWT) + permissions (role → codes)
+    const [user, permissionObjects] = await Promise.all([
+      this.employeeService.findByEmail(data.email),
+      this.usersService.getPermissionsByRoleCode(role),
+    ]);
+
     if (!user) {
       throw new UnauthorizedException('Utilisateur inexistant');
     }
-    const role: string | null = (await this.usersService.findOne(data.id))?.role;
-    const permissionObjects = await this.usersService.getUserPermissions(data.id);
-    const permissions = permissionObjects.map((p: any) => p.code);
+    const permissions = (permissionObjects ?? []).map((p: any) => p.code);
 
     // Priorité pour le tenantId du JWT :
     //  1. _resolvedTenantId posé par validateUser() (source la plus fiable — vient du guard)
@@ -133,7 +145,7 @@ export class AuthService {
     const payload: JwtPayload = {
       sub:        user.id,
       username:   user.email,
-      role,
+      role:       role ?? undefined,
       permissions,
       customerId: (data as any).customer?.id ?? null,
       tenantId,

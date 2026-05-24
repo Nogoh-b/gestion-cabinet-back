@@ -25,6 +25,7 @@ export interface UploadOptions {
   maxSizeKB?: number;  // Taille maximale en KB
   quality?: number;    // Qualité pour les images (1-100)
   allowedMimeTypes?: string[];
+  fileName?: string;   // Nom de fichier personnalisé (sans extension) – en cas de doublon, _1, _2 etc. est ajouté
 }
 
 
@@ -135,16 +136,27 @@ export class FilesUtil {
 static async uploadFileV1(
   file: Express.Multer.File,
   uploadDir: string, // ex: './uploads/chat'
-  options?: { 
+  options?: {
     maxSizeKB?: number;
     width?: number;
     quality?: number;
+    fileName?: string;
   }
 ): Promise<UploadedFileInfo> {
   console.log('Upload path ', uploadDir )
   const APP_URL = process.env.APP_URL || 'http://localhost:3000';
   const UPLOADS_URL_PREFIX = '/uploads'; // Le préfixe d'URL pour vos fichiers
-  const fileName = FilesUtil.generateUniqueFilename(file.originalname);
+  
+  // Déterminer le nom du fichier : personnalisé ou généré automatiquement
+  let fileName: string;
+  if (options?.fileName) {
+    const ext = FilesUtil.getFileExtension(file.originalname);
+    const safeName = FilesUtil.sanitizeName(options.fileName);
+    fileName = await FilesUtil.getAvailableFilename(uploadDir, `${safeName}.${ext}`);
+  } else {
+    fileName = FilesUtil.generateUniqueFilename(file.originalname);
+  }
+  
   await this.ensureDirectoryExists(uploadDir, false);
 
   // Chemin physique complet sur le serveur
@@ -444,6 +456,40 @@ private static determineFileType(mimetype: string, filename: string): Attachment
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 15);
     return `${timestamp}-${random}.${ext}`;
+  }
+
+  /**
+   * Nettoie un nom de fichier pour supprimer les caractères spéciaux
+   */
+  static sanitizeName(name: string): string {
+    return name
+      .replace(/[^a-zA-Z0-9.\-_\s]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .substring(0, 200);
+  }
+
+  /**
+   * Vérifie si un fichier existe déjà dans le répertoire.
+   * Si oui, retourne un nom avec suffixe _1, _2, etc.
+   */
+  static async getAvailableFilename(dir: string, desiredName: string): Promise<string> {
+    const ext = FilesUtil.getFileExtension(desiredName);
+    const baseName = desiredName.substring(0, desiredName.length - ext.length - 1);
+    const filePath = join(dir, desiredName);
+
+    if (!existsSync(filePath)) {
+      return desiredName;
+    }
+
+    let counter = 1;
+    let candidate = `${baseName}_${counter}.${ext}`;
+    while (existsSync(join(dir, candidate))) {
+      counter++;
+      candidate = `${baseName}_${counter}.${ext}`;
+    }
+    return candidate;
   }
 
   /**

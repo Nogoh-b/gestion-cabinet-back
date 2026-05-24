@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Repository, FindManyOptions, FindOneOptions, SaveOptions, RemoveOptions } from 'typeorm';
+import { Repository, FindManyOptions, FindOneOptions, SaveOptions, RemoveOptions, In } from 'typeorm';
 import { getCurrentTenantId, hasActiveTenant } from './tenant.context';
 
 /**
@@ -34,14 +34,29 @@ export class TenantRepositoryPatch implements OnModuleInit {
       return !!metadata?.columns?.some((c: any) => c.propertyName === 'tenant_id');
     }
 
-    /** Ajoute tenant_id à un objet where (simple, tableau ou undefined) */
+    /**
+     * Filtre tenant pour les LECTURES : tenant courant + données globales (tenant_id = 1).
+     *
+     * Convention :
+     *  - tenant_id = 1 → données seedées / globales, partagées entre tous les cabinets
+     *  - tenant_id = X → données propres au cabinet X
+     *
+     * Un cabinet voit donc ses propres données ET les référentiels globaux.
+     * Si le cabinet courant est lui-même tenant_id = 1 (admin global), filtre simple.
+     */
+    function buildReadTenantFilter(tenantId: number): any {
+      return tenantId === 1 ? 1 : In([1, tenantId]);
+    }
+
+    /** Ajoute tenant_id à un objet where (simple, tableau ou undefined) — pour les lectures */
     function mergeTenantWhere(metadata: any, where: any): any {
       if (!hasTenantColumn(metadata)) return where; // entité non-tenante — pas de filtre
       if (!hasActiveTenant()) return where;          // hors contexte HTTP → accès complet
       const tenantId = getCurrentTenantId();
-      if (!where)                   return { tenant_id: tenantId };
-      if (Array.isArray(where))     return where.map((w) => ({ ...w, tenant_id: tenantId }));
-      return { ...where, tenant_id: tenantId };
+      const tenantFilter = buildReadTenantFilter(tenantId);
+      if (!where)                   return { tenant_id: tenantFilter };
+      if (Array.isArray(where))     return where.map((w) => ({ ...w, tenant_id: tenantFilter }));
+      return { ...where, tenant_id: tenantFilter };
     }
 
     const orig = {
@@ -196,6 +211,16 @@ import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
  *   qb = addTenantCondition(qb, 'd');
  *   return qb.getMany();
  */
+/**
+ * Helper pour les services qui utilisent createQueryBuilder().
+ * Ajoute automatiquement WHERE alias.tenant_id IN (1, tenantId) pour inclure
+ * les données globales (seedées avec tenant_id=1) et les données du cabinet courant.
+ *
+ * Usage :
+ *   let qb = this.repo.createQueryBuilder('d');
+ *   qb = addTenantCondition(qb, 'd');
+ *   return qb.getMany();
+ */
 export function addTenantCondition<T extends ObjectLiteral>(
   qb: SelectQueryBuilder<T>,
   alias: string,
@@ -203,5 +228,11 @@ export function addTenantCondition<T extends ObjectLiteral>(
   // N'applique le filtre que si un contexte tenant est réellement actif (requête HTTP normale).
   // Sans contexte (script, cron, migration, super-admin global) → pas de filtre, accès complet.
   if (!hasActiveTenant()) return qb;
-  return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: getCurrentTenantId() });
+  const tenantId = getCurrentTenantId();
+  if (tenantId === 1) {
+    // Tenant global : accès à toutes ses propres données seulement
+    return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: tenantId });
+  }
+  // Tenant cabinet : données du cabinet + données globales (tenant_id = 1)
+  return qb.andWhere(`${alias}.tenant_id IN (:..._tenantIds)`, { _tenantIds: [1, tenantId] });
 }
