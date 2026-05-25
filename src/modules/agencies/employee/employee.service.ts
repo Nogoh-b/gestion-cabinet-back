@@ -104,8 +104,8 @@ async createEmployee(
   }
 
   // Vérification des doublons d'email
-  const existingUser = await this.userRepo.findOne({
-    where: { email: dto.email }
+  const existingUser = await this.repository.findOne({
+    where: { user: { email: dto.email } }
   });
 
   if (existingUser && is_strict) {

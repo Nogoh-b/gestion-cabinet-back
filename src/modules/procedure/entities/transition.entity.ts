@@ -24,6 +24,7 @@ export enum TransitionType {
   description: 'Transitions entre les étapes d\'un modèle de procédure. Définissent les chemins possibles d\'une étape à une autre, avec conditions et actions.',
   icon: '➡️',
   category: 'procedure',
+  ignored: false,
 })
 export class Transition extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -32,7 +33,7 @@ export class Transition extends BaseEntity {
     description: 'Identifiant unique de la transition (format UUID)',
     importance: 'low',
     group: 'technique',
-    ignored: true,
+    ignored: false,
   })
   id: string;
 
@@ -42,7 +43,7 @@ export class Transition extends BaseEntity {
     description: 'Identifiant de l\'étape de départ',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   fromStageId: string;
 
@@ -56,7 +57,7 @@ export class Transition extends BaseEntity {
     description: 'Identifiant de l\'étape d\'arrivée',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   toStageId: string;
 
@@ -93,7 +94,7 @@ export class Transition extends BaseEntity {
     description: 'Condition JavaScript à évaluer pour autoriser la transition',
     importance: 'low',
     group: 'règles',
-    ignored: true,
+    ignored: false,
   })
   condition: string | null;
 
@@ -109,7 +110,7 @@ export class Transition extends BaseEntity {
     description: 'Identifiant du modèle de procédure parent',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   templateId: string | null;
 

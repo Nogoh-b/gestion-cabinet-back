@@ -57,7 +57,7 @@ export class FactureService extends BaseServiceV1<Facture> {
   }
 
   async createFacture(createDto: CreateFactureDto): Promise<Facture> {
-    console.log('Création de la facture avec les données suivantes :', createDto);
+    console.log('Création de la facture avec les données suivantes  :', createDto);
     // Calcul automatique des montants si nécessaire
     if (!createDto.montantTVA) {
       createDto.montantTVA = Number(createDto.montantHT) * (Number(createDto.tauxTVA) / 100);

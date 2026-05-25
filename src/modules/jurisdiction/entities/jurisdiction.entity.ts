@@ -1,17 +1,16 @@
 // jurisdiction.entity.ts
 import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany,
-  ManyToOne,
-  JoinColumn
+    Entity,
+    PrimaryGeneratedColumn,
+    Column, OneToMany,
+    ManyToOne,
+    JoinColumn
 } from 'typeorm';
 import { Expose } from 'class-transformer';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
+
 
 export enum JurisdictionLevel {
   MUNICIPAL = 'municipal',
@@ -36,7 +35,7 @@ export enum JurisdictionType {
   icon: '⚖️',
   category: 'judiciaire'
 })
-export class Jurisdiction {
+export class Jurisdiction  extends BaseEntity{
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -228,13 +227,7 @@ export class Jurisdiction {
     judge_name?: string;
   };
 
-  @CreateDateColumn()
-  @Expose()
-  created_at: Date;
-
-  @UpdateDateColumn()
-  @Expose()
-  updated_at: Date;
+ 
 
   @Column({ nullable: true })
   @Expose()

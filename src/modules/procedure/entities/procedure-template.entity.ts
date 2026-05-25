@@ -11,6 +11,7 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   description: 'Modèles de procédure définissant les étapes, transitions et cycles pour différents types de procédures juridiques',
   icon: '📋',
   category: 'procedure',
+  ignored: false,
 })
 export class ProcedureTemplate extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')

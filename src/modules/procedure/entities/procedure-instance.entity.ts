@@ -29,7 +29,8 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   label: 'Instances de procédure',
   description: 'Instance d\'exécution d\'un modèle de procédure. C\'est le cœur du workflow : une instance représente le suivi concret d\'un dossier à travers ses étapes et sous-étapes, avec l\'état d\'avancement réel.',
   icon: '⚙️',
-  category: 'procedure'
+  category: 'procedure',
+  ignored: false,
 })
 export class ProcedureInstance {
   @PrimaryGeneratedColumn('uuid')
