@@ -86,7 +86,8 @@ export class AiDatabaseService implements OnModuleInit {
     SELECT * FROM dossiers WHERE reference = 'ABC123' LIMIT 50;
     \`\`\`
 
-    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
+    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL et parsable. la requete doit être conforme au schéma fourni et respecter les règles énoncées.`;
+   ;
         
     this.schemaLoaded = true;
     return this.cachedSystemPrompt
@@ -1311,7 +1312,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
   this.llm = new ChatOpenAI({
     model: 'deepseek-chat',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
-    maxTokens: 4000,           // ✅ Augmenté pour les plans d'écriture JSON complexes
+    maxTokens: 10000,           // ✅ 10000 pour éviter la troncature des réponses JSON complexes
     apiKey: process.env.DEEPSEEK_API_KEY,
     configuration: {
       baseURL: 'https://api.deepseek.com/v1',

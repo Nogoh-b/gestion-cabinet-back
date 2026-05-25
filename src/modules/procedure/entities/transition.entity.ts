@@ -40,7 +40,7 @@ export class Transition extends BaseEntity {
   @Column({ name: 'fromStageId' })
   @BusinessColumn({
     label: 'Étape source',
-    description: 'Identifiant de l\'étape de départ',
+    description: 'Identifiant de l\'étape de départ. L\'étape source et destination doivent être différentes',
     importance: 'high',
     group: 'relation',
     ignored: false,
@@ -54,7 +54,7 @@ export class Transition extends BaseEntity {
   @Column({ name: 'toStageId' })
   @BusinessColumn({
     label: 'Étape destination',
-    description: 'Identifiant de l\'étape d\'arrivée',
+    description: 'Identifiant de l\'étape d\'arrivée. L\'étape source et destination doivent être différentes',
     importance: 'high',
     group: 'relation',
     ignored: false,

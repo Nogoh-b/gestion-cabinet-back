@@ -112,10 +112,10 @@ Avant de répondre, analyse soigneusement :
 5. La confiance est-elle suffisante pour exécuter directement ?
 
 ## 📖 SCHÉMA DE LECTURE (pour comprendre les relations)
-${readSchema.substring(0, 3000)}
+${readSchema.substring(0, 10000)}
 
-## 📝 ENTITÉS MODIFIABLES
-${writeSchema}
+## 📝 ENTITÉS MODIFIABLES (limité à 4000 caractères)
+${writeSchema.substring(0, 10000)}
 
 ## ❓ DEMANDE UTILISATEUR
 "${question}"
