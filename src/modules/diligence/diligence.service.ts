@@ -119,17 +119,17 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       status: DiligenceStatus.DRAFT,
       // sub_stage_id: (subStage as any)?.id,
       sub_stage_visit_id: subStageId,
-      stageVisit_id: procedureInstance.currentVisit?.id,
+      stageVisit_id: procedureInstance?.currentVisit?.id,
       procedure_instance_id: procedureInstance?.id
     });
 
       // Récupérer l'étape courante
-    const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
+    // const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
     
-    // Lier la diligence à l'étape (Many-to-One)
-    if (currentStep) {
-      await this.stepsService.syncActionWithStep('diligence', diligence.id, currentStep.id);
-    }
+    // // Lier la diligence à l'étape (Many-to-One)
+    // if (currentStep) {
+    //   await this.stepsService.syncActionWithStep('diligence', diligence.id, currentStep.id);
+    // }
     
 
     return plainToInstance(DiligenceResponseDto,await this.repository.save(diligence));

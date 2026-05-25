@@ -57,6 +57,7 @@ export class FactureService extends BaseServiceV1<Facture> {
   }
 
   async createFacture(createDto: CreateFactureDto): Promise<Facture> {
+    console.log('Création de la facture avec les données suivantes :', createDto);
     // Calcul automatique des montants si nécessaire
     if (!createDto.montantTVA) {
       createDto.montantTVA = Number(createDto.montantHT) * (Number(createDto.tauxTVA) / 100);
@@ -83,11 +84,11 @@ export class FactureService extends BaseServiceV1<Facture> {
     let subStageId 
     if (procedureInstance && procedureInstance.currentVisit) {
       // Option: prendre la première sous-étape obligatoire non complétée
-      const currentVisit = procedureInstance.currentVisit;
-      const completedSubStages = procedureInstance.completedSubStages || [];
-      subStageId = currentVisit.currentSubStageVisitId
+      const currentVisit = procedureInstance?.currentVisit;
+      const completedSubStages = procedureInstance?.completedSubStages || [];
+      subStageId = currentVisit?.currentSubStageVisitId
             
-      console.log('SubStage trouvé pour la diligence :', (subStageId));
+      console.log('SubStage trouvé pour la facture :', (subStageId));
       if (!subStageId) {
         throw new ConflictException(
           `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentVisit.id}`
@@ -108,16 +109,15 @@ export class FactureService extends BaseServiceV1<Facture> {
       sub_stage_visit_id: procedureInstance.currentVisit?.currentSubStageVisitId,
       procedure_instance_id: procedureInstance?.id
     });
-    console.log('fffffffffff ' ,facture.dossier.id, ' ',dossierId)
 
     const fac = await this.repository.save(facture);
 
-    const currentStep = await this.stepsService.getCurrentStep(createDto.dossierId);
+    // const currentStep = await this.stepsService.getCurrentStep(createDto.dossierId);
     
-    // Lier la facture à l'étape (Many-to-One)
-    if (currentStep) {
-      await this.stepsService.syncActionWithStep('facture', fac.id, currentStep.id);
-    }
+    // // Lier la facture à l'étape (Many-to-One)
+    // if (currentStep) {
+    //   await this.stepsService.syncActionWithStep('facture', fac.id, currentStep.id);
+    // }
     
  
     return fac

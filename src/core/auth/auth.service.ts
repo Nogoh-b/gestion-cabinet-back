@@ -1,6 +1,5 @@
 // src/modules/auth/auth.service.ts
 import * as bcrypt from 'bcrypt';
-import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
 import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
@@ -108,9 +107,10 @@ export class AuthService {
     const permissionObjects = roleCode
       ? await this.usersService.getPermissionsByRoleCode(roleCode)
       : await this.usersService.getUserPermissions(userId);
+      const user = await this.usersService.findOne(userId);
     const permissions = (permissionObjects ?? []).map((p: any) => p.code);
     console.log(`[getFreshProfile] userId=${userId} role=${roleCode} → ${permissions.length} permissions`);
-    return { permissions };
+    return { ...user, permissions };
   }
 
   async login(data: any) {
@@ -153,7 +153,7 @@ export class AuthService {
 
     // Écraser user.role (position de l'Employee = "avocat") avec le rôle RBAC réel
     // (User.role = "admin"|"secretaire"|…) pour que le frontend n'affiche pas
-    // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile.
+    // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile. 
     const userWithRole = role ? { ...user, role } : user;
 
     return {

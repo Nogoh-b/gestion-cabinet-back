@@ -102,11 +102,11 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     let subStageId 
     if (procedureInstance && procedureInstance.currentVisit) {
       // Option: prendre la première sous-étape obligatoire non complétée
-      const currentVisit = procedureInstance.currentVisit;
-      const completedSubStages = procedureInstance.completedSubStages || [];
-      subStageId = currentVisit.currentSubStageVisitId
+      const currentVisit = procedureInstance?.currentVisit;
+      const completedSubStages = procedureInstance?.completedSubStages || [];
+      subStageId = currentVisit?.currentSubStageVisitId
             
-      console.log('SubStage trouvé pour la diligence :', (subStageId));
+      console.log('SubStage trouvé pour l\'audience :', (subStageId));
       if (!subStageId) {
         throw new ConflictException(
           `Aucune sous étape en trouvé pour le dossier`
@@ -148,9 +148,9 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
   
     // Lier l'audience à l'étape (Many-to-One)
-    if (currentStep) {
-      await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id); 
-    }
+    // if (currentStep) {
+    //   await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id); 
+    // }
     return await this.findOneV1(aud.id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
   }
 
