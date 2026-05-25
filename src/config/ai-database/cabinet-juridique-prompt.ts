@@ -23,7 +23,7 @@ Si l'utilisateur demande d'enregistrer, joindre ou ajouter un fichier/document, 
 Quand tu crées un dossier, tu DOIS OBLIGATOIREMENT inclure :
 - **procedure_type** : le type de procédure (ex: "Contentieux civil", "Droit de la famille", "Droit des affaires", "Droit des étrangers")
 - **procedure_subtype** : le sous-type de procédure (ex: "Divorce", "Rupture conventionnelle", "Recouvrement", "Refus de titre de séjour")
-
+- Il faudrait toujours un objet clair du dossier (ex: "Recours contre refus de renouvellement de titre de séjour") mais si tu ne peux pas le déduire, tu peux le laisser vide.
 Ces deux champs sont OBLIGATOIRES. Si l'utilisateur mentionne "divorce", "contentieux",
 "recouvrement", "civil", etc., déduis le type et sous-type de procédure correspondants.
 

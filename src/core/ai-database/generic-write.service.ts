@@ -42,6 +42,8 @@ export class GenericWriteService {
     const createdEntities = new Map<string, any>();
     // tableName → dernière entité créée dans ce plan (pour auto-injection des FKs)
     const latestByEntity = new Map<string, any>();
+    // Suivi des entités créées par les handlers (hors transaction) pour cleanup en cas d'échec
+    const handlerCreations: Array<{ entity: string; entityId: string }> = [];
 
     try {
       for (let i = 0; i < writePlan.operations.length; i++) {
@@ -73,6 +75,13 @@ export class GenericWriteService {
 
         results.push(result);
 
+        // Mémoriser l'entité créée par un handler pour cleanup si la transaction échoue
+        // (les handlers utilisent repo.save() qui bypassait la transaction avant le fix,
+        // et même avec le nouveau système transactionnel, on garde cette sauvegarde)
+        if (result.entityId && result.data && this.registry.getHandler(operation.entity)) {
+          handlerCreations.push({ entity: operation.entity, entityId: result.entityId as string });
+        }
+
         // Mémoriser l'entité créée pour les opérations suivantes
         if (result.entityId && result.data) {
           // Par tempId (résolution {{tempId.field}})
@@ -99,7 +108,13 @@ export class GenericWriteService {
     } catch (error) {
       if (writePlan.transaction) {
         await queryRunner.rollbackTransaction();
-        this.logger.error(`❌ Transaction annulée: ${error.message}`);
+        this.logger.error(`❌ Transaction annulée: ${(error as Error).message}`);
+      }
+
+      // ── Nettoyage des entités créées par les handlers (au cas où elles auraient
+      //     bypassé la transaction). On supprime en ordre inverse pour respecter les FK.
+      if (handlerCreations.length > 0) {
+        await this.cleanupHandlerEntities(handlerCreations);
       }
 
       // ── Ambiguïté : enrichir avec l'index et re-lancer SANS encapsuler
@@ -112,7 +127,7 @@ export class GenericWriteService {
         throw error; // re-throw tel quel — pas BadRequestException
       }
 
-      throw new BadRequestException(`Échec du plan d'écriture: ${error.message}`);
+      throw new BadRequestException(`Échec du plan d'écriture: ${(error as Error).message}`);
     } finally {
       await queryRunner.release();
     }
@@ -151,6 +166,8 @@ export class GenericWriteService {
           minScore: operation.resolveConfig.minScore,
           ambiguityGap: operation.resolveConfig.ambiguityGap,
         } : undefined,
+        // Propager le queryRunner pour que les handlers participent à la transaction
+        queryRunner,
       };
 
       // Le handler gère validation + résolution des dépendances + persistance
@@ -330,23 +347,18 @@ export class GenericWriteService {
       const joinColumns = relation.joinColumns;
       if (!joinColumns || joinColumns.length === 0) continue;
 
-      const fkColumn = joinColumns[0].databaseName;     // ex: 'dossier_id'
-      const propName = joinColumns[0].propertyName ?? fkColumn; // ex: 'dossier_id'
+      const fkColumn = joinColumns[0].databaseName;     // ex: 'fromStageId'
+      const propName = joinColumns[0].propertyName ?? fkColumn; // ex: 'fromStageId'
+      const alias = relation.propertyName;               // ex: 'fromStage' (nom de la relation ManyToOne)
       if (!fkColumn) continue;
 
-      // Ne pas écraser si la FK est déjà un vrai ID (numérique ou UUID).
-      // On ignore délibérément les textes-alias (ex: dossier: "Karima Bensalem")
-      // afin d'injecter le vrai ID du plan, qui prendra ensuite la priorité dans
-      // resolveDependencies (via le check isAlreadyId).
-      const isRealId = (v: any) =>
-        v !== undefined && v !== null && (
-          typeof v === 'number' ||
-          (typeof v === 'string' && (
-            /^\d+$/.test(v) ||
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
-          ))
-        );
-      if (isRealId(enriched[fkColumn]) || isRealId(enriched[propName])) continue;
+      // Ne pas écraser si la FK est déjà renseignée (ID numérique/UUID OU alias texte).
+      // Un alias texte (ex: fromStage: "INITIATION") signifie que le LLM l'a fourni
+      // explicitement → ce sera résolu par resolveDependencies dans le handler.
+      // Sans ce check, si 2 FK référencent la même table (ex: fromStage + toStage → stages),
+      // les deux recevraient le même ID auto-injecté, court-circuitant la résolution.
+      const hasValue = (v: any) => v !== undefined && v !== null && v !== '';
+      if (hasValue(enriched[fkColumn]) || hasValue(enriched[propName]) || hasValue(enriched[alias])) continue;
 
       const referencedTable = relation.inverseEntityMetadata.tableName;
       const latestEntity = latestByEntity.get(referencedTable);
@@ -438,5 +450,41 @@ export class GenericWriteService {
       safe[key] = value;
     }
     return safe;
+  }
+
+  /**
+   * Nettoie les entités créées par les handlers en cas d'échec du plan.
+   * Les handlers peuvent avoir bypassé la transaction (via repo.save()),
+   * donc leurs créations persistent malgré le rollback.
+   * On supprime en ordre inverse pour respecter les contraintes FK.
+   */
+  private async cleanupHandlerEntities(
+    creations: Array<{ entity: string; entityId: string }>,
+  ): Promise<void> {
+    if (creations.length === 0) return;
+
+    const cleanupRunner = this.dataSource.createQueryRunner();
+    await cleanupRunner.connect();
+
+    try {
+      // Parcourir en ordre inverse (dernier créé → premier supprimé)
+      for (let i = creations.length - 1; i >= 0; i--) {
+        const { entity, entityId } = creations[i];
+        try {
+          const meta = this.dataSource.entityMetadatas.find(m => m.tableName === entity);
+          if (!meta) {
+            this.logger.warn(`⚠️  Nettoyage: table inconnue "${entity}" — ignoré`);
+            continue;
+          }
+          await cleanupRunner.manager.delete(meta.target, entityId);
+          this.logger.log(`🧹 Nettoyage: ${entity} ID ${entityId} supprimé`);
+        } catch (err) {
+          // Si la suppression échoue (FK, déjà supprimé, etc.), on continue
+          this.logger.warn(`⚠️  Nettoyage: échec suppression ${entity} ${entityId}: ${(err as Error).message}`);
+        }
+      }
+    } finally {
+      await cleanupRunner.release();
+    }
   }
 }

@@ -83,7 +83,9 @@ export class ProcedureInstanceWriteHandler extends BaseWriteHandler {
     };
 
     const record = this.instanceRepo.create(data);
-    const saved = await this.instanceRepo.save(record) as unknown as ProcedureInstance;
+    const saved = this.currentQueryRunner
+      ? await this.currentQueryRunner.manager.save(record) as unknown as ProcedureInstance
+      : await this.instanceRepo.save(record) as unknown as ProcedureInstance;
 
     return {
       success: true,

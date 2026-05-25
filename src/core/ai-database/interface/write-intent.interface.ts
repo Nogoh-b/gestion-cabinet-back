@@ -22,6 +22,12 @@ export interface WriteIntent {
     minScore?: number;
     ambiguityGap?: number;
   };
+  /**
+   * QueryRunner optionnel pour participer à une transaction.
+   * Si fourni, le handler utilisera queryRunner.manager.save() au lieu de repo.save()
+   * pour que les opérations du handler soient atomiques avec le reste du plan.
+   */
+  queryRunner?: import('typeorm').QueryRunner;
 }
 
 export interface IntentDetectionResult {

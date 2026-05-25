@@ -104,6 +104,8 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
   protected readonly logger: Logger;
   protected readonly repo: Repository<any>;
   protected readonly entityMeta: EntityMetadata;
+  /** QueryRunner transactionnel optionnel (injecté par GenericWriteService via WriteIntent) */
+  protected currentQueryRunner: import('typeorm').QueryRunner | null = null;
 
   /**
    * Renvoie true si la valeur ressemble à un ID (numérique entier ou UUID),
@@ -479,6 +481,9 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
   // ─── EXÉCUTION ──────────────────────────────────────────────────────────────
 
   async execute(intent: WriteIntent, userId: string): Promise<WriteResult> {
+    // Stocker le queryRunner pour que doInsert/doUpdate puissent participer à la transaction
+    this.currentQueryRunner = intent.queryRunner ?? null;
+    
     // 1. Résoudre les dépendances (noms → IDs) avec création automatique
     const createdEntities = new Map<string, any>();
 
@@ -571,9 +576,11 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       };
     }
 
-    // 4. Créer
+    // 4. Créer (avec transaction si disponible)
     const record = this.repo.create({ ...safeFields, created_by: userId });
-    const saved = await this.repo.save(record);
+    const saved = this.currentQueryRunner
+      ? await this.currentQueryRunner.manager.save(record)
+      : await this.repo.save(record);
 
     const label = this.schemaMetadata.getTableLabel(this.entityName);
     return {

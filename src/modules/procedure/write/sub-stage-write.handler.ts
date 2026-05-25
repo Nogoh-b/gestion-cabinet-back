@@ -95,7 +95,9 @@ export class SubStageWriteHandler extends BaseWriteHandler {
     };
 
     const record = this.subStageRepo.create(data);
-    const saved = await this.subStageRepo.save(record) as unknown as SubStage;
+    const saved = this.currentQueryRunner
+      ? await this.currentQueryRunner.manager.save(record) as unknown as SubStage
+      : await this.subStageRepo.save(record) as unknown as SubStage;
 
     return {
       success: true,
