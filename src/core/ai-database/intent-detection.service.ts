@@ -114,8 +114,8 @@ Avant de répondre, analyse soigneusement :
 ## 📖 SCHÉMA DE LECTURE (pour comprendre les relations)
 ${readSchema.substring(0, 10000)}
 
-## 📝 ENTITÉS MODIFIABLES (limité à 4000 caractères)
-${writeSchema.substring(0, 10000)}
+## 📝 ENTITÉS MODIFIABLES
+${writeSchema}
 
 ## ❓ DEMANDE UTILISATEUR
 "${question}"

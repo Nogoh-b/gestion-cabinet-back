@@ -4,7 +4,7 @@
  */
 export const NEVER_AUTO_CREATE_ENTITIES: string[] = [
   // Identité/sécurité
-  'employee', 'employees',
+  // 'employee', 'employees',
   // Données de référence : doivent exister en base
   'procedure_types', 'procedure_type',
   'jurisdictions', 'jurisdiction',

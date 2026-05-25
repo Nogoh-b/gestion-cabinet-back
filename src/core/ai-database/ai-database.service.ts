@@ -1312,7 +1312,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
   this.llm = new ChatOpenAI({
     model: 'deepseek-chat',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
-    maxTokens: 10000,           // ✅ 10000 pour éviter la troncature des réponses JSON complexes
+    maxTokens: 50000,           // ✅ 50000 pour éviter la troncature des réponses JSON complexes
     apiKey: process.env.DEEPSEEK_API_KEY,
     configuration: {
       baseURL: 'https://api.deepseek.com/v1',
