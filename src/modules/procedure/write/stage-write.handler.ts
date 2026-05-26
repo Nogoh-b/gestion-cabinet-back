@@ -96,9 +96,7 @@ export class StageWriteHandler extends BaseWriteHandler {
     };
 
     const record = this.stageRepo.create(data);
-    const saved = this.currentQueryRunner
-      ? await this.currentQueryRunner.manager.save(record) as unknown as Stage
-      : await this.stageRepo.save(record) as unknown as Stage;
+    const saved = await this.stageRepo.save(record) as unknown as Stage;
 
     return {
       success: true,

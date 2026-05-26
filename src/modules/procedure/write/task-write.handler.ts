@@ -72,9 +72,7 @@ export class TaskWriteHandler extends BaseWriteHandler {
     };
 
     const record = this.taskRepo.create(data);
-    const saved = this.currentQueryRunner
-      ? await this.currentQueryRunner.manager.save(record) as unknown as Task
-      : await this.taskRepo.save(record) as unknown as Task;
+    const saved = await this.taskRepo.save(record) as unknown as Task;
 
     return {
       success: true,

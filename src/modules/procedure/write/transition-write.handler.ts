@@ -152,9 +152,7 @@ export class TransitionWriteHandler extends BaseWriteHandler {
     };
 
     const record = this.transitionRepo.create(data);
-    const saved = this.currentQueryRunner
-      ? await this.currentQueryRunner.manager.save(record) as unknown as Transition
-      : await this.transitionRepo.save(record) as unknown as Transition;
+    const saved = await this.transitionRepo.save(record) as unknown as Transition;
 
     return {
       success: true,

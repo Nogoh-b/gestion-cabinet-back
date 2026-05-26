@@ -80,9 +80,7 @@ export class ProcedureTemplateWriteHandler extends BaseWriteHandler {
     };
 
     const record = this.templateRepo.create(data);
-    const saved = this.currentQueryRunner
-      ? await this.currentQueryRunner.manager.save(record) as unknown as ProcedureTemplate
-      : await this.templateRepo.save(record) as unknown as ProcedureTemplate;
+    const saved = await this.templateRepo.save(record) as unknown as ProcedureTemplate;
 
     return {
       success: true,

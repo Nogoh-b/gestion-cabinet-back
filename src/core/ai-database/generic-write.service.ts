@@ -153,22 +153,24 @@ export class GenericWriteService {
       );
 
             // Construire un WriteIntent à partir de l'opération courante
-      const intent: WriteIntent = {
-        operation: operation.operation,
-        entity:    operation.entity,
-        entityId:  operation.entityId,
-        fields:    resolvedFields,
-        confidence: 1,
-        humanReadable: operation.humanReadable ?? '',
-        // Propager la config de résolution si présente
-        resolveConfig: operation.resolveConfig ? {
-          mode: operation.resolveConfig.mode,
-          minScore: operation.resolveConfig.minScore,
-          ambiguityGap: operation.resolveConfig.ambiguityGap,
-        } : undefined,
-        // Propager le queryRunner pour que les handlers participent à la transaction
-        queryRunner,
-      };
+            // Note: on ne propage PAS le queryRunner aux handlers pour éviter les
+            // locks transactionnels longs (Lock wait timeout). Les handlers écrivent
+            // via this.repo.save() (auto-commit immédiat). En cas d'échec du plan,
+            // cleanupHandlerEntities() nettoie les éventuelles données orphelines.
+            const intent: WriteIntent = {
+              operation: operation.operation,
+              entity:    operation.entity,
+              entityId:  operation.entityId,
+              fields:    resolvedFields,
+              confidence: 1,
+              humanReadable: operation.humanReadable ?? '',
+              // Propager la config de résolution si présente
+              resolveConfig: operation.resolveConfig ? {
+                mode: operation.resolveConfig.mode,
+                minScore: operation.resolveConfig.minScore,
+                ambiguityGap: operation.resolveConfig.ambiguityGap,
+              } : undefined,
+            };
 
       // Le handler gère validation + résolution des dépendances + persistance
       // Il délègue lui-même au service métier (ex: DossiersService.create)
