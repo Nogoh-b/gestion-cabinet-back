@@ -37,7 +37,7 @@ export enum EmployeeStatus {
 @Entity('employee')
 @BusinessTable({
   label: 'Collaborateurs',
-  description: 'Gestion des avocats et collaborateurs du cabinet. Un collaborateur peut être avocat, secrétaire, assistant, stagiaire, huissier ou personnel administratif. Chaque collaborateur est lié à un utilisateur pour l\'authentification.',
+  description: '⚠️ LECTURE ET MODIFICATION UNIQUEMENT — la création est impossible via l\'IA (nécessite un compte User avec authentification). Modification autorisée : position, spécialisation, taux horaire, disponibilité, statut.',
   icon: '👥',
   category: 'ressources'
 })

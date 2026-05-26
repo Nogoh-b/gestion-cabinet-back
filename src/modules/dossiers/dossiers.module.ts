@@ -1,8 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-
-
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { User } from '../iam/user/entities/user.entity';
@@ -21,13 +19,9 @@ import { ProcedureModule } from '../procedure/procedure.module';
 import { DossierWriteHandler } from './dossier-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
-
-
-
-
-
-
-
+import { DossierSubscriber } from './subscribers/dossier.subscriber';
+import { Conversation } from '../chat/entities/conversation.entity';
+import { Employee } from '../agencies/employee/entities/employee.entity';
 
 @Module({
   imports: [
@@ -39,11 +33,11 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     forwardRef(() => FactureModule),
     forwardRef(() => ProcedureModule),
 
-    TypeOrmModule.forFeature([Dossier,  User, ProcedureType, Step]),
-    AiDatabaseModule
+    TypeOrmModule.forFeature([Dossier, User, ProcedureType, Step, Conversation, Employee]),
+    AiDatabaseModule,
   ],
   controllers: [DossiersController],
-  providers: [DossiersService,DossierStatsService, StepsService, DossierWriteHandler ],
+  providers: [DossiersService, DossierStatsService, StepsService, DossierWriteHandler, DossierSubscriber],
   exports: [DossiersService, DossierStatsService, TypeOrmModule, StepsService],
 })
 export class DossiersModule {

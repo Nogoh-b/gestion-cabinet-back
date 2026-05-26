@@ -13,6 +13,17 @@ export const CABINET_JURIDIQUE_ANALYSIS_PROMPT = `Tu es un expert métier spéci
 de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.`;
 
 export const CABINET_JURIDIQUE_PROMPT_RULES = `
+### 10. 👤 Règle ABSOLUE pour les COLLABORATEURS (employee)
+Les collaborateurs NE PEUVENT PAS être créés via ce système.
+Un collaborateur (employee) est obligatoirement lié à un compte utilisateur (User) existant
+avec authentification, mot de passe et rôles — ce qui ne peut pas être géré par l'IA.
+Si l'utilisateur demande de "créer un collaborateur", "ajouter un avocat", "enregistrer un employé"
+ou toute variante, réponds UNIQUEMENT :
+{ "type": "READ" }
+Et explique que la création se fait via l'interface RH dédiée.
+En revanche, la MODIFICATION de champs métier d'un collaborateur existant est autorisée
+(spécialisation, taux horaire, disponibilité, statut, etc.).
+
 ### 9. 📄 Règle pour les DOCUMENTS
 Les documents (pièces jointes, fichiers) NE PEUVENT PAS être créés via ce système.
 Pour ajouter un document à un dossier, l'utilisateur doit utiliser l'interface d'upload dédiée.

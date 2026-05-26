@@ -19,21 +19,21 @@ export class CabinetService implements OnModuleInit {
    * Toutes les données existantes ont déjà tenant_id = 1 grâce au default TypeORM.
    */
   async onModuleInit() {
-    const exists = await this.repo.findOne({ where: { id: 1 } });
-    if (!exists) {
-      const cabinet = this.repo.create({
-        id:   1,
-        code: this.generateCode(),
-        name: process.env.DEFAULT_CABINET_NAME ?? 'Cabinet Principal',
-        status: 'active',
-        plan:   'pro',
-        routing_mode: 'path',
-      });
-      await this.repo.save(cabinet);
-      this.logger.log(`✅ Cabinet par défaut créé — code: "${cabinet.code}"`);
-    } else {
-      this.logger.log(`✅ Cabinet par défaut existant — id=1 code="${exists.code}"`);
-    }
+    // const exists = await this.repo.findOne({ where: { id: 1 } });
+    // if (!exists) {
+    //   const cabinet = this.repo.create({
+    //     id:   1,
+    //     code: this.generateCode(),
+    //     name: process.env.DEFAULT_CABINET_NAME ?? 'Cabinet Principal',
+    //     status: 'active',
+    //     plan:   'pro',
+    //     routing_mode: 'path',
+    //   });
+    //   await this.repo.save(cabinet);
+    //   this.logger.log(`✅ Cabinet par défaut créé — code: "${cabinet.code}"`);
+    // } else {
+    //   this.logger.log(`✅ Cabinet par défaut existant — id=1 code="${exists.code}"`);
+    // }
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────

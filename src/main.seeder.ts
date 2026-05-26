@@ -1,16 +1,21 @@
 import { DataSource } from 'typeorm';
 import { runSeeders } from 'typeorm-extension';
 
+
+
 import AudienceTypeSeeder from './modules/audience-type/seeder/audience-type.seeder';
+import ChatGroupConversationSeeder from './modules/chat/seeder/chat-group-conversation.seeder';
+import TypeCustomerSeeder from './modules/customer/type-customer/seeder/type-customer.seeder';
 import DocumentCategorySeeder from './modules/document-category/seeder/document-category.seeder';
+import DocumentTypeSeeder from './modules/documents/document-type/seeder/document-type.seeder';
+import LocationSeeder from './modules/geography/seeder/location.seeder';
 import InvoiceTypeSeeder from './modules/invoice-type/seeder/invoice-type.seeder';
 import JurisdictionSeeder from './modules/jurisdiction/seeder/jurisdiction.seeder';
-import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
+import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-template.seeder';
 import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
-import DocumentTypeSeeder from './modules/documents/document-type/seeder/document-type.seeder';
-import TypeCustomerSeeder from './modules/customer/type-customer/seeder/type-customer.seeder';
-import LocationSeeder from './modules/geography/seeder/location.seeder';
-import ChatGroupConversationSeeder from './modules/chat/seeder/chat-group-conversation.seeder';
+import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
+
+
 // src/database/seeders/index.ts
 
 
@@ -30,7 +35,7 @@ export async function seedDatabase(dataSource: DataSource) {
         InvoiceTypeSeeder,
         ProcedureTypeSeeder,
         ProcedureSubtypeSeeder,
-        // ProcedureTemplateSeeder
+        ProcedureTemplateSeeder
       ]
     });
 

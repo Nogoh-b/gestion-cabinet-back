@@ -49,7 +49,7 @@ import { AudienceTypeModule } from './modules/audience-type/audience-type.module
 import { InvoiceTypeModule } from './modules/invoice-type/invoice-type.module';
 import { DiligenceModule } from './modules/diligence/diligence.module';
 import { FindingModule } from './modules/finding/finding.module';
-import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
+import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
 import { join } from 'path';
 import { StatsModule } from './modules/stats/stats.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';

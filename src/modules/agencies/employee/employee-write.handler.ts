@@ -1,14 +1,15 @@
 // src/modules/agencies/employee/employee-write.handler.ts
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
-import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
-import { User } from 'src/modules/iam/user/entities/user.entity';
-import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
+import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
+import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
-import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import { DataSource, Repository } from 'typeorm';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { Employee } from './entities/employee.entity';
+
 
 /**
  * Handler custom pour les collaborateurs (Employee).
