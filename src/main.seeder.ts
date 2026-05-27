@@ -11,9 +11,11 @@ import DocumentTypeSeeder from './modules/documents/document-type/seeder/documen
 import LocationSeeder from './modules/geography/seeder/location.seeder';
 import InvoiceTypeSeeder from './modules/invoice-type/seeder/invoice-type.seeder';
 import JurisdictionSeeder from './modules/jurisdiction/seeder/jurisdiction.seeder';
+import DefaultProcedureTemplateSeeder from './modules/procedure/seeder/default-procedure-template.seeder';
 import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-template.seeder';
 import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
 import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
+
 
 
 // src/database/seeders/index.ts
@@ -35,6 +37,7 @@ export async function seedDatabase(dataSource: DataSource) {
         InvoiceTypeSeeder,
         ProcedureTypeSeeder,
         ProcedureSubtypeSeeder,
+        DefaultProcedureTemplateSeeder,
         ProcedureTemplateSeeder
       ]
     });

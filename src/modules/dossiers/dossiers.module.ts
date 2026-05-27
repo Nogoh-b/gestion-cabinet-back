@@ -5,6 +5,7 @@ import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { User } from '../iam/user/entities/user.entity';
 import { ProcedureType } from '../procedures/entities/procedure.entity';
+import { ProcedureTemplate } from '../procedure/entities/procedure-template.entity';
 import { DossiersController } from './dossiers.controller';
 import { DossiersService } from './dossiers.service';
 import { Dossier } from './entities/dossier.entity';
@@ -33,7 +34,7 @@ import { Employee } from '../agencies/employee/entities/employee.entity';
     forwardRef(() => FactureModule),
     forwardRef(() => ProcedureModule),
 
-    TypeOrmModule.forFeature([Dossier, User, ProcedureType, Step, Conversation, Employee]),
+    TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee]),
     AiDatabaseModule,
   ],
   controllers: [DossiersController],

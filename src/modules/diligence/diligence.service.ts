@@ -7,6 +7,7 @@ import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef 
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
 import { FindingsService } from '../finding/finding.service';
@@ -17,6 +18,7 @@ import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 import { Diligence, DiligenceStatus, DiligencePriority } from './entities/diligence.entity';
+
 
 
 
@@ -117,6 +119,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       stageVisit_id: stageVisitId,
       procedure_instance_id: procedureInstance?.id,
     });
+    console.log('Diligence créée avec les données suivantes:', diligence);
 
       // Récupérer l'étape courante
     // const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);

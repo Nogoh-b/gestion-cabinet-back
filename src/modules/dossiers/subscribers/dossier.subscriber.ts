@@ -5,6 +5,8 @@ import { Dossier } from '../entities/dossier.entity';
 import { Conversation } from 'src/modules/chat/entities/conversation.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
+import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
+import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/default-procedure-template.seeder';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { BaseEntitySubscriber } from 'src/core/subscribers/base-entity.subscriber';
 
@@ -36,6 +38,8 @@ export class DossierSubscriber extends BaseEntitySubscriber<Dossier> {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(ProcedureType)
     private readonly procedureTypeRepo: Repository<ProcedureType>,
+    @InjectRepository(ProcedureTemplate)
+    private readonly procedureTemplateRepo: Repository<ProcedureTemplate>,
     private readonly procedureInstanceService: ProcedureInstanceService,
   ) {
     super(dataSource);
@@ -110,16 +114,34 @@ export class DossierSubscriber extends BaseEntitySubscriber<Dossier> {
       relations: ['procedure_template'],
     });
 
-    if (!subtype?.procedure_template_id) {
+    // Résolution du templateId : propre au sous-type, ou template générique par défaut
+    let templateId: string | undefined = subtype?.procedure_template_id ?? undefined;
+
+    if (!templateId) {
       this.logger.warn(
-        `Dossier ${entity.dossier_number} : le sous-type #${entity.procedure_subtype_id} n'a pas de template — aucune instance créée`,
+        `Dossier ${entity.dossier_number} : le sous-type #${entity.procedure_subtype_id} ` +
+        `n'a pas de template — utilisation du template générique par défaut`,
       );
-      return;
+
+      const defaultTemplate = await this.procedureTemplateRepo.findOne({
+        where: { name: DEFAULT_PROCEDURE_TEMPLATE_NAME },
+      });
+
+      if (!defaultTemplate) {
+        this.logger.error(
+          `Template par défaut "${DEFAULT_PROCEDURE_TEMPLATE_NAME}" introuvable en base — ` +
+          `aucune ProcedureInstance créée pour le dossier ${entity.dossier_number}. ` +
+          `Exécutez le seeder DefaultProcedureTemplateSeeder.`,
+        );
+        return;
+      }
+
+      templateId = defaultTemplate.id;
     }
 
     const instance = await this.procedureInstanceService.create(
       {
-        templateId: subtype.procedure_template_id,
+        templateId,
         title: `Procédure - ${entity.dossier_number}`,
       },
       'system',
