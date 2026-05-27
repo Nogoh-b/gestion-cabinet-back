@@ -1,5 +1,5 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsArray, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 
@@ -102,4 +102,14 @@ export class CreateAudienceDto {
   @IsDateString()
   @IsOptional()
   postponed_to?: Date;
+
+  @ApiProperty({ required: false, description: 'ID UUID de la visite d\'étape courante (optionnel — priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  stage_visit_id?: string;
+
+  @ApiProperty({ required: false, description: 'ID UUID de la visite de sous-étape courante (optionnel — priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  sub_stage_visit_id?: string;
 }

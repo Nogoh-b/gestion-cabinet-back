@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
-import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
@@ -91,29 +91,22 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // Vérifier si l'audience est compatible avec le statut actuel
     this.validateAudienceForDossierStatus(dossier, dto.type as AudienceType1);
     let procedureInstance: ProcedureInstance | any = null;
-    let subStage: SubStage | null = null;
-    let stage: Stage | null = null;
 
     if (dossier.procedureInstance) {
-      // Sinon, prendre l'instance active du dossier
-      procedureInstance =  dossier.procedureInstance;
+      procedureInstance = dossier.procedureInstance;
     }
 
-    let subStageId 
-    if (procedureInstance && procedureInstance.currentVisit) {
-      // Option: prendre la première sous-étape obligatoire non complétée
-      const currentVisit = procedureInstance?.currentVisit;
-      const completedSubStages = procedureInstance?.completedSubStages || [];
-      subStageId = currentVisit?.currentSubStageVisitId
-            
-      console.log('SubStage trouvé pour l\'audience :', (subStageId));
-      if (!subStageId) {
-        throw new ConflictException(
-          `Aucune sous étape en trouvé pour le dossier`
-          // `Aucune sous étape en courstrouvé pour le l'etape ${currentVisit.id}`
-        );
-      }
-      // stage = currentVisit;
+    // ── Résolution du sub_stage_visit_id et stage_visit_id ───────────────────
+    // Priorité : valeurs explicitement passées dans le DTO
+    // Fallback  : détection automatique depuis la visite courante (sans lever d’exception)
+    let subStageVisitId: string | undefined = dto.sub_stage_visit_id;
+    let stageVisitId: string | undefined = dto.stage_visit_id;
+
+    if (!subStageVisitId && procedureInstance?.currentVisit) {
+      subStageVisitId = procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
+    }
+    if (!stageVisitId && procedureInstance?.currentVisit) {
+      stageVisitId = procedureInstance.currentVisit.id ?? undefined;
     }
 
     // 🧠 Conversion explicite pour éviter l’erreur
@@ -127,12 +120,12 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       notes: dto.notes,
       postponed_to: dto.postponed_to,
       audience_type,
-      type: AudienceType1.HEARING ,//audience_type.code as unknown as AudienceType1,
+      type: AudienceType1.HEARING,
       dossier,
       status: AudienceStatus.SCHEDULED,
       procedure_instance_id: procedureInstance?.id,
-      stageVisit_id: procedureInstance.currentVisit?.id,
-      sub_stage_visit_id: procedureInstance.currentVisit?.currentSubStageVisitId,
+      stageVisit_id: stageVisitId,
+      sub_stage_visit_id: subStageVisitId,
     });
 
     if (dto?.document_ids) {

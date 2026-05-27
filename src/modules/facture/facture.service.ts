@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { Between, Repository } from 'typeorm';
-import { ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -72,42 +72,36 @@ export class FactureService extends BaseServiceV1<Facture> {
     const client_id  =  dossier_.client.id
     const numero  = await    this.generateFacNumber()
     let procedureInstance: ProcedureInstance | any = null;
-    let subStage: SubStage | null = null;
-    let stage: Stage | null = null;
-
     if (dossier_.procedureInstance) {
       // Sinon, prendre l'instance active du dossier
       procedureInstance =  dossier_.procedureInstance;
     }
 
-    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
-    let subStageId 
-    if (procedureInstance && procedureInstance.currentVisit) {
-      // Option: prendre la première sous-étape obligatoire non complétée
-      const currentVisit = procedureInstance?.currentVisit;
-      const completedSubStages = procedureInstance?.completedSubStages || [];
-      subStageId = currentVisit?.currentSubStageVisitId
-            
-      console.log('SubStage trouvé pour la facture :', (subStageId));
-      if (!subStageId) {
-        throw new ConflictException(
-          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentVisit.id}`
-        );
-      }
-      // stage = currentVisit;
+    // ── Résolution du sub_stage_visit_id et stage_visit_id ───────────────────
+    // Priorité : valeurs explicitement passées dans le DTO
+    // Fallback  : détection automatique depuis la visite courante (sans lever d'exception)
+    let subStageVisitId: string | undefined = createDto.sub_stage_visit_id;
+    let stageVisitId: string | undefined = createDto.stage_visit_id;
+
+    if (!subStageVisitId && procedureInstance?.currentVisit) {
+      subStageVisitId = procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
     }
-    const facture =this.repository.create({
+    if (!stageVisitId && procedureInstance?.currentVisit) {
+      stageVisitId = procedureInstance.currentVisit.id ?? undefined;
+    }
+
+    const facture = this.repository.create({
       ...rest,
       dossier,
       numero,
       client,
-      invoice_type : {id: createDto.type} as InvoiceType,
+      invoice_type: { id: createDto.type } as InvoiceType,
       client_id,
       montantPaye: 0,
       resteAPayer: createDto.montantTTC,
-      stageVisit_id: procedureInstance.currentVisit?.id,
-      sub_stage_visit_id: procedureInstance.currentVisit?.currentSubStageVisitId,
-      procedure_instance_id: procedureInstance?.id
+      stageVisit_id: stageVisitId,
+      sub_stage_visit_id: subStageVisitId,
+      procedure_instance_id: procedureInstance?.id,
     });
 
     const fac = await this.repository.save(facture);

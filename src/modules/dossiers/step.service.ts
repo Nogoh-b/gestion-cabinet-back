@@ -1,30 +1,30 @@
 // services/steps.service.ts
 import { plainToInstance } from 'class-transformer';
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+
+
+
 import { Repository } from 'typeorm';
+
+
+
 import { Injectable, NotFoundException } from '@nestjs/common';
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
+import { AudienceStatus } from '../audiences/entities/audience.entity';
+import { DiligencesService } from '../diligence/diligence.service';
+import { DiligenceStatus } from '../diligence/entities/diligence.entity';
+import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
+import { DocumentCustomer, DocumentCustomerStatus } from '../documents/document-customer/entities/document-customer.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
+import { StatutFacture } from '../facture/dto/create-facture.dto';
+import { FactureService } from '../facture/facture.service';
 import { User } from '../iam/user/entities/user.entity';
 import { UsersService } from '../iam/user/user.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { DossiersService } from '../dossiers/dossiers.service';
-import { AudiencesService } from '../audiences/audiences.service';
-import { Step, StepStatus, StepType } from './entities/step.entity';
 import { CreateStepDto } from './dto/create-step.dto';
-import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
-import { DiligencesService } from '../diligence/diligence.service';
-import { DocumentCustomer, DocumentCustomerStatus } from '../documents/document-customer/entities/document-customer.entity';
-import { StatutFacture } from '../facture/dto/create-facture.dto';
-import { AudienceStatus } from '../audiences/entities/audience.entity';
-import { DiligenceStatus } from '../diligence/entities/diligence.entity';
-import { FactureService } from '../facture/facture.service';
+import { Step, StepStatus, StepType } from './entities/step.entity';
+
 
 
 
@@ -39,10 +39,8 @@ export class StepsService extends BaseServiceV1<Step> {
     private stepsRepository: Repository<Step>,
     @InjectRepository(Dossier)
     private dossierRepository: Repository<Dossier>,
-    private dossierService: DossiersService,
     private factureService: FactureService,
     private documentService: DocumentCustomerService,
-    private audiencesService: AudiencesService,
     private diligencesService: DiligencesService,
     private usersService: UsersService,
     protected readonly paginationService: PaginationServiceV1,

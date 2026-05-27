@@ -7,6 +7,7 @@ import {
   IsDateString,
   IsEnum,
   IsNumber,
+  IsUUID,
   Min
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -113,4 +114,14 @@ export class CreateDiligenceDto {
   @IsString()
   @IsOptional()
   client_reference?: string;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite d\'étape courante (optionnel — prend la priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  stage_visit_id?: string;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite de sous-étape courante (optionnel — prend la priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  sub_stage_visit_id?: string;
 }

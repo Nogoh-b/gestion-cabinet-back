@@ -1,21 +1,26 @@
 import { plainToInstance } from 'class-transformer';
+import * as fs from 'fs';
+import * as path from 'path';
+import { join } from 'path';
 import { UPLOAD_DOCS_PATH, UPLOAD_PATH } from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { FilesUtil, UploadedFileInfo } from 'src/core/shared/utils/file.util';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { CabinetService } from 'src/modules/cabinet/cabinet.service';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentCategoryService } from 'src/modules/document-category/document-category.service';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { DossiersService } from 'src/modules/dossiers/dossiers.service';
+
 import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
+import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { Repository } from 'typeorm';
-import * as fs from 'fs';
-import * as path from 'path';
-
 import {
   BadRequestException,
   forwardRef,
@@ -24,17 +29,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
-import { join } from 'path';
-import { StepsService } from 'src/modules/dossiers/step.service';
-import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
-import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
-import { CabinetService } from 'src/modules/cabinet/cabinet.service';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+
+
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(
@@ -54,8 +57,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     private dossierService: DossiersService,
     protected readonly paginationService: PaginationServiceV1,
     private documentCategoryService: DocumentCategoryService,
-    @Inject(forwardRef(() => StepsService))
-    private stepsService: StepsService,
+    // @Inject(forwardRef(() => StepsService))
+    // private stepsService: StepsService,
     private cabinetService: CabinetService,
   ) {
         super(docRepository, paginationService);console.log(forwardRef)
@@ -114,7 +117,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
         'dossier',
         'uploaded_by',
         'previous_version',
-        'subStages'
+        'stageVisits',
+        'sub_stage_visits'
       ],
   
     };
@@ -305,6 +309,9 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       // if (createDto.status === DocumentCustomerStatus.ACCEPTED) {
       //   await this.stepsService.updateStepMetrics(document.id);
       // }
+      if(createDto.sub_stage_visit_id){
+        await this.linkDocumentsToSubStage([document.id], createDto.sub_stage_visit_id);
+      }
 
       return plainToInstance(DocumentCustomerResponseDto, document);
 

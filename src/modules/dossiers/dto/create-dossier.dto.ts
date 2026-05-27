@@ -39,6 +39,51 @@ export class LinkDocumentsToSubStageDto {
   dossier_id: string;
 }
 
+/**
+ * DTO pour uploader un document directement depuis le contexte d'un dossier
+ * et le lier automatiquement à une visite de sous-étape.
+ *
+ * - dossier_id et customer_id sont résolus côté serveur via l'ID du dossier passé en URL.
+ * - sub_stage_visit_id / stage_visit_id sont optionnels :
+ *   si absents, le document n'est pas lié à un contexte de procédure spécifique.
+ */
+export class UploadDocumentToSubStageDto {
+  @ApiProperty({ description: 'ID du type de document', example: 1 })
+  @IsNumber()
+  @IsNotEmpty()
+  document_type_id: number;
+
+  @ApiProperty({ description: 'ID de la catégorie du document', example: 2 })
+  @IsNumber()
+  @IsNotEmpty()
+  category_id: number;
+
+  @ApiPropertyOptional({ description: 'Nom du document' })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'Description du document' })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Document confidentiel' })
+  @IsBoolean()
+  @IsOptional()
+  is_confidential?: boolean;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite de sous-étape à laquelle lier le document' })
+  @IsUUID()
+  @IsOptional()
+  sub_stage_visit_id?: string;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite d\'étape à laquelle lier le document' })
+  @IsUUID()
+  @IsOptional()
+  stage_visit_id?: string;
+}
+
 
 
 export class CreateDossierDto {
