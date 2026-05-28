@@ -4,6 +4,7 @@ import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 
+
 @Entity('procedure_types')
 export class ProcedureType extends BaseEntity {
   @PrimaryGeneratedColumn()
@@ -49,7 +50,7 @@ export class ProcedureType extends BaseEntity {
 
   @ManyToOne(() => ProcedureTemplate)
   @JoinColumn({ name: 'procedure_template_id' })
-  procedure_template: ProcedureTemplate;
+  procedure_template?: ProcedureTemplate | null ;
 
   @OneToMany(() => ProcedureType, (type) => type.parent)
   subtypes: ProcedureType[];  

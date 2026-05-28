@@ -26,6 +26,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { ChatService } from '../chat/services/chat/chat.service';
@@ -33,7 +35,6 @@ import { Customer } from '../customer/customer/entities/customer.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { User } from '../iam/user/entities/user.entity';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
-import { CreateProcedureInstanceDto } from '../procedure/dto/create-procedure-instance.dto';
 import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { StageVisit } from '../procedure/entities/stage-visit.entity';
@@ -47,6 +48,8 @@ import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { DangerLevel, Dossier, DossierOutcome } from './entities/dossier.entity';
 import { Step, StepStatus, StepType } from './entities/step.entity';
+
+
 
 
 
@@ -217,11 +220,11 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       createDossierDto.dossier_number = dossierNumber
     } 
 
-    let procedureInstanceDTO = new CreateProcedureInstanceDto();
-    procedureInstanceDTO.templateId = procedureSubtype.procedure_template?.id || procedureType.procedure_template?.id;
-    procedureInstanceDTO.title = createDossierDto.dossier_number;
+    // let procedureInstanceDTO = new CreateProcedureInstanceDto();
+    // procedureInstanceDTO.templateId = procedureSubtype.procedure_template?.id || procedureType.procedure_template?.id;
+    // procedureInstanceDTO.title = createDossierDto.dossier_number;
 
-    const procedureInstance = await this.procedureInstanceService.create(procedureInstanceDTO, createdBy.id.toString())
+    // const procedureInstance = await this.procedureInstanceService.create(procedureInstanceDTO, createdBy.id.toString())
 
     const dossier = this.dossierRepository.create({
       ...createDossierDto,
@@ -232,7 +235,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       jurisdiction: {id : createDossierDto.jurisdiction ?? 1} as Jurisdiction,
       procedure_type: procedureType,
       procedure_subtype: procedureSubtype,
-      procedureInstance,
+      // procedureInstance,
       opening_date: createDossierDto.opening_date ? new Date(createDossierDto.opening_date) : new Date(),
       status: DossierStatus.OPEN,
     });
@@ -257,7 +260,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     console.log('Entity before save:', dossier);
     const savedDossier = await this.dossierRepository.save(dossier);
 
-    this.procedureInstanceService.update(procedureInstance.id , {data:{id: savedDossier.id}})
+    // this.procedureInstanceService.update(procedureInstance.id , {data:{id: savedDossier.id}})
     let mailDto = new CreateMailDto() 
     const dossierR = await this.mapToResponseDto(savedDossier);
     mailDto.templateName = "entities/dossier/dossier-created-creator"

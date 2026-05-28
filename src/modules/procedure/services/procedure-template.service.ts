@@ -1,16 +1,18 @@
 // services/procedure-template.service.ts
+import { Repository, DataSource, In } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+
+import { CreateProcedureTemplateDto } from '../dto/create-procedure-template.dto';
+import { UpdateProcedureTemplateDto } from '../dto/update-procedure-template.dto';
+import { Cycle } from '../entities/cycle.entity';
+import { TransitionType } from '../entities/enums/instance-status.enum';
 import { ProcedureTemplate } from '../entities/procedure-template.entity';
+import { StageConfig } from '../entities/stage-config.entity';
 import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
 import { Transition } from '../entities/transition.entity';
-import { Cycle } from '../entities/cycle.entity';
-import { StageConfig } from '../entities/stage-config.entity';
-import { CreateProcedureTemplateDto } from '../dto/create-procedure-template.dto';
-import { UpdateProcedureTemplateDto } from '../dto/update-procedure-template.dto';
-import { TransitionType } from '../entities/enums/instance-status.enum';
+
 
 @Injectable()
 export class ProcedureTemplateService {
@@ -752,6 +754,123 @@ private async updateTransitions(
     } catch (error) {
       console.error('Error toggling template active status:', error);
       throw new BadRequestException(`Failed to toggle template active status: ${error.message}`);
+    }
+  }
+
+  // ── Méthodes utilitaires pour la duplication de template ───────────────────
+
+  /**
+   * Cherche un template par son nom (unique).
+   * Utile pour le dédup dans les subscribers.
+   */
+  async findByName(
+    name: string,
+    relations?: string[],
+  ): Promise<ProcedureTemplate | null> {
+    return this.templateRepository.findOne({
+      where: { name },
+      relations: relations ?? [],
+    });
+  }
+
+  /**
+   * Duplique un template source (stages, sub-stages, transitions compris)
+   * avec un nouveau nom et une description optionnelle.
+   *
+   * Utilisé par ProcedureTypeSubscriber pour générer un template personnalisé
+   * à partir du template générique.
+   */
+  async duplicateTemplate(
+    source: ProcedureTemplate,
+    newName: string,
+    description?: string,
+  ): Promise<ProcedureTemplate> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // 1. Créer le nouveau template
+      const template = this.templateRepository.create({
+        name: newName,
+        description: description ?? source.description,
+        version: 1,
+        isActive: true,
+      });
+      await queryRunner.manager.save(template);
+
+      // Map ID temporaire (ancien stage ID) → ID réel (nouveau stage ID)
+      const stageIdMap = new Map<string, string>();
+
+      // 2. Copier les stages et sous-stages
+      const sourceStages = source.stages ?? [];
+      // Trier par ordre
+      sourceStages.sort((a, b) => a.order - b.order);
+
+      for (const sourceStage of sourceStages) {
+        const stage = this.stageRepository.create({
+          templateId: template.id,
+          order: sourceStage.order,
+          name: sourceStage.name,
+          description: sourceStage.description,
+          canBeSkipped: sourceStage.canBeSkipped,
+          canBeReentered: sourceStage.canBeReentered,
+        });
+        await queryRunner.manager.save(stage);
+        stageIdMap.set(sourceStage.id, stage.id);
+
+        // Copier les sous-stages
+        const sourceSubStages = sourceStage.subStages ?? [];
+        sourceSubStages.sort((a, b) => a.order - b.order);
+
+        for (const sourceSubStage of sourceSubStages) {
+          const subStage = this.subStageRepository.create({
+            stageId: stage.id,
+            order: sourceSubStage.order,
+            name: sourceSubStage.name,
+            description: sourceSubStage.description,
+            isMandatory: sourceSubStage.isMandatory,
+          });
+          await queryRunner.manager.save(subStage);
+        }
+      }
+
+      // 3. Copier les transitions
+      const sourceTransitions = (source as any).transitions ?? [];
+      for (const sourceTransition of sourceTransitions) {
+        const newFromStageId = stageIdMap.get(sourceTransition.fromStageId);
+        const newToStageId = stageIdMap.get(sourceTransition.toStageId);
+
+        if (!newFromStageId || !newToStageId) {
+          continue; // skip les transitions dont les stages n'existent plus
+        }
+
+        const transition = this.transitionRepository.create({
+          fromStageId: newFromStageId,
+          toStageId: newToStageId,
+          templateId: template.id,
+          type: sourceTransition.type ?? TransitionType.MANUAL,
+          label: sourceTransition.label ?? null,
+          condition: sourceTransition.condition ?? null,
+          isDefault: sourceTransition.isDefault ?? false,
+          requiresDecision: sourceTransition.requiresDecision ?? true,
+          requiresValidation: sourceTransition.requiresValidation ?? false,
+          triggerEvent: sourceTransition.triggerEvent ?? null,
+          triggerCondition: sourceTransition.triggerCondition ?? null,
+          onTransition: sourceTransition.onTransition ?? null,
+        });
+        await queryRunner.manager.save(transition);
+      }
+
+      await queryRunner.commitTransaction();
+      return this.findOne(template.id);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw new BadRequestException(
+        `Failed to duplicate template: ${error.message}`,
+      );
+    } finally {
+      await queryRunner.release();
     }
   }
 

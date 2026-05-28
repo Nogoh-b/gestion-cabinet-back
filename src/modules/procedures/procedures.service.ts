@@ -1,18 +1,28 @@
 // src/modules/procedures/procedures.service.ts
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { Repository, Like, FindOptionsWhere } from 'typeorm';
-import { ProcedureSearchDto } from './dto/procedure-search.dto';
-import { Dossier } from '../dossiers/entities/dossier.entity';
 import { plainToInstance } from 'class-transformer';
-import { InjectRepository } from '@nestjs/typeorm';
-import { ProcedureType } from './entities/procedure.entity';
-import { ProcedureTypeResponseDto } from './dto/procedure-type-response';
-import { CreateProcedureTypeDto } from './dto/create-procedure.dto';
-import { UpdateProcedureTypeDto } from './dto/update-procedure.dto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { ProcedureTemplateService } from '../procedure/services/procedure-template.service';
+import { Repository, Like, FindOptionsWhere } from 'typeorm';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+import { Dossier } from '../dossiers/entities/dossier.entity';
 import { ProcedureTemplate } from '../procedure/entities/procedure-template.entity';
+import { ProcedureTemplateService } from '../procedure/services/procedure-template.service';
+import { CreateProcedureTypeDto } from './dto/create-procedure.dto';
+import { ProcedureSearchDto } from './dto/procedure-search.dto';
+import { ProcedureTypeResponseDto } from './dto/procedure-type-response';
+import { UpdateProcedureTypeDto } from './dto/update-procedure.dto';
+import { ProcedureType } from './entities/procedure.entity';
+
+
+
+
+
 
 @Injectable()
 export class ProceduresService extends BaseServiceV1<ProcedureType> {
@@ -48,15 +58,15 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
     if(createProcedureTypeDto.parent_id)
       return this.createSubtype(createProcedureTypeDto.parent_id, createProcedureTypeDto)
     // Vérifier l'unicité du code
-    const existingCode = await this.procedureTypeRepository.findOne({
-      where: { code: createProcedureTypeDto.code }
+    const existingName = await this.procedureTypeRepository.findOne({
+      where: { name: createProcedureTypeDto.name }
     });
 
-    if (existingCode) {
-      throw new ConflictException('Un type de procédure avec ce code existe déjà');
+    if (existingName) {
+      throw new ConflictException('Un type de procédure avec ce nom existe déjà');
     }
 
-    let template : ProcedureTemplate; 
+    let template : ProcedureTemplate = new ProcedureTemplate(); 
     if(createProcedureTypeDto.procedure_template_id){
       template = await this.procedureTemplateService.findOne(createProcedureTypeDto.procedure_template_id);
       if(!template){
@@ -64,10 +74,10 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       }
     } else {
       // Créer automatiquement un template avec le même nom et description
-      template = await this.procedureTemplateService.create({
-        name: createProcedureTypeDto.name,
-        description: createProcedureTypeDto.description,
-      });
+      // template = await this.procedureTemplateService.create({
+      //   name: createProcedureTypeDto.name,
+      //   description: createProcedureTypeDto.description,
+      // });
     }
 
     const procedureType = this.procedureTypeRepository.create({
@@ -90,16 +100,16 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       throw new NotFoundException('Type de procédure parent non trouvé');
     }
 
-    // Vérifier l'unicité du code
-    const existingCode = await this.procedureTypeRepository.findOne({
-      where: { code: createProcedureTypeDto.code }
+    // Vérifier l'unicité du nom
+    const existingName = await this.procedureTypeRepository.findOne({
+      where: { name: createProcedureTypeDto.name }
     });
 
-    if (existingCode) {
-      throw new ConflictException('Un type de procédure avec ce code existe déjà');
+    if (existingName) {
+      throw new ConflictException('Un type de procédure avec ce nom existe déjà');
     }
 
-    let template : ProcedureTemplate; 
+    let template : ProcedureTemplate | null = null; 
     if(createProcedureTypeDto.procedure_template_id){
       template = await this.procedureTemplateService.findOne(createProcedureTypeDto.procedure_template_id);
       if(!template){
@@ -107,10 +117,10 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       }
     } else {
       // Créer automatiquement un template avec le même nom et description
-      template = await this.procedureTemplateService.create({
-        name: createProcedureTypeDto.name,
-        description: createProcedureTypeDto.description,
-      });
+      // template = await this.procedureTemplateService.create({
+      //   name: createProcedureTypeDto.name,
+      //   description: createProcedureTypeDto.description,
+      // });
     }
 
     const subtype = this.procedureTypeRepository.create({

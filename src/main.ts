@@ -1,8 +1,11 @@
 import * as dotenv from 'dotenv';
+import { DataSource } from 'typeorm';
 import { ExpressAdapter } from '@bull-board/express';
-import { NestFactory, Reflector } from '@nestjs/core';
-import { Transport } from '@nestjs/microservices';
+import { ClassSerializerInterceptor } from '@nestjs/common';
 
+import { NestFactory, Reflector } from '@nestjs/core';
+
+import { Transport } from '@nestjs/microservices';
 import { SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
@@ -10,8 +13,7 @@ import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
 import { RoleSeeder } from './core/auth/seeders/role.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
 import { seedDatabase } from './main.seeder';
-import { DataSource } from 'typeorm';
-import { ClassSerializerInterceptor } from '@nestjs/common';
+
 
 
 dotenv.config();
@@ -53,7 +55,7 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api-docs', app, document, {
       swaggerOptions: {
-        persistAuthorization: true,
+        persistAuthorization: true, 
         defaultModelsExpandDepth: -1,
       },
     });
