@@ -103,7 +103,8 @@ export class PlanQuotaService {
     };
 
     const max = limitMap[resource];
-    if (max !== null && max !== undefined && currentCount >= max) {
+    // -1 signifie illimité (plan Enterprise) → aucune vérification
+    if (max !== null && max !== undefined && max !== -1 && currentCount >= max) {
       throw new ForbiddenException(
         `Limite de ${labelMap[resource]} atteinte (${currentCount}/${max}). ` +
         `Veuillez mettre à niveau votre plan "${plan.name}" pour continuer.`,
@@ -118,13 +119,15 @@ export class PlanQuotaService {
     current: number,
     max: number | null,
   ): QuotaUsage {
-    const percentage = max ? Math.min(100, Math.round((current / max) * 100)) : 0;
+    const unlimited = max === null || max === -1;
+    const effectiveMax = unlimited ? -1 : max!;
+    const percentage = unlimited ? 0 : Math.min(100, Math.round((current / effectiveMax) * 100));
     return {
       resource,
       current,
-      max: max ?? -1, // -1 = illimité
+      max: effectiveMax, // -1 = illimité
       percentage,
-      exceeded: max !== null && current >= max,
+      exceeded: !unlimited && current >= effectiveMax,
     };
   }
 }
