@@ -2,9 +2,12 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Plan } from 'src/modules/plans/entities/plan.entity';
 
 export type CabinetStatus = 'active' | 'trial' | 'suspended';
 export type CabinetPlan   = 'starter' | 'pro' | 'enterprise';
@@ -29,8 +32,17 @@ export class Cabinet {
   @Column({ default: 'trial' })
   status: CabinetStatus;
 
+  /** Champ historique — conservé pour compatibilité. Utiliser activePlan pour les quotas. */
   @Column({ nullable: true })
   plan: CabinetPlan;
+
+  /** Référence vers l'entité Plan (quotas, tarification, IA). */
+  @Column({ nullable: true, name: 'plan_id' })
+  plan_id: number;
+
+  @ManyToOne(() => Plan, { nullable: true, eager: false })
+  @JoinColumn({ name: 'plan_id' })
+  activePlan: Plan;
 
   /** Mode de routing préféré pour ce cabinet */
   @Column({ default: 'path' })

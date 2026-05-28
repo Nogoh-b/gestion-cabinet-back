@@ -8,12 +8,14 @@ import {
   Delete,
   UseGuards,
   Query,
+  Request,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PlansService } from './plans.service';
+import { PlanQuotaService } from './plan-quota.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { PlanSearchDto } from './dto/plan-search.dto';
@@ -23,7 +25,10 @@ import { Plan } from './entities/plan.entity';
 @Controller('plans')
 @ApiBearerAuth()
 export class PlansController {
-  constructor(private readonly service: PlansService) {}
+  constructor(
+    private readonly service: PlansService,
+    private readonly quotaService: PlanQuotaService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -47,6 +52,34 @@ export class PlansController {
   @ApiOperation({ summary: 'Plans actifs (sans pagination)' })
   findActive() {
     return this.service.findActive();
+  }
+
+  /**
+   * GET /plans/quota/status
+   * Retourne l'état d'utilisation du plan du cabinet courant.
+   * Utilisé par le front pour afficher les barres de progression.
+   */
+  @Get('/quota/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'État d\'utilisation du plan du cabinet courant' })
+  async getMyQuotaStatus(@Request() req: any) {
+    const cabinetId: number = req.user?.tenantId;
+    return this.service.getQuotaStatus(cabinetId);
+  }
+
+  /**
+   * PATCH /plans/cabinet/:cabinetId/assign/:planId
+   * Assigne un plan à un cabinet (admin super).
+   */
+  @Patch('/cabinet/:cabinetId/assign/:planId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('manage_cabinets')
+  @ApiOperation({ summary: 'Assigner un plan à un cabinet' })
+  assignPlanToCabinet(
+    @Param('cabinetId') cabinetId: string,
+    @Param('planId') planId: string,
+  ) {
+    return this.service.assignPlanToCabinet(+cabinetId, +planId);
   }
 
   @Get(':id')

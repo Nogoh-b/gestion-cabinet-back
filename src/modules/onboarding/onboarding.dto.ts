@@ -33,4 +33,13 @@ export class OnboardingDto {
   @IsOptional()
   @IsString()
   routing_mode?: 'path' | 'subdomain';
+
+  /**
+   * Code du plan choisi lors de l'inscription.
+   * Si absent, le plan "starter" est appliqué par défaut.
+   */
+  @ApiProperty({ example: 'starter', default: 'starter', required: false })
+  @IsOptional()
+  @IsString()
+  plan_code?: string;
 }

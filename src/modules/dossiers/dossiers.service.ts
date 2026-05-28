@@ -29,6 +29,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 import { Employee } from '../agencies/employee/entities/employee.entity';
+import { PlanQuotaService } from '../plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { Customer } from '../customer/customer/entities/customer.entity';
@@ -83,8 +85,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     protected readonly chatService: ChatService,
     // protected readonly stepsService: StepsService,
     private procedureInstanceService: ProcedureInstanceService,
+    private readonly planQuotaService: PlanQuotaService,
     protected readonly emailsService?: MailService, // Optionnel
-    
 
   ) {
     super(dossierRepository, paginationService, emailsService);
@@ -181,7 +183,13 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 
 
   async create(createDossierDto: CreateDossierDto, createdBy: User): Promise<DossierResponseDto> {
-    // console.log(createDossierDto, createdBy);
+    // ── Vérification quota plan ────────────────────────────────────────────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      const currentCount = await this.dossierRepository.count();
+      await this.planQuotaService.checkLimit(tenantId, 'dossiers', currentCount);
+    }
+
     // Validation de la paire type/sous-type (R8)
     const isValidPair = await this.validateProcedureTypeSubtype(
       createDossierDto.procedure_type_id,

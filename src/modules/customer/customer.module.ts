@@ -16,6 +16,7 @@ import { TypeCustomerStatsService } from './type-customer/type-customer-stats.se
 import { CustomerWriteHandler } from './customer/customer-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     GeographyModule,
     TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType]),
     AiDatabaseModule,
+    PlansModule,
   ],
   controllers: [TypeCustomersController, CustomerController],
   providers: [
