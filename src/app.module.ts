@@ -60,6 +60,7 @@ import { ReferralModule } from './modules/referral/referral.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { PlansModule } from './modules/plans/plans.module';
 
 
 
@@ -191,6 +192,7 @@ dotenv.config();
     PayrollModule,
     SupplierModule,
     SettingsModule,
+    PlansModule,
   ],
   controllers: [AppController],
   providers: [AppService],
