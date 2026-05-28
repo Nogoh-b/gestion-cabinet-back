@@ -15,6 +15,7 @@ import DefaultProcedureTemplateSeeder from './modules/procedure/seeder/default-p
 import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-template.seeder';
 import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
 import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
+import PlanSeeder from './modules/plans/seeder/plan.seeder';
 
 
 
@@ -38,7 +39,8 @@ export async function seedDatabase(dataSource: DataSource) {
         ProcedureTypeSeeder,
         ProcedureSubtypeSeeder,
         DefaultProcedureTemplateSeeder,
-        ProcedureTemplateSeeder
+        ProcedureTemplateSeeder,
+        PlanSeeder,
       ]
     });
 
@@ -51,6 +53,7 @@ export async function seedDatabase(dataSource: DataSource) {
     console.log('   - Types de procédure');
     console.log('   - Sous-types de procédure');
     console.log('   - Template de procédure avec stages, transitions et cycles');
+    console.log('   - Plans d\'abonnement (Starter, Pro, Business, Enterprise)');
     
   } catch (error) {
     console.error('❌ Erreur lors de l\'exécution des seeders:', error);
