@@ -90,6 +90,16 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       }
     }
 
+    // La juridiction d'une audience est déduite du dossier par défaut.
+    if (!resolved.jurisdiction_id && resolved.dossier_id) {
+      const dossierJurisdictionId = await this.fetchDossierJurisdictionId(resolved.dossier_id);
+      if (dossierJurisdictionId) {
+        this.logger.log(`⚖️ jurisdiction déduite du dossier ${resolved.dossier_id} → ${dossierJurisdictionId}`);
+        resolved.jurisdiction_id = dossierJurisdictionId;
+      }
+    }
+
+    // En dernier recours seulement (dossier sans juridiction), on propose un choix.
     if (!resolved.jurisdiction_id) {
       const jurisdictions = await this.fetchTopJurisdictions();
       if (jurisdictions.length > 0) {
@@ -99,6 +109,22 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     }
 
     return resolved;
+  }
+
+  /** Récupère la juridiction rattachée au dossier (jurisdiction_id) */
+  private async fetchDossierJurisdictionId(dossierId: any): Promise<number | null> {
+    try {
+      const row = await this.dataSource
+        .getRepository('dossiers')
+        .createQueryBuilder('d')
+        .select('d.jurisdiction_id', 'jurisdiction_id')
+        .where('d.id = :id', { id: dossierId })
+        .getRawOne();
+      return row?.jurisdiction_id ?? null;
+    } catch (err) {
+      this.logger.error(`Erreur récupération juridiction du dossier: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   /** Récupère les 10 premières juridictions actives (ordre alphabétique) */

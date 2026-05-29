@@ -11,7 +11,16 @@ import { Repository } from 'typeorm';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Plan } from './entities/plan.entity';
 
-export type QuotaResource = 'employees' | 'clients' | 'dossiers';
+export type QuotaResource =
+  | 'employees'
+  | 'clients'
+  | 'dossiers'
+  | 'branches'
+  | 'audiences'
+  | 'payslips'
+  | 'expenses';
+
+export type PlanModule = 'payroll' | 'expenses' | 'invoicing' | 'reporting' | 'ai';
 
 export interface QuotaUsage {
   resource: QuotaResource;
@@ -90,16 +99,24 @@ export class PlanQuotaService {
     const plan = await this.getCabinetPlan(cabinetId);
     if (!plan) return; // aucun plan → pas de limite
 
-    const limitMap: Record<QuotaResource, number> = {
+    const limitMap: Record<QuotaResource, number | null> = {
       employees: plan.max_employees,
       clients:   plan.max_clients,
       dossiers:  plan.max_dossiers,
+      branches:  plan.max_branches,
+      audiences: plan.max_audiences,
+      payslips:  plan.max_payslips_per_month,
+      expenses:  plan.max_expenses_per_month,
     };
 
     const labelMap: Record<QuotaResource, string> = {
       employees: 'collaborateurs',
       clients:   'clients',
       dossiers:  'dossiers',
+      branches:  'agences',
+      audiences: 'audiences',
+      payslips:  'bulletins de paie',
+      expenses:  'dépenses',
     };
 
     const max = limitMap[resource];
@@ -108,6 +125,40 @@ export class PlanQuotaService {
       throw new ForbiddenException(
         `Limite de ${labelMap[resource]} atteinte (${currentCount}/${max}). ` +
         `Veuillez mettre à niveau votre plan "${plan.name}" pour continuer.`,
+      );
+    }
+  }
+
+  // ── Vérifie qu'un module est activé sur le plan du cabinet ───────────────
+
+  async isModuleEnabled(cabinetId: number, module: PlanModule): Promise<boolean> {
+    const plan = await this.getCabinetPlan(cabinetId);
+    if (!plan) return true; // aucun plan → on n'empêche rien
+
+    const map: Record<PlanModule, boolean> = {
+      payroll:   !!plan.payroll_enabled,
+      expenses:  !!plan.expenses_enabled,
+      invoicing: !!plan.invoicing_enabled,
+      reporting: !!plan.reporting_enabled,
+      ai:        !!plan.ai_enabled,
+    };
+    return map[module];
+  }
+
+  async checkModuleEnabled(cabinetId: number, module: PlanModule): Promise<void> {
+    const enabled = await this.isModuleEnabled(cabinetId, module);
+    if (!enabled) {
+      const plan = await this.getCabinetPlan(cabinetId);
+      const labelMap: Record<PlanModule, string> = {
+        payroll:   'la paie',
+        expenses:  'la gestion des dépenses',
+        invoicing: 'la facturation',
+        reporting: 'les rapports avancés',
+        ai:        "l'assistant IA",
+      };
+      throw new ForbiddenException(
+        `Le module "${labelMap[module]}" n'est pas inclus dans votre plan ` +
+        `"${plan?.name ?? ''}". Veuillez mettre à niveau votre abonnement.`,
       );
     }
   }

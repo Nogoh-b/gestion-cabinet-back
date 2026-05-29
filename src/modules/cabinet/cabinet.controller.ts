@@ -54,6 +54,25 @@ export class CabinetController {
     return this.service.create(body);
   }
 
+  @Patch(':id/branding')
+  @RequirePermissions('manage_cabinets')
+  @ApiOperation({ summary: 'Mettre à jour le branding du cabinet (logo, couleur, coordonnées e-mail)' })
+  updateBranding(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: {
+      logo_url?: string;
+      brand_color?: string;
+      contact_email?: string;
+      contact_phone?: string;
+      address?: string;
+      website?: string;
+      email_footer?: string;
+      name?: string;
+    },
+  ): Promise<Cabinet> {
+    return this.service.updateBranding(id, body);
+  }
+
   @Patch(':id/activate')
   @RequirePermissions('manage_cabinets')
   activate(@Param('id', ParseIntPipe) id: number): Promise<Cabinet> {

@@ -42,8 +42,8 @@ export class OnboardingService {
     const existing = await this.userRepo.findOne({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Un compte avec cet email existe déjà');
 
-    // ── 1. Résoudre le plan choisi (ou 'starter' par défaut) ─────────────
-    const planCode = dto.plan_code ?? 'starter';
+    // ── 1. Résoudre le plan choisi (ou 'free' par défaut) ─────────────
+    const planCode = dto.plan_code ?? 'free';
     const selectedPlan = await this.plansService.findByCode(planCode)
       .catch(() => null);
 

@@ -61,6 +61,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { MailTemplateModule } from './modules/mail-template/mail-template.module';
 
 
 
@@ -193,6 +194,7 @@ dotenv.config();
     SupplierModule,
     SettingsModule,
     PlansModule,
+    MailTemplateModule,
   ],
   controllers: [AppController],
   providers: [AppService],

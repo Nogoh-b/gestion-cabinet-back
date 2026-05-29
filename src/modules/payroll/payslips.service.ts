@@ -7,6 +7,8 @@ import { Payslip } from './entities/payslip.entity';
 import { CreatePayslipDto } from './dto/create-payslip.dto';
 import { PayrollPeriod } from './entities/payroll-period.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
+import { PlanQuotaService } from '../plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 @Injectable()
 export class PayslipsService extends BaseServiceV1<Payslip> {
@@ -18,11 +20,26 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     private employeeRepo: Repository<Employee>,
     @InjectRepository(PayrollPeriod)
     private periodRepo: Repository<PayrollPeriod>,
+    private readonly planQuotaService: PlanQuotaService,
   ) {
     super(repository, paginationService);
   }
 
   async create(dto: CreatePayslipDto): Promise<Payslip> {
+    // ── Le module Paie doit être inclus dans le plan + quota mensuel ─────────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      await this.planQuotaService.checkModuleEnabled(tenantId, 'payroll');
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const currentCount = await this.repository
+        .createQueryBuilder('p')
+        .where('p.created_at >= :start', { start: monthStart })
+        .getCount();
+      await this.planQuotaService.checkLimit(tenantId, 'payslips', currentCount);
+    }
+
     const entity = this.repository.create(dto);
     const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
     if (!employee) throw new NotFoundException('Employé non trouvé');

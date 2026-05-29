@@ -5,6 +5,7 @@ import {
   IsUUID, IsOptional,
   IsDateString,
   IsNumber,
+  IsInt,
   Min,
   Max,
   IsArray,
@@ -97,13 +98,13 @@ export class CreateDossierDto {
   object: string;
 
   @ApiProperty({
-    description: 'Juridiction compétente',
-    example: 'Tribunal de Commerce de Paris',
-    maxLength: 255
+    description: 'ID de la juridiction compétente (legacy, utiliser jurisdiction_id)',
+    example: 3,
+    required: false,
   })
-  @IsNotEmpty()
-  @IsString()
-  jurisdiction: number;
+  @IsOptional()
+  @IsInt()
+  jurisdiction?: number;
 
   @ApiProperty({
     description: 'Niveau de danger',
@@ -116,13 +117,13 @@ export class CreateDossierDto {
   danger_level?: DangerLevel;
 
   @ApiProperty({
-    description: 'Juridiction compétente',
-    example: 'Tribunal de Commerce de Paris',
-    maxLength: 255
+    description: 'ID de la juridiction compétente',
+    example: 3,
+    required: false,
   })
-  @IsNotEmpty()
-  @IsString()
-  jurisdiction_id: number;
+  @IsOptional()
+  @IsInt()
+  jurisdiction_id?: number;
 
   @ApiProperty({
     description: 'ID du client',
