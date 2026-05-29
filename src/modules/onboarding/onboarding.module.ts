@@ -7,6 +7,7 @@ import { User }                from '../iam/user/entities/user.entity';
 import { UserRole }            from '../iam/user-role/entities/user-role.entity';
 import { UserRoleAssignment }  from '../iam/user-role-assignment/entities/user-role-assignment.entity';
 import { CabinetModule }       from '../cabinet/cabinet.module';
+import { PlansModule }         from '../plans/plans.module';
 import { OnboardingService }   from './onboarding.service';
 import { OnboardingController } from './onboarding.controller';
 
@@ -21,6 +22,7 @@ import { OnboardingController } from './onboarding.controller';
       UserRoleAssignment,
     ]),
     CabinetModule,  // pour CabinetService (generateCode, getCabinetUrl)
+    PlansModule,    // pour PlansService (findByCode, assignPlanToCabinet)
   ],
   controllers: [OnboardingController],
   providers:   [OnboardingService],

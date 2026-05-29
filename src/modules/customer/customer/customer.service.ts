@@ -49,6 +49,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
+import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
@@ -92,6 +94,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
     protected readonly oldPaginationService: PaginationService,
     protected readonly paginationServiceV1: PaginationServiceV1,
     private readonly dataSource: DataSource,
+    private readonly planQuotaService: PlanQuotaService,
   ) {
     console.log(forwardRef);
     super(customerRepository, paginationServiceV1);
@@ -148,11 +151,14 @@ export class CustomersService extends BaseServiceV1<Customer> {
   return isNaN(num) ? null : num;
 }
   async create(createCustomerDto: CreateCustomerDto): Promise<any> {
+    // ── Vérification quota plan ────────────────────────────────────────────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      const currentCount = await this.customerRepository.count();
+      await this.planQuotaService.checkLimit(tenantId, 'clients', currentCount);
+    }
+
     return await this.dataSource.transaction(async (manager) => {
-      // const customerRes = new CustomerResponseDto()
-      // customerRes.customer_code = GenCOde.generateCode(10)
-      // return customerRes
-      // const errors = await validateDto(CreateCustomerDto, createCustomerDto);
       console.log(createCustomerDto)
 
       // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });

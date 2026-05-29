@@ -23,6 +23,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { DossierSubscriber } from './subscribers/dossier.subscriber';
 import { Conversation } from '../chat/entities/conversation.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { Employee } from '../agencies/employee/entities/employee.entity';
 
     TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee]),
     AiDatabaseModule,
+    PlansModule,
   ],
   controllers: [DossiersController],
   providers: [DossiersService, DossierStatsService, StepsService, DossierWriteHandler, DossierSubscriber],

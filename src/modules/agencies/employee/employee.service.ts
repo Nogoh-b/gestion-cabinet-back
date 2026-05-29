@@ -22,6 +22,8 @@ import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
+import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 // import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
@@ -38,9 +40,9 @@ export class EmployeeService  extends BaseServiceV1<Employee> {
     // private mailerService: EmailService,
     private userService: UsersService,
     private mailService: MailService,
+    private readonly planQuotaService: PlanQuotaService,
     protected readonly paginationService: PaginationServiceV1,
   ) {
-
     super(employeeRepository, paginationService);
   }
 /**
@@ -94,6 +96,13 @@ async createEmployee(
   dto: CreateUserDto,
   is_strict = true,
 ): Promise<EmployeeResponseDto> {
+  // ── Vérification quota plan ────────────────────────────────────────────
+  const tenantId = getCurrentTenantId();
+  if (tenantId) {
+    const currentCount = await this.employeeRepository.count();
+    await this.planQuotaService.checkLimit(tenantId, 'employees', currentCount);
+  }
+
   // Vérification de la branche
   const branch = await this.branchRepository.findOne({
     where: { id: dto.branch_id, status: 1 },

@@ -15,6 +15,7 @@ import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-ro
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import { CabinetService } from '../cabinet/cabinet.service';
+import { PlansService } from '../plans/plans.service';
 import { OnboardingDto } from './onboarding.dto';
 import { JwtPayload } from 'src/core/auth/interfaces/jwt-payload.interface';
 
@@ -31,6 +32,7 @@ export class OnboardingService {
     @InjectRepository(UserRoleAssignment) private assignmentRepo: Repository<UserRoleAssignment>,
     private readonly tenantContext:  TenantContext,
     private readonly cabinetService: CabinetService,
+    private readonly plansService:   PlansService,
     private readonly jwtService:     JwtService,
     private readonly dataSource:     DataSource,
   ) {}
@@ -40,17 +42,23 @@ export class OnboardingService {
     const existing = await this.userRepo.findOne({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Un compte avec cet email existe déjà');
 
-    // ── 1. Créer le cabinet (pas encore de tenant context) ────────────────
+    // ── 1. Résoudre le plan choisi (ou 'starter' par défaut) ─────────────
+    const planCode = dto.plan_code ?? 'starter';
+    const selectedPlan = await this.plansService.findByCode(planCode)
+      .catch(() => null);
+
+    // ── 2. Créer le cabinet (pas encore de tenant context) ────────────────
     const cabinet = this.cabinetRepo.create({
       code:         this.cabinetService.generateCode(),
       name:         dto.cabinet_name.trim(),
       status:       'trial',
-      plan:         'starter',
+      plan:         planCode as any,
+      plan_id:      selectedPlan?.id ?? null,
       routing_mode: dto.routing_mode ?? 'path',
       trial_ends_at: this.trialEnd(30),
     });
     await this.cabinetRepo.save(cabinet);
-    this.logger.log(`[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}"`);
+    this.logger.log(`[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan?.id ?? 'none'}`);
 
     // ── 2. Tout le reste dans le contexte du nouveau tenant ───────────────
     try {
