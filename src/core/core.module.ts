@@ -4,31 +4,10 @@ import { Employee } from 'src/modules/agencies/employee/entities/employee.entity
 
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
-
-
-
-
-
-
 import { PermissionsService } from 'src/modules/iam/permission/permission.service';
-
-
-
-
-
 import { RolePermission } from 'src/modules/iam/role-permission/entities/role-permission.entity';
-
-
-
-
-
-
-
 import { RolePermissionService } from 'src/modules/iam/role-permission/role-permission.service';
-
-
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
-
 // import { swaggerConfig } from './config/swagger.config';
 import { UserRolesService } from 'src/modules/iam/user-role/user-role.service';
 
@@ -87,6 +66,7 @@ import { EmailService } from './shared/services/email/email.service copy';
 import { AuthToken } from './auth/entities/auth-token.entity';
 import { AuthTokenService } from './auth/auth-token.service';
 import { AiDatabaseModule } from './ai-database/ai-database.module';
+import { PlansModule } from 'src/modules/plans/plans.module';
 
 
 
@@ -162,7 +142,7 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     forwardRef(() => NotificationModule) ,// Pour éviter les dépendances circulaires
     // forwardRef(() => NotificationModule),
     // SeedersModule,
-    ScheduleModule.forRoot(), AiDatabaseModule,
+    ScheduleModule.forRoot(), AiDatabaseModule, PlansModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [

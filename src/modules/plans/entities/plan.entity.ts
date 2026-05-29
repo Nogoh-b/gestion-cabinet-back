@@ -40,7 +40,7 @@ export class Plan {
   ai_enabled: boolean;
 
   @Column({ type: 'int', nullable: true, name: 'ai_requests_per_month' })
-  ai_requests_per_month: number;
+  ai_requests_per_month: number | null;
 
   // ── Tarification ──────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ export class Plan {
   price_monthly: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, name: 'price_yearly' })
-  price_yearly: number;
+  price_yearly: number | null;
 
   // ── Fonctionnalités ───────────────────────────────────────────────────────
 

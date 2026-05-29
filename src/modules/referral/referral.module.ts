@@ -17,6 +17,7 @@ import { AgenciesModule } from '../agencies/agencies.module';
 import { FactureModule } from '../facture/facture.module';
 import { PaiementModule } from '../paiement/paiement.module';
 import { CustomerModule } from '../customer/customer.module';
+import { DossiersModule } from '../dossiers/dossiers.module';
 import { ReferrersService } from './referral.service';
 import { ReferrersController } from './referral.controller';
 import { DossierReferralWriteHandler } from './dossier-referral-write.handler';
@@ -32,6 +33,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     ]),
     AgenciesModule,
     CustomerModule,
+    DossiersModule,
     FactureModule,
     PaiementModule,
     AiDatabaseModule,

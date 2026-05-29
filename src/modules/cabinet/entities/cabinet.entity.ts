@@ -38,7 +38,7 @@ export class Cabinet {
 
   /** Référence vers l'entité Plan (quotas, tarification, IA). */
   @Column({ nullable: true, name: 'plan_id' })
-  plan_id: number;
+  plan_id: number | null;
 
   @ManyToOne(() => Plan, { nullable: true, eager: false })
   @JoinColumn({ name: 'plan_id' })
