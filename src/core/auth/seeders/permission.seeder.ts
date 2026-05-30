@@ -190,6 +190,14 @@ export class PermissionSeeder {
       { code: 'reimburse_expense_report',    description: 'Rembourser une note de frais' },
 
       // ===================================================================
+      // CABINET — MODÈLES PDF (PDF TEMPLATES)
+      // ===================================================================
+      { code: 'view_pdf_templates',      description: 'Voir les modèles PDF' },
+      { code: 'create_pdf_template',     description: 'Créer un modèle PDF' },
+      { code: 'edit_pdf_template',       description: 'Modifier un modèle PDF' },
+      { code: 'delete_pdf_template',     description: 'Supprimer un modèle PDF' },
+
+      // ===================================================================
       // SYSTÈME — Permissions spéciales (non modifiables)
       // ===================================================================
       { code: 'SUPER_ADMIN',    description: 'Accès total au système',        canChange: 0 },

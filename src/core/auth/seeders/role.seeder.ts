@@ -43,6 +43,8 @@ const ROLES_CONFIG: {
       'attach_document_to_diligence', 'add_diligence_note',
       // Utilisateurs & Administration
       'view_users', 'create_user', 'edit_user', 'delete_user', 'manage_roles', 'view_audit_logs', 'manage_settings',
+      // Modèles PDF
+      'view_pdf_templates', 'create_pdf_template', 'edit_pdf_template', 'delete_pdf_template',
       // Communications
       'view_messages', 'send_message', 'delete_message', 'view_all_messages',
       // Rapports

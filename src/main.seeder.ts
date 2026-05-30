@@ -16,6 +16,7 @@ import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-templa
 import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
 import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
 import PlanSeeder from './modules/plans/seeder/plan.seeder';
+import PdfTemplateSeeder from './modules/pdf-templates/seeder/pdf-template.seeder';
 
 
 
@@ -41,6 +42,7 @@ export async function seedDatabase(dataSource: DataSource) {
         DefaultProcedureTemplateSeeder,
         ProcedureTemplateSeeder,
         PlanSeeder,
+        PdfTemplateSeeder,
       ]
     });
 
