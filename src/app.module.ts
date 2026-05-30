@@ -61,7 +61,11 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { PlansModule } from './modules/plans/plans.module';
+<<<<<<< HEAD
 import { PdfTemplatesModule } from './modules/pdf-templates/pdf-templates.module';
+=======
+import { MailTemplateModule } from './modules/mail-template/mail-template.module';
+>>>>>>> 71abab597fab1e61f54dce031c12a59dee845177
 
 
 
@@ -194,7 +198,11 @@ dotenv.config();
     SupplierModule,
     SettingsModule,
     PlansModule,
+<<<<<<< HEAD
     PdfTemplatesModule,
+=======
+    MailTemplateModule,
+>>>>>>> 71abab597fab1e61f54dce031c12a59dee845177
   ],
   controllers: [AppController],
   providers: [AppService],

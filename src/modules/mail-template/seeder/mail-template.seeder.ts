@@ -1,0 +1,138 @@
+import { DataSource } from 'typeorm';
+import { Seeder, SeederFactoryManager } from 'typeorm-extension';
+import { MailTemplate } from '../entities/mail-template.entity';
+
+/**
+ * Seed des templates de mail prédéfinis (système).
+ * Le header/footer sont ajoutés automatiquement au rendu à partir des
+ * informations du cabinet (logo, couleur, coordonnées).
+ */
+export default class MailTemplateSeeder implements Seeder {
+  public async run(
+    dataSource: DataSource,
+    _factoryManager: SeederFactoryManager,
+  ): Promise<any> {
+    const repository = dataSource.getRepository(MailTemplate);
+
+    const templates: Partial<MailTemplate>[] = [
+      {
+        code: 'account_opening',
+        name: 'Ouverture de compte',
+        category: 'auth',
+        description: "Envoyé lorsqu'un nouveau compte utilisateur est créé.",
+        subject: 'Bienvenue sur {{cabinetName}} !',
+        body_html: `
+          <h2 style="margin-top:0;">Bonjour {{firstName}},</h2>
+          <p>Votre compte a été créé avec succès sur l'espace de <strong>{{cabinetName}}</strong>.</p>
+          <p>Vous pouvez dès à présent vous connecter pour accéder à vos dossiers.</p>
+          <p style="text-align:center;margin:28px 0;">
+            <a href="{{loginUrl}}" style="background:{{brandColor}};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Accéder à mon espace</a>
+          </p>
+          <p>À très vite,<br/>L'équipe {{cabinetName}}</p>`,
+        variables: JSON.stringify(['firstName', 'loginUrl', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'reset_password',
+        name: 'Réinitialisation du mot de passe',
+        category: 'auth',
+        description: "Envoyé lorsqu'un utilisateur demande la réinitialisation de son mot de passe.",
+        subject: 'Réinitialisation de votre mot de passe',
+        body_html: `
+          <h2 style="margin-top:0;">Réinitialisation du mot de passe</h2>
+          <p>Bonjour {{firstName}},</p>
+          <p>Vous avez demandé à réinitialiser votre mot de passe. Cliquez sur le bouton ci-dessous pour en choisir un nouveau.</p>
+          <p style="text-align:center;margin:28px 0;">
+            <a href="{{resetUrl}}" style="background:{{brandColor}};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Réinitialiser mon mot de passe</a>
+          </p>
+          <p style="color:#6b7280;font-size:13px;">Ce lien expire dans 24 heures. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>`,
+        variables: JSON.stringify(['firstName', 'resetUrl', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'account_activation',
+        name: 'Activation de compte',
+        category: 'auth',
+        description: "Envoyé pour activer un compte employé nouvellement créé.",
+        subject: 'Activez votre compte {{cabinetName}}',
+        body_html: `
+          <h2 style="margin-top:0;">Activez votre compte</h2>
+          <p>Bonjour {{firstName}},</p>
+          <p>Un compte a été créé pour vous sur l'espace de <strong>{{cabinetName}}</strong>. Activez-le pour définir votre mot de passe.</p>
+          <p style="text-align:center;margin:28px 0;">
+            <a href="{{activationUrl}}" style="background:{{brandColor}};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Activer mon compte</a>
+          </p>`,
+        variables: JSON.stringify(['firstName', 'activationUrl', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'dossier_created',
+        name: 'Nouveau dossier créé',
+        category: 'dossier',
+        description: "Notification de création d'un dossier.",
+        subject: 'Nouveau dossier : {{dossierNumber}}',
+        body_html: `
+          <h2 style="margin-top:0;">Nouveau dossier ouvert</h2>
+          <p>Un nouveau dossier vient d'être créé chez <strong>{{cabinetName}}</strong>.</p>
+          <ul>
+            <li><strong>Numéro :</strong> {{dossierNumber}}</li>
+            <li><strong>Objet :</strong> {{object}}</li>
+            <li><strong>Client :</strong> {{clientName}}</li>
+          </ul>
+          <p>Vous pouvez consulter le dossier depuis votre espace.</p>`,
+        variables: JSON.stringify(['dossierNumber', 'object', 'clientName', 'cabinetName']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'audience_reminder',
+        name: "Rappel d'audience",
+        category: 'audience',
+        description: "Rappel automatique avant une audience.",
+        subject: "Rappel : audience le {{audienceDate}}",
+        body_html: `
+          <h2 style="margin-top:0;">Rappel d'audience</h2>
+          <p>Bonjour {{firstName}},</p>
+          <p>Nous vous rappelons l'audience à venir :</p>
+          <ul>
+            <li><strong>Date :</strong> {{audienceDate}} à {{audienceTime}}</li>
+            <li><strong>Juridiction :</strong> {{jurisdiction}}</li>
+            <li><strong>Dossier :</strong> {{dossierNumber}}</li>
+          </ul>
+          <p>Cordialement,<br/>{{cabinetName}}</p>`,
+        variables: JSON.stringify(['firstName', 'audienceDate', 'audienceTime', 'jurisdiction', 'dossierNumber', 'cabinetName']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'invoice_issued',
+        name: 'Facture émise',
+        category: 'billing',
+        description: "Envoyé lors de l'émission d'une facture.",
+        subject: 'Votre facture {{invoiceNumber}}',
+        body_html: `
+          <h2 style="margin-top:0;">Nouvelle facture</h2>
+          <p>Bonjour {{clientName}},</p>
+          <p>Veuillez trouver votre facture <strong>{{invoiceNumber}}</strong> d'un montant de <strong>{{amount}}</strong>.</p>
+          <p>Échéance : {{dueDate}}.</p>
+          <p>Merci de votre confiance,<br/>{{cabinetName}}</p>`,
+        variables: JSON.stringify(['clientName', 'invoiceNumber', 'amount', 'dueDate', 'cabinetName']),
+        is_system: true,
+        is_active: true,
+      },
+    ];
+
+    for (const data of templates) {
+      const existing = await repository.findOne({ where: { code: data.code } });
+      if (!existing) {
+        await repository.save(repository.create(data));
+        console.log(`Template mail créé : ${data.code}`);
+      } else {
+        console.log(`Template mail déjà existant, ignoré : ${data.code}`);
+      }
+    }
+  }
+}

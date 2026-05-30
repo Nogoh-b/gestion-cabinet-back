@@ -36,9 +36,9 @@ export class OnboardingDto {
 
   /**
    * Code du plan choisi lors de l'inscription.
-   * Si absent, le plan "starter" est appliqué par défaut.
+   * Si absent, le plan "free" est appliqué par défaut.
    */
-  @ApiProperty({ example: 'starter', default: 'starter', required: false })
+  @ApiProperty({ example: 'free', default: 'free', required: false })
   @IsOptional()
   @IsString()
   plan_code?: string;

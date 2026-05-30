@@ -239,8 +239,10 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       dossier_number: dossierNumber,
       client,
       lawyer,
-      jurisdiction_id : createDossierDto.jurisdiction ?? 1,
-      jurisdiction: {id : createDossierDto.jurisdiction ?? 1} as Jurisdiction,
+      jurisdiction_id : createDossierDto.jurisdiction_id ?? createDossierDto.jurisdiction ?? null,
+      jurisdiction: (createDossierDto.jurisdiction_id ?? createDossierDto.jurisdiction)
+        ? ({ id: createDossierDto.jurisdiction_id ?? createDossierDto.jurisdiction } as Jurisdiction)
+        : null,
       procedure_type: procedureType,
       procedure_subtype: procedureSubtype,
       // procedureInstance,

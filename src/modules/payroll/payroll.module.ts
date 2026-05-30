@@ -20,6 +20,7 @@ import { PayslipLinesController } from './payslip-lines.controller';
 // Dépendances externes
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { AgenciesModule } from '../agencies/agencies.module';
+import { PlansModule } from '../plans/plans.module';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { PayrollPeriodWriteHandler } from './payroll-period-write.handler';
@@ -35,6 +36,7 @@ import { PayslipLineWriteHandler } from './payslip-line-write.handler';
     ]),
     AgenciesModule,
     DossiersModule,
+    PlansModule,
     AiDatabaseModule,
   ],
   controllers: [

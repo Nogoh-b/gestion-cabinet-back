@@ -24,29 +24,85 @@ export class CreatePlanDto {
   @IsOptional()
   description?: string;
 
-  @ApiPropertyOptional({ example: 20, description: 'Nombre max d\'employés' })
+  @ApiPropertyOptional({ example: 20, description: "Nombre max d'employés (-1 = illimité)" })
   @IsNumber()
-  @Min(1)
+  @Min(-1)
   @IsOptional()
   max_employees?: number;
 
-  @ApiPropertyOptional({ example: 50, description: 'Stockage max en Go' })
+  @ApiPropertyOptional({ example: 50, description: 'Stockage max en Go (-1 = illimité)' })
   @IsNumber()
-  @Min(1)
+  @Min(-1)
   @IsOptional()
   max_storage_gb?: number;
 
-  @ApiPropertyOptional({ example: 500, description: 'Nombre max de dossiers' })
+  @ApiPropertyOptional({ example: 500, description: 'Nombre max de dossiers (-1 = illimité)' })
   @IsNumber()
-  @Min(1)
+  @Min(-1)
   @IsOptional()
   max_dossiers?: number;
 
   @ApiPropertyOptional({ example: 1000, description: 'Nombre max de clients' })
   @IsNumber()
-  @Min(1)
+  @Min(-1)
   @IsOptional()
   max_clients?: number;
+
+  @ApiPropertyOptional({ example: 3, description: "Nombre max d'agences (-1 = illimité)" })
+  @IsNumber()
+  @Min(-1)
+  @IsOptional()
+  max_branches?: number;
+
+  @ApiPropertyOptional({ example: -1, description: "Nombre max d'audiences (-1 = illimité)" })
+  @IsNumber()
+  @Min(-1)
+  @IsOptional()
+  max_audiences?: number;
+
+  // ── Modules ───────────────────────────────────────────────────────────────
+
+  @ApiPropertyOptional({ example: true, description: 'Module Paie activé' })
+  @IsBoolean()
+  @IsOptional()
+  payroll_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 50, description: 'Bulletins de paie max / mois (-1 = illimité)' })
+  @IsNumber()
+  @Min(-1)
+  @IsOptional()
+  max_payslips_per_month?: number;
+
+  @ApiPropertyOptional({ example: true, description: 'Module Dépenses activé' })
+  @IsBoolean()
+  @IsOptional()
+  expenses_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 500, description: 'Dépenses max / mois (-1 = illimité)' })
+  @IsNumber()
+  @Min(-1)
+  @IsOptional()
+  max_expenses_per_month?: number;
+
+  @ApiPropertyOptional({ example: true, description: 'Module Documents activé' })
+  @IsBoolean()
+  @IsOptional()
+  documents_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Module Facturation activé' })
+  @IsBoolean()
+  @IsOptional()
+  invoicing_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Rapports avancés activés' })
+  @IsBoolean()
+  @IsOptional()
+  reporting_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 'priority', description: 'Niveau de support (community/email/priority/dedicated)' })
+  @IsString()
+  @IsOptional()
+  support_level?: string;
 
   @ApiPropertyOptional({ example: true, description: 'IA activée' })
   @IsBoolean()

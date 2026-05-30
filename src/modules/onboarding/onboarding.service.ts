@@ -6,10 +6,10 @@ import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 
-import { Cabinet } from '../cabinet/entities/cabinet.entity';
-import { Branch }  from '../agencies/branch/entities/branch.entity';
+import { Cabinet, CabinetPlan } from '../cabinet/entities/cabinet.entity';
+import { Branch } from '../agencies/branch/entities/branch.entity';
 import { Employee, EmployeePosition } from '../agencies/employee/entities/employee.entity';
-import { User }    from '../iam/user/entities/user.entity';
+import { User } from '../iam/user/entities/user.entity';
 import { UserRole as UserRoleEntity } from '../iam/user-role/entities/user-role.entity';
 import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-role-assignment.entity';
 import { UserRole } from 'src/core/enums/user-role.enum';
@@ -42,8 +42,8 @@ export class OnboardingService {
     const existing = await this.userRepo.findOne({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Un compte avec cet email existe déjà');
 
-    // ── 1. Résoudre le plan choisi (ou 'starter' par défaut) ─────────────
-    const planCode = dto.plan_code ?? 'starter';
+    // ── 1. Résoudre le plan choisi (ou 'free' par défaut) ─────────────
+    const planCode = dto.plan_code ?? 'free';
     const selectedPlan = await this.plansService.findByCode(planCode)
       .catch(() => null);
 
@@ -52,7 +52,7 @@ export class OnboardingService {
       code:         this.cabinetService.generateCode(),
       name:         dto.cabinet_name.trim(),
       status:       'trial',
-      plan:         planCode as any,
+      plan:         planCode as CabinetPlan,
       plan_id:      selectedPlan?.id ?? null,
       routing_mode: dto.routing_mode ?? 'path',
       trial_ends_at: this.trialEnd(30),
@@ -74,8 +74,7 @@ export class OnboardingService {
           opening_hour: '08:00',
           closing_hour: '18:00',
           status:       1,
-          tenant_id:    cabinet.id,
-        } as any);
+        });
         const savedBranch = await this.branchRepo.save(branchDraft) as unknown as Branch;
 
         // 2b. User
@@ -88,20 +87,16 @@ export class OnboardingService {
           password:   hashedPwd,
           status:     1,
           role:       UserRole.ADMIN,
-        } as any);
+        });
         const savedUser = await this.userRepo.save(userDraft) as unknown as User;
 
         // 2c. Employee lié à la branche
         const employeeDraft = this.employeeRepo.create({
-          first_name: dto.first_name.trim(),
-          last_name:  dto.last_name.trim(),
-          email:      dto.email,
-          position:   EmployeePosition.AVOCAT,
-          status:     1,
-          user:       savedUser,
-          branch:     savedBranch,
-          tenant_id:  cabinet.id,
-        } as any);
+          position: EmployeePosition.AVOCAT,
+          status:   1,
+          user:     savedUser,
+          branch:   savedBranch,
+        });
         await this.employeeRepo.save(employeeDraft);
 
         // 2d. Rôle admin (cherché globalement — UserRole n'est pas tenant-scoped)
@@ -111,7 +106,7 @@ export class OnboardingService {
             user_id: savedUser.id,
             role_id: adminRole.id,
             status:  1,
-          } as any);
+          });
           await this.assignmentRepo.save(assignment);
         }
 
@@ -151,11 +146,12 @@ export class OnboardingService {
 
       return registrationResult;
 
-    } catch (err) {
+    } catch (raw) {
+      const err = raw as Error;
       // Rollback partiel : supprimer le cabinet créé si le reste a échoué
-      this.logger.error(`[Onboarding] Erreur — suppression cabinet id=${cabinet.id}`, err?.stack);
+      this.logger.error(`[Onboarding] Erreur — suppression cabinet id=${cabinet.id}`, err.stack);
       await this.cabinetRepo.delete(cabinet.id).catch(() => {});
-      throw new InternalServerErrorException(`Erreur lors de la création du cabinet : ${err?.message}`);
+      throw new InternalServerErrorException(`Erreur lors de la création du cabinet : ${err.message}`);
     }
   }
 

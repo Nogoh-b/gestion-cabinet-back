@@ -109,11 +109,24 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       stageVisitId = procedureInstance.currentVisit.id ?? undefined;
     }
 
+    // ── Juridiction : déduite du dossier si non fournie explicitement ────────
+    const resolvedJurisdictionId =
+      dto.jurisdiction_id ??
+      (dossier as any).jurisdiction_id ??
+      (dossier as any).jurisdiction?.id ??
+      null;
+
+    if (!resolvedJurisdictionId) {
+      throw new NotFoundException(
+        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier.",
+      );
+    }
+
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
       audience_date: dto.audience_date,
       audience_time: dto.audience_time,
-      jurisdiction: { id: dto.jurisdiction_id } as Jurisdiction,
+      jurisdiction: { id: resolvedJurisdictionId } as Jurisdiction,
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,

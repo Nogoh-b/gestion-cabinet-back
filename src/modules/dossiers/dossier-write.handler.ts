@@ -74,6 +74,10 @@ export class DossierWriteHandler extends BaseWriteHandler {
         example: '1',
         required: true,
       },
+      jurisdiction_id: {
+        description: 'ID de la juridiction compétente. Peut aussi fournir "jurisdiction" avec le nom du tribunal (ex: "Tribunal de première instance de Yaoundé"). Sera héritée par les audiences du dossier.',
+        example: '3',
+      },
     };
 
     for (const field of fields) {

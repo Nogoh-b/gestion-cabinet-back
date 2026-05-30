@@ -43,7 +43,7 @@ export class CabinetService implements OnModuleInit {
       code:   this.generateCode(),
       name:   data.name,
       status: 'trial',
-      plan:   data.plan ?? 'starter',
+      plan:   data.plan ?? 'free',
       routing_mode: 'path',
       trial_ends_at: this.trialEnd(30),
     });
@@ -116,6 +116,17 @@ export class CabinetService implements OnModuleInit {
   }
 
   async update(id: number, data: Partial<Pick<Cabinet, 'name' | 'status' | 'plan' | 'routing_mode'>>): Promise<Cabinet> {
+    await this.repo.update(id, data);
+    return this.findById(id);
+  }
+
+  /** Met à jour les informations de branding (logo, couleur, coordonnées) utilisées dans les e-mails. */
+  async updateBranding(
+    id: number,
+    data: Partial<Pick<Cabinet,
+      'logo_url' | 'brand_color' | 'contact_email' | 'contact_phone' | 'address' | 'website' | 'email_footer' | 'name'
+    >>,
+  ): Promise<Cabinet> {
     await this.repo.update(id, data);
     return this.findById(id);
   }
