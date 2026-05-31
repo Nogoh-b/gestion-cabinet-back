@@ -18,6 +18,7 @@ import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seed
 import PlanSeeder from './modules/plans/seeder/plan.seeder';
 import PdfTemplateSeeder from './modules/pdf-templates/seeder/pdf-template.seeder';
 import MailTemplateSeeder from './modules/mail-template/seeder/mail-template.seeder';
+import TemplateBlockSeeder from './modules/template-blocks/seeder/template-block.seeder';
 
 
 
@@ -45,6 +46,7 @@ export async function seedDatabase(dataSource: DataSource) {
         PlanSeeder,
         PdfTemplateSeeder,
         MailTemplateSeeder,
+        TemplateBlockSeeder,
       ]
     });
 

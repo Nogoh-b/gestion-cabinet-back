@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsBoolean,
   IsIn,
+  IsInt,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -57,6 +58,21 @@ export class CreatePdfTemplateDto {
   @IsString()
   @IsOptional()
   paper_size?: string;
+
+  @ApiPropertyOptional({ example: 'inter', description: 'Clé de police (FONTS front)' })
+  @IsString()
+  @IsOptional()
+  font_family?: string;
+
+  @ApiPropertyOptional({ description: 'Id du bloc en-tête réutilisable' })
+  @IsInt()
+  @IsOptional()
+  header_block_id?: number;
+
+  @ApiPropertyOptional({ description: 'Id du bloc pied de page réutilisable' })
+  @IsInt()
+  @IsOptional()
+  footer_block_id?: number;
 
   @ApiPropertyOptional()
   @IsBoolean()

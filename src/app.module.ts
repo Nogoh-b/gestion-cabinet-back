@@ -63,6 +63,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { PlansModule } from './modules/plans/plans.module';
 import { PdfTemplatesModule } from './modules/pdf-templates/pdf-templates.module';
 import { MailTemplateModule } from './modules/mail-template/mail-template.module';
+import { TemplateBlocksModule } from './modules/template-blocks/template-blocks.module';
 
 
 
@@ -197,6 +198,7 @@ dotenv.config();
     PlansModule,
     PdfTemplatesModule,
     MailTemplateModule,
+    TemplateBlocksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

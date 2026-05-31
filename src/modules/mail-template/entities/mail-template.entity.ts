@@ -52,6 +52,18 @@ export class MailTemplate {
   @Column({ type: 'text', nullable: true })
   variables: string | null;
 
+  /** Police du mail (clé de FONTS côté front, ex. 'inter'). Null = défaut. */
+  @Column({ type: 'varchar', length: 50, nullable: true, name: 'font_family' })
+  font_family: string | null;
+
+  /** Bloc en-tête réutilisable. Null = bloc mail par défaut. */
+  @Column({ type: 'int', nullable: true, name: 'header_block_id' })
+  header_block_id: number | null;
+
+  /** Bloc pied de page réutilisable. Null = bloc mail par défaut. */
+  @Column({ type: 'int', nullable: true, name: 'footer_block_id' })
+  footer_block_id: number | null;
+
   /** Template système prédéfini (non supprimable, seulement éditable). */
   @Column({ type: 'tinyint', default: 0, name: 'is_system' })
   is_system: boolean;

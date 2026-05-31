@@ -64,6 +64,18 @@ export class PdfTemplate {
   @Column({ type: 'varchar', length: 10, name: 'paper_size', default: 'a4' })
   paper_size: string;
 
+  /** Police du document (clé de FONTS côté front, ex. 'inter'). Null = défaut. */
+  @Column({ type: 'varchar', length: 50, nullable: true, name: 'font_family' })
+  font_family: string | null;
+
+  /** Bloc en-tête réutilisable. Null = bloc PDF par défaut. */
+  @Column({ type: 'int', nullable: true, name: 'header_block_id' })
+  header_block_id: number | null;
+
+  /** Bloc pied de page réutilisable. Null = bloc PDF par défaut. */
+  @Column({ type: 'int', nullable: true, name: 'footer_block_id' })
+  footer_block_id: number | null;
+
   /** Modèle système : non supprimable, code non modifiable. */
   @Column({ type: 'tinyint', default: 0, name: 'is_system' })
   is_system: boolean;
