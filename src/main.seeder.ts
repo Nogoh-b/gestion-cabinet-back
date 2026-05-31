@@ -16,11 +16,9 @@ import ProcedureTemplateSeeder from './modules/procedure/seeder/procedure-templa
 import ProcedureSubtypeSeeder from './modules/procedures/seeder/procedure-subtype.seeder';
 import ProcedureTypeSeeder from './modules/procedures/seeder/procedure-type.seeder';
 import PlanSeeder from './modules/plans/seeder/plan.seeder';
-<<<<<<< HEAD
 import PdfTemplateSeeder from './modules/pdf-templates/seeder/pdf-template.seeder';
-=======
 import MailTemplateSeeder from './modules/mail-template/seeder/mail-template.seeder';
->>>>>>> 71abab597fab1e61f54dce031c12a59dee845177
+import TemplateBlockSeeder from './modules/template-blocks/seeder/template-block.seeder';
 
 
 
@@ -46,11 +44,9 @@ export async function seedDatabase(dataSource: DataSource) {
         DefaultProcedureTemplateSeeder,
         ProcedureTemplateSeeder,
         PlanSeeder,
-<<<<<<< HEAD
         PdfTemplateSeeder,
-=======
         MailTemplateSeeder,
->>>>>>> 71abab597fab1e61f54dce031c12a59dee845177
+        TemplateBlockSeeder,
       ]
     });
 

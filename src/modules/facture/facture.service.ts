@@ -21,8 +21,6 @@ import { Facture } from './entities/facture.entity';
 import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 import { StepsService } from '../dossiers/step.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
-import { SubStage } from '../procedure/entities/sub-stage.entity';
-import { Stage } from '../procedure/entities/stage.entity';
 
 
 
@@ -50,7 +48,7 @@ export class FactureService extends BaseServiceV1<Facture> {
   protected getDefaultSearchOptions(): SearchOptions {
     return {
       searchFields: ['numero', 'description', 'notesInternes'],
-      exactMatchFields: ['id', 'dossierId', 'clientId', 'status', 'type', 'numero'],
+      exactMatchFields: ['id', 'dossier_id', 'client_id', 'status', 'type', 'numero'],
       dateRangeFields: ['dateFacture', 'dateEcheance', 'created_at', 'updated_at'],
       relationFields: ['paiements', 'client', 'dossier','invoice_type','subStage']
     };
@@ -163,8 +161,8 @@ export class FactureService extends BaseServiceV1<Facture> {
     );
   }
 
-  async getFacturesByDossier(dossierId: string): Promise<Facture[]> {
-    return this.findAllV1({ dossierId }, undefined, ['paiements']);
+  async getFacturesByDossier(dossier_id: string): Promise<Facture[]> {
+    return this.findAllV1({ dossier_id }, undefined, ['paiements']);
   }
 
   async getFacturesByClient(clientId: string): Promise<Facture[]> {
