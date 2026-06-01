@@ -29,6 +29,13 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   category: 'finance'
 })
 export class Facture extends BaseEntity {
+  /**
+   * Propriété TRANSIENT — lue par le FactureSubscriber pour décider
+   * d'envoyer un e-mail au client (case « Notifier le client » du modal).
+   * Non persistée en base.
+   */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',

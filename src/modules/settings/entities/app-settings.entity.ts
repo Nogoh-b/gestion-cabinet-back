@@ -108,6 +108,26 @@ export class AppSettings  {
   @Column({ length: 20, default: 'FAC-' })
   invoice_prefix: string;
 
+  /** Largeur du compteur de facture (padding zéros). Ex: 4 → 0001. */
+  @ApiProperty({ example: 4 })
+  @Column({ type: 'int', default: 4, name: 'invoice_padding' })
+  invoice_padding: number;
+
+  /**
+   * Stratégie de remise à zéro du compteur :
+   *  - yearly    : FAC-2026-0001 (reset chaque année — défaut)
+   *  - monthly   : FAC-202605-0001 (reset chaque mois)
+   *  - continuous: FAC-0001 (jamais de reset)
+   */
+  @ApiProperty({ enum: ['yearly', 'monthly', 'continuous'], example: 'yearly' })
+  @Column({
+    type: 'enum',
+    enum: ['yearly', 'monthly', 'continuous'],
+    default: 'yearly',
+    name: 'invoice_numbering_strategy',
+  })
+  invoice_numbering_strategy: 'yearly' | 'monthly' | 'continuous';
+
   @ApiProperty({ example: 'DOS-' })
   @Column({ length: 20, default: 'DOS-' })
   dossier_prefix: string;

@@ -1,6 +1,6 @@
 // src/paiement/dto/create-paiement.dto.ts
 import { Type } from 'class-transformer';
-import { IsString, IsNumber, IsOptional, IsDate, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDate, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
@@ -127,4 +127,16 @@ export class CreatePaiementDto {
   @IsString()
   @IsOptional()
   preuvePaiement?: string = 'https://cabinetjuridique.com/uploads/preuves/paiement-001.pdf';
+
+  /**
+   * Transient — case « Notifier le client » du modal.
+   * Lue par le PaiementSubscriber pour envoyer un reçu par e-mail au client.
+   */
+  @ApiPropertyOptional({
+    description: 'Envoyer un reçu de paiement au client par e-mail',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  notify_client?: boolean;
 }

@@ -67,6 +67,7 @@ import { AuthToken } from './auth/entities/auth-token.entity';
 import { AuthTokenService } from './auth/auth-token.service';
 import { AiDatabaseModule } from './ai-database/ai-database.module';
 import { PlansModule } from 'src/modules/plans/plans.module';
+import { CoreNotificationsModule } from './notifications/core-notifications.module';
 
 
 
@@ -143,6 +144,7 @@ import { PlansModule } from 'src/modules/plans/plans.module';
     // forwardRef(() => NotificationModule),
     // SeedersModule,
     ScheduleModule.forRoot(), AiDatabaseModule, PlansModule,
+    CoreNotificationsModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [
@@ -204,7 +206,8 @@ import { PlansModule } from 'src/modules/plans/plans.module';
     KeyGeneratorService,
     SocketService,
     MainGateway,
-    TenantContext
+    TenantContext,
+    CoreNotificationsModule,
   ],
 })
 export class CoreModule {}

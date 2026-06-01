@@ -46,13 +46,21 @@ export enum DossierOutcome {
   ignored : false
 })
 export class Dossier extends BaseEntity {
+  /**
+   * Propriété TRANSIENT (pas un @Column) — passée par le service create()
+   * depuis CreateDossierDto.notify_client, lue par le DossierSubscriber
+   * dans onAfterCreate pour décider si on envoie un e-mail au client.
+   * Non persistée en base.
+   */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant technique',
     description: 'Numéro unique généré automatiquement par le système',
     importance: 'low',
     group: 'technique',
-    ignored: true 
+    ignored: true
   })
   id: number;
 

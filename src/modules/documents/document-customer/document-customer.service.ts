@@ -546,6 +546,8 @@ async linkDocumentsToSubStage(
     }
 
     const document = this.docRepository.create(documentData);
+    // Champ transient consommé par le DocumentCustomerSubscriber.
+    (document as any).notify_client = !!(documentData as any).notify_client;
     return this.docRepository.save(document);
   }
 

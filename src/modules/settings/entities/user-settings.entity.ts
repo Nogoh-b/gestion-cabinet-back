@@ -62,4 +62,23 @@ export class UserSettings {
   @ApiProperty({ example: '' })
   @Column({ length: 50, default: '' })
   user_phone: string;
+
+  /**
+   * Préférences fines par type d'événement.
+   * Forme : { [NotificationType]: { in_app: boolean, email: boolean } }
+   * Si une clé d'événement est absente, on retombe sur
+   * user_in_app_notifications / user_email_notifications.
+   *
+   * Le NotificationDispatcher lit cette colonne pour décider quels canaux
+   * activer pour chaque utilisateur destinataire.
+   */
+  @ApiProperty({
+    example: {
+      dossier_created: { in_app: true, email: true },
+      facture_paid: { in_app: true, email: false },
+    },
+    nullable: true,
+  })
+  @Column({ type: 'json', nullable: true, name: 'notification_preferences' })
+  notification_preferences: Record<string, { in_app: boolean; email: boolean }> | null;
 }

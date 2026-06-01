@@ -47,6 +47,9 @@ export enum DocumentCustomerStatus {
   category: 'document'
 })
 export class DocumentCustomer extends BaseEntity {
+  /** Transient — lu par le DocumentSubscriber pour notifier le client. */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant technique',

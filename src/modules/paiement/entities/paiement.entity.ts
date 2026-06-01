@@ -21,6 +21,9 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   category: 'finance'
 })
 export class Paiement {
+  /** Transient — lu par le PaiementSubscriber pour notifier le client. */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',

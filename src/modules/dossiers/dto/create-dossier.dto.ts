@@ -378,6 +378,20 @@ export class CreateDossierDto {
   @IsBoolean()
   auto_validate?: boolean = false;
 
+  /**
+   * Coché par l'utilisateur dans le modal de création.
+   * Champ transient : non persisté en colonne, lu uniquement par le subscriber
+   * pour déclencher l'e-mail client via le NotificationDispatcher.
+   */
+  @ApiPropertyOptional({
+    description: 'Notifier le client par e-mail à la création du dossier',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  notify_client?: boolean = false;
+
   // Validation conditionnelle
   @ValidateIf(o => o.billing_type === 'hourly' || o.billing_type === 'mixed')
   @IsNumber()

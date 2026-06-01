@@ -93,4 +93,14 @@ export class CreateDocumentCustomerDto {
 
   @ApiProperty({ type: 'string', format: 'binary', description: 'Fichier à uploader' })
   file: Express.Multer.File;
+
+  /** Transient — case « Notifier le client » du modal. */
+  @ApiPropertyOptional({
+    description: "Notifier le client par e-mail à l'upload du document",
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  notify_client?: boolean;
 }

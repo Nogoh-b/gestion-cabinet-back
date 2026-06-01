@@ -44,6 +44,9 @@ export enum DiligencePriority {
   category: 'investigation'
 })
 export class Diligence extends BaseEntity {
+  /** Transient — lu par le DiligenceSubscriber pour notifier le client. */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',

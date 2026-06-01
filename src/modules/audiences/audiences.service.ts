@@ -140,6 +140,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       stageVisit_id: stageVisitId,
       sub_stage_visit_id: subStageVisitId,
     });
+    // Champ transient consommé par l'AudienceSubscriber pour notifier le client.
+    (audience as any).notify_client = !!dto.notify_client;
 
     if (dto?.document_ids) {
       const documents = await this.documentCustomerService.findByIds(dto?.document_ids);

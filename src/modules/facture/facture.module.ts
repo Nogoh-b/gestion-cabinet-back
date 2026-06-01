@@ -9,16 +9,18 @@ import { FactureStatsService } from './facture-stats.service';
 import { FactureWriteHandler } from './facture-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { AppSettings } from '../settings/entities/app-settings.entity';
+import { FactureSubscriber } from './subscribers/facture.subscriber';
 
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Facture]),
+    TypeOrmModule.forFeature([Facture, AppSettings]),
     forwardRef(() => DossiersModule),
     AiDatabaseModule,
   ],
   controllers: [FactureController],
-  providers: [FactureService, FactureStatsService, FactureWriteHandler],
+  providers: [FactureService, FactureStatsService, FactureWriteHandler, FactureSubscriber],
   exports: [FactureService, FactureStatsService, TypeOrmModule],
 })
 export class FactureModule {

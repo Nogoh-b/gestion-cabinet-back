@@ -119,6 +119,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       stageVisit_id: stageVisitId,
       procedure_instance_id: procedureInstance?.id,
     });
+    // Champ transient consommé par le DiligenceSubscriber.
+    (diligence as any).notify_client = !!dto.notify_client;
     console.log('Diligence créée avec les données suivantes:', diligence);
 
       // Récupérer l'étape courante

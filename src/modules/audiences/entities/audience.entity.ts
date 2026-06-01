@@ -35,6 +35,9 @@ export enum AudienceType1 {
   category: 'procedure'
 })
 export class Audience extends BaseEntity {
+  /** Transient — lu par l'AudienceSubscriber pour notifier le client. */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',

@@ -1,9 +1,8 @@
 // src/facture/facture.service.ts
 import { plainToInstance } from 'class-transformer';
-import { randomUUID } from 'crypto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { Between, Repository } from 'typeorm';
+import { Like, Repository } from 'typeorm';
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
@@ -21,6 +20,7 @@ import { Facture } from './entities/facture.entity';
 import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 import { StepsService } from '../dossiers/step.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
+import { AppSettings } from '../settings/entities/app-settings.entity';
 
 
 
@@ -36,12 +36,12 @@ export class FactureService extends BaseServiceV1<Facture> {
     protected readonly repository: Repository<Facture>,
     protected readonly paginationService: PaginationServiceV1,
     @Inject(forwardRef(() => DossiersService))  // 👈 Ajouter forwardRef
-    protected readonly dossiersService: DossiersService,    
+    protected readonly dossiersService: DossiersService,
     @Inject(forwardRef(() => StepsService))
     private stepsService: StepsService,
-    
+    @InjectRepository(AppSettings)
+    private readonly appSettingsRepo: Repository<AppSettings>,
   ) {
-    console.log(forwardRef)
     super(repository, paginationService);
   }
 
@@ -63,12 +63,16 @@ export class FactureService extends BaseServiceV1<Facture> {
     if (!createDto.montantTTC) {
       createDto.montantTTC = Number(createDto.montantHT) + Number(createDto.montantTVA);
     }
-    const { clientId, dossierId, ...rest } = createDto;
+    const { clientId, dossierId, notify_client, numero: providedNumero, ...rest } = createDto;
     const dossier_ = await this.dossiersService.findOne(dossierId)
     const dossier = { id: dossierId } as Dossier
     const client  =  dossier_.client
     const client_id  =  dossier_.client.id
-    const numero  = await    this.generateFacNumber()
+    // Si l'utilisateur a fourni un numéro explicitement, on l'utilise tel quel.
+    // Sinon, autogénération depuis app_settings (préfixe + stratégie + padding).
+    const numero = providedNumero?.trim()
+      ? providedNumero.trim()
+      : await this.generateFacNumber()
     let procedureInstance: ProcedureInstance | any = null;
     if (dossier_.procedureInstance) {
       // Sinon, prendre l'instance active du dossier
@@ -101,6 +105,8 @@ export class FactureService extends BaseServiceV1<Facture> {
       sub_stage_visit_id: subStageVisitId,
       procedure_instance_id: procedureInstance?.id,
     });
+    // Propage la case « Notifier le client » au subscriber (champ transient).
+    (facture as any).notify_client = !!notify_client;
 
     const fac = await this.repository.save(facture);
 
@@ -244,15 +250,73 @@ export class FactureService extends BaseServiceV1<Facture> {
     };
   }
 
-    private async generateFacNumber(): Promise<string> {
-      const year = new Date().getFullYear();
-      const count = await this.repository.count({
-        where: {
-          created_at: Between(new Date(`${year}-01-01`), new Date(`${year}-12-31`))
-        }
-      });
-      
-      const sequence = (count + 1).toString().padStart(4, '0');
-      return `FAC-${year}-${sequence}-${randomUUID().slice(0, 4).toUpperCase()}`; 
+  /**
+   * Génère un numéro de facture unique en suivant les settings du cabinet.
+   *
+   * Lit app_settings.invoice_prefix / invoice_padding / invoice_numbering_strategy
+   * puis cherche le MAX existant pour la fenêtre choisie (année, mois ou global)
+   * et incrémente. Une boucle de sécurité parcourt les éventuelles collisions.
+   *
+   * Formats produits selon la stratégie :
+   *   yearly     →  FAC-2026-0001
+   *   monthly    →  FAC-202605-0001
+   *   continuous →  FAC-0001
+   *
+   * Si aucun AppSettings n'existe (cabinet pas encore configuré), retombe sur
+   * un format minimal sécurisé : `${prefix}${YYYY}-0001`.
+   */
+  async generateFacNumber(): Promise<string> {
+    const settings = await this.appSettingsRepo.findOne({ where: {} });
+    const prefix = (settings?.invoice_prefix ?? 'FAC-').toString();
+    const padding = Math.max(1, Math.min(10, settings?.invoice_padding ?? 4));
+    const strategy = (settings?.invoice_numbering_strategy ?? 'yearly') as
+      | 'yearly'
+      | 'monthly'
+      | 'continuous';
+
+    const now = new Date();
+    let scope: string;
+    switch (strategy) {
+      case 'continuous':
+        scope = '';
+        break;
+      case 'monthly': {
+        const yyyy = now.getFullYear();
+        const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+        scope = `${yyyy}${mm}-`;
+        break;
+      }
+      case 'yearly':
+      default:
+        scope = `${now.getFullYear()}-`;
+        break;
     }
+
+    const searchPrefix = `${prefix}${scope}`;
+    const last = await this.repository
+      .createQueryBuilder('f')
+      .where('f.numero LIKE :pfx', { pfx: `${searchPrefix}%` })
+      .orderBy('f.numero', 'DESC')
+      .getOne();
+
+    let nextSeq = 1;
+    if (last?.numero) {
+      const tail = last.numero.slice(searchPrefix.length);
+      const match = tail.match(/^(\d+)/);
+      if (match) nextSeq = parseInt(match[1], 10) + 1;
+    }
+
+    let numero = `${searchPrefix}${nextSeq.toString().padStart(padding, '0')}`;
+
+    // Filet anti-collision (race conditions, soft-deletes, etc.)
+    let safety = 0;
+    while (safety++ < 100) {
+      const existing = await this.repository.findOne({ where: { numero } });
+      if (!existing) break;
+      nextSeq++;
+      numero = `${searchPrefix}${nextSeq.toString().padStart(padding, '0')}`;
+    }
+
+    return numero;
+  }
 }

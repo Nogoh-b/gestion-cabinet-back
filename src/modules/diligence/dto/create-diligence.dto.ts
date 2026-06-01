@@ -8,6 +8,7 @@ import {
   IsEnum,
   IsNumber,
   IsUUID,
+  IsBoolean,
   Min
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -124,4 +125,13 @@ export class CreateDiligenceDto {
   @IsUUID()
   @IsOptional()
   sub_stage_visit_id?: string;
+
+  /** Transient — case « Notifier le client » du modal. */
+  @ApiPropertyOptional({
+    description: "Notifier le client par e-mail à la création de la diligence",
+    example: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  notify_client?: boolean;
 }

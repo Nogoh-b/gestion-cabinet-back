@@ -11,6 +11,7 @@ import { NotificationResponseDto } from './dto/notification-response.dto';
 import { DossiersService } from '../dossiers/dossiers.service';
 import { UsersService } from '../iam/user/user.service';
 import { NotificationType } from './enum/notification-type.enum';
+import { MainGateway } from 'src/core/shared/services/socket/main.gateway';
 
 @Injectable()
 export class NotificationService {
@@ -26,8 +27,12 @@ export class NotificationService {
     private userService: UsersService,
     @Inject(forwardRef(() => DossiersService))
     private dossierService: DossiersService,
+    // MainGateway est résolu via forwardRef : il dépend lui-même de
+    // NotificationService, donc on casse la circularité au moment du DI.
+    @Inject(forwardRef(() => MainGateway))
+    private mainGateway: MainGateway,
     private dataSource: DataSource
-  ) {console.log(forwardRef)}
+  ) {}
 
   // Créer une notification pour un utilisateur
   async create(createNotificationDto: CreateNotificationDto): Promise<NotificationResponseDto> {
@@ -62,7 +67,7 @@ export class NotificationService {
 
       await queryRunner.commitTransaction();
 
-      // 3. Envoyer en temps réel
+      // 3. Construire le DTO de réponse
       const responseDto = plainToInstance(NotificationResponseDto, {
         ...savedNotification,
         // userNotificationId: savedUserNotification.id,
@@ -70,8 +75,32 @@ export class NotificationService {
         read_at: null
       });
 
+      // 4. Push temps réel via Socket.IO (best-effort)
+      if (createNotificationDto.user_id) {
+        const payload = this.toSocketPayload(savedNotification, {
+          id: undefined as any,
+          user_id: createNotificationDto.user_id,
+        } as UserNotification);
+        try {
+          await this.mainGateway.sendToUser(
+            createNotificationDto.user_id,
+            'new_notification',
+            payload,
+          );
+          const unreadCount = await this.countUnread(createNotificationDto.user_id);
+          await this.mainGateway.sendToUser(
+            createNotificationDto.user_id,
+            'unread_count',
+            { count: unreadCount },
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Push socket KO pour user ${createNotificationDto.user_id}: ${(err as Error).message}`,
+          );
+        }
+      }
 
-      this.logger.log(`✅ Notification créée pour l'utilisateur ${createNotificationDto.user_id}`);
+      this.logger.log(`✅ Notification créée + push pour l'utilisateur ${createNotificationDto.user_id}`);
 
       return responseDto;
 
@@ -121,8 +150,8 @@ export class NotificationService {
 
       await queryRunner.commitTransaction();
 
-      // 3. Envoyer en temps réel à chaque utilisateur
-      const responseDtos = savedUserNotifications.map(userNotif => 
+      // 3. Construire les payloads par utilisateur
+      const responseDtos = savedUserNotifications.map(userNotif =>
         plainToInstance(NotificationResponseDto, {
           ...savedNotification,
           userNotificationId: userNotif.id,
@@ -131,10 +160,34 @@ export class NotificationService {
         })
       );
 
-      // Envoyer à chaque utilisateur
- 
+      // 4. Push temps réel via Socket.IO pour chaque destinataire
+      //    Le front (useSocket.ts) écoute 'new_notification'.
+      //    Erreurs avalées : un socket KO ne doit pas faire échouer la création BDD.
+      await Promise.all(
+        savedUserNotifications.map(async (userNotif) => {
+          const payload = this.toSocketPayload(savedNotification, userNotif);
+          try {
+            await this.mainGateway.sendToUser(
+              userNotif.user_id,
+              'new_notification',
+              payload,
+            );
+            // Rafraîchit le badge "non lues"
+            const unreadCount = await this.countUnread(userNotif.user_id);
+            await this.mainGateway.sendToUser(
+              userNotif.user_id,
+              'unread_count',
+              { count: unreadCount },
+            );
+          } catch (err) {
+            this.logger.warn(
+              `Push socket KO pour user ${userNotif.user_id}: ${(err as Error).message}`,
+            );
+          }
+        }),
+      );
 
-      this.logger.log(`✅ Notifications créées pour ${createBulkDto.user_ids.length} utilisateurs`);
+      this.logger.log(`✅ Notifications créées + push pour ${createBulkDto.user_ids.length} utilisateurs`);
 
       return responseDtos;
 
@@ -267,9 +320,13 @@ export class NotificationService {
       { is_read: true, read_at: new Date() }
     );
 
-    // Mettre à jour le compteur en temps réel
+    // Rafraîchit le badge en temps réel
     const unreadCount = await this.countUnread(userId);
-    // this.mainGateway.sendToUser(userId, 'unread_count', { count: unreadCount });
+    try {
+      await this.mainGateway.sendToUser(userId, 'unread_count', { count: unreadCount });
+    } catch (err) {
+      this.logger.warn(`Push unread_count KO user ${userId}: ${(err as Error).message}`);
+    }
   }
 
   // Marquer tout comme lu
@@ -279,7 +336,35 @@ export class NotificationService {
       { is_read: true, read_at: new Date() }
     );
 
-    // this.mainGateway.sendToUser(userId, 'unread_count', { count: 0 });
+    try {
+      await this.mainGateway.sendToUser(userId, 'unread_count', { count: 0 });
+    } catch (err) {
+      this.logger.warn(`Push unread_count KO user ${userId}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Construit le payload Socket.IO `new_notification` consommé par le front
+   * (`useSocket.ts:313`). Format plat — aligné sur `NotificationResponseDto`
+   * pour faciliter la fusion immédiate dans le store front sans transformation.
+   */
+  private toSocketPayload(notification: Notification, userNotif: UserNotification) {
+    return {
+      // ID de l'entrée pivot (utile pour mark-as-read côté front)
+      id: userNotif.id,
+      notification_id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      content: notification.content,
+      data: notification.data,
+      link: notification.link,
+      priority: notification.priority,
+      image_url: notification.image_url,
+      actions: notification.actions ?? [],
+      is_read: false,
+      read_at: null,
+      created_at: notification.created_at,
+    };
   }
 
   // Archiver une notification

@@ -1,6 +1,6 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsArray, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
@@ -112,4 +112,13 @@ export class CreateAudienceDto {
   @IsUUID()
   @IsOptional()
   sub_stage_visit_id?: string;
+
+  /** Transient — case « Notifier le client » du modal. */
+  @ApiPropertyOptional({
+    description: "Notifier le client par e-mail à la création de l'audience",
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  notify_client?: boolean;
 }

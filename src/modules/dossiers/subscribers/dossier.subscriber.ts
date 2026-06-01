@@ -8,7 +8,10 @@ import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity'
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/default-procedure-template.seeder';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
-import { BaseEntitySubscriber } from 'src/core/subscribers/base-entity.subscriber';
+import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
+import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 
 /**
  * Subscriber métier pour l'entité Dossier.
@@ -27,9 +30,10 @@ import { BaseEntitySubscriber } from 'src/core/subscribers/base-entity.subscribe
  *   - Utilise hasColumnChanged / hasRelationChanged / getFieldChanges
  */
 @Injectable()
-export class DossierSubscriber extends BaseEntitySubscriber<Dossier> {
+export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
   constructor(
     dataSource: DataSource,
+    notificationDispatcher: NotificationDispatcher,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
     @InjectRepository(Dossier)
@@ -42,7 +46,7 @@ export class DossierSubscriber extends BaseEntitySubscriber<Dossier> {
     private readonly procedureTemplateRepo: Repository<ProcedureTemplate>,
     private readonly procedureInstanceService: ProcedureInstanceService,
   ) {
-    super(dataSource);
+    super(dataSource, notificationDispatcher);
   }
 
   listenTo() {
@@ -66,6 +70,49 @@ export class DossierSubscriber extends BaseEntitySubscriber<Dossier> {
   ): Promise<void> {
     await this.createConversation(entity, event);
     await this.createProcedureInstance(entity, event);
+    await this.notifyDossierCreated(entity);
+  }
+
+  /**
+   * Déclenche les notifications de création de dossier via le dispatcher central.
+   *  - Client       → e-mail si entity.notify_client === true (case cochée dans le modal)
+   *  - Avocat       → in-app + e-mail selon ses préférences
+   *  - Collabs      → in-app + e-mail selon leurs préférences
+   *  - Admins       → toujours (résolus par le dispatcher via role.code = 'admin')
+   */
+  private async notifyDossierCreated(entity: Dossier): Promise<void> {
+    // Recharger les relations utiles si pas encore en mémoire
+    const dossier =
+      entity.client && entity.lawyer
+        ? entity
+        : await this.dossierRepo.findOne({
+            where: { id: entity.id },
+            relations: ['client', 'lawyer', 'collaborators'],
+          });
+    if (!dossier) return;
+
+    const clientUserId =
+      (dossier.client as any)?.user_id ?? (dossier.client as any)?.user?.id;
+    const clientEmail = (dossier.client as any)?.email;
+
+    await this.notify({
+      event: NotifiableEvent.DOSSIER_CREATED,
+      title: `Nouveau dossier ${dossier.dossier_number}`,
+      content: dossier.object ?? `Dossier ${dossier.dossier_number} créé`,
+      link: `/dossiers/${dossier.id}`,
+      audience: {
+        client: {
+          user_id: clientUserId,
+          email: clientEmail,
+          notify: !!entity.notify_client,
+        },
+        lawyer_id: dossier.lawyer_id ?? null,
+        collaborator_ids: (dossier.collaborators ?? [])
+          .map((c) => (c as any).user_id ?? (c as any).user?.id)
+          .filter(Boolean),
+      },
+      entity: { type: 'dossier', id: dossier.id },
+    });
   }
 
   private async createConversation(
@@ -179,10 +226,57 @@ export class DossierSubscriber extends BaseEntitySubscriber<Dossier> {
       await this.syncCollaboratorsToConversation(entity, event);
     }
 
-    // Exemple d'extension future :
-    // if (this.hasColumnChanged(event, 'status')) {
-    //   await this.onStatusChanged(event);
-    // }
+    if (this.hasColumnChanged(event, 'status')) {
+      await this.notifyStatusChanged(entity, event);
+    }
+  }
+
+  /**
+   * Notifie le changement de statut. Le client est informé seulement si le
+   * dossier porte `notify_client=true` (transient — pour les UPDATEs venant
+   * d'un modal qui propose la case). L'avocat et les collaborateurs sont
+   * notifiés selon leurs préférences.
+   */
+  private async notifyStatusChanged(
+    entity: Partial<Dossier>,
+    event: UpdateEvent<Dossier>,
+  ): Promise<void> {
+    const change = this.getFieldChanges(event, ['status']).find(
+      (c) => c.field === 'status',
+    );
+    if (!change) return;
+
+    const id = entity.id ?? (event.databaseEntity as Dossier)?.id;
+    if (!id) return;
+
+    const dossier = await this.dossierRepo.findOne({
+      where: { id },
+      relations: ['client', 'lawyer', 'collaborators'],
+    });
+    if (!dossier) return;
+
+    const oldLabel = labelStatus(change.oldValue);
+    const newLabel = labelStatus(change.newValue);
+
+    await this.notify({
+      event: NotifiableEvent.DOSSIER_STATUS_CHANGED,
+      title: `Statut du dossier ${dossier.dossier_number} mis à jour`,
+      content: `Passage de "${oldLabel}" à "${newLabel}"`,
+      link: `/dossiers/${dossier.id}`,
+      audience: {
+        client: {
+          user_id: (dossier.client as any)?.user_id,
+          email: (dossier.client as any)?.email,
+          notify: !!(entity as Dossier).notify_client,
+        },
+        lawyer_id: dossier.lawyer_id ?? null,
+        collaborator_ids: (dossier.collaborators ?? [])
+          .map((c) => (c as any).user_id ?? (c as any).user?.id)
+          .filter(Boolean),
+      },
+      entity: { type: 'dossier', id: dossier.id },
+      changes: { status: { from: change.oldValue, to: change.newValue } },
+    });
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -229,5 +323,35 @@ export class DossierSubscriber extends BaseEntitySubscriber<Dossier> {
         ` du dossier ${dossier.dossier_number}` +
         ` [${toAdd.map(e => e.id).join(', ')}]`,
     );
+
+    // Notifier chaque nouveau collaborateur en in-app + e-mail
+    const newCollabUserIds = toAdd
+      .map((emp) => (emp as any).user_id ?? (emp as any).user?.id)
+      .filter(Boolean);
+    if (newCollabUserIds.length > 0) {
+      await this.notify({
+        event: NotifiableEvent.COLLABORATOR_ADDED,
+        title: `Vous avez été ajouté au dossier ${dossier.dossier_number}`,
+        content: dossier.object ?? '',
+        link: `/dossiers/${dossier.id}`,
+        audience: {
+          lawyer_id: null,
+          collaborator_ids: newCollabUserIds,
+        },
+        entity: { type: 'dossier', id: dossier.id },
+      });
+    }
+  }
+}
+
+/** Étiquette lisible pour un DossierStatus numérique. */
+function labelStatus(v: any): string {
+  const n = Number(v);
+  switch (n) {
+    case DossierStatus.OPEN: return 'Ouvert';
+    case DossierStatus.PRELIMINARY_ANALYSIS: return 'Analyse';
+    case DossierStatus.AMICABLE: return 'Amiable';
+    case DossierStatus.LITIGATION: return 'Contentieux';
+    default: return String(v ?? '');
   }
 }

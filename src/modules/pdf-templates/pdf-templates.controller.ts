@@ -1,3 +1,6 @@
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import {
   Controller,
   Get,
@@ -10,14 +13,12 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { PdfTemplatesService } from './pdf-templates.service';
+
 import { CreatePdfTemplateDto } from './dto/create-pdf-template.dto';
-import { UpdatePdfTemplateDto } from './dto/update-pdf-template.dto';
 import { PdfTemplateSearchDto } from './dto/pdf-template-search.dto';
+import { UpdatePdfTemplateDto } from './dto/update-pdf-template.dto';
 import { PdfTemplate } from './entities/pdf-template.entity';
+import { PdfTemplatesService } from './pdf-templates.service';
 
 @ApiTags('PDF Templates')
 @Controller('pdf-templates')
