@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
-
-import { Audience } from '../entities/audience.entity';
-import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
+import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { Audience } from '../entities/audience.entity';
 
 /**
  * Subscriber métier pour les audiences.
@@ -38,10 +38,14 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Audience,
     _event: InsertEvent<Audience>,
   ): Promise<void> {
-    const audience = await this.loadWithRelations(entity.id);
+    const audience = await this.load(entity.id);
     if (!audience) return;
     const dossier: any = audience.dossier;
     const client: any = dossier?.client;
+
+    this.logger.log(
+      `📢 Audience créée | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${!!entity.notify_client}`,
+    );
 
     await this.notify({
       event: NotifiableEvent.AUDIENCE_CREATED,
@@ -89,9 +93,13 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
   }
 
   private async dispatchHeld(id: number, entity: Partial<Audience>): Promise<void> {
-    const audience = await this.loadWithRelations(id);
+    const audience = await this.load(id);
     if (!audience) return;
     const dossier: any = audience.dossier;
+
+    this.logger.log(
+      `📢 Audience tenue | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'}`,
+    );
 
     await this.notify({
       event: NotifiableEvent.AUDIENCE_HELD,
@@ -118,9 +126,13 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Partial<Audience>,
     reason: string,
   ): Promise<void> {
-    const audience = await this.loadWithRelations(id);
+    const audience = await this.load(id);
     if (!audience) return;
     const dossier: any = audience.dossier;
+
+    this.logger.log(
+      `📢 Audience modifiée | id=${audience.id} | reason="${reason}" | dossier=${dossier?.dossier_number ?? '?'}`,
+    );
 
     await this.notify({
       event: NotifiableEvent.AUDIENCE_UPDATED,
@@ -145,7 +157,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     });
   }
 
-  private loadWithRelations(id: number): Promise<Audience | null> {
+  private load(id: number): Promise<Audience | null> {
     return this.audienceRepo.findOne({
       where: { id },
       relations: ['dossier', 'dossier.client', 'dossier.collaborators'],

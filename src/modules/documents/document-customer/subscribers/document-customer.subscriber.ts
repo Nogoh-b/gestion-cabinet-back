@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, InsertEvent, Repository } from 'typeorm';
-
-import { DocumentCustomer } from '../entities/document-customer.entity';
-import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
+import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { DataSource, InsertEvent, Repository } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { DocumentCustomer } from '../entities/document-customer.entity';
 
 /**
  * Subscriber métier pour les documents clients.
@@ -35,14 +35,15 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
     _event: InsertEvent<DocumentCustomer>,
   ): Promise<void> {
     // Recharger pour récupérer dossier + client + lawyer
-    const doc = await this.docRepo.findOne({
-      where: { id: entity.id },
-      relations: ['dossier', 'dossier.client', 'customer'],
-    });
+    const doc = await this.load(entity.id);
     if (!doc) return;
 
     const dossier: any = doc.dossier;
     const client: any = dossier?.client ?? doc.customer;
+
+    this.logger.log(
+      `📢 Document uploadé | id=${doc.id} | name="${doc.name}" | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${!!entity.notify_client}`,
+    );
 
     await this.notify({
       event: NotifiableEvent.DOCUMENT_UPLOADED,
@@ -60,6 +61,13 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
         lawyer_id: dossier?.lawyer_id ?? null,
       },
       entity: { type: 'document', id: doc.id },
+    });
+  }
+
+  private load(id: number): Promise<DocumentCustomer | null> {
+    return this.docRepo.findOne({
+      where: { id },
+      relations: ['dossier', 'dossier.client', 'customer'],
     });
   }
 }

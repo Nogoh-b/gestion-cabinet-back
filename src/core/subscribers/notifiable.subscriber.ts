@@ -1,9 +1,10 @@
 import { DataSource, ObjectLiteral } from 'typeorm';
-import { BaseEntitySubscriber } from './base-entity.subscriber';
+
 import {
   DispatchPayload,
   NotificationDispatcher,
 } from '../notifications/notification-dispatcher.service';
+import { BaseEntitySubscriber } from './base-entity.subscriber';
 
 /**
  * Base class pour tout subscriber qui veut déclencher des notifications.
@@ -47,8 +48,13 @@ export abstract class NotifiableSubscriber<
    * le subscriber et donc la transaction métier ne sont pas impactés.
    */
   protected async notify(payload: DispatchPayload): Promise<void> {
+    const entityInfo = payload.entity ? ` | entity=${payload.entity.type}#${payload.entity.id}` : '';
+    this.logger.log(
+      `📢 notify(${payload.event}) | title="${payload.title}"${entityInfo} | lawyer=${payload.audience.lawyer_id ?? '?'} | client.notify=${!!payload.audience.client?.notify}`,
+    );
     try {
       await this.notificationDispatcher.dispatch(payload);
+      this.logger.log(`✅ notify(${payload.event}) dispatch terminé`);
     } catch (err) {
       this.logger.error(
         `notify(${payload.event}) ignoré : ${(err as Error).message}`,

@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, InsertEvent, Repository } from 'typeorm';
-
-import { Paiement } from '../entities/paiement.entity';
-import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
+import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { DataSource, InsertEvent, Repository } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { Paiement } from '../entities/paiement.entity';
 
 /**
  * Subscriber métier pour les paiements.
@@ -35,12 +35,13 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     _event: InsertEvent<Paiement>,
   ): Promise<void> {
     // Recharger avec la facture + dossier + client pour résoudre l'audience
-    const paiement = await this.paiementRepo.findOne({
-      where: { id: entity.id as any },
-      relations: ['facture', 'facture.client', 'facture.dossier'],
-    });
+    const paiement = await this.load(entity.id as any);
     if (!paiement?.facture) return;
     const facture: any = paiement.facture;
+
+    this.logger.log(
+      `📢 Paiement reçu | id=${paiement.id} | montant=${formatMoney(paiement.montant)} | facture=${facture.numero} | notify_client=${!!entity.notify_client}`,
+    );
 
     await this.notify({
       event: NotifiableEvent.PAIEMENT_RECEIVED,
@@ -58,6 +59,13 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
         lawyer_id: facture.dossier?.lawyer_id ?? null,
       },
       entity: { type: 'paiement', id: paiement.id as any },
+    });
+  }
+
+  private load(id: string | number): Promise<Paiement | null> {
+    return this.paiementRepo.findOne({
+      where: { id: id as any },
+      relations: ['facture', 'facture.client', 'facture.dossier'],
     });
   }
 }

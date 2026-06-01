@@ -1,21 +1,23 @@
+import { DataSource } from 'typeorm';
+import { ChatOpenAI } from '@langchain/openai';
 import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
-import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
-import { ChatOpenAI } from '@langchain/openai';
 import { DatabaseTablesConfig } from './config/database-tables.config';
-import { AskQuestionDto } from './dto/ask-question.dto';
+import { ConversationManagerService } from './conversation-manager.service';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
+import { AskQuestionDto } from './dto/ask-question.dto';
+import { GenericWriteService } from './generic-write.service';
+import { IntentDetectionService } from './intent-detection.service';
+import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
+import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
-import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
-import { ConversationManagerService } from './conversation-manager.service';
-import { IntentDetectionService } from './intent-detection.service';
-import { GenericWriteService } from './generic-write.service';
-import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
 import { AmbiguityException } from './write/ambiguity.exception';
+import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -1310,8 +1312,9 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
 
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
-    model: 'deepseek-chat',
-    temperature: 0,            // ✅ Déterministe pour des analyses précises
+    model: 'deepseek-v4-pro',
+    // model: 'deepseek-chat',
+    temperature: 0.1,            // ✅ Déterministe pour des analyses précises
     maxTokens: 50000,           // ✅ 50000 pour éviter la troncature des réponses JSON complexes
     apiKey: process.env.DEEPSEEK_API_KEY,
     configuration: {

@@ -79,8 +79,11 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
   }
 
   async afterInsert(event: InsertEvent<T>): Promise<void> {
+    const entityId = (event.entity as any)?.id ?? '?';
+    this.logger.log(`▶ afterInsert déclenché | entité=${this.listenTo().name} | id=${entityId}`);
     try {
       await this.onAfterCreate(event.entity, event);
+      this.logger.log(`✅ afterInsert terminé | entité=${this.listenTo().name} | id=${entityId}`);
     } catch (err) {
       this.logger.error(`afterInsert: ${err.message}`, err.stack);
     }
@@ -95,8 +98,11 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
   }
 
   async afterUpdate(event: UpdateEvent<T>): Promise<void> {
+    const entityId = (event.entity as any)?.id ?? (event.databaseEntity as any)?.id ?? '?';
+    this.logger.log(`▶ afterUpdate déclenché | entité=${this.listenTo().name} | id=${entityId}`);
     try {
       if (event.entity) await this.onAfterUpdate(event.entity as Partial<T>, event);
+      this.logger.log(`✅ afterUpdate terminé | entité=${this.listenTo().name} | id=${entityId}`);
     } catch (err) {
       this.logger.error(`afterUpdate: ${err.message}`, err.stack);
     }

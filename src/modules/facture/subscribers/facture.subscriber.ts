@@ -1,12 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
-
-import { Facture } from '../entities/facture.entity';
-import { StatutFacture } from '../dto/create-facture.dto';
-import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
+import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { StatutFacture } from '../dto/create-facture.dto';
+import { Facture } from '../entities/facture.entity';
 
 /**
  * Subscriber métier pour les factures.
@@ -35,8 +35,12 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     entity: Facture,
     _event: InsertEvent<Facture>,
   ): Promise<void> {
-    const facture = await this.loadWithRelations(entity.id);
+    const facture = await this.load(entity.id);
     if (!facture) return;
+
+    this.logger.log(
+      `📢 Facture créée | id=${facture.id} | numero=${facture.numero} | montant=${formatMoney(facture.montantTTC)} | échéance=${formatDate(facture.dateEcheance)} | notify_client=${!!entity.notify_client}`,
+    );
 
     await this.notify({
       event: NotifiableEvent.FACTURE_CREATED,
@@ -70,7 +74,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
     const id = entity.id ?? (event.databaseEntity as Facture)?.id;
     if (!id) return;
-    const facture = await this.loadWithRelations(id);
+    const facture = await this.load(id);
     if (!facture) return;
 
     const newStatus = Number(change.newValue);
@@ -79,14 +83,21 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
       | NotifiableEvent.FACTURE_OVERDUE
       | null = null;
     let title = '';
+    let statusLabel = '';
     if (newStatus === StatutFacture.PAYEE) {
       event_ = NotifiableEvent.FACTURE_PAID;
       title = `Facture ${facture.numero} payée`;
+      statusLabel = 'PAYEE';
     } else if (newStatus === StatutFacture.IMPAYEE) {
       event_ = NotifiableEvent.FACTURE_OVERDUE;
       title = `Facture ${facture.numero} impayée`;
+      statusLabel = 'IMPAYEE';
     }
     if (!event_) return;
+
+    this.logger.log(
+      `📢 Facture statut changé | id=${facture.id} | numero=${facture.numero} | new_status=${statusLabel} | notify_client=${!!(entity as Facture).notify_client}`,
+    );
 
     await this.notify({
       event: event_,
@@ -106,7 +117,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     });
   }
 
-  private loadWithRelations(id: string | number): Promise<Facture | null> {
+  private load(id: string | number): Promise<Facture | null> {
     return this.factureRepo.findOne({
       where: { id: id as any },
       relations: ['client', 'dossier'],

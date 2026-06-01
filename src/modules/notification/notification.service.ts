@@ -90,8 +90,8 @@ export class NotificationService {
           const unreadCount = await this.countUnread(createNotificationDto.user_id);
           await this.mainGateway.sendToUser(
             createNotificationDto.user_id,
-            'unread_count',
-            { count: unreadCount },
+            'new_notification',
+            this.toUnreadCountPayload(unreadCount),
           );
         } catch (err) {
           this.logger.warn(
@@ -161,7 +161,8 @@ export class NotificationService {
       );
 
       // 4. Push temps réel via Socket.IO pour chaque destinataire
-      //    Le front (useSocket.ts) écoute 'new_notification'.
+      //    Le front (useSocket.ts:313) écoute 'new_notification' et
+      //    discrimine par data.type ('notification' | 'unread_count' | ...).
       //    Erreurs avalées : un socket KO ne doit pas faire échouer la création BDD.
       await Promise.all(
         savedUserNotifications.map(async (userNotif) => {
@@ -172,12 +173,13 @@ export class NotificationService {
               'new_notification',
               payload,
             );
-            // Rafraîchit le badge "non lues"
+            // Rafraîchit le badge "non lues" — toujours via 'new_notification'
+            // avec le wrapper { type: 'unread_count', count }
             const unreadCount = await this.countUnread(userNotif.user_id);
             await this.mainGateway.sendToUser(
               userNotif.user_id,
-              'unread_count',
-              { count: unreadCount },
+              'new_notification',
+              this.toUnreadCountPayload(unreadCount),
             );
           } catch (err) {
             this.logger.warn(
@@ -320,10 +322,14 @@ export class NotificationService {
       { is_read: true, read_at: new Date() }
     );
 
-    // Rafraîchit le badge en temps réel
+    // Rafraîchit le badge en temps réel via 'new_notification' (event unique)
     const unreadCount = await this.countUnread(userId);
     try {
-      await this.mainGateway.sendToUser(userId, 'unread_count', { count: unreadCount });
+      await this.mainGateway.sendToUser(
+        userId,
+        'new_notification',
+        this.toUnreadCountPayload(unreadCount),
+      );
     } catch (err) {
       this.logger.warn(`Push unread_count KO user ${userId}: ${(err as Error).message}`);
     }
@@ -337,34 +343,57 @@ export class NotificationService {
     );
 
     try {
-      await this.mainGateway.sendToUser(userId, 'unread_count', { count: 0 });
+      await this.mainGateway.sendToUser(
+        userId,
+        'new_notification',
+        this.toUnreadCountPayload(0),
+      );
     } catch (err) {
       this.logger.warn(`Push unread_count KO user ${userId}: ${(err as Error).message}`);
     }
   }
 
   /**
-   * Construit le payload Socket.IO `new_notification` consommé par le front
-   * (`useSocket.ts:313`). Format plat — aligné sur `NotificationResponseDto`
-   * pour faciliter la fusion immédiate dans le store front sans transformation.
+   * Construit le payload Socket.IO `new_notification` consommé par le front.
+   *
+   * Format imposé par `useNotifications.ts:68-83` qui discrimine sur
+   * `data.type === 'notification'` pour pousser le contenu dans le state :
+   *
+   *   { type: 'notification', notification: { id, type, title, ... } }
+   *
+   * ⚠️  Ne PAS aplatir — si l'on émet `{ id, type: 'dossier_created', ... }`
+   * sans wrapper, le front ne matche aucune branche (data.type vaudrait
+   * 'dossier_created') et la notif n'apparaît pas en temps réel.
    */
   private toSocketPayload(notification: Notification, userNotif: UserNotification) {
     return {
-      // ID de l'entrée pivot (utile pour mark-as-read côté front)
-      id: userNotif.id,
-      notification_id: notification.id,
-      type: notification.type,
-      title: notification.title,
-      content: notification.content,
-      data: notification.data,
-      link: notification.link,
-      priority: notification.priority,
-      image_url: notification.image_url,
-      actions: notification.actions ?? [],
-      is_read: false,
-      read_at: null,
-      created_at: notification.created_at,
+      type: 'notification' as const,
+      notification: {
+        // ID de l'entrée pivot (utile pour mark-as-read côté front)
+        id: userNotif.id,
+        notification_id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        content: notification.content,
+        data: notification.data,
+        link: notification.link,
+        priority: notification.priority,
+        image_url: notification.image_url,
+        actions: notification.actions ?? [],
+        is_read: false,
+        read_at: null,
+        created_at: notification.created_at,
+      },
     };
+  }
+
+  /**
+   * Payload pour mettre à jour le badge "non lues" côté front.
+   * Le hook lit `data.type === 'unread_count'` + `data.count`, et écoute
+   * sur le MÊME event `new_notification` (un seul listener pour tout).
+   */
+  private toUnreadCountPayload(count: number) {
+    return { type: 'unread_count' as const, count };
   }
 
   // Archiver une notification

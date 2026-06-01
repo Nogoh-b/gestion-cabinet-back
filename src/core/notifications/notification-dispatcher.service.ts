@@ -1,12 +1,11 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-
-import { User } from 'src/modules/iam/user/entities/user.entity';
-import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
-import { UserSettings } from 'src/modules/settings/entities/user-settings.entity';
-import { NotificationService } from 'src/modules/notification/notification.service';
 import { MailService } from 'src/core/shared/emails/emails.service';
+import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+import { NotificationService } from 'src/modules/notification/notification.service';
+import { UserSettings } from 'src/modules/settings/entities/user-settings.entity';
+import { Repository } from 'typeorm';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 
 import {
   ChannelPreference,
@@ -69,7 +68,9 @@ export class NotificationDispatcher {
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
     private readonly mailService: MailService,
-  ) {}
+  ) {
+    console.log('NotificationDispatcher initialisé ', forwardRef);
+  }
 
   /**
    * Point d'entrée unique. À appeler depuis n'importe quel subscriber après
@@ -77,12 +78,20 @@ export class NotificationDispatcher {
    * les effets de bord.
    */
   async dispatch(payload: DispatchPayload): Promise<void> {
+    this.logger.log(
+      `🚀 dispatch(${payload.event}) début | title="${payload.title}" | entity=${payload.entity?.type}#${payload.entity?.id}`,
+    );
     try {
       // 1. Résolution des destinataires employés (avocat + collabs + admins)
       const employeeIds = await this.resolveEmployeeIds(payload.audience);
+      this.logger.log(`  ├─ [1/5] resolveEmployeeIds → ${employeeIds.size} employé(s)`);
 
       // 2. Filtrage par préférences utilisateur
       const channelsByUser = await this.resolveChannels(employeeIds, payload.event);
+      const channelsSummary = Array.from(channelsByUser.entries())
+        .map(([id, ch]) => `user#${id}: in_app=${ch.in_app} email=${ch.email}`)
+        .join(', ');
+      this.logger.log(`  ├─ [2/5] resolveChannels → ${channelsByUser.size} utilisateur(s) [${channelsSummary}]`);
 
       // 3. In-app bulk pour les utilisateurs qui ont in_app=true
       const inAppRecipients = Array.from(channelsByUser.entries())
@@ -90,6 +99,7 @@ export class NotificationDispatcher {
         .map(([id]) => id);
 
       if (inAppRecipients.length > 0) {
+        this.logger.log(`  ├─ [3/5] createBulk in-app → ${inAppRecipients.length} destinataire(s) : [${inAppRecipients.join(', ')}]`);
         await this.notificationService
           .createBulk(
             {
@@ -106,9 +116,12 @@ export class NotificationDispatcher {
             },
             payload.audience.lawyer_id ?? 1,
           )
+          .then(() => this.logger.log(`  │  ✅ createBulk in-app OK`))
           .catch((err) =>
-            this.logger.error(`In-app createBulk a échoué : ${err.message}`, err.stack),
+            this.logger.error(`  │  ❌ In-app createBulk a échoué : ${err.message}`, err.stack),
           );
+      } else {
+        this.logger.log(`  ├─ [3/5] in-app → aucun destinataire (préférences ou pas de cible)`);
       }
 
       // 4. E-mails employés (préférence email=true) — adresses lookup individuels
@@ -117,14 +130,22 @@ export class NotificationDispatcher {
         .map(([id]) => id);
 
       if (emailEmployeeIds.length > 0) {
+        this.logger.log(`  ├─ [4/5] sendEmailsTo employés → ${emailEmployeeIds.length} utilisateur(s) : [${emailEmployeeIds.join(', ')}]`);
         await this.sendEmailsTo(emailEmployeeIds, payload);
+      } else {
+        this.logger.log(`  ├─ [4/5] emails employés → aucun (préférences ou pas de cible)`);
       }
 
       // 5. E-mail client (uniquement si la case est cochée)
       const client = payload.audience.client;
       if (client?.notify) {
+        this.logger.log(`  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`);
         await this.sendClientEmail(client, payload);
+      } else {
+        this.logger.log(`  ├─ [5/5] email client → non notifié (notify_client=false ou absent)`);
       }
+
+      this.logger.log(`✅ dispatch(${payload.event}) terminé avec succès`);
     } catch (err) {
       // Ceinture/bretelles : le dispatcher ne doit JAMAIS faire échouer un subscriber
       this.logger.error(
@@ -295,9 +316,9 @@ export class NotificationDispatcher {
 /** Échappement HTML minimal pour le fallback. */
 function escapeHtml(s: string): string {
   return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
     .replace(/'/g, '&#39;');
 }

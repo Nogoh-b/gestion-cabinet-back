@@ -1,17 +1,18 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
-import { Dossier } from '../entities/dossier.entity';
-import { Conversation } from 'src/modules/chat/entities/conversation.entity';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
+import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
+import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
+import { Conversation } from 'src/modules/chat/entities/conversation.entity';
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/default-procedure-template.seeder';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
-import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
-import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
-import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
-import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
+import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { Dossier } from '../entities/dossier.entity';
 
 /**
  * Subscriber métier pour l'entité Dossier.
@@ -82,23 +83,22 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
    */
   private async notifyDossierCreated(entity: Dossier): Promise<void> {
     // Recharger les relations utiles si pas encore en mémoire
-    const dossier =
-      entity.client && entity.lawyer
-        ? entity
-        : await this.dossierRepo.findOne({
-            where: { id: entity.id },
-            relations: ['client', 'lawyer', 'collaborators'],
-          });
+    const loaded = await this.load(entity.id).catch(() => null);
+    const dossier = loaded ?? entity;
     if (!dossier) return;
 
     const clientUserId =
       (dossier.client as any)?.user_id ?? (dossier.client as any)?.user?.id;
     const clientEmail = (dossier.client as any)?.email;
 
+    this.logger.log(
+      `📢 Dossier créé | id=${dossier.id} | number="${dossier.dossier_number}" | lawyer=${dossier.lawyer_id ?? '?'} | client.user_id=${clientUserId ?? '?'} | notify_client=${!!entity.notify_client}`,
+    );
+
     await this.notify({
       event: NotifiableEvent.DOSSIER_CREATED,
       title: `Nouveau dossier ${dossier.dossier_number}`,
-      content: dossier.object ?? `Dossier ${dossier.dossier_number} créé`,
+      content: dossier.object?.trim() || `Dossier ${dossier.dossier_number} créé`,
       link: `/dossiers/${dossier.id}`,
       audience: {
         client: {
@@ -249,14 +249,16 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     const id = entity.id ?? (event.databaseEntity as Dossier)?.id;
     if (!id) return;
 
-    const dossier = await this.dossierRepo.findOne({
-      where: { id },
-      relations: ['client', 'lawyer', 'collaborators'],
-    });
+    const loaded = await this.load(id).catch(() => null);
+    const dossier = loaded ?? (event.databaseEntity as Dossier);
     if (!dossier) return;
 
     const oldLabel = labelStatus(change.oldValue);
     const newLabel = labelStatus(change.newValue);
+
+    this.logger.log(
+      `📢 Statut dossier changé | id=${dossier.id} | number="${dossier.dossier_number}" | "${oldLabel}" → "${newLabel}" | notify_client=${!!(entity as Dossier).notify_client}`,
+    );
 
     await this.notify({
       event: NotifiableEvent.DOSSIER_STATUS_CHANGED,
@@ -294,10 +296,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     const dossierId = entity.id ?? (event.databaseEntity as Dossier)?.id;
     if (!dossierId) return;
 
-    const dossier = await this.dossierRepo.findOne({
-      where: { id: dossierId },
-      relations: ['collaborators', 'conversation', 'conversation.participants'],
-    });
+    const dossier = await this.loadWithConversation(dossierId);
 
     if (!dossier?.conversation) {
       this.logger.warn(
@@ -329,10 +328,13 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       .map((emp) => (emp as any).user_id ?? (emp as any).user?.id)
       .filter(Boolean);
     if (newCollabUserIds.length > 0) {
+      this.logger.log(
+        `📢 Collaborateurs ajoutés au dossier | id=${dossier.id} | number="${dossier.dossier_number}" | new_users=[${newCollabUserIds.join(', ')}]`,
+      );
       await this.notify({
         event: NotifiableEvent.COLLABORATOR_ADDED,
         title: `Vous avez été ajouté au dossier ${dossier.dossier_number}`,
-        content: dossier.object ?? '',
+        content: dossier.object?.trim() || '',
         link: `/dossiers/${dossier.id}`,
         audience: {
           lawyer_id: null,
@@ -341,6 +343,22 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         entity: { type: 'dossier', id: dossier.id },
       });
     }
+  }
+
+  // ── Helpers de rechargement (pattern uniformisé avec DiligenceSubscriber) ──
+
+  private load(id: number): Promise<Dossier | null> {
+    return this.dossierRepo.findOne({
+      where: { id },
+      relations: ['client', 'lawyer', 'collaborators'],
+    });
+  }
+
+  private loadWithConversation(id: number): Promise<Dossier | null> {
+    return this.dossierRepo.findOne({
+      where: { id },
+      relations: ['collaborators', 'conversation', 'conversation.participants'],
+    });
   }
 }
 

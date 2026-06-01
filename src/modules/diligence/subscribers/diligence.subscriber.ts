@@ -42,12 +42,14 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
     // on utilise un objet partiel avec au moins l'id pour le lien.
     const dossier: any = diligence.dossier ?? (diligence.dossier_id ? { id: diligence.dossier_id } : null);
 
-    console.log('Diligence créée, envoi notification :', diligence.id, diligence.title, dossier?.id, diligence.assigned_lawyer_id);
+    this.logger.log(
+      `📢 Diligence créée | id=${diligence.id} | title="${diligence.title}" | dossier=${dossier?.id ?? '?'} | lawyer=${diligence.assigned_lawyer_id ?? '?'} | notify_client=${!!entity.notify_client} | description="${diligence.description?.trim() || '(vide)'}"`,
+    );
 
     await this.notify({
       event: NotifiableEvent.DILIGENCE_ASSIGNED,
       title: `Nouvelle diligence — ${diligence.title}`,
-      content: diligence.description ?? `Diligence assignée`,
+      content: diligence.description?.trim() || `Diligence assignée`,
       link: `/dossiers/${dossier?.id ?? ''}/diligences/${diligence.id}`,
       audience: {
         client: {
