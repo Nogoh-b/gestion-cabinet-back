@@ -9,13 +9,13 @@ import { FactureStatsService } from './facture-stats.service';
 import { FactureWriteHandler } from './facture-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
-import { AppSettings } from '../settings/entities/app-settings.entity';
+import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { FactureSubscriber } from './subscribers/facture.subscriber';
 
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Facture, AppSettings]),
+    TypeOrmModule.forFeature([Facture, Cabinet]),
     forwardRef(() => DossiersModule),
     AiDatabaseModule,
   ],

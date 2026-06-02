@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AppSettings } from './entities/app-settings.entity';
+import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { UserSettings } from './entities/user-settings.entity';
 import { AppSettingsService } from './services/app-settings.service';
 import { UserSettingsService } from './services/user-settings.service';
@@ -9,7 +9,8 @@ import { UserSettingsController } from './controllers/user-settings.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AppSettings, UserSettings]),
+    // La configuration cabinet vit désormais dans la table `cabinets`.
+    TypeOrmModule.forFeature([Cabinet, UserSettings]),
   ],
   controllers: [AppSettingsController, UserSettingsController],
   providers: [AppSettingsService, UserSettingsService],

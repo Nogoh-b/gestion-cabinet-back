@@ -38,7 +38,9 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Audience,
     _event: InsertEvent<Audience>,
   ): Promise<void> {
-    const audience = await this.load(entity.id);
+    const loaded = await this.load(entity.id);
+    const audience = loaded ?? entity;
+    console.log(' Audience créée, envoi notification :', audience?.id, audience?.audience_date, audience?.dossier?.dossier_number, audience?.notify_client);
     if (!audience) return;
     const dossier: any = audience.dossier;
     const client: any = dossier?.client;

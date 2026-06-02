@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Param, Body, ParseIntPipe, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CabinetService } from './cabinet.service';
-import { Cabinet } from './entities/cabinet.entity';
+import { Cabinet, serializeCabinet } from './entities/cabinet.entity';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -22,7 +22,7 @@ export class CabinetController {
 
   /** Résolution publique d'un code → branding complet du cabinet (logo, slogan, nom…)
    *  pour la page de login (avant authentification).
-   *  Fusionne les AppSettings (prioritaires) avec les données du cabinet. */
+   *  La configuration vit directement dans la table `cabinets`. */
   @Get('resolve/:code')
   @Public()                      // pas d'auth requise
   @ApiOperation({ summary: 'Résoudre un code cabinet → branding complet (nom, logo, slogan, statut)' })
@@ -37,14 +37,15 @@ export class CabinetController {
 
   @Get()
   @RequirePermissions('manage_cabinets')
-  findAll(): Promise<Cabinet[]> {
-    return this.service.findAll();
+  async findAll() {
+    const cabinets = await this.service.findAll();
+    return cabinets.map(serializeCabinet);
   }
 
   @Get(':id')
   @RequirePermissions('manage_cabinets')
-  findOne(@Param('id', ParseIntPipe) id: number): Promise<Cabinet> {
-    return this.service.findById(id);
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return serializeCabinet(await this.service.findById(id));
   }
 
   @Post()
@@ -69,7 +70,7 @@ export class CabinetController {
       email_footer?: string;
       name?: string;
     },
-  ): Promise<Cabinet> {
+  ) {
     return this.service.updateBranding(id, body);
   }
 

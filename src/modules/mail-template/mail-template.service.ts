@@ -5,7 +5,7 @@ import * as Handlebars from 'handlebars';
 import { MailTemplate } from './entities/mail-template.entity';
 import { CreateMailTemplateDto } from './dto/create-mail-template.dto';
 import { UpdateMailTemplateDto } from './dto/update-mail-template.dto';
-import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { Cabinet, cabinetLogoToDataUri } from 'src/modules/cabinet/entities/cabinet.entity';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 export interface RenderedMail {
@@ -109,7 +109,7 @@ export class MailTemplateService {
   private buildBrandContext(cabinet: Cabinet | null) {
     return {
       cabinetName: cabinet?.name ?? 'Votre cabinet',
-      logoUrl: cabinet?.logo_url ?? null,
+      logoUrl: cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
       brandColor: cabinet?.brand_color ?? '#1d4ed8',
       contactEmail: cabinet?.contact_email ?? null,
       contactPhone: cabinet?.contact_phone ?? null,

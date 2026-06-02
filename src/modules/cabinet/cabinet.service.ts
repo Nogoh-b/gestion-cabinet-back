@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cabinet, CabinetPlan } from './entities/cabinet.entity';
-import { AppSettingsService } from '../settings/services/app-settings.service';
+import {
+  Cabinet,
+  CabinetPlan,
+  cabinetLogoToDataUri,
+  parseLogoInput,
+  serializeCabinet,
+} from './entities/cabinet.entity';
 
 @Injectable()
 export class CabinetService implements OnModuleInit {
@@ -11,7 +16,6 @@ export class CabinetService implements OnModuleInit {
   constructor(
     @InjectRepository(Cabinet)
     private readonly repo: Repository<Cabinet>,
-    private readonly appSettingsService: AppSettingsService,
   ) {}
 
   /**
@@ -65,11 +69,11 @@ export class CabinetService implements OnModuleInit {
   }
 
   /**
-   * Résout un code cabinet ET merge les AppSettings (logo, slogan, name…).
+   * Résout un code cabinet → branding public (logo, slogan, nom…).
    *
-   * Ordre de priorité (le premier non-vide gagne) :
-   *   1. AppSettings.cabinet_xxx (settings personnalisés du cabinet)
-   *   2. Cabinet.xxx (valeurs brutes de l'entité)
+   * La configuration vit désormais directement dans la table `cabinets`
+   * (la table `app_settings` a été fusionnée). Plus aucune jointure n'est
+   * nécessaire.
    *
    * Utilisé par l'endpoint public GET /cabinets/resolve/:code
    * pour fournir au frontend le branding complet avant authentification.
@@ -87,31 +91,15 @@ export class CabinetService implements OnModuleInit {
     const cabinet = await this.findByCode(code);
     if (!cabinet) return null;
 
-    // Récupération des settings (créés par défaut si inexistants)
-    const settings = await this.appSettingsService.findByCabinet(cabinet.id);
-    console.log('settings ', settings)
-    // Fusion : settings (prioritaire) → cabinet (fallback) → null
-    const name = (settings.cabinet_name && settings.cabinet_name !== 'MonCabinet')
-      ? settings.cabinet_name
-      : cabinet.name;
-
-    const logo = (settings.cabinet_logo && settings.cabinet_logo.trim())
-      ? settings.cabinet_logo
-      : null;
-
-    const slogan = (settings.cabinet_slogan && settings.cabinet_slogan.trim())
-      ? settings.cabinet_slogan
-      : null;
-
     return {
       id:           cabinet.id,
       code:         cabinet.code,
-      name,
+      name:         cabinet.name,
       status:       cabinet.status,
       plan:         cabinet.plan,
       routing_mode: cabinet.routing_mode,
-      logo,
-      slogan,
+      logo:         cabinetLogoToDataUri(cabinet.logo, cabinet.logo_mime),
+      slogan:       cabinet.slogan?.trim() ? cabinet.slogan : null,
     };
   }
 
@@ -120,15 +108,26 @@ export class CabinetService implements OnModuleInit {
     return this.findById(id);
   }
 
-  /** Met à jour les informations de branding (logo, couleur, coordonnées) utilisées dans les e-mails. */
+  /** Met à jour les informations de branding (logo, couleur, coordonnées) utilisées dans les e-mails.
+   *  Le logo est reçu en data-URI (`logo_url`) et stocké en blob. */
   async updateBranding(
     id: number,
-    data: Partial<Pick<Cabinet,
-      'logo_url' | 'brand_color' | 'contact_email' | 'contact_phone' | 'address' | 'website' | 'email_footer' | 'name'
+    data: {
+      logo_url?: string | null;
+    } & Partial<Pick<Cabinet,
+      'brand_color' | 'contact_email' | 'contact_phone' | 'address' | 'website' | 'email_footer' | 'name'
     >>,
-  ): Promise<Cabinet> {
-    await this.repo.update(id, data);
-    return this.findById(id);
+  ) {
+    const cabinet = await this.findById(id);
+    const { logo_url, ...rest } = data;
+    Object.assign(cabinet, rest);
+    const parsed = parseLogoInput(logo_url);
+    if (parsed) {
+      cabinet.logo = parsed.logo;
+      cabinet.logo_mime = parsed.logo_mime;
+    }
+    await this.repo.save(cabinet);
+    return serializeCabinet(cabinet);
   }
 
   async suspend(id: number): Promise<Cabinet> {

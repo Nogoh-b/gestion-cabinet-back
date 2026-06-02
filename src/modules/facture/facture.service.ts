@@ -20,7 +20,7 @@ import { Facture } from './entities/facture.entity';
 import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 import { StepsService } from '../dossiers/step.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
-import { AppSettings } from '../settings/entities/app-settings.entity';
+import { Cabinet } from '../cabinet/entities/cabinet.entity';
 
 
 
@@ -39,8 +39,8 @@ export class FactureService extends BaseServiceV1<Facture> {
     protected readonly dossiersService: DossiersService,
     @Inject(forwardRef(() => StepsService))
     private stepsService: StepsService,
-    @InjectRepository(AppSettings)
-    private readonly appSettingsRepo: Repository<AppSettings>,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepo: Repository<Cabinet>,
   ) {
     super(repository, paginationService);
   }
@@ -253,7 +253,7 @@ export class FactureService extends BaseServiceV1<Facture> {
   /**
    * Génère un numéro de facture unique en suivant les settings du cabinet.
    *
-   * Lit app_settings.invoice_prefix / invoice_padding / invoice_numbering_strategy
+   * Lit cabinets.invoice_prefix / invoice_padding / invoice_numbering_strategy
    * puis cherche le MAX existant pour la fenêtre choisie (année, mois ou global)
    * et incrémente. Une boucle de sécurité parcourt les éventuelles collisions.
    *
@@ -262,11 +262,11 @@ export class FactureService extends BaseServiceV1<Facture> {
    *   monthly    →  FAC-202605-0001
    *   continuous →  FAC-0001
    *
-   * Si aucun AppSettings n'existe (cabinet pas encore configuré), retombe sur
+   * Si aucun cabinet n'existe (pas encore configuré), retombe sur
    * un format minimal sécurisé : `${prefix}${YYYY}-0001`.
    */
   async generateFacNumber(): Promise<string> {
-    const settings = await this.appSettingsRepo.findOne({ where: {} });
+    const settings = await this.cabinetRepo.findOne({ where: {} });
     const prefix = (settings?.invoice_prefix ?? 'FAC-').toString();
     const padding = Math.max(1, Math.min(10, settings?.invoice_padding ?? 4));
     const strategy = (settings?.invoice_numbering_strategy ?? 'yearly') as

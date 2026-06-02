@@ -1,6 +1,8 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
+
 import { MailTemplate } from '../entities/mail-template.entity';
+
 
 /**
  * Seed des templates de mail prédéfinis (système).
@@ -112,14 +114,173 @@ export default class MailTemplateSeeder implements Seeder {
         name: 'Facture émise',
         category: 'billing',
         description: "Envoyé lors de l'émission d'une facture.",
-        subject: 'Votre facture {{invoiceNumber}}',
+        subject: '{{title}}',
         body_html: `
           <h2 style="margin-top:0;">Nouvelle facture</h2>
-          <p>Bonjour {{clientName}},</p>
-          <p>Veuillez trouver votre facture <strong>{{invoiceNumber}}</strong> d'un montant de <strong>{{amount}}</strong>.</p>
-          <p>Échéance : {{dueDate}}.</p>
-          <p>Merci de votre confiance,<br/>{{cabinetName}}</p>`,
-        variables: JSON.stringify(['clientName', 'invoiceNumber', 'amount', 'dueDate', 'cabinetName']),
+          <p>Bonjour,</p>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir la facture</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      // ── Templates de notification métier (utilisés par NotificationDispatcher) ──
+      {
+        code: 'diligence_assigned',
+        name: 'Diligence assignée',
+        category: 'dossier',
+        description: "Envoyé lorsqu'une diligence est assignée à un avocat.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Nouvelle diligence</h2>
+          <p>Bonjour,</p>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir la diligence</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'diligence_completed',
+        name: 'Diligence terminée',
+        category: 'dossier',
+        description: "Envoyé lorsqu'une diligence est marquée comme terminée.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Diligence terminée</h2>
+          <p>Bonjour,</p>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir la diligence</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'dossier_status_changed',
+        name: 'Changement de statut dossier',
+        category: 'dossier',
+        description: "Envoyé lorsque le statut d'un dossier change.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Statut du dossier mis à jour</h2>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir le dossier</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'collaborator_added',
+        name: 'Ajout collaborateur au dossier',
+        category: 'dossier',
+        description: "Envoyé lorsqu'un collaborateur est ajouté à un dossier.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Nouvelle collaboration</h2>
+          <p>Bonjour,</p>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir le dossier</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'audience_created',
+        name: 'Nouvelle audience',
+        category: 'audience',
+        description: "Envoyé lors de la création d'une audience.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Nouvelle audience</h2>
+          <p>Bonjour,</p>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir l'audience</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'audience_held',
+        name: 'Audience tenue',
+        category: 'audience',
+        description: "Envoyé lorsqu'une audience est marquée comme tenue.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Audience tenue</h2>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir l'audience</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'audience_updated',
+        name: 'Audience modifiée',
+        category: 'audience',
+        description: "Envoyé lorsqu'une audience est modifiée ou reportée.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Audience modifiée</h2>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir l'audience</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'facture_paid',
+        name: 'Facture payée',
+        category: 'billing',
+        description: "Envoyé lorsqu'une facture est marquée comme payée.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Facture payée</h2>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir la facture</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'facture_overdue',
+        name: 'Facture impayée',
+        category: 'billing',
+        description: "Envoyé lorsqu'une facture est marquée comme impayée.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Facture impayée</h2>
+          <p style="color:#dc2626;">{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir la facture</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'paiement_received',
+        name: 'Paiement reçu',
+        category: 'billing',
+        description: "Envoyé lorsqu'un paiement est enregistré.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Paiement reçu</h2>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir la facture</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'document_uploaded',
+        name: 'Document partagé',
+        category: 'dossier',
+        description: "Envoyé lorsqu'un document est partagé avec le client.",
+        subject: '{{title}}',
+        body_html: `
+          <h2 style="margin-top:0;">Nouveau document</h2>
+          <p>Bonjour,</p>
+          <p>{{content}}</p>
+          {{#if link}}<p style="text-align:center;margin:24px 0;"><a href="{{link}}" style="background:{{brandColor}};color:#fff;padding:10px 22px;border-radius:6px;text-decoration:none;display:inline-block;">Voir le document</a></p>{{/if}}`,
+        variables: JSON.stringify(['title', 'content', 'link', 'cabinetName', 'brandColor']),
         is_system: true,
         is_active: true,
       },

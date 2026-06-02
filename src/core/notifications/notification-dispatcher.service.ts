@@ -1,6 +1,7 @@
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { MailTemplateService } from 'src/modules/mail-template/mail-template.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { UserSettings } from 'src/modules/settings/entities/user-settings.entity';
 import { Repository } from 'typeorm';
@@ -49,7 +50,8 @@ export interface DispatchPayload {
  *  - résoudre les utilisateurs cibles (client, avocat, collabs, admins),
  *  - lire les préférences fines (`user_settings.notification_preferences`),
  *  - envoyer les in-app via `NotificationService.createBulk`,
- *  - envoyer les e-mails via `MailService.sendDirect`.
+ *  - envoyer les e-mails via `MailService.sendDirect` (en utilisant les
+ *    templates mail de la table `mail_templates`).
  *
  * Les erreurs sont logguées mais jamais propagées : une panne mail ne doit
  * pas remonter dans le subscriber et donc pas dans la requête HTTP métier.
@@ -68,9 +70,8 @@ export class NotificationDispatcher {
     @Inject(forwardRef(() => NotificationService))
     private readonly notificationService: NotificationService,
     private readonly mailService: MailService,
-  ) {
-    console.log('NotificationDispatcher initialisé ', forwardRef);
-  }
+    private readonly mailTemplateService: MailTemplateService,
+  ) {}
 
   /**
    * Point d'entrée unique. À appeler depuis n'importe quel subscriber après
@@ -153,6 +154,67 @@ export class NotificationDispatcher {
         (err as Error).stack,
       );
     }
+  }
+
+  // ── Résolution des templates mail ──────────────────────────────────────────
+
+  /**
+   * Mapping entre chaque `NotifiableEvent` et le `code` du template mail
+   * correspondant dans la table `mail_templates`.
+   */
+  private resolveTemplateCode(event: NotifiableEvent): string | null {
+    const map: Record<string, string> = {
+      [NotifiableEvent.DOSSIER_CREATED]: 'dossier_created',
+      [NotifiableEvent.DOSSIER_STATUS_CHANGED]: 'dossier_status_changed',
+      [NotifiableEvent.COLLABORATOR_ADDED]: 'collaborator_added',
+      [NotifiableEvent.AUDIENCE_CREATED]: 'audience_created',
+      [NotifiableEvent.AUDIENCE_HELD]: 'audience_held',
+      [NotifiableEvent.AUDIENCE_UPDATED]: 'audience_updated',
+      [NotifiableEvent.AUDIENCE_REMINDER]: 'audience_reminder',
+      [NotifiableEvent.FACTURE_CREATED]: 'invoice_issued',
+      [NotifiableEvent.FACTURE_PAID]: 'facture_paid',
+      [NotifiableEvent.FACTURE_OVERDUE]: 'facture_overdue',
+      [NotifiableEvent.PAIEMENT_RECEIVED]: 'paiement_received',
+      [NotifiableEvent.DOCUMENT_UPLOADED]: 'document_uploaded',
+      [NotifiableEvent.DILIGENCE_ASSIGNED]: 'diligence_assigned',
+      [NotifiableEvent.DILIGENCE_COMPLETED]: 'diligence_completed',
+    };
+    return map[event] ?? null;
+  }
+
+  /**
+   * Essaie de rendre un e-mail via un template DB (table `mail_templates`).
+   * Si aucun template n'est trouvé en base, retourne un fallback HTML simple.
+   */
+  private async renderEmail(payload: DispatchPayload): Promise<{ subject: string; html: string }> {
+    const templateCode = this.resolveTemplateCode(payload.event);
+
+    if (templateCode) {
+      try {
+        const rendered = await this.mailTemplateService.render(templateCode, {
+          title: payload.title,
+          content: payload.content,
+          link: payload.link ?? '',
+          entity: payload.entity,
+          changes: payload.changes,
+          ...payload.emailContext,
+        });
+        this.logger.log(`  │  📧 Template "${templateCode}" rendu avec succès`);
+        return rendered;
+      } catch (err) {
+        this.logger.warn(
+          `  │  ⚠️ Template "${templateCode}" introuvable ou erreur rendu : ${(err as Error).message}. Fallback HTML utilisé.`,
+        );
+      }
+    }
+
+    // Fallback HTML simple si pas de template
+    return {
+      subject: payload.title,
+      html:
+        `<h2>${escapeHtml(payload.title)}</h2><p>${escapeHtml(payload.content)}</p>` +
+        (payload.link ? `<p><a href="${payload.link}">Ouvrir</a></p>` : ''),
+    };
   }
 
   // ── Résolution des cibles ─────────────────────────────────────────────────
@@ -241,26 +303,14 @@ export class NotificationDispatcher {
     const recipients = users.filter((u) => !!u.email).map((u) => u.email);
     if (recipients.length === 0) return;
 
+    // Rendu du template mail (DB ou fallback HTML)
+    const { subject, html } = await this.renderEmail(payload);
+
     await this.mailService
       .sendDirect({
         to: recipients,
-        subject: payload.title,
-        templateName: payload.emailTemplate,
-        context: payload.emailContext ?? {
-          title: payload.title,
-          content: payload.content,
-          link: payload.link,
-          entity: payload.entity,
-          changes: payload.changes,
-        },
-        // Fallback HTML simple si pas de template
-        html: payload.emailTemplate
-          ? undefined
-          : `<h2>${escapeHtml(payload.title)}</h2><p>${escapeHtml(payload.content)}</p>${
-              payload.link
-                ? `<p><a href="${payload.link}">Ouvrir</a></p>`
-                : ''
-            }`,
+        subject,
+        html,
       })
       .catch((err) =>
         this.logger.error(
@@ -289,20 +339,14 @@ export class NotificationDispatcher {
       return;
     }
 
+    // Rendu du template mail (DB ou fallback HTML)
+    const { subject, html } = await this.renderEmail(payload);
+
     await this.mailService
       .sendDirect({
         to,
-        subject: payload.title,
-        templateName: payload.emailTemplate,
-        context: payload.emailContext ?? {
-          title: payload.title,
-          content: payload.content,
-          link: payload.link,
-          entity: payload.entity,
-        },
-        html: payload.emailTemplate
-          ? undefined
-          : `<h2>${escapeHtml(payload.title)}</h2><p>${escapeHtml(payload.content)}</p>`,
+        subject,
+        html,
       })
       .catch((err) =>
         this.logger.error(

@@ -1,7 +1,9 @@
 import * as dotenv from 'dotenv';
+import * as express from 'express';
 import { DataSource } from 'typeorm';
 import { ExpressAdapter } from '@bull-board/express';
 import { ClassSerializerInterceptor } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { NestFactory, Reflector } from '@nestjs/core';
 
@@ -19,7 +21,13 @@ import { seedDatabase } from './main.seeder';
 dotenv.config();
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // bodyParser:false → on remplace le parser par défaut (limite 100kb) par le nôtre
+  // avec une limite large, pour accepter les logos envoyés en data-URI base64.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+  app.use(express.json({ limit: '15mb' }));
+  app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
   // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement

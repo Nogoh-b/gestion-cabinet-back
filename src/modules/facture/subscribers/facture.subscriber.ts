@@ -35,7 +35,9 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     entity: Facture,
     _event: InsertEvent<Facture>,
   ): Promise<void> {
-    const facture = await this.load(entity.id);
+    // const facture = await this.load(entity.id);
+    const loaded = await this.load(entity.id).catch(() => null);
+    const facture = loaded ?? entity;
     if (!facture) return;
 
     this.logger.log(
