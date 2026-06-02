@@ -13,6 +13,7 @@ import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { MailTemplateService } from './mail-template.service';
 import { CreateMailTemplateDto } from './dto/create-mail-template.dto';
 import { UpdateMailTemplateDto } from './dto/update-mail-template.dto';
+import { MAIL_VARIABLE_GROUPS } from './mail-variables';
 
 @ApiTags('Mail Templates')
 @Controller('mail-templates')
@@ -32,6 +33,18 @@ export class MailTemplateController {
   @ApiOperation({ summary: 'Lister les templates de mail' })
   findAll() {
     return this.service.findAll();
+  }
+
+  /**
+   * Catalogue des variables disponibles dans les templates.
+   * Utilisé par l'éditeur de templates côté front pour proposer
+   * l'auto-complétion / l'insertion de variables.
+   */
+  @Get('/variables')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Catalogue des variables de template namespacées' })
+  getVariables() {
+    return MAIL_VARIABLE_GROUPS;
   }
 
   @Get('/active')
