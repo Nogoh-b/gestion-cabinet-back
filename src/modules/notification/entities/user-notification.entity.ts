@@ -5,16 +5,16 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   JoinColumn,
-  Index,
-  CreateDateColumn
+  Index
 } from 'typeorm';
 import { User } from '../../iam/user/entities/user.entity';
 import { Notification } from './notification.entity';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('user_notifications')
 @Index(['user_id', 'is_read'])
 @Index(['user_id', 'created_at'])
-export class UserNotification {
+export class UserNotification extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -36,9 +36,6 @@ export class UserNotification {
 
   @Column({ type: 'boolean', default: true })
   is_push_sent: boolean;
-
-  @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
 
   // Relations
   @ManyToOne(() => User)

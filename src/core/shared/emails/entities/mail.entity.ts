@@ -2,9 +2,8 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 export enum MailStatus {
   PENDING = 'pending',
@@ -22,7 +21,7 @@ export interface AttachmentMail {
 }
 
 @Entity('mails')
-export class Mail {
+export class Mail extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -80,9 +79,5 @@ export class Mail {
   @Column({ type: 'json', nullable: true })
   metadata?: Record<string, any>; // Pour stocker des infos supplémentaires (ex: entité liée)
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 }

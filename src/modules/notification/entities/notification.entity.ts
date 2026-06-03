@@ -3,7 +3,6 @@ import {
   Entity,
   Column,
   PrimaryGeneratedColumn,
-  CreateDateColumn,
   ManyToOne,
   JoinColumn,
   Index,
@@ -12,11 +11,12 @@ import {
 import { User } from '../../iam/user/entities/user.entity';
 import { NotificationPriority, NotificationType } from '../enum/notification-type.enum';
 import { UserNotification } from './user-notification.entity';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
-@Entity('notifications') 
+@Entity('notifications')
 @Index(['user_id', 'read_at'])
 @Index(['user_id', 'created_at'])
-export class Notification {
+export class Notification extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -48,9 +48,6 @@ export class Notification {
 
   @Column({ type: 'timestamp', nullable: true })
   read_at?: Date | null;
-
-  @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
 
   @Column({ type: 'boolean', default: false })
   is_read: boolean;

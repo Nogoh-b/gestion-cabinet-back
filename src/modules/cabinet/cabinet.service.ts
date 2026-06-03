@@ -8,6 +8,8 @@ import {
   serializeCabinet,
 } from './entities/cabinet.entity';
 import { applyLogoInput, logoFileToUrl, writeLogoFile } from './cabinet-logo.util';
+import { CreateCabinetDto } from './dto/create-cabinet.dto';
+import { TenantSeederService } from './tenant-seeder.service';
 
 @Injectable()
 export class CabinetService implements OnModuleInit {
@@ -16,6 +18,7 @@ export class CabinetService implements OnModuleInit {
   constructor(
     @InjectRepository(Cabinet)
     private readonly repo: Repository<Cabinet>,
+    private readonly tenantSeeder: TenantSeederService,
   ) {}
 
   /**
@@ -64,16 +67,57 @@ export class CabinetService implements OnModuleInit {
 
   // ── CRUD ──────────────────────────────────────────────────────────
 
-  async create(data: { name: string; plan?: CabinetPlan }): Promise<Cabinet> {
+  /**
+   * Crée un nouveau cabinet (onboarding) avec branding/coordonnées optionnels,
+   * puis seed les données de référence (types d'audience, juridictions,
+   * templates mail/PDF, etc.) dans le contexte du nouveau tenant.
+   */
+  async create(data: CreateCabinetDto): Promise<Cabinet> {
+    const { logo_url, slogan, brand_color, contact_email, contact_phone,
+            address, website, rccm, nina, bank_account, email_footer,
+            ...rest } = data;
+
     const cabinet = this.repo.create({
-      code:   this.generateCode(),
-      name:   data.name,
-      status: 'trial',
-      plan:   data.plan ?? 'free',
-      routing_mode: 'path',
-      trial_ends_at: this.trialEnd(30),
+      code:           this.generateCode(),
+      name:           rest.name,
+      status:         'trial',
+      plan:           rest.plan ?? 'free',
+      routing_mode:   'path',
+      trial_ends_at:  this.trialEnd(30),
+      // Branding & coordonnees
+      slogan:         slogan ?? null,
+      brand_color:    brand_color ?? null,
+      contact_email:  contact_email ?? null,
+      contact_phone:  contact_phone ?? null,
+      address:        address ?? null,
+      website:        website ?? null,
+      email_footer:   email_footer ?? null,
+      // Informations legales
+      rccm:           rccm ?? null,
+      nina:           nina ?? null,
+      bank_account:   bank_account ?? null,
     });
-    return this.repo.save(cabinet);
+
+    // Sauver d'abord pour obtenir l'id (nécessaire pour le logo_file)
+    const saved = await this.repo.save(cabinet);
+
+    // Appliquer le logo si fourni (a besoin de l'id pour écrire le fichier)
+    if (logo_url) {
+      applyLogoInput(saved, logo_url);
+      await this.repo.save(saved);
+    }
+
+    // ── Seed des données de référence pour ce cabinet ────────────────
+    try {
+      await this.tenantSeeder.seedForNewCabinet(saved.id);
+    } catch (err) {
+      this.logger.error(
+        `Seeding pour cabinet #${saved.id} échoué — le cabinet existe mais les données de référence sont incomplètes`,
+        err,
+      );
+    }
+
+    return saved;
   }
 
   async findAll(): Promise<Cabinet[]> {

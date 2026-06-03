@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 
 
@@ -6,7 +7,7 @@ import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateCol
 
 
 @Entity()
-export class RessourceType {
+export class RessourceType extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -47,9 +48,4 @@ export class RessourceType {
 
   @Column({ nullable: true, length: 10 })
   country_code: string;
-  @CreateDateColumn()
-  created_at: Date;
-
-  @UpdateDateColumn()
-  updated_at: Date;
 }

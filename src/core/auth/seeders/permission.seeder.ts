@@ -2,6 +2,7 @@ import { Permission } from 'src/modules/iam/permission/entities/permission.entit
 import { Repository } from 'typeorm';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 @Injectable()
 export class PermissionSeeder {
@@ -244,7 +245,7 @@ export class PermissionSeeder {
     let skipped = 0;
 
     for (const perm of permissions) {
-      const exists = await this.permissionRepo.findOne({ where: { code: perm.code } });
+      const exists = await findOneForTenant(this.permissionRepo, 'code', perm.code);
       if (!exists) {
         await this.permissionRepo.save(this.permissionRepo.create(perm));
         created++;

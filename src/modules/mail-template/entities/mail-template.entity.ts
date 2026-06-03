@@ -2,9 +2,8 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 /**
  * Catégorie fonctionnelle d'un template de mail.
@@ -27,7 +26,7 @@ export type MailTemplateCategory =
 export type MailTemplateAudience = 'client' | 'collaborator' | 'both';
 
 @Entity('mail_templates')
-export class MailTemplate {
+export class MailTemplate extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -88,9 +87,4 @@ export class MailTemplate {
   @Column({ type: 'tinyint', default: 1, name: 'is_active' })
   is_active: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updated_at: Date;
 }

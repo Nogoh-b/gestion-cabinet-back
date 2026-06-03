@@ -8,6 +8,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 
 
 
+
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
@@ -22,6 +23,7 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
 
 
 
@@ -1338,7 +1340,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
 
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
-    model: 'deepseek-v4-pro',
+    model: 'deepseek-v4-flash',
+    // model: 'deepseek-v4-pro',
     // model: 'deepseek-chat',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
     maxTokens: 8000,           // ✅ 50000 pour éviter la troncature des réponses JSON complexes

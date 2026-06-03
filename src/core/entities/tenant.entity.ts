@@ -18,8 +18,8 @@ import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
  * default: 1 → les lignes existantes reçoivent tenant_id=1 sans risque de perte.
  *
  * Entités à NE PAS migrer (données globales partagées entre cabinets) :
- *   - UserRole, Permission, RolePermission, UserRoleAssignment
  *   - Geography (pays, régions, villes)
+ *   - Plan (abonnements)
  */
 export abstract class TenantEntity extends BaseEntity {
   @Column({ name: 'tenant_id', default: 1 })

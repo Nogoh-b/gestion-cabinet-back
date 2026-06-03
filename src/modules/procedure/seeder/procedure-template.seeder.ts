@@ -8,6 +8,7 @@ import { Transition } from '../entities/transition.entity';
 import { Cycle } from '../entities/cycle.entity';
 import { StageConfig } from '../entities/stage-config.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class ProcedureTemplateSeeder implements Seeder {
   public async run(
@@ -1115,11 +1116,14 @@ export default class ProcedureTemplateSeeder implements Seeder {
     const createdTemplates: ProcedureTemplate[] = [];
 
     for (const templateData of templatesData) {
-      // Vérifier si le template existe déjà
-      let savedTemplate = await templateRepository.findOne({
-        where: { name: templateData.name },
-        relations: ['stages']
-      });
+      // Vérifier si le template existe déjà (per-tenant exact match)
+      let savedTemplate = await findOneForTenant(templateRepository, 'name', templateData.name);
+      if (savedTemplate) {
+        savedTemplate = await templateRepository.findOne({
+          where: { id: savedTemplate.id },
+          relations: ['stages'],
+        });
+      }
 
       if (savedTemplate) {
         console.log(`⏩ Template existant: ${templateData.name}, vérification des données...`);

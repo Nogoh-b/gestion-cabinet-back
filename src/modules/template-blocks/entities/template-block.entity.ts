@@ -2,10 +2,9 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 /** Canal de rendu auquel s'applique le bloc. */
 export type TemplateBlockChannel = 'mail' | 'pdf';
@@ -27,7 +26,7 @@ export type TemplateBlockKind = 'header' | 'footer';
  */
 @Entity('template_blocks')
 @Index(['channel', 'kind'])
-export class TemplateBlock {
+export class TemplateBlock extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -72,9 +71,4 @@ export class TemplateBlock {
   @Column({ type: 'tinyint', default: 1, name: 'is_active' })
   is_active: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updated_at: Date;
 }

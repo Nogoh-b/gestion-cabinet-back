@@ -1,7 +1,8 @@
 import { Expose } from 'class-transformer';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToMany } from 'typeorm';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('document_categories')
 @BusinessTable({
@@ -10,7 +11,7 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   icon: '📁',
   category: 'document'
 })
-export class DocumentCategory {
+export class DocumentCategory extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -147,30 +148,6 @@ export class DocumentCategory {
     group: 'relation'
   })
   documentTypes: DocumentType[];
-
-  @CreateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création de la catégorie',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  created_at: Date;
-
-  @UpdateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  updated_at: Date;
 
   // ==================== GETTERS MÉTIER ====================
 

@@ -1,6 +1,7 @@
 import { User } from "src/modules/iam/user/entities/user.entity";
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { Step } from "./step.entity";
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 // entities/step-action.entity.ts
 export enum ActionType {
@@ -18,7 +19,7 @@ export enum ActionStatus {
 }
 
 @Entity()
-export class StepAction {
+export class StepAction extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -52,9 +53,5 @@ export class StepAction {
   @ManyToOne(() => User, { nullable: true })
   assignedTo: User;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 }

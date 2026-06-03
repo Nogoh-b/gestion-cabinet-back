@@ -5,6 +5,7 @@ import { ProcedureTemplate } from '../entities/procedure-template.entity';
 import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
 import { Transition } from '../entities/transition.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 /**
  * Nom canonique du template par défaut.
@@ -99,11 +100,8 @@ export default class DefaultProcedureTemplateSeeder implements Seeder {
     const subStageRepo   = dataSource.getRepository(SubStage);
     const transitionRepo = dataSource.getRepository(Transition);
 
-    // ── Idempotence : ne rien faire si le template existe déjà ───────────────
-    const existing = await templateRepo.findOne({
-      where: { name: DEFAULT_PROCEDURE_TEMPLATE_NAME },
-      relations: ['stages'],
-    });
+    // ── Idempotence : ne rien faire si le template existe déjà (per-tenant) ──
+    const existing = await findOneForTenant(templateRepo, 'name', DEFAULT_PROCEDURE_TEMPLATE_NAME);
 
     if (existing) {
       console.log(`⏩ Template par défaut déjà présent (ID: ${existing.id}) — aucune modification`);

@@ -11,10 +11,9 @@ import { Transport } from '@nestjs/microservices';
 import { SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
-import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
-import { RoleSeeder } from './core/auth/seeders/role.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
-import { seedDatabase } from './main.seeder';
+// seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
+// import { seedDatabase } from './main.seeder';
 
 
 
@@ -51,11 +50,14 @@ async function bootstrap() {
     new ClassSerializerInterceptor(app.get(Reflector)),
   );
 
-  // Seeders : uniquement si demandé explicitement (évite re-exécution à chaque boot PM2)
+  // ── Seeders globaux ──────────────────────────────────────────────────────
+  // Permissions, rôles et données de référence métier sont désormais seedés
+  // par TenantSeederService à la CRÉATION de chaque cabinet (multi-tenant).
+  // Seuls les Plans d'abonnement restent globaux (pas de tenant_id).
   if (process.env.RUN_SEEDERS === 'true') {
-    await app.get(PermissionSeeder).seed();
-    await app.get(RoleSeeder).seed();
-    await seedDatabase(app.get(DataSource));
+    const { default: PlanSeeder } = await import('./modules/plans/seeder/plan.seeder');
+    const { runSeeders } = await import('typeorm-extension');
+    await runSeeders(app.get(DataSource), { seeds: [PlanSeeder] });
   }
 
   // Swagger : dev uniquement

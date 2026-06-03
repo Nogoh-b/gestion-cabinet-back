@@ -4,10 +4,9 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { ExpenseLine } from './expense-line.entity';
@@ -27,7 +26,7 @@ export enum ExpenseReportStatus {
   icon: '💳',
   category: 'rh',
 })
-export class ExpenseReport {
+export class ExpenseReport extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -141,25 +140,4 @@ export class ExpenseReport {
   @OneToMany(() => ExpenseLine, (line) => line.expense_report)
   lines: ExpenseLine[];
 
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  updated_at: Date;
 }

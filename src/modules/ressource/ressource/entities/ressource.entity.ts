@@ -1,7 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 
 
 import { ApiProperty } from '@nestjs/swagger';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 
 
@@ -21,7 +22,7 @@ import { RessourceType } from '../../ressource-type/entities/ressource-type.enti
 
 
 @Entity()
-export class Ressource {
+export class Ressource extends TenantEntity {
   @PrimaryGeneratedColumn()
   @ApiProperty()
   id: number;
@@ -48,7 +49,4 @@ export class Ressource {
   
   @Column({ nullable: true, default: 1 })
   quantity: number;
-  @CreateDateColumn()
-  @ApiProperty()
-  created_at: Date;
-} 
+}

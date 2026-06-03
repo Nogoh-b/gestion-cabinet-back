@@ -4,14 +4,14 @@ import {
     PrimaryGeneratedColumn,
     ManyToOne,
     JoinColumn,
-    CreateDateColumn,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { ProcedureInstance } from './procedure-instance.entity';
 import { Stage } from './stage.entity';
 import { Transition } from './transition.entity';
 
 @Entity('decisions')
-export class Decision {
+export class Decision extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -45,6 +45,5 @@ export class Decision {
   @Column({ nullable: true, type: 'text' })
   comment: string | null;  // Ajouter | null
 
-  @CreateDateColumn()
-  createdAt: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 }

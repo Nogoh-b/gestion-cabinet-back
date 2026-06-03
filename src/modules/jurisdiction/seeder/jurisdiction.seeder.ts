@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
 import { Jurisdiction, JurisdictionLevel, JurisdictionType } from '../entities/jurisdiction.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 
 export default class JurisdictionSeeder implements Seeder {
@@ -190,9 +191,7 @@ export default class JurisdictionSeeder implements Seeder {
     ];
 
     for (const jurisdictionData of jurisdictions) {
-      const existing = await repository.findOne({
-        where: { code: jurisdictionData.code }
-      });
+      const existing = await findOneForTenant(repository, 'code', jurisdictionData.code);
 
       if (!existing) {
         const jurisdiction = repository.create(jurisdictionData);

@@ -4,11 +4,11 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  CreateDateColumn,
   OneToMany,
 } from 'typeorm';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Referrer } from './referral.entity';
 import { ReferralCommission } from './referral-commission.entity';
 
@@ -26,7 +26,7 @@ export enum CommissionBasis {
   icon: '📎',
   category: 'tiers',
 })
-export class DossierReferral {
+export class DossierReferral extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -119,14 +119,4 @@ export class DossierReferral {
   @OneToMany(() => ReferralCommission, (commission) => commission.dossier_referral)
   commissions: ReferralCommission[];
 
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  created_at: Date;
 }

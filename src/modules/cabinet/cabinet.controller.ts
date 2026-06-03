@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Param, Body, ParseIntPipe, UseGuards } fr
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CabinetService } from './cabinet.service';
 import { Cabinet, serializeCabinet } from './entities/cabinet.entity';
+import { CreateCabinetDto } from './dto/create-cabinet.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -50,9 +51,10 @@ export class CabinetController {
 
   @Post()
   @RequirePermissions('manage_cabinets')
-  @ApiOperation({ summary: 'Créer un nouveau cabinet (onboarding)' })
-  create(@Body() body: { name: string; plan?: any }): Promise<Cabinet> {
-    return this.service.create(body);
+  @ApiOperation({ summary: 'Créer un nouveau cabinet (onboarding) avec branding, coordonnees et seed des donnees de reference' })
+  async create(@Body() body: CreateCabinetDto) {
+    const cabinet = await this.service.create(body);
+    return serializeCabinet(cabinet);
   }
 
   @Patch(':id/branding')

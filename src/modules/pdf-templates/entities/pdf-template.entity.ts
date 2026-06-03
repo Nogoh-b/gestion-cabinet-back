@@ -2,10 +2,9 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 /**
  * Modèle de document PDF personnalisable.
@@ -21,7 +20,7 @@ import {
  */
 @Entity('pdf_templates')
 @Index(['entity_type', 'variant'])
-export class PdfTemplate {
+export class PdfTemplate extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -83,9 +82,4 @@ export class PdfTemplate {
   @Column({ type: 'tinyint', default: 1, name: 'is_active' })
   is_active: boolean;
 
-  @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updated_at: Date;
 }

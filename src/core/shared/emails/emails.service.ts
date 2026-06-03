@@ -268,7 +268,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
    * Récupère tous les mails (pour le contrôleur)
    */
   async findAll(): Promise<Mail[]> {
-    return this.mailRepository.find({ order: { createdAt: 'DESC' } });
+    return this.mailRepository.find({ order: { created_at: 'DESC' } });
   }
 
   /**
@@ -294,7 +294,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
           AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.id')) = :idStr)`,
         { type: entityType, idStr },
       )
-      .orderBy('mail.createdAt', 'DESC')
+      .orderBy('mail.created_at', 'DESC')
       .getMany();
   }
 
@@ -361,7 +361,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
       );
     }
 
-    const results = await qb.orderBy('mail.createdAt', 'DESC').getMany();
+    const results = await qb.orderBy('mail.created_at', 'DESC').getMany();
     this.logger.debug(`[findByClient] ${results.length} mail(s) trouvé(s)`);
     return results;
   }

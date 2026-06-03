@@ -8,13 +8,12 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
-  CreateDateColumn,
-  UpdateDateColumn,
   OneToMany,
   ManyToMany,
   JoinTable,
   JoinColumn,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { StepAction } from './step-action.entity';
 import { Diligence, DiligenceStatus } from 'src/modules/diligence/entities/diligence.entity';
 import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
@@ -96,7 +95,7 @@ export enum StepStatus {
 }
 
 @Entity()
-export class Step {
+export class Step extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -151,11 +150,7 @@ export class Step {
   })
   documents: DocumentCustomer[];
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
 
 

@@ -4,6 +4,8 @@ import { In, Repository } from 'typeorm';
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
 import { RolePermission } from 'src/modules/iam/role-permission/entities/role-permission.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 
 // ─── Configuration des rôles cabinet (miroir du front roles.permissions.ts) ─────
 
@@ -243,8 +245,8 @@ export class RoleSeeder {
     this.logger.log('Seeding roles & role-permissions...');
 
     for (const config of ROLES_CONFIG) {
-      // 1. Créer le rôle s'il n'existe pas
-      let role = await this.roleRepo.findOne({ where: { code: config.code } });
+      // 1. Créer le rôle s'il n'existe pas (recherche exacte par tenant)
+      let role = await findOneForTenant(this.roleRepo, 'code', config.code);
       const isNew = !role;
 
       if (isNew) {
@@ -268,10 +270,13 @@ export class RoleSeeder {
         continue;
       }
 
-      // 3. Récupérer les permissions correspondantes en DB
-      const permissions = await this.permissionRepo.find({
-        where: { code: In(config.permissions) },
-      });
+      // 3. Récupérer les permissions du tenant courant (QueryBuilder exact)
+      const qb = this.permissionRepo.createQueryBuilder('p')
+        .where('p.code IN (:...codes)', { codes: config.permissions });
+      if (hasActiveTenant()) {
+        qb.andWhere('p.tenant_id = :tid', { tid: getCurrentTenantId() });
+      }
+      const permissions = await qb.getMany();
 
       const foundCodes = permissions.map((p) => p.code);
       const missingCodes = config.permissions.filter((c) => !foundCodes.includes(c));

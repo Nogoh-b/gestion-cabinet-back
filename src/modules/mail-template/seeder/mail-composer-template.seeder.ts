@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { MailTemplate } from '../entities/mail-template.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 /**
  * Templates conçus pour le **composer manuel** (CommunicationTab).
@@ -569,7 +570,7 @@ export default class MailComposerTemplateSeeder implements Seeder {
     for (const data of templates) {
       // Tous les modèles composer sont destinés au client par défaut.
       if (!data.audience) data.audience = 'client';
-      const existing = await repo.findOne({ where: { code: data.code } });
+      const existing = await findOneForTenant(repo, 'code', data.code);
       if (!existing) {
         await repo.save(repo.create(data));
         console.log(`  ✅ Template composer créé : ${data.code}`);

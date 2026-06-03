@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { PdfTemplate } from '../entities/pdf-template.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 /**
  * Seeder des modèles PDF par défaut.
@@ -1017,7 +1018,7 @@ export default class PdfTemplateSeeder implements Seeder {
     ];
 
     for (const data of templates) {
-      const existing = await repository.findOne({ where: { code: data.code } });
+      const existing = await findOneForTenant(repository, 'code', data.code);
       if (!existing) {
         await repository.save(repository.create(data));
         console.log(`Modèle PDF créé : ${data.name} (${data.code})`);

@@ -926,7 +926,7 @@ get currentStep(): Step | null {
   // ou la première selon ton workflow
   return this.steps
     .filter(s => s.status === StepStatus.IN_PROGRESS)
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] || null;
+    .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())[0] || null;
 }
 
 /**

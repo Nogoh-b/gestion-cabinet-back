@@ -1,9 +1,10 @@
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { ApiProperty } from '@nestjs/swagger';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('user_settings')
-export class UserSettings {
+export class UserSettings extends TenantEntity {
   @ApiProperty()
   @PrimaryGeneratedColumn('uuid')
   id: string;

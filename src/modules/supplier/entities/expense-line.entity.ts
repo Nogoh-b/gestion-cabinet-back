@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { ExpenseReport } from './expense-report.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
@@ -20,7 +21,7 @@ export enum ExpenseCategory {
   icon: '📎',
   category: 'rh',
 })
-export class ExpenseLine {
+export class ExpenseLine extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',

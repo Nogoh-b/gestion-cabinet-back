@@ -1,17 +1,19 @@
 // services/workflow.service.ts
+import * as jsonLogic from 'json-logic-js';
+import { Repository } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+
+import { ApplyTransitionDto } from '../dto/create-procedure-instance.dto copy';
+import { Decision } from '../entities/decision.entity';
+import { EventType, TransitionType } from '../entities/enums/instance-status.enum';
+import { HistoryEntry } from '../entities/history-entry.entity';
 import { ProcedureInstance } from '../entities/procedure-instance.entity';
+import { StageVisit } from '../entities/stage-visit.entity';
 import { Stage } from '../entities/stage.entity';
 import { Transition } from '../entities/transition.entity';
-import { Decision } from '../entities/decision.entity';
 import { TransitionResult } from '../interfaces/transition-result.interface';
-import { HistoryEntry } from '../entities/history-entry.entity';
-import { EventType, TransitionType } from '../entities/enums/instance-status.enum';
-import { ApplyTransitionDto } from '../dto/create-procedure-instance.dto copy';
-import * as jsonLogic from 'json-logic-js';
-import { StageVisit } from '../entities/stage-visit.entity';
+
 
 @Injectable()
 export class WorkflowService {
@@ -239,7 +241,7 @@ async migrateToStageVisits() {
       visitNumber: 1,
       completedSubStages: instance.completedSubStages || [],
       subStageMetadata: instance.subStageMetadata || {},
-      enteredAt: instance.createdAt,
+      enteredAt: instance.created_at,
     });
 
     await this.stageVisitRepository.save(visit);
@@ -270,7 +272,7 @@ async triggerAutomaticTransitions(
   for (const transition of automaticTransitions) {
     const context = {
       instance: { 
-        data: instance.data, 
+        data: {}, 
         completedSubStages: instance.completedSubStages 
       },
       eventType,

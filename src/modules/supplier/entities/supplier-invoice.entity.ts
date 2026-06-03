@@ -4,9 +4,8 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Supplier } from './supplier.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
@@ -36,7 +35,7 @@ export enum PaymentMethod {
   icon: '🧾',
   category: 'financier',
 })
-export class SupplierInvoice {
+export class SupplierInvoice extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -239,25 +238,4 @@ export class SupplierInvoice {
   })
   created_by: User;
 
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  updated_at: Date;
 }

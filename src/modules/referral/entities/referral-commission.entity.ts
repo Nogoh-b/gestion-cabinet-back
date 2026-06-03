@@ -4,11 +4,10 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { DossierReferral } from './dossier-referral.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Paiement } from 'src/modules/paiement/entities/paiement.entity';
 
@@ -26,7 +25,7 @@ export enum CommissionStatus {
   icon: '💰',
   category: 'financier',
 })
-export class ReferralCommission {
+export class ReferralCommission extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -140,25 +139,4 @@ export class ReferralCommission {
   })
   notes: string;
 
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  updated_at: Date;
 }

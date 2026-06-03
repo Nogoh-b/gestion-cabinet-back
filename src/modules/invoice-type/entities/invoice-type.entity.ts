@@ -3,13 +3,12 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   OneToMany
 } from 'typeorm';
 import { Expose } from 'class-transformer';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 export enum InvoiceTypeCategory {
   LEGAL_FEES = 'legal_fees',
@@ -33,7 +32,7 @@ export enum TaxRate {
   icon: '💰',
   category: 'finance'
 })
-export class InvoiceType {
+export class InvoiceType extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -169,11 +168,4 @@ export class InvoiceType {
   @Expose()
   invoices: Facture[];
 
-  @CreateDateColumn()
-  @Expose()
-  created_at: Date;
-
-  @UpdateDateColumn()
-  @Expose()
-  updated_at: Date;
 }

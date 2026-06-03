@@ -4,11 +4,10 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   OneToMany
 } from 'typeorm';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 export enum AudienceTypeCategory {
   PRELIMINARY = 'preliminary',
@@ -27,7 +26,7 @@ export enum AudienceTypeCategory {
   icon: '⚖️',
   category: 'procedure'
 })
-export class AudienceType {
+export class AudienceType extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -158,30 +157,6 @@ export class AudienceType {
   @OneToMany(() => Audience, audience => audience.audience_type)
   @Expose()
   audiences: Audience[];
-
-  @CreateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création de l\'enregistrement',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  created_at: Date;
-
-  @UpdateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  updated_at: Date;
 
   // ==================== GETTERS MÉTIER ====================
 

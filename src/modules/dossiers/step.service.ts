@@ -195,7 +195,7 @@ export class StepsService extends BaseServiceV1<Step> {
   async moveToNextStep(dossierId: number, currentStepType: StepType): Promise<Step> {
     const steps = await this.stepsRepository.find({
       where: { dossier: { id: dossierId } },
-      order: { createdAt: 'ASC' }
+      order: { created_at: 'ASC' }
     });
 
     const currentStepIndex = steps.findIndex(step => step.type === currentStepType);
@@ -317,7 +317,7 @@ export class StepsService extends BaseServiceV1<Step> {
     return this.stepsRepository.find({
       where: { dossier: { id: dossierId } },
       relations: this.getDefaultSearchOptions().relationFields,
-      order: { createdAt: 'ASC' }
+      order: { created_at: 'ASC' }
     });
   }
 

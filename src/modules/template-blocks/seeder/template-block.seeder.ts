@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { TemplateBlock } from '../entities/template-block.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 /**
  * Seed des blocs en-tête / pied de page par défaut (système).
@@ -122,7 +123,7 @@ export default class TemplateBlockSeeder implements Seeder {
     ];
 
     for (const data of blocks) {
-      const existing = await repository.findOne({ where: { code: data.code } });
+      const existing = await findOneForTenant(repository, 'code', data.code);
       if (!existing) {
         await repository.save(repository.create({ ...data, variables: BLOCK_VARS } as any));
         console.log(`Bloc de modèle créé : ${data.name} (${data.code})`);

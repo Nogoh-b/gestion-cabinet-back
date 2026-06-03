@@ -4,12 +4,11 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
 import { PayrollPeriod } from './payroll-period.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { PayslipLine } from './payslip-line.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 
@@ -26,7 +25,7 @@ export enum PayslipStatus {
   icon: '📄',
   category: 'rh',
 })
-export class Payslip {
+export class Payslip extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -130,25 +129,4 @@ export class Payslip {
   @OneToMany(() => PayslipLine, (line) => line.payslip)
   lines: PayslipLine[];
 
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  updated_at: Date;
 }

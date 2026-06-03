@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
 import { MailTemplate } from '../entities/mail-template.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 
 /**
@@ -314,7 +315,7 @@ export default class MailTemplateSeeder implements Seeder {
 
     for (const data of templates) {
       const audience = AUDIENCE_BY_CODE[data.code!] ?? 'both';
-      const existing = await repository.findOne({ where: { code: data.code } });
+      const existing = await findOneForTenant(repository, 'code', data.code);
       if (!existing) {
         await repository.save(repository.create({ ...data, audience }));
         console.log(`Template mail créé : ${data.code} (${audience})`);
