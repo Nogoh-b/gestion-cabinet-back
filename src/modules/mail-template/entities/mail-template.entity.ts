@@ -16,6 +16,16 @@ export type MailTemplateCategory =
   | 'billing'     // facturation
   | 'general';    // divers
 
+/**
+ * Cible (destinataire) du template — permet de scinder les modèles destinés au
+ * client de ceux destinés aux collaborateurs internes (avocats, secrétaires…)
+ * dans l'interface de gestion.
+ *  - client       : message à destination du client final.
+ *  - collaborator : message interne (notification d'équipe, coordination).
+ *  - both         : utilisable dans les deux contextes (défaut).
+ */
+export type MailTemplateAudience = 'client' | 'collaborator' | 'both';
+
 @Entity('mail_templates')
 export class MailTemplate {
   @PrimaryGeneratedColumn()
@@ -33,6 +43,13 @@ export class MailTemplate {
 
   @Column({ type: 'varchar', length: 30, default: 'general' })
   category: MailTemplateCategory;
+
+  /**
+   * Destinataire visé : 'client' | 'collaborator' | 'both'.
+   * Utilisé par la page de gestion pour scinder (et replier) les sections.
+   */
+  @Column({ type: 'varchar', length: 20, default: 'both' })
+  audience: MailTemplateAudience;
 
   @Column({ type: 'text', nullable: true })
   description: string | null;

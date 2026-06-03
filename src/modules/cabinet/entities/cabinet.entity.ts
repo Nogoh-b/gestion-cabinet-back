@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Plan } from 'src/modules/plans/entities/plan.entity';
+import { logoFileToUrl } from '../cabinet-logo.util';
 
 export type CabinetStatus = 'active' | 'trial' | 'suspended';
 export type CabinetPlan   =
@@ -71,6 +72,15 @@ export class Cabinet {
   /** Type MIME du logo (ex: image/png) — nécessaire pour reconstruire le data-URI. */
   @Column({ type: 'varchar', length: 100, nullable: true, name: 'logo_mime' })
   logo_mime: string | null;
+
+  /**
+   * Chemin RELATIF (sous `uploads/`) du logo écrit en fichier statique, ex:
+   * `cabinets/logo-1-1700000000.png`. Sert à exposer une URL HTTP hébergée
+   * (`logo_url`) plutôt qu'un data-URI base64 — indispensable pour que le logo
+   * s'affiche dans les e-mails (Gmail/Outlook bloquent les `data:` URI).
+   */
+  @Column({ type: 'varchar', length: 255, nullable: true, name: 'logo_file' })
+  logo_file: string | null;
 
   /** Couleur principale de la marque (hex, ex: #1d4ed8) pour les e-mails. */
   @Column({ type: 'varchar', length: 20, nullable: true, name: 'brand_color' })
@@ -235,15 +245,19 @@ export function parseLogoInput(
 }
 
 /**
- * Sérialise un cabinet pour l'API : remplace le blob `logo`/`logo_mime` par
- * un champ texte `logo_url` (data-URI). Garde le contrat historique côté front.
+ * Sérialise un cabinet pour l'API : remplace le blob `logo`/`logo_mime`/`logo_file`
+ * par un unique champ texte `logo_url`.
+ *
+ * `logo_url` est en priorité l'URL HTTP hébergée du fichier (`logo_file`), afin
+ * que le logo s'affiche dans les e-mails. Repli sur le data-URI base64 si aucun
+ * fichier n'a (encore) été généré (compatibilité avec les anciens logos).
  */
 export function serializeCabinet<T extends Partial<Cabinet>>(
   cabinet: T,
-): Omit<T, 'logo' | 'logo_mime'> & { logo_url: string | null } {
-  const { logo, logo_mime, ...rest } = cabinet as Cabinet;
+): Omit<T, 'logo' | 'logo_mime' | 'logo_file'> & { logo_url: string | null } {
+  const { logo, logo_mime, logo_file, ...rest } = cabinet as Cabinet;
   return {
-    ...(rest as Omit<T, 'logo' | 'logo_mime'>),
-    logo_url: cabinetLogoToDataUri(logo, logo_mime),
+    ...(rest as Omit<T, 'logo' | 'logo_mime' | 'logo_file'>),
+    logo_url: logoFileToUrl(logo_file) ?? cabinetLogoToDataUri(logo, logo_mime),
   };
 }

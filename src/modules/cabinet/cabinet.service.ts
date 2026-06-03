@@ -5,9 +5,9 @@ import {
   Cabinet,
   CabinetPlan,
   cabinetLogoToDataUri,
-  parseLogoInput,
   serializeCabinet,
 } from './entities/cabinet.entity';
+import { applyLogoInput, logoFileToUrl, writeLogoFile } from './cabinet-logo.util';
 
 @Injectable()
 export class CabinetService implements OnModuleInit {
@@ -23,6 +23,12 @@ export class CabinetService implements OnModuleInit {
    * Toutes les données existantes ont déjà tenant_id = 1 grâce au default TypeORM.
    */
   async onModuleInit() {
+    // Génère les fichiers logo manquants pour les cabinets dont le logo n'existe
+    // qu'en blob (anciens enregistrements) → permet d'exposer une URL hébergée
+    // sans re-upload manuel.
+    await this.backfillLogoFiles().catch((e) =>
+      this.logger.warn(`Backfill logos échoué : ${e.message}`),
+    );
     // const exists = await this.repo.findOne({ where: { id: 1 } });
     // if (!exists) {
     //   const cabinet = this.repo.create({
@@ -38,6 +44,22 @@ export class CabinetService implements OnModuleInit {
     // } else {
     //   this.logger.log(`✅ Cabinet par défaut existant — id=1 code="${exists.code}"`);
     // }
+  }
+
+  /**
+   * Pour chaque cabinet possédant un logo en blob mais sans fichier statique
+   * (`logo_file` vide), écrit le fichier sous `uploads/cabinets/` et enregistre
+   * son chemin. Idempotent : ne fait rien si le fichier existe déjà.
+   */
+  private async backfillLogoFiles(): Promise<void> {
+    const cabinets = await this.repo.find();
+    for (const c of cabinets) {
+      if (c.logo_file) continue; // déjà migré
+      if (!c.logo || !(c.logo as Buffer).length || !c.logo_mime) continue;
+      const relPath = writeLogoFile(c.id, c.logo as Buffer, c.logo_mime);
+      await this.repo.update(c.id, { logo_file: relPath });
+      this.logger.log(`✅ Logo cabinet #${c.id} exporté en fichier → ${relPath}`);
+    }
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────
@@ -98,7 +120,8 @@ export class CabinetService implements OnModuleInit {
       status:       cabinet.status,
       plan:         cabinet.plan,
       routing_mode: cabinet.routing_mode,
-      logo:         cabinetLogoToDataUri(cabinet.logo, cabinet.logo_mime),
+      // URL hébergée en priorité (affichable en e-mail), repli data-URI.
+      logo:         logoFileToUrl(cabinet.logo_file) ?? cabinetLogoToDataUri(cabinet.logo, cabinet.logo_mime),
       slogan:       cabinet.slogan?.trim() ? cabinet.slogan : null,
     };
   }
@@ -121,11 +144,8 @@ export class CabinetService implements OnModuleInit {
     const cabinet = await this.findById(id);
     const { logo_url, ...rest } = data;
     Object.assign(cabinet, rest);
-    const parsed = parseLogoInput(logo_url);
-    if (parsed) {
-      cabinet.logo = parsed.logo;
-      cabinet.logo_mime = parsed.logo_mime;
-    }
+    // Décode le data-URI, écrit le fichier statique et met à jour blob + logo_file.
+    applyLogoInput(cabinet, logo_url);
     await this.repo.save(cabinet);
     return serializeCabinet(cabinet);
   }

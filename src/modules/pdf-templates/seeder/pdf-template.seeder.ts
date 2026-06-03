@@ -667,6 +667,97 @@ const GENERAL_COURRIER = `
 </div>
 `;
 
+/* ════════════════════════════════════════════════════════════════════════
+ *  MODÈLES SUPPLÉMENTAIRES (relances, convocations, reçus…)
+ * ════════════════════════════════════════════════════════════════════════ */
+
+const FACTURE_RELANCE = `
+<div style="padding:20px;">
+  <div style="text-align:center; margin-bottom:18px;">
+    <div style="font-size:22px; font-weight:bold; color:#b45309;">{{cabinetName}}</div>
+    <div style="font-size:13px; color:#64748b;">Relance de paiement — Facture N° {{numero}}</div>
+  </div>
+
+  <p>Cher(e) <strong>{{client.full_name}}</strong>,</p>
+  <p>Sauf erreur ou omission de notre part, la facture N° <strong>{{numero}}</strong> du
+  {{dateFacture_fmt}}, relative au dossier {{dossier.dossier_number}}, demeure impayée à ce jour.</p>
+
+  <table style="width:100%; margin-top:10px;">
+    <tbody>
+      <tr><td>Montant total TTC</td><td style="text-align:right;">{{montantTTC_fmt}}</td></tr>
+      <tr><td>Déjà réglé</td><td style="text-align:right;">{{totalPaid_fmt}}</td></tr>
+      <tr style="font-weight:bold; color:#b45309;"><td>Solde restant dû</td><td style="text-align:right;">{{remaining_fmt}}</td></tr>
+      <tr><td>Échéance dépassée le</td><td style="text-align:right;">{{dateEcheance_fmt}}</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top:14px;">Nous vous remercions de bien vouloir procéder au règlement dans les meilleurs délais.</p>
+  <p>Si ce règlement a été effectué entre-temps, veuillez ne pas tenir compte de la présente.</p>
+
+  <div class="footer">{{cabinetName}} © {{year}} — Document émis le {{generatedAt_fmt}}</div>
+</div>
+`;
+
+const AUDIENCE_CONVOCATION = `
+<div style="padding:20px;">
+  <div style="text-align:center; margin-bottom:18px;">
+    <div style="font-size:22px; font-weight:bold; color:#1e3a8a;">{{cabinetName}}</div>
+    <div style="font-size:13px; color:#64748b;">Avis d'audience</div>
+  </div>
+
+  <p>Cher(e) <strong>{{dossier.client_name}}</strong>,</p>
+  <p>Nous vous informons qu'une audience est prévue dans le cadre de votre dossier
+  <strong>{{dossier.dossier_number}}</strong> ({{dossier.object}}).</p>
+
+  <table style="width:100%; margin-top:10px;">
+    <tbody>
+      <tr><td style="width:40%;">Date et heure</td><td>{{audienceDate_fmt}} à {{audience_time}}</td></tr>
+      <tr><td>Juridiction</td><td>{{jurisdiction.name}}</td></tr>
+      <tr><td>Salle</td><td>{{room}}</td></tr>
+      <tr><td>Type d'audience</td><td>{{audienceType.name}}</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top:14px;">Votre présence est {{status_label}}. Nous restons à votre disposition pour préparer cette échéance.</p>
+
+  <div class="footer">{{cabinetName}} © {{year}} — Avis émis le {{generatedAt_fmt}}</div>
+</div>
+`;
+
+const GENERAL_MISE_EN_DEMEURE = `
+<div style="padding:24px;">
+  <table style="width:100%; margin-bottom:24px; border:none;">
+    <tr>
+      <td style="border:none; vertical-align:top;">
+        <div style="font-size:18px; font-weight:bold; color:#1e3a8a;">{{cabinetName}}</div>
+        <div style="font-size:10px; color:#64748b;">{{cabinetAddress}}</div>
+      </td>
+      <td style="border:none; vertical-align:top; text-align:right; font-size:10px; color:#475569;">
+        <div>{{recipientName}}</div>
+        <div>{{recipientAddress}}</div>
+      </td>
+    </tr>
+  </table>
+
+  <p style="text-align:right;">Le {{date_fmt}}</p>
+  <p style="text-align:center; margin-top:10px; font-size:11px; color:#b45309;">LETTRE RECOMMANDÉE AVEC ACCUSÉ DE RÉCEPTION</p>
+
+  <p style="margin-top:16px;"><strong>Objet : Mise en demeure — {{subject}}</strong></p>
+
+  <div style="margin-top:16px; line-height:1.6;">{{bodyContent}}</div>
+
+  <p style="margin-top:20px;">À défaut de régularisation sous huitaine à compter de la réception de la présente,
+  nous nous réservons le droit d'engager toute action utile à la défense des intérêts de notre mandant.</p>
+
+  <div style="margin-top:40px; text-align:right;">
+    <div style="font-weight:bold;">{{signatoryName}}</div>
+    <div style="font-size:10px; color:#64748b;">{{signatoryTitle}}</div>
+  </div>
+
+  <div class="footer">{{cabinetName}} © {{year}} — {{generatedAt_fmt}}</div>
+</div>
+`;
+
 export default class PdfTemplateSeeder implements Seeder {
   public async run(
     dataSource: DataSource,
@@ -714,6 +805,22 @@ export default class PdfTemplateSeeder implements Seeder {
         description: 'Version commerciale allégée adressée au client.',
         title: 'FACTURE',
         body_html: FACTURE_CLIENT,
+        variables: FACTURE_VARS,
+        orientation: 'portrait',
+        paper_size: 'a4',
+        is_system: true,
+        is_active: true,
+      },
+
+      {
+        code: 'facture_relance',
+        name: 'Facture — Relance de paiement',
+        entity_type: 'facture',
+        variant: 'client',
+        description:
+          'Courrier de relance adressé au client pour une facture impayée (solde, échéance).',
+        title: 'RELANCE DE PAIEMENT',
+        body_html: FACTURE_RELANCE,
         variables: FACTURE_VARS,
         orientation: 'portrait',
         paper_size: 'a4',
@@ -829,6 +936,22 @@ export default class PdfTemplateSeeder implements Seeder {
         is_active: true,
       },
 
+      {
+        code: 'audience_convocation',
+        name: 'Audience — Avis au client',
+        entity_type: 'audience',
+        variant: 'client',
+        description:
+          "Avis d'audience adressé au client (date, juridiction, salle).",
+        title: "AVIS D'AUDIENCE",
+        body_html: AUDIENCE_CONVOCATION,
+        variables: AUDIENCE_VARS,
+        orientation: 'portrait',
+        paper_size: 'a4',
+        is_system: true,
+        is_active: true,
+      },
+
       // ── DILIGENCES ────────────────────────────────────────────
       {
         code: 'diligence_ordre',
@@ -870,6 +993,21 @@ export default class PdfTemplateSeeder implements Seeder {
           'Courrier à en-tête du cabinet, corps et objet personnalisables.',
         title: 'COURRIER',
         body_html: GENERAL_COURRIER,
+        variables: GENERAL_VARS,
+        orientation: 'portrait',
+        paper_size: 'a4',
+        is_system: true,
+        is_active: true,
+      },
+      {
+        code: 'general_mise_en_demeure',
+        name: 'Général — Mise en demeure',
+        entity_type: 'general',
+        variant: 'standard',
+        description:
+          'Lettre de mise en demeure (LRAR) avec objet, corps et signature personnalisables.',
+        title: 'MISE EN DEMEURE',
+        body_html: GENERAL_MISE_EN_DEMEURE,
         variables: GENERAL_VARS,
         orientation: 'portrait',
         paper_size: 'a4',

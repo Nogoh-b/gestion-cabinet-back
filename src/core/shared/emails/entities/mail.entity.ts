@@ -47,10 +47,10 @@ export class Mail {
   @Column({ nullable: true })
   subject?: string; // Sujet (peut être surchargé ou utilisé si pas de template)
 
-  @Column({ type: 'text', nullable: true })
-  html?: string; // Contenu HTML si pas de template
+  @Column({ type: 'longtext', nullable: true })
+  html?: string; // Contenu HTML si pas de template (longtext: l'en-tête peut contenir un logo base64 > 64 Ko)
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'longtext', nullable: true })
   text?: string; // Version texte
 
   @Column({ type: 'json', nullable: true })

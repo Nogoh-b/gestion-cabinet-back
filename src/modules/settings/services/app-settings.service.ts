@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cabinet, parseLogoInput } from 'src/modules/cabinet/entities/cabinet.entity';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { applyLogoInput, deleteLogoFile } from 'src/modules/cabinet/cabinet-logo.util';
 import { AppSettingsDto } from '../dto/app-settings.dto';
 
 /**
@@ -22,6 +23,7 @@ export class AppSettingsService {
   private static readonly RESETTABLE_DEFAULTS: Partial<Cabinet> = {
     logo: null,
     logo_mime: null,
+    logo_file: null,
     slogan: null,
     theme_name: 'ocean',
     font_ui: 'inter',
@@ -62,19 +64,17 @@ export class AppSettingsService {
 
   async update(cabinetId: number, dto: AppSettingsDto): Promise<Cabinet> {
     const cabinet = await this.findByCabinet(cabinetId);
-    // `logo_url` est un champ de transport (data-URI) → décodé en blob, pas un champ d'entité.
+    // `logo_url` est un champ de transport (data-URI) → décodé en blob + fichier statique.
     const { logo_url, ...rest } = dto as AppSettingsDto & { logo_url?: string | null };
     Object.assign(cabinet, rest);
-    const parsedLogo = parseLogoInput(logo_url);
-    if (parsedLogo) {
-      cabinet.logo = parsedLogo.logo;
-      cabinet.logo_mime = parsedLogo.logo_mime;
-    }
+    applyLogoInput(cabinet, logo_url);
     return this.cabinetRepository.save(cabinet);
   }
 
   async reset(cabinetId: number): Promise<Cabinet> {
     const cabinet = await this.findByCabinet(cabinetId);
+    // Supprime le fichier logo existant avant de remettre les valeurs par défaut.
+    deleteLogoFile(cabinet.logo_file);
     Object.assign(cabinet, AppSettingsService.RESETTABLE_DEFAULTS);
     return this.cabinetRepository.save(cabinet);
   }

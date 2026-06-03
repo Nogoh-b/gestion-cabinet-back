@@ -6,6 +6,7 @@ import { MailTemplate } from './entities/mail-template.entity';
 import { CreateMailTemplateDto } from './dto/create-mail-template.dto';
 import { UpdateMailTemplateDto } from './dto/update-mail-template.dto';
 import { Cabinet, cabinetLogoToDataUri } from 'src/modules/cabinet/entities/cabinet.entity';
+import { logoFileToUrl } from 'src/modules/cabinet/cabinet-logo.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 export interface RenderedMail {
@@ -29,7 +30,11 @@ export class MailTemplateService {
     if (existing) {
       throw new BadRequestException(`Un template avec le code "${dto.code}" existe déjà.`);
     }
-    const tpl = this.repository.create({ ...dto, category: (dto.category as any) ?? 'general' });
+    const tpl = this.repository.create({
+      ...dto,
+      category: (dto.category as any) ?? 'general',
+      audience: (dto.audience as any) ?? 'both',
+    });
     return this.repository.save(tpl);
   }
 
@@ -109,7 +114,8 @@ export class MailTemplateService {
   private buildBrandContext(cabinet: Cabinet | null) {
     return {
       cabinetName: cabinet?.name ?? 'Votre cabinet',
-      logoUrl: cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
+      // URL hébergée en priorité (affichable en e-mail), repli data-URI.
+      logoUrl: logoFileToUrl(cabinet?.logo_file) ?? cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
       brandColor: cabinet?.brand_color ?? '#1d4ed8',
       contactEmail: cabinet?.contact_email ?? null,
       contactPhone: cabinet?.contact_phone ?? null,

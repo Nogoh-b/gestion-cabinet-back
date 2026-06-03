@@ -3,6 +3,11 @@ import { ChatOpenAI } from '@langchain/openai';
 import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 
+
+
+
+
+
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
@@ -17,6 +22,11 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
+
+
+
+
 
 
 @Injectable()
@@ -142,9 +152,25 @@ export class AiDatabaseService implements OnModuleInit {
     // 3. Ajouter la question
     await this.conversationManager.addUserMessage(conversationId, question);
     
-    // 4. Récupérer et envoyer l'historique
+    // 4. Élaguer l'historique si trop long (max 20 messages) puis estimer les tokens
+    await this.conversationManager.trimHistoryIfNeeded(conversationId, 20);
     const history = await this.conversationManager.getFullHistory(conversationId);
-    const response = await this.llm.invoke(history);
+    
+    const estimatedTokens = history.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
+    this.logger.log(`📊 Tokens estimés avant LLM: ${estimatedTokens} | ${history.length} messages | limite modèle ~128K`);
+    if (estimatedTokens > 100000) {
+      this.logger.warn(`⚠️ Contexte proche de la limite (${estimatedTokens} tokens) — troncation forcée à 10 messages`);
+      await this.conversationManager.trimHistoryIfNeeded(conversationId, 10);
+      const trimmedHistory = await this.conversationManager.getFullHistory(conversationId);
+      const trimmedTokens = trimmedHistory.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
+      this.logger.log(`📊 Après troncation: ${trimmedTokens} tokens | ${trimmedHistory.length} messages`);
+    }
+    
+    const historyToUse = estimatedTokens > 100000 
+      ? await this.conversationManager.getFullHistory(conversationId)
+      : history;
+    
+    const response = await this.llm.invoke(historyToUse);
     let content = response.content as string;
     
     // 🔍 LOG CRITIQUE
@@ -1314,13 +1340,14 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
   this.llm = new ChatOpenAI({
     model: 'deepseek-v4-pro',
     // model: 'deepseek-chat',
-    temperature: 0.1,            // ✅ Déterministe pour des analyses précises
-    maxTokens: 50000,           // ✅ 50000 pour éviter la troncature des réponses JSON complexes
+    temperature: 0,            // ✅ Déterministe pour des analyses précises
+    maxTokens: 8000,           // ✅ 50000 pour éviter la troncature des réponses JSON complexes
     apiKey: process.env.DEEPSEEK_API_KEY,
     configuration: {
       baseURL: 'https://api.deepseek.com/v1',
     },
-    timeout: 30000,            // ✅ 30s pour laisser le temps au raisonnement
+    streaming :true,             // ✅ Activer le streaming pour les réponses longues
+    timeout: 15000,            // ✅ 30s pour laisser le temps au raisonnement
     maxRetries: 2,
   });
 }

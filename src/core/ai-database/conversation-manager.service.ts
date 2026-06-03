@@ -205,11 +205,11 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       order: { created_at: 'ASC' }
     });
     
+    // Ne JAMAIS injecter le reasoningContent dans l'historique de conversation :
+    // cela double le nombre de tokens et injecte du bruit (raisonnement interne du modèle).
     return messages.map(msg => ({
       role: msg.role,
-      content: msg.role === 'assistant' && msg.reasoningContent 
-        ? `${msg.content}\n\nRaisonnement: ${msg.reasoningContent}`
-        : msg.content
+      content: msg.content,
     }));
   }
 

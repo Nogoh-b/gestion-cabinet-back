@@ -9,6 +9,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const CATEGORIES = ['auth', 'dossier', 'audience', 'billing', 'general'];
+const AUDIENCES = ['client', 'collaborator', 'both'];
 
 export class CreateMailTemplateDto {
   @ApiProperty({ example: 'account_opening', description: 'Code unique du template' })
@@ -26,6 +27,12 @@ export class CreateMailTemplateDto {
   @IsIn(CATEGORIES)
   @IsOptional()
   category?: string;
+
+  @ApiPropertyOptional({ example: 'client', enum: AUDIENCES, description: 'Destinataire visé : client, collaborator ou both' })
+  @IsString()
+  @IsIn(AUDIENCES)
+  @IsOptional()
+  audience?: string;
 
   @ApiPropertyOptional({ example: "E-mail envoyé à la création d'un compte." })
   @IsString()

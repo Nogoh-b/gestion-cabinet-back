@@ -383,9 +383,192 @@ export default class MailComposerTemplateSeeder implements Seeder {
         is_active: true,
       },
 
+      // ── COLLABORATEURS — coordination interne de l'équipe ──────────────────
+      // Ces modèles s'adressent aux avocats / secrétaires (audience: collaborator)
+      // et sont regroupés à part dans la page de gestion.
+
+      {
+        code: 'composer_collab_affectation_dossier',
+        name: '👥 Affectation de dossier (interne)',
+        category: 'dossier',
+        audience: 'collaborator',
+        description: 'Informe un collaborateur qu\'un dossier lui est confié.',
+        subject: '[Interne] Dossier {{dossier.numero}} vous est confié',
+        body_html: `
+<h2 style="margin-top:0;color:#1f2937;">Nouveau dossier à traiter</h2>
+<p>Bonjour,</p>
+<p>Le dossier suivant vous a été affecté.</p>
+
+<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;">
+  <tr style="background:#f3f4f6;">
+    <td style="padding:8px 12px;font-weight:600;width:40%;">Numéro</td>
+    <td style="padding:8px 12px;">{{dossier.numero}}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;font-weight:600;">Objet</td>
+    <td style="padding:8px 12px;">{{dossier.objet}}</td>
+  </tr>
+  <tr style="background:#f3f4f6;">
+    <td style="padding:8px 12px;font-weight:600;">Client</td>
+    <td style="padding:8px 12px;">{{client.nom}}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;font-weight:600;">Statut</td>
+    <td style="padding:8px 12px;">{{dossier.statut}}</td>
+  </tr>
+</table>
+
+<p>Merci de prendre connaissance du dossier dès que possible.</p>
+<p>— {{cabinet.nom}}</p>`,
+        variables: JSON.stringify([
+          'dossier.numero', 'dossier.objet', 'dossier.statut', 'client.nom', 'cabinet.nom',
+        ]),
+        is_system: false,
+        is_active: true,
+      },
+
+      {
+        code: 'composer_collab_brief_audience',
+        name: '⚖️ Brief audience (interne)',
+        category: 'audience',
+        audience: 'collaborator',
+        description: 'Transmet à un collaborateur les informations d\'une audience à couvrir.',
+        subject: '[Interne] Audience {{audience.date}} — Dossier {{dossier.numero}}',
+        body_html: `
+<h2 style="margin-top:0;color:#1f2937;">Audience à couvrir</h2>
+<p>Bonjour,</p>
+<p>Merci d'assurer la couverture de l'audience ci-dessous.</p>
+
+<div style="background:#eff6ff;border-left:4px solid {{brandColor}};padding:12px 16px;border-radius:4px;margin:16px 0;font-size:13px;">
+  <p style="margin:0;">
+    <strong>📅 Date :</strong> {{audience.date}} à {{audience.heure}}<br/>
+    <strong>🏛️ Juridiction :</strong> {{audience.juridiction}}<br/>
+    {{#if audience.salle}}<strong>🚪 Salle :</strong> {{audience.salle}}<br/>{{/if}}
+    {{#if audience.juge}}<strong>👨‍⚖️ Juge :</strong> {{audience.juge}}<br/>{{/if}}
+    <strong>📂 Dossier :</strong> {{dossier.numero}} — {{dossier.objet}}<br/>
+    <strong>👤 Client :</strong> {{client.nom}}
+  </p>
+</div>
+
+{{#if audience.notes}}<p><strong>Consignes :</strong> {{audience.notes}}</p>{{/if}}
+<p>— {{cabinet.nom}}</p>`,
+        variables: JSON.stringify([
+          'audience.date', 'audience.heure', 'audience.juridiction', 'audience.salle',
+          'audience.juge', 'audience.notes', 'dossier.numero', 'dossier.objet',
+          'client.nom', 'cabinet.nom', 'brandColor',
+        ]),
+        is_system: false,
+        is_active: true,
+      },
+
+      {
+        code: 'composer_collab_diligence_relance',
+        name: '🔔 Relance diligence (interne)',
+        category: 'dossier',
+        audience: 'collaborator',
+        description: 'Relance un collaborateur sur une diligence en attente ou en retard.',
+        subject: '[Interne] Diligence à finaliser — {{diligence.titre}}',
+        body_html: `
+<h2 style="margin-top:0;color:#dc2626;">Diligence en attente</h2>
+<p>Bonjour,</p>
+<p>La diligence suivante requiert votre attention.</p>
+
+<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;">
+  <tr style="background:#fef2f2;">
+    <td style="padding:8px 12px;font-weight:600;width:40%;">Titre</td>
+    <td style="padding:8px 12px;">{{diligence.titre}}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;font-weight:600;">Dossier</td>
+    <td style="padding:8px 12px;">{{dossier.numero}}</td>
+  </tr>
+  <tr style="background:#fef2f2;">
+    <td style="padding:8px 12px;font-weight:600;">Statut</td>
+    <td style="padding:8px 12px;">{{diligence.statut}}</td>
+  </tr>
+  {{#if diligence.date_limite}}
+  <tr>
+    <td style="padding:8px 12px;font-weight:700;color:#dc2626;">Date limite</td>
+    <td style="padding:8px 12px;font-weight:700;color:#dc2626;">{{diligence.date_limite}}</td>
+  </tr>
+  {{/if}}
+</table>
+
+<p>Merci de mettre à jour son avancement dès que possible.</p>
+<p>— {{cabinet.nom}}</p>`,
+        variables: JSON.stringify([
+          'diligence.titre', 'diligence.statut', 'diligence.date_limite',
+          'dossier.numero', 'cabinet.nom',
+        ]),
+        is_system: false,
+        is_active: true,
+      },
+
+      // ── CLIENT — modèles supplémentaires ───────────────────────────────────
+
+      {
+        code: 'composer_dossier_cloture',
+        name: '✅ Clôture de dossier',
+        category: 'dossier',
+        audience: 'client',
+        description: 'Informe le client de la clôture de son dossier et du résultat obtenu.',
+        subject: 'Clôture de votre dossier {{dossier.numero}}',
+        body_html: `
+<h2 style="margin-top:0;color:#16a34a;">Votre dossier est clôturé</h2>
+<p>Bonjour <strong>{{client.nom}}</strong>,</p>
+<p>Nous vous informons que votre dossier <strong>{{dossier.numero}}</strong>
+   ({{dossier.objet}}) est désormais clôturé.</p>
+
+{{#if dossier.resultat}}
+<div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:12px 16px;border-radius:4px;margin:16px 0;">
+  <p style="margin:0;font-size:13px;"><strong>Résultat :</strong> {{dossier.resultat}}</p>
+</div>
+{{/if}}
+
+<p>Nous vous remercions de la confiance que vous nous avez accordée et restons
+   à votre disposition pour toute nouvelle demande.</p>
+<p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
+        variables: JSON.stringify([
+          'dossier.numero', 'dossier.objet', 'dossier.resultat', 'client.nom', 'cabinet.nom',
+        ]),
+        is_system: false,
+        is_active: true,
+      },
+
+      {
+        code: 'composer_rdv_confirmation',
+        name: '📅 Confirmation de rendez-vous',
+        category: 'general',
+        audience: 'client',
+        description: 'Confirme au client un rendez-vous au cabinet.',
+        subject: 'Confirmation de votre rendez-vous',
+        body_html: `
+<h2 style="margin-top:0;color:#1f2937;">Rendez-vous confirmé</h2>
+<p>Bonjour <strong>{{client.nom}}</strong>,</p>
+<p>Nous confirmons votre rendez-vous au sein de notre cabinet.</p>
+
+<div style="background:#eff6ff;border-left:4px solid {{brandColor}};padding:12px 16px;border-radius:4px;margin:16px 0;font-size:13px;">
+  <p style="margin:0;">
+    <strong>📅 Date :</strong> {{rdv.date}}<br/>
+    <strong>🕐 Heure :</strong> {{rdv.heure}}<br/>
+    {{#if rdv.lieu}}<strong>📍 Lieu :</strong> {{rdv.lieu}}{{/if}}
+  </p>
+</div>
+
+<p>En cas d'empêchement, merci de nous prévenir à l'avance.</p>
+<p>Cordialement,<br/><strong>{{cabinet.nom}}</strong></p>`,
+        variables: JSON.stringify([
+          'rdv.date', 'rdv.heure', 'rdv.lieu', 'client.nom', 'cabinet.nom', 'brandColor',
+        ]),
+        is_system: false,
+        is_active: true,
+      },
+
     ]; // end templates
 
     for (const data of templates) {
+      // Tous les modèles composer sont destinés au client par défaut.
+      if (!data.audience) data.audience = 'client';
       const existing = await repo.findOne({ where: { code: data.code } });
       if (!existing) {
         await repo.save(repo.create(data));
@@ -399,6 +582,7 @@ export default class MailComposerTemplateSeeder implements Seeder {
           body_html: data.body_html,
           variables: data.variables,
           description: data.description,
+          audience:  data.audience,
         });
         await repo.save(existing);
         console.log(`  ↩️  Template composer mis à jour : ${data.code}`);

@@ -286,13 +286,47 @@ export default class MailTemplateSeeder implements Seeder {
       },
     ];
 
+    // Classification du destinataire (audience) par code de template.
+    // Tout code absent de la map est considéré comme 'both' (mixte).
+    const AUDIENCE_BY_CODE: Record<string, 'client' | 'collaborator' | 'both'> = {
+      // Authentification / comptes → collaborateurs internes
+      account_opening:        'collaborator',
+      reset_password:         'collaborator',
+      account_activation:     'collaborator',
+      // Coordination interne
+      dossier_created:        'collaborator',
+      diligence_assigned:     'collaborator',
+      diligence_completed:    'collaborator',
+      collaborator_added:     'collaborator',
+      audience_created:       'collaborator',
+      audience_held:          'collaborator',
+      // Communications orientées client
+      audience_reminder:      'client',
+      invoice_issued:         'client',
+      document_uploaded:      'client',
+      // Mixtes (peuvent cibler client ou équipe)
+      dossier_status_changed: 'both',
+      audience_updated:       'both',
+      facture_paid:           'both',
+      facture_overdue:        'both',
+      paiement_received:      'both',
+    };
+
     for (const data of templates) {
+      const audience = AUDIENCE_BY_CODE[data.code!] ?? 'both';
       const existing = await repository.findOne({ where: { code: data.code } });
       if (!existing) {
-        await repository.save(repository.create(data));
-        console.log(`Template mail créé : ${data.code}`);
+        await repository.save(repository.create({ ...data, audience }));
+        console.log(`Template mail créé : ${data.code} (${audience})`);
       } else {
-        console.log(`Template mail déjà existant, ignoré : ${data.code}`);
+        // Applique la classification d'audience aux templates système existants.
+        if (existing.audience !== audience) {
+          existing.audience = audience;
+          await repository.save(existing);
+          console.log(`Template mail mis à jour (audience=${audience}) : ${data.code}`);
+        } else {
+          console.log(`Template mail déjà existant, ignoré : ${data.code}`);
+        }
       }
     }
   }
