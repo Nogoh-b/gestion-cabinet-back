@@ -13,16 +13,18 @@
  * Pour une logique métier spécifique (ex: génération de numéro de dossier),
  * créez un handler custom qui étend cette classe et surcharge les méthodes.
  */
-import { Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityMetadata, Repository } from 'typeorm';
+import { Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+
+import { BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
+import { getCurrentTenantId, hasActiveTenant } from '../../tenant/tenant.context';
 import { EntityWriteHandler, WriteableFieldSchema, ValidationResult } from '../interface/entity-write-handler.interface';
 import { WriteIntent } from '../interface/write-intent.interface';
-import { WriteResult } from './write-handler.registry';
 import { SchemaMetadataService } from '../schema-metadata.service';
-import { EntityResolverService } from './entity-resolver.service';
-import { BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
 import { AmbiguityException } from './ambiguity.exception';
-import { getCurrentTenantId, hasActiveTenant } from '../../tenant/tenant.context';
+import { EntityResolverService } from './entity-resolver.service';
+import { WriteResult } from './write-handler.registry';
+
 
 /** Colonnes système jamais modifiables par l'IA */
 const SYSTEM_COLUMNS = new Set([
@@ -374,9 +376,20 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
             this.entityName,
           );
         } else {
-          // ❌ Aucun candidat du tout — erreur
-          throw new BadRequestException(
-            `Impossible de trouver ou créer ${info.referencedTable} "${value}": ${result.message}`,
+          // ❌ Aucun candidat du tout et pas de création possible
+          // → lever AmbiguityException avec candidates vides pour permettre
+          //    à l'utilisateur de choisir "autre" et fournir une valeur différente.
+          //    (handleWriteIntent configure déjà allowOther=true par défaut)
+          this.logger.warn(
+            `❌ Aucune correspondance ni création possible pour "${value}" dans "${info.referencedTable}": ${result.message}`,
+          );
+          throw new AmbiguityException(
+            info.referencedTable,
+            alias,
+            value,
+            [], // candidates vides — l'utilisateur pourra saisir autre chose
+            -1,
+            this.entityName,
           );
         }
       }

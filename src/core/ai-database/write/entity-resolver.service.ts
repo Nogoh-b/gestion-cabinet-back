@@ -1,9 +1,13 @@
 // src/core/ai-database/write/entity-resolver.service.ts
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { DataSource, ILike, Repository } from 'typeorm';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+
+
 import { BUSINESS_METADATA_KEY, BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
 import { AI_DATABASE_PROJECT_CONFIG } from '../ai-database.tokens';
 import { AiDatabaseProjectConfig } from '../interfaces/ai-database-project-config.interface';
+
+
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -424,6 +428,8 @@ export class EntityResolverService {
       this.logger.warn(`⛔ Création automatique refusée pour "${tableName}" (donnée de référence)`);
 
       // Chercher les meilleures suggestions sans seuil de score
+      // Utilise d'abord les candidats du resolver spécialisé s'ils existent,
+      // sinon lance une recherche large (via searchAllCandidates améliorée)
       const allCandidates = resolved.candidates.length > 0
         ? resolved.candidates
         : await this.searchAllCandidates(tableName, searchTerm, additionalFilters);
@@ -441,7 +447,10 @@ export class EntityResolverService {
       }
 
       return {
-        resolved,
+        resolved: {
+          ...resolved,
+          candidates: allCandidates, // ← garantir que candidates est rempli pour AmbiguityException
+        },
         created: false,
         message: hint,
       };
@@ -472,11 +481,42 @@ export class EntityResolverService {
         message: `${tableName} "${searchTerm}" créé(e) automatiquement (ID: ${entityId})`,
       };
     } catch (error) {
-      this.logger.error(`❌ Échec création automatique de "${searchTerm}" dans ${tableName}: ${(error as Error).message}`);
+      // ❌ Échec : retourner les candidats de la résolution pour permettre
+      //    des suggestions à l'utilisateur au lieu d'une erreur fatale.
+      const errMessage = (error as Error).message;
+      // Nettoyer les messages d'erreur internes (TypeORM, etc.) pour l'affichage
+      const cleanMessage = errMessage.includes('substring')
+        ? `Erreur interne lors de la création (contrainte de structure).`
+        : errMessage;
+
+      this.logger.error(
+        `❌ Échec création automatique de "${searchTerm}" dans ${tableName}: ${errMessage}`,
+      );
+
+      // Inclure les candidats de la résolution précédente pour suggestions
+      const fallbackCandidates = resolved.candidates.length > 0
+        ? resolved.candidates
+        : await this.searchAllCandidates(tableName, searchTerm, additionalFilters);
+
+      this.logger.log(
+        `🔍 Retour de ${fallbackCandidates.length} suggestions pour "${searchTerm}" dans ${tableName} ` +
+        `(après échec de création)`,
+      );
+
       return {
-        resolved: { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false },
+        resolved: {
+          found: false,
+          best: null,
+          score: 0,
+          matchedOn: '',
+          candidates: fallbackCandidates,
+          ambiguous: false,
+        },
         created: false,
-        message: `Impossible de créer "${searchTerm}" dans ${tableName}: ${(error as Error).message}`,
+        message: `Impossible de créer "${searchTerm}" dans ${tableName}. ${cleanMessage}` +
+          (fallbackCandidates.length > 0
+            ? ` Voici les suggestions disponibles (${fallbackCandidates.length} résultat(s)).`
+            : ` Aucune correspondance trouvée. Veuillez fournir plus de détails.`),
       };
     }
   }
@@ -484,12 +524,41 @@ export class EntityResolverService {
   /**
    * Recherche tous les candidats pour un terme sans seuil de score minimum.
    * Utilisé pour fournir des suggestions quand une entité de référence n'est pas trouvée.
+   *
+   * Stratégie améliorée :
+   *  1. Si un resolver spécialisé existe (employee, customer), l'utiliser en priorité
+   *     car il sait faire les jointures (ex: employee → user.first_name)
+   *  2. Sinon → résolution générique via TypeORM metadata
    */
   private async searchAllCandidates(
     tableName: string,
     searchTerm: string,
     additionalFilters?: Record<string, any>,
   ): Promise<ResolveMatch<any>[]> {
+    // ── 1. Resolver spécialisé (joins, relations) ──
+    const specializedResolver = this.projectConfig?.specializedResolvers?.find(
+      r => r.tables.includes(tableName),
+    );
+    if (specializedResolver) {
+      try {
+        this.logger.debug(`🔍 searchAllCandidates via resolver spécialisé pour "${tableName}"`);
+        const result = await specializedResolver.resolve(searchTerm, {
+          mode: ResolveMode.BEST_EFFORT,
+          minScore: 0,
+          ambiguityGap: 0,
+        });
+        if (result.candidates && result.candidates.length > 0) {
+          this.logger.log(
+            `🔍 ${result.candidates.length} candidats trouvés via resolver spécialisé "${tableName}"`,
+          );
+          return result.candidates;
+        }
+      } catch (err) {
+        this.logger.warn(`⚠️ Resolver spécialisé échoué pour "${tableName}": fallback générique`);
+      }
+    }
+
+    // ── 2. Résolution générique ──
     const entityMeta = this.dataSource.entityMetadatas.find(m => m.tableName === tableName);
     if (!entityMeta) return [];
 

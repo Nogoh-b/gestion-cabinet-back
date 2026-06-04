@@ -9,6 +9,9 @@ import { InjectDataSource } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
@@ -23,6 +26,9 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
+
+
 
 
 
@@ -1340,9 +1346,9 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
 
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
-    model: 'deepseek-v4-flash',
+    // model: 'deepseek-v4-flash',
     // model: 'deepseek-v4-pro',
-    // model: 'deepseek-chat',
+    model: 'deepseek-chat',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
     maxTokens: 8000,           // ✅ 50000 pour éviter la troncature des réponses JSON complexes
     apiKey: process.env.DEEPSEEK_API_KEY,
@@ -2134,19 +2140,22 @@ private async getDefaultSchema(): Promise<string> {
   3. **N'UTILISE JAMAIS** les paramètres nommés comme :dossier_id, :param, etc.
   4. Utilise des alias courts (d = dossiers, c = customers)
   5. Ajoute toujours LIMIT ${this.MAX_RESULTS}
-  6. Pour les dates, utilise DATE() si comparaison partielle
-  7. **TOUTES les valeurs doivent être en dur** (pas de placeholders)
+  6. Pour la date du jour, utilise **CURDATE()** (ex: WHERE d.created_at >= CURDATE() - INTERVAL 7 DAY)
+  7. Pour le timestamp actuel, utilise **NOW()**
+  8. Pour comparer une partie d'une date, utilise **DATE()** (ex: WHERE DATE(d.created_at) = CURDATE())
+  9. **TOUTES les valeurs doivent être en dur** (pas de placeholders)
 
   ❌ **STRICTEMENT INTERDIT :**
   - DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
   - Toute mention de "deleted_at" dans la requête
   - Les paramètres nommés (:, @, $)
   - Les placeholders (?) dans la requête
+  - CURDATE sans parenthèses (toujours CURDATE())
 
   ✅ **BONNE PRATIQUE :**
   \`\`\`sql
-  SELECT d.id, d.dossier_number, d.title 
-  FROM dossiers d 
+  SELECT d.id, d.dossier_number, d.title
+  FROM dossiers d
   WHERE d.dossier_number = 'ABC123' AND d.status = 'active'
   LIMIT 10;
   \`\`\`
@@ -2357,9 +2366,29 @@ Retourne UNIQUEMENT la requête corrigée.`;
     );
   }
 
+  /**
+   * Remplace les valeurs spéciales utilisées par le LLM dans les requêtes SQL :
+   * - {{today}} → CURDATE() (date du jour)
+   * - {{now}}  → NOW()    (timestamp actuel)
+   * - CURDATE  → CURDATE() si parenthèses manquantes (correction automatique)
+   */
+  private replaceSpecialValues(sql: string): string {
+    return sql
+      // {{today}} et {{now}} (documentés dans le prompt de détection d'intention)
+      .replace(/\{\{today\}\}/gi, 'CURDATE()')
+      .replace(/\{\{now\}\}/gi, 'NOW()')
+      // CURDATE sans parenthèses → CURDATE() (erreur fréquente du LLM)
+      .replace(/\bCURDATE\b(?!\s*\()/gi, 'CURDATE()')
+      // NOW sans parenthèses → NOW()
+      .replace(/\bNOW\b(?!\s*\()/gi, 'NOW()');
+  }
+
   private async executeSafeQuery(sqlQuery: string): Promise<{ data: any[]; rowCount: number }> {
     // execQuery est la requête nettoyée + enrichie qui sera réellement exécutée
     let execQuery = sqlQuery.trim();
+
+    // ✅ Remplacer les valeurs spéciales ({{today}}, {{now}}, CURDATE sans parenthèses)
+    execQuery = this.replaceSpecialValues(execQuery);
 
     // ✅ Supprimer les paramètres nommés style :dossier_id, :param, etc.
     execQuery = execQuery.replace(/:\w+/g, '');
