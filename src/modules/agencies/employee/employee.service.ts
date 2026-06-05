@@ -153,6 +153,7 @@ async createEmployee(
     bar_association_city: dto.bar_association_city,
     years_of_experience: dto.years_of_experience,
     hourly_rate: dto.hourly_rate,
+    salary: dto.salary,
     is_available: dto.is_available ?? true,
     max_dossiers: dto.max_dossiers ?? 50,
     bio: dto.bio,

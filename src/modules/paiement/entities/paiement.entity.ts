@@ -125,7 +125,10 @@ export class Paiement extends TenantEntity {
 
   @Column({
     type: 'enum',
-    enum: StatutPaiement
+    enum: StatutPaiement,
+    // Un paiement est considéré comme validé par défaut (cf. demande métier) :
+    // tout paiement enregistré l'est après vérification, donc VALIDE d'office.
+    default: StatutPaiement.VALIDE,
   })
   @BusinessColumn({
     label: 'Statut',

@@ -877,6 +877,59 @@ async getCollaboratorDossiers(
 }
 
 /**
+ * ➕ Ajouter un collaborateur (Employee) à un dossier.
+ *
+ * - Charge le dossier avec ses collaborateurs et les relations nécessaires au mapping.
+ * - Vérifie que le collaborateur existe et n'est pas déjà associé.
+ * - Bloque l'opération si le dossier est clôturé ou archivé.
+ */
+async addCollaborator(
+  dossierId: number,
+  employeeId: number,
+  user?: User,
+): Promise<DossierResponseDto> {
+  const empId = Number(employeeId);
+  if (!empId || Number.isNaN(empId)) {
+    throw new BadRequestException('Le collaborateur (employee_id) est requis');
+  }
+
+  const dossier = await this.dossierRepository.findOne({
+    where: { id: dossierId },
+    relations: ['collaborators', 'client', 'lawyer', 'procedure_type', 'procedure_subtype'],
+  });
+
+  if (!dossier) {
+    throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+  }
+
+  if (user) {
+    this.checkDossierAccess(dossier, user);
+  }
+
+  if (dossier.is_closed || dossier.is_archived) {
+    throw new BadRequestException(
+      "Impossible d'ajouter un collaborateur à un dossier clôturé ou archivé",
+    );
+  }
+
+  const employee = await this.userRepository.findOne({ where: { id: empId } });
+  if (!employee) {
+    throw new NotFoundException(`Collaborateur ${empId} non trouvé`);
+  }
+
+  dossier.collaborators = dossier.collaborators || [];
+  const alreadyLinked = dossier.collaborators.some((c) => c.id === empId);
+  if (alreadyLinked) {
+    throw new BadRequestException('Ce collaborateur est déjà associé au dossier');
+  }
+
+  dossier.collaborators.push(employee);
+  const saved = await this.dossierRepository.save(dossier);
+
+  return this.mapToResponseDto(saved);
+}
+
+/**
    * Uploade un fichier, crée le DocumentCustomer et le lie à la visite de sous-étape.
    *
    * Résolution des IDs :

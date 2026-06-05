@@ -7,6 +7,7 @@ import { GeographyModule } from '../geography/geography.module';
 import { CustomerController } from './customer/customer.controller';
 import { CustomersService } from './customer/customer.service';
 import { Customer } from './customer/entities/customer.entity';
+import { CustomerCommunication } from './customer/entities/customer-communication.entity';
 import { TypeCustomer } from './type-customer/entities/type_customer.entity';
 import { TypeCustomersController } from './type-customer/type-customer.controller';
 import { TypeCustomersService } from './type-customer/type-customer.service';
@@ -23,7 +24,7 @@ import { PlansModule } from '../plans/plans.module';
     forwardRef(() => DocumentsModule),
     AgenciesModule,
     GeographyModule,
-    TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType]),
+    TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType, CustomerCommunication]),
     AiDatabaseModule,
     PlansModule,
   ],

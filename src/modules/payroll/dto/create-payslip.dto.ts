@@ -5,6 +5,7 @@ import {
   IsNumber,
   Min,
   IsString,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -42,6 +43,23 @@ export class CreatePayslipDto {
   @Min(0)
   @IsNotEmpty()
   net_amount: number;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: "Indique si la fiche correspond à une avance sur salaire",
+  })
+  @IsBoolean()
+  @IsOptional()
+  is_advance?: boolean;
+
+  @ApiPropertyOptional({
+    example: 1500.0,
+    description: "Montant de l'avance sur salaire (si is_advance)",
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  advance_amount?: number;
 
   @ApiPropertyOptional({
     example: 'Fiche générée automatiquement',

@@ -1,4 +1,7 @@
+import { Expose } from 'class-transformer';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
@@ -13,10 +16,9 @@ import {
   ManyToMany,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
+
 import { Branch } from '../../branch/entities/branch.entity';
-import { Expose } from 'class-transformer';
-import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+
 
 export enum EmployeePosition {
   AVOCAT = 'avocat',
@@ -37,7 +39,7 @@ export enum EmployeeStatus {
 @Entity('employee')
 @BusinessTable({
   label: 'Collaborateurs',
-  description: '⚠️ LECTURE ET MODIFICATION UNIQUEMENT — la création est impossible via l\'IA (nécessite un compte User avec authentification). Modification autorisée : position, spécialisation, taux horaire, disponibilité, statut.',
+  description: '⚠️ LECTURE ET MODIFICATION UNIQUEMENT — la création est impossible via l\'IA (nécessite un compte User avec authentification). Modification autorisée : position, spécialisation, taux horaire, disponibilité, statut. ⚠️ ATTENTION COLONNES : La table employee ne contient PAS les colonnes "last_name" ni "first_name". Pour obtenir le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec la table "user" sur user.id = employee.id, puis sélectionner user.last_name et user.first_name.',
   icon: '👥',
   category: 'ressources'
 })
@@ -158,6 +160,18 @@ export class Employee extends BaseEntity {
     group: 'financier'
   })
   hourly_rate: number;
+
+  @ApiProperty({ example: 350000 })
+  @Column({ name: 'salary', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @BusinessColumn({
+    label: 'Salaire mensuel',
+    description: 'Salaire de base mensuel du collaborateur',
+    unit: 'FCFA',
+    format: 'currency',
+    importance: 'high',
+    group: 'financier'
+  })
+  salary: number;
 
   @ApiProperty({ example: true })
   @Column({ name: 'is_available', default: true })

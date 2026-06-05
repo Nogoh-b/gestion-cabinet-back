@@ -3,15 +3,18 @@ import * as express from 'express';
 import { DataSource } from 'typeorm';
 import { ExpressAdapter } from '@bull-board/express';
 import { ClassSerializerInterceptor } from '@nestjs/common';
-import { NestExpressApplication } from '@nestjs/platform-express';
-
 import { NestFactory, Reflector } from '@nestjs/core';
 
 import { Transport } from '@nestjs/microservices';
+
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
+
 
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
+import LocationSeeder from './modules/geography/seeder/location.seeder';
+
 // seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
 // import { seedDatabase } from './main.seeder';
 
@@ -57,7 +60,7 @@ async function bootstrap() {
   if (process.env.RUN_SEEDERS === 'true') {
     const { default: PlanSeeder } = await import('./modules/plans/seeder/plan.seeder');
     const { runSeeders } = await import('typeorm-extension');
-    await runSeeders(app.get(DataSource), { seeds: [PlanSeeder] });
+    await runSeeders(app.get(DataSource), { seeds: [PlanSeeder, LocationSeeder] });
   }
 
   // Swagger : dev uniquement

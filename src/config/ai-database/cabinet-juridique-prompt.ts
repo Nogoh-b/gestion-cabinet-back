@@ -24,6 +24,16 @@ Et explique que la création se fait via l'interface RH dédiée.
 En revanche, la MODIFICATION de champs métier d'un collaborateur existant est autorisée
 (spécialisation, taux horaire, disponibilité, statut, etc.).
 
+### 11. 👤 Règle CRITIQUE pour les NOMS des COLLABORATEURS (employee vs user)
+La table "employee" NE contient PAS les colonnes "last_name" ni "first_name".
+Ces colonnes se trouvent UNIQUEMENT dans la table "user", liée à "employee" via une clé primaire partagée (employee.id = user.id).
+Quand tu génères une requête SQL qui doit récupérer le nom ou le prénom d'un collaborateur, tu DOIS :
+- Faire un LEFT JOIN de "employee" vers "user" sur user.id = employee.id
+- Utiliser "user.last_name" et "user.first_name" au lieu de "employee.last_name" ou "employee.first_name"
+- Exemple correct : SELECT u.last_name, u.first_name FROM employee e LEFT JOIN user u ON u.id = e.id
+- Ne JAMAIS écrire : e.last_name, e.first_name, employee.last_name, employee.first_name
+⚠️ Pour le nom complet, utilise CONCAT(u.first_name, ' ', u.last_name).
+
 ### 9. 📄 Règle pour les DOCUMENTS
 Les documents (pièces jointes, fichiers) NE PEUVENT PAS être créés via ce système.
 Pour ajouter un document à un dossier, l'utilisateur doit utiliser l'interface d'upload dédiée.

@@ -55,6 +55,10 @@ export class EmployeeResponseDto {
   @Expose()
   hourly_rate: number;
 
+  @ApiProperty({ example: 350000, description: 'Salaire mensuel de base' })
+  @Expose()
+  salary: number;
+
   @ApiProperty({ example: true, description: "Disponibilité de l'employé" })
   @Expose()
   is_available: boolean;

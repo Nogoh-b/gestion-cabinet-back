@@ -60,6 +60,11 @@ import {
   CustomerCreatedFrom,
   CustomerStatus,
 } from './entities/customer.entity';
+import {
+  CustomerCommunication,
+  CommunicationStatus,
+} from './entities/customer-communication.entity';
+import { CreateCustomerCommunicationDto } from './dto/create-customer-communication.dto';
 
 
 
@@ -143,7 +148,9 @@ export class CustomersService extends BaseServiceV1<Customer> {
         ],*/
         
         // Champs de relations pour filtrage
-        relationFields: ['type_customer', 'location_city']
+        // `dossiers` est chargé pour permettre le calcul de dossier_count /
+        // active_dossier_count dans le CustomerResponseDto (affiché dans la liste).
+        relationFields: ['type_customer', 'location_city', 'dossiers']
       };
     }
  toNumberOrNull(value: any): number | null {
@@ -616,5 +623,93 @@ async update(
       }, 'sentCount')
       .having('sentCount < requiredCount')
       .getMany();
+  }
+
+  // ==================== COMMUNICATIONS CLIENT ====================
+
+  /**
+   * Récupère l'historique des communications d'un client (appels, emails,
+   * réunions, courriers) trié de la plus récente à la plus ancienne.
+   */
+  async getCommunications(customerId: number): Promise<CustomerCommunication[]> {
+    const customer = await this.customerRepository.findOne({
+      where: { id: customerId },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Client ${customerId} non trouvé`);
+    }
+
+    const repo = this.dataSource.getRepository(CustomerCommunication);
+    return repo.find({
+      where: { customer: { id: customerId } },
+      order: { date: 'DESC', id: 'DESC' },
+    });
+  }
+
+  /**
+   * Ajoute une communication (appel, email, réunion, courrier) à un client.
+   * Aucune ValidationPipe globale n'étant active, on coerce manuellement les
+   * valeurs sensibles (durée, date).
+   */
+  async addCommunication(
+    customerId: number,
+    dto: CreateCustomerCommunicationDto,
+  ): Promise<CustomerCommunication> {
+    const customer = await this.customerRepository.findOne({
+      where: { id: customerId },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Client ${customerId} non trouvé`);
+    }
+
+    if (!dto?.type) {
+      throw new BadRequestException('Le type de communication est requis');
+    }
+    if (!dto?.subject) {
+      throw new BadRequestException("L'objet de la communication est requis");
+    }
+
+    const repo = this.dataSource.getRepository(CustomerCommunication);
+    const parsedDuration =
+      dto.duration === undefined || dto.duration === null
+        ? undefined
+        : Number(dto.duration);
+    const durationValue =
+      parsedDuration !== undefined && Number.isNaN(parsedDuration)
+        ? undefined
+        : parsedDuration;
+
+    const communication = repo.create({
+      customer: { id: customerId } as Customer,
+      type: dto.type,
+      subject: dto.subject,
+      content: dto.content ?? undefined,
+      date: dto.date ? new Date(dto.date) : new Date(),
+      status: dto.status ?? CommunicationStatus.SENT,
+      duration: durationValue,
+      participants: dto.participants ?? undefined,
+    });
+
+    return repo.save(communication);
+  }
+
+  /**
+   * Supprime une communication client.
+   */
+  async removeCommunication(
+    customerId: number,
+    communicationId: number,
+  ): Promise<{ success: boolean }> {
+    const repo = this.dataSource.getRepository(CustomerCommunication);
+    const communication = await repo.findOne({
+      where: { id: communicationId, customer: { id: customerId } },
+    });
+    if (!communication) {
+      throw new NotFoundException(
+        `Communication ${communicationId} non trouvée pour le client ${customerId}`,
+      );
+    }
+    await repo.remove(communication);
+    return { success: true };
   }
 }

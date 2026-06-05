@@ -98,6 +98,26 @@ export class Payslip extends TenantEntity {
   })
   net_amount: number;
 
+  @Column({ type: 'boolean', name: 'is_advance', default: false })
+  @BusinessColumn({
+    label: 'Avance sur salaire',
+    description: 'Indique si cette fiche correspond à une avance sur salaire',
+    importance: 'medium',
+    group: 'financier',
+  })
+  is_advance: boolean;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, name: 'advance_amount', nullable: true })
+  @BusinessColumn({
+    label: "Montant de l'avance",
+    description: "Montant de l'avance accordée au collaborateur",
+    unit: '€',
+    example: '1500.00',
+    importance: 'medium',
+    group: 'financier',
+  })
+  advance_amount: number;
+
   @Column({ type: 'enum', enum: PayslipStatus, default: PayslipStatus.DRAFT })
   @BusinessColumn({
     label: 'Statut',

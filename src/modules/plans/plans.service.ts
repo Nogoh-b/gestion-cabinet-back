@@ -1,14 +1,14 @@
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
-import { Plan } from './entities/plan.entity';
-import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
-import { PlanQuotaService } from './plan-quota.service';
+
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { Plan } from './entities/plan.entity';
+import { PlanQuotaService } from './plan-quota.service';
 
 @Injectable()
 export class PlansService extends BaseServiceV1<Plan> {
@@ -88,7 +88,7 @@ export class PlansService extends BaseServiceV1<Plan> {
         [cabinetId],
       ),
       this.cabinetRepo.manager.query(
-        'SELECT COUNT(*) as cnt FROM dossier WHERE tenant_id = ?',
+        'SELECT COUNT(*) as cnt FROM dossiers WHERE tenant_id = ?',
         [cabinetId],
       ),
     ]);

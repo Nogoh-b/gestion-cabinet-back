@@ -25,6 +25,15 @@ export class DocumentCategoryService extends BaseServiceV1<DocumentCategory> {
     super(categoryRepository, paginationService);
   }
 
+  /** Champs de recherche / filtres pour le endpoint paginé /search */
+  protected getDefaultSearchOptions() {
+    return {
+      searchFields: ['code', 'name', 'description'],
+      exactMatchFields: ['id', 'is_active', 'is_system', 'sort_order'],
+      dateRangeFields: ['created_at', 'updated_at'],
+    };
+  }
+
   async create(dto: CreateDocumentCategoryDto): Promise<DocumentCategoryResponseDto> {
     const existing = await this.categoryRepository.findOne({
       where: [{ code: dto.code }, { name: dto.name }]

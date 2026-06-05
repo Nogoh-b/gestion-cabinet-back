@@ -17,6 +17,7 @@ import { PayslipsService } from './payslips.service';
 import { CreatePayslipDto } from './dto/create-payslip.dto';
 import { PayslipSearchDto } from './dto/payslip-search.dto';
 import { Payslip } from './entities/payslip.entity';
+import { PayslipListResponseDto } from './dto/payslip-response.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 @Controller('payslips')
@@ -43,7 +44,7 @@ export class PayslipsController {
   ) {
     return this.service.searchWithTransformer(
       searchParams as any,
-      Payslip,
+      PayslipListResponseDto,
       paginationParams,
     );
   }

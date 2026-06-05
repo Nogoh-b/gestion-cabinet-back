@@ -57,6 +57,55 @@ export class AskQuestionDto {
   @IsOptional()
   @IsBoolean()
   textGenerationOnly?: boolean;
+
+  /**
+   * Entités explicitement référencées par l'utilisateur via les mentions `@`
+   * dans le champ de saisie (client, dossier, collaborateur…).
+   *
+   * Transmis en multipart/form-data → reçu sous forme de **chaîne JSON**
+   * (sérialisée côté front par `JSON.stringify`). On la parse dans le service
+   * via {@link parseReferencedContext} pour enrichir le prompt avec les IDs
+   * exacts, ce qui lève l'ambiguïté (« ce client », « ce dossier »…).
+   *
+   * Forme attendue après parsing :
+   *   [{ type: 'client', label: 'Société Dupont', data: { id: 42, ... } }]
+   */
+  @ApiProperty({
+    required: false,
+    description: 'Entités référencées via @ (chaîne JSON : [{type,label,data}]).',
+  })
+  @IsOptional()
+  @IsString()
+  context?: string;
+}
+
+/** Une entité référencée via `@` côté front, après parsing du JSON. */
+export interface ReferencedEntityContext {
+  type: string;
+  label: string;
+  data?: Record<string, any> & { id?: string | number };
+}
+
+/**
+ * Parse de façon défensive le champ `context` (chaîne JSON multipart) en une
+ * liste typée. Retourne `[]` en cas d'absence ou de JSON invalide — ce contexte
+ * est un *enrichissement* optionnel, il ne doit jamais faire échouer la requête.
+ */
+export function parseReferencedContext(raw?: string): ReferencedEntityContext[] {
+  if (!raw || typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(it => it && typeof it === 'object' && typeof it.label === 'string')
+      .map(it => ({
+        type: typeof it.type === 'string' ? it.type : 'entité',
+        label: it.label,
+        data: it.data && typeof it.data === 'object' ? it.data : undefined,
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export interface QueryExecutionResult {

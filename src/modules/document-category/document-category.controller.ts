@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { DocumentCategoryService } from './document-category.service';
 import { CreateDocumentCategoryDto } from './dto/create-document-category.dto';
 import { UpdateDocumentCategoryDto } from './dto/update-document-category.dto';
@@ -25,6 +27,20 @@ export class DocumentCategoryController {
   @ApiResponse({ status: 200, type: [DocumentCategoryResponseDto] })
   async findAll() {
     return this.service.findAll();
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: 'Rechercher des catégories de documents (paginé)' })
+  @ApiResponse({ status: 200, type: [DocumentCategoryResponseDto] })
+  async search(
+    @Query() searchParams?: SearchCriteria,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.service.searchWithTransformer(
+      searchParams as SearchCriteria,
+      DocumentCategoryResponseDto,
+      paginationParams,
+    );
   }
 
   @Get(':id')

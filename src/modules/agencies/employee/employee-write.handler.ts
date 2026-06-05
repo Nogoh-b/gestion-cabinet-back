@@ -101,7 +101,7 @@ export class EmployeeWriteHandler extends BaseWriteHandler {
     // Champs autorisés pour la mise à jour métier
     const ALLOWED_UPDATE_FIELDS = new Set([
       'position', 'specialization', 'bar_association_number', 'bar_association_city',
-      'years_of_experience', 'hourly_rate', 'is_available', 'max_dossiers',
+      'years_of_experience', 'hourly_rate', 'salary', 'is_available', 'max_dossiers',
       'bio', 'languages', 'expertise_areas', 'birth_date',
       'professional_address', 'professional_phone',
       'status', 'branch_id', 'hireDate', 'hire_date',

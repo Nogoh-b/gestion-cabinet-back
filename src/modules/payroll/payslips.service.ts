@@ -2,7 +2,7 @@ import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { Payslip } from './entities/payslip.entity';
 import { CreatePayslipDto } from './dto/create-payslip.dto';
 import { PayrollPeriod } from './entities/payroll-period.entity';
@@ -23,6 +23,13 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     private readonly planQuotaService: PlanQuotaService,
   ) {
     super(repository, paginationService);
+  }
+
+  protected getDefaultSearchOptions(): SearchOptions {
+    return {
+      searchFields: [],
+      relationFields: ['employee', 'employee.user', 'period'],
+    };
   }
 
   async create(dto: CreatePayslipDto): Promise<Payslip> {
@@ -52,7 +59,7 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
 
   findAll(): Promise<Payslip[]> {
     return this.repository.find({
-      relations: ['employee', 'period'],
+      relations: ['employee', 'employee.user', 'period'],
       order: { created_at: 'DESC' },
     });
   }
@@ -60,7 +67,7 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
   async findOne(id: number): Promise<Payslip> {
     const payslip = await this.repository.findOne({
       where: { id },
-      relations: ['employee', 'period', 'lines', 'lines.dossier'],
+      relations: ['employee', 'employee.user', 'period', 'lines', 'lines.dossier'],
     });
     if (!payslip) throw new NotFoundException('Fiche de paie non trouvée');
     return payslip;
@@ -69,15 +76,15 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
   async findByPeriod(period_id: number): Promise<Payslip[]> {
     return this.repository.find({
       where: { period_id },
-      relations: ['employee', 'period'],
-      order: { employee: { full_name: 'ASC' } },
+      relations: ['employee', 'employee.user', 'period'],
+      order: { created_at: 'DESC' },
     });
   }
 
   async findByEmployee(employee_id: number): Promise<Payslip[]> {
     return this.repository.find({
       where: { employee_id },
-      relations: ['period'],
+      relations: ['employee', 'employee.user', 'period'],
       order: { created_at: 'DESC' },
     });
   }

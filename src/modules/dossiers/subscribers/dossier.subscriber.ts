@@ -222,9 +222,13 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity: Partial<Dossier>,
     event: UpdateEvent<Dossier>,
   ): Promise<void> {
-    if (this.hasRelationChanged(event, 'collaborators')) {
-      await this.syncCollaboratorsToConversation(entity, event);
-    }
+    // ⚠️ TypeORM ne renseigne pas de façon fiable `event.updatedRelations`
+    // pour les ManyToMany (ex: ajout d'un collaborateur via
+    // `dossier.collaborators.push(...)` + save). On ne peut donc pas se fier à
+    // `hasRelationChanged('collaborators')`. La synchro est idempotente
+    // (n'ajoute que les participants manquants et ne notifie que les nouveaux),
+    // on l'exécute donc à chaque update du dossier.
+    await this.syncCollaboratorsToConversation(entity, event);
 
     if (this.hasColumnChanged(event, 'status')) {
       await this.notifyStatusChanged(entity, event);

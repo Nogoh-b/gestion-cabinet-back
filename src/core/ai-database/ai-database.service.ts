@@ -12,12 +12,16 @@ import { InjectDataSource } from '@nestjs/typeorm';
 
 
 
+
+
+
+
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
-import { AskQuestionDto } from './dto/ask-question.dto';
+import { AskQuestionDto, parseReferencedContext, ReferencedEntityContext } from './dto/ask-question.dto';
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
@@ -26,6 +30,10 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
+
+
+
 
 
 
@@ -1088,6 +1096,53 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  /**
+   * Exécute une fonction asynchrone avec tentatives de réessai.
+   * @param fn Fonction asynchrone à exécuter
+   * @param retries Nombre de tentatives (défaut: 2)
+   * @param delayMs Délai entre chaque tentative en ms (défaut: 1000)
+   */
+  private async withRetry<T>(
+    fn: () => Promise<T>,
+    retries = 2,
+    delayMs = 1000,
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`⚠️ [Retry] Tentative ${attempt}/${retries} échouée: ${errMsg} — nouvelle tentative dans ${delayMs}ms...`);
+        if (attempt === retries) throw err;
+        await this.sleep(delayMs);
+      }
+    }
+    throw new Error('withRetry: sortie de boucle inattendue');
+  }
+
+  /**
+   * Met en forme les entités référencées via `@` en un bloc texte injecté dans
+   * le prompt. Expose les IDs exacts afin que le LLM cible les bonnes lignes
+   * plutôt que de deviner (« ce client », « ce dossier »…).
+   */
+  private formatReferencedContext(items: ReferencedEntityContext[]): string {
+    const lines = items.map(it => {
+      const id = it.data?.id;
+      const idPart = id !== undefined && id !== null ? ` (id=${id})` : '';
+      const extra: string[] = [];
+      const d = it.data ?? {};
+      for (const key of ['reference', 'numero', 'email', 'phone', 'telephone']) {
+        if (d[key]) extra.push(`${key}=${d[key]}`);
+      }
+      const extraPart = extra.length ? ` [${extra.join(', ')}]` : '';
+      return `- ${it.type}: "${it.label}"${idPart}${extraPart}`;
+    });
+    return `\n\n--- ENTITÉS RÉFÉRENCÉES PAR L'UTILISATEUR (via @) ---
+Utilise EXACTEMENT ces entités (et leurs IDs) quand la question y fait référence :
+${lines.join('\n')}
+---`;
+  }
+
   async analyzeQuestionStream(
     dto: AskQuestionDto,
     userId: string,
@@ -1121,6 +1176,17 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         } catch (e) {
           await emit('status', { message: `⚠️ Fichier illisible: ${e.message}` });
         }
+      }
+
+      // ── 1bis. Entités référencées via @ (mentions) ──────────────────────────
+      // L'utilisateur a pu épingler des entités précises (client, dossier…) ;
+      // on injecte leurs IDs exacts dans le prompt pour lever toute ambiguïté.
+      const referenced = parseReferencedContext(dto.context);
+      if (referenced.length) {
+        enrichedQuestion += this.formatReferencedContext(referenced);
+        await emit('status', {
+          message: `🔗 ${referenced.length} référence(s) prise(s) en compte`,
+        });
       }
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
@@ -1228,8 +1294,16 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
       await emit('status', { message: '✅ Requête générée, exécution en cours...' });
 
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
-      const results = await this.executeSafeQuery(validatedQuery);
+      const validatedQuery = await this.withRetry(
+        () => this.validateAndFixQuery(sqlQuery, dto.specificTables || []),
+        2,
+        1000,
+      );
+      const results = await this.withRetry(
+        () => this.executeSafeQuery(validatedQuery),
+        2,
+        1000,
+      );
 
       await emit('status', { message: '📊 Analyse des résultats...' });
 
@@ -1898,6 +1972,17 @@ private async getDefaultSchema(): Promise<string> {
           schema += `- **${fkLabel}** (${fk.column}) → **${refTableLabel}** (${fk.referencedTable}.${fk.referencedColumn})\n`;
         }
       }
+    }
+    
+    // ⚠️ HINT spécial pour la table employee : les noms sont dans user
+    if (table === 'employee') {
+      schema += '\n### ⚠️ ATTENTION : Noms des collaborateurs\n\n';
+      schema += 'La table "employee" ne contient PAS les colonnes "last_name" ni "first_name".\n';
+      schema += 'Ces colonnes se trouvent dans la table "user", liée via une clé primaire partagée (employee.id = user.id).\n';
+      schema += 'Pour récupérer le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec "user" sur user.id = employee.id\n';
+      schema += 'et sélectionner user.last_name et user.first_name.\n';
+      schema += 'Ne JAMAIS utiliser employee.last_name ou employee.first_name — ces colonnes n\'existent PAS.\n';
+      schema += 'Pour le nom complet : CONCAT(user.first_name, \' \', user.last_name).\n';
     }
     
     return schema;

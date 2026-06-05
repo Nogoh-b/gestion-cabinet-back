@@ -343,6 +343,23 @@ export class DossiersController {
     );
   }
 
+  /**
+   * Ajouter un collaborateur (Employee) à un dossier.
+   */
+  @Post(':id/collaborators')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Ajouter un collaborateur au dossier' })
+  @ApiResponse({ status: 201, description: 'Collaborateur ajouté avec succès', type: DossierResponseDto })
+  @ApiResponse({ status: 404, description: 'Dossier ou collaborateur non trouvé' })
+  @ApiParam({ name: 'id', description: 'ID du dossier' })
+  async addCollaborator(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { employee_id: number },
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.addCollaborator(id, body?.employee_id, user);
+  }
+
 
 
     @Post(':id/transitions/:transitionId/apply')

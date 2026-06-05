@@ -1,5 +1,5 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
@@ -41,6 +41,18 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
     const referrer = await this.referrerRepo.findOne({ where: { id: dto.referrer_id } });
     if (!referrer) throw new NotFoundException('Apporteur non trouvé');
     entity.referrer = referrer;
+
+    // Le taux de commission est obligatoire en base (NOT NULL). Si non fourni,
+    // on retombe sur le taux par défaut de l'apporteur ; sinon on refuse
+    // proprement (400) au lieu de laisser MySQL lever « cannot be null ».
+    const rawRate =
+      dto.commission_rate ?? referrer.default_commission_rate ?? null;
+    if (rawRate === null || rawRate === undefined || isNaN(Number(rawRate))) {
+      throw new BadRequestException(
+        "Le taux de commission est requis (aucun taux par défaut défini pour cet apporteur)",
+      );
+    }
+    entity.commission_rate = Number(rawRate);
 
     return this.repository.save(entity);
   }

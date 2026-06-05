@@ -15,6 +15,9 @@ import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { Paiement } from './entities/paiement.entity';
+import { join } from 'path';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 
 
 
@@ -40,7 +43,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     };
   }
 
-  async createPaiement(createDto: CreatePaiementDto): Promise<PaiementResponseDto> {
+  async createPaiement(
+    createDto: CreatePaiementDto,
+    file?: Express.Multer.File,
+  ): Promise<PaiementResponseDto> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
       where: { id: String(createDto.factureId)  },
@@ -68,6 +74,18 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     paiement.status = StatutPaiement.VALIDE;
     paiement.notify_client = !!notify_client;
     // paiement.modePaiement = createDto.modePaiment
+
+    // Preuve de paiement : si un justificatif est joint, on l'enregistre sur le
+    // serveur et on stocke son URL publique (sinon on conserve la valeur du DTO).
+    if (file) {
+      const uploaded = await FilesUtil.uploadFileV1(
+        file,
+        join(UPLOAD_DOCS_PATH, 'paiements'),
+        { maxSizeKB: 3000 },
+      );
+      paiement.preuvePaiement = uploaded.fileUrl;
+    }
+
     const paiementSauvegarde = await this.repository.save(paiement);
 
     // Mettre à jour la facture

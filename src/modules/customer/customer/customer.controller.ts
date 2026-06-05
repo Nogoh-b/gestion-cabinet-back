@@ -24,6 +24,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
+import { CreateCustomerCommunicationDto } from './dto/create-customer-communication.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { CustomerSearchDto } from './dto/search-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
@@ -231,5 +232,39 @@ export class CustomerController {
   @Get('kyc/missing')
   async getCustomersWithMissingKyc() {
     return this.customerService.findCustomersWithMissingKyc();
+  }
+
+  // ==================== COMMUNICATIONS CLIENT ====================
+
+  @Get(':id/communications')
+  @RequirePermissions('view_clients')
+  @ApiOperation({ summary: "Liste des communications d'un client" })
+  @ApiParam({ name: 'id', description: 'ID du client' })
+  async getCommunications(@Param('id', ParseIntPipe) id: number) {
+    return this.customerService.getCommunications(id);
+  }
+
+  @Post(':id/communications')
+  @RequirePermissions('edit_client')
+  @ApiOperation({ summary: 'Ajouter une communication à un client' })
+  @ApiParam({ name: 'id', description: 'ID du client' })
+  @ApiBody({ type: CreateCustomerCommunicationDto })
+  async addCommunication(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateCustomerCommunicationDto,
+  ) {
+    return this.customerService.addCommunication(id, dto);
+  }
+
+  @Delete(':id/communications/:communicationId')
+  @RequirePermissions('edit_client')
+  @ApiOperation({ summary: "Supprimer une communication d'un client" })
+  @ApiParam({ name: 'id', description: 'ID du client' })
+  @ApiParam({ name: 'communicationId', description: 'ID de la communication' })
+  async removeCommunication(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('communicationId', ParseIntPipe) communicationId: number,
+  ) {
+    return this.customerService.removeCommunication(id, communicationId);
   }
 }
