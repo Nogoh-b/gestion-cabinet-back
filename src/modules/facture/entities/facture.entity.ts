@@ -193,6 +193,21 @@ export class Facture extends BaseEntity {
   })
   notesInternes: string;
 
+  /**
+   * Code devise au moment de la création (ex: 'XAF', 'EUR', 'USD').
+   * Figé à la création — une modification de devise cabinet ne rétrograde pas
+   * les anciennes factures. Null = héritage avant migration (afficher la devise
+   * courante du cabinet).
+   */
+  @Column({ type: 'varchar', length: 10, nullable: true, name: 'currency' })
+  @BusinessColumn({
+    label: 'Devise',
+    description: 'Code ISO de la devise au moment de l\'émission (XAF, EUR, USD…)',
+    importance: 'medium',
+    group: 'financier'
+  })
+  currency: string | null;
+
   // @CreateDateColumn({ name: 'created_at' })
   // @BusinessColumn({
   //   label: 'Date de création',

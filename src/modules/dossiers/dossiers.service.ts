@@ -731,15 +731,56 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
 
   // Méthodes privées
   private async generateDossierNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    const count = await this.dossierRepository.count({
-      where: {
-        created_at: Between(new Date(`${year}-01-01`), new Date(`${year}-12-31`))
-      }
-    });
-    
-    const sequence = (count + 1).toString().padStart(4, '0');
-    return `DOS-${year}-${sequence}-${randomUUID().slice(0, 4).toUpperCase()}`; 
+    const settings = await this.cabinetRepository.findOne({ where: {} });
+    const prefix   = (settings?.dossier_prefix ?? 'DOS-').toString();
+    const padding  = 4;
+    const template = (settings?.dossier_number_format ?? '{PREFIX}{YYYY}-{NNNN}').toString();
+
+    const now  = new Date();
+    const YYYY = now.getFullYear().toString();
+    const MM   = (now.getMonth() + 1).toString().padStart(2, '0');
+
+    // Partie fixe avant le compteur (jeton {NNNN})
+    const searchPrefix = template
+      .replace('{PREFIX}', prefix)
+      .replace('{YYYY}',   YYYY)
+      .replace('{MM}',     MM)
+      .replace('{NNNN}',   '');
+
+    const last = await this.dossierRepository
+      .createQueryBuilder('d')
+      .where('d.dossier_number LIKE :pfx', { pfx: `${searchPrefix}%` })
+      .orderBy('d.dossier_number', 'DESC')
+      .getOne();
+
+    let nextSeq = 1;
+    if (last?.dossier_number) {
+      const tail  = last.dossier_number.slice(searchPrefix.length);
+      const match = tail.match(/^(\d+)/);
+      if (match) nextSeq = parseInt(match[1], 10) + 1;
+    }
+
+    const buildNumber = (seq: number) =>
+      template
+        .replace('{PREFIX}', prefix)
+        .replace('{YYYY}',   YYYY)
+        .replace('{MM}',     MM)
+        .replace('{NNNN}',   seq.toString().padStart(padding, '0'));
+
+    let dossierNumber = buildNumber(nextSeq);
+
+    // Filet anti-collision
+    let safety = 0;
+    while (safety++ < 100) {
+      const existing = await this.dossierRepository.findOne({
+        where: { dossier_number: dossierNumber },
+      });
+      if (!existing) break;
+      nextSeq++;
+      dossierNumber = buildNumber(nextSeq);
+    }
+
+    return dossierNumber;
   }
 
   private async validateProcedureTypeSubtype(typeId: number, subtypeId: number): Promise<boolean | null> {

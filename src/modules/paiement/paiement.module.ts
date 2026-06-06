@@ -10,11 +10,12 @@ import { PaiementWriteHandler } from './paiement-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PaiementSubscriber } from './subscribers/paiement.subscriber';
+import { Cabinet } from '../cabinet/entities/cabinet.entity';
 
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Paiement, Facture]),
+    TypeOrmModule.forFeature([Paiement, Facture, Cabinet]),
     FactureModule,
     AiDatabaseModule,
   ],

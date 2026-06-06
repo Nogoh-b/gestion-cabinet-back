@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 
 /**
  * Subscriber métier pour les factures.
@@ -23,8 +24,16 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     notificationDispatcher: NotificationDispatcher,
     @InjectRepository(Facture)
     private readonly factureRepo: Repository<Facture>,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepo: Repository<Cabinet>,
   ) {
     super(dataSource, notificationDispatcher);
+  }
+
+  /** Symbole de la devise active (ex: "FCFA", "€"). */
+  private async getCurrencySymbol(): Promise<string> {
+    const cabinet = await this.cabinetRepo.findOne({ where: {} }).catch(() => null);
+    return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 
   listenTo() {
@@ -40,15 +49,17 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     const facture = loaded ?? entity;
     if (!facture) return;
 
+    const currencySymbol = await this.getCurrencySymbol();
+
     this.logger.log(
-      `📢 Facture créée | id=${facture.id} | numero=${facture.numero} | montant=${formatMoney(facture.montantTTC)} | échéance=${formatDate(facture.dateEcheance)} | notify_client=${!!entity.notify_client}`,
+      `📢 Facture créée | id=${facture.id} | numero=${facture.numero} | montant=${formatMoney(facture.montantTTC, currencySymbol)} | échéance=${formatDate(facture.dateEcheance)} | notify_client=${!!entity.notify_client}`,
     );
 
     await this.notify({
       event: NotifiableEvent.FACTURE_CREATED,
       title: `Nouvelle facture ${facture.numero}`,
       content:
-        `Facture ${facture.numero} — ${formatMoney(facture.montantTTC)} ` +
+        `Facture ${facture.numero} — ${formatMoney(facture.montantTTC, currencySymbol)} ` +
         `(échéance ${formatDate(facture.dateEcheance)})`,
       link: `/facturation/factures/${facture.id}`,
       audience: {
@@ -97,6 +108,8 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     }
     if (!event_) return;
 
+    const currencySymbol = await this.getCurrencySymbol();
+
     this.logger.log(
       `📢 Facture statut changé | id=${facture.id} | numero=${facture.numero} | new_status=${statusLabel} | notify_client=${!!(entity as Facture).notify_client}`,
     );
@@ -104,7 +117,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     await this.notify({
       event: event_,
       title,
-      content: `Montant : ${formatMoney(facture.montantTTC)}`,
+      content: `Montant : ${formatMoney(facture.montantTTC, currencySymbol)}`,
       link: `/facturation/factures/${facture.id}`,
       audience: {
         client: {
@@ -127,10 +140,10 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
   }
 }
 
-function formatMoney(v: any): string {
+function formatMoney(v: any, currencySymbol = 'XAF'): string {
   const n = Number(v);
   if (!Number.isFinite(n)) return String(v ?? '');
-  return `${n.toLocaleString('fr-FR')} FCFA`;
+  return `${n.toLocaleString('fr-FR')} ${currencySymbol}`;
 }
 
 function formatDate(v: any): string {

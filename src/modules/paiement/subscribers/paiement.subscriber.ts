@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Paiement } from '../entities/paiement.entity';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 
 /**
  * Subscriber métier pour les paiements.
@@ -22,8 +23,15 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     notificationDispatcher: NotificationDispatcher,
     @InjectRepository(Paiement)
     private readonly paiementRepo: Repository<Paiement>,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepo: Repository<Cabinet>,
   ) {
     super(dataSource, notificationDispatcher);
+  }
+
+  private async getCurrencySymbol(): Promise<string> {
+    const cabinet = await this.cabinetRepo.findOne({ where: {} }).catch(() => null);
+    return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 
   listenTo() {
@@ -39,15 +47,17 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     if (!paiement?.facture) return;
     const facture: any = paiement.facture;
 
+    const currencySymbol = await this.getCurrencySymbol();
+
     this.logger.log(
-      `📢 Paiement reçu | id=${paiement.id} | montant=${formatMoney(paiement.montant)} | facture=${facture.numero} | notify_client=${!!entity.notify_client}`,
+      `📢 Paiement reçu | id=${paiement.id} | montant=${formatMoney(paiement.montant, currencySymbol)} | facture=${facture.numero} | notify_client=${!!entity.notify_client}`,
     );
 
     await this.notify({
       event: NotifiableEvent.PAIEMENT_RECEIVED,
       title: `Paiement reçu pour la facture ${facture.numero}`,
       content:
-        `Montant reçu : ${formatMoney(paiement.montant)} ` +
+        `Montant reçu : ${formatMoney(paiement.montant, currencySymbol)} ` +
         `(${formatDate(paiement.datePaiement)})`,
       link: `/facturation/factures/${facture.id}`,
       audience: {
@@ -70,10 +80,10 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
   }
 }
 
-function formatMoney(v: any): string {
+function formatMoney(v: any, currencySymbol = 'XAF'): string {
   const n = Number(v);
   if (!Number.isFinite(n)) return String(v ?? '');
-  return `${n.toLocaleString('fr-FR')} FCFA`;
+  return `${n.toLocaleString('fr-FR')} ${currencySymbol}`;
 }
 
 function formatDate(v: any): string {

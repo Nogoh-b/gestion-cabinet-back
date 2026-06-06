@@ -92,6 +92,10 @@ export class FactureService extends BaseServiceV1<Facture> {
       stageVisitId = procedureInstance.currentVisit.id ?? undefined;
     }
 
+    // Lire la devise courante du cabinet pour la figer sur la facture
+    const cabinet = await this.cabinetRepo.findOne({ where: {} });
+    const currency = cabinet?.currency ?? 'XAF';
+
     const facture = this.repository.create({
       ...rest,
       dossier,
@@ -99,6 +103,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       client,
       invoice_type: { id: createDto.type } as InvoiceType,
       client_id,
+      currency,
       montantPaye: 0,
       resteAPayer: createDto.montantTTC,
       stageVisit_id: stageVisitId,
@@ -267,32 +272,28 @@ export class FactureService extends BaseServiceV1<Facture> {
    */
   async generateFacNumber(): Promise<string> {
     const settings = await this.cabinetRepo.findOne({ where: {} });
-    const prefix = (settings?.invoice_prefix ?? 'FAC-').toString();
+    const prefix  = (settings?.invoice_prefix ?? 'FAC-').toString();
     const padding = Math.max(1, Math.min(10, settings?.invoice_padding ?? 4));
-    const strategy = (settings?.invoice_numbering_strategy ?? 'yearly') as
-      | 'yearly'
-      | 'monthly'
-      | 'continuous';
+    // Gabarit : "{PREFIX}{YYYY}-{NNNN}" par défaut (rétro-compatible)
+    const template = (settings?.invoice_number_format ?? '{PREFIX}{YYYY}-{NNNN}').toString();
 
-    const now = new Date();
-    let scope: string;
-    switch (strategy) {
-      case 'continuous':
-        scope = '';
-        break;
-      case 'monthly': {
-        const yyyy = now.getFullYear();
-        const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-        scope = `${yyyy}${mm}-`;
-        break;
-      }
-      case 'yearly':
-      default:
-        scope = `${now.getFullYear()}-`;
-        break;
-    }
+    const now  = new Date();
+    const YYYY = now.getFullYear().toString();
+    const MM   = (now.getMonth() + 1).toString().padStart(2, '0');
 
-    const searchPrefix = `${prefix}${scope}`;
+    /**
+     * On détermine le "scope de recherche" : la partie fixe du numéro avant
+     * le compteur, afin de trouver le dernier numéro existant et en extraire
+     * la séquence.
+     * Le compteur est toujours le jeton {NNNN}, on construit donc le préfixe
+     * de recherche en remplaçant tous les jetons SAUF {NNNN}.
+     */
+    const searchPrefix = template
+      .replace('{PREFIX}', prefix)
+      .replace('{YYYY}',   YYYY)
+      .replace('{MM}',     MM)
+      .replace('{NNNN}',   ''); // sera complété par le compteur
+
     const last = await this.repository
       .createQueryBuilder('f')
       .where('f.numero LIKE :pfx', { pfx: `${searchPrefix}%` })
@@ -301,12 +302,19 @@ export class FactureService extends BaseServiceV1<Facture> {
 
     let nextSeq = 1;
     if (last?.numero) {
-      const tail = last.numero.slice(searchPrefix.length);
+      const tail  = last.numero.slice(searchPrefix.length);
       const match = tail.match(/^(\d+)/);
       if (match) nextSeq = parseInt(match[1], 10) + 1;
     }
 
-    let numero = `${searchPrefix}${nextSeq.toString().padStart(padding, '0')}`;
+    const buildNumero = (seq: number) =>
+      template
+        .replace('{PREFIX}', prefix)
+        .replace('{YYYY}',   YYYY)
+        .replace('{MM}',     MM)
+        .replace('{NNNN}',   seq.toString().padStart(padding, '0'));
+
+    let numero = buildNumero(nextSeq);
 
     // Filet anti-collision (race conditions, soft-deletes, etc.)
     let safety = 0;
@@ -314,7 +322,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       const existing = await this.repository.findOne({ where: { numero } });
       if (!existing) break;
       nextSeq++;
-      numero = `${searchPrefix}${nextSeq.toString().padStart(padding, '0')}`;
+      numero = buildNumero(nextSeq);
     }
 
     return numero;

@@ -199,6 +199,52 @@ export class Cabinet {
   @Column({ length: 20, default: 'DOS-', name: 'dossier_prefix' })
   dossier_prefix: string;
 
+  /**
+   * Gabarit de numérotation des factures. Les jetons disponibles sont :
+   *  {PREFIX}  → invoice_prefix  (ex: "FAC-")
+   *  {YYYY}    → année sur 4 chiffres
+   *  {MM}      → mois sur 2 chiffres
+   *  {NNNN}    → compteur paddé selon invoice_padding
+   *
+   * Exemples :
+   *  "{PREFIX}{YYYY}-{NNNN}"   → FAC-2026-0001  (défaut)
+   *  "{YYYY}/{NNNN}"           → 2026/0001       (Afrique francophone)
+   *  "{NNNN}/{YYYY}"           → 0001/2026       (format notarial / tribunaux)
+   *  "{PREFIX}{YYYY}{MM}-{NNNN}" → FAC-202605-0001 (mensuel)
+   */
+  @Column({
+    type: 'varchar',
+    length: 60,
+    default: '{PREFIX}{YYYY}-{NNNN}',
+    name: 'invoice_number_format',
+  })
+  invoice_number_format: string;
+
+  /**
+   * Gabarit de numérotation des dossiers. Mêmes jetons qu'invoice_number_format
+   * plus {DOSSIER_PREFIX} = dossier_prefix.
+   *
+   * Exemples :
+   *  "{PREFIX}{YYYY}-{NNNN}"   → DOS-2026-0001  (défaut)
+   *  "{YYYY}/{NNNN}"           → 2026/0001
+   *  "{NNNN}/{YYYY}"           → 0001/2026
+   */
+  @Column({
+    type: 'varchar',
+    length: 60,
+    default: '{PREFIX}{YYYY}-{NNNN}',
+    name: 'dossier_number_format',
+  })
+  dossier_number_format: string;
+
+  /**
+   * Taux de TVA par défaut appliqué à la facturation (ex: 19.25 pour le
+   * Cameroun, 20 pour la France, 0 si exonéré). Peut être surchargé par
+   * facture.
+   */
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'default_tva_rate' })
+  default_tva_rate: number;
+
   // ── Horaires (anciennement app_settings) ──────────────────────────────────
 
   @Column({ length: 5, default: '08:00', name: 'working_hours_start' })
