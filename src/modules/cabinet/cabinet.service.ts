@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import {
   Cabinet,
   CabinetPlan,
   cabinetLogoToDataUri,
   serializeCabinet,
 } from './entities/cabinet.entity';
+import { Plan } from '../plans/entities/plan.entity';
 import { applyLogoInput, logoFileToUrl, writeLogoFile } from './cabinet-logo.util';
 import { CreateCabinetDto } from './dto/create-cabinet.dto';
 import { TenantSeederService } from './tenant-seeder.service';
@@ -18,6 +19,8 @@ export class CabinetService implements OnModuleInit {
   constructor(
     @InjectRepository(Cabinet)
     private readonly repo: Repository<Cabinet>,
+    @InjectRepository(Plan)
+    private readonly planRepo: Repository<Plan>,
     private readonly tenantSeeder: TenantSeederService,
   ) {}
 
@@ -31,6 +34,12 @@ export class CabinetService implements OnModuleInit {
     // sans re-upload manuel.
     await this.backfillLogoFiles().catch((e) =>
       this.logger.warn(`Backfill logos échoué : ${e.message}`),
+    );
+
+    // Backfill plan_id pour les cabinets existants ayant un plan (legacy)
+    // mais pas de plan_id (FK vers la table plans)
+    await this.backfillPlanIds().catch((e) =>
+      this.logger.warn(`Backfill plan_id échoué : ${e.message}`),
     );
     // const exists = await this.repo.findOne({ where: { id: 1 } });
     // if (!exists) {
@@ -65,6 +74,35 @@ export class CabinetService implements OnModuleInit {
     }
   }
 
+  /**
+   * Pour chaque cabinet ayant un `plan` (legacy code) mais pas de `plan_id`
+   * (FK vers l'entité Plan), résout le code et écrit la FK.
+   * Idempotent : ne touche pas les cabinets déjà liés.
+   */
+  private async backfillPlanIds(): Promise<void> {
+    const cabinets = await this.repo.find({ where: { plan_id: IsNull() } });
+    if (!cabinets.length) return;
+
+    // Charger tous les plans actifs indexés par code
+    const plans = await this.planRepo.find({ where: { is_active: true } });
+    const planByCode = new Map(plans.map((p) => [p.code, p]));
+
+    let updated = 0;
+    for (const c of cabinets) {
+      const code = c.plan || 'free';
+      const plan = planByCode.get(code);
+      if (plan) {
+        await this.repo.update(c.id, { plan_id: plan.id });
+        updated++;
+      } else {
+        this.logger.warn(`Cabinet #${c.id} : plan "${code}" non trouvé dans la table plans`);
+      }
+    }
+    if (updated) {
+      this.logger.log(`✅ Backfill plan_id : ${updated} cabinet(s) mis à jour`);
+    }
+  }
+
   // ── CRUD ──────────────────────────────────────────────────────────
 
   /**
@@ -77,11 +115,25 @@ export class CabinetService implements OnModuleInit {
             address, website, rccm, nina, bank_account, email_footer,
             ...rest } = data;
 
+    // Résoudre le plan_id à partir du code plan (legacy field → FK)
+    const planCode = rest.plan ?? 'free';
+    let resolvedPlanId: number | null = null;
+    try {
+      const planEntity = await this.planRepo.findOne({ where: { code: planCode, is_active: true } });
+      resolvedPlanId = planEntity?.id ?? null;
+      if (!resolvedPlanId) {
+        this.logger.warn(`Plan "${planCode}" introuvable — plan_id restera null`);
+      }
+    } catch (e) {
+      this.logger.warn(`Erreur lors de la résolution du plan "${planCode}" : ${e.message}`);
+    }
+
     const cabinet = this.repo.create({
       code:           this.generateCode(),
       name:           rest.name,
       status:         'trial',
-      plan:           rest.plan ?? 'free',
+      plan:           planCode,
+      plan_id:        resolvedPlanId,
       routing_mode:   'path',
       trial_ends_at:  this.trialEnd(30),
       // Branding & coordonnees

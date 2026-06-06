@@ -1,6 +1,8 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
+
 import { Plan } from '../entities/plan.entity';
+
 
 export default class PlanSeeder implements Seeder {
   public async run(
@@ -36,8 +38,8 @@ export default class PlanSeeder implements Seeder {
         is_active: true,
       },
       {
-        name: 'Avocat',
-        code: 'avocat',
+        name: 'Starter',
+        code: 'starter',
         description: 'Pour les avocats indépendants. Tout le nécessaire au quotidien.',
         max_employees: 3,
         max_storage_gb: 10,

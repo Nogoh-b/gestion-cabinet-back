@@ -2,6 +2,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Unique,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
@@ -26,6 +27,7 @@ export type MailTemplateCategory =
 export type MailTemplateAudience = 'client' | 'collaborator' | 'both';
 
 @Entity('mail_templates')
+@Unique(['tenant_id', 'code'])
 export class MailTemplate extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
@@ -34,7 +36,7 @@ export class MailTemplate extends TenantEntity {
    * Code unique du template (ex: "account_opening", "reset_password").
    * Sert de clé d'appel depuis le code applicatif.
    */
-  @Column({ type: 'varchar', length: 80, unique: true })
+  @Column({ type: 'varchar', length: 80 })
   code: string;
 
   @Column({ type: 'varchar', length: 150 })

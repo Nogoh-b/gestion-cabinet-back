@@ -4,7 +4,8 @@ import {
     PrimaryGeneratedColumn,
     Column, OneToMany,
     ManyToOne,
-    JoinColumn
+    JoinColumn,
+    Unique
 } from 'typeorm';
 import { Expose } from 'class-transformer';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
@@ -35,6 +36,7 @@ export enum JurisdictionType {
   icon: '⚖️',
   category: 'judiciaire'
 })
+@Unique(['tenant_id', 'code'])
 export class Jurisdiction  extends BaseEntity{
   @PrimaryGeneratedColumn()
   @Expose()
@@ -47,7 +49,7 @@ export class Jurisdiction  extends BaseEntity{
   })
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   @Expose()
   @BusinessColumn({
     label: 'Code',

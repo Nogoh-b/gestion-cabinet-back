@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   Index,
+  Unique,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
@@ -20,12 +21,13 @@ import { TenantEntity } from 'src/core/entities/tenant.entity';
  */
 @Entity('pdf_templates')
 @Index(['entity_type', 'variant'])
+@Unique(['tenant_id', 'code'])
 export class PdfTemplate extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
   /** Code unique et stable (ex. facture_comptable). Sert d'identifiant logique. */
-  @Column({ type: 'varchar', length: 80, unique: true })
+  @Column({ type: 'varchar', length: 80 })
   code: string;
 
   /** Libellé affiché dans l'interface de gestion. */

@@ -3,7 +3,8 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  OneToMany
+  OneToMany,
+  Unique
 } from 'typeorm';
 import { Expose } from 'class-transformer';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
@@ -32,6 +33,7 @@ export enum TaxRate {
   icon: '💰',
   category: 'finance'
 })
+@Unique(['tenant_id', 'code'])
 export class InvoiceType extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
@@ -44,7 +46,7 @@ export class InvoiceType extends TenantEntity {
   })
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   @Expose()
   @BusinessColumn({
     label: 'Code',

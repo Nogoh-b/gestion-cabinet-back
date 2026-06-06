@@ -2,10 +2,11 @@
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn, Unique } from 'typeorm';
 
 
 @Entity('procedure_types')
+@Unique(['tenant_id', 'code'])
 export class ProcedureType extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
@@ -13,7 +14,7 @@ export class ProcedureType extends BaseEntity {
   @Column({ name: 'name', length: 100, nullable: false })
   name: string;
 
-  @Column({ name: 'code', length: 50, unique: true, nullable: false })
+  @Column({ name: 'code', length: 50, nullable: false })
   code: string;
 
   @Column({ type: 'text', nullable: true })

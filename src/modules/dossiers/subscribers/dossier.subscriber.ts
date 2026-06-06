@@ -298,9 +298,19 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     event: UpdateEvent<Dossier>,
   ): Promise<void> {
     const dossierId = entity.id ?? (event.databaseEntity as Dossier)?.id;
-    if (!dossierId) return;
+    this.logger.log(
+      `🔄 syncCollaboratorsToConversation START | dossierId=${dossierId} | entity.id=${entity.id} | dbEntity.id=${(event.databaseEntity as Dossier)?.id}`,
+    );
+    if (!dossierId) {
+      this.logger.warn(`🔄 syncCollaborators SKIP — no dossierId`);
+      return;
+    }
 
     const dossier = await this.loadWithConversation(dossierId);
+
+    this.logger.log(
+      `🔄 syncCollaborators loaded dossier | found=${!!dossier} | conversation_id=${dossier?.conversation_id ?? dossier?.conversation?.id ?? 'NONE'} | collaborators=${dossier?.collaborators?.length ?? 0} | conversation.participants=${dossier?.conversation?.participants?.length ?? 0}`,
+    );
 
     if (!dossier?.conversation) {
       this.logger.warn(
@@ -311,18 +321,28 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
 
     const conversation = dossier.conversation;
     const existingIds = new Set(conversation.participants.map(p => p.id));
+    const collaboratorIds = (dossier.collaborators ?? []).map(c => c.id);
+
+    this.logger.log(
+      `🔄 syncCollaborators comparing | existing participants=[${[...existingIds].join(', ')}] | dossier collaborators=[${collaboratorIds.join(', ')}]`,
+    );
 
     const toAdd = (dossier.collaborators ?? []).filter(
       c => !existingIds.has(c.id),
     );
 
-    if (toAdd.length === 0) return;
+    if (toAdd.length === 0) {
+      this.logger.log(
+        `🔄 syncCollaborators — aucun nouveau collaborateur à ajouter (tous déjà participants)`,
+      );
+      return;
+    }
 
     conversation.participants = [...conversation.participants, ...toAdd];
     await this.conversationRepo.save(conversation);
 
     this.logger.log(
-      `${toAdd.length} collaborateur(s) ajouté(s) à la conversation #${conversation.id}` +
+      `✅ ${toAdd.length} collaborateur(s) ajouté(s) à la conversation #${conversation.id}` +
         ` du dossier ${dossier.dossier_number}` +
         ` [${toAdd.map(e => e.id).join(', ')}]`,
     );

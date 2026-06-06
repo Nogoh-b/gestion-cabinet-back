@@ -421,6 +421,10 @@ export class AiDatabaseService implements OnModuleInit {
       return `🔍 ${intro}Veuillez choisir parmi les ${n} option(s) disponible(s) ci-dessous.`;
     }
 
+    if (n === 0) {
+      return `🔍 ${intro}Aucune correspondance trouvée pour **« ${error.searchTerm} »**. Veuillez vérifier l'orthographe ou fournir plus de détails.`;
+    }
+
     return `🔍 ${intro}Plusieurs correspondances ont été trouvées pour **« ${error.searchTerm} »** (${n} résultat(s)). Veuillez sélectionner le bon :`;
   }
 

@@ -24,6 +24,7 @@ import { DossierSubscriber } from './subscribers/dossier.subscriber';
 import { Conversation } from '../chat/entities/conversation.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { PlansModule } from '../plans/plans.module';
+import { Cabinet } from '../cabinet/entities/cabinet.entity';
 
 @Module({
   imports: [
@@ -35,7 +36,7 @@ import { PlansModule } from '../plans/plans.module';
     forwardRef(() => FactureModule),
     forwardRef(() => ProcedureModule),
 
-    TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee]),
+    TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee, Cabinet]),
     AiDatabaseModule,
     PlansModule,
   ],

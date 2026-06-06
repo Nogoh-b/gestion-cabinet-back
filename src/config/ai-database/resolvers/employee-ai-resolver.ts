@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
@@ -44,6 +44,7 @@ function similarityScore(a: string, b: string): number {
 
 @Injectable()
 export class EmployeeAiResolver implements SpecializedEntityResolver {
+  private readonly logger = new Logger(EmployeeAiResolver.name);
   readonly tables = ['employee', 'employees'];
 
   constructor(
@@ -72,12 +73,24 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
       params[`sp${i}`] = `%${p}%`;
     });
 
+    this.logger.log(
+      `🔍 EmployeeAiResolver.resolve("${input}") | tokens=[${parts.join(', ')}] | OR conditions: ${orConditions.length}`,
+    );
+
     const candidates = await this.employeeRepo
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.user', 'u')
       .where(`(${orConditions.join(' OR ')})`, params)
       .take(20)
       .getMany();
+
+    this.logger.log(
+      `🔍 EmployeeAiResolver: ${candidates.length} candidat(s) trouvé(s) pour "${input}" | ` +
+      candidates.slice(0, 5).map(e => {
+        const u = (e as any).user;
+        return `#${e.id}:${u?.first_name ?? '?'} ${u?.last_name ?? '?'}`;
+      }).join(', '),
+    );
 
     const scored: ResolveMatch<Employee>[] = candidates
       .map(e => {
@@ -102,6 +115,11 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
         };
       })
       .sort((a, b) => b.score - a.score);
+
+    this.logger.log(
+      `🔍 EmployeeAiResolver: ${scored.length} candidat(s) scoré(s) | ` +
+      scored.slice(0, 5).map(s => `${s.matchedOn} (score:${s.score})`).join(' | '),
+    );
 
     return this.buildResult(scored, input, config);
   }

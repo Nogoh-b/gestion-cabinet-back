@@ -47,8 +47,9 @@ export class AmbiguityException extends Error {
     public readonly parentEntity?: string,
   ) {
     super(
-      `Ambiguïté: "${searchTerm}" correspond à ${candidates.length} entités dans "${entity}". ` +
-      `Veuillez choisir parmi les propositions.`,
+      candidates.length > 0
+        ? `Ambiguïté: "${searchTerm}" correspond à ${candidates.length} entités dans "${entity}". Veuillez choisir parmi les propositions.`
+        : `Aucune correspondance trouvée pour "${searchTerm}" dans "${entity}". Veuillez vérifier l'orthographe ou fournir plus de détails.`,
     );
   }
 }

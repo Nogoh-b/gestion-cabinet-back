@@ -78,7 +78,7 @@ export class PlansService extends BaseServiceV1<Plan> {
    */
   async getQuotaStatus(cabinetId: number): Promise<any> {
     // Comptages directs via requêtes SQL tenant-scoped
-    const [employees, clients, dossiers] = await Promise.all([
+    const [employees, clients, dossiers, storage] = await Promise.all([
       this.cabinetRepo.manager.query(
         'SELECT COUNT(*) as cnt FROM employee WHERE tenant_id = ?',
         [cabinetId],
@@ -91,12 +91,17 @@ export class PlansService extends BaseServiceV1<Plan> {
         'SELECT COUNT(*) as cnt FROM dossiers WHERE tenant_id = ?',
         [cabinetId],
       ),
+      this.cabinetRepo.manager.query(
+        'SELECT COALESCE(SUM(file_size), 0) as total FROM document_customer WHERE tenant_id = ?',
+        [cabinetId],
+      ),
     ]);
 
     const counts = {
       employees: Number(employees[0]?.cnt ?? 0),
       clients:   Number(clients[0]?.cnt ?? 0),
       dossiers:  Number(dossiers[0]?.cnt ?? 0),
+      storageBytes: Number(storage[0]?.total ?? 0),
     };
 
     return this.quotaService.getUsageStatus(cabinetId, counts);

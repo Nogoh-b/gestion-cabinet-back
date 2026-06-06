@@ -12,6 +12,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -360,7 +361,38 @@ export class DossiersController {
     return this.dossiersService.addCollaborator(id, body?.employee_id, user);
   }
 
+  /**
+   * Retirer un collaborateur (Employee) d'un dossier.
+   */
+  @Delete(':id/collaborators/:employeeId')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Retirer un collaborateur du dossier' })
+  @ApiResponse({ status: 200, description: 'Collaborateur retiré avec succès', type: DossierResponseDto })
+  @ApiParam({ name: 'id', description: 'ID du dossier' })
+  @ApiParam({ name: 'employeeId', description: 'ID du collaborateur à retirer' })
+  async removeCollaborator(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.removeCollaborator(id, employeeId, user);
+  }
 
+  /**
+   * Synchroniser la liste des collaborateurs du dossier (remplace toute la liste).
+   */
+  @Put(':id/collaborators')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Synchroniser les collaborateurs du dossier' })
+  @ApiResponse({ status: 200, description: 'Collaborateurs synchronisés', type: DossierResponseDto })
+  @ApiParam({ name: 'id', description: 'ID du dossier' })
+  async syncCollaborators(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { employee_ids: number[] },
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.syncCollaborators(id, body?.employee_ids ?? [], user);
+  }
 
     @Post(':id/transitions/:transitionId/apply')
     @RequirePermissions('edit_dossier')

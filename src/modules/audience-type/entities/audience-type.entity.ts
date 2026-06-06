@@ -4,7 +4,8 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  OneToMany
+  OneToMany,
+  Unique
 } from 'typeorm';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
@@ -26,6 +27,7 @@ export enum AudienceTypeCategory {
   icon: '⚖️',
   category: 'procedure'
 })
+@Unique(['tenant_id', 'code'])
 export class AudienceType extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
@@ -38,7 +40,7 @@ export class AudienceType extends TenantEntity {
   })
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   @Expose()
   @BusinessColumn({
     label: 'Code',

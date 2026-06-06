@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   Index,
+  Unique,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
@@ -26,12 +27,13 @@ export type TemplateBlockKind = 'header' | 'footer';
  */
 @Entity('template_blocks')
 @Index(['channel', 'kind'])
+@Unique(['tenant_id', 'code'])
 export class TemplateBlock extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
   /** Code unique et stable (ex. pdf_header_defaut). */
-  @Column({ type: 'varchar', length: 80, unique: true })
+  @Column({ type: 'varchar', length: 80 })
   code: string;
 
   /** Libellé affiché dans l'interface de gestion. */

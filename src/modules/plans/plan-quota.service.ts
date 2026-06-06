@@ -30,6 +30,13 @@ export interface QuotaUsage {
   exceeded: boolean;
 }
 
+export interface StorageUsage {
+  usedBytes: number;
+  maxGb: number; // -1 = illimité
+  percentage: number;
+  exceeded: boolean;
+}
+
 export interface PlanUsageStatus {
   plan: Plan | null;
   hasPlan: boolean;
@@ -37,6 +44,7 @@ export interface PlanUsageStatus {
     employees: QuotaUsage;
     clients: QuotaUsage;
     dossiers: QuotaUsage;
+    storage: StorageUsage;
   };
 }
 
@@ -61,7 +69,7 @@ export class PlanQuotaService {
 
   async getUsageStatus(
     cabinetId: number,
-    counts: { employees: number; clients: number; dossiers: number },
+    counts: { employees: number; clients: number; dossiers: number; storageBytes: number },
   ): Promise<PlanUsageStatus> {
     const plan = await this.getCabinetPlan(cabinetId);
 
@@ -74,6 +82,7 @@ export class PlanQuotaService {
           employees: this.buildUsage('employees', counts.employees, null),
           clients:   this.buildUsage('clients',   counts.clients,   null),
           dossiers:  this.buildUsage('dossiers',  counts.dossiers,  null),
+          storage:   this.buildStorageUsage(counts.storageBytes, null),
         },
       };
     }
@@ -85,6 +94,7 @@ export class PlanQuotaService {
         employees: this.buildUsage('employees', counts.employees, plan.max_employees),
         clients:   this.buildUsage('clients',   counts.clients,   plan.max_clients),
         dossiers:  this.buildUsage('dossiers',  counts.dossiers,  plan.max_dossiers),
+        storage:   this.buildStorageUsage(counts.storageBytes, plan.max_storage_gb),
       },
     };
   }
@@ -179,6 +189,25 @@ export class PlanQuotaService {
       max: effectiveMax, // -1 = illimité
       percentage,
       exceeded: !unlimited && current >= effectiveMax,
+    };
+  }
+
+  private buildStorageUsage(
+    usedBytes: number,
+    maxGb: number | null,
+  ): StorageUsage {
+    const unlimited = maxGb === null || maxGb === -1;
+    const effectiveMaxGb = unlimited ? -1 : maxGb!;
+    const maxBytes = effectiveMaxGb * 1024 * 1024 * 1024;
+    const percentage =
+      unlimited || maxBytes <= 0
+        ? 0
+        : Math.min(100, Math.round((usedBytes / maxBytes) * 100));
+    return {
+      usedBytes,
+      maxGb: effectiveMaxGb, // -1 = illimité
+      percentage,
+      exceeded: !unlimited && usedBytes >= maxBytes,
     };
   }
 }

@@ -12,7 +12,7 @@ import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
 import { Repository, In, Between, FindOptionsWhere } from 'typeorm';
 
 
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
@@ -31,6 +31,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { Cabinet } from '../cabinet/entities/cabinet.entity';
+import { FactureService } from '../facture/facture.service';
+import { TypeFacture, StatutFacture } from '../facture/dto/create-facture.dto';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { Customer } from '../customer/customer/entities/customer.entity';
@@ -86,6 +89,10 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     // protected readonly stepsService: StepsService,
     private procedureInstanceService: ProcedureInstanceService,
     private readonly planQuotaService: PlanQuotaService,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepository: Repository<Cabinet>,
+    @Inject(forwardRef(() => FactureService))
+    private readonly factureService: FactureService,
     protected readonly emailsService?: MailService, // Optionnel
 
   ) {
@@ -269,6 +276,39 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     console.log('DTO:', JSON.stringify(createDossierDto, null, 2));
     console.log('Entity before save:', dossier);
     const savedDossier = await this.dossierRepository.save(dossier);
+
+    // ── Facture de frais d'ouverture de dossier ───────────────────────────────
+    try {
+      const cabinet = await this.cabinetRepository.findOne({ where: {} });
+      if (cabinet?.dossier_opening_fee_enabled && Number(cabinet.dossier_opening_fee) > 0) {
+        const montantHT  = Number(cabinet.dossier_opening_fee);
+        const tauxTVA    = Number(cabinet.dossier_opening_fee_tva ?? 0);
+        const montantTVA = Math.round(montantHT * tauxTVA) / 100;
+        const montantTTC = montantHT + montantTVA;
+        const label      = cabinet.dossier_opening_fee_label?.trim() || "Frais d'ouverture de dossier";
+        const today      = new Date();
+        const echeance   = new Date(today);
+        echeance.setDate(echeance.getDate() + 30);
+
+        await this.factureService.createFacture({
+          dossierId:   savedDossier.id,
+          clientId:    client.id,
+          type:        TypeFacture.FRAIS_PROCEDURE,
+          statut:      StatutFacture.ENVOYEE,
+          montantHT,
+          tauxTVA,
+          montantTVA,
+          montantTTC,
+          dateFacture:  today,
+          dateEcheance: echeance,
+          description:  label,
+          notify_client: false,
+        } as any);
+      }
+    } catch (err) {
+      // On ne fait pas échouer la création du dossier si la facture échoue
+      console.error('⚠️ Erreur création facture ouverture dossier :', err?.message);
+    }
 
     // this.procedureInstanceService.update(procedureInstance.id , {data:{id: savedDossier.id}})
     let mailDto = new CreateMailDto() 
@@ -924,6 +964,85 @@ async addCollaborator(
   }
 
   dossier.collaborators.push(employee);
+  const saved = await this.dossierRepository.save(dossier);
+
+  return this.mapToResponseDto(saved);
+}
+
+/**
+ * ➖ Retirer un collaborateur (Employee) d'un dossier.
+ */
+async removeCollaborator(
+  dossierId: number,
+  employeeId: number,
+  user?: User,
+): Promise<DossierResponseDto> {
+  const empId = Number(employeeId);
+  if (!empId || Number.isNaN(empId)) {
+    throw new BadRequestException('Le collaborateur (employee_id) est requis');
+  }
+
+  const dossier = await this.dossierRepository.findOne({
+    where: { id: dossierId },
+    relations: ['collaborators', 'client', 'lawyer', 'procedure_type', 'procedure_subtype'],
+  });
+
+  if (!dossier) {
+    throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+  }
+
+  if (user) {
+    this.checkDossierAccess(dossier, user);
+  }
+
+  if (dossier.is_closed || dossier.is_archived) {
+    throw new BadRequestException(
+      "Impossible de retirer un collaborateur d'un dossier clôturé ou archivé",
+    );
+  }
+
+  dossier.collaborators = (dossier.collaborators || []).filter((c) => c.id !== empId);
+  const saved = await this.dossierRepository.save(dossier);
+
+  return this.mapToResponseDto(saved);
+}
+
+/**
+ * 🔄 Synchroniser la liste complète des collaborateurs d'un dossier.
+ * Remplace l'ensemble des collaborateurs par la liste fournie.
+ */
+async syncCollaborators(
+  dossierId: number,
+  employeeIds: number[],
+  user?: User,
+): Promise<DossierResponseDto> {
+  const dossier = await this.dossierRepository.findOne({
+    where: { id: dossierId },
+    relations: ['collaborators', 'client', 'lawyer', 'procedure_type', 'procedure_subtype'],
+  });
+
+  if (!dossier) {
+    throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+  }
+
+  if (user) {
+    this.checkDossierAccess(dossier, user);
+  }
+
+  if (dossier.is_closed || dossier.is_archived) {
+    throw new BadRequestException(
+      "Impossible de modifier les collaborateurs d'un dossier clôturé ou archivé",
+    );
+  }
+
+  // Charger les employees correspondants
+  const employees = employeeIds.length > 0
+    ? await this.userRepository.find({
+        where: employeeIds.map((id) => ({ id })),
+      })
+    : [];
+
+  dossier.collaborators = employees;
   const saved = await this.dossierRepository.save(dossier);
 
   return this.mapToResponseDto(saved);

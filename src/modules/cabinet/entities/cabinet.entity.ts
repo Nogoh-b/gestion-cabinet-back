@@ -148,6 +148,31 @@ export class Cabinet {
   @Column({ length: 10, default: 'XAF' })
   currency: string;
 
+  /** Symbole affiché (ex : 'FCFA', '€', '$'). Null = utiliser le code ISO. */
+  @Column({ type: 'varchar', length: 20, nullable: true, name: 'currency_symbol' })
+  currency_symbol: string | null;
+
+  /** Position du symbole par rapport au montant : avant ou après. */
+  @Column({
+    type: 'enum',
+    enum: ['before', 'after'],
+    default: 'after',
+    name: 'currency_symbol_position',
+  })
+  currency_symbol_position: 'before' | 'after';
+
+  /** Nombre de décimales (0 pour XAF, 2 pour EUR/USD). */
+  @Column({ type: 'int', default: 0, name: 'currency_decimals' })
+  currency_decimals: number;
+
+  /** Séparateur de milliers (ex : ' ', '.', ','). */
+  @Column({ type: 'varchar', length: 5, default: ' ', name: 'currency_thousands_sep' })
+  currency_thousands_sep: string;
+
+  /** Séparateur décimal (ex : ',', '.'). */
+  @Column({ type: 'varchar', length: 5, default: ',', name: 'currency_decimal_sep' })
+  currency_decimal_sep: string;
+
   // ── Numérotation (anciennement app_settings) ──────────────────────────────
 
   @Column({ length: 20, default: 'FAC-', name: 'invoice_prefix' })
@@ -194,6 +219,24 @@ export class Cabinet {
   smtp_config: object | null;
 
   // ── Templates métier (anciennement app_settings) ──────────────────────────
+
+  // ── Frais d'ouverture de dossier ──────────────────────────────────────────
+
+  /** Active la création automatique d'une facture à l'ouverture d'un dossier. */
+  @Column({ type: 'boolean', default: false, name: 'dossier_opening_fee_enabled' })
+  dossier_opening_fee_enabled: boolean;
+
+  /** Montant HT des frais d'ouverture de dossier. */
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'dossier_opening_fee' })
+  dossier_opening_fee: number;
+
+  /** Taux de TVA appliqué aux frais d'ouverture (ex : 19.25 pour le Cameroun). */
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'dossier_opening_fee_tva' })
+  dossier_opening_fee_tva: number;
+
+  /** Libellé qui apparaîtra sur la facture d'ouverture. */
+  @Column({ type: 'varchar', length: 255, nullable: true, name: 'dossier_opening_fee_label' })
+  dossier_opening_fee_label: string | null;
 
   @Column({ type: 'longtext', nullable: true, name: 'payslip_template' })
   payslip_template: string | null;

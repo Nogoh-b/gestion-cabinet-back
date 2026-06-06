@@ -1,6 +1,6 @@
 import { Expose } from 'class-transformer';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, Unique } from 'typeorm';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
@@ -11,6 +11,7 @@ import { TenantEntity } from 'src/core/entities/tenant.entity';
   icon: '📁',
   category: 'document'
 })
+@Unique(['tenant_id', 'code'])
 export class DocumentCategory extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
@@ -23,7 +24,7 @@ export class DocumentCategory extends TenantEntity {
   })
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   @Expose()
   @BusinessColumn({
     label: 'Code',
