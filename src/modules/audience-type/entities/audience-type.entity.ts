@@ -1,4 +1,7 @@
 import { Expose } from 'class-transformer';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import {
   Entity,
@@ -7,8 +10,7 @@ import {
   OneToMany,
   Unique
 } from 'typeorm';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { TenantEntity } from 'src/core/entities/tenant.entity';
+
 
 export enum AudienceTypeCategory {
   PRELIMINARY = 'preliminary',
@@ -20,6 +22,7 @@ export enum AudienceTypeCategory {
   CASATION = 'casation'
 }
 
+@SharedAcrossTenants()
 @Entity('audience_types')
 @BusinessTable({
   label: 'Types d\'audience',

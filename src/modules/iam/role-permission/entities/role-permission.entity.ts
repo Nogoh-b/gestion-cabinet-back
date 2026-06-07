@@ -1,3 +1,5 @@
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import {
   Entity,
   ManyToOne,
@@ -5,10 +7,12 @@ import {
   Column,
   PrimaryColumn,
 } from 'typeorm';
-import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { UserRole } from '../../user-role/entities/user-role.entity';
-import { Permission } from '../../permission/entities/permission.entity';
 
+import { Permission } from '../../permission/entities/permission.entity';
+import { UserRole } from '../../user-role/entities/user-role.entity';
+
+
+@SharedAcrossTenants()
 @Entity('role_permission')
 export class RolePermission extends TenantEntity {
   @PrimaryColumn({ unsigned: true, type: 'tinyint' })

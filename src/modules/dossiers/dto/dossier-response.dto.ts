@@ -2,13 +2,15 @@
 import { Expose, Transform } from "class-transformer";
 import { ClientDecision, DossierStatus, RecommendationType } from "src/core/enums/dossier-status.enum";
 import { AudienceStatus } from "src/modules/audiences/entities/audience.entity";
+import { Diligence } from "src/modules/diligence/entities/diligence.entity";
 import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
 import { StatutFacture } from "src/modules/facture/dto/create-facture.dto";
 import { FactureResponseDto } from "src/modules/facture/dto/facture-response.dto";
+
 import { ApiProperty } from "@nestjs/swagger";
 
 import { DangerLevel, Dossier } from "../entities/dossier.entity";
-import { Diligence } from "src/modules/diligence/entities/diligence.entity";
+
 
 
 export class DossierResponseDto {
@@ -449,22 +451,17 @@ steps_summary: {
     ],
   })
   @Expose()
-  @Transform(({ obj }) => {
-    if (!obj.collaborators) return undefined;
-    return obj.collaborators.map((collab: any) => ({
-      id: collab.id,
-      full_name: collab.full_name,
-      name: collab.full_name,
-      email: collab.email,
-      role: collab.role,
-    }));
-  })
-  collaborators?: {
-    id: number;
-    full_name: string;
-    email: string;
-    role: string;
-  }[];
+  // @Transform(({ obj }) => {
+  //   if (!obj.collaborators) return undefined;
+  //   return obj.collaborators.map((collab: any) => ({
+  //     id: collab.id,
+  //     full_name: collab.full_name,
+  //     name: collab.full_name,
+  //     email: collab.email,
+  //     role: collab.role,
+  //   }));
+  // })
+  collaborators?: any[];
 
   // ---------------- COMPTAGES ----------------
   @ApiProperty({ example: 8 })

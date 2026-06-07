@@ -1,4 +1,9 @@
 // invoice-type.entity.ts
+import { Expose } from 'class-transformer';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
+import { Facture } from 'src/modules/facture/entities/facture.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -6,10 +11,7 @@ import {
   OneToMany,
   Unique
 } from 'typeorm';
-import { Expose } from 'class-transformer';
-import { Facture } from 'src/modules/facture/entities/facture.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { TenantEntity } from 'src/core/entities/tenant.entity';
+
 
 export enum InvoiceTypeCategory {
   LEGAL_FEES = 'legal_fees',
@@ -26,6 +28,7 @@ export enum TaxRate {
   STANDARD = 20
 }
 
+@SharedAcrossTenants()
 @Entity('invoice_types')
 @BusinessTable({
   label: "Types d'honoraires",

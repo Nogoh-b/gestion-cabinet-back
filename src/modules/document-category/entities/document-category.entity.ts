@@ -3,7 +3,9 @@ import { DocumentType } from 'src/modules/documents/document-type/entities/docum
 import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, Unique } from 'typeorm';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 
+@SharedAcrossTenants()
 @Entity('document_categories')
 @BusinessTable({
   label: "Catégories de documents",

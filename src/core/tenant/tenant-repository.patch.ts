@@ -1,6 +1,13 @@
+import { Repository, FindManyOptions, FindOneOptions, SaveOptions, In } from 'typeorm';
+import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Repository, FindManyOptions, FindOneOptions, SaveOptions, RemoveOptions, In } from 'typeorm';
+
+
+
+
 import { getCurrentTenantId, hasActiveTenant } from './tenant.context';
+import { isSharedEntity } from './tenant.decorator';
+
 
 /**
  * TenantRepositoryPatch — patch unique de Repository.prototype au démarrage.
@@ -44,8 +51,18 @@ export class TenantRepositoryPatch implements OnModuleInit {
      * Un cabinet voit donc ses propres données ET les référentiels globaux.
      * Si le cabinet courant est lui-même tenant_id = 1 (admin global), filtre simple.
      */
-    function buildReadTenantFilter(tenantId: number): any {
-      return tenantId === 1 ? 1 : In([1, tenantId]);
+    function buildReadTenantFilter(metadata: any, tenantId: number): any {
+      // Vérifie si l'entité est marquée comme partagée entre cabinets
+      // metadata.target peut être string (schema name) ou Function (constructor)
+      const entityCtor = typeof metadata?.target === 'function' ? metadata.target : null;
+      const isShared = entityCtor ? isSharedEntity(entityCtor) : false;
+
+      if (isShared) {
+        // Entité partagée (référentiel commun) : données globales + propres
+        return tenantId === 1 ? 1 : In([1, tenantId]);
+      }
+      // Entité à isolation stricte (métier) : uniquement ses propres données
+      return tenantId;
     }
 
     /** Ajoute tenant_id à un objet where (simple, tableau ou undefined) — pour les lectures */
@@ -53,7 +70,7 @@ export class TenantRepositoryPatch implements OnModuleInit {
       if (!hasTenantColumn(metadata)) return where; // entité non-tenante — pas de filtre
       if (!hasActiveTenant()) return where;          // hors contexte HTTP → accès complet
       const tenantId = getCurrentTenantId();
-      const tenantFilter = buildReadTenantFilter(tenantId);
+      const tenantFilter = buildReadTenantFilter(metadata, tenantId);
       if (!where)                   return { tenant_id: tenantFilter };
       if (Array.isArray(where))     return where.map((w) => ({ ...w, tenant_id: tenantFilter }));
       return { ...where, tenant_id: tenantFilter };
@@ -200,7 +217,10 @@ export class TenantRepositoryPatch implements OnModuleInit {
 
 // ─── Helper QueryBuilder ──────────────────────────────────────────────────────
 
-import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
+
+
+
+
 
 /**
  * Helper pour les services qui utilisent createQueryBuilder().
@@ -229,10 +249,22 @@ export function addTenantCondition<T extends ObjectLiteral>(
   // Sans contexte (script, cron, migration, super-admin global) → pas de filtre, accès complet.
   if (!hasActiveTenant()) return qb;
   const tenantId = getCurrentTenantId();
-  if (tenantId === 1) {
-    // Tenant global : accès à toutes ses propres données seulement
-    return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: tenantId });
+
+  // Détecte si l'entité est marquée comme partagée entre cabinets via @SharedAcrossTenants()
+  // metadata.target peut être string (schema name) ou Function (constructor)
+  const entityCtor = typeof qb.expressionMap.mainAlias?.metadata?.target === 'function'
+    ? qb.expressionMap.mainAlias.metadata.target
+    : null;
+  const isShared = entityCtor ? isSharedEntity(entityCtor) : false;
+
+  if (isShared) {
+    // Entité partagée (référentiel commun) : données globales + propres
+    if (tenantId === 1) {
+      return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: tenantId });
+    }
+    return qb.andWhere(`${alias}.tenant_id IN (:..._tenantIds)`, { _tenantIds: [1, tenantId] });
   }
-  // Tenant cabinet : données du cabinet + données globales (tenant_id = 1)
-  return qb.andWhere(`${alias}.tenant_id IN (:..._tenantIds)`, { _tenantIds: [1, tenantId] });
+
+  // Entité à isolation stricte (métier) : uniquement ses propres données
+  return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: tenantId });
 }

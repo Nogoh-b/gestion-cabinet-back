@@ -1,6 +1,5 @@
 // src/modules/dossiers/dossiers.service.ts
 import { plainToInstance } from 'class-transformer';
-import { randomUUID } from 'crypto';
 import { DossierStatus, RecommendationType } from 'src/core/enums/dossier-status.enum';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
@@ -9,37 +8,48 @@ import { MailService } from 'src/core/shared/emails/emails.service';
 import { PaginatedResult, PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
-import { Repository, In, Between, FindOptionsWhere } from 'typeorm';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import { Repository, In, FindOptionsWhere } from 'typeorm';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { InjectRepository } from '@nestjs/typeorm';
 
 
 
 
-
-
-
-
-
-
-
-
-
-
 import { Employee } from '../agencies/employee/entities/employee.entity';
-import { PlanQuotaService } from '../plans/plan-quota.service';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
-import { FactureService } from '../facture/facture.service';
-import { TypeFacture, StatutFacture } from '../facture/dto/create-facture.dto';
 import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
+import { TypeFacture, StatutFacture } from '../facture/dto/create-facture.dto';
+import { FactureService } from '../facture/facture.service';
 import { User } from '../iam/user/entities/user.entity';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
+import { PlanQuotaService } from '../plans/plan-quota.service';
 import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { StageVisit } from '../procedure/entities/stage-visit.entity';
@@ -53,6 +63,10 @@ import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { DangerLevel, Dossier, DossierOutcome } from './entities/dossier.entity';
 import { Step, StepStatus, StepType } from './entities/step.entity';
+
+
+
+
 
 
 
@@ -97,7 +111,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 
   ) {
     super(dossierRepository, paginationService, emailsService);
-
+    console.log('DossiersService initialized ',  forwardRef);
   }
  
   
@@ -280,6 +294,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     // ── Facture de frais d'ouverture de dossier ───────────────────────────────
     try {
       const cabinet = await this.cabinetRepository.findOne({ where: {} });
+      console.log('Cabinet info for dossier opening fee:', cabinet);
       if (cabinet?.dossier_opening_fee_enabled && Number(cabinet.dossier_opening_fee) > 0) {
         const montantHT  = Number(cabinet.dossier_opening_fee);
         const tauxTVA    = Number(cabinet.dossier_opening_fee_tva ?? 0);
@@ -317,7 +332,7 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     mailDto.context = dossierR
     mailDto.to = users.map(u => u.email)
     mailDto.subject = "Creation d'un nouveau dossier"
-    this.sendMail(mailDto)
+    // this.sendMail(mailDto)
     return dossierR
   }
 
@@ -416,17 +431,7 @@ async findOne(id: number, user?: User): Promise<DossierResponseDto | any> {
   // ✅ Charger UNIQUEMENT le dossier avec ses relations directes
   const dossier = await this.dossierRepository.findOne({
     where: { id },
-    relations: [
-      'client',
-      'lawyer',
-      'lawyer.user',
-      'conversation',
-      'factures',
-      'procedure_type',
-      'procedureInstance',
-      'procedure_subtype',
-      'jurisdiction',
-    ],
+    relations: this.getDefaultSearchOptions().relationFields,
   });
 
   if (!dossier) {

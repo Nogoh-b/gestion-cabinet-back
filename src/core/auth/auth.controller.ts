@@ -1,6 +1,6 @@
 import { Controller, Post, UseGuards, HttpCode, Req, HttpStatus, Request, Get, Body } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger'; // Ajouter
+import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'; // Ajouter
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -14,7 +14,8 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 
 @ApiTags('Authentication')
 @Controller('auth')
-@ApiBearerAuth() 
+@ApiBearerAuth()
+@ApiSecurity('x-tenant-code') // ajoute le header tenant à TOUTES les routes auth (login inclus)
 export class AuthController {
   constructor(private authService: AuthService) {}
 

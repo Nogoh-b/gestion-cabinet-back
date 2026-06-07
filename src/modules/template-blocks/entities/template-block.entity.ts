@@ -1,3 +1,5 @@
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -5,7 +7,7 @@ import {
   Index,
   Unique,
 } from 'typeorm';
-import { TenantEntity } from 'src/core/entities/tenant.entity';
+
 
 /** Canal de rendu auquel s'applique le bloc. */
 export type TemplateBlockChannel = 'mail' | 'pdf';
@@ -25,6 +27,7 @@ export type TemplateBlockKind = 'header' | 'footer';
  * styles inline, tableaux) et le rendu PDF (react-pdf, sous-ensemble CSS) sont
  * techniquement différents.
  */
+@SharedAcrossTenants()
 @Entity('template_blocks')
 @Index(['channel', 'kind'])
 @Unique(['tenant_id', 'code'])

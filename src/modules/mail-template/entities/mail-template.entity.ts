@@ -1,10 +1,12 @@
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
   Unique,
 } from 'typeorm';
-import { TenantEntity } from 'src/core/entities/tenant.entity';
+
 
 /**
  * Catégorie fonctionnelle d'un template de mail.
@@ -26,6 +28,7 @@ export type MailTemplateCategory =
  */
 export type MailTemplateAudience = 'client' | 'collaborator' | 'both';
 
+@SharedAcrossTenants()
 @Entity('mail_templates')
 @Unique(['tenant_id', 'code'])
 export class MailTemplate extends TenantEntity {

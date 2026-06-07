@@ -1,12 +1,30 @@
 // core/config/swagger.config.ts
 import { DocumentBuilder } from '@nestjs/swagger';
 
+
 export const swaggerConfig = new DocumentBuilder()
   .setTitle('Core Banking API')
   .setDescription('API pour le système bancaire central')
   .setVersion('1.0')
   .addBearerAuth()
-  .build();  
+  // En-tête multi-tenant : permet de tester avec différents cabinets
+  // Valeur = code du cabinet (ex: "demo", "test-cabinet")
+  // Utilisation : cliquer sur "Authorize" et saisir le code
+  .addApiKey(
+    {
+      type: 'apiKey',
+      in: 'header',
+      name: 'x-tenant-code',
+      description:
+        'Code du cabinet (ex: m9d2hpar). Si non renseigné → tenant_id=1 par défaut.',
+    },
+    'x-tenant-code',
+  )
+  // Applique les deux schémas à TOUTES les routes automatiquement
+  // Sans ça, Swagger affiche le champ Authorize mais n'envoie pas les headers
+  .addSecurityRequirements('bearer')
+  .addSecurityRequirements('x-tenant-code')
+  .build();
   /*.setTitle('Core Banking API')
   .setDescription('API pour le système bancaire central')
   .setVersion('1.0')

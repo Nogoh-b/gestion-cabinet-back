@@ -1,8 +1,8 @@
 // src/modules/auth/auth.service.ts
 import * as bcrypt from 'bcrypt';
+import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
-import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 import {
   ForbiddenException,
@@ -13,13 +13,15 @@ import {
   BadRequestException
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { JwtPayload } from './interfaces/jwt-payload.interface';
+
+import { MailService } from '../shared/emails/emails.service';
 import { AuthTokenService } from './auth-token.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
-import { MailService } from '../shared/emails/emails.service';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
+
 
 @Injectable()
 export class AuthService {
@@ -51,17 +53,17 @@ export class AuthService {
     try {
       user = await this.usersService.findByEmail(username);
     } catch {
-      throw new UnauthorizedException('Identifiants invalides');
+      throw new UnauthorizedException('Identifiants invalides EMAIL');
     }
 
     if (!user || !user.password) {
-      throw new UnauthorizedException('Identifiants invalides');
+      throw new UnauthorizedException('Identifiants invalides EMAIL ou mot de passe');
     }
 
     // ── 2. Vérification du mot de passe ────────────────────────────────────
     const isPasswordValid = await bcrypt.compare(pass, user.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Identifiants invalides');
+      throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
     }
 
     // ── 3. Vérification d'appartenance au cabinet ───────────────────────────
@@ -83,7 +85,7 @@ export class AuthService {
           `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
           `absent du cabinet tenant_id=${tenantId}`,
         );
-        throw new UnauthorizedException('Identifiants invalides');
+        throw new UnauthorizedException('Identifiants invalides Aucun employé trouvé pour ce cabinet');
       }
 
       // tenant_id de l'employee (source de vérité pour le JWT)

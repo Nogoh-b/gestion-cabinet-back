@@ -1,3 +1,5 @@
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -5,7 +7,7 @@ import {
   Index,
   Unique,
 } from 'typeorm';
-import { TenantEntity } from 'src/core/entities/tenant.entity';
+
 
 /**
  * Modèle de document PDF personnalisable.
@@ -19,6 +21,7 @@ import { TenantEntity } from 'src/core/entities/tenant.entity';
  * Le corps (`body_html`) est un gabarit HTML contenant des variables `{{var}}`
  * interpolées côté front au moment du rendu (moteur react-pdf-html / GenericPDF).
  */
+@SharedAcrossTenants()
 @Entity('pdf_templates')
 @Index(['entity_type', 'variant'])
 @Unique(['tenant_id', 'code'])
