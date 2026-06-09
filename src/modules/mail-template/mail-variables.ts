@@ -72,6 +72,7 @@ export const MAIL_VARIABLE_GROUPS: MailVariableGroup[] = [
       { key: 'dossier.partie_adverse',     label: 'Partie adverse',     example: 'Société XYZ'           },
       { key: 'dossier.avocat',             label: 'Avocat responsable', example: 'Me Dupont'             },
       { key: 'dossier.prochaine_audience', label: 'Prochaine audience', example: '15/03/2024'            },
+      { key: 'dossier.resultat',           label: 'Résultat du dossier', example: 'Dossier clôturé favorablement' },
     ],
   },
   {
@@ -135,6 +136,15 @@ export const MAIL_VARIABLE_GROUPS: MailVariableGroup[] = [
       { key: 'document.type',   label: 'Type de document', example: 'Contrat'             },
       { key: 'document.statut', label: 'Statut',           example: 'Validé'              },
       { key: 'document.date',   label: 'Date',             example: '05/01/2024'          },
+    ],
+  },
+  {
+    namespace: 'rdv',
+    label: 'Rendez-vous',
+    variables: [
+      { key: 'rdv.date',  label: 'Date du rendez-vous',  example: '20/03/2024'       },
+      { key: 'rdv.heure', label: 'Heure du rendez-vous', example: '14:30'            },
+      { key: 'rdv.lieu',  label: 'Lieu du rendez-vous',  example: 'Cabinet - Douala' },
     ],
   },
   {
@@ -214,6 +224,7 @@ export function buildEntityMailContext(input: {
       partie_adverse:     d?.opposing_party_name ?? '',
       avocat:             d?.lawyer?.full_name ?? '',
       prochaine_audience: fmt(d?.next_audience?.audience_date),
+      resultat:           d?.outcome_notes ?? d?.final_decision ?? d?.outcome ?? '',
     },
     // ── Client ───────────────────────────────────────────────────────────────
     client: {
@@ -265,6 +276,16 @@ export function buildEntityMailContext(input: {
       statut: raw.status_label ?? '',
       date:   fmt(raw.document_date ?? raw.created_at),
     } : { nom: '', type: '', statut: '', date: '' },
+    // ── Rendez-vous ───────────────────────────────────────────────────────
+    rdv: resourceType === 'rdv' ? {
+      date:  fmt(raw.date ?? raw.appointment_date ?? raw.start_at),
+      heure: raw.heure ?? raw.time ?? raw.appointment_time ?? '',
+      lieu:  raw.lieu ?? raw.location ?? raw.place ?? '',
+    } : {
+      date:  fmt(raw.rdv?.date),
+      heure: raw.rdv?.heure ?? '',
+      lieu:  raw.rdv?.lieu ?? '',
+    },
     // ── Dates système ─────────────────────────────────────────────────────────
     date: {
       aujourdhui: today.toLocaleDateString('fr-FR'),

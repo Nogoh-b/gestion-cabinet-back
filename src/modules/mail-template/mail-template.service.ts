@@ -112,15 +112,27 @@ export class MailTemplateService {
   }
 
   private buildBrandContext(cabinet: Cabinet | null) {
+    const cabinetName = cabinet?.name ?? 'Votre cabinet';
+    const contactEmail = cabinet?.contact_email ?? null;
+    const contactPhone = cabinet?.contact_phone ?? null;
+    const address = cabinet?.address ?? null;
+    const website = cabinet?.website ?? null;
     return {
-      cabinetName: cabinet?.name ?? 'Votre cabinet',
+      cabinet: {
+        nom: cabinetName,
+        email: contactEmail ?? '',
+        telephone: contactPhone ?? '',
+        adresse: address ?? '',
+        site_web: website ?? '',
+      },
+      cabinetName,
       // URL hébergée en priorité (affichable en e-mail), repli data-URI.
       logoUrl: logoFileToUrl(cabinet?.logo_file) ?? cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
       brandColor: cabinet?.brand_color ?? '#1d4ed8',
-      contactEmail: cabinet?.contact_email ?? null,
-      contactPhone: cabinet?.contact_phone ?? null,
-      address: cabinet?.address ?? null,
-      website: cabinet?.website ?? null,
+      contactEmail,
+      contactPhone,
+      address,
+      website,
       emailFooter: cabinet?.email_footer ?? null,
       currentYear: new Date().getFullYear(),
     };

@@ -31,11 +31,24 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 
 
+
+
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
+
+
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
+import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+
+
+
+
+
+
 
 
 
@@ -319,6 +332,118 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       if (!strict) return null;
       throw error;
     }
+  }
+
+  /**
+   * Met à jour un document client existant
+   */
+  async update(
+    id: number,
+    updateDto: UpdateDocumentCustomerDto & { file?: Express.Multer.File },
+    userId?: number,
+  ): Promise<DocumentCustomerResponseDto> {
+    const existing = await this.docRepository.findOne({
+      where: { id },
+      relations: ['customer', 'document_type', 'dossier', 'category'],
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
+    }
+
+    const { file, ...restDto } = updateDto;
+
+    // 1. Si un nouveau fichier est fourni, l'uploader
+    if (file) {
+      const tenantId = getCurrentTenantId();
+      let cabinetName = 'cabinet';
+      try {
+        const cabinet = await this.cabinetService.findById(tenantId);
+        if (cabinet?.name) {
+          cabinetName = FilesUtil.sanitizeName(cabinet.name).toLowerCase();
+        }
+      } catch {
+        cabinetName = 'cabinet';
+      }
+
+      const dossier = existing.dossier
+        ? await this.dossierService.findOne(existing.dossier.id)
+        : null;
+      const category = existing.category;
+      const docType = existing.document_type;
+      const dir = dossier && category && docType
+        ? `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType.name}`
+        : `${cabinetName}/documents`;
+
+      const docName = restDto.name || existing.name;
+      const uploadedFile = await this.uploadFile(file, dir, docName);
+      existing.file_path = uploadedFile.filePath;
+      existing.file_url = uploadedFile.fileUrl;
+      existing.file_size = uploadedFile.fileSize;
+      existing.file_mimetype = uploadedFile.mimeType;
+    }
+
+    // 2. Si document_type_id change, valider le nouveau type
+    if (updateDto.document_type_id && updateDto.document_type_id !== existing.document_type_id) {
+      const docType = await this.validateDocumentType(updateDto.document_type_id, true);
+      if (docType) {
+        existing.document_type = docType;
+        existing.document_type_id = docType.id;
+      }
+    }
+
+    // 3. Si dossier_id change, valider le nouveau dossier
+    if (updateDto.dossier_id && updateDto.dossier_id !== existing.dossier_id) {
+      const dossier = await this.validateDossier(updateDto.dossier_id, true);
+      if (dossier) {
+        existing.dossier = plainToInstance(Dossier, dossier);
+        existing.dossier_id = dossier.id;
+      }
+    }
+
+    // 4. Si customer_id change, valider le nouveau client
+    if (updateDto.customer_id && updateDto.customer_id !== existing.customer_id) {
+      const customer = await this.validateCustomer(
+        updateDto.customer_id,
+        existing.document_type_id ?? 0,
+        true,
+      );
+      if (customer) {
+        existing.customer = customer;
+        existing.customer_id = customer.id;
+      }
+    }
+
+    // 5. Si category_id change, valider la nouvelle catégorie
+    if (updateDto.category_id && updateDto.category_id !== existing.category_id) {
+      const category = await this.documentCategoryService.findOne(updateDto.category_id);
+      if (category) {
+        existing.category = plainToInstance(DocumentCategory, category);
+        existing.category_id = category.id;
+      }
+    }
+
+    // 6. Mise à jour des champs simples
+    if (updateDto.name !== undefined) existing.name = updateDto.name;
+    if (updateDto.description !== undefined) existing.description = updateDto.description;
+    if (updateDto.required_for_hearing !== undefined) existing.required_for_hearing = updateDto.required_for_hearing;
+    if (updateDto.is_confidential !== undefined) existing.is_confidential = updateDto.is_confidential;
+    if (updateDto.status !== undefined) existing.status = updateDto.status;
+    if (updateDto.metadata !== undefined) {
+      try {
+        existing.metadata = typeof updateDto.metadata === 'string'
+          ? JSON.parse(updateDto.metadata)
+          : updateDto.metadata;
+      } catch {
+        // existing.metadata = { error: 'Invalid JSON format' };
+      }
+    }
+
+    // 7. Versioning
+    existing.version = (existing.version ?? 1) + 1;
+
+    const saved = await this.docRepository.save(existing);
+    return plainToInstance(DocumentCustomerResponseDto, saved);
   }
 
   /**
@@ -720,6 +845,31 @@ async linkDocumentsToSubStage(
       'gif': 'image/gif',
     };
     return mimeTypes[fileType] || 'application/octet-stream';
+  }
+
+  /**
+   * Returns the base64 encoded content of a document file.
+   */
+  async getBase64(id: number): Promise<{ base64: string; mimeType: string; fileName: string; fileSize?: number }> {
+    const document = await this.findOne(id);
+
+    if (!document || !document.file_path) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable ou fichier manquant`);
+    }
+
+    let filePath = document.file_path;
+    filePath = filePath.replace(/\\/g, path.sep).replace(/\//g, path.sep);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException(`Fichier physique non trouvé: ${filePath}`);
+    }
+
+    const fileBuffer = fs.readFileSync(filePath);
+    const base64 = fileBuffer.toString('base64');
+    const mimeType = document.file_mimetype || this.getMimeType(path.extname(filePath).replace('.', ''));
+    const fileName = document.original_name || path.basename(filePath);
+
+    return { base64, mimeType, fileName, fileSize: document.file_size ?? 0 };
   }
 
   

@@ -1,8 +1,14 @@
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 import { DataSource } from 'typeorm';
+
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
+
+
 import { MailTemplate } from '../entities/mail-template.entity';
-import { findOneForTenant } from 'src/core/tenant/seeder-helper';
+
+
+
 
 
 /**
@@ -314,8 +320,8 @@ export default class MailTemplateSeeder implements Seeder {
     };
 
     for (const data of templates) {
-      const audience = AUDIENCE_BY_CODE[data.code!] ?? 'both';
-      const existing = await findOneForTenant(repository, 'code', data.code);
+      const audience = AUDIENCE_BY_CODE[data.code!] ?? 'both'; 
+      const existing = await findOneForTenant(repository, 'code', data.code); 
       if (!existing) {
         await repository.save(repository.create({ ...data, audience }));
         console.log(`Template mail créé : ${data.code} (${audience})`);
@@ -326,7 +332,7 @@ export default class MailTemplateSeeder implements Seeder {
           await repository.save(existing);
           console.log(`Template mail mis à jour (audience=${audience}) : ${data.code}`);
         } else {
-          console.log(`Template mail déjà existant, ignoré : ${data.code}`);
+          console.log(`Template mail déjà existant, ignoré : ${data.code}`); 
         }
       }
     }

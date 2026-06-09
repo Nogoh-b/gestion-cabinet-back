@@ -31,7 +31,7 @@ export class Mail extends TenantEntity {
   @Column({ nullable: true })
   templateName?: string; // Nom du template (ex: 'welcome', 'invoice')
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   context?: Record<string, any>; // Données pour le template
 
   @Column({ type: 'simple-array' })
@@ -52,7 +52,7 @@ export class Mail extends TenantEntity {
   @Column({ type: 'longtext', nullable: true })
   text?: string; // Version texte
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   attachments?: Array<AttachmentMail>;
 
   @Column({ type: 'enum', enum: MailStatus, default: MailStatus.PENDING })
@@ -76,7 +76,7 @@ export class Mail extends TenantEntity {
   @Column({ nullable: true })
   lastAttemptAt?: Date;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   metadata?: Record<string, any>; // Pour stocker des infos supplémentaires (ex: entité liée)
 
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity

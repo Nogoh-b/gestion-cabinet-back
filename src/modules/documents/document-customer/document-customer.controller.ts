@@ -1,19 +1,22 @@
 import { plainToInstance } from 'class-transformer';
+import { Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-import { CurrentUser } from 'src/core/decorators/current-user.decorator';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+
+
+
 import { User } from 'src/modules/iam/user/entities/user.entity';
-
-import * as fs from 'fs';
-import * as path from 'path';
-
 
 
 import {
@@ -22,6 +25,7 @@ import {
   Body,
   Get,
   Param,
+  Patch,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
@@ -32,9 +36,9 @@ import {
   Res,
   NotFoundException,
 } from '@nestjs/common';
-
-
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
+
+
 import {
   ApiTags,
   ApiOperation,
@@ -47,12 +51,14 @@ import {
 
 
 import { DocumentCustomerService } from './document-customer.service';
+import { DocumentStatsService } from './document-stats.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
-import { DocumentStatsService } from './document-stats.service';
-import { Response } from 'express';
+import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
+
+
 
 
 
@@ -131,6 +137,29 @@ export class DocumentCustomerController {
   ) {
     return this.service.searchWithTransformer(searchParams as SearchCriteria, DocumentCustomerResponseDto , paginationParams);
   }
+  @Patch(':id')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB
+    },
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Mettre à jour un document',
+    type: UpdateDocumentCustomerDto,
+  })
+  @ApiOperation({ summary: 'Mettre à jour un document client' })
+  @ApiResponse({ status: 200, description: 'Document mis à jour', type: DocumentCustomerResponseDto })
+  @RequirePermissions('upload_document')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateDocumentCustomerDto,
+    @CurrentUser() user: User,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.service.update(id, { ...dto, file }, user?.id);
+  }
+
   @Post()
   @UseInterceptors(FileInterceptor('file', {
     limits: {
@@ -328,5 +357,16 @@ async getRawFile(
   
   // Si vous avez déjà un file_url accessible publiquement
   return res.redirect(document.file_url);
+}
+
+@Get(':id/base64')
+@UseGuards(JwtAuthGuard)
+@ApiOperation({ summary: 'Récupérer un document au format base64' })
+@ApiParam({ name: 'id', description: 'ID du document' })
+@ApiResponse({ status: 200, description: 'Document encodé en base64' })
+async getBase64(
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.service.getBase64(id);
 }
 }

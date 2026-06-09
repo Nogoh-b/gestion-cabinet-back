@@ -1,12 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual } from 'typeorm';
-import { MailerService } from '@nestjs-modules/mailer';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { AttachmentMail, Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { CreateMailDto } from './dto/create-mail.dto';
 import { helpers } from 'src/utils/helper-template-maill';
+import { Repository, LessThanOrEqual } from 'typeorm';
+import { MailerService } from '@nestjs-modules/mailer';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+import { CreateMailDto } from './dto/create-mail.dto';
+
+
+
+
 
 @Injectable()
 export class MailService {
@@ -276,7 +284,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
    * Convention de stockage : `metadata = { linkedEntity: { type: 'dossier', id: 42 } }`.
    * Utilise une requête JSON (compatible MySQL 5.7+).
    */
-  async findByEntity(entityType: string, entityId: string | number): Promise<Mail[]> {
+  async findByEntity(entityType: string, entityId: string | number): Promise<Mail[]> {    
     const idStr = String(entityId);
     return this.mailRepository
       .createQueryBuilder('mail')

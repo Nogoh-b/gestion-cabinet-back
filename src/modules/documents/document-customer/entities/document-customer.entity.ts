@@ -316,7 +316,7 @@ export class DocumentCustomer extends BaseEntity {
   })
   is_confidential: boolean;
 
-  @Column({ name: 'metadata', type: 'json', nullable: true })
+  @Column({ name: 'metadata', type: 'simple-json', nullable: true })
   @BusinessColumn({
     label: 'Métadonnées',
     description: 'Informations supplémentaires (mots-clés, nombre de pages, langue, etc.)',

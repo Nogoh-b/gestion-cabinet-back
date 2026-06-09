@@ -1,13 +1,15 @@
+import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
+import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
-import { Referrer } from './entities/referral.entity';
+
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { CreateReferrerDto } from './dto/create-referral.dto';
 import { UpdateReferrerDto } from './dto/update-referral.dto';
+import { Referrer } from './entities/referral.entity';
+
 
 @Injectable()
 export class ReferrersService extends BaseServiceV1<Referrer> {
@@ -24,7 +26,10 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
   }
 
   async create(dto: CreateReferrerDto): Promise<Referrer> {
-    const entity = this.repository.create(dto);
+    const entity = this.repository.create({
+      ...dto,
+      status: dto.status ?? true,
+    });
     
     if (dto.employee_id) {
       const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });

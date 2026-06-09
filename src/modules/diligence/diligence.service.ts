@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 
+
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
 import { FindingsService } from '../finding/finding.service';
@@ -18,6 +19,7 @@ import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 import { Diligence, DiligenceStatus, DiligencePriority } from './entities/diligence.entity';
+
 
 
 
@@ -60,6 +62,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    * ➕ Création d'une diligence
    */
   async create(dto: CreateDiligenceDto): Promise<DiligenceResponseDto> {
+    console.log('Création de diligence avec les données suivantes:', dto);
     // Vérifier que le dossier existe
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     if (!dossier) {
