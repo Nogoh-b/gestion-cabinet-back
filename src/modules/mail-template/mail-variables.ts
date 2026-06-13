@@ -101,6 +101,17 @@ export const MAIL_VARIABLE_GROUPS: MailVariableGroup[] = [
     ],
   },
   {
+    namespace: 'paiement',
+    label: 'Paiement',
+    variables: [
+      { key: 'paiement.reference', label: 'Reference de paiement', example: 'VIR-2024-001' },
+      { key: 'paiement.montant',   label: 'Montant recu',          example: '750,00'       },
+      { key: 'paiement.date',      label: 'Date de paiement',      example: '05/02/2024'   },
+      { key: 'paiement.mode',      label: 'Mode de paiement',      example: 'Virement'     },
+      { key: 'paiement.statut',    label: 'Statut du paiement',    example: 'Valide'       },
+    ],
+  },
+  {
     namespace: 'audience',
     label: 'Audience',
     variables: [
@@ -198,8 +209,9 @@ export function buildEntityMailContext(input: {
   const { cabinet, dossier, resourceType, resource } = input;
   const raw = resource ?? {};
 
-  const d = dossier ?? raw.dossier ?? null;
-  const c = d?.client ?? raw.client ?? raw.dossier?.client ?? null;
+  const d = dossier ?? raw.dossier ?? raw.facture?.dossier ?? null;
+  const c = d?.client ?? raw.client ?? raw.dossier?.client ?? raw.facture?.client ?? null;
+  const factureSource = resourceType === 'facture' ? raw : raw.facture ?? {};
 
   const today = new Date();
 
@@ -235,16 +247,23 @@ export function buildEntityMailContext(input: {
       adresse:    c?.address        ?? c?.adress ?? '',
     },
     // ── Facture ──────────────────────────────────────────────────────────────
-    facture: resourceType === 'facture' ? {
-      numero:        raw.numero ?? raw.invoice_number ?? '',
-      date:          fmt(raw.dateFacture  ?? raw.date_facture  ?? raw.invoice_date),
-      echeance:      fmt(raw.dateEcheance ?? raw.date_echeance ?? raw.due_date),
-      montant_ttc:   fmt(raw.montantTTC   ?? raw.montant_ttc),
-      montant_paye:  fmt(raw.montantPaye  ?? raw.montant_paye),
-      reste_a_payer: fmt(raw.resteAPayer  ?? raw.reste_a_payer),
-      statut:        raw.statut_label ?? fmt(raw.status ?? raw.statut),
-      type:          raw.type_label   ?? fmt(raw.type),
+    facture: resourceType === 'facture' || raw.facture ? {
+      numero:        factureSource.numero ?? factureSource.invoice_number ?? '',
+      date:          fmt(factureSource.dateFacture  ?? factureSource.date_facture  ?? factureSource.invoice_date),
+      echeance:      fmt(factureSource.dateEcheance ?? factureSource.date_echeance ?? factureSource.due_date),
+      montant_ttc:   fmt(factureSource.montantTTC   ?? factureSource.montant_ttc),
+      montant_paye:  fmt(factureSource.montantPaye  ?? factureSource.montant_paye),
+      reste_a_payer: fmt(factureSource.resteAPayer  ?? factureSource.reste_a_payer),
+      statut:        factureSource.status_label ?? factureSource.statut_label ?? fmt(factureSource.status ?? factureSource.statut),
+      type:          factureSource.type_label   ?? fmt(factureSource.type),
     } : { numero: '', date: '', echeance: '', montant_ttc: '', montant_paye: '', reste_a_payer: '', statut: '', type: '' },
+    paiement: resourceType === 'paiement' ? {
+      reference: raw.reference ?? raw.numeroCheque ?? raw.numero_cheque ?? raw.id ?? '',
+      montant:   fmt(raw.montant),
+      date:      fmt(raw.datePaiement ?? raw.date_paiement),
+      mode:      fmt(raw.modePaiement ?? raw.mode_paiement),
+      statut:    fmt(raw.status ?? raw.statut),
+    } : { reference: '', montant: '', date: '', mode: '', statut: '' },
     // ── Audience ─────────────────────────────────────────────────────────────
     audience: resourceType === 'audience' ? {
       date:        fmt(raw.audience_date ?? raw.display_date),

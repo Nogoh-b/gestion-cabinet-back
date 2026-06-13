@@ -4,6 +4,7 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 
 import { InjectRepository } from '@nestjs/typeorm';
@@ -30,6 +31,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     @InjectRepository(Facture)
     private readonly factureRepository: Repository<Facture>,
     protected readonly paginationService: PaginationServiceV1,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
@@ -88,9 +90,11 @@ export class PaiementService extends BaseServiceV1<Paiement> {
 
     const paiementSauvegarde = await this.repository.save(paiement);
 
-    // Mettre à jour la facture
     console.log(facture.montantPaye ,' ', (paiement.montant) , ' ' ,facture.montantTTC)
 
+    if (paiementSauvegarde.status === StatutPaiement.VALIDE) {
+      this.eventEmitter.emit('paiement.valide', { ...paiementSauvegarde, facture });
+    }
 
     return plainToInstance(PaiementResponseDto,paiementSauvegarde);
   }
@@ -147,6 +151,9 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
 
     Object.assign(paiement, updateDto);
+    if (updateDto.notify_client !== undefined) {
+      paiement.notify_client = !!updateDto.notify_client;
+    }
     return plainToInstance(PaiementResponseDto,this.repository.save(paiement));
   }
 

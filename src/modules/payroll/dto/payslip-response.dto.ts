@@ -153,6 +153,11 @@ export class PayslipResponseDto {
   )
   total_commissions: number;
 
+  @ApiProperty({ example: 35000, required: false })
+  @Expose()
+  @Transform(({ obj }) => (obj.total_employer_charges != null ? Number(obj.total_employer_charges) : null))
+  total_employer_charges: number | null;
+
   @ApiProperty({ example: 'Payée' })
   @Expose()
   @Transform(({ obj }) => {

@@ -8,6 +8,8 @@ import { UpdateMailTemplateDto } from './dto/update-mail-template.dto';
 import { Cabinet, cabinetLogoToDataUri } from 'src/modules/cabinet/entities/cabinet.entity';
 import { logoFileToUrl } from 'src/modules/cabinet/cabinet-logo.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { buildNotificationTemplateByCode } from './notification-template.defaults';
+import { buildAuthTemplateByCode } from './auth-template.defaults';
 
 export interface RenderedMail {
   subject: string;
@@ -85,6 +87,20 @@ export class MailTemplateService {
     return this.renderTemplate(tpl, context);
   }
 
+  async renderOrCreateSystemDefault(
+    code: string,
+    context: Record<string, any> = {},
+  ): Promise<RenderedMail> {
+    let tpl = await this.findByCode(code);
+
+    if (!tpl) {
+      tpl = await this.ensureSystemDefault(code);
+    }
+
+    if (!tpl) throw new NotFoundException(`Template "${code}" introuvable`);
+    return this.renderTemplate(tpl, context);
+  }
+
   async preview(id: number, context: Record<string, any> = {}): Promise<RenderedMail> {
     const tpl = await this.findOne(id);
     return this.renderTemplate(tpl, context);
@@ -103,6 +119,17 @@ export class MailTemplateService {
     const html = this.wrapWithLayout(bodyHtml, brand);
 
     return { subject, html };
+  }
+
+  private async ensureSystemDefault(code: string): Promise<MailTemplate | null> {
+    const defaults = buildNotificationTemplateByCode(code) ?? buildAuthTemplateByCode(code);
+    if (!defaults) return null;
+
+    try {
+      return await this.repository.save(this.repository.create(defaults));
+    } catch {
+      return this.findByCode(code);
+    }
   }
 
   private async getCurrentCabinet(): Promise<Cabinet | null> {

@@ -7,6 +7,7 @@ import { UserSettings } from 'src/modules/settings/entities/user-settings.entity
 import { Repository } from 'typeorm';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { addTenantCondition } from '../tenant/tenant-repository.patch';
 
 import {
   ChannelPreference,
@@ -16,6 +17,7 @@ import {
 
 /** Code du rôle administrateur — voir `core/auth/seeders/role.seeder.ts`. */
 const ADMIN_ROLE_CODE = 'admin';
+type NotificationMailAudience = 'client' | 'employee';
 
 /**
  * Payload reçu par `dispatch()`.
@@ -82,10 +84,22 @@ export class NotificationDispatcher {
     this.logger.log(
       `🚀 dispatch(${payload.event}) début | title="${payload.title}" | entity=${payload.entity?.type}#${payload.entity?.id}`,
     );
+    this.logger.log(
+      `  │  action=${payload.event} | lien=${payload.link ?? '-'} | audience=${this.describeAudience(payload.audience)}`,
+    );
     try {
       // 1. Résolution des destinataires employés (avocat + collabs + admins)
       const employeeIds = await this.resolveEmployeeIds(payload.audience);
       this.logger.log(`  ├─ [1/5] resolveEmployeeIds → ${employeeIds.size} employé(s)`);
+      const clientChannels = await this.resolveClientChannels(
+        payload.audience.client,
+        payload.event,
+      );
+      if (payload.audience.client?.notify && payload.audience.client.user_id) {
+        this.logger.log(
+          `  │  client user#${payload.audience.client.user_id}: in_app=${clientChannels?.in_app ?? false} email=${clientChannels?.email ?? true}`,
+        );
+      }
 
       // 2. Filtrage par préférences utilisateur
       const channelsByUser = await this.resolveChannels(employeeIds, payload.event);
@@ -98,13 +112,21 @@ export class NotificationDispatcher {
       const inAppRecipients = Array.from(channelsByUser.entries())
         .filter(([, ch]) => ch.in_app)
         .map(([id]) => id);
+      if (
+        payload.audience.client?.notify &&
+        payload.audience.client.user_id &&
+        clientChannels?.in_app
+      ) {
+        inAppRecipients.push(payload.audience.client.user_id);
+      }
+      const dedupedInAppRecipients = Array.from(new Set(inAppRecipients));
 
-      if (inAppRecipients.length > 0) {
-        this.logger.log(`  ├─ [3/5] createBulk in-app → ${inAppRecipients.length} destinataire(s) : [${inAppRecipients.join(', ')}]`);
+      if (dedupedInAppRecipients.length > 0) {
+        this.logger.log(`  ├─ [3/5] createBulk in-app → ${dedupedInAppRecipients.length} destinataire(s) : [${dedupedInAppRecipients.join(', ')}]`);
         await this.notificationService
           .createBulk(
             {
-              user_ids: inAppRecipients,
+              user_ids: dedupedInAppRecipients,
               type: payload.event as any,
               title: payload.title,
               content: payload.content,
@@ -140,8 +162,12 @@ export class NotificationDispatcher {
       // 5. E-mail client (uniquement si la case est cochée)
       const client = payload.audience.client;
       if (client?.notify) {
-        this.logger.log(`  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`);
-        await this.sendClientEmail(client, payload);
+        if (clientChannels && !clientChannels.email) {
+          this.logger.log(`  ├─ [5/5] email client → désactivé par préférences utilisateur`);
+        } else {
+          this.logger.log(`  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`);
+          await this.sendClientEmail(client, payload);
+        }
       } else {
         this.logger.log(`  ├─ [5/5] email client → non notifié (notify_client=false ou absent)`);
       }
@@ -165,19 +191,24 @@ export class NotificationDispatcher {
   private resolveTemplateCode(event: NotifiableEvent): string | null {
     const map: Record<string, string> = {
       [NotifiableEvent.DOSSIER_CREATED]: 'dossier_created',
+      [NotifiableEvent.DOSSIER_UPDATED]: 'dossier_updated',
       [NotifiableEvent.DOSSIER_STATUS_CHANGED]: 'dossier_status_changed',
+      [NotifiableEvent.DOSSIER_CLOSED]: 'dossier_closed',
       [NotifiableEvent.COLLABORATOR_ADDED]: 'collaborator_added',
+      [NotifiableEvent.COLLABORATOR_REMOVED]: 'collaborator_removed',
       [NotifiableEvent.AUDIENCE_CREATED]: 'audience_created',
       [NotifiableEvent.AUDIENCE_HELD]: 'audience_held',
       [NotifiableEvent.AUDIENCE_UPDATED]: 'audience_updated',
       [NotifiableEvent.AUDIENCE_REMINDER]: 'audience_reminder',
-      [NotifiableEvent.FACTURE_CREATED]: 'invoice_issued',
+      [NotifiableEvent.FACTURE_CREATED]: 'facture_created',
       [NotifiableEvent.FACTURE_PAID]: 'facture_paid',
       [NotifiableEvent.FACTURE_OVERDUE]: 'facture_overdue',
       [NotifiableEvent.PAIEMENT_RECEIVED]: 'paiement_received',
       [NotifiableEvent.DOCUMENT_UPLOADED]: 'document_uploaded',
+      [NotifiableEvent.DOCUMENT_SHARED]: 'document_shared',
       [NotifiableEvent.DILIGENCE_ASSIGNED]: 'diligence_assigned',
       [NotifiableEvent.DILIGENCE_COMPLETED]: 'diligence_completed',
+      [NotifiableEvent.PROCEDURE_STAGE_CHANGED]: 'procedure_stage_changed',
     };
     return map[event] ?? null;
   }
@@ -186,25 +217,36 @@ export class NotificationDispatcher {
    * Essaie de rendre un e-mail via un template DB (table `mail_templates`).
    * Si aucun template n'est trouvé en base, retourne un fallback HTML simple.
    */
-  private async renderEmail(payload: DispatchPayload): Promise<{ subject: string; html: string }> {
+  private async renderEmail(
+    payload: DispatchPayload,
+    audience: NotificationMailAudience,
+  ): Promise<{ subject: string; html: string }> {
     const templateCode = this.resolveTemplateCode(payload.event);
+    const context = {
+      title: payload.title,
+      content: payload.content,
+      link: payload.link ?? '',
+      entity: payload.entity,
+      changes: payload.changes,
+      recipient_type: audience,
+      ...payload.emailContext,
+    };
 
     if (templateCode) {
-      try {
-        const rendered = await this.mailTemplateService.render(templateCode, {
-          title: payload.title,
-          content: payload.content,
-          link: payload.link ?? '',
-          entity: payload.entity,
-          changes: payload.changes,
-          ...payload.emailContext,
-        });
-        this.logger.log(`  │  📧 Template "${templateCode}" rendu avec succès`);
-        return rendered;
-      } catch (err) {
-        this.logger.warn(
-          `  │  ⚠️ Template "${templateCode}" introuvable ou erreur rendu : ${(err as Error).message}. Fallback HTML utilisé.`,
-        );
+      const templateCodes = [`${templateCode}_${audience}`, templateCode];
+
+      for (const code of templateCodes) {
+        try {
+          const rendered = await this.mailTemplateService.renderOrCreateSystemDefault(
+            code,
+            context,
+          );
+          this.logger.log(`  |  Template "${code}" rendu avec succes`);
+          return rendered;
+        } catch (err) {
+          if ((err as Error).message.includes('introuvable')) continue;
+          this.logger.warn(`  |  Template "${code}" erreur rendu : ${(err as Error).message}.`);
+        }
       }
     }
 
@@ -227,17 +269,24 @@ export class NotificationDispatcher {
     const adminIds = audience.admin_ids_override ?? (await this.resolveAdminIds());
     for (const a of adminIds) ids.add(a);
 
+    this.logger.log(
+      `  │  employés ciblés | lawyer=${audience.lawyer_id ?? '-'} | collabs=[${(audience.collaborator_ids ?? []).join(', ')}] | admins=[${adminIds.join(', ')}] | final=[${Array.from(ids).join(', ')}]`,
+    );
+
     return ids;
   }
 
   /** Récupère les ids de tous les users portant le rôle `admin`. */
   private async resolveAdminIds(): Promise<number[]> {
-    const rows = await this.assignmentRepo
+    let qb = this.assignmentRepo
       .createQueryBuilder('a')
       .leftJoin('a.role', 'r')
       .where('r.code = :code', { code: ADMIN_ROLE_CODE })
-      .select('a.user_id', 'user_id')
-      .getRawMany<{ user_id: number }>();
+      .select('a.user_id', 'user_id');
+
+    qb = addTenantCondition(qb, 'a');
+
+    const rows = await qb.getRawMany<{ user_id: number }>();
     return rows.map((r) => Number(r.user_id)).filter((id) => !Number.isNaN(id));
   }
 
@@ -294,6 +343,16 @@ export class NotificationDispatcher {
 
   // ── Envoi e-mail ──────────────────────────────────────────────────────────
 
+  private async resolveClientChannels(
+    client: DispatchAudience['client'],
+    event: NotifiableEvent,
+  ): Promise<ChannelPreference | null> {
+    if (!client?.user_id) return null;
+
+    const map = await this.resolveChannels(new Set([client.user_id]), event);
+    return map.get(client.user_id) ?? { in_app: true, email: true };
+  }
+
   private async sendEmailsTo(userIds: number[], payload: DispatchPayload): Promise<void> {
     const users = await this.userRepo.find({
       where: userIds.map((id) => ({ id })),
@@ -301,10 +360,19 @@ export class NotificationDispatcher {
     });
 
     const recipients = users.filter((u) => !!u.email).map((u) => u.email);
-    if (recipients.length === 0) return;
+    this.logger.log(
+      `  │  emails employés résolus → users=[${users.map((u) => `${u.id}:${u.email ?? 'sans-email'}`).join(', ')}]`,
+    );
+    if (recipients.length === 0) {
+      this.logger.warn(`  │  aucun e-mail employé exploitable pour ${payload.event}`);
+      return;
+    }
 
     // Rendu du template mail (DB ou fallback HTML)
-    const { subject, html } = await this.renderEmail(payload);
+    const { subject, html } = await this.renderEmail(payload, 'employee');
+    this.logger.log(
+      `  │  envoi mail employés → subject="${subject}" | recipients=[${recipients.join(', ')}]`,
+    );
 
     await this.mailService
       .sendDirect({
@@ -312,6 +380,11 @@ export class NotificationDispatcher {
         subject,
         html,
       })
+      .then(() =>
+        this.logger.log(
+          `  │  ✅ mails employés envoyés | count=${recipients.length}`,
+        ),
+      )
       .catch((err) =>
         this.logger.error(
           `sendEmailsTo([${recipients.join(',')}]) a échoué : ${err.message}`,
@@ -338,9 +411,13 @@ export class NotificationDispatcher {
       );
       return;
     }
+    this.logger.log(
+      `  │  client notifiable → user_id=${client.user_id ?? '-'} | email=${to} | notify=${client.notify}`,
+    );
 
     // Rendu du template mail (DB ou fallback HTML)
-    const { subject, html } = await this.renderEmail(payload);
+    const { subject, html } = await this.renderEmail(payload, 'client');
+    this.logger.log(`  │  envoi mail client → subject="${subject}" | to=${to}`);
 
     await this.mailService
       .sendDirect({
@@ -348,12 +425,28 @@ export class NotificationDispatcher {
         subject,
         html,
       })
+      .then(() =>
+        this.logger.log(`  │  ✅ mail client envoyé → ${to}`),
+      )
       .catch((err) =>
         this.logger.error(
           `sendClientEmail(${to}) a échoué : ${err.message}`,
           err.stack,
         ),
       );
+  }
+
+  private describeAudience(audience: DispatchAudience): string {
+    const client = audience.client
+      ? `client(user=${audience.client.user_id ?? '-'}, email=${audience.client.email ?? '-'}, notify=${audience.client.notify})`
+      : 'client(-)';
+    const lawyer = `lawyer=${audience.lawyer_id ?? '-'}`;
+    const collabs = `collabs=[${(audience.collaborator_ids ?? []).join(', ')}]`;
+    const admins = audience.admin_ids_override
+      ? `admins_override=[${audience.admin_ids_override.join(', ')}]`
+      : 'admins=auto';
+
+    return `${client} | ${lawyer} | ${collabs} | ${admins}`;
   }
 }
 
@@ -366,3 +459,4 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '"')
     .replace(/'/g, '&#39;');
 }
+

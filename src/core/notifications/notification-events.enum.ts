@@ -61,7 +61,16 @@ export interface ChannelPreference {
  *               via app_settings.notification_email).
  */
 export interface DispatchAudience {
-  client?: { user_id?: number; email?: string; notify: boolean };
+  client?: {
+    user_id?: number;
+    email?: string;
+    /**
+     * Déclenche les notifications destinées au client pour cet évènement.
+     * Si `user_id` est présent, cela peut inclure l'in-app et l'e-mail selon
+     * les préférences utilisateur ; sinon, on retombe sur l'e-mail uniquement.
+     */
+    notify: boolean;
+  };
   lawyer_id?: number | null;
   collaborator_ids?: number[];
   /**

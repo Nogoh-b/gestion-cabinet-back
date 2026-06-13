@@ -4,6 +4,7 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { Like, Repository } from 'typeorm';
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -41,6 +42,7 @@ export class FactureService extends BaseServiceV1<Facture> {
     private stepsService: StepsService,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
@@ -144,6 +146,9 @@ export class FactureService extends BaseServiceV1<Facture> {
     }
 
     Object.assign(facture, updateDto);
+    if (updateDto.notify_client !== undefined) {
+      (facture as any).notify_client = !!updateDto.notify_client;
+    }
     // facture.calculerResteAPayer();
 
     return plainToInstance(FactureResponseDto,this.repository.save(facture));
@@ -203,7 +208,18 @@ export class FactureService extends BaseServiceV1<Facture> {
     }
 
     facture.status = nouveauStatus as any;
-    return this.repository.save(facture);
+    const saved = await this.repository.save(facture);
+
+    const status = nouveauStatus as unknown as StatutFacture;
+    if (status === StatutFacture.ENVOYEE) {
+      const full = await this.findOneV1(id, ['client']);
+      this.eventEmitter.emit('facture.envoyee', full);
+    } else if (status === StatutFacture.ANNULEE) {
+      const full = await this.findOneV1(id, ['client']);
+      this.eventEmitter.emit('facture.annulee', full);
+    }
+
+    return saved;
   }
 
   async getChiffreAffairesParPeriode(dateDebut: Date, dateFin: Date): Promise<number> {

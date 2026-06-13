@@ -1,32 +1,34 @@
 // src/modules/audiences/audiences.service.ts
 import { plainToInstance } from 'class-transformer';
+import { subMonths } from 'date-fns';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
+import { MailService } from 'src/core/shared/emails/emails.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { DateUtils } from 'src/core/shared/utils/date.util.';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
 import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+import { EmployeeService } from '../agencies/employee/employee.service';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
+import { AudienceType } from '../audience-type/entities/audience-type.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
+import { Dossier } from '../dossiers/entities/dossier.entity';
+import { StepsService } from '../dossiers/step.service';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
+import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
+import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
+import { AudienceStatsDto, UpcomingAudienceDto } from './dto/audience-stats.dto';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, AudienceType1, } from './entities/audience.entity';
-import { MailService } from 'src/core/shared/emails/emails.service';
-import { EmployeeService } from '../agencies/employee/employee.service';
-import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
-import { DateUtils } from 'src/core/shared/utils/date.util.';
-import { subMonths } from 'date-fns';
-import { AudienceStatsDto, UpcomingAudienceDto } from './dto/audience-stats.dto';
-import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
-import { AudienceType } from '../audience-type/entities/audience-type.entity';
-import { Dossier } from '../dossiers/entities/dossier.entity';
-import { DossierStatus } from 'src/core/enums/dossier-status.enum';
-import { StepsService } from '../dossiers/step.service';
-import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
-import { SubStage } from '../procedure/entities/sub-stage.entity';
-import { Stage } from '../procedure/entities/stage.entity';
+
+
 
 
 
@@ -111,14 +113,14 @@ export class AudiencesService extends BaseServiceV1<Audience> {
 
     // ── Juridiction : déduite du dossier si non fournie explicitement ────────
     const resolvedJurisdictionId =
-      dto.jurisdiction_id ??
+      // dto.jurisdiction_id ??
       (dossier as any).jurisdiction_id ??
       (dossier as any).jurisdiction?.id ??
       null;
-
+      console.log('resolvedJurisdictionId', resolvedJurisdictionId, 'dto.jurisdiction_id', dto.jurisdiction_id, 'dossier.jurisdiction_id', (dossier as any).jurisdiction_id, 'dossier.jurisdiction?.id', (dossier as any).jurisdiction?.id);
     if (!resolvedJurisdictionId) {
       throw new NotFoundException(
-        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier.",
+        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier."
       );
     }
 
@@ -288,6 +290,9 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
   
   // 🔥 IMPORTANT: Assigner les autres champs
   Object.assign(audience, otherFields);
+  if (dto.notify_client !== undefined) {
+    (audience as any).notify_client = !!dto.notify_client;
+  }
   
   const resp = plainToInstance(AudienceResponseDto, await this.repository.save(audience));
   return await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);

@@ -28,21 +28,21 @@ export class CreatePayslipDto {
 
   @ApiProperty({
     example: 4500.0,
-    description: 'Salaire brut',
+    description: 'Salaire de base. Le back génère les cotisations et calcule le brut/net.',
   })
   @IsNumber()
   @Min(0)
   @IsNotEmpty()
   gross_amount: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 3200.0,
-    description: 'Net à payer',
+    description: 'Net à payer (optionnel — calculé automatiquement à partir des lignes/cotisations)',
   })
   @IsNumber()
   @Min(0)
-  @IsNotEmpty()
-  net_amount: number;
+  @IsOptional()
+  net_amount?: number;
 
   @ApiPropertyOptional({
     example: false,

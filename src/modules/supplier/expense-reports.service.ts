@@ -1,5 +1,6 @@
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
@@ -19,6 +20,7 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
     private employeeRepo: Repository<Employee>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
@@ -78,7 +80,10 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
     const report = await this.findOne(id);
     report.status = 'reimbursed' as any;
     report.reimbursement_date = new Date();
-    return this.repository.save(report);
+    const saved = await this.repository.save(report);
+    const full  = await this.findOne(saved.id);
+    this.eventEmitter.emit('expense_report.remboursee', full);
+    return saved;
   }
 
   async update(id: number, dto: UpdateExpenseReportDto): Promise<ExpenseReport> {

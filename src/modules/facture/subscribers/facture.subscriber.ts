@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 
 /**
  * Subscriber métier pour les factures.
@@ -48,11 +49,12 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     const loaded = await this.load(entity.id).catch(() => null);
     const facture = loaded ?? entity;
     if (!facture) return;
+    const notifyClient = this.resolveTransientBoolean('notify_client', entity, facture as any);
 
     const currencySymbol = await this.getCurrencySymbol();
 
     this.logger.log(
-      `📢 Facture créée | id=${facture.id} | numero=${facture.numero} | montant=${formatMoney(facture.montantTTC, currencySymbol)} | échéance=${formatDate(facture.dateEcheance)} | notify_client=${!!entity.notify_client}`,
+      `📢 Facture créée | id=${facture.id} | numero=${facture.numero} | montant=${formatMoney(facture.montantTTC, currencySymbol)} | échéance=${formatDate(facture.dateEcheance)} | notify_client=${notifyClient}`,
     );
 
     await this.notify({
@@ -66,11 +68,16 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
         client: {
           user_id: (facture.client as any)?.user_id,
           email: (facture.client as any)?.email,
-          notify: !!entity.notify_client,
+          notify: notifyClient,
         },
         lawyer_id: (facture.dossier as any)?.lawyer_id ?? null,
       },
       entity: { type: 'facture', id: facture.id },
+      emailContext: buildEntityMailContext({
+        dossier: facture.dossier as any,
+        resourceType: 'facture',
+        resource: facture as any,
+      }),
     });
   }
 
@@ -87,8 +94,14 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
     const id = entity.id ?? (event.databaseEntity as Facture)?.id;
     if (!id) return;
-    const facture = await this.load(id);
+    const facture = await this.load(id).catch(() => null);
     if (!facture) return;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      event.databaseEntity as any,
+      facture as any,
+    );
 
     const newStatus = Number(change.newValue);
     let event_:
@@ -111,7 +124,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     const currencySymbol = await this.getCurrencySymbol();
 
     this.logger.log(
-      `📢 Facture statut changé | id=${facture.id} | numero=${facture.numero} | new_status=${statusLabel} | notify_client=${!!(entity as Facture).notify_client}`,
+      `📢 Facture statut changé | id=${facture.id} | numero=${facture.numero} | new_status=${statusLabel} | notify_client=${notifyClient}`,
     );
 
     await this.notify({
@@ -123,12 +136,17 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
         client: {
           user_id: (facture.client as any)?.user_id,
           email: (facture.client as any)?.email,
-          notify: !!(entity as Facture).notify_client,
+          notify: notifyClient,
         },
         lawyer_id: (facture.dossier as any)?.lawyer_id ?? null,
       },
       entity: { type: 'facture', id: facture.id },
       changes: { status: { from: change.oldValue, to: change.newValue } },
+      emailContext: buildEntityMailContext({
+        dossier: facture.dossier as any,
+        resourceType: 'facture',
+        resource: facture as any,
+      }),
     });
   }
 

@@ -4,6 +4,7 @@ import { NotifiableEvent } from 'src/core/notifications/notification-events.enum
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Conversation } from 'src/modules/chat/entities/conversation.entity';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/default-procedure-template.seeder';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
@@ -90,9 +91,10 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     const clientUserId =
       (dossier.client as any)?.user_id ?? (dossier.client as any)?.user?.id;
     const clientEmail = (dossier.client as any)?.email;
+    const notifyClient = this.resolveTransientBoolean('notify_client', entity, dossier as any);
 
     this.logger.log(
-      `📢 Dossier créé | id=${dossier.id} | number="${dossier.dossier_number}" | lawyer=${dossier.lawyer_id ?? '?'} | client.user_id=${clientUserId ?? '?'} | notify_client=${!!entity.notify_client}`,
+      `📢 Dossier créé | id=${dossier.id} | number="${dossier.dossier_number}" | lawyer=${dossier.lawyer_id ?? '?'} | client.user_id=${clientUserId ?? '?'} | notify_client=${notifyClient}`,
     );
 
     await this.notify({
@@ -104,7 +106,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         client: {
           user_id: clientUserId,
           email: clientEmail,
-          notify: !!entity.notify_client,
+          notify: notifyClient,
         },
         lawyer_id: dossier.lawyer_id ?? null,
         collaborator_ids: (dossier.collaborators ?? [])
@@ -112,6 +114,11 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
           .filter(Boolean),
       },
       entity: { type: 'dossier', id: dossier.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'dossier',
+        resource: dossier as any,
+      }),
     });
   }
 
@@ -256,12 +263,18 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     const loaded = await this.load(id).catch(() => null);
     const dossier = loaded ?? (event.databaseEntity as Dossier);
     if (!dossier) return;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      event.databaseEntity as any,
+      dossier as any,
+    );
 
     const oldLabel = labelStatus(change.oldValue);
     const newLabel = labelStatus(change.newValue);
 
     this.logger.log(
-      `📢 Statut dossier changé | id=${dossier.id} | number="${dossier.dossier_number}" | "${oldLabel}" → "${newLabel}" | notify_client=${!!(entity as Dossier).notify_client}`,
+      `📢 Statut dossier changé | id=${dossier.id} | number="${dossier.dossier_number}" | "${oldLabel}" → "${newLabel}" | notify_client=${notifyClient}`,
     );
 
     await this.notify({
@@ -273,7 +286,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         client: {
           user_id: (dossier.client as any)?.user_id,
           email: (dossier.client as any)?.email,
-          notify: !!(entity as Dossier).notify_client,
+          notify: notifyClient,
         },
         lawyer_id: dossier.lawyer_id ?? null,
         collaborator_ids: (dossier.collaborators ?? [])
@@ -282,6 +295,11 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       },
       entity: { type: 'dossier', id: dossier.id },
       changes: { status: { from: change.oldValue, to: change.newValue } },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'dossier',
+        resource: dossier as any,
+      }),
     });
   }
 
@@ -352,6 +370,8 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       .map((emp) => (emp as any).user_id ?? (emp as any).user?.id)
       .filter(Boolean);
     if (newCollabUserIds.length > 0) {
+      const mailDossier = (await this.load(dossier.id).catch(() => null)) ?? dossier;
+
       this.logger.log(
         `📢 Collaborateurs ajoutés au dossier | id=${dossier.id} | number="${dossier.dossier_number}" | new_users=[${newCollabUserIds.join(', ')}]`,
       );
@@ -365,6 +385,11 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
           collaborator_ids: newCollabUserIds,
         },
         entity: { type: 'dossier', id: dossier.id },
+        emailContext: buildEntityMailContext({
+          dossier: mailDossier,
+          resourceType: 'dossier',
+          resource: mailDossier as any,
+        }),
       });
     }
   }

@@ -91,7 +91,12 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
 
   async beforeUpdate(event: UpdateEvent<T>): Promise<void> {
     try {
-      if (event.entity) await this.onBeforeUpdate(event.entity as Partial<T>, event);
+      await this.onBeforeUpdate(
+        ((event.entity as Partial<T>) ??
+          (event.databaseEntity as Partial<T>) ??
+          ({} as Partial<T>)),
+        event,
+      );
     } catch (err) {
       this.logger.error(`beforeUpdate: ${err.message}`, err.stack);
     }
@@ -101,7 +106,12 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
     const entityId = (event.entity as any)?.id ?? (event.databaseEntity as any)?.id ?? '?';
     this.logger.log(`▶ afterUpdate déclenché | entité=${this.listenTo().name} | id=${entityId}`);
     try {
-      if (event.entity) await this.onAfterUpdate(event.entity as Partial<T>, event);
+      await this.onAfterUpdate(
+        ((event.entity as Partial<T>) ??
+          (event.databaseEntity as Partial<T>) ??
+          ({} as Partial<T>)),
+        event,
+      );
       this.logger.log(`✅ afterUpdate terminé | entité=${this.listenTo().name} | id=${entityId}`);
     } catch (err) {
       this.logger.error(`afterUpdate: ${err.message}`, err.stack);
@@ -136,7 +146,15 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
 
   /**
    * Vérifie si une relation (ManyToMany, OneToMany) a été modifiée lors du save().
-   * TypeORM renseigne event.updatedRelations quand des relations sont persistées.
+   *
+   * Attention : avec TypeORM, `event.updatedRelations` n'est pas fiable pour les
+   * mutations de tables pivot (ex: ManyToMany modifié via `entity.relation = [...]`
+   * puis `save(entity)`), et peut rester vide. Pour ces cas, préférez recharger
+   * l'entité avec ses relations et comparer les IDs, ou appliquez une logique
+   * idempotente côté subscriber/service.
+   *
+   * Cette méthode reste utile pour certains changements de relations explicitement
+   * portés par l'event, mais ne doit pas être considérée comme exhaustive.
    * Exemple : this.hasRelationChanged(event, 'collaborators')
    */
   protected hasRelationChanged(event: UpdateEvent<T>, relationName: string): boolean {
@@ -166,5 +184,44 @@ export abstract class BaseEntitySubscriber<T extends ObjectLiteral>
       }
     }
     return changes;
+  }
+
+  /**
+   * Compare les IDs d'une relation chargée avant/après update.
+   *
+   * Utile quand `updatedRelations` ne remonte pas les mutations ManyToMany.
+   * Nécessite que la relation soit effectivement présente sur `event.entity`
+   * et/ou `event.databaseEntity`, sinon retourne false.
+   */
+  protected hasRelationIdsChanged(
+    event: UpdateEvent<T>,
+    relationName: string,
+    idKey = 'id',
+  ): boolean {
+    const before = this.extractRelationIds(
+      (event.databaseEntity as any)?.[relationName],
+      idKey,
+    );
+    const after = this.extractRelationIds(
+      (event.entity as any)?.[relationName],
+      idKey,
+    );
+
+    if (!before || !after) {
+      return this.hasRelationChanged(event, relationName);
+    }
+
+    if (before.length !== after.length) return true;
+    return before.some((id, index) => id !== after[index]);
+  }
+
+  private extractRelationIds(value: any, idKey: string): string[] | null {
+    if (!Array.isArray(value)) return null;
+
+    return value
+      .map((item) => item?.[idKey])
+      .filter((id) => id !== undefined && id !== null)
+      .map((id) => String(id))
+      .sort();
   }
 }

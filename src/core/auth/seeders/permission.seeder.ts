@@ -199,6 +199,18 @@ export class PermissionSeeder {
       { code: 'delete_pdf_template',     description: 'Supprimer un modèle PDF' },
 
       // ===================================================================
+      // CABINET — COMPTABILITÉ (ACCOUNTING)
+      // ===================================================================
+      { code: 'view_accounting',           description: 'Voir la comptabilité' },
+      { code: 'create_ecriture',           description: 'Créer une écriture comptable' },
+      { code: 'edit_ecriture',             description: 'Modifier une écriture comptable' },
+      { code: 'delete_ecriture',           description: 'Supprimer une écriture comptable' },
+      { code: 'manage_chart_of_accounts',  description: 'Gérer le plan comptable et la synchronisation' },
+      { code: 'open_exercice',             description: 'Ouvrir un exercice comptable' },
+      { code: 'close_exercice',            description: 'Clôturer un exercice comptable' },
+      { code: 'view_accounting_reports',   description: 'Voir les rapports comptables (balance, résultat, TVA)' },
+
+      // ===================================================================
       // SYSTÈME — Permissions spéciales (non modifiables)
       // ===================================================================
       { code: 'SUPER_ADMIN',    description: 'Accès total au système',        canChange: 0 },

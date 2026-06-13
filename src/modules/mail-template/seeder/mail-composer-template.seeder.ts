@@ -564,7 +564,6 @@ export default class MailComposerTemplateSeeder implements Seeder {
         is_system: false,
         is_active: true,
       },
-
     ]; // end templates
 
     for (const data of templates) {
@@ -584,6 +583,9 @@ export default class MailComposerTemplateSeeder implements Seeder {
           variables: data.variables,
           description: data.description,
           audience:  data.audience,
+          category:  data.category,
+          is_system: data.is_system,
+          is_active: data.is_active,
         });
         await repo.save(existing);
         console.log(`  ↩️  Template composer mis à jour : ${data.code}`);

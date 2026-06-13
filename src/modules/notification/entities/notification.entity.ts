@@ -31,7 +31,7 @@ export class Notification extends TenantEntity {
   @Column({ type: 'varchar', length: 50 })
   type: NotificationType;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'text' })
   title: string;
 
   @Column({ type: 'text', nullable: true })
@@ -40,7 +40,7 @@ export class Notification extends TenantEntity {
   @Column({ type: 'json', nullable: true })
   data: any;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true })
   link: string;
 
   @Column({ type: 'varchar', length: 20, default: NotificationPriority.NORMAL })
@@ -59,7 +59,7 @@ export class Notification extends TenantEntity {
   @Column({ type: 'boolean', default: true })
   is_push_sent: boolean;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true })
   image_url: string;
 
   @Column({ type: 'json', nullable: true })

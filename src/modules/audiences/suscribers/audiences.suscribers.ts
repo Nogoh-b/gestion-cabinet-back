@@ -1,6 +1,7 @@
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -38,15 +39,15 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Audience,
     _event: InsertEvent<Audience>,
   ): Promise<void> {
-    const loaded = await this.load(entity.id);
+    const loaded = await this.load(entity.id).catch(() => null);
     const audience = loaded ?? entity;
-    console.log(' Audience créée, envoi notification :', audience?.id, audience?.audience_date, audience?.dossier?.dossier_number, audience?.notify_client);
     if (!audience) return;
     const dossier: any = audience.dossier;
     const client: any = dossier?.client;
+    const notifyClient = this.resolveTransientBoolean('notify_client', entity, audience as any);
 
     this.logger.log(
-      `📢 Audience créée | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${!!entity.notify_client}`,
+      `📢 Audience créée | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${notifyClient}`,
     );
 
     await this.notify({
@@ -61,7 +62,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
         client: {
           user_id: client?.user_id,
           email: client?.email,
-          notify: !!entity.notify_client,
+          notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
         collaborator_ids: (dossier?.collaborators ?? [])
@@ -69,6 +70,11 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
           .filter(Boolean),
       },
       entity: { type: 'audience', id: audience.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'audience',
+        resource: audience as any,
+      }),
     });
   }
 
@@ -95,9 +101,14 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
   }
 
   private async dispatchHeld(id: number, entity: Partial<Audience>): Promise<void> {
-    const audience = await this.load(id);
+    const audience = await this.load(id).catch(() => null);
     if (!audience) return;
     const dossier: any = audience.dossier;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      audience as any,
+    );
 
     this.logger.log(
       `📢 Audience tenue | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'}`,
@@ -112,7 +123,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
         client: {
           user_id: (dossier?.client as any)?.user_id,
           email: (dossier?.client as any)?.email,
-          notify: !!(entity as Audience).notify_client,
+          notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
         collaborator_ids: (dossier?.collaborators ?? [])
@@ -120,6 +131,11 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
           .filter(Boolean),
       },
       entity: { type: 'audience', id: audience.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'audience',
+        resource: audience as any,
+      }),
     });
   }
 
@@ -128,9 +144,14 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Partial<Audience>,
     reason: string,
   ): Promise<void> {
-    const audience = await this.load(id);
+    const audience = await this.load(id).catch(() => null);
     if (!audience) return;
     const dossier: any = audience.dossier;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      audience as any,
+    );
 
     this.logger.log(
       `📢 Audience modifiée | id=${audience.id} | reason="${reason}" | dossier=${dossier?.dossier_number ?? '?'}`,
@@ -148,7 +169,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
         client: {
           user_id: (dossier?.client as any)?.user_id,
           email: (dossier?.client as any)?.email,
-          notify: !!(entity as Audience).notify_client,
+          notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
         collaborator_ids: (dossier?.collaborators ?? [])
@@ -156,6 +177,11 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
           .filter(Boolean),
       },
       entity: { type: 'audience', id: audience.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'audience',
+        resource: audience as any,
+      }),
     });
   }
 

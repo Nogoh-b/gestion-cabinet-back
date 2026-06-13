@@ -1,10 +1,12 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PayslipLine } from './entities/payslip-line.entity';
 import { CreatePayslipLineDto } from './dto/create-payslip-line.dto';
-import { Payslip } from './entities/payslip.entity';
+import { UpdatePayslipLineDto } from './dto/update-payslip-line.dto';
+import { Payslip, PayslipStatus } from './entities/payslip.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
+import { PayslipsService } from './payslips.service';
 
 @Injectable()
 export class PayslipLinesService {
@@ -15,19 +17,32 @@ export class PayslipLinesService {
     private payslipRepo: Repository<Payslip>,
     @InjectRepository(Dossier)
     private dossierRepo: Repository<Dossier>,
+    private readonly payslipsService: PayslipsService,
   ) {}
+
+  /** Interdit de toucher aux lignes d'un bulletin validé ou payé. */
+  private assertParentMutable(payslip: Payslip): void {
+    if (payslip.status !== PayslipStatus.DRAFT) {
+      throw new ForbiddenException(
+        'Les lignes ne sont modifiables que sur un bulletin au statut brouillon.',
+      );
+    }
+  }
 
   async create(dto: CreatePayslipLineDto): Promise<PayslipLine> {
     const entity = this.repository.create(dto);
     const payslip = await this.payslipRepo.findOne({ where: { id: dto.payslip_id } });
     if (!payslip) throw new NotFoundException('Fiche de paie non trouvée');
+    this.assertParentMutable(payslip);
     entity.payslip = payslip;
     if (dto.dossier_id) {
       const dossier = await this.dossierRepo.findOne({ where: { id: dto.dossier_id } });
       if (!dossier) throw new NotFoundException('Dossier non trouvé');
       entity.dossier = dossier;
     }
-    return this.repository.save(entity);
+    const saved = await this.repository.save(entity);
+    await this.payslipsService.recomputeTotals(dto.payslip_id);
+    return saved;
   }
 
   async findByPayslip(payslip_id: number): Promise<PayslipLine[]> {
@@ -47,11 +62,14 @@ export class PayslipLinesService {
     return line;
   }
 
-  async update(id: number, dto: CreatePayslipLineDto): Promise<PayslipLine> {
+  async update(id: number, dto: UpdatePayslipLineDto): Promise<PayslipLine> {
     const line = await this.findOne(id);
+    if (line.payslip) this.assertParentMutable(line.payslip);
+
     if (dto.payslip_id) {
       const payslip = await this.payslipRepo.findOne({ where: { id: dto.payslip_id } });
       if (payslip) {
+        this.assertParentMutable(payslip);
         line.payslip = payslip;
       }
     }
@@ -61,10 +79,16 @@ export class PayslipLinesService {
         line.dossier = dossier;
       }
     }
-    return this.repository.save({ ...line, ...dto });
+    const saved = await this.repository.save({ ...line, ...dto });
+    await this.payslipsService.recomputeTotals(line.payslip_id);
+    return saved;
   }
 
   async remove(id: number): Promise<void> {
+    const line = await this.findOne(id);
+    if (line.payslip) this.assertParentMutable(line.payslip);
+    const payslipId = line.payslip_id;
     await this.repository.delete(id);
+    await this.payslipsService.recomputeTotals(payslipId);
   }
 }

@@ -223,6 +223,9 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       client_reference: dto.client_reference ?? diligence.client_reference,
       status : dto.status ?? diligence.status
     });
+    if (dto.notify_client !== undefined) {
+      (diligence as any).notify_client = !!dto.notify_client;
+    }
 
     return this.repository.save(diligence);
   }

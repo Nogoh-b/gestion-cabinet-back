@@ -8,6 +8,8 @@ import { UserRole }            from '../iam/user-role/entities/user-role.entity'
 import { UserRoleAssignment }  from '../iam/user-role-assignment/entities/user-role-assignment.entity';
 import { CabinetModule }       from '../cabinet/cabinet.module';
 import { PlansModule }         from '../plans/plans.module';
+import { EmailsModule }        from 'src/core/shared/emails/emails.module';
+import { MailTemplateModule }  from '../mail-template/mail-template.module';
 import { OnboardingService }   from './onboarding.service';
 import { OnboardingController } from './onboarding.controller';
 
@@ -23,6 +25,8 @@ import { OnboardingController } from './onboarding.controller';
     ]),
     CabinetModule,  // pour CabinetService (generateCode, getCabinetUrl)
     PlansModule,    // pour PlansService (findByCode, assignPlanToCabinet)
+    EmailsModule,       // pour MailService (envoi email de bienvenue)
+    MailTemplateModule, // pour MailTemplateService (rendu du template DB)
   ],
   controllers: [OnboardingController],
   providers:   [OnboardingService],

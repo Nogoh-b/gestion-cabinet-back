@@ -147,6 +147,29 @@ export class UsersService {
     return user;
   }
 
+  async findByEmailForPasswordReset(email: string, tenantId?: number): Promise<any | null> {
+    let qb = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.customer', 'customer')
+      .leftJoinAndSelect('user.roleAssignments', 'roleAssignment')
+      .leftJoinAndSelect('roleAssignment.role', 'role')
+      .where('user.email = :email', { email });
+
+    if (tenantId && tenantId !== 1) {
+      qb = qb.andWhere('user.tenant_id = :tenantId', { tenantId });
+    }
+
+    const user = await qb.getOne();
+    if (!user) return null;
+
+    const activeRoleAssignment = user.roleAssignments?.find(
+      (assignment) => assignment.role?.status === 1,
+    );
+
+    user.roleAssignments = activeRoleAssignment ? [activeRoleAssignment] : [];
+    return user;
+  }
+
   async getUserPermissions(
     userId: number
   ): Promise<any> {

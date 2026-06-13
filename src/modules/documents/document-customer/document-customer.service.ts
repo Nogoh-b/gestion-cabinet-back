@@ -291,6 +291,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         status : DocumentCustomerStatus.ACCEPTED,
         category : plainToInstance(DocumentCategory, category),
         dossier: plainToInstance(Dossier, dossier), // ou gardez l'objet tel quel
+        notify_client: !!createDto.notify_client,
         uploadedFile,
 
         uploadedByUserId
@@ -632,6 +633,7 @@ async linkDocumentsToSubStage(
     status?: DocumentCustomerStatus;
     required_for_hearing?: boolean;
     is_confidential?: boolean;
+    notify_client?: boolean;
     metadata?: string;
   }): Promise<DocumentCustomer | any> {
     const {

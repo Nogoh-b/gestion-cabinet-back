@@ -1,5 +1,6 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
@@ -22,6 +23,7 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
     private branchRepo: Repository<Branch>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
@@ -65,6 +67,7 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
 
   async update(id: number, dto: UpdateSupplierInvoiceDto): Promise<SupplierInvoice> {
     const invoice = await this.findOne(id);
+    const previousStatus = invoice.status;
     if (dto.supplier_id) {
       const supplier = await this.supplierRepo.findOne({ where: { id: dto.supplier_id } });
       if (!supplier) throw new NotFoundException('Fournisseur non trouvé');
@@ -75,7 +78,38 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
       if (!branch) throw new NotFoundException('Agence non trouvée');
       invoice.branch = branch;
     }
-    return this.repository.save({ ...invoice, ...dto });
+    const saved = await this.repository.save({ ...invoice, ...dto });
+
+    const full = await this.findOne(saved.id);
+    if (previousStatus !== 'approved' && saved.status === 'approved') {
+      this.eventEmitter.emit('supplier_invoice.approuvee', full);
+    }
+    if (previousStatus !== 'paid' && saved.status === 'paid') {
+      this.eventEmitter.emit('supplier_invoice.payee', full);
+    }
+
+    return saved;
+  }
+
+  /** Passe la facture à « approuvée » (émet l'événement de comptabilisation via update). */
+  async approve(id: number): Promise<SupplierInvoice> {
+    const invoice = await this.findOne(id);
+    if (invoice.status === 'paid' || invoice.status === 'cancelled') {
+      throw new BadRequestException('Facture déjà payée ou annulée : approbation impossible.');
+    }
+    return this.update(id, { status: 'approved' } as any);
+  }
+
+  /** Passe la facture à « payée » et date le paiement. */
+  async markAsPaid(id: number): Promise<SupplierInvoice> {
+    const invoice = await this.findOne(id);
+    if (invoice.status === 'cancelled') {
+      throw new BadRequestException('Facture annulée : paiement impossible.');
+    }
+    if (invoice.status === 'paid') {
+      throw new BadRequestException('Facture déjà payée.');
+    }
+    return this.update(id, { status: 'paid', payment_date: new Date() } as any);
   }
 
   async remove(id: number): Promise<void> {

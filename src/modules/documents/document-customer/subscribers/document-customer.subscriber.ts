@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { DocumentCustomer } from '../entities/document-customer.entity';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 
 /**
  * Subscriber métier pour les documents clients.
@@ -35,14 +36,15 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
     _event: InsertEvent<DocumentCustomer>,
   ): Promise<void> {
     // Recharger pour récupérer dossier + client + lawyer
-    const doc = await this.load(entity.id);
+    const doc = await this.load(entity.id).catch(() => null);
     if (!doc) return;
 
     const dossier: any = doc.dossier;
     const client: any = dossier?.client ?? doc.customer;
+    const notifyClient = this.resolveTransientBoolean('notify_client', entity, doc as any);
 
     this.logger.log(
-      `📢 Document uploadé | id=${doc.id} | name="${doc.name}" | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${!!entity.notify_client}`,
+      `📢 Document uploadé | id=${doc.id} | name="${doc.name}" | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${notifyClient}`,
     );
 
     await this.notify({
@@ -56,11 +58,16 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
         client: {
           user_id: client?.user_id,
           email: client?.email,
-          notify: !!entity.notify_client,
+          notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
       },
       entity: { type: 'document', id: doc.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'document',
+        resource: doc as any,
+      }),
     });
   }
 

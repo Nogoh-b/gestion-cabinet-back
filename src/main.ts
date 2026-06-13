@@ -22,7 +22,30 @@ import LocationSeeder from './modules/geography/seeder/location.seeder';
 
 dotenv.config();
 
+async function fixRowFormat() {
+  const mysql = await import('mysql2/promise');
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306', 10),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'core_banking',
+  });
+  try {
+    await conn.execute('ALTER TABLE notifications ROW_FORMAT=DYNAMIC');
+    console.log('✅ notifications ROW_FORMAT=DYNAMIC applied');
+  } catch (err: any) {
+    // Already DYNAMIC, or table doesn't exist yet — both are fine
+    if (!err.message?.includes('already') && !err.message?.includes("doesn't exist")) {
+      console.warn('ROW_FORMAT fix skipped:', err.message);
+    }
+  } finally {
+    await conn.end();
+  }
+}
+
 async function bootstrap() {
+  await fixRowFormat();
   // bodyParser:false → on remplace le parser par défaut (limite 100kb) par le nôtre
   // avec une limite large, pour accepter les logos envoyés en data-URI base64.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {

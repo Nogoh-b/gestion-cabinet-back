@@ -64,6 +64,8 @@ import { PlansModule } from './modules/plans/plans.module';
 import { PdfTemplatesModule } from './modules/pdf-templates/pdf-templates.module';
 import { MailTemplateModule } from './modules/mail-template/mail-template.module';
 import { TemplateBlocksModule } from './modules/template-blocks/template-blocks.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
 
 
 
@@ -85,6 +87,9 @@ dotenv.config();
      CoreModule,
     CabinetModule,
     OnboardingModule,
+
+    EventEmitterModule.forRoot(),
+    ComptabiliteModule,
 
     // 2. Modules indépendants
     IamModule,

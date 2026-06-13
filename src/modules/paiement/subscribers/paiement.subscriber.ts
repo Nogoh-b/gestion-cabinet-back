@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Paiement } from '../entities/paiement.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 
 /**
  * Subscriber métier pour les paiements.
@@ -46,11 +47,12 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     const paiement = await this.load(entity.id as any);
     if (!paiement?.facture) return;
     const facture: any = paiement.facture;
+    const notifyClient = this.resolveTransientBoolean('notify_client', entity, paiement as any);
 
     const currencySymbol = await this.getCurrencySymbol();
 
     this.logger.log(
-      `📢 Paiement reçu | id=${paiement.id} | montant=${formatMoney(paiement.montant, currencySymbol)} | facture=${facture.numero} | notify_client=${!!entity.notify_client}`,
+      `📢 Paiement reçu | id=${paiement.id} | montant=${formatMoney(paiement.montant, currencySymbol)} | facture=${facture.numero} | notify_client=${notifyClient}`,
     );
 
     await this.notify({
@@ -64,11 +66,16 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
         client: {
           user_id: facture.client?.user_id,
           email: facture.client?.email,
-          notify: !!entity.notify_client,
+          notify: notifyClient,
         },
         lawyer_id: facture.dossier?.lawyer_id ?? null,
       },
       entity: { type: 'paiement', id: paiement.id as any },
+      emailContext: buildEntityMailContext({
+        dossier: facture.dossier as any,
+        resourceType: 'paiement',
+        resource: paiement as any,
+      }),
     });
   }
 

@@ -65,6 +65,9 @@ const ROLES_CONFIG: {
       'validate_supplier_invoice', 'pay_supplier_invoice',
       'view_expense_reports', 'create_expense_report', 'edit_expense_report', 'delete_expense_report',
       'validate_expense_report', 'reimburse_expense_report',
+      // Comptabilité (accès complet)
+      'view_accounting', 'create_ecriture', 'edit_ecriture', 'delete_ecriture',
+      'manage_chart_of_accounts', 'open_exercice', 'close_exercice', 'view_accounting_reports',
     ],
   },
 
@@ -101,6 +104,8 @@ const ROLES_CONFIG: {
       'view_payroll', 'view_payroll_periods', 'view_payslips', 'download_payslip',
       // Dépenses (consultation + notes de frais)
       'view_expenses', 'view_suppliers', 'view_supplier_invoices', 'view_expense_reports', 'create_expense_report',
+      // Comptabilité (consultation)
+      'view_accounting', 'view_accounting_reports',
     ],
   },
 
@@ -146,6 +151,8 @@ const ROLES_CONFIG: {
       'view_expenses', 'view_suppliers', 'create_supplier', 'edit_supplier',
       'view_supplier_invoices', 'create_supplier_invoice', 'edit_supplier_invoice',
       'view_expense_reports', 'create_expense_report', 'edit_expense_report',
+      // Comptabilité (gestion courante)
+      'view_accounting', 'create_ecriture', 'edit_ecriture', 'open_exercice', 'view_accounting_reports',
     ],
   },
 

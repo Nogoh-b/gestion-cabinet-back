@@ -15,6 +15,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 
 import { MailService } from '../shared/emails/emails.service';
+import { MailTemplateService } from '../../modules/mail-template/mail-template.service';
 import { AuthTokenService } from './auth-token.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -34,6 +35,7 @@ export class AuthService {
     private mailService: MailService,
     private authTokenService: AuthTokenService,
     private tenantContext: TenantContext,
+    private mailTemplateService: MailTemplateService,
   ) {}
 
   /**
@@ -170,9 +172,10 @@ export class AuthService {
    */
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ success: boolean; message: string }> {
     const { email } = forgotPasswordDto;
+    const tenantId = this.tenantContext.getTenantId();
 
     // Vérifier si l'utilisateur existe
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmailForPasswordReset(email, tenantId);
     if (!user) {
       // Pour des raisons de sécurité, on ne révèle pas si l'email existe ou non
       return { 
@@ -184,17 +187,28 @@ export class AuthService {
     // Créer un OTP
     const { otp, expiresAt } = await this.authTokenService.createOTP(email, 'reset_password');
 
-    // Envoyer l'email avec l'OTP
-    await this.mailService.sendDirect({
-      to: email,
-      subject: 'Code de réinitialisation de mot de passe',
-      templateName: 'auth/otp-reset-password',
-      context: {
-        otp,
-        expiresIn: 10,
-        userName: user.first_name || user.username || 'Utilisateur',
-      }
-    });
+    // Envoyer l'email avec l'OTP — template DB `otp_code` en priorité,
+    // repli sur le template fichier si le template DB n'est pas disponible.
+    const otpUserName = user.first_name || user.username || 'Utilisateur';
+    try {
+      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
+        firstName: otpUserName,
+        otpCode: otp,
+        expiryMinutes: 10,
+      });
+      await this.mailService.sendDirect({
+        to: email,
+        subject: rendered.subject || 'Code de réinitialisation de mot de passe',
+        html: rendered.html,
+      });
+    } catch {
+      await this.mailService.sendDirect({
+        to: email,
+        subject: 'Code de réinitialisation de mot de passe',
+        templateName: 'auth/otp-reset-password',
+        context: { otp, expiresIn: 10, userName: otpUserName },
+      });
+    }
 
     return {
       success: true,
@@ -241,24 +255,58 @@ export class AuthService {
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
+    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
 
     // Hasher le nouveau mot de passe
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Mettre à jour le mot de passe
-    await this.usersService.update(user.id, {password:hashedPassword});
+    await this.tenantContext.run(userTenantId, async () => {
+      await this.usersService.update(user.id, {password:hashedPassword});
+    });
 
     // Marquer le token comme utilisé
     await this.authTokenService.markTokenAsUsed(token);
 
+    // Confirmation de changement de mot de passe (ne bloque jamais le flux).
+    // Template DB `password_changed` en priorité, repli sur un HTML inline.
+    try {
+      const pcFirstName = user.first_name || user.username || '';
+      const pcChangedAt = new Date().toLocaleString('fr-FR');
+      let pcSubject = 'Votre mot de passe a été modifié';
+      let pcHtml =
+        `<h2 style="margin-top:0;">Mot de passe modifié</h2>` +
+        `<p>Bonjour ${pcFirstName},</p>` +
+        `<p>Nous vous confirmons que votre mot de passe a bien été modifié le ${pcChangedAt}.</p>` +
+        `<p style="color:#dc2626;font-size:13px;">Si vous n'êtes pas à l'origine de cette opération, contactez immédiatement votre administrateur.</p>`;
+      try {
+        const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('password_changed', {
+          firstName: pcFirstName,
+          changedAt: pcChangedAt,
+        });
+        if (rendered?.html) {
+          pcSubject = rendered.subject || pcSubject;
+          pcHtml = rendered.html;
+        }
+      } catch {
+        // template DB indisponible → repli inline
+      }
+      await this.mailService.sendDirect({ to: email, subject: pcSubject, html: pcHtml });
+    } catch (mailErr) {
+      this.logger.warn(`[resetPassword] Email de confirmation non envoyé : ${(mailErr as Error)?.message}`);
+    }
+
     // Optionnel: Générer un nouveau token JWT pour connecter l'utilisateur automatiquement
-    const employee = await this.employeeService.findByEmail(email);
+    let employee: any = null;
+    await this.tenantContext.run(userTenantId, async () => {
+      employee = await this.employeeService.findByEmail(email);
+    });
     const role = user.role;
-    const permissionObjects = await this.usersService.getUserPermissions(user.id);
+    const permissionObjects = await this.tenantContext.run(userTenantId, () => this.usersService.getUserPermissions(user.id));
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
@@ -266,7 +314,7 @@ export class AuthService {
       username: user.email,
       role,
       permissions,
-      tenantId: (employee as any)?.tenant_id ?? (user as any)?.tenant_id ?? 1,
+      tenantId: (employee as any)?.tenant_id ?? userTenantId,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -301,10 +349,11 @@ export class AuthService {
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
+    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
 
     // Vérifier si l'utilisateur a déjà un mot de passe
     if (user.password) {
@@ -315,15 +364,20 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Mettre à jour le mot de passe
-    await this.usersService.update(user.id, {password:hashedPassword});
+    await this.tenantContext.run(userTenantId, async () => {
+      await this.usersService.update(user.id, {password:hashedPassword});
+    });
 
     // Marquer le token comme utilisé
     await this.authTokenService.markTokenAsUsed(token);
 
     // Générer un token JWT pour connecter l'utilisateur automatiquement
-    const employee = await this.employeeService.findByEmail(email);
+    let employee: any = null;
+    await this.tenantContext.run(userTenantId, async () => {
+      employee = await this.employeeService.findByEmail(email);
+    });
     const role = user.role;
-    const permissionObjects = await this.usersService.getUserPermissions(user.id);
+    const permissionObjects = await this.tenantContext.run(userTenantId, () => this.usersService.getUserPermissions(user.id));
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
@@ -331,20 +385,27 @@ export class AuthService {
       username: user.email,
       role,
       permissions,
-      tenantId: (employee as any)?.tenant_id ?? (user as any)?.tenant_id ?? 1,
+      tenantId: (employee as any)?.tenant_id ?? userTenantId,
     };
 
     const accessToken = this.jwtService.sign(payload);
 
-    // Envoyer un email de confirmation
-    await this.mailService.sendDirect({
-      to: email,
-      subject: 'Bienvenue sur LexiGuard',
-      templateName: 'entities/auth/welcome-set-password',
-      context: {
-        userName: user.first_name || user.username || 'Utilisateur',
-      }
-    });
+    // Email de bienvenue — template DB `account_opening` en priorité, repli fichier.
+    const spFirstName = user.first_name || user.username || 'Utilisateur';
+    try {
+      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('account_opening', {
+        firstName: spFirstName,
+        loginUrl: process.env.APP_FRONTEND_URL ? `${process.env.APP_FRONTEND_URL}/login` : '',
+      });
+      await this.mailService.sendDirect({ to: email, subject: rendered.subject, html: rendered.html });
+    } catch {
+      await this.mailService.sendDirect({
+        to: email,
+        subject: 'Bienvenue sur LexiGuard',
+        templateName: 'entities/auth/welcome-set-password',
+        context: { userName: spFirstName },
+      });
+    }
 
     return {
       success: true,

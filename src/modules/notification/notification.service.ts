@@ -82,7 +82,7 @@ export class NotificationService {
           user_id: createNotificationDto.user_id,
         } as UserNotification);
         try {
-          await this.mainGateway.sendToUser(
+          const delivered = await this.mainGateway.sendToUser(
             createNotificationDto.user_id,
             'new_notification',
             payload,
@@ -92,6 +92,9 @@ export class NotificationService {
             createNotificationDto.user_id,
             'new_notification',
             this.toUnreadCountPayload(unreadCount),
+          );
+          this.logger.log(
+            `  │  socket notif user#${createNotificationDto.user_id} | delivered=${delivered} | unread=${unreadCount}`,
           );
         } catch (err) {
           this.logger.warn(
@@ -120,6 +123,9 @@ export class NotificationService {
     await queryRunner.startTransaction();
 
     try {
+      this.logger.log(
+        `📦 createBulk start | type=${createBulkDto.type} | sender=${senderId} | recipients=[${createBulkDto.user_ids.join(', ')}] | title="${createBulkDto.title}"`,
+      );
       // 1. Créer une seule notification pour tous
       const notification = this.notificationRepository.create({
         type: createBulkDto.type as Notification['type'],
@@ -132,9 +138,10 @@ export class NotificationService {
         actions: createBulkDto.actions ?? [],
         user_id: senderId
       });
-      console.log('Creating bulk notification with data:', createBulkDto.user_ids);
-
       const savedNotification = await queryRunner.manager.save(notification);
+      this.logger.log(
+        `  ├─ notification sauvegardée | notification_id=${savedNotification.id} | type=${savedNotification.type}`,
+      );
 
       // 2. Créer les entrées dans la table pivot pour tous les utilisateurs
       const userNotifications = createBulkDto.user_ids.map(userId => 
@@ -147,6 +154,9 @@ export class NotificationService {
       );
 
       const savedUserNotifications = await queryRunner.manager.save(userNotifications);
+      this.logger.log(
+        `  ├─ pivots user_notifications créés | count=${savedUserNotifications.length}`,
+      );
 
       await queryRunner.commitTransaction();
 
@@ -168,7 +178,7 @@ export class NotificationService {
         savedUserNotifications.map(async (userNotif) => {
           const payload = this.toSocketPayload(savedNotification, userNotif);
           try {
-            await this.mainGateway.sendToUser(
+            const delivered = await this.mainGateway.sendToUser(
               userNotif.user_id,
               'new_notification',
               payload,
@@ -180,6 +190,9 @@ export class NotificationService {
               userNotif.user_id,
               'new_notification',
               this.toUnreadCountPayload(unreadCount),
+            );
+            this.logger.log(
+              `  │  socket notif user#${userNotif.user_id} | delivered=${delivered} | unread=${unreadCount}`,
             );
           } catch (err) {
             this.logger.warn(

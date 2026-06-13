@@ -146,6 +146,26 @@ export class Payslip extends TenantEntity {
   })
   notes: string;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, name: 'total_employer_charges' })
+  @BusinessColumn({
+    label: 'Charges patronales',
+    description: 'Total des cotisations à la charge de l\'employeur (hors net)',
+    unit: 'XAF',
+    importance: 'medium',
+    group: 'financier',
+  })
+  total_employer_charges: number;
+
+  @Column({ type: 'json', nullable: true })
+  @BusinessColumn({
+    label: 'Instantané de calcul',
+    description: 'Copie figée des montants et du barème au moment de la validation (auditabilité légale)',
+    importance: 'low',
+    group: 'audit',
+    ignored: true,
+  })
+  snapshot: Record<string, any> | null;
+
   @OneToMany(() => PayslipLine, (line) => line.payslip)
   lines: PayslipLine[];
 

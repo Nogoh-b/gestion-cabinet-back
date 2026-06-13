@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Diligence, DiligenceStatus } from '../entities/diligence.entity';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 
 /**
  * Subscriber métier pour les diligences.
@@ -41,9 +42,14 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
     // En fallback (loaded === null), le dossier n'est pas chargé via la relation,
     // on utilise un objet partiel avec au moins l'id pour le lien.
     const dossier: any = diligence.dossier ?? (diligence.dossier_id ? { id: diligence.dossier_id } : null);
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity,
+      diligence as any,
+    );
 
     this.logger.log(
-      `📢 Diligence créée | id=${diligence.id} | title="${diligence.title}" | dossier=${dossier?.id ?? '?'} | lawyer=${diligence.assigned_lawyer_id ?? '?'} | notify_client=${!!entity.notify_client} | description="${diligence.description?.trim() || '(vide)'}"`,
+      `📢 Diligence créée | id=${diligence.id} | title="${diligence.title}" | dossier=${dossier?.id ?? '?'} | lawyer=${diligence.assigned_lawyer_id ?? '?'} | notify_client=${notifyClient} | description="${diligence.description?.trim() || '(vide)'}"`,
     );
 
     await this.notify({
@@ -55,12 +61,17 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
         client: {
           user_id: (dossier?.client as any)?.user_id,
           email: (dossier?.client as any)?.email,
-          notify: !!entity.notify_client,
+          notify: notifyClient,
         },
         // L'avocat assigné peut être différent de l'avocat principal du dossier
         lawyer_id: diligence.assigned_lawyer_id ?? dossier?.lawyer_id ?? null,
       },
       entity: { type: 'diligence', id: diligence.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'diligence',
+        resource: diligence as any,
+      }),
     });
   }
 
@@ -76,9 +87,15 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
 
     const id = entity.id ?? (event.databaseEntity as Diligence)?.id;
     if (!id) return;
-    const diligence = await this.load(id);
+    const diligence = await this.load(id).catch(() => null);
     if (!diligence) return;
     const dossier: any = diligence.dossier;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      event.databaseEntity as any,
+      diligence as any,
+    );
 
     await this.notify({
       event: NotifiableEvent.DILIGENCE_COMPLETED,
@@ -89,11 +106,16 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
         client: {
           user_id: (dossier?.client as any)?.user_id,
           email: (dossier?.client as any)?.email,
-          notify: !!(entity as Diligence).notify_client,
+          notify: notifyClient,
         },
         lawyer_id: diligence.assigned_lawyer_id ?? dossier?.lawyer_id ?? null,
       },
       entity: { type: 'diligence', id: diligence.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'diligence',
+        resource: diligence as any,
+      }),
     });
   }
 

@@ -54,13 +54,37 @@ export abstract class NotifiableSubscriber<
     );
     try {
       await this.notificationDispatcher.dispatch(payload);
-      this.logger.log(`✅ notify(${payload.event}) dispatch terminé`);
+      this.logger.log(`✅ notify(${payload.event}) dispatch terminé`); 
     } catch (err) {
       this.logger.error(
         `notify(${payload.event}) ignoré : ${(err as Error).message}`,
         (err as Error).stack,
       );
     }
+  }
+
+  /**
+   * Résout un booléen transient (ex: `notify_client`) depuis plusieurs sources.
+   * Priorité : première source qui porte explicitement un booléen.
+   */
+  protected resolveTransientBoolean(
+    key: string,
+    ...sources: Array<Record<string, any> | null | undefined>
+  ): boolean {
+    for (const source of sources) {
+      if (typeof source?.[key] === 'boolean') {
+        return source[key];
+      }
+      if (typeof source?.[key] === 'string') {
+        const normalized = source[key].trim().toLowerCase();
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'off', ''].includes(normalized)) return false;
+      }
+      if (typeof source?.[key] === 'number') {
+        return source[key] === 1;
+      }
+    }
+    return false;
   }
 
   // Les hooks `onAfterCreate` / `onAfterUpdate` sont hérités de

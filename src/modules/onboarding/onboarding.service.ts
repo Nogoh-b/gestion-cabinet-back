@@ -18,6 +18,8 @@ import { CabinetService } from '../cabinet/cabinet.service';
 import { PlansService } from '../plans/plans.service';
 import { OnboardingDto } from './onboarding.dto';
 import { JwtPayload } from 'src/core/auth/interfaces/jwt-payload.interface';
+import { MailService } from 'src/core/shared/emails/emails.service';
+import { MailTemplateService } from '../mail-template/mail-template.service';
 
 @Injectable()
 export class OnboardingService {
@@ -35,7 +37,41 @@ export class OnboardingService {
     private readonly plansService:   PlansService,
     private readonly jwtService:     JwtService,
     private readonly dataSource:     DataSource,
+    private readonly mailService:    MailService,
+    private readonly mailTemplateService: MailTemplateService,
   ) {}
+
+  /**
+   * Email de bienvenue au nouveau cabinet (souscription).
+   * Rend le template DB `tenant_welcome` (avec repli sur un HTML inline si le
+   * template n'est pas encore seedé pour ce tenant). Ne lève JAMAIS d'erreur
+   * pour ne pas annuler la création du cabinet.
+   */
+  private async sendTenantWelcome(to: string, ctx: Record<string, any>): Promise<void> {
+    try {
+      let subject = `Bienvenue sur ${ctx.appName}, ${ctx.cabinetName} !`;
+      let html =
+        `<h2 style="margin-top:0;">Bienvenue ${ctx.firstName},</h2>` +
+        `<p>Le cabinet <strong>${ctx.cabinetName}</strong> a été créé avec succès.</p>` +
+        `<p>Votre code cabinet : <strong>${ctx.tenantCode}</strong></p>` +
+        `<p style="margin:24px 0;"><a href="${ctx.loginUrl}" style="background:${ctx.brandColor};color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;">Accéder à mon cabinet</a></p>`;
+      try {
+        const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('tenant_welcome', ctx);
+        if (rendered?.html) {
+          subject = rendered.subject || subject;
+          html = rendered.html;
+        }
+      } catch {
+        // Template non disponible pour ce tenant → on garde le repli inline.
+      }
+      // sendDirect attend le vrai envoi SMTP (contrairement à create() qui est
+      // fire-and-forget) → on remonte les erreurs d'envoi dans le log ci-dessous.
+      await this.mailService.sendDirect({ to, subject, html });
+      this.logger.log(`[Onboarding] Email de bienvenue envoyé à ${to}`);
+    } catch (err) {
+      this.logger.warn(`[Onboarding] Email de bienvenue NON envoyé à ${to} : ${(err as Error)?.message}`);
+    }
+  }
 
   async register(dto: OnboardingDto) {
     // ── 0. Vérifier unicité email ─────────────────────────────────────────
@@ -122,6 +158,16 @@ export class OnboardingService {
 
         // ── 4. URL d'accès ───────────────────────────────────────────────
         const tenant_url = this.cabinetService.getCabinetUrl(cabinet);
+
+        // ── 4b. Email de bienvenue au cabinet (ne bloque jamais l'onboarding) ──
+        await this.sendTenantWelcome(savedUser.email, {
+          firstName:   savedUser.first_name,
+          cabinetName: cabinet.name,
+          appName:     'KabySoft',
+          loginUrl:    tenant_url,
+          tenantCode:  cabinet.code,
+          brandColor:  '#1d4ed8',
+        });
 
         // ── 5. Retour — valeur propagée via la Promise de run() ──────────
         return {

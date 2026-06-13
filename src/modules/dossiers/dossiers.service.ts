@@ -270,6 +270,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       opening_date: createDossierDto.opening_date ? new Date(createDossierDto.opening_date) : new Date(),
       status: DossierStatus.OPEN,
     });
+    // Champ transient consommé par DossierSubscriber pour notifier le client.
+    (dossier as any).notify_client = !!createDossierDto.notify_client;
 
     // Gestion des collaborateurs
     if (createDossierDto.collaborator_ids && createDossierDto.collaborator_ids.length > 0) {
@@ -626,6 +628,9 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       ...updateDossierDto,
       dossier_number: dossier.dossier_number, // protection
     });
+    if (updateDossierDto.notify_client !== undefined) {
+      (dossier as any).notify_client = !!updateDossierDto.notify_client;
+    }
     console.log(updateDossierDto, dossier);
     dossier.confidentiality_level = (dossier.confidentiality_level);
     const updatedDossier = await this.dossierRepository.save(dossier);

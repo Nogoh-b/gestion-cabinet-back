@@ -62,6 +62,7 @@ import { TenantResolverMiddleware } from './tenant/tenant-resolver.middleware';
 import { ChatModule } from 'src/modules/chat/chat.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 import { EmailsModule } from './shared/emails/emails.module';
+import { MailTemplateModule } from 'src/modules/mail-template/mail-template.module';
 import { EmailService } from './shared/services/email/email.service copy';
 import { AuthToken } from './auth/entities/auth-token.entity';
 import { AuthTokenService } from './auth/auth-token.service';
@@ -103,6 +104,7 @@ import { CoreNotificationsModule } from './notifications/core-notifications.modu
     // forwardRef(() => AgenciesModule),
     // forwardRef(() => SavingsAccountModule),
     EmailsModule,
+    MailTemplateModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
@@ -187,6 +189,7 @@ import { CoreNotificationsModule } from './notifications/core-notifications.modu
     ConfigModule,
     EmailService,
     EmailsModule,
+    MailTemplateModule,
     JwtModule,
     TypeOrmModule,
     JwtModule,
