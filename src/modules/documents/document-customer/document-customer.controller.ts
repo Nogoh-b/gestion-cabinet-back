@@ -35,6 +35,7 @@ import {
   ParseIntPipe,
   Res,
   NotFoundException,
+  StreamableFile,
 } from '@nestjs/common';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
@@ -281,47 +282,52 @@ export class DocumentCustomerController {
 @UseGuards(JwtAuthGuard)
 async streamDocument(
   @Param('id') id: string,
-  @CurrentUser() user: User,
-  @Res() res: Response,
-) {
-  try {
-    const document = await this.service.findOne(+id);
-    
-    if (!document || !document.file_path) {
-      return res.status(404).json({ error: 'Document non trouvé' });
-    }
-    
-    // Vérifier les permissions
-    // await this.service.verifyAccess(id, user.id);
-    
-    // Rediriger vers l'URL publique si disponible
-    if (document.file_url && document.file_url.startsWith('http')) {
-      return res.redirect(document.file_url);
-    }
-    
-    // Sinon, servir le fichier localement
-    let filePath = document.file_path;
-    
-    // Remplacer les séparateurs pour Windows
-    filePath = filePath.replace(/\\/g, path.sep).replace(/\//g, path.sep);
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Fichier non trouvé' });
-    }
-    
-    const mimeType = document.file_mimetype || this.service.getMimeType(filePath);
-    
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${document.original_name || 'document'}"`);
-    
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
-    console.log(stream)
-    
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+): Promise<StreamableFile> {
+  const document = await this.service.findOne(+id);
+
+  if (!document) {
+    throw new NotFoundException('Document non trouvé');
   }
+
+  // Type MIME : on garde le mimetype complet stocké (ex: application/pdf),
+  // sinon on le déduit de l'extension.
+  const nameForExt = (document as any).original_name || document.name || document.file_path || '';
+  const ext = nameForExt.split('.').pop()?.toLowerCase() || '';
+  const mimeType =
+    document.file_mimetype && document.file_mimetype.includes('/')
+      ? document.file_mimetype
+      : this.service.getMimeType(ext);
+
+  // "inline" = visualisation dans le navigateur, pas de téléchargement.
+  // On renvoie un StreamableFile basé sur un Buffer (longueur connue →
+  // Content-Length défini) : indispensable pour que le proxy/rewrite Next
+  // relaie correctement la réponse au lieu de la réduire à un 204.
+  const opts = {
+    type: mimeType,
+    disposition: `inline; filename="${(document as any).original_name || document.name || 'document'}"`,
+  };
+
+  // 1) Fichier local → on lit les octets et on les renvoie.
+  //    On NE redirige JAMAIS vers l'URL statique : cela déclencherait une
+  //    requête cross-origin sans en-tête CORS côté navigateur.
+  if (document.file_path) {
+    const filePath = document.file_path.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+    if (fs.existsSync(filePath)) {
+      return new StreamableFile(fs.readFileSync(filePath), opts);
+    }
+  }
+
+  // 2) Fichier distant → on le récupère côté serveur et on renvoie les octets
+  //    (toujours aucune redirection visible par le navigateur).
+  if (document.file_url && document.file_url.startsWith('http')) {
+    const upstream = await fetch(document.file_url);
+    if (!upstream.ok) {
+      throw new NotFoundException('Fichier distant inaccessible');
+    }
+    return new StreamableFile(Buffer.from(await upstream.arrayBuffer()), opts);
+  }
+
+  throw new NotFoundException('Fichier non trouvé');
 }
 
 // Alternative plus simple - Endpoint pour obtenir l'URL de stream
