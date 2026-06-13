@@ -1,12 +1,12 @@
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Diligence, DiligenceStatus } from '../entities/diligence.entity';
-import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 
 /**
  * Subscriber métier pour les diligences.
@@ -56,7 +56,7 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
       event: NotifiableEvent.DILIGENCE_ASSIGNED,
       title: `Nouvelle diligence — ${diligence.title}`,
       content: diligence.description?.trim() || `Diligence assignée`,
-      link: `/dossiers/${dossier?.id ?? ''}/diligences/${diligence.id}`,
+      link: `/dossiers/diligences/${diligence.id}`,
       audience: {
         client: {
           user_id: (dossier?.client as any)?.user_id,
