@@ -14,6 +14,7 @@ import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
@@ -27,6 +28,7 @@ export class AiDatabaseController {
     private readonly aiDbService: AiDatabaseService,
     private readonly schemaMetadata: SchemaMetadataService,
     private readonly conversationManager: ConversationManagerService,
+    private readonly tenantContext: TenantContext,
   ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
@@ -133,8 +135,18 @@ export class AiDatabaseController {
       if (typeof (res as any).flush === 'function') (res as any).flush();
     };
 
+    // Garantit l'isolation tenant sur TOUTE la durée du streaming SSE.
+    // L'interceptor global pose déjà le contexte, mais l'enrobage d'un Observable
+    // SSE long ne garantit pas la propagation de l'AsyncLocalStorage à chaque
+    // hop async (LLM, file d'attente de tokens…). On ré-ancre donc explicitement
+    // le contexte avec le tenant du JWT pour que `getCurrentTenantId()` (utilisé
+    // par l'injection SQL tenant et le patch Repository) reste fiable tout du long.
+    const tenantId: number = (user?.tenantId as number) ?? getCurrentTenantId();
+
     try {
-      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent);
+      await this.tenantContext.run(tenantId, () =>
+        this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent),
+      );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });
     } finally {

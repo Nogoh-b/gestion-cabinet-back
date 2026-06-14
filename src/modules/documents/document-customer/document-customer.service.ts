@@ -575,8 +575,9 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     try {
       console.log(join(UPLOAD_DOCS_PATH, dir))
       return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, dir),{
-        maxSizeKB: 300, // 3MB
-        quality: 70,
+        maxSizeKB: 3072, // 3MB
+        width: 1600,
+        quality: 75,
         ...(fileName && { fileName }),
       });
     } catch (error) {

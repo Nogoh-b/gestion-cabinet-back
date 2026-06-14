@@ -56,8 +56,11 @@ export class ReferralCommission extends TenantEntity {
   })
   dossier_referral: DossierReferral;
 
-  @Column({ type: 'int', nullable: true, name: 'facture_id' })
-  facture_id: number;
+  // ⚠️ Facture.id est un UUID (PrimaryGeneratedColumn('uuid')) → la colonne FK
+  // doit être varchar(36), pas int, sinon la valeur UUID est coercée et la
+  // contrainte FK échoue.
+  @Column({ type: 'varchar', length: 36, nullable: true, name: 'facture_id' })
+  facture_id: string;
 
   @ManyToOne(() => Facture, { nullable: true })
   @JoinColumn({ name: 'facture_id' })
@@ -69,8 +72,9 @@ export class ReferralCommission extends TenantEntity {
   })
   facture: Facture;
 
-  @Column({ type: 'int', nullable: true, name: 'paiement_id' })
-  paiement_id: number;
+  // ⚠️ Paiement.id est également un UUID → varchar(36).
+  @Column({ type: 'varchar', length: 36, nullable: true, name: 'paiement_id' })
+  paiement_id: string;
 
   @ManyToOne(() => Paiement, { nullable: true })
   @JoinColumn({ name: 'paiement_id' })

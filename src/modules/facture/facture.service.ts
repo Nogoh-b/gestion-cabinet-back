@@ -22,6 +22,7 @@ import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 import { StepsService } from '../dossiers/step.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
+import { MailService } from 'src/core/shared/emails/emails.service';
 
 
 
@@ -43,6 +44,7 @@ export class FactureService extends BaseServiceV1<Facture> {
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
     private readonly eventEmitter: EventEmitter2,
+    private readonly mailService: MailService,
   ) {
     super(repository, paginationService);
   }
@@ -179,6 +181,163 @@ export class FactureService extends BaseServiceV1<Facture> {
 
   async getFacturesByDossier(dossier_id: string): Promise<Facture[]> {
     return this.findAllV1({ dossier_id }, undefined, ['paiements']);
+  }
+
+  // ─── Utilitaires montants ────────────────────────────────────────────────
+  /** Total payé d'une facture (somme des paiements). */
+  private computePaid(facture: Facture): number {
+    return (facture.paiements ?? []).reduce(
+      (sum, p) => sum + Number(p?.montant ?? 0),
+      0,
+    );
+  }
+
+  /** Nom affichable d'un client (raison sociale ou prénom + nom). */
+  private clientLabel(client: any): string {
+    if (!client) return '';
+    return (
+      client.company_name ||
+      `${client.first_name ?? ''} ${client.last_name ?? ''}`.trim() ||
+      ''
+    );
+  }
+
+  // ─── EXPORT COMPTABLE (CSV) ───────────────────────────────────────────────
+  /**
+   * Génère un export CSV (séparateur `;`, BOM UTF-8 pour Excel) des factures
+   * d'un dossier. Utilisé par les boutons « Exporter » / « Export comptable ».
+   */
+  async exportDossierFacturesCsv(
+    dossierId: string,
+  ): Promise<{ filename: string; content: string }> {
+    const factures = await this.findAllV1(
+      { dossier_id: dossierId },
+      undefined,
+      ['paiements', 'client', 'dossier'],
+    );
+
+    const STATUT_LABELS: Record<string, string> = {
+      [StatutFacture.BROUILLON]: 'Brouillon',
+      [StatutFacture.ENVOYEE]: 'Envoyée',
+      [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
+      [StatutFacture.PAYEE]: 'Payée',
+      [StatutFacture.IMPAYEE]: 'Impayée',
+      [StatutFacture.ANNULEE]: 'Annulée',
+    };
+
+    const csvEscape = (v: any): string => {
+      const s = String(v ?? '').replace(/[\r\n]+/g, ' ');
+      return /[";]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const num = (v: any): string => Number(v ?? 0).toFixed(2);
+    const fmtDate = (d: any): string =>
+      d ? new Date(d).toLocaleDateString('fr-FR') : '';
+
+    const header = [
+      'Numéro', 'Date', 'Échéance', 'Client', 'Description',
+      'Montant HT', 'TVA', 'Montant TTC', 'Payé', 'Reste', 'Statut',
+    ];
+
+    const rows = factures.map((f) => {
+      const paid = this.computePaid(f);
+      const reste = Number(f.montantTTC ?? 0) - paid;
+      return [
+        f.numero, fmtDate(f.dateFacture), fmtDate(f.dateEcheance),
+        this.clientLabel(f.client), f.description,
+        num(f.montantHT), num(f.montantTVA), num(f.montantTTC),
+        num(paid), num(reste), STATUT_LABELS[f.status] ?? f.status,
+      ];
+    });
+
+    const csv = [header, ...rows]
+      .map((r) => r.map(csvEscape).join(';'))
+      .join('\n');
+
+    return {
+      filename: `factures-dossier-${dossierId}.csv`,
+      content: '﻿' + csv, // BOM → accents corrects dans Excel
+    };
+  }
+
+  // ─── RELANCE PAR EMAIL ────────────────────────────────────────────────────
+  /**
+   * Envoie une relance par email au client pour les factures non soldées
+   * d'un dossier. Utilisé par le bouton « Envoyer relance ».
+   */
+  async sendRelanceForDossier(
+    dossierId: string,
+  ): Promise<{ sent: boolean; count: number; to?: string; message: string }> {
+    const factures = await this.findAllV1(
+      { dossier_id: dossierId },
+      undefined,
+      ['paiements', 'client', 'dossier'],
+    );
+
+    const unpaid = factures.filter((f) => {
+      const reste = Number(f.montantTTC ?? 0) - this.computePaid(f);
+      return reste > 0.009 && f.status !== StatutFacture.ANNULEE;
+    });
+
+    if (unpaid.length === 0) {
+      return { sent: false, count: 0, message: 'Aucune facture impayée pour ce dossier.' };
+    }
+
+    const client = unpaid[0].client as any;
+    const to = client?.email;
+    if (!to) {
+      return {
+        sent: false,
+        count: unpaid.length,
+        message: "Le client n'a pas d'adresse email enregistrée.",
+      };
+    }
+
+    const fmtDate = (d: any) => (d ? new Date(d).toLocaleDateString('fr-FR') : '');
+    const fmtMoney = (v: any) =>
+      `${Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })}`;
+
+    let totalReste = 0;
+    const lignes = unpaid
+      .map((f) => {
+        const reste = Number(f.montantTTC ?? 0) - this.computePaid(f);
+        totalReste += reste;
+        return `<tr>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;">${f.numero}</td>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtDate(f.dateEcheance)}</td>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right;">${fmtMoney(f.montantTTC)}</td>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right;">${fmtMoney(reste)}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const dossierRef = (unpaid[0].dossier as any)?.dossier_number ?? `#${dossierId}`;
+    const html =
+      `<h2 style="margin-top:0;">Relance de paiement</h2>` +
+      `<p>Bonjour ${this.clientLabel(client) || 'Madame, Monsieur'},</p>` +
+      `<p>Sauf erreur de notre part, les factures suivantes du dossier <strong>${dossierRef}</strong> ` +
+      `restent à régler :</p>` +
+      `<table style="border-collapse:collapse;font-size:14px;">` +
+      `<thead><tr>` +
+      `<th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Numéro</th>` +
+      `<th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Échéance</th>` +
+      `<th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right;">Montant TTC</th>` +
+      `<th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right;">Reste dû</th>` +
+      `</tr></thead><tbody>${lignes}</tbody></table>` +
+      `<p style="margin-top:12px;"><strong>Total restant dû : ${fmtMoney(totalReste)}</strong></p>` +
+      `<p>Nous vous remercions de bien vouloir procéder au règlement dans les meilleurs délais.</p>`;
+
+    await this.mailService.sendDirect({
+      to,
+      subject: `Relance de paiement — dossier ${dossierRef}`,
+      html,
+    });
+
+    return {
+      sent: true,
+      count: unpaid.length,
+      to,
+      message: `Relance envoyée à ${to} (${unpaid.length} facture(s)).`,
+    };
   }
 
   async getFacturesByClient(clientId: string): Promise<Facture[]> {

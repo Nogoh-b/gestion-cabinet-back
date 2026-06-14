@@ -1,5 +1,5 @@
 // create-referral-commission.dto.ts
-import { IsNotEmpty, IsInt, IsNumber, IsDateString, IsOptional, IsString, Min } from 'class-validator';
+import { IsNotEmpty, IsInt, IsNumber, IsDateString, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateReferralCommissionDto {
@@ -8,15 +8,15 @@ export class CreateReferralCommissionDto {
   @IsNotEmpty()
   dossier_referral_id: number;
 
-  @ApiPropertyOptional({ example: 25, description: 'ID de la facture source' })
-  @IsInt()
+  @ApiPropertyOptional({ example: 'b1c2…uuid', description: 'ID (UUID) de la facture source' })
+  @IsUUID()
   @IsOptional()
-  facture_id?: number;
+  facture_id?: string;
 
-  @ApiPropertyOptional({ example: 12, description: 'ID du paiement source' })
-  @IsInt()
+  @ApiPropertyOptional({ example: 'a9f8…uuid', description: 'ID (UUID) du paiement source' })
+  @IsUUID()
   @IsOptional()
-  paiement_id?: number;
+  paiement_id?: string;
 
   @ApiProperty({ example: 2500.0, description: 'Montant de la commission' })
   @IsNumber()

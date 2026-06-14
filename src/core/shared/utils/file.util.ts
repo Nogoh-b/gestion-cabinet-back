@@ -1,14 +1,44 @@
 import { createWriteStream, existsSync } from 'fs';
+import * as fs from 'fs-extra'; // Ou utilisez 'fs/promises' avec Node.js natif
+import { mkdir } from 'fs/promises';
 import * as mime from 'mime-types';
 import { join } from 'path';
+
+
+
 import * as sharp from 'sharp';
-import * as fs from 'fs-extra'; // Ou utilisez 'fs/promises' avec Node.js natif
+import { AttachmentType } from 'src/modules/chat/entities/attachment.entity';
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 import { BUSINESS_RULES } from '../interfaces/business-rules.constants';
-import { AttachmentType } from 'src/modules/chat/entities/attachment.entity';
-import { mkdir } from 'fs/promises';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export interface UploadedFileInfo {
   fileName: string;
@@ -166,7 +196,6 @@ static async uploadFileV1(
   const fileUrl = `${APP_URL}${this.getRelativeUploadPath(uploadDir)}/${fileName}`;
   
   let finalBuffer: Buffer;
-  
   // Déterminer le type de fichier
   const fileType = this.determineFileType(file.mimetype, file.originalname);
   
@@ -179,6 +208,10 @@ static async uploadFileV1(
   let thumbnailPath: string | undefined;
 
   if (shouldProcessImage) {
+    if (!file.buffer?.length) {
+      throw new Error(`Buffer fichier vide ou absent pour l'image "${file.originalname}"`);
+    }
+
     // Traitement des images avec compression
     let sharpInstance = sharp(file.buffer);
 
@@ -212,24 +245,29 @@ static async uploadFileV1(
     }
     
     // Écrire le fichier traité
-    await sharp(finalBuffer).toFile(filePath);
+    await fs.writeFile(filePath, finalBuffer);
+  console.log('vontrol1')
     
     // Générer une miniature
     if (fileType === AttachmentType.IMAGE) {
+  console.log('vontrol1.5')
+
       const thumbnailResult = await this.generateThumbnail(
         filePath, 
-        fileName, 
+        fileName,  
         uploadDir,
         APP_URL,
         UPLOADS_URL_PREFIX
       );
       thumbnailPath = thumbnailResult.thumbnailPath;
       thumbnailUrl = thumbnailResult.thumbnailUrl;
+
     }
 
   } else {
     // Traitement des fichiers non-images
     finalBuffer = file.buffer;
+  console.log('vontrol2')
     
     await new Promise<void>((resolve, reject) => {
       const stream = createWriteStream(filePath);
@@ -238,6 +276,7 @@ static async uploadFileV1(
       stream.end(finalBuffer);
     });
   }
+  console.log('vontrol3')
 
   // Obtenir la taille réelle du fichier
   const actualFileSize = await this.getActualFileSize(filePath);
@@ -265,13 +304,14 @@ static async uploadFileV1(
  */
 private static async generateThumbnail(
   originalPath: string,
-  originalFileName: string,
+  originalFileName: string, 
   basePath: string,
   appUrl: string,
   urlPrefix: string
 ): Promise<{ thumbnailPath: string; thumbnailUrl: string }> {
-  const thumbnailName = `thumb_${originalFileName}`;
-  const thumbnailDir = join(basePath, 'thumbnails');
+  const thumbnailBaseName = originalFileName.replace(/\.[^.]+$/, '');
+  const thumbnailName = `thumb_${thumbnailBaseName}.jpg`;
+  const thumbnailDir = join(basePath, 'thumbnails'); 
   const thumbnailPath = join(thumbnailDir, thumbnailName);
   const thumbnailUrl = `${appUrl}${this.getRelativeUploadPath(basePath)}/thumbnails/${thumbnailName}`;
   
@@ -279,14 +319,25 @@ private static async generateThumbnail(
   if (!existsSync(thumbnailDir)) {
     await mkdir(thumbnailDir, { recursive: true });
   }
+      console.log('vontrol1.5.0')
   
   // Générer la miniature
-  await sharp(originalPath)
-    .resize(200, 200, {
-      fit: 'inside',
-      withoutEnlargement: true
-    })
-    .toFile(thumbnailPath);
+  try {
+    const originalBuffer = await fs.readFile(originalPath);
+    const thumbnailBuffer = await sharp(originalBuffer)
+      .resize(200, 200, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({ quality: 75 })
+      .toBuffer();
+
+    await fs.writeFile(thumbnailPath, thumbnailBuffer);
+      console.log('vontrol1.5.0.0.0') 
+
+  } catch (error) {
+    console.warn(`Miniature non generee pour ${originalFileName}:`, error.message);
+  }
   
   return { thumbnailPath, thumbnailUrl };
 }
@@ -436,14 +487,14 @@ private static determineFileType(mimetype: string, filename: string): Attachment
 
     // Si on arrive ici, retourner la plus petite version obtenue
     console.log(`Compression minimale: ${compressedBuffer!.length} bytes`);
-    return compressedBuffer!;
+    return compressedBuffer!; 
   }
 
   static isValidMimeType(mimeType: string): boolean {
     return BUSINESS_RULES.DOCUMENT.ALLOWED_MIME_TYPES.includes(mimeType);
   }
 
-  static isValidFileSize(size: number): boolean {
+  static isValidFileSize(size: number): boolean { 
     return size <= BUSINESS_RULES.DOCUMENT.MAX_FILE_SIZE;
   }
 

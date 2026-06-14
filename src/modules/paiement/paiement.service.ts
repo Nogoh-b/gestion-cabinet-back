@@ -1,12 +1,16 @@
 // src/paiement/paiement.service.ts
 import { plainToInstance } from 'class-transformer';
+import { join } from 'path';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
+
+
 import { Repository } from 'typeorm';
+
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-
-
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { StatutFacture } from '../facture/dto/create-facture.dto';
@@ -16,9 +20,7 @@ import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { Paiement } from './entities/paiement.entity';
-import { join } from 'path';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+
 
 
 
@@ -93,6 +95,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     console.log(facture.montantPaye ,' ', (paiement.montant) , ' ' ,facture.montantTTC)
 
     if (paiementSauvegarde.status === StatutPaiement.VALIDE) {
+      console.log('Émission de l\'événement paiement.valide pour le paiement ID', paiementSauvegarde.id);
       this.eventEmitter.emit('paiement.valide', { ...paiementSauvegarde, facture });
     }
 

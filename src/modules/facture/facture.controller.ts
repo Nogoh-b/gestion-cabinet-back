@@ -11,8 +11,10 @@ import {
   Delete,
   Query,
   HttpStatus,
-  ParseUUIDPipe
+  ParseUUIDPipe,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
 
@@ -120,6 +122,23 @@ export class FactureController {
   @ApiParam({ name: 'dossierId', type: String })
   async getByDossier(@Param('dossierId') dossierId: string) {
     return this.factureService.getFacturesByDossier(dossierId);
+  }
+
+  @Get('dossier/:dossierId/export')
+  @ApiOperation({ summary: 'Exporter les factures d\'un dossier (CSV comptable)' })
+  @ApiParam({ name: 'dossierId', type: String })
+  async exportByDossier(@Param('dossierId') dossierId: string, @Res() res: Response) {
+    const { filename, content } = await this.factureService.exportDossierFacturesCsv(dossierId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(content);
+  }
+
+  @Post('dossier/:dossierId/relance')
+  @ApiOperation({ summary: 'Envoyer une relance de paiement au client pour les factures impayées du dossier' })
+  @ApiParam({ name: 'dossierId', type: String })
+  async relanceByDossier(@Param('dossierId') dossierId: string) {
+    return this.factureService.sendRelanceForDossier(dossierId);
   }
 
   @Get('client/:clientId')

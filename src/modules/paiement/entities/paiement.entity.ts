@@ -30,7 +30,7 @@ export class Paiement extends TenantEntity {
     group: 'technique',
     ignored: true
   })
-  id: number;
+  id: string;
 
   @Column({ name: 'facture_id' })
   @BusinessColumn({

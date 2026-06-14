@@ -161,7 +161,25 @@ export class EcrituresService {
 
   private async genererNumero(codeJournal: string): Promise<string> {
     const annee = new Date().getFullYear();
-    const count = await this.ecritureRepo.count();
-    return `${codeJournal}-${annee}-${String(count + 1).padStart(5, '0')}`;
+    const prefix = `${codeJournal}-${annee}-`;
+    const last = await this.ecritureRepo
+      .createQueryBuilder('e')
+      .where('e.numero LIKE :prefix', { prefix: `${prefix}%` })
+      .orderBy('e.numero', 'DESC')
+      .getOne();
+
+    const lastSequence = last?.numero?.startsWith(prefix)
+      ? Number(last.numero.slice(prefix.length))
+      : 0;
+    let sequence = Number.isFinite(lastSequence) ? lastSequence + 1 : 1;
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const numero = `${prefix}${String(sequence).padStart(5, '0')}`;
+      const exists = await this.ecritureRepo.findOne({ where: { numero } });
+      if (!exists) return numero;
+      sequence += 1;
+    }
+
+    return `${prefix}${Date.now().toString(36).toUpperCase()}`;
   }
 }

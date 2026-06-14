@@ -23,6 +23,7 @@ import { ReferrersController } from './referral.controller';
 import { DossierReferralWriteHandler } from './dossier-referral-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { ReferralCommissionListener } from './referral-commission.listener';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     ReferralCommissionsService,
     ReferrersService,
     DossierReferralWriteHandler,
+    ReferralCommissionListener,
   ],
   exports: [
     DossierReferralsService,
