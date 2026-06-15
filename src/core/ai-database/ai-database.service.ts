@@ -72,6 +72,7 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly logger = new Logger(AiDatabaseService.name);
   private llm!: ChatOpenAI;
   private schemaCache: Map<string, { schema: string; timestamp: number }> = new Map();
+  private schemaJsonCache: Map<string, { value: DatabaseSchema; timestamp: number }> = new Map();
   private relationshipsCache: Map<string, any> = new Map();
   private columnLabelsCache: Map<string, any> = new Map();
   private readonly CACHE_TTL = 3600000; // 1 heure
@@ -378,7 +379,15 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     if (mime === 'application/pdf' || ext === '.pdf') {
       const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
-      return data.text || '';
+      const text = (data.text || '').trim();
+      // PDF scanné (images sans couche texte) → pdf-parse ne renvoie (quasi) rien.
+      // On le signale honnêtement au lieu de laisser croire à un document vide :
+      // la réponse sera « ce document est un scan, OCR requis » plutôt qu'une
+      // hallucination ou un repli silencieux sur les seules métadonnées.
+      if (text.length < 20) {
+        return `[Document PDF "${filename || 'sans nom'}" sans texte extractible : il s'agit probablement d'un document scanné (images). Sa lecture nécessite un OCR, non activé sur le serveur.]`;
+      }
+      return text;
     }
 
     if (
@@ -1250,6 +1259,49 @@ ${lines.join('\n')}
     return Array.from(ids).slice(0, this.MAX_SYSTEM_DOCUMENTS);
   }
 
+  /**
+   * Résout des documents par leur NOM lorsqu'aucune référence explicite (@ ou
+   * documentIds) n'est fournie, mais que la question évoque un document.
+   *
+   * Stratégie sûre : on ne matche QUE si le nom stocké (sans extension, ≥ 3 car.)
+   * apparaît littéralement dans la question — limite les faux positifs.
+   * Gardé derrière un filtre de mots-clés pour ne pas scanner document_customer à
+   * chaque question (le LIKE sur fonction ne peut pas utiliser d'index ; un index
+   * FULLTEXT sur `name` serait l'optimisation suivante si le volume l'exige).
+   */
+  private async resolveDocumentIdsByName(question: string): Promise<number[]> {
+    const docIntent = /\b(document|pi[eè]ces?|contrat|fichier|acte|jugement|conclusions?|attestation|pdf)\b/i;
+    if (!question || !docIntent.test(question)) return [];
+
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    const params: any[] = [question];
+    let tenantClause = '';
+    if (tenantId && tenantId !== 1) {
+      tenantClause = ' AND tenant_id = ?';
+      params.push(tenantId);
+    }
+
+    try {
+      const rows: Array<{ id: number }> = await this.dataSource.query(
+        `SELECT id FROM document_customer
+         WHERE deleted_at IS NULL
+           AND CHAR_LENGTH(SUBSTRING_INDEX(name, '.', 1)) >= 3
+           AND ? LIKE CONCAT('%', SUBSTRING_INDEX(name, '.', 1), '%')${tenantClause}
+         ORDER BY CHAR_LENGTH(name) DESC, uploaded_at DESC
+         LIMIT ${this.MAX_SYSTEM_DOCUMENTS}`,
+        params,
+      );
+      const ids = rows.map(r => Number(r.id)).filter(id => Number.isInteger(id) && id > 0);
+      if (ids.length) {
+        this.logger.log(`📄 Document(s) résolu(s) par nom depuis la question: [${ids.join(', ')}]`);
+      }
+      return ids;
+    } catch (e) {
+      this.logger.warn(`Résolution document par nom échouée: ${(e as Error).message}`);
+      return [];
+    }
+  }
+
   private normalizeStringArray(value?: string[] | string): string[] | undefined {
     if (!value) return undefined;
     if (Array.isArray(value)) return value.filter(Boolean);
@@ -1345,6 +1397,11 @@ ${blocks.join('\n\n')}
     }
 
     const documentIds = this.parseDocumentIds(dto, referenced);
+    // Repli : aucune référence explicite (@ ou documentIds) mais la question évoque
+    // un document par son nom (« résume le document Contrat_Dupont ») → résolution auto.
+    if (documentIds.length === 0) {
+      documentIds.push(...await this.resolveDocumentIdsByName(dto.question));
+    }
     for (const documentId of documentIds) {
       documentContext.push(await this.loadSystemDocumentContext(documentId));
     }
@@ -2631,6 +2688,14 @@ private async getDefaultSchema(): Promise<string> {
 
   // Dans AiDatabaseService
   public async getCompleteSchemaJson(tables: string[]): Promise<DatabaseSchema> {
+    // Cache (TTL = CACHE_TTL) : getTableInfoJson déclenche COUNT(*) + information_schema
+    // par table — coûteux à régénérer. Clé = liste de tables triée.
+    const cacheKey = [...tables].sort().join(',');
+    const cachedJson = this.schemaJsonCache.get(cacheKey);
+    if (cachedJson && (Date.now() - cachedJson.timestamp) < this.CACHE_TTL) {
+      return cachedJson.value;
+    }
+
     const relationships = this.relationshipsCache.get('all') || {};
     const resultTables: TableSchema[] = [];
     const allRelationships: { from: { table: string; column: string }; to: { table: string; column: string } }[] = [];
@@ -2658,12 +2723,14 @@ private async getDefaultSchema(): Promise<string> {
       }
     }
     
-    return {
+    const result: DatabaseSchema = {
       database: process.env.DB_NAME || 'unknown',
       generatedAt: new Date().toISOString(),
       tables: resultTables,
       relationships: allRelationships
     };
+    this.schemaJsonCache.set(cacheKey, { value: result, timestamp: Date.now() });
+    return result;
   }
 
   private async generateSQLQuery(question: string, schema: string, tables: string[]): Promise<string> {
@@ -3112,6 +3179,7 @@ Retourne UNIQUEMENT la requête corrigée.`;
 
   async refreshSchema(): Promise<void> {
     this.schemaCache.clear();
+    this.schemaJsonCache.clear();
     await this.loadDatabaseRelationships();
     this.logger.log('✅ Caches vidés et relations rechargées');
   }
