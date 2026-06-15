@@ -58,10 +58,10 @@ export class ComptabiliteEventBridge {
     catch (e) { this.logger.error(`[payslip.payee] ${e.message}`); }
   }
 
-  @OnEvent('payslip.avance.payee', { async: true })
-  async onPayslipAvancePayee(payslip: any) {
-    try { await this.comptabilisation.comptabiliserAvanceSalaire(payslip); }
-    catch (e) { this.logger.error(`[payslip.avance.payee] ${e.message}`); }
+  @OnEvent('salary_advance.payee', { async: true })
+  async onSalaryAdvancePayee(advance: any) {
+    try { await this.comptabilisation.comptabiliserAvanceSalaire(advance); }
+    catch (e) { this.logger.error(`[salary_advance.payee] ${e.message}`); }
   }
 
   @OnEvent('referral_commission.payee', { async: true })

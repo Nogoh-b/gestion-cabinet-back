@@ -248,23 +248,24 @@ export class ComptabilisationService {
   // ── Avances sur salaire ────────────────────────────────────────────────────────
 
   /**
-   * Avance sur salaire versée. Débit 425 « Personnel — avances et acomptes »
-   * (créance sur le salarié, soldée à la paie suivante), crédit 512 « Banque ».
-   * Journal BANQUE (distinct du journal OD de la paie complète → pas de
-   * collision d'idempotence). Le compte 425 est auto-créé pour les plans
-   * existants par EcrituresService.creer.
+   * Avance sur salaire versée (entité SalaryAdvance, découplée du bulletin).
+   * Débit 425 « Personnel — avances et acomptes » (créance sur le salarié,
+   * soldée à la paie suivante), crédit 512 « Banque ». Journal BANQUE. Source
+   * dédiée SALARY_ADVANCE → pas de collision d'idempotence avec la paie. Le
+   * compte 425 est auto-créé pour les plans existants par EcrituresService.creer.
    */
-  async comptabiliserAvanceSalaire(payslip: any): Promise<Ecriture | null> {
-    if (await this.existe(SourceModule.PAYSLIP, payslip.id, TypeJournal.BANQUE)) return null;
-    const montant = Number(payslip.advance_amount) || 0;
+  async comptabiliserAvanceSalaire(advance: any): Promise<Ecriture | null> {
+    if (await this.existe(SourceModule.SALARY_ADVANCE, advance.id, TypeJournal.BANQUE)) return null;
+    const montant = Number(advance.amount) || 0;
     if (montant <= 0) return null;
-    const salarie = payslip.employee?.nom ?? payslip.employee?.full_name ?? payslip.employee_name ?? '';
+    const salarie =
+      advance.employee?.full_name ?? advance.employee?.nom ?? advance.employee_name ?? '';
     return this.ecritures.creer({
-      dateEcriture: payslip.payment_date ?? new Date().toISOString(),
+      dateEcriture: advance.payment_date ?? advance.date_granted ?? new Date().toISOString(),
       libelle:      `Avance sur salaire — ${salarie}`.trim(),
       codeJournal:  TypeJournal.BANQUE,
-      sourceModule: SourceModule.PAYSLIP,
-      sourceId:     String(payslip.id),
+      sourceModule: SourceModule.SALARY_ADVANCE,
+      sourceId:     String(advance.id),
       lignes: [
         { numeroCompte: '425', debit: montant, credit: 0,       libelle: `Avance — ${salarie}`.trim() },
         { numeroCompte: '512', debit: 0,       credit: montant, libelle: 'Versement avance sur salaire' },

@@ -35,6 +35,7 @@ export enum SourceModule {
   SUPPLIER_INVOICE    = 'supplier_invoice',
   EXPENSE_REPORT      = 'expense_report',
   PAYSLIP             = 'payslip',
+  SALARY_ADVANCE      = 'salary_advance',
   REFERRAL_COMMISSION = 'referral_commission',
   MANUEL              = 'manuel',
 }

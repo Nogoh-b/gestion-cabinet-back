@@ -19,6 +19,7 @@ import { UpdatePayslipDto } from './dto/update-payslip.dto';
 import { PayrollPeriod } from './entities/payroll-period.entity';
 import { PayslipLine, PayslipLineType } from './entities/payslip-line.entity';
 import { Payslip, PayslipStatus } from './entities/payslip.entity';
+import { SalaryAdvance, SalaryAdvanceStatus } from './entities/salary-advance.entity';
 import { PayrollCalculatorService } from './services/payroll-calculator.service';
 import { PayrollGenerationService } from './services/payroll-generation.service';
 
@@ -34,6 +35,8 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     private employeeRepo: Repository<Employee>,
     @InjectRepository(PayrollPeriod)
     private periodRepo: Repository<PayrollPeriod>,
+    @InjectRepository(SalaryAdvance)
+    private advanceRepo: Repository<SalaryAdvance>,
     private readonly planQuotaService: PlanQuotaService,
     private readonly calculator: PayrollCalculatorService,
     private readonly generationService: PayrollGenerationService,
@@ -70,11 +73,26 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     const period = await this.periodRepo.findOne({ where: { id: dto.period_id } });
     if (!period) throw new NotFoundException('Période de paie non trouvée');
 
+    // ── Une seule fiche de paie par (collaborateur, période) ──────────────────
+    // Les avances sur salaire sont désormais une entité dédiée (SalaryAdvance),
+    // pas une fiche de paie : un employé n'a donc qu'un bulletin par période.
+    const existing = await this.repository.findOne({
+      where: { employee_id: dto.employee_id, period_id: dto.period_id },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        'Une fiche de paie existe déjà pour ce collaborateur sur cette période.',
+      );
+    }
+
     const baseSalary = Number(dto.gross_amount) || 0;
     const entity = this.repository.create({
-      ...dto,
+      employee_id: dto.employee_id,
+      period_id: dto.period_id,
+      gross_amount: baseSalary,
       // net provisoire = brut saisi ; recalculé ci-dessous à partir des lignes
       net_amount: dto.net_amount ?? baseSalary,
+      notes: dto.notes,
       status: PayslipStatus.DRAFT,
     });
     entity.employee = employee;
@@ -82,9 +100,8 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     const saved = await this.repository.save(entity);
 
     // ── Formulaire = salaire de base uniquement → le back génère le reste ──────
-    // Pour une fiche normale : ligne de base + barème de cotisations + brut/net.
-    // Pour une avance sur salaire : pas de génération automatique.
-    if (!dto.is_advance && baseSalary > 0) {
+    // Ligne de base + barème de cotisations + récupération d'avances + brut/net.
+    if (baseSalary > 0) {
       await this.generationService.applyBaseSalaryLines(saved.id, baseSalary, period.label);
     }
 
@@ -93,22 +110,9 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     // officielles pour préserver snapshot d'audit + écritures comptables.
     const requested = dto.status;
     if (requested === PayslipStatus.VALIDATED || requested === PayslipStatus.PAID) {
-      if (dto.is_advance) {
-        // Avance sur salaire : pas de barème de cotisations ni de paie complète.
-        // Statut posé directement ; si payée, écriture d'avance dédiée.
-        await this.repository.update(saved.id, {
-          status: requested,
-          ...(requested === PayslipStatus.PAID ? { payment_date: new Date() } : {}),
-        });
-        if (requested === PayslipStatus.PAID) {
-          const full = await this.findOne(saved.id);
-          this.eventEmitter.emit('payslip.avance.payee', full);
-        }
-      } else {
-        await this.validate(saved.id);
-        if (requested === PayslipStatus.PAID) {
-          await this.pay(saved.id); // émet payslip.payee → comptabilisation de la paie
-        }
+      await this.validate(saved.id);
+      if (requested === PayslipStatus.PAID) {
+        await this.pay(saved.id); // émet payslip.payee → comptabilisation de la paie
       }
     }
 
@@ -218,10 +222,10 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
 
   /**
    * Au paiement d'un bulletin, impute le montant de la (des) ligne(s)
-   * « Récupération avance sur salaire » sur les avances PAYÉES en cours du
-   * collaborateur (plus anciennes d'abord), en incrémentant leur
-   * `advance_recovered_amount`. Une avance entièrement récupérée n'est plus
-   * proposée à la récupération sur les bulletins suivants.
+   * « Récupération avance sur salaire » sur les avances (SalaryAdvance) PAYÉES
+   * en cours du collaborateur (plus anciennes d'abord), en incrémentant leur
+   * `recovered_amount`. Une avance entièrement récupérée passe au statut
+   * `recovered` et n'est plus proposée à la récupération sur les bulletins suivants.
    */
   private async realizeAdvanceRecovery(payslip: Payslip): Promise<void> {
     const recovery = (payslip.lines ?? [])
@@ -230,18 +234,22 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     if (recovery <= 0) return;
 
     let remaining = recovery;
-    const advances = await this.repository.find({
-      where: { employee_id: payslip.employee_id, is_advance: true, status: PayslipStatus.PAID },
+    const advances = await this.advanceRepo.find({
+      where: { employee_id: payslip.employee_id, status: SalaryAdvanceStatus.PAID },
       order: { id: 'ASC' },
     });
     for (const adv of advances) {
       if (remaining <= 0) break;
-      const outstanding = Number(adv.advance_amount || 0) - Number(adv.advance_recovered_amount || 0);
+      const outstanding = Number(adv.amount || 0) - Number(adv.recovered_amount || 0);
       if (outstanding <= 0) continue;
       const take = Math.min(outstanding, remaining);
-      adv.advance_recovered_amount = Math.round((Number(adv.advance_recovered_amount || 0) + take) * 100) / 100;
+      adv.recovered_amount = Math.round((Number(adv.recovered_amount || 0) + take) * 100) / 100;
+      // Avance entièrement remboursée → statut « récupérée ».
+      if (adv.recovered_amount >= Number(adv.amount || 0) - 0.005) {
+        adv.status = SalaryAdvanceStatus.RECOVERED;
+      }
       remaining -= take;
-      await this.repository.save(adv);
+      await this.advanceRepo.save(adv);
     }
   }
 

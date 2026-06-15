@@ -5,6 +5,7 @@ import { Payslip, PayslipStatus } from '../entities/payslip.entity';
 import { PayslipLine, PayslipLineType } from '../entities/payslip-line.entity';
 import { PayrollPeriod } from '../entities/payroll-period.entity';
 import { PayrollContribution } from '../entities/payroll-contribution.entity';
+import { SalaryAdvance, SalaryAdvanceStatus } from '../entities/salary-advance.entity';
 import { Employee } from '../../agencies/employee/entities/employee.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { PayrollCalculatorService } from './payroll-calculator.service';
@@ -39,6 +40,7 @@ export class PayrollGenerationService {
     @InjectRepository(PayslipLine) private readonly lineRepo: Repository<PayslipLine>,
     @InjectRepository(PayrollPeriod) private readonly periodRepo: Repository<PayrollPeriod>,
     @InjectRepository(PayrollContribution) private readonly contributionRepo: Repository<PayrollContribution>,
+    @InjectRepository(SalaryAdvance) private readonly advanceRepo: Repository<SalaryAdvance>,
     @InjectRepository(Employee) private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Dossier) private readonly dossierRepo: Repository<Dossier>,
     private readonly calculator: PayrollCalculatorService,
@@ -172,24 +174,24 @@ export class PayrollGenerationService {
 
   /**
    * Ajoute, le cas échéant, une ligne de retenue « Récupération avance sur
-   * salaire » sur un bulletin (non-avance). Le montant retenu = total des
-   * avances en cours du collaborateur (avances PAYÉES non encore entièrement
+   * salaire » sur un bulletin. Le montant retenu = total des avances en cours
+   * du collaborateur (avances SalaryAdvance PAYÉES non encore entièrement
    * récupérées), plafonné au net disponible avant récupération.
    *
-   * Ne met PAS à jour `advance_recovered_amount` : l'imputation réelle sur les
-   * avances est faite au paiement du bulletin (PayslipsService.pay), point
-   * irréversible du cycle de vie.
+   * Ne met PAS à jour `recovered_amount` des avances : l'imputation réelle est
+   * faite au paiement du bulletin (PayslipsService.realizeAdvanceRecovery),
+   * point irréversible du cycle de vie.
    */
   async applyAdvanceRecovery(payslipId: number): Promise<number> {
     const payslip = await this.payslipRepo.findOne({ where: { id: payslipId } });
-    if (!payslip || payslip.is_advance) return 0;
+    if (!payslip) return 0;
 
-    const advances = await this.payslipRepo.find({
-      where: { employee_id: payslip.employee_id, is_advance: true, status: PayslipStatus.PAID },
+    const advances = await this.advanceRepo.find({
+      where: { employee_id: payslip.employee_id, status: SalaryAdvanceStatus.PAID },
       order: { id: 'ASC' },
     });
     const totalOutstanding = advances.reduce(
-      (s, a) => s + Math.max(0, Number(a.advance_amount || 0) - Number(a.advance_recovered_amount || 0)),
+      (s, a) => s + Math.max(0, Number(a.amount || 0) - Number(a.recovered_amount || 0)),
       0,
     );
     if (totalOutstanding <= 0) return 0;
