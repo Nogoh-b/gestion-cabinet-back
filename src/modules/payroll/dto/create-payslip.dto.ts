@@ -6,8 +6,10 @@ import {
   Min,
   IsString,
   IsBoolean,
+  IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PayslipStatus } from '../entities/payslip.entity';
 
 export class CreatePayslipDto {
   @ApiProperty({
@@ -60,6 +62,15 @@ export class CreatePayslipDto {
   @Min(0)
   @IsOptional()
   advance_amount?: number;
+
+  @ApiPropertyOptional({
+    enum: PayslipStatus,
+    example: PayslipStatus.DRAFT,
+    description: "Statut souhaité. 'validated'/'paid' déclenchent le cycle de vie (validation, comptabilisation).",
+  })
+  @IsEnum(PayslipStatus)
+  @IsOptional()
+  status?: PayslipStatus;
 
   @ApiPropertyOptional({
     example: 'Fiche générée automatiquement',

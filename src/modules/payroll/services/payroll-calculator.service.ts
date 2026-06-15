@@ -95,7 +95,10 @@ export class PayrollCalculatorService {
         gross += amount;
         if (line.is_taxable) taxable += amount;
         if (line.line_type === PayslipLineType.INTERNAL_COMMISSION) commissions += amount;
-      } else if (line.line_type === PayslipLineType.DEDUCTION) {
+      } else if (
+        line.line_type === PayslipLineType.DEDUCTION ||
+        line.line_type === PayslipLineType.ADVANCE_RECOVERY
+      ) {
         deductions += amount;
       }
     }

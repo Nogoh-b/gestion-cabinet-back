@@ -57,4 +57,16 @@ export class ComptabiliteEventBridge {
     try { await this.comptabilisation.comptabiliserPaie(payslip); }
     catch (e) { this.logger.error(`[payslip.payee] ${e.message}`); }
   }
+
+  @OnEvent('payslip.avance.payee', { async: true })
+  async onPayslipAvancePayee(payslip: any) {
+    try { await this.comptabilisation.comptabiliserAvanceSalaire(payslip); }
+    catch (e) { this.logger.error(`[payslip.avance.payee] ${e.message}`); }
+  }
+
+  @OnEvent('referral_commission.payee', { async: true })
+  async onReferralCommissionPayee(commission: any) {
+    try { await this.comptabilisation.comptabiliserCommission(commission); }
+    catch (e) { this.logger.error(`[referral_commission.payee] ${e.message}`); }
+  }
 }

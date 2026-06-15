@@ -68,7 +68,14 @@ export class FactureService extends BaseServiceV1<Facture> {
     if (!createDto.montantTTC) {
       createDto.montantTTC = Number(createDto.montantHT) + Number(createDto.montantTVA);
     }
-    const { clientId, dossierId, notify_client, numero: providedNumero, ...rest } = createDto;
+    const {
+      clientId,
+      dossierId,
+      notify_client,
+      numero: providedNumero,
+      statut,
+      ...rest
+    } = createDto as CreateFactureDto & { status?: StatutFacture };
     const dossier_ = await this.dossiersService.findOne(dossierId)
     const dossier = { id: dossierId } as Dossier
     const client  =  dossier_.client
@@ -118,11 +125,13 @@ export class FactureService extends BaseServiceV1<Facture> {
       stageVisit_id: stageVisitId,
       sub_stage_visit_id: subStageVisitId,
       procedure_instance_id: procedureInstance?.id,
+      status: this.normalizeStatus(rest.status ?? statut ?? StatutFacture.BROUILLON),
     });
     // Propage la case « Notifier le client » au subscriber (champ transient).
     (facture as any).notify_client = !!notify_client;
 
     const fac = await this.saveWithUniqueInvoiceNumber(facture);
+    await this.emitStatusEventsIfNeeded(fac.id, StatutFacture.BROUILLON, fac.status);
 
     // const currentStep = await this.stepsService.getCurrentStep(createDto.dossierId);
     
@@ -152,13 +161,17 @@ export class FactureService extends BaseServiceV1<Facture> {
       // updateDto.resteAPayer = updateDto.montantTTC - facture.montantPaye;
     }
 
+    const previousStatus = facture.status;
     Object.assign(facture, updateDto);
+    facture.status = this.normalizeStatus((updateDto as any).status ?? (updateDto as any).statut ?? facture.status);
     if (updateDto.notify_client !== undefined) {
       (facture as any).notify_client = !!updateDto.notify_client;
     }
     // facture.calculerResteAPayer();
 
-    return plainToInstance(FactureResponseDto,this.repository.save(facture));
+    const saved = await this.repository.save(facture);
+    await this.emitStatusEventsIfNeeded(saved.id, previousStatus, saved.status);
+    return plainToInstance(FactureResponseDto, saved);
   }
 
   async searchFactures(searchDto: SearchFactureDto): Promise<any> {
@@ -371,17 +384,12 @@ export class FactureService extends BaseServiceV1<Facture> {
       throw new NotFoundException(`Facture avec l'ID ${id} non trouvée`);
     }
 
-    facture.status = nouveauStatus as any;
+    const previousStatus = facture.status;
+    const status = this.normalizeStatus(nouveauStatus);
+    facture.status = status;
     const saved = await this.repository.save(facture);
 
-    const status = nouveauStatus as unknown as StatutFacture;
-    if (status === StatutFacture.ENVOYEE) {
-      const full = await this.findOneV1(id, ['client']);
-      this.eventEmitter.emit('facture.envoyee', full);
-    } else if (status === StatutFacture.ANNULEE) {
-      const full = await this.findOneV1(id, ['client']);
-      this.eventEmitter.emit('facture.annulee', full);
-    }
+    await this.emitStatusEventsIfNeeded(id, previousStatus, status);
 
     return saved;
   }
@@ -533,5 +541,56 @@ export class FactureService extends BaseServiceV1<Facture> {
       }
     }
     return this.repository.save(facture);
+  }
+
+  private normalizeStatus(value: string | number | StatutFacture): StatutFacture {
+    if (typeof value === 'number') return value as StatutFacture;
+
+    const numeric = Number(value);
+    if (!Number.isNaN(numeric)) return numeric as StatutFacture;
+
+    const labels: Record<string, StatutFacture> = {
+      brouillon: StatutFacture.BROUILLON,
+      envoyee: StatutFacture.ENVOYEE,
+      envoyée: StatutFacture.ENVOYEE,
+      partiellement_payee: StatutFacture.PARTIELLEMENT_PAYEE,
+      partiellement_payée: StatutFacture.PARTIELLEMENT_PAYEE,
+      payee: StatutFacture.PAYEE,
+      payée: StatutFacture.PAYEE,
+      impayee: StatutFacture.IMPAYEE,
+      impayée: StatutFacture.IMPAYEE,
+      annulee: StatutFacture.ANNULEE,
+      annulée: StatutFacture.ANNULEE,
+    };
+
+    return labels[String(value).toLowerCase()] ?? (value as unknown as StatutFacture);
+  }
+
+  private isBillableStatus(status: StatutFacture): boolean {
+    return [
+      StatutFacture.ENVOYEE,
+      StatutFacture.PARTIELLEMENT_PAYEE,
+      StatutFacture.PAYEE,
+      StatutFacture.IMPAYEE,
+    ].includes(status);
+  }
+
+  private async emitStatusEventsIfNeeded(
+    factureId: string,
+    previousStatus: StatutFacture,
+    nextStatus: StatutFacture,
+  ): Promise<void> {
+    if (previousStatus === nextStatus) return;
+
+    const full = await this.findOneV1(factureId, ['client']);
+
+    if (this.isBillableStatus(nextStatus)) {
+      this.eventEmitter.emit('facture.envoyee', full);
+      return;
+    }
+
+    if (nextStatus === StatutFacture.ANNULEE) {
+      this.eventEmitter.emit('facture.annulee', full);
+    }
   }
 }

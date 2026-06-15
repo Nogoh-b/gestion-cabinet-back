@@ -6,6 +6,7 @@ import { JournalComptable } from '../entities/journal.entity';
 import { ExerciceComptable } from '../entities/exercice.entity';
 import { StatutExercice } from '../enums/comptabilite.enums';
 import { COMPTES_SYSCOHADA, JOURNAUX_SYSCOHADA } from '../data/syscohada.data';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 
 /**
  * Initialise le plan comptable d'UN tenant : plan SYSCOHADA, journaux,
@@ -45,14 +46,14 @@ export class InitialisationComptableService {
 
   /** Vérifie si le tenant courant a déjà un plan comptable. */
   async estInitialise(): Promise<boolean> {
-    const nbJournaux = await this.journalRepo.count();
+    const nbJournaux = await this.journalRepo.count({ where: this.withTenant({}) });
     return nbJournaux > 0;
   }
 
   private async seedComptes(): Promise<number> {
     let created = 0;
     for (const data of COMPTES_SYSCOHADA) {
-      const exists = await this.compteRepo.findOne({ where: { numero: data.numero } });
+      const exists = await this.compteRepo.findOne({ where: this.withTenant({ numero: data.numero }) });
       if (!exists) {
         await this.compteRepo.save(this.compteRepo.create({ ...data, actif: true }));
         created++;
@@ -64,7 +65,7 @@ export class InitialisationComptableService {
   private async seedJournaux(): Promise<number> {
     let created = 0;
     for (const data of JOURNAUX_SYSCOHADA) {
-      const exists = await this.journalRepo.findOne({ where: { code: data.code } });
+      const exists = await this.journalRepo.findOne({ where: this.withTenant({ code: data.code }) });
       if (!exists) {
         await this.journalRepo.save(this.journalRepo.create({ ...data, actif: true }));
         created++;
@@ -75,7 +76,7 @@ export class InitialisationComptableService {
 
   private async seedExerciceCourant(): Promise<boolean> {
     const annee = new Date().getFullYear();
-    const exists = await this.exerciceRepo.findOne({ where: { annee } });
+    const exists = await this.exerciceRepo.findOne({ where: this.withTenant({ annee }) });
     if (exists) return false;
     await this.exerciceRepo.save(this.exerciceRepo.create({
       annee,
@@ -84,5 +85,9 @@ export class InitialisationComptableService {
       statut:    StatutExercice.OUVERT,
     }));
     return true;
+  }
+
+  private withTenant<T extends Record<string, any>>(where: T): T & { tenant_id?: number } {
+    return hasActiveTenant() ? { ...where, tenant_id: getCurrentTenantId() } : where;
   }
 }

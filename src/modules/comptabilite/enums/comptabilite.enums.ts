@@ -30,10 +30,11 @@ export enum StatutExercice {
 }
 
 export enum SourceModule {
-  FACTURE          = 'facture',
-  PAIEMENT         = 'paiement',
-  SUPPLIER_INVOICE = 'supplier_invoice',
-  EXPENSE_REPORT   = 'expense_report',
-  PAYSLIP          = 'payslip',
-  MANUEL           = 'manuel',
+  FACTURE             = 'facture',
+  PAIEMENT            = 'paiement',
+  SUPPLIER_INVOICE    = 'supplier_invoice',
+  EXPENSE_REPORT      = 'expense_report',
+  PAYSLIP             = 'payslip',
+  REFERRAL_COMMISSION = 'referral_commission',
+  MANUEL              = 'manuel',
 }

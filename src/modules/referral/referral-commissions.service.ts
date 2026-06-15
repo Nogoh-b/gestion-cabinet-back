@@ -1,5 +1,6 @@
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import {
@@ -30,15 +31,25 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     private factureRepo: Repository<Facture>,
     @InjectRepository(Paiement)
     private paiementRepo: Repository<Paiement>,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
 
+  /** Émet l'événement de comptabilisation quand une commission passe à « payée ». */
+  private emitIfPaid(previous: CommissionStatus | undefined, commission: ReferralCommission): void {
+    if (previous !== CommissionStatus.PAID && commission.status === CommissionStatus.PAID) {
+      this.eventEmitter.emit('referral_commission.payee', commission);
+    }
+  }
+
   async create(dto: CreateReferralCommissionDto): Promise<ReferralCommission> {
     dto = this.normalizeCommissionDto(dto) as CreateReferralCommissionDto;
+    const requestedStatus = (dto as any).status as CommissionStatus | undefined;
     const entity = this.repository.create({
       ...dto,
-      status: CommissionStatus.CALCULATED,
+      status: requestedStatus ?? CommissionStatus.CALCULATED,
+      ...(requestedStatus === CommissionStatus.PAID ? { payment_date: new Date() } : {}),
     });
 
     // dossier_referral_id est number dans ReferralCommission
@@ -69,7 +80,9 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     }
 
     const saved = await this.repository.save(entity);
-    return this.findOne(saved.id);
+    const full = await this.findOne(saved.id);
+    this.emitIfPaid(undefined, full);
+    return full;
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
@@ -209,7 +222,9 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       commission.payment_reference = payment_reference;
     }
     await this.repository.save(commission);
-    return this.findOne(id);
+    const full = await this.findOne(id);
+    this.emitIfPaid(CommissionStatus.APPROVED, full);
+    return full;
   }
 
   async cancel(id: number): Promise<ReferralCommission> {
@@ -227,6 +242,7 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     dto: UpdateReferralCommissionDto,
   ): Promise<ReferralCommission> {
     const commission = await this.findOne(id);
+    const previousStatus = commission.status;
     dto = this.normalizeCommissionDto(dto) as UpdateReferralCommissionDto;
 
     if (dto.dossier_referral_id) {
@@ -259,8 +275,14 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       commission.paiement_id = null as any;
     }
 
+    // Si PAID arrive sans payment_date explicite, on date le paiement.
+    if ((dto as any).status === CommissionStatus.PAID && !commission.payment_date && !(dto as any).payment_date) {
+      commission.payment_date = new Date();
+    }
     await this.repository.save({ ...commission, ...dto });
-    return this.findOne(id);
+    const full = await this.findOne(id);
+    this.emitIfPaid(previousStatus, full);
+    return full;
   }
 
   async remove(id: number): Promise<void> {

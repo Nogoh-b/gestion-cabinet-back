@@ -9,6 +9,7 @@ export enum PayslipLineType {
   BONUS = 'bonus',
   INTERNAL_COMMISSION = 'internal_commission',
   DEDUCTION = 'deduction',
+  ADVANCE_RECOVERY = 'advance_recovery',
   BENEFIT = 'benefit',
   OVERTIME = 'overtime',
 }

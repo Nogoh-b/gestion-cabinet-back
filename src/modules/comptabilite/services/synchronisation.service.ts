@@ -12,6 +12,7 @@ import { Payslip, PayslipStatus } from 'src/modules/payroll/entities/payslip.ent
 
 import { ComptabilisationService } from './comptabilisation.service';
 import { InitialisationComptableService } from './initialisation.service';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 
 interface LigneSync { eligibles: number; crees: number; ignores: number; erreurs: number }
 
@@ -64,12 +65,12 @@ export class SynchronisationService {
    */
   async etat(): Promise<Record<string, number>> {
     const [factures, paiements, fApprouvees, fPayees, notes, paie] = await Promise.all([
-      this.factureRepo.count({ where: { status: In(SynchronisationService.FACTURE_STATUTS) } }),
-      this.paiementRepo.count({ where: { status: StatutPaiement.VALIDE } }),
-      this.supplierRepo.count({ where: { status: In([SupplierInvoiceStatus.APPROVED, SupplierInvoiceStatus.PAID]) } }),
-      this.supplierRepo.count({ where: { status: SupplierInvoiceStatus.PAID } }),
-      this.expenseRepo.count({ where: { status: ExpenseReportStatus.REIMBURSED } }),
-      this.payslipRepo.count({ where: { status: PayslipStatus.PAID } }),
+      this.factureRepo.count({ where: this.withTenant({ status: In(SynchronisationService.FACTURE_STATUTS) }) }),
+      this.paiementRepo.count({ where: this.withTenant({ status: StatutPaiement.VALIDE }) }),
+      this.supplierRepo.count({ where: this.withTenant({ status: In([SupplierInvoiceStatus.APPROVED, SupplierInvoiceStatus.PAID]) }) }),
+      this.supplierRepo.count({ where: this.withTenant({ status: SupplierInvoiceStatus.PAID }) }),
+      this.expenseRepo.count({ where: this.withTenant({ status: ExpenseReportStatus.REIMBURSED }) }),
+      this.payslipRepo.count({ where: this.withTenant({ status: PayslipStatus.PAID }) }),
     ]);
     return {
       factures,
@@ -137,7 +138,7 @@ export class SynchronisationService {
 
   private async syncFactures() {
     const rows = await this.factureRepo.find({
-      where: { status: In(SynchronisationService.FACTURE_STATUTS) },
+      where: this.withTenant({ status: In(SynchronisationService.FACTURE_STATUTS) }),
       relations: ['client'],
     });
     return this.traiter(rows, f => this.comptabilisation.comptabiliserFacture(f));
@@ -145,7 +146,7 @@ export class SynchronisationService {
 
   private async syncPaiements() {
     const rows = await this.paiementRepo.find({
-      where: { status: StatutPaiement.VALIDE },
+      where: this.withTenant({ status: StatutPaiement.VALIDE }),
       relations: ['facture'],
     });
     return this.traiter(rows, p => this.comptabilisation.comptabiliserPaiement(p));
@@ -153,7 +154,7 @@ export class SynchronisationService {
 
   private async syncFacturesFournisseurs() {
     const rows = await this.supplierRepo.find({
-      where: { status: In([SupplierInvoiceStatus.APPROVED, SupplierInvoiceStatus.PAID]) },
+      where: this.withTenant({ status: In([SupplierInvoiceStatus.APPROVED, SupplierInvoiceStatus.PAID]) }),
       relations: ['supplier'],
     });
     return this.traiter(rows, inv => this.comptabilisation.comptabiliserFactureFournisseur(inv));
@@ -161,7 +162,7 @@ export class SynchronisationService {
 
   private async syncPaiementsFournisseurs() {
     const rows = await this.supplierRepo.find({
-      where: { status: SupplierInvoiceStatus.PAID },
+      where: this.withTenant({ status: SupplierInvoiceStatus.PAID }),
       relations: ['supplier'],
     });
     return this.traiter(rows, inv => this.comptabilisation.comptabiliserPaiementFournisseur(inv));
@@ -169,7 +170,7 @@ export class SynchronisationService {
 
   private async syncNotesDeFrais() {
     const rows = await this.expenseRepo.find({
-      where: { status: ExpenseReportStatus.REIMBURSED },
+      where: this.withTenant({ status: ExpenseReportStatus.REIMBURSED }),
       relations: ['lines', 'employee'],
     });
     return this.traiter(rows, rep => this.comptabilisation.comptabiliserNoteDeFrais(rep));
@@ -177,9 +178,13 @@ export class SynchronisationService {
 
   private async syncPaie() {
     const rows = await this.payslipRepo.find({
-      where: { status: PayslipStatus.PAID },
+      where: this.withTenant({ status: PayslipStatus.PAID }),
       relations: ['employee', 'period'],
     });
     return this.traiter(rows, ps => this.comptabilisation.comptabiliserPaie(ps));
+  }
+
+  private withTenant<T extends Record<string, any>>(where: T): T & { tenant_id?: number } {
+    return hasActiveTenant() ? { ...where, tenant_id: getCurrentTenantId() } : where;
   }
 }

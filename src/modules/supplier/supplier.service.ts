@@ -27,9 +27,8 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
       if (!branch) throw new NotFoundException('Agence non trouvée');
       entity.branch = branch;
     }
-    const count = await this.repository.count();
-    entity.supplier_code = `SUP-${String(count + 1).padStart(3, '0')}`;
-    return this.repository.save(entity);
+    entity.supplier_code = await this.generateSupplierCode();
+    return this.saveWithUniqueSupplierCode(entity);
   }
 
   findAll(): Promise<Supplier[]> {
@@ -61,5 +60,47 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
 
   async remove(id: number): Promise<void> {
     await this.repository.delete(id);
+  }
+
+  private async generateSupplierCode(): Promise<string> {
+    const last = await this.repository
+      .createQueryBuilder('supplier')
+      .withDeleted()
+      .where('supplier.supplier_code LIKE :prefix', { prefix: 'SUP-%' })
+      .orderBy('supplier.supplier_code', 'DESC')
+      .getOne();
+
+    const lastSequence = last?.supplier_code?.match(/^SUP-(\d+)$/)?.[1];
+    let sequence = lastSequence ? Number(lastSequence) + 1 : 1;
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const supplier_code = `SUP-${String(sequence).padStart(3, '0')}`;
+      const exists = await this.repository.findOne({ where: { supplier_code }, withDeleted: true });
+      if (!exists) return supplier_code;
+      sequence += 1;
+    }
+
+    return `SUP-${Date.now().toString(36).toUpperCase()}`;
+  }
+
+  private isDuplicateSupplierCodeError(error: any): boolean {
+    return (
+      error?.code === 'ER_DUP_ENTRY' &&
+      (String(error?.message ?? '').includes('supplier_code') ||
+        String(error?.message ?? '').includes('IDX_7f1a06837f963490d84ce48c86'))
+    );
+  }
+
+  private async saveWithUniqueSupplierCode(entity: Supplier): Promise<Supplier> {
+    let attempt = 0;
+    while (attempt++ < 5) {
+      try {
+        return await this.repository.save(entity);
+      } catch (error) {
+        if (!this.isDuplicateSupplierCodeError(error)) throw error;
+        entity.supplier_code = await this.generateSupplierCode();
+      }
+    }
+    return this.repository.save(entity);
   }
 }

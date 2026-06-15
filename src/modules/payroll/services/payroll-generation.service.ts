@@ -155,6 +155,9 @@ export class PayrollGenerationService {
       );
     }
 
+    // Récupération automatique des avances sur salaire en cours du collaborateur
+    await this.applyAdvanceRecovery(payslipId);
+
     // Recalcul final des totaux + charges patronales
     const finalLines = await this.lineRepo.find({ where: { payslip_id: payslipId } });
     const finalTotals = this.calculator.computeTotals(finalLines);
@@ -165,6 +168,55 @@ export class PayrollGenerationService {
     });
 
     return { gross: finalTotals.gross_amount, net: finalTotals.net_amount, totalEmployer: contrib.totalEmployer };
+  }
+
+  /**
+   * Ajoute, le cas échéant, une ligne de retenue « Récupération avance sur
+   * salaire » sur un bulletin (non-avance). Le montant retenu = total des
+   * avances en cours du collaborateur (avances PAYÉES non encore entièrement
+   * récupérées), plafonné au net disponible avant récupération.
+   *
+   * Ne met PAS à jour `advance_recovered_amount` : l'imputation réelle sur les
+   * avances est faite au paiement du bulletin (PayslipsService.pay), point
+   * irréversible du cycle de vie.
+   */
+  async applyAdvanceRecovery(payslipId: number): Promise<number> {
+    const payslip = await this.payslipRepo.findOne({ where: { id: payslipId } });
+    if (!payslip || payslip.is_advance) return 0;
+
+    const advances = await this.payslipRepo.find({
+      where: { employee_id: payslip.employee_id, is_advance: true, status: PayslipStatus.PAID },
+      order: { id: 'ASC' },
+    });
+    const totalOutstanding = advances.reduce(
+      (s, a) => s + Math.max(0, Number(a.advance_amount || 0) - Number(a.advance_recovered_amount || 0)),
+      0,
+    );
+    if (totalOutstanding <= 0) return 0;
+
+    // Net disponible avant récupération (gains − cotisations déjà posées).
+    const lines = await this.lineRepo.find({ where: { payslip_id: payslipId } });
+    const netAvailable = this.calculator.computeTotals(lines).net_amount;
+    if (netAvailable <= 0) return 0;
+
+    const recovery = PayrollCalculatorService.round(Math.min(totalOutstanding, netAvailable));
+    if (recovery <= 0) return 0;
+
+    await this.lineRepo.save(
+      this.lineRepo.create({
+        payslip_id: payslipId,
+        line_type: PayslipLineType.ADVANCE_RECOVERY,
+        label: 'Récupération avance sur salaire',
+        amount: recovery,
+        is_taxable: false,
+        notes:
+          recovery < totalOutstanding
+            ? `Retenue partielle — reste ${PayrollCalculatorService.round(totalOutstanding - recovery)} à récupérer`
+            : 'Solde des avances en cours',
+      }),
+    );
+
+    return recovery;
   }
 
   /**

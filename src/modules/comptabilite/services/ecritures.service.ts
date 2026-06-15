@@ -8,6 +8,7 @@ import { CompteComptable } from '../entities/compte.entity';
 import { SourceModule, StatutExercice, TypeJournal } from '../enums/comptabilite.enums';
 import { CreateEcritureDto } from '../dto/create-ecriture.dto';
 import { InitialisationComptableService } from './initialisation.service';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 
 @Injectable()
 export class EcrituresService {
@@ -28,7 +29,7 @@ export class EcrituresService {
     // Permet de comptabiliser des documents historiques (backfill) dans le bon
     // exercice fiscal. L'exercice est auto-créé s'il n'existe pas encore.
     const annee = new Date(dto.dateEcriture).getFullYear();
-    let exercice = await this.exerciceRepo.findOne({ where: { annee } });
+    let exercice = await this.exerciceRepo.findOne({ where: this.withTenant({ annee }) });
     if (!exercice) {
       exercice = await this.exerciceRepo.save(this.exerciceRepo.create({
         annee,
@@ -46,20 +47,29 @@ export class EcrituresService {
     // Auto-réparation multi-tenant : si le plan comptable du tenant courant
     // n'a pas encore été créé (journal absent), on l'initialise puis on réessaie.
     // Couvre le cas d'un événement live reçu avant toute synchronisation.
-    let journal = await this.journalRepo.findOne({ where: { typeJournal: dto.codeJournal } });
+    let journal = await this.journalRepo.findOne({ where: this.withTenant({ typeJournal: dto.codeJournal }) });
     if (!journal) {
       await this.initialisation.initialiser();
-      journal = await this.journalRepo.findOne({ where: { typeJournal: dto.codeJournal } });
+      journal = await this.journalRepo.findOne({ where: this.withTenant({ typeJournal: dto.codeJournal }) });
     }
     if (!journal) throw new BadRequestException(`Journal ${dto.codeJournal} introuvable`);
 
-    const lignes = await Promise.all(
-      dto.lignes.map(async l => {
-        const compte = await this.compteRepo.findOne({ where: { numero: l.numeroCompte } });
-        if (!compte) throw new BadRequestException(`Compte ${l.numeroCompte} introuvable`);
-        return { compte_id: compte.id, debit: l.debit, credit: l.credit, libelle: l.libelle ?? dto.libelle };
-      }),
-    );
+    // Résolution des comptes avec auto-réparation : si un compte référencé
+    // n'existe pas encore dans le plan du tenant (plan ancien, compte ajouté
+    // après la création du tenant), on (ré)initialise le plan une seule fois —
+    // seedComptes est idempotent — puis on réessaie.
+    let planRepare = false;
+    const lignes: Array<{ compte_id: number; debit: number; credit: number; libelle: string }> = [];
+    for (const l of dto.lignes) {
+      let compte = await this.compteRepo.findOne({ where: this.withTenant({ numero: l.numeroCompte }) });
+      if (!compte && !planRepare) {
+        await this.initialisation.initialiser();
+        planRepare = true;
+        compte = await this.compteRepo.findOne({ where: this.withTenant({ numero: l.numeroCompte }) });
+      }
+      if (!compte) throw new BadRequestException(`Compte ${l.numeroCompte} introuvable`);
+      lignes.push({ compte_id: compte.id, debit: l.debit, credit: l.credit, libelle: l.libelle ?? dto.libelle });
+    }
 
     const totalDebit  = lignes.reduce((s, l) => s + Number(l.debit), 0);
     const totalCredit = lignes.reduce((s, l) => s + Number(l.credit), 0);
@@ -88,7 +98,7 @@ export class EcrituresService {
 
   findAll(filters: Record<string, any> = {}): Promise<Ecriture[]> {
     return this.ecritureRepo.find({
-      where: filters,
+      where: this.withTenant(filters),
       relations: ['journal', 'exercice', 'lignes', 'lignes.compte'],
       order: { dateEcriture: 'DESC', id: 'DESC' },
     });
@@ -96,7 +106,7 @@ export class EcrituresService {
 
   async findOne(id: number): Promise<Ecriture> {
     const e = await this.ecritureRepo.findOne({
-      where: { id },
+      where: this.withTenant({ id }),
       relations: ['journal', 'exercice', 'lignes', 'lignes.compte'],
     });
     if (!e) throw new NotFoundException(`Écriture ${id} introuvable`);
@@ -105,7 +115,7 @@ export class EcrituresService {
 
   findBySource(sourceModule: SourceModule, sourceId: string): Promise<Ecriture[]> {
     return this.ecritureRepo.find({
-      where: { sourceModule, sourceId },
+      where: this.withTenant({ sourceModule, sourceId }),
       relations: ['journal', 'lignes', 'lignes.compte'],
     });
   }
@@ -120,6 +130,7 @@ export class EcrituresService {
       .createQueryBuilder('e')
       .where('e.source_module = :sm', { sm: sourceModule })
       .andWhere('e.source_id = :sid', { sid: sourceId });
+    this.applyTenantScope(qb, 'e');
     if (codeJournal) {
       qb.innerJoin('e.journal', 'j').andWhere('j.typeJournal = :tj', { tj: codeJournal });
     }
@@ -144,6 +155,7 @@ export class EcrituresService {
       .leftJoinAndSelect('lignes.compte', 'compte')
       .orderBy('e.dateEcriture', 'DESC')
       .addOrderBy('e.id', 'DESC');
+    this.applyTenantScope(qb, 'e');
 
     if (params.journalId)    qb.andWhere('e.journal_id = :jid',   { jid: params.journalId });
     if (params.exerciceId)   qb.andWhere('e.exercice_id = :eid',  { eid: params.exerciceId });
@@ -181,5 +193,15 @@ export class EcrituresService {
     }
 
     return `${prefix}${Date.now().toString(36).toUpperCase()}`;
+  }
+
+  private withTenant<T extends Record<string, any>>(where: T): T & { tenant_id?: number } {
+    return hasActiveTenant() ? { ...where, tenant_id: getCurrentTenantId() } : where;
+  }
+
+  private applyTenantScope(qb: any, alias: string): void {
+    if (hasActiveTenant()) {
+      qb.andWhere(`${alias}.tenant_id = :tenantId`, { tenantId: getCurrentTenantId() });
+    }
   }
 }

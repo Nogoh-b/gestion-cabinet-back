@@ -118,6 +118,17 @@ export class Payslip extends TenantEntity {
   })
   advance_amount: number;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, name: 'advance_recovered_amount', default: 0 })
+  @BusinessColumn({
+    label: "Avance déjà récupérée",
+    description: "Montant de l'avance déjà retenu sur des paies (le reste à récupérer = avance − ce montant)",
+    unit: '€',
+    example: '500.00',
+    importance: 'low',
+    group: 'financier',
+  })
+  advance_recovered_amount: number;
+
   @Column({ type: 'enum', enum: PayslipStatus, default: PayslipStatus.DRAFT })
   @BusinessColumn({
     label: 'Statut',

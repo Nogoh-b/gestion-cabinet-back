@@ -1,6 +1,7 @@
 // create-referral-commission.dto.ts
-import { IsNotEmpty, IsInt, IsNumber, IsDateString, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsNotEmpty, IsInt, IsNumber, IsDateString, IsOptional, IsString, IsUUID, IsEnum, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CommissionStatus } from '../entities/referral-commission.entity';
 
 export class CreateReferralCommissionDto {
   @ApiProperty({ example: 1, description: 'ID de l\'apport (dossier_referral)' })
@@ -28,6 +29,15 @@ export class CreateReferralCommissionDto {
   @IsDateString()
   @IsNotEmpty()
   calculation_date: Date;
+
+  @ApiPropertyOptional({
+    enum: CommissionStatus,
+    example: CommissionStatus.CALCULATED,
+    description: 'Statut initial de la commission',
+  })
+  @IsEnum(CommissionStatus)
+  @IsOptional()
+  status?: CommissionStatus;
 
   @ApiPropertyOptional({ example: 'Commission sur dossier ABC' })
   @IsString()

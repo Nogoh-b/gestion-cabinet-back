@@ -44,7 +44,22 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
       if (!branch) throw new NotFoundException('Agence non trouvée');
       entity.branch = branch;
     }
-    return this.repository.save(entity);
+    if (dto.status === 'paid' && !entity.payment_date) {
+      entity.payment_date = new Date();
+    }
+    const saved = await this.repository.save(entity);
+
+    // Si la facture est créée directement à un statut comptabilisable, on émet
+    // les mêmes événements que lors d'une transition de statut via update().
+    const full = await this.findOne(saved.id);
+    if (saved.status === 'approved' || saved.status === 'paid') {
+      this.eventEmitter.emit('supplier_invoice.approuvee', full);
+    }
+    if (saved.status === 'paid') {
+      this.eventEmitter.emit('supplier_invoice.payee', full);
+    }
+
+    return saved;
   }
 
   findAll(): Promise<SupplierInvoice[]> {

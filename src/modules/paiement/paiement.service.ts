@@ -54,7 +54,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
       where: { id: String(createDto.factureId)  },
-      relations: ['paiements']
+      relations: ['paiements', 'client']
     });
     console.log(createDto)
     if (!facture) {
@@ -68,6 +68,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       //   `Le montant du paiement (${createDto.montant}) dépasse le reste à payer (${resteAPayer})`
       // );
     }
+    const previousStatus = facture.status;
     facture.status = Number(facture.montantPaye) + Number(createDto.montant) >= Number(facture.montantTTC) ? StatutFacture.PAYEE : StatutFacture.PARTIELLEMENT_PAYEE;
     await this.factureRepository.save(facture);
     // Créer le paiement — `notify_client` est transient, on le retire du DTO
@@ -91,6 +92,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
 
     const paiementSauvegarde = await this.repository.save(paiement);
+    this.emitFactureBillableEventIfNeeded(facture, previousStatus);
 
     console.log(facture.montantPaye ,' ', (paiement.montant) , ' ' ,facture.montantTTC)
 
@@ -107,7 +109,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
       where: { id: String(factureId)  },
-      relations: ['paiements']
+      relations: ['paiements', 'client']
     });
     console.log("factuereId ",factureId)
     if (!facture) {
@@ -118,8 +120,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     const resteAPayer = Number(facture.montantTTC) - Number(facture.montantPaye);
     console.log("resteAPayer ",resteAPayer)
     console.log("montantPaye ",facture.montantPaye)
+    const previousStatus = facture.status;
     facture.status = Number(facture.montantPaye)  >= Number(facture.montantTTC) ? StatutFacture.PAYEE : StatutFacture.PARTIELLEMENT_PAYEE;
     await this.factureRepository.save(facture);
+    this.emitFactureBillableEventIfNeeded(facture, previousStatus);
     // Créer le paiement
 
 
@@ -253,5 +257,21 @@ export class PaiementService extends BaseServiceV1<Paiement> {
         montantTotal: parseFloat(row.montantTotal)
       }))
     };
+  }
+
+  private isBillableFactureStatus(status: StatutFacture): boolean {
+    return [
+      StatutFacture.ENVOYEE,
+      StatutFacture.PARTIELLEMENT_PAYEE,
+      StatutFacture.PAYEE,
+      StatutFacture.IMPAYEE,
+    ].includes(status);
+  }
+
+  private emitFactureBillableEventIfNeeded(facture: Facture, previousStatus: StatutFacture): void {
+    if (previousStatus === facture.status) return;
+    if (!this.isBillableFactureStatus(facture.status)) return;
+
+    this.eventEmitter.emit('facture.envoyee', facture);
   }
 }

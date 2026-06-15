@@ -174,16 +174,31 @@ export class ComptabilisationService {
 
   async comptabiliserPaie(payslip: any): Promise<Ecriture | null> {
     if (await this.existe(SourceModule.PAYSLIP, payslip.id, TypeJournal.OD)) return null;
+    const round = (n: number) => Math.round(n * 100) / 100;
     const gross = Number(payslip.gross_amount);
     const net = Number(payslip.net_amount);
-    const cotisationsSalariales = Math.round((gross - net) * 100) / 100;
+
+    // Récupération d'avance : retenue qui SOLDE le 425 (≠ cotisations sociales).
+    // On l'isole du reste des retenues pour ne pas la confondre avec le 431.
+    const recovery = round(
+      (payslip.lines ?? [])
+        .filter((l: any) => l.line_type === 'advance_recovery')
+        .reduce((s: number, l: any) => s + Math.abs(Number(l.amount) || 0), 0),
+    );
+    const cotisationsSalariales = round(gross - net - recovery);
     const chargesPatronales = Number(payslip.total_employer_charges ?? 0);
 
     const lignes: any[] = [
       { numeroCompte: '641', debit: gross, credit: 0,   libelle: 'Rémunération brute' },
       { numeroCompte: '421', debit: 0,     credit: net, libelle: 'Personnel — net à payer' },
-      { numeroCompte: '431', debit: 0,     credit: cotisationsSalariales, libelle: 'Cotisations sociales (part salariale)' },
     ];
+    if (cotisationsSalariales > 0) {
+      lignes.push({ numeroCompte: '431', debit: 0, credit: cotisationsSalariales, libelle: 'Cotisations sociales (part salariale)' });
+    }
+    // Solde de l'avance précédemment versée (créance 425 apurée par la retenue).
+    if (recovery > 0) {
+      lignes.push({ numeroCompte: '425', debit: 0, credit: recovery, libelle: 'Récupération avance sur salaire' });
+    }
 
     // Charges patronales : charge supplémentaire pour l'employeur, équilibrée au crédit du 431.
     if (chargesPatronales > 0) {
@@ -198,6 +213,62 @@ export class ComptabilisationService {
       sourceModule: SourceModule.PAYSLIP,
       sourceId:     String(payslip.id),
       lignes,
+    }, true);
+  }
+
+  // ── Commissions apporteurs d'affaires ─────────────────────────────────────────
+
+  /**
+   * Commission d'apporteur payée. Charge imputée au 632 « Rémunérations
+   * d'intermédiaires (apporteurs) », contrepartie au 512 « Banque ». Journal
+   * BANQUE. Le compte 632 est auto-créé pour les plans existants par
+   * EcrituresService.creer (auto-réparation du plan comptable).
+   */
+  async comptabiliserCommission(commission: any): Promise<Ecriture | null> {
+    if (await this.existe(SourceModule.REFERRAL_COMMISSION, commission.id, TypeJournal.BANQUE)) return null;
+    const montant = Number(commission.amount) || 0;
+    if (montant <= 0) return null;
+    const apporteur =
+      commission.dossier_referral?.referrer?.company_name ??
+      commission.referrer_name ??
+      '';
+    return this.ecritures.creer({
+      dateEcriture: commission.payment_date ?? new Date().toISOString(),
+      libelle:      `Commission apporteur — ${apporteur}`.trim(),
+      codeJournal:  TypeJournal.BANQUE,
+      sourceModule: SourceModule.REFERRAL_COMMISSION,
+      sourceId:     String(commission.id),
+      lignes: [
+        { numeroCompte: '632', debit: montant, credit: 0,       libelle: `Commission apporteur — ${apporteur}`.trim() },
+        { numeroCompte: '512', debit: 0,       credit: montant, libelle: 'Règlement commission apporteur' },
+      ],
+    }, true);
+  }
+
+  // ── Avances sur salaire ────────────────────────────────────────────────────────
+
+  /**
+   * Avance sur salaire versée. Débit 425 « Personnel — avances et acomptes »
+   * (créance sur le salarié, soldée à la paie suivante), crédit 512 « Banque ».
+   * Journal BANQUE (distinct du journal OD de la paie complète → pas de
+   * collision d'idempotence). Le compte 425 est auto-créé pour les plans
+   * existants par EcrituresService.creer.
+   */
+  async comptabiliserAvanceSalaire(payslip: any): Promise<Ecriture | null> {
+    if (await this.existe(SourceModule.PAYSLIP, payslip.id, TypeJournal.BANQUE)) return null;
+    const montant = Number(payslip.advance_amount) || 0;
+    if (montant <= 0) return null;
+    const salarie = payslip.employee?.nom ?? payslip.employee?.full_name ?? payslip.employee_name ?? '';
+    return this.ecritures.creer({
+      dateEcriture: payslip.payment_date ?? new Date().toISOString(),
+      libelle:      `Avance sur salaire — ${salarie}`.trim(),
+      codeJournal:  TypeJournal.BANQUE,
+      sourceModule: SourceModule.PAYSLIP,
+      sourceId:     String(payslip.id),
+      lignes: [
+        { numeroCompte: '425', debit: montant, credit: 0,       libelle: `Avance — ${salarie}`.trim() },
+        { numeroCompte: '512', debit: 0,       credit: montant, libelle: 'Versement avance sur salaire' },
+      ],
     }, true);
   }
 

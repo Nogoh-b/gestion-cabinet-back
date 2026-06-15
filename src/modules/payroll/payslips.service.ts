@@ -17,7 +17,7 @@ import { PlanQuotaService } from '../plans/plan-quota.service';
 import { CreatePayslipDto } from './dto/create-payslip.dto';
 import { UpdatePayslipDto } from './dto/update-payslip.dto';
 import { PayrollPeriod } from './entities/payroll-period.entity';
-import { PayslipLine } from './entities/payslip-line.entity';
+import { PayslipLine, PayslipLineType } from './entities/payslip-line.entity';
 import { Payslip, PayslipStatus } from './entities/payslip.entity';
 import { PayrollCalculatorService } from './services/payroll-calculator.service';
 import { PayrollGenerationService } from './services/payroll-generation.service';
@@ -86,6 +86,30 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     // Pour une avance sur salaire : pas de génération automatique.
     if (!dto.is_advance && baseSalary > 0) {
       await this.generationService.applyBaseSalaryLines(saved.id, baseSalary, period.label);
+    }
+
+    // ── Honorer le statut demandé via le cycle de vie contrôlé ────────────────
+    // On ne force jamais le statut « en dur » : on rejoue les transitions
+    // officielles pour préserver snapshot d'audit + écritures comptables.
+    const requested = dto.status;
+    if (requested === PayslipStatus.VALIDATED || requested === PayslipStatus.PAID) {
+      if (dto.is_advance) {
+        // Avance sur salaire : pas de barème de cotisations ni de paie complète.
+        // Statut posé directement ; si payée, écriture d'avance dédiée.
+        await this.repository.update(saved.id, {
+          status: requested,
+          ...(requested === PayslipStatus.PAID ? { payment_date: new Date() } : {}),
+        });
+        if (requested === PayslipStatus.PAID) {
+          const full = await this.findOne(saved.id);
+          this.eventEmitter.emit('payslip.avance.payee', full);
+        }
+      } else {
+        await this.validate(saved.id);
+        if (requested === PayslipStatus.PAID) {
+          await this.pay(saved.id); // émet payslip.payee → comptabilisation de la paie
+        }
+      }
     }
 
     return this.findOne(saved.id);
@@ -186,8 +210,39 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     payslip.payment_date = new Date();
     const saved = await this.repository.save(payslip);
     const full = await this.findOne(saved.id);
+    // Impute la retenue d'avance sur les avances en cours (point irréversible).
+    await this.realizeAdvanceRecovery(full);
     this.eventEmitter.emit('payslip.payee', full);
     return full;
+  }
+
+  /**
+   * Au paiement d'un bulletin, impute le montant de la (des) ligne(s)
+   * « Récupération avance sur salaire » sur les avances PAYÉES en cours du
+   * collaborateur (plus anciennes d'abord), en incrémentant leur
+   * `advance_recovered_amount`. Une avance entièrement récupérée n'est plus
+   * proposée à la récupération sur les bulletins suivants.
+   */
+  private async realizeAdvanceRecovery(payslip: Payslip): Promise<void> {
+    const recovery = (payslip.lines ?? [])
+      .filter((l) => l.line_type === PayslipLineType.ADVANCE_RECOVERY)
+      .reduce((s, l) => s + Math.abs(Number(l.amount) || 0), 0);
+    if (recovery <= 0) return;
+
+    let remaining = recovery;
+    const advances = await this.repository.find({
+      where: { employee_id: payslip.employee_id, is_advance: true, status: PayslipStatus.PAID },
+      order: { id: 'ASC' },
+    });
+    for (const adv of advances) {
+      if (remaining <= 0) break;
+      const outstanding = Number(adv.advance_amount || 0) - Number(adv.advance_recovered_amount || 0);
+      if (outstanding <= 0) continue;
+      const take = Math.min(outstanding, remaining);
+      adv.advance_recovered_amount = Math.round((Number(adv.advance_recovered_amount || 0) + take) * 100) / 100;
+      remaining -= take;
+      await this.repository.save(adv);
+    }
   }
 
   /** Conservé pour compatibilité (ancien nom). */

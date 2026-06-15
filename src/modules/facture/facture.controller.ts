@@ -175,6 +175,18 @@ export class FactureController {
     return this.factureService.changerStatutFacture(id, statut);
   }
 
+  @Patch(':id/status/:status')
+  @ApiOperation({ summary: 'Changer le statut d\'une facture' })
+  @ApiResponse({ status: HttpStatus.OK, type: FactureResponseDto })
+  @ApiParam({ name: 'id', type: String })
+  @ApiParam({ name: 'status', enum: [0, 1, 2, 3, 4, 5] })
+  async changerStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('status') status: string
+  ) {
+    return this.factureService.changerStatutFacture(id, status);
+  }
+
   @Get('analytics/chiffre-affaires')
   @ApiOperation({ summary: 'Récupérer le chiffre d\'affaires sur une période' })
   @ApiQuery({ name: 'dateDebut', type: Date, required: true })
