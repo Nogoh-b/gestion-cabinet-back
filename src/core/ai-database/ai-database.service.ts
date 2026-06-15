@@ -263,6 +263,7 @@ REGLES ABSOLUES :
 4. Ne genere JAMAIS de DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
 5. Toutes les valeurs doivent etre en dur, sans placeholders (:id, ?, @param)
 6. Si des documents sont fournis dans la question, utilise leur contenu uniquement comme contexte d'analyse, pas comme nom de table
+7. ⚠️ IMPORTANT : Utilise EXACTEMENT les noms de tables du schema ci-dessus. Ne devine JAMAIS les noms de tables. Par exemple, la table "document_customer" s'appelle EXACTEMENT "document_customer", pas "document" ni "documents".
 
 FORMAT OBLIGATOIRE :
 Reponds uniquement avec un bloc SQL parsable :
@@ -662,8 +663,8 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     }
 
     // ── 3c. BRANCHE LECTURE ───────────────────────────────────────────────────
-    const schemaJSON = await this.getCompleteSchemaJson(relevantTables);
-
+    // (schemaJSON/schema ne sont plus calculés ni renvoyés : non exploités par le front,
+    //  et getCompleteSchemaJson déclenchait COUNT(*) + information_schema par table.)
     try {
       let conversationId = dto.conversationId;
 
@@ -700,8 +701,6 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         question: dto.question,
         sqlQuery: validatedQuery,
         analysis,
-        schemaJSON,
-        schema,
         results: results?.data,
         executionTimeMs: Date.now() - startTime,
         rowCount: results?.rowCount || 0,
@@ -714,8 +713,6 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         success: false,
         question: dto.question,
         analysis: `Erreur: ${error.message}`,
-        schemaJSON,
-        schema,
         executionTimeMs: Date.now() - startTime,
         error: error.message,
       };
@@ -1503,6 +1500,41 @@ ${blocks.join('\n\n')}
       const schema = await this.getCompleteSchema(relevantTables);
       tLog('schema prêt — appel detectIntent');
       const intentMode = this.normalizeIntentMode(dto.intentMode);
+
+      // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
+      // Si l'utilisateur a joint OU mentionné (@) un document dont le CONTENU a
+      // pu être extrait, et que l'intention n'est pas une écriture explicite, on
+      // analyse directement le TEXTE du document (résumé, extraction de clauses…)
+      // au lieu de générer du SQL — qui ne verrait que les métadonnées.
+      const hasReadableDocument = requestContext.documentContext.some(
+        d => !d.error && !!d.content && d.content.trim().length > 40,
+      );
+      if (hasReadableDocument && intentMode !== 'write') {
+        sendEvent('intent', { type: 'READ' });
+        await emit('status', { message: '📄 Lecture et analyse du contenu du document...' }, 80);
+
+        let conversationId = dto.conversationId;
+        if (!conversationId) {
+          const conv = await this.conversationManager.createConversation(
+            userId, this.generateConversationTitle(dto.question),
+          );
+          conversationId = conv.id;
+        }
+        await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+
+        const analysis = await this.analyzeDocumentsStream(
+          dto.question, requestContext.documentContext, sendEvent,
+        );
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+
+        sendEvent('result', {
+          success: true, question: dto.question, analysis,
+          conversationId, executionTimeMs: Date.now() - startTime,
+          ...(fileInfo && { fileInfo }),
+        });
+        return;
+      }
+
       let intentResult: any;
       if (intentMode === 'read') {
         intentResult = { type: 'READ', requiresConfirmation: false };
@@ -1596,7 +1628,6 @@ ${blocks.join('\n\n')}
 
       // ── 3c. READ ─────────────────────────────────────────────────────────────
       await emit('status', { message: '🗄️ Génération de la requête SQL...' });
-      const schemaJSON = await this.getCompleteSchemaJson(relevantTables);
 
       let conversationId = dto.conversationId;
       if (!conversationId) {
@@ -1609,16 +1640,11 @@ ${blocks.join('\n\n')}
       const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
       await emit('status', { message: '✅ Requête générée, exécution en cours...' });
 
-      const validatedQuery = await this.withRetry(
-        () => this.validateAndFixQuery(sqlQuery, dto.specificTables || []),
-        2,
-        1000,
-      );
-      const results = await this.withRetry(
-        () => this.executeSafeQuery(validatedQuery),
-        2,
-        1000,
-      );
+      // validateAndFixQuery valide déjà via EXPLAIN et s'auto-corrige (jusqu'à 2 passes
+      // LLM en interne) — inutile de le ré-emballer dans withRetry, qui multipliait les
+      // appels LLM (jusqu'à 4) et la latence. On exécute la requête validée directement.
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      const results = await this.executeSafeQuery(validatedQuery);
 
       await emit('status', { message: '📊 Analyse des résultats...' });
 
@@ -1629,9 +1655,12 @@ ${blocks.join('\n\n')}
       );
       await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
 
+      // ⚡ On NE renvoie PLUS schemaJSON/schema : le front ne les exploite pas et leur
+      // génération (COUNT(*) + information_schema par table) + leur transfert alourdissaient
+      // CHAQUE réponse. Suppression = gain direct de latence et de bande passante.
       sendEvent('result', {
         success: true, question: dto.question,
-        sqlQuery: validatedQuery, analysis, schemaJSON, schema,
+        sqlQuery: validatedQuery, analysis,
         results: results.data, rowCount: results.rowCount,
         conversationId, executionTimeMs: Date.now() - startTime,
         ...(fileInfo && { fileInfo }),
@@ -1643,7 +1672,86 @@ ${blocks.join('\n\n')}
     }
   }
 
-  
+  /**
+   * Analyse DIRECTE du contenu d'un/des document(s) — sans passer par le SQL.
+   *
+   * Utilisé quand l'utilisateur joint ou mentionne (@) un document dont le texte
+   * a été extrait : la question porte sur le CONTENU du fichier (résumé,
+   * extraction de clauses, dates, montants…), pas sur les métadonnées en base.
+   * On envoie le texte extrait directement au LLM et on streame la réponse.
+   */
+  private async analyzeDocumentsStream(
+    question: string,
+    documentContext: DocumentContextItem[],
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    const prompt = this.buildDocumentAnalysisPrompt(question, documentContext);
+
+    let fullText = '';
+    let tokenCount = 0;
+    this.logger.log(`🌊 [DOC STREAM] Analyse directe — prompt ${prompt.length} chars`);
+
+    try {
+      const stream = await this.llm.stream(prompt);
+      for await (const chunk of stream) {
+        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        if (text) {
+          fullText += text;
+          tokenCount++;
+          sendEvent('token', { text });
+        }
+      }
+      this.logger.log(`✅ [DOC STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
+    } catch (err) {
+      this.logger.warn(`⚠️ [DOC STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
+      const response = await this.llm.invoke(prompt);
+      fullText = response.content as string;
+      sendEvent('token', { text: fullText });
+    }
+
+    return fullText;
+  }
+
+  /**
+   * Construit le prompt d'analyse directe à partir du texte extrait des documents.
+   * Le modèle doit s'appuyer UNIQUEMENT sur le contenu fourni (anti-hallucination).
+   */
+  private buildDocumentAnalysisPrompt(
+    question: string,
+    documentContext: DocumentContextItem[],
+  ): string {
+    const docs = documentContext
+      .filter(d => !d.error && !!d.content && d.content.trim().length > 0)
+      .map((d, i) => {
+        const title = d.id
+          ? `Document système #${d.id} — ${d.name}`
+          : `Fichier joint — ${d.name || `#${i + 1}`}`;
+        return `### ${title}\n${d.content}`;
+      })
+      .join('\n\n');
+
+    const role = this.projectConfig?.analysisSystemPrompt
+      ?? `Tu es un assistant juridique expert qui lit et analyse des documents (contrats, jugements, conclusions, pièces…).`;
+
+    return `${role}
+
+Tu dois répondre à la demande de l'utilisateur en t'appuyant EXCLUSIVEMENT sur le contenu des documents ci-dessous.
+⚠️ Si une information demandée ne figure pas dans les documents, dis-le explicitement. N'invente JAMAIS de contenu.
+
+## DEMANDE DE L'UTILISATEUR
+"${question}"
+
+## CONTENU DES DOCUMENTS
+${docs}
+
+## CONSIGNES DE RÉPONSE
+- Réponds en français, dans un langage clair et professionnel.
+- Structure la réponse (points clés, parties, dates, montants, obligations, échéances…).
+- Cite les éléments importants tels qu'ils apparaissent dans le document.
+- Sois synthétique mais complet (≈ 600 mots maximum).
+
+RÉPONSE :`;
+  }
 
   // ai-database.service.ts
   /**
@@ -1739,13 +1847,13 @@ ${blocks.join('\n\n')}
     // model: 'deepseek-v4-pro',
     model: 'deepseek-chat',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
-    maxTokens: 8000,           // ✅ 50000 pour éviter la troncature des réponses JSON complexes
+    maxTokens: 8000,           // Sortie max de DeepSeek-chat (≈ 8K tokens) — suffit pour SQL + analyses
     apiKey: process.env.DEEPSEEK_API_KEY,
     configuration: {
       baseURL: 'https://api.deepseek.com/v1',
     },
-    streaming :true,             // ✅ Activer le streaming pour les réponses longues
-    timeout: 15000,            // ✅ 30s pour laisser le temps au raisonnement
+    streaming: true,           // ✅ Streaming activé (réponses longues + 1er token rapide)
+    timeout: 60000,            // 60s : marge de raisonnement sans couper les analyses longues
     maxRetries: 2,
   });
 }
@@ -2049,18 +2157,40 @@ RÉPONSE (en langage naturel):`;
    * Détecte automatiquement les tables pertinentes
    */
   /**
-  * Détecte automatiquement les tables pertinentes (UNIQUEMENT celles avec métadonnées)
+   * Normalise un mot-clé pour le matching : vire les marques du pluriel français
+   * pour matcher "documents" → "document", "dossiers" → "dossier", etc.
+   */
+  private stemKeyword(word: string): string {
+    const w = word.toLowerCase();
+    if (w.endsWith('s') && w.length > 3) return w.slice(0, -1);
+    if (w.endsWith('x') && w.length > 3) return w.slice(0, -1);
+    return w;
+  }
+
+  /**
+   * Decoupe un nom de table snake_case en mots individuels
+   * Ex: "document_customer" → ["document", "customer"]
+   */
+  private splitTableName(name: string): string[] {
+    return name.toLowerCase().split('_').filter(w => w.length > 0);
+  }
+
+  /**
+  * Detecte automatiquement les tables pertinentes avec matching ameliore :
+  * - Word-level matching (decoupage en mots des noms de tables)
+  * - Stemming pour gerer singulier/pluriel (ex: "documents" → "document" dans "document_customer")
+  * - Matching sur la categorie BusinessTable
+  * - Tri stable (score DESC + nom ASC)
   */
   private async detectRelevantTables(question: string, specificTables?: string[] | string): Promise<string[]> {
     const normalizedSpecificTables = this.normalizeStringArray(specificTables);
     if (normalizedSpecificTables && normalizedSpecificTables.length > 0) {
-      // ✅ Filtrer les tables spécifiques qui ont des métadonnées
       const validTables = normalizedSpecificTables.filter(table => 
         this.schemaMetadata.hasTableMetadata(table)
       );
       
       if (validTables.length === 0) {
-        this.logger.warn(`⚠️ Aucune table spécifiée n'a de métadonnées, utilisation des tables par défaut`);
+        this.logger.warn(`Aucune table specifiee n'a de metadonnees, utilisation des tables par defaut`);
         return this.getDefaultVisibleTables();
       }
       
@@ -2068,40 +2198,92 @@ RÉPONSE (en langage naturel):`;
     }
 
     const keywords = question.toLowerCase().split(/\s+/);
-    
-    // ✅ Récupérer UNIQUEMENT les tables qui ont des métadonnées
     const visibleTables = this.schemaMetadata.getAllVisibleTables();
+    const keywordStems = keywords.map(k => this.stemKeyword(k));
     
-    const tableScores: any[] = [];
+    const tableScores: { name: string; score: number; reasons: string[] }[] = [];
     for (const tableName of visibleTables) {
       let score = 0;
+      const reasons: string[] = [];
       
-      if (keywords.includes(tableName.toLowerCase())) score += 10;
+      // 1. Nom de table EXACT dans les mots-cles (ex: "dossiers")
+      if (keywords.includes(tableName.toLowerCase())) {
+        score += 10;
+        reasons.push('exact_table_name');
+      }
       
-      // Récupérer le label métier pour améliorer la détection
+      const tableWords = this.splitTableName(tableName);
+      const tableStems = tableWords.map(w => this.stemKeyword(w));
+      
       const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(tableName);
       const businessName = tableMeta?.label?.toLowerCase() || '';
+      const category = tableMeta?.category?.toLowerCase() || '';
       
-      for (const keyword of keywords) {
-        if (tableName.toLowerCase().includes(keyword) || keyword.includes(tableName.toLowerCase())) {
+      for (let ki = 0; ki < keywords.length; ki++) {
+        const keyword = keywords[ki];
+        const stem = keywordStems[ki];
+        
+        // 2. Word-level matching avec stemming
+        // Ex: "documents" (stem="document") match "document" dans "document_customer"
+        const wordMatch = tableWords.some(w => w === keyword || w === stem);
+        const stemMatch = tableStems.some(s => s === keyword || s === stem);
+        
+        if (wordMatch || stemMatch) {
           score += 5;
+          reasons.push(`word_match:${keyword}`);
         }
-        if (businessName.includes(keyword) || keyword.includes(businessName)) {
-          score += 7; // Score plus élevé pour le nom métier
+        
+        // 2b. Fallback substring (pReserve l'ancien comportement: "dossier" matche "dossiers")
+        if (tableName.toLowerCase().includes(keyword)) {
+          score += 3;
+          reasons.push(`contains_match:${keyword}`);
+        }
+        
+        // 3. Label metier (ex: "Documents clients" → "documents")
+        const businessWords = businessName.split(/[\s_]+/).filter(Boolean);
+        const businessStems = businessWords.map(w => this.stemKeyword(w));
+        
+        const labelWordMatch = businessWords.some(w => w === keyword || w === stem);
+        const labelStemMatch = businessStems.some(s => s === keyword || s === stem);
+        
+        if (labelWordMatch || labelStemMatch) {
+          score += 7;
+          reasons.push(`label_match:${keyword}`);
+        }
+        
+        // 3b. Fallback substring label (ex: "Dossiers contentieux" contient "dossier")
+        if (businessName.includes(keyword)) {
+          score += 4;
+          reasons.push(`label_contains:${keyword}`);
+        }
+        
+        // 4. Categorie BusinessTable (ex: category: 'document' → match "documents")
+        if (category) {
+          const catWords = category.split(/[\s_]+/).filter(Boolean);
+          const catStems = catWords.map(w => this.stemKeyword(w));
+          if (catWords.some(w => w === keyword || w === stem) ||
+              catStems.some(s => s === keyword || s === stem)) {
+            score += 6;
+            reasons.push(`category_match:${keyword}`);
+          }
         }
       }
       
       if (score > 0) {
-        tableScores.push({ name: tableName, score });
+        tableScores.push({ name: tableName, score, reasons });
       }
     }
     
-    tableScores.sort((a, b) => b.score - a.score);
+    // Tri stable : score DESC, puis nom ASC
+    tableScores.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.name.localeCompare(b.name);
+    });
     const detectedTables = tableScores.slice(0, 10).map(t => t.name);
     
-    this.logger.log(`🎯 Tables détectées: ${detectedTables.join(', ')}`);
+    this.logger.log(`🎯 Tables detectees: ${detectedTables.join(', ')}`);
+    this.logger.debug(`Scores: ${JSON.stringify(tableScores.map(t => ({ name: t.name, score: t.score })))}`);
     
-    // ✅ Si aucune table détectée, retourner les tables par défaut visibles
     if (detectedTables.length === 0) {
       return this.getDefaultVisibleTables();
     }
