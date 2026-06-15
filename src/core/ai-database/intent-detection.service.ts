@@ -21,10 +21,11 @@ export class IntentDetectionService {
     question: string,
     llm: ChatOpenAI,
     readSchema: string,
+    options: { forceWrite?: boolean } = {},
   ): Promise<IntentDetectionResult> {
 
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
-    const isObviousWrite = this.isWriteIntent(question);
+    const isObviousWrite = options.forceWrite || this.isWriteIntent(question);
 
     if (!isObviousWrite) {
       // 1b. Classification légère via LLM : READ | WRITE | CHAT

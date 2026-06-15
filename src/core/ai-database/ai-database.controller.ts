@@ -37,9 +37,12 @@ export class AiDatabaseController {
     storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
     fileFilter: (req, file, cb) => {
-      const allowed = ['application/pdf', 'text/csv', 'application/vnd.ms-excel',
+      const allowed = ['application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain', 'application/json'];
+      ];
       if (allowed.includes(file.mimetype)) {
         cb(null, true);
       } else {
@@ -54,6 +57,8 @@ export class AiDatabaseController {
       properties: {
         question: { type: 'string' },
         conversationId: { type: 'string' },
+        documentIds: { type: 'string', description: 'JSON array ou liste separee par virgules' },
+        intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat'] },
         file: { type: 'string', format: 'binary' },
       },
     },
@@ -91,9 +96,11 @@ export class AiDatabaseController {
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
       const allowed = [
-        'application/pdf', 'text/csv', 'application/vnd.ms-excel',
+        'application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain', 'application/json',
       ];
       cb(allowed.includes(file.mimetype) ? null : new Error(`Type non supporté: ${file.mimetype}`), allowed.includes(file.mimetype));
     },

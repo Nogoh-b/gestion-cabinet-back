@@ -214,6 +214,43 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   }
 
   /**
+   * Retourne uniquement les derniers messages utiles pour un prompt LLM.
+   * Les messages system sont exclus car le service AiDatabase reconstruit un
+   * prompt system a jour a chaque appel (schema, tenant, documents).
+   */
+  async getRecentHistoryForPrompt(
+    conversationId: string,
+    options: { maxMessages?: number; maxTokens?: number } = {},
+  ): Promise<Array<{role: string, content: string}>> {
+    const maxMessages = options.maxMessages ?? 8;
+    const maxTokens = options.maxTokens ?? 8000;
+
+    const messages = await this.messageRepo.find({
+      where: { conversationId },
+      order: { created_at: 'DESC' },
+      take: Math.max(maxMessages * 3, maxMessages),
+    });
+
+    const selected: ConversationMessage[] = [];
+    let tokens = 0;
+
+    for (const msg of messages) {
+      if (msg.role === 'system') continue;
+      const messageTokens = msg.tokensUsed || this.estimateTokens(msg.content);
+      if (selected.length >= maxMessages || (selected.length > 0 && tokens + messageTokens > maxTokens)) {
+        break;
+      }
+      selected.push(msg);
+      tokens += messageTokens;
+    }
+
+    return selected.reverse().map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  }
+
+  /**
    * Récupère une conversation active par son ID
    */
   async getConversation(conversationId: string): Promise<Conversation | null> {

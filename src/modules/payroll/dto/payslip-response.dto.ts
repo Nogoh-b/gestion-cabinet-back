@@ -64,18 +64,6 @@ export class PayslipResponseDto {
   @Expose()
   net_amount: number;
 
-  @ApiProperty({ example: false })
-  @Expose()
-  is_advance: boolean;
-
-  @ApiProperty({ example: 1500.0, required: false })
-  @Expose()
-  advance_amount: number;
-
-  @ApiProperty({ example: 500.0, required: false, description: "Part de l'avance déjà récupérée sur des paies" })
-  @Expose()
-  advance_recovered_amount: number;
-
   @ApiProperty({ enum: PayslipStatus, example: PayslipStatus.PAID })
   @Expose()
   status: PayslipStatus;
@@ -208,18 +196,6 @@ export class PayslipListResponseDto {
   @ApiProperty({ example: 3200.0 })
   @Expose()
   net_amount: number;
-
-  @ApiProperty({ example: false })
-  @Expose()
-  is_advance: boolean;
-
-  @ApiProperty({ example: 1500.0, required: false })
-  @Expose()
-  advance_amount: number;
-
-  @ApiProperty({ example: 500.0, required: false, description: "Part de l'avance déjà récupérée sur des paies" })
-  @Expose()
-  advance_recovered_amount: number;
 
   @ApiProperty({ example: '2026-04-01', required: false })
   @Expose()

@@ -91,7 +91,6 @@ export class PayrollGenerationService {
           gross_amount: salary,
           net_amount: salary,
           status: PayslipStatus.DRAFT,
-          is_advance: false,
         }),
       );
 

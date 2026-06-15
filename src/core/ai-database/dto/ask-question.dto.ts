@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsArray, IsBoolean, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsArray, IsBoolean, MinLength, MaxLength, IsIn } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AskQuestionDto {
@@ -77,6 +77,23 @@ export class AskQuestionDto {
   @IsOptional()
   @IsString()
   context?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "Mode d'intention explicite. 'auto' laisse le backend classifier.",
+    enum: ['auto', 'read', 'write', 'chat'],
+    default: 'auto',
+  })
+  @IsOptional()
+  @IsIn(['auto', 'read', 'write', 'chat'])
+  intentMode?: 'auto' | 'read' | 'write' | 'chat';
+
+  @ApiProperty({
+    required: false,
+    description: 'IDs de documents systeme a lire/analyser (array JSON ou liste separee par virgules en multipart).',
+  })
+  @IsOptional()
+  documentIds?: number[] | string;
 }
 
 /** Une entité référencée via `@` côté front, après parsing du JSON. */

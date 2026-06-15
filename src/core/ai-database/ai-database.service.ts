@@ -1,7 +1,9 @@
-import { DataSource } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
+import { DataSource, Repository } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
 import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
 
 
@@ -17,6 +19,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 
 
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
+import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
@@ -31,6 +34,25 @@ import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
 
+type IntentMode = 'auto' | 'read' | 'write' | 'chat';
+
+interface DocumentContextItem {
+  id?: number;
+  name: string;
+  type?: string;
+  size?: number;
+  source: 'upload' | 'system';
+  content: string;
+  truncated: boolean;
+  error?: string;
+}
+
+interface RequestContext {
+  enrichedQuestion: string;
+  fileInfo?: any;
+  documentContext: DocumentContextItem[];
+  referenced: ReferencedEntityContext[];
+}
 
 
 
@@ -56,6 +78,11 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
   private readonly MAX_CHARS = 180000;
+  private readonly MAX_HISTORY_MESSAGES = 8;
+  private readonly MAX_HISTORY_TOKENS = 9000;
+  private readonly MAX_FILE_CONTEXT_CHARS = 12000;
+  private readonly MAX_DOCUMENT_CONTEXT_CHARS = 16000;
+  private readonly MAX_SYSTEM_DOCUMENTS = 5;
   private schemaInitialized = false;
   private readonly SCHEMA_CACHE_KEY = 'database_schema_context';
   private schemaLoaded = false;
@@ -63,6 +90,8 @@ export class AiDatabaseService implements OnModuleInit {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
+    @InjectRepository(DocumentCustomer)
+    private readonly documentRepository: Repository<DocumentCustomer>,
     private readonly schemaMetadata: SchemaMetadataService,
     private readonly sqlValidator: SqlValidatorService,
     private readonly intentDetectionService: IntentDetectionService,
@@ -149,90 +178,108 @@ export class AiDatabaseService implements OnModuleInit {
   /**
    * ✅ NOUVELLE MÉTHODE : Pose une question dans une conversation spécifique
    */
-  async askQuestionWithSession(conversationId: string, question: string): Promise<string> {
+  async askQuestionWithSession(
+    conversationId: string,
+    question: string,
+    schema?: string,
+    tables: string[] = [],
+  ): Promise<string> {
     // 1. Vérifier que la conversation existe
-    let conversation = await this.conversationManager.getConversation(conversationId);
+    const conversation = await this.conversationManager.getConversation(conversationId);
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} non trouvée`);
     }
 
-    // 2. Vérifier le contexte système — injecter un prompt tenant-aware si manquant
-    const hasSystemMessage = await this.conversationManager.hasSystemMessage(conversationId);
-    if (!hasSystemMessage && this.cachedSystemPrompt) {
-      const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
-      const tenantPrompt = this.buildTenantAwareSystemPrompt(tenantId);
-      Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt (tenant=${tenantId ?? 'global'})...`);
-      await this.conversationManager.addSystemMessage(conversationId, tenantPrompt);
-    }
-    
-    // 3. Ajouter la question
-    await this.conversationManager.addUserMessage(conversationId, question);
-    
-    // 4. Élaguer l'historique si trop long (max 20 messages) puis estimer les tokens
-    await this.conversationManager.trimHistoryIfNeeded(conversationId, 20);
-    const history = await this.conversationManager.getFullHistory(conversationId);
-    
-    const estimatedTokens = history.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
-    this.logger.log(`📊 Tokens estimés avant LLM: ${estimatedTokens} | ${history.length} messages | limite modèle ~128K`);
-    if (estimatedTokens > 100000) {
-      this.logger.warn(`⚠️ Contexte proche de la limite (${estimatedTokens} tokens) — troncation forcée à 10 messages`);
-      await this.conversationManager.trimHistoryIfNeeded(conversationId, 10);
-      const trimmedHistory = await this.conversationManager.getFullHistory(conversationId);
-      const trimmedTokens = trimmedHistory.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
-      this.logger.log(`📊 Après troncation: ${trimmedTokens} tokens | ${trimmedHistory.length} messages`);
-    }
-    
-    const historyToUse = estimatedTokens > 100000 
-      ? await this.conversationManager.getFullHistory(conversationId)
-      : history;
-    
-    const response = await this.llm.invoke(historyToUse);
-    let content = response.content as string;
-    
-    // 🔍 LOG CRITIQUE
-    this.logger.log(`📝 Réponse brute (200 premiers chars): ${content.substring(0, 200)}`);
-    
-    // 5. Extraction SQL avec fallback amélioré
-    let sqlQuery = this.extractSQL(content);
-    
-    if (!sqlQuery) {
-      this.logger.warn(`⚠️ Aucun bloc SQL trouvé, tentative avec regex plus permissif...`);
-      sqlQuery = this.extractSQLRelaxed(content);
-    }
-    
-    if (!sqlQuery && this.isNoResultsResponse(content)) {
-      // DeepSeek a répondu qu'il n'y a pas de résultats
-      sqlQuery = `-- Aucun résultat trouvé pour: ${question}\nSELECT NULL AS message WHERE 1=0;`;
-      this.logger.log(`ℹ️ Réponse "aucun résultat" détectée, SQL généré automatiquement`);
-    } else if (!sqlQuery) {
-      this.logger.warn(`⚠️ Pas de SQL trouvé, demande de reformatage...`);
-      sqlQuery = await this.askForSQLOnly(question);
-    }
-    
-    // 6. Vérifier que c'est bien une requête SELECT
-    if (sqlQuery) {
-      const normalizedLower = sqlQuery.toLowerCase().trim();
-      if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
-        this.logger.error(`❌ Requête non SELECT détectée: ${sqlQuery.substring(0, 100)}`);
-        sqlQuery = null;
-      }
-    }
-    
-    // 7. Dernier recours : générer une requête de recherche basée sur la question
-    if (!sqlQuery) {
-      sqlQuery = this.generateFallbackQuery(question);
-      this.logger.warn(`⚠️ Utilisation du fallback final: ${sqlQuery}`);
-    }
-    
-    // 8. Sauvegarder la réponse originale (pour debug)
-    await this.conversationManager.addAssistantMessage(conversationId, content);
-    
-    return sqlQuery;
+    return this.generateSqlForConversation(conversationId, question, schema, tables);
   }
 
   /**
   * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
   */
+  private async generateSqlForConversation(
+    conversationId: string,
+    question: string,
+    schema?: string,
+    tables: string[] = [],
+  ): Promise<string> {
+    const schemaToUse = schema || await this.getCompleteSchema(
+      tables.length ? tables : await this.detectRelevantTables(question),
+    );
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    const systemPrompt = this.buildReadSystemPrompt(schemaToUse, tenantId);
+
+    await this.conversationManager.addUserMessage(conversationId, question);
+
+    const recentHistory = await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
+      maxMessages: this.MAX_HISTORY_MESSAGES,
+      maxTokens: this.MAX_HISTORY_TOKENS,
+    });
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...recentHistory,
+    ];
+    const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
+    this.logger.log(`Tokens estimes prompt SQL: ${estimatedTokens} | ${messages.length} messages | tables=${tables.join(',') || 'auto'}`);
+
+    const response = await this.llm.invoke(messages);
+    const content = response.content as string;
+    this.logger.log(`Reponse SQL brute (200 chars): ${content.substring(0, 200)}`);
+
+    let sqlQuery = this.extractSQL(content) || this.extractSQLRelaxed(content);
+
+    if (!sqlQuery && this.isNoResultsResponse(content)) {
+      sqlQuery = `-- Aucun resultat trouve pour: ${question}\nSELECT NULL AS message WHERE 1=0`;
+    } else if (!sqlQuery) {
+      sqlQuery = await this.askForSQLOnly(question) || '';
+    }
+
+    if (sqlQuery) {
+      const normalizedLower = sqlQuery.toLowerCase().trim();
+      if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
+        this.logger.error(`Requete non SELECT detectee: ${sqlQuery.substring(0, 100)}`);
+        sqlQuery = '';
+      }
+    }
+
+    if (!sqlQuery) {
+      sqlQuery = this.generateFallbackQuery(question);
+      this.logger.warn(`Fallback SQL final utilise: ${sqlQuery}`);
+    }
+
+    return sqlQuery;
+  }
+
+  private buildReadSystemPrompt(schema: string, tenantId: number | null): string {
+    const prompt = `Tu es un expert SQL pour une base de donnees juridique.
+
+Voici le schema utile de la base :
+
+${schema}
+
+REGLES ABSOLUES :
+1. Ignore toujours les colonnes deleted_at, deleted_by, deleted_date
+2. Ajoute systematiquement LIMIT ${this.MAX_RESULTS}
+3. Utilise des alias courts
+4. Ne genere JAMAIS de DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
+5. Toutes les valeurs doivent etre en dur, sans placeholders (:id, ?, @param)
+6. Si des documents sont fournis dans la question, utilise leur contenu uniquement comme contexte d'analyse, pas comme nom de table
+
+FORMAT OBLIGATOIRE :
+Reponds uniquement avec un bloc SQL parsable :
+
+\`\`\`sql
+SELECT * FROM dossiers d LIMIT ${this.MAX_RESULTS};
+\`\`\``;
+
+    if (!tenantId || tenantId === 1) return prompt;
+
+    return `${prompt}
+
+REGLE TENANT OBLIGATOIRE :
+Cette session appartient au cabinet tenant_id = ${tenantId}.
+Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
+  }
+
   private isNoResultsResponse(content: string): boolean {
     const lower = content.toLowerCase();
     const noResultPatterns = [
@@ -310,22 +357,34 @@ export class AiDatabaseService implements OnModuleInit {
   * Extrait le contenu textuel d'un fichier uploadé
   */
   private async extractFileContent(file: Express.Multer.File): Promise<string> {
-    const { mimetype, buffer, originalname } = file;
+    return this.extractBufferContent(file.buffer, file.mimetype, file.originalname);
+  }
 
-    // Fichiers texte / JSON / CSV
-    if (mimetype === 'text/plain' || mimetype === 'text/csv' || mimetype === 'application/json') {
+
+  // ── Endpoint de confirmation ──────────────────────────────
+  private async extractBufferContent(buffer: Buffer, mimetype = '', filename = ''): Promise<string> {
+    const mime = (mimetype || '').toLowerCase();
+    const ext = path.extname(filename || '').toLowerCase();
+
+    if (
+      mime.startsWith('text/') ||
+      ['.txt', '.csv', '.json', '.html', '.htm', '.md', '.xml'].includes(ext) ||
+      ['application/json', 'application/xml', 'application/xhtml+xml'].includes(mime)
+    ) {
       return buffer.toString('utf-8');
     }
 
-    // PDF : utiliser pdf-parse
-    if (mimetype === 'application/pdf') {
+    if (mime === 'application/pdf' || ext === '.pdf') {
       const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
-      return data.text;
+      return data.text || '';
     }
 
-    // Excel : utiliser xlsx
-    if (mimetype.includes('spreadsheetml') || mimetype.includes('ms-excel')) {
+    if (
+      mime.includes('spreadsheetml') ||
+      mime.includes('ms-excel') ||
+      ['.xls', '.xlsx'].includes(ext)
+    ) {
       const XLSX = require('xlsx');
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       let text = '';
@@ -337,11 +396,29 @@ export class AiDatabaseService implements OnModuleInit {
       return text;
     }
 
-    throw new Error(`Type de fichier non supporté: ${mimetype}`);
+    if (
+      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      ext === '.docx'
+    ) {
+      return this.extractDocxText(buffer);
+    }
+
+    if (mime.startsWith('image/')) {
+      return `[Image ${filename || 'sans nom'}: analyse OCR non disponible cote serveur. Ajoutez une description ou joignez un PDF/texte si le contenu doit etre lu.]`;
+    }
+
+    throw new Error(`Type de fichier non supporte: ${mimetype || ext || 'inconnu'}`);
   }
 
+  private async extractDocxText(buffer: Buffer): Promise<string> {
+    try {
+      const mammoth = require('mammoth');
+      return mammoth.extractRawText({ buffer }).then((result: any) => result.value || '');
+    } catch {
+      throw new Error('Lecture DOCX indisponible: dependance mammoth absente');
+    }
+  }
 
-  // ── Endpoint de confirmation ──────────────────────────────
   async confirmWrite(
     pendingIntent: WritePlan,
     userId: string
@@ -500,29 +577,11 @@ export class AiDatabaseService implements OnModuleInit {
     let enrichedQuestion = dto.question;
     let fileInfo: any;
 
-    if (file) {
-      this.logger.log(`📎 Fichier reçu: ${file.originalname} (${file.mimetype}, ${file.size} octets)`);
-      try {
-        const fileContent = await this.extractFileContent(file);
-        const truncated = fileContent.substring(0, 5000);
-        enrichedQuestion = `${dto.question}
+    // ── 1. Contexte enrichi : mentions, fichiers et documents système ────────
+    const requestContext = await this.buildRequestContext(dto, file);
+    enrichedQuestion = requestContext.enrichedQuestion;
+    fileInfo = requestContext.fileInfo ?? fileInfo;
 
---- CONTENU DU FICHIER: ${file.originalname} ---
-${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractères]' : ''}
---- FIN DU FICHIER ---`;
-        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
-        this.logger.log(`✅ Contenu extrait du fichier (${fileContent.length} caractères)`);
-      } catch (fileError) {
-        this.logger.warn(`⚠️ Impossible de lire le fichier: ${fileError.message}`);
-        enrichedQuestion += `\n\n[Note: Le fichier ${file.originalname} n'a pas pu être lu: ${fileError.message}]`;
-        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype, error: fileError.message };
-      }
-    }
-
-    // ── 1bis. Mode "génération de texte pure" — court-circuite la détection ──
-    // Utilisé par la modale IA des éditeurs (corps d'email, notes…). Aucune
-    // opération en base, juste appel direct au LLM avec la question complète
-    // (le prompt côté front spécifie déjà le format de sortie HTML/texte).
     if (dto.textGenerationOnly) {
       this.logger.log(`✍️ Mode textGenerationOnly — détection d'intention désactivée`);
       try {
@@ -555,22 +614,35 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     }
 
     // ── 2. Détection d'intention sur la question enrichie ────────────────────
-    const allTables = this.schemaMetadata.getAllVisibleTables();
-    const schema = await this.getCompleteSchema(allTables);
-
-    const intentResult = await this.intentDetectionService.detectIntent(
-      enrichedQuestion,
-      this.llm,
-      schema,
-    );
+    const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables);
+    if (requestContext.documentContext.length && !relevantTables.includes('document_customer')) {
+      relevantTables.push('document_customer');
+    }
+    const schema = await this.getCompleteSchema(relevantTables);
+    const intentMode = this.normalizeIntentMode(dto.intentMode);
+    let intentResult: any;
+    if (intentMode === 'read') {
+      intentResult = { type: 'READ', requiresConfirmation: false };
+    } else if (intentMode === 'chat') {
+      intentResult = { type: 'CONVERSATIONAL', requiresConfirmation: false };
+    } else {
+      intentResult = await this.intentDetectionService.detectIntent(
+        enrichedQuestion,
+        this.llm,
+        schema,
+        { forceWrite: intentMode === 'write' },
+      );
+    }
     this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
 
     // ── 3a. BRANCHE CONVERSATIONNELLE ────────────────────────────────────────
     if (intentResult.type === 'CONVERSATIONAL') {
+      const analysis = intentResult.conversationalResponse
+        ?? await this.generateConversationalResponse(enrichedQuestion);
       return {
         success: true,
         question: dto.question,
-        analysis: intentResult.conversationalResponse ?? '',
+        analysis,
         executionTimeMs: Date.now() - startTime,
         conversationId: dto.conversationId,
       };
@@ -590,7 +662,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     }
 
     // ── 3c. BRANCHE LECTURE ───────────────────────────────────────────────────
-    const schemaJSON = await this.getCompleteSchemaJson(allTables);
+    const schemaJSON = await this.getCompleteSchemaJson(relevantTables);
 
     try {
       let conversationId = dto.conversationId;
@@ -609,7 +681,7 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         }
       }
 
-      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
+      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
 
       let results: { data: any[]; rowCount: number } | null = null;
@@ -1147,6 +1219,243 @@ ${lines.join('\n')}
 ---`;
   }
 
+  private normalizeIntentMode(mode?: string): IntentMode {
+    if (mode === 'read' || mode === 'write' || mode === 'chat') return mode;
+    return 'auto';
+  }
+
+  private parseDocumentIds(dto: AskQuestionDto, referenced: ReferencedEntityContext[]): number[] {
+    const ids = new Set<number>();
+    const add = (value: unknown) => {
+      const num = Number(value);
+      if (Number.isInteger(num) && num > 0) ids.add(num);
+    };
+
+    const raw = dto.documentIds as unknown;
+    if (Array.isArray(raw)) {
+      raw.forEach(add);
+    } else if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) parsed.forEach(add);
+        else add(parsed);
+      } catch {
+        raw.split(',').forEach(part => add(part.trim()));
+      }
+    }
+
+    for (const item of referenced) {
+      if (['document', 'documents', 'document_customer'].includes(item.type?.toLowerCase())) {
+        add(item.data?.id);
+      }
+    }
+
+    return Array.from(ids).slice(0, this.MAX_SYSTEM_DOCUMENTS);
+  }
+
+  private normalizeStringArray(value?: string[] | string): string[] | undefined {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value !== 'string' || !value.trim()) return undefined;
+
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => String(item)).filter(Boolean);
+      }
+    } catch {
+      // Fallback CSV ci-dessous.
+    }
+
+    return value.split(',').map(item => item.trim()).filter(Boolean);
+  }
+
+  private buildDocumentContextBlock(items: DocumentContextItem[]): string {
+    if (!items.length) return '';
+
+    const blocks = items.map((item, index) => {
+      const title = item.id ? `Document systeme #${item.id}` : `Fichier joint #${index + 1}`;
+      const meta = [
+        `nom="${item.name}"`,
+        item.type ? `type=${item.type}` : null,
+        item.size ? `taille=${item.size}` : null,
+        `source=${item.source}`,
+      ].filter(Boolean).join(', ');
+
+      const content = item.error
+        ? `[Erreur de lecture: ${item.error}]`
+        : item.content;
+
+      return `### ${title} (${meta})
+${content}
+${item.truncated ? '\n[Contenu tronque pour rester dans la limite de contexte]' : ''}`;
+    });
+
+    return `\n\n--- DOCUMENTS A ANALYSER ---
+Les extraits suivants proviennent des documents explicitement joints ou mentionnes par l'utilisateur.
+Base tes reponses sur ces extraits quand la question parle de "ce document", "la piece", "le contrat", etc.
+
+${blocks.join('\n\n')}
+--- FIN DOCUMENTS ---`;
+  }
+
+  private truncateContextText(text: string, maxChars: number): { content: string; truncated: boolean } {
+    const normalized = (text || '').replace(/\u0000/g, '').trim();
+    if (normalized.length <= maxChars) {
+      return { content: normalized, truncated: false };
+    }
+    return {
+      content: normalized.substring(0, maxChars),
+      truncated: true,
+    };
+  }
+
+  private async buildRequestContext(
+    dto: AskQuestionDto,
+    file?: Express.Multer.File,
+  ): Promise<RequestContext> {
+    const referenced = parseReferencedContext(dto.context);
+    const documentContext: DocumentContextItem[] = [];
+    let enrichedQuestion = dto.question;
+    let fileInfo: any;
+
+    if (file) {
+      try {
+        const content = await this.extractFileContent(file);
+        const truncated = this.truncateContextText(content, this.MAX_FILE_CONTEXT_CHARS);
+        documentContext.push({
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+          source: 'upload',
+          content: truncated.content,
+          truncated: truncated.truncated,
+        });
+        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        documentContext.push({
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+          source: 'upload',
+          content: '',
+          truncated: false,
+          error: message,
+        });
+        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype, error: message };
+      }
+    }
+
+    const documentIds = this.parseDocumentIds(dto, referenced);
+    for (const documentId of documentIds) {
+      documentContext.push(await this.loadSystemDocumentContext(documentId));
+    }
+
+    if (referenced.length) {
+      enrichedQuestion += this.formatReferencedContext(referenced);
+    }
+
+    enrichedQuestion += this.buildDocumentContextBlock(documentContext);
+
+    return { enrichedQuestion, fileInfo, documentContext, referenced };
+  }
+
+  private async loadSystemDocumentContext(documentId: number): Promise<DocumentContextItem> {
+    const base: DocumentContextItem = {
+      id: documentId,
+      name: `Document #${documentId}`,
+      source: 'system',
+      content: '',
+      truncated: false,
+    };
+
+    try {
+      const document = await this.documentRepository.findOne({
+        where: { id: documentId },
+        relations: ['customer', 'document_type', 'dossier', 'category'],
+      });
+
+      if (!document) {
+        return { ...base, error: 'Document introuvable' };
+      }
+
+      const name = document.name || document.metadata?.original_filename || `Document #${documentId}`;
+      const type = document.file_mimetype || this.inferMimeFromName(name);
+      const buffer = await this.readDocumentBuffer(document);
+      const extracted = await this.extractBufferContent(buffer, type, name);
+      const truncated = this.truncateContextText(extracted, this.MAX_DOCUMENT_CONTEXT_CHARS);
+
+      const header = [
+        `Nom: ${name}`,
+        document.document_type?.name ? `Type metier: ${document.document_type.name}` : null,
+        document.category?.name ? `Categorie: ${document.category.name}` : null,
+        document.dossier?.dossier_number ? `Dossier: ${document.dossier.dossier_number}` : null,
+        document.customer?.full_name ? `Client: ${document.customer.full_name}` : null,
+        document.description ? `Description: ${document.description}` : null,
+      ].filter(Boolean).join('\n');
+
+      return {
+        id: document.id,
+        name,
+        type,
+        size: document.file_size,
+        source: 'system',
+        content: `${header}\n\n${truncated.content}`.trim(),
+        truncated: truncated.truncated,
+      };
+    } catch (error) {
+      return {
+        ...base,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  private async readDocumentBuffer(document: DocumentCustomer): Promise<Buffer> {
+    if (document.file_path) {
+      const filePath = document.file_path.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+      const candidates = [
+        filePath,
+        path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath),
+      ];
+      const existing = candidates.find(candidate => fs.existsSync(candidate));
+      if (existing) {
+        return fs.promises.readFile(existing);
+      }
+    }
+
+    if (document.file_url?.startsWith('http')) {
+      const response = await fetch(document.file_url);
+      if (!response.ok) {
+        throw new Error(`Document distant inaccessible (${response.status})`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    }
+
+    throw new Error('Fichier physique introuvable');
+  }
+
+  private inferMimeFromName(name: string): string {
+    const ext = path.extname(name || '').toLowerCase();
+    const map: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.txt': 'text/plain',
+      '.csv': 'text/csv',
+      '.json': 'application/json',
+      '.html': 'text/html',
+      '.htm': 'text/html',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xls': 'application/vnd.ms-excel',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp',
+    };
+    return map[ext] || 'application/octet-stream';
+  }
+
   async analyzeQuestionStream(
     dto: AskQuestionDto,
     userId: string,
@@ -1165,44 +1474,46 @@ ${lines.join('\n')}
     try {
       tLog('service entré');
 
-      // ── 1. Fichier ──────────────────────────────────────────────────────────
+      // ── 1. Contexte enrichi : mentions, fichiers et documents système ──────
       let enrichedQuestion = dto.question;
       let fileInfo: any;
-
-      if (file) {
-        await emit('status', { message: `📎 Lecture du fichier ${file.originalname}...` });
-        try {
-          const content = await this.extractFileContent(file);
-          const truncated = content.substring(0, 5000);
-          enrichedQuestion = `${dto.question}\n\n--- CONTENU: ${file.originalname} ---\n${truncated}${content.length > 5000 ? '\n[tronqué]' : ''}\n---`;
-          fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
-          await emit('status', { message: `✅ Fichier lu (${content.length} caractères)` });
-        } catch (e) {
-          await emit('status', { message: `⚠️ Fichier illisible: ${e.message}` });
-        }
-      }
-
-      // ── 1bis. Entités référencées via @ (mentions) ──────────────────────────
-      // L'utilisateur a pu épingler des entités précises (client, dossier…) ;
-      // on injecte leurs IDs exacts dans le prompt pour lever toute ambiguïté.
-      const referenced = parseReferencedContext(dto.context);
-      if (referenced.length) {
-        enrichedQuestion += this.formatReferencedContext(referenced);
-        await emit('status', {
-          message: `🔗 ${referenced.length} référence(s) prise(s) en compte`,
-        });
-      }
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
       tLog('avant status 🔍');
       await emit('status', { message: '🔍 Analyse de la demande...' });
       tLog('après status sleep(200ms) — DeepSeek lightClassify démarre');
-      const allTables = this.schemaMetadata.getAllVisibleTables();
-      const schema = await this.getCompleteSchema(allTables);
+      const requestContext = await this.buildRequestContext(dto, file);
+      enrichedQuestion = requestContext.enrichedQuestion;
+      fileInfo = requestContext.fileInfo ?? fileInfo;
+      if (requestContext.documentContext.length) {
+        await emit('status', {
+          message: `📄 ${requestContext.documentContext.length} document(s) pris en compte`,
+        }, 80);
+      }
+      if (requestContext.referenced.length) {
+        await emit('status', {
+          message: `🔗 ${requestContext.referenced.length} référence(s) prise(s) en compte`,
+        }, 80);
+      }
+
+      const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables);
+      if (requestContext.documentContext.length && !relevantTables.includes('document_customer')) {
+        relevantTables.push('document_customer');
+      }
+      const schema = await this.getCompleteSchema(relevantTables);
       tLog('schema prêt — appel detectIntent');
-      const intentResult = await this.intentDetectionService.detectIntent(
-        enrichedQuestion, this.llm, schema,
-      );
+      const intentMode = this.normalizeIntentMode(dto.intentMode);
+      let intentResult: any;
+      if (intentMode === 'read') {
+        intentResult = { type: 'READ', requiresConfirmation: false };
+      } else if (intentMode === 'chat') {
+        intentResult = { type: 'CONVERSATIONAL', requiresConfirmation: false };
+      } else {
+        intentResult = await this.intentDetectionService.detectIntent(
+          enrichedQuestion, this.llm, schema,
+          { forceWrite: intentMode === 'write' },
+        );
+      }
       tLog(`detectIntent retourné → ${intentResult.type}`);
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
       await this.sleep(150);
@@ -1285,7 +1596,7 @@ ${lines.join('\n')}
 
       // ── 3c. READ ─────────────────────────────────────────────────────────────
       await emit('status', { message: '🗄️ Génération de la requête SQL...' });
-      const schemaJSON = await this.getCompleteSchemaJson(allTables);
+      const schemaJSON = await this.getCompleteSchemaJson(relevantTables);
 
       let conversationId = dto.conversationId;
       if (!conversationId) {
@@ -1295,7 +1606,7 @@ ${lines.join('\n')}
         conversationId = conv.id;
       }
 
-      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
+      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
       await emit('status', { message: '✅ Requête générée, exécution en cours...' });
 
       const validatedQuery = await this.withRetry(
@@ -1659,6 +1970,18 @@ RÉPONSE (en langage naturel):`;
     return fullText;
   }
 
+  private async generateConversationalResponse(question: string): Promise<string> {
+    const systemPrompt = this.projectConfig?.conversationalSystemPrompt
+      ?? `Tu es un assistant IA. Reponds aux questions generales et aux salutations de facon courtoise et professionnelle.`;
+
+    const response = await this.llm.invoke([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: question },
+    ]);
+
+    return response.content as string;
+  }
+
   /**
    * @deprecated — Remplacé par generateConversationalResponseStream (qui fait du vrai streaming LLM).
    * Conservé pour compatibilité mais plus appelé depuis analyzeQuestionStream.
@@ -1728,10 +2051,11 @@ RÉPONSE (en langage naturel):`;
   /**
   * Détecte automatiquement les tables pertinentes (UNIQUEMENT celles avec métadonnées)
   */
-  private async detectRelevantTables(question: string, specificTables?: string[]): Promise<string[]> {
-    if (specificTables && specificTables.length > 0) {
+  private async detectRelevantTables(question: string, specificTables?: string[] | string): Promise<string[]> {
+    const normalizedSpecificTables = this.normalizeStringArray(specificTables);
+    if (normalizedSpecificTables && normalizedSpecificTables.length > 0) {
       // ✅ Filtrer les tables spécifiques qui ont des métadonnées
-      const validTables = specificTables.filter(table => 
+      const validTables = normalizedSpecificTables.filter(table => 
         this.schemaMetadata.hasTableMetadata(table)
       );
       

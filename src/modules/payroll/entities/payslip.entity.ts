@@ -98,37 +98,6 @@ export class Payslip extends TenantEntity {
   })
   net_amount: number;
 
-  @Column({ type: 'boolean', name: 'is_advance', default: false })
-  @BusinessColumn({
-    label: 'Avance sur salaire',
-    description: 'Indique si cette fiche correspond à une avance sur salaire',
-    importance: 'medium',
-    group: 'financier',
-  })
-  is_advance: boolean;
-
-  @Column({ type: 'decimal', precision: 12, scale: 2, name: 'advance_amount', nullable: true })
-  @BusinessColumn({
-    label: "Montant de l'avance",
-    description: "Montant de l'avance accordée au collaborateur",
-    unit: '€',
-    example: '1500.00',
-    importance: 'medium',
-    group: 'financier',
-  })
-  advance_amount: number;
-
-  @Column({ type: 'decimal', precision: 12, scale: 2, name: 'advance_recovered_amount', default: 0 })
-  @BusinessColumn({
-    label: "Avance déjà récupérée",
-    description: "Montant de l'avance déjà retenu sur des paies (le reste à récupérer = avance − ce montant)",
-    unit: '€',
-    example: '500.00',
-    importance: 'low',
-    group: 'financier',
-  })
-  advance_recovered_amount: number;
-
   @Column({ type: 'enum', enum: PayslipStatus, default: PayslipStatus.DRAFT })
   @BusinessColumn({
     label: 'Statut',
