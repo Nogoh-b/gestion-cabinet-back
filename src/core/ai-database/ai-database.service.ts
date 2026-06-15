@@ -19,6 +19,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
 
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
+import { isSharedEntity } from '../tenant/tenant.decorator';
 import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
@@ -231,7 +232,7 @@ export class AiDatabaseService implements OnModuleInit {
     if (!sqlQuery && this.isNoResultsResponse(content)) {
       sqlQuery = `-- Aucun resultat trouve pour: ${question}\nSELECT NULL AS message WHERE 1=0`;
     } else if (!sqlQuery) {
-      sqlQuery = await this.askForSQLOnly(question) || '';
+      sqlQuery = await this.askForSQLOnly(question, schemaToUse) || '';
     }
 
     if (sqlQuery) {
@@ -320,18 +321,19 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
   /**
   * Demande explicitement du SQL (avec meilleur prompt)
   */
-  private async askForSQLOnly(originalQuestion: string): Promise<string | null> {
-    const reformatPrompt = `La base de données contient une table "dossiers" avec les colonnes: id, reference, numero_dossier, titre, statut, created_at.
+  private async askForSQLOnly(originalQuestion: string, schema?: string): Promise<string | null> {
+    // ⚠️ Ne JAMAIS hardcoder un schéma (ex: "dossiers") : pour toute autre question
+    // cela produit du SQL faux → 0 résultat. On s'appuie sur le schéma réel fourni.
+    const schemaBlock = schema ? `Voici le schéma des tables disponibles :\n${schema}\n\n` : '';
+    const reformatPrompt = `${schemaBlock}La question est : "${originalQuestion}"
 
-  La question est: "${originalQuestion}"
-
-  Génère une requête SELECT pour répondre à cette question.
-  Si la valeur recherchée est un numéro de dossier, cherche dans les colonnes "reference" OU "numero_dossier".
+  Génère UNE requête SQL SELECT (MySQL) qui répond à cette question, en te basant STRICTEMENT sur le schéma ci-dessus.
 
   RÈGLES:
-  - UNIQUEMENT une requête SELECT
+  - UNIQUEMENT une requête SELECT, dans un bloc \`\`\`sql
+  - Utilise EXACTEMENT les noms de tables et colonnes du schéma
   - Pas d'explication, pas de texte
-  - Ajoute LIMIT 10
+  - Ajoute LIMIT ${this.MAX_RESULTS}
 
   Requête SQL:`;
 
@@ -2251,7 +2253,7 @@ RÉPONSE (en langage naturel):`;
         return this.getDefaultVisibleTables();
       }
       
-      return validTables;
+      return this.expandWithRelatedTables(validTables);
     }
 
     const keywords = question.toLowerCase().split(/\s+/);
@@ -2344,8 +2346,30 @@ RÉPONSE (en langage naturel):`;
     if (detectedTables.length === 0) {
       return this.getDefaultVisibleTables();
     }
-    
-    return detectedTables;
+
+    return this.expandWithRelatedTables(detectedTables);
+  }
+
+  /**
+   * Étend une liste de tables avec leurs tables FK-référencées (1 saut) afin que les
+   * JOINs nécessaires soient présents dans le schéma envoyé au LLM. Sans ça, une
+   * question comme « les dossiers avec le nom du client » détecte `dossiers` mais
+   * pas `customer` → le LLM ne peut pas joindre → résultats incomplets ou vides.
+   */
+  private expandWithRelatedTables(tables: string[], max = 14): string[] {
+    const relationships = this.relationshipsCache.get('all') || {};
+    const out = new Set<string>(tables);
+    for (const t of tables) {
+      const rel = relationships[t];
+      if (!rel?.foreignKeys) continue;
+      for (const fk of rel.foreignKeys) {
+        const ref = fk.referencedTable;
+        if (ref && this.schemaMetadata.hasTableMetadata(ref)) out.add(ref);
+        if (out.size >= max) break;
+      }
+      if (out.size >= max) break;
+    }
+    return Array.from(out).slice(0, max);
   }
 
   /**
@@ -2894,6 +2918,26 @@ Retourne UNIQUEMENT la requête corrigée.`;
   }
 
   /**
+   * Sous-ensemble des tables tenant marquées @SharedAcrossTenants (référentiels
+   * globaux seedés avec tenant_id = 1). En lecture, elles doivent être filtrées
+   * par `tenant_id IN (1, X)` — comme le fait déjà TenantRepositoryPatch — sinon
+   * les données globales sont invisibles → « aucun résultat » sur les référentiels.
+   */
+  private _sharedTenantTablesCache: Set<string> | null = null;
+  private getSharedTenantTables(): Set<string> {
+    if (this._sharedTenantTablesCache) return this._sharedTenantTablesCache;
+    const tables = new Set<string>();
+    for (const meta of this.dataSource.entityMetadatas) {
+      const target = meta.target;
+      if (typeof target === 'function' && isSharedEntity(target) && meta.tableName) {
+        tables.add(meta.tableName.toLowerCase());
+      }
+    }
+    this._sharedTenantTablesCache = tables;
+    return tables;
+  }
+
+  /**
    * Post-processeur SQL : injecte automatiquement les conditions tenant_id
    * sur toutes les tables référencées dans le SELECT qui ont cette colonne.
    *
@@ -2955,12 +2999,23 @@ Retourne UNIQUEMENT la requête corrigée.`;
     // FIX 2 — idempotence : ne sauter que si le BON tenant_id est déjà présent.
     // Avant : `tenant_id =` sans valeur → le LLM pouvait mettre tenant_id = 0 et
     // tromper le check. On vérifie maintenant `alias.tenant_id = <tenantId>` exact.
+    // FIX 4 — entités @SharedAcrossTenants (référentiels globaux) : on filtre par
+    // tenant_id IN (1, X) au lieu de = X, sinon les données globales (tenant_id=1)
+    // sont masquées → « aucun résultat » sur les types/catégories/référentiels.
+    const sharedTables = this.getSharedTenantTables();
     const newConditions = Array.from(aliasMap.entries())
-      .filter(([alias]) => {
-        const pattern = new RegExp(`\\b${alias}\\.tenant_id\\s*=\\s*${tenantId}\\b`, 'i');
-        return !pattern.test(sql);
+      .map(([alias, tbl]) => {
+        const isShared = sharedTables.has(tbl);
+        const condition = isShared
+          ? `${alias}.tenant_id IN (1, ${tenantId})`
+          : `${alias}.tenant_id = ${tenantId}`;
+        // Idempotence : ne pas réinjecter si la condition correcte est déjà présente
+        const already = isShared
+          ? new RegExp(`\\b${alias}\\.tenant_id\\s+IN\\s*\\(\\s*1\\s*,\\s*${tenantId}\\s*\\)`, 'i')
+          : new RegExp(`\\b${alias}\\.tenant_id\\s*=\\s*${tenantId}\\b`, 'i');
+        return already.test(sql) ? null : condition;
       })
-      .map(([alias]) => `${alias}.tenant_id = ${tenantId}`);
+      .filter((c): c is string => c !== null);
 
     if (newConditions.length === 0) return sql; // déjà correctement filtré ✅
 

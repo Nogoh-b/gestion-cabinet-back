@@ -115,11 +115,18 @@ export class GenericWriteService {
 
       // ── Nettoyage des entités créées par les handlers (au cas où elles auraient
       //     bypassé la transaction). On supprime en ordre inverse pour respecter les FK.
+      let orphanNote = '';
       if (handlerCreations.length > 0) {
-        await this.cleanupHandlerEntities(handlerCreations);
+        const failedCleanup = await this.cleanupHandlerEntities(handlerCreations);
+        if (failedCleanup.length > 0) {
+          orphanNote =
+            ` (Attention : ${failedCleanup.length} enregistrement(s) déjà créé(s) n'ont pas pu être annulé(s) : ` +
+            failedCleanup.map(f => `${f.entity}#${f.entityId}`).join(', ') + '.)';
+        }
       }
 
-      // ── Ambiguïté : enrichir avec l'index et re-lancer SANS encapsuler
+      // ── Ambiguïté : le nettoyage ci-dessus a déjà annulé les créations partielles,
+      //    donc la reprise (resumeAfterAmbiguity) ré-exécutera le plan proprement.
       if (error instanceof AmbiguityException) {
         // Chercher l'index de l'opération en cours si pas encore rempli
         if (error.operationIndex === -1) {
@@ -129,7 +136,7 @@ export class GenericWriteService {
         throw error; // re-throw tel quel — pas BadRequestException
       }
 
-      throw new BadRequestException(`Échec du plan d'écriture: ${(error as Error).message}`);
+      throw new BadRequestException(`Échec du plan d'écriture: ${(error as Error).message}${orphanNote}`);
     } finally {
       await queryRunner.release();
     }
@@ -475,31 +482,48 @@ export class GenericWriteService {
    */
   private async cleanupHandlerEntities(
     creations: Array<{ entity: string; entityId: string }>,
-  ): Promise<void> {
-    if (creations.length === 0) return;
+  ): Promise<Array<{ entity: string; entityId: string }>> {
+    const failed: Array<{ entity: string; entityId: string }> = [];
+    if (creations.length === 0) return failed;
 
     const cleanupRunner = this.dataSource.createQueryRunner();
     await cleanupRunner.connect();
 
     try {
-      // Parcourir en ordre inverse (dernier créé → premier supprimé)
+      // Parcourir en ordre inverse (dernier créé → premier supprimé) pour respecter les FK
       for (let i = creations.length - 1; i >= 0; i--) {
         const { entity, entityId } = creations[i];
         try {
           const meta = this.dataSource.entityMetadatas.find(m => m.tableName === entity);
           if (!meta) {
             this.logger.warn(`⚠️  Nettoyage: table inconnue "${entity}" — ignoré`);
+            failed.push(creations[i]);
             continue;
           }
-          await cleanupRunner.manager.delete(meta.target, entityId);
-          this.logger.log(`🧹 Nettoyage: ${entity} ID ${entityId} supprimé`);
+          // Soft-delete si l'entité le supporte (respecte mieux les FK enfants),
+          // sinon suppression physique.
+          if (meta.deleteDateColumn) {
+            await cleanupRunner.manager.softDelete(meta.target, entityId);
+            this.logger.log(`🧹 Nettoyage (soft-delete): ${entity} ID ${entityId}`);
+          } else {
+            await cleanupRunner.manager.delete(meta.target, entityId);
+            this.logger.log(`🧹 Nettoyage: ${entity} ID ${entityId} supprimé`);
+          }
         } catch (err) {
-          // Si la suppression échoue (FK, déjà supprimé, etc.), on continue
+          // Si la suppression échoue (FK, déjà supprimé, etc.), on garde la trace
+          failed.push(creations[i]);
           this.logger.warn(`⚠️  Nettoyage: échec suppression ${entity} ${entityId}: ${(err as Error).message}`);
         }
+      }
+      if (failed.length > 0) {
+        this.logger.error(
+          `⚠️  ${failed.length} entité(s) partielle(s) NON nettoyée(s) après échec du plan : ` +
+          failed.map(f => `${f.entity}#${f.entityId}`).join(', '),
+        );
       }
     } finally {
       await cleanupRunner.release();
     }
+    return failed;
   }
 }
