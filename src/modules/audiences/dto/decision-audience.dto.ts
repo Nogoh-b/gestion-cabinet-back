@@ -27,6 +27,12 @@ export class DecisionAudienceDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Alias accepté par le formulaire front (champ `decision_notes`).
+  @ApiProperty({ description: 'Observations sur la décision (alias)', required: false })
+  @IsOptional()
+  @IsString()
+  decision_notes?: string;
 }
 
 export class AddDecisionResponseDto {

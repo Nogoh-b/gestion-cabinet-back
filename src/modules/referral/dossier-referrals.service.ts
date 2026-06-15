@@ -8,7 +8,7 @@ import {
   SearchCriteria,
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
-import { DossierReferral } from './entities/dossier-referral.entity';
+import { CommissionMode, DossierReferral } from './entities/dossier-referral.entity';
 import { CreateDossierReferralDto } from './dto/create-dossier-referral.dto';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { Referrer } from './entities/referral.entity';
@@ -50,17 +50,7 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
     if (!referrer) throw new NotFoundException('Apporteur non trouvé');
     entity.referrer = referrer;
 
-    // Le taux de commission est obligatoire en base (NOT NULL). Si non fourni,
-    // on retombe sur le taux par défaut de l'apporteur ; sinon on refuse
-    // proprement (400) au lieu de laisser MySQL lever « cannot be null ».
-    const rawRate =
-      dto.commission_rate ?? referrer.default_commission_rate ?? null;
-    if (rawRate === null || rawRate === undefined || isNaN(Number(rawRate))) {
-      throw new BadRequestException(
-        "Le taux de commission est requis (aucun taux par défaut défini pour cet apporteur)",
-      );
-    }
-    entity.commission_rate = Number(rawRate);
+    this.applyCommissionRules(entity, dto, referrer);
 
     const saved = await this.repository.save(entity);
     const full = await this.findOne(saved.id);
@@ -75,7 +65,7 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
         'referrer.company_name',
         'referrer.contact_name',
       ],
-      exactMatchFields: ['id', 'dossier_id', 'referrer_id', 'commission_basis'],
+      exactMatchFields: ['id', 'dossier_id', 'referrer_id', 'commission_basis', 'commission_mode'],
       dateRangeFields: ['created_at', 'updated_at', 'referral_date'],
       relationFields: [
         'dossier',
@@ -183,7 +173,9 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
       if (!referrer) throw new NotFoundException('Apporteur non trouvé');
       referral.referrer = referrer;
     }
-    await this.repository.save({ ...referral, ...dto });
+    const merged = { ...referral, ...dto } as DossierReferral;
+    this.applyCommissionRules(merged, merged as UpdateDossierReferralDto, referral.referrer);
+    await this.repository.save(merged);
     return this.findOne(id);
   }
 
@@ -203,6 +195,8 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
     return {
       ...referral,
       commission_rate: Number(referral.commission_rate ?? 0),
+      commission_amount: referral.commission_amount != null ? Number(referral.commission_amount) : null,
+      commission_mode: referral.commission_mode ?? CommissionMode.RATE,
       total_paid_commissions: totalPaid,
       total_pending_commissions: totalPending,
       commission_basis_label: this.getBasisLabel(referral.commission_basis),
@@ -238,5 +232,44 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
       employeeName ||
       null
     );
+  }
+
+  private applyCommissionRules(
+    entity: DossierReferral,
+    dto: Partial<CreateDossierReferralDto>,
+    referrer?: Referrer | null,
+  ): void {
+    const mode =
+      dto.commission_mode ??
+      entity.commission_mode ??
+      (dto.commission_amount !== undefined && dto.commission_amount !== null
+        ? CommissionMode.FIXED_AMOUNT
+        : CommissionMode.RATE);
+
+    entity.commission_mode = mode;
+
+    if (mode === CommissionMode.FIXED_AMOUNT) {
+      const rawAmount = dto.commission_amount ?? entity.commission_amount;
+      const amount = Number(rawAmount);
+      if (rawAmount === null || rawAmount === undefined || isNaN(amount) || amount <= 0) {
+        throw new BadRequestException('Le montant fixe de commission est requis et doit etre superieur a 0');
+      }
+      entity.commission_amount = amount;
+      entity.commission_rate = Number(dto.commission_rate ?? entity.commission_rate ?? 0);
+      return;
+    }
+
+    const rawRate = dto.commission_rate ?? entity.commission_rate ?? referrer?.default_commission_rate ?? null;
+    const rate = Number(rawRate);
+    if (rawRate === null || rawRate === undefined || isNaN(rate)) {
+      throw new BadRequestException(
+        "Le taux de commission est requis (aucun taux par defaut defini pour cet apporteur)",
+      );
+    }
+    if (rate < 0 || rate > 100) {
+      throw new BadRequestException('Le taux de commission doit etre compris entre 0 et 100');
+    }
+    entity.commission_rate = rate;
+    entity.commission_amount = dto.commission_amount ?? entity.commission_amount ?? null;
   }
 }

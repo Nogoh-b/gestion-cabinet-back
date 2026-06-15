@@ -19,6 +19,11 @@ export enum CommissionBasis {
   COLLECTED_TTC = 'collected_ttc',
 }
 
+export enum CommissionMode {
+  RATE = 'rate',
+  FIXED_AMOUNT = 'fixed_amount',
+}
+
 @Entity('dossier_referral')
 @BusinessTable({
   label: 'Apports de dossiers',
@@ -87,6 +92,24 @@ export class DossierReferral extends TenantEntity {
     group: 'financier',
   })
   commission_rate: number;
+
+  @Column({ type: 'enum', enum: CommissionMode, default: CommissionMode.RATE, name: 'commission_mode' })
+  @BusinessColumn({
+    label: 'Mode de commission',
+    description: 'Commission calculee par taux ou par montant fixe',
+    importance: 'high',
+    group: 'financier',
+  })
+  commission_mode: CommissionMode;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true, name: 'commission_amount' })
+  @BusinessColumn({
+    label: 'Montant fixe de commission',
+    description: 'Montant fixe negocie pour ce dossier',
+    importance: 'high',
+    group: 'financier',
+  })
+  commission_amount: number | null;
 
   @Column({ type: 'enum', enum: CommissionBasis, default: CommissionBasis.COLLECTED_HT, name: 'commission_basis' })
   @BusinessColumn({

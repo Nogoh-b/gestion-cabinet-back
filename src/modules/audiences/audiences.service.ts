@@ -112,8 +112,10 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
 
     // ── Juridiction : déduite du dossier si non fournie explicitement ────────
+    // Juridiction : on honore d'abord celle saisie dans le formulaire, puis on
+    // retombe sur celle du dossier si elle n'est pas fournie.
     const resolvedJurisdictionId =
-      // dto.jurisdiction_id ??
+      dto.jurisdiction_id ??
       (dossier as any).jurisdiction_id ??
       (dossier as any).jurisdiction?.id ??
       null;
@@ -554,11 +556,18 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
       const attachments = await this.prepareAttachments(audience.documents);
 
-      let mailDto = new CreateMailDto() 
+      // Destinataire : le client concerné par l'audience ; à défaut, les
+      // collaborateurs du cabinet. (Plus de destinataire codé en dur.)
+      const clientEmail = (data as any)?.dossier?.client?.email;
+      const recipients = clientEmail
+        ? [clientEmail]
+        : users.map((u) => u.email).filter(Boolean);
+
+      let mailDto = new CreateMailDto()
       const deduplicationKey = `commande-${audience.id}-confirmation-${audience.status}`;
       mailDto.templateName = "entities/audience/audience-created"
       mailDto.context = audience
-      mailDto.to = ['nogohbrice@gmail.com']//users.map(u => u.email)
+      mailDto.to = recipients
       mailDto.subject = "Creation de l'audience Concernant le dossier " + audience?.dossier_details?.dossier_number
       mailDto.attachments = attachments; // Ajouter les pièces jointes
 
@@ -742,9 +751,9 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
     const query = this.repository.createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')", 'date')
-      .addSelect("SUM(CASE WHEN audience.status = 'scheduled' THEN 1 ELSE 0 END)", 'scheduled')
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)", 'held')
-      .addSelect("SUM(CASE WHEN audience.status = 'postponed' THEN 1 ELSE 0 END)", 'postponed')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.POSTPONED} THEN 1 ELSE 0 END)`, 'postponed')
       .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')")
       .orderBy('date', 'ASC');
@@ -789,8 +798,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   private async getPastAudiencesStats(filters?: any): Promise<any> {
     const query = this.repository.createQueryBuilder('audience')
       .select('COUNT(*)', 'total')
-      .addSelect('AVG(TIMESTAMPDIFF(MINUTE, audience.audience_date, audience.audience_time))', 'avgDuration')
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END) / COUNT(*) * 100", 'successRate')
+      .addSelect('AVG(audience.duration_minutes)', 'avgDuration')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END) / COUNT(*) * 100`, 'successRate')
       .where('audience.audience_date < :now', { now: new Date() });
 
     this.applyFilters(query, filters);
@@ -809,8 +818,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
     const query = this.repository.createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m')", 'month')
-      .addSelect("SUM(CASE WHEN audience.status = 'scheduled' THEN 1 ELSE 0 END)", 'scheduled')
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)", 'held')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
       .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m')")
       .orderBy('month', 'ASC');
@@ -861,7 +870,11 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     }
 
     if (filters.lawyerId) {
-      query.andWhere(`${alias}.lawyer_id = :lawyerId`, { lawyerId: filters.lawyerId });
+      // L'audience n'a pas d'avocat propre : on filtre via le dossier rattaché.
+      query.andWhere(
+        `${alias}.dossier_id IN (SELECT d.id FROM dossiers d WHERE d.lawyer_id = :lawyerId)`,
+        { lawyerId: filters.lawyerId },
+      );
     }
 
     if (filters.dossierId) {

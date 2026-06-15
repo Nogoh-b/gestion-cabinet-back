@@ -46,10 +46,11 @@ export class AudienceDecisionService {
     }
 
     // Mettre à jour les champs de décision (tous optionnels)
+    const notes = decisionDto.decision_notes ?? decisionDto.notes;
     if (decisionDto.decision !== undefined)      audience.decision_text    = decisionDto.decision;
     if (decisionDto.outcome !== undefined)       audience.decision_outcome = decisionDto.outcome;
     if (decisionDto.decision_date !== undefined) audience.decision_date    = decisionDto.decision_date;
-    if (decisionDto.notes !== undefined)         audience.decision_notes   = decisionDto.notes;
+    if (notes !== undefined)                     audience.decision_notes   = notes;
 
     // Gérer les documents de décision
     if (decisionDto.document_decision_ids && decisionDto.document_decision_ids.length > 0) {
@@ -167,8 +168,9 @@ export class AudienceDecisionService {
     if (decisionDto.decision_date) {
       audience.decision_date = decisionDto.decision_date;
     }
-    if (decisionDto.notes) {
-      audience.decision_notes = decisionDto.notes;
+    const notes = decisionDto.decision_notes ?? decisionDto.notes;
+    if (notes) {
+      audience.decision_notes = notes;
     }
 
     // Gérer l'ajout de nouveaux documents

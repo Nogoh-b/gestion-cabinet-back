@@ -851,7 +851,7 @@ async getCollaboratorDossiers(
     .leftJoinAndSelect('dossier.lawyer', 'lawyer')
     .leftJoinAndSelect('dossier.procedure_type', 'procedure_type')
     .leftJoinAndSelect('dossier.procedure_subtype', 'procedure_subtype')
-    .where('collaborator.id = :collaboratorId OR collaborator.id IS NULL', { collaboratorId })
+    .where('collaborator.id = :collaboratorId', { collaboratorId })
     .orderBy('dossier.created_at', 'DESC');
 
   // Alternative avec une sous-requête si la première ne fonctionne pas
@@ -868,16 +868,10 @@ async getCollaboratorDossiers(
   // Exécuter la requête
   const dossiers = await queryBuilder.getMany();
 
-  // Filtrer pour ne garder que les dossiers où le collaborateur est présent
-  // OU les dossiers sans aucun collaborateur
-  const filteredDossiers = dossiers.filter(dossier => {
-    // Si le dossier n'a pas de collaborateurs, on le garde
-    if (!dossier.collaborators || dossier.collaborators.length === 0) {
-      return true;
-    }
-    // Si le dossier a des collaborateurs, on vérifie si le collaborateur recherché en fait partie
-    return dossier.collaborators.some(c => c.id === collaboratorId);
-  });
+  // Garder uniquement les dossiers où le collaborateur est effectivement membre
+  const filteredDossiers = dossiers.filter(dossier =>
+    dossier.collaborators?.some(c => c.id === collaboratorId)
+  );
 
   // Si aucun dossier trouvé
   if (!filteredDossiers || filteredDossiers.length === 0) {

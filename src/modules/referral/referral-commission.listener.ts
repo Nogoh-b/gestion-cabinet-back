@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   DossierReferral,
   CommissionBasis,
+  CommissionMode,
 } from './entities/dossier-referral.entity';
 import {
   ReferralCommission,
@@ -76,6 +77,18 @@ export class ReferralCommissionListener {
         return;
       }
 
+      if (referral.commission_mode === CommissionMode.FIXED_AMOUNT) {
+        const existingFixed = await this.commissionRepo.findOne({
+          where: { dossier_referral_id: referral.id },
+        });
+        if (existingFixed) {
+          this.logger.warn(
+            `[facture.envoyee] Ignore: commission fixe deja generee | commission=${existingFixed.id} | referral=${referral.id}`,
+          );
+          return;
+        }
+      }
+
       const base =
         referral.commission_basis === CommissionBasis.INVOICED_HT
           ? Number(payload?.montantHT ?? 0)
@@ -88,15 +101,10 @@ export class ReferralCommissionListener {
         return;
       }
 
-      const rate = Number(referral.commission_rate ?? 0);
-      if (rate <= 0) {
-        this.logger.warn(`[facture.envoyee] Ignore: taux commission invalide | referral=${referral.id} | rate=${rate}`);
-        return;
-      }
-
-      const amount = Math.round(base * rate) / 100;
+      const amount = this.calculateCommissionAmount(referral, base);
+      if (amount <= 0) return;
       this.logger.log(
-        `[facture.envoyee] Commission calculee | base=${base} | rate=${rate} | amount=${amount}`,
+        `[facture.envoyee] Commission calculee | base=${base} | mode=${referral.commission_mode ?? CommissionMode.RATE} | amount=${amount}`,
       );
 
       const commission = this.commissionRepo.create({
@@ -173,6 +181,18 @@ export class ReferralCommissionListener {
         return;
       }
 
+      if (referral.commission_mode === CommissionMode.FIXED_AMOUNT) {
+        const existingFixed = await this.commissionRepo.findOne({
+          where: { dossier_referral_id: referral.id },
+        });
+        if (existingFixed) {
+          this.logger.warn(
+            `[paiement.valide] Ignore: commission fixe deja generee | commission=${existingFixed.id} | referral=${referral.id}`,
+          );
+          return;
+        }
+      }
+
       let base = montantPaye;
       if (referral.commission_basis === CommissionBasis.COLLECTED_HT) {
         const tva = Number(facture?.tauxTVA ?? 0);
@@ -184,15 +204,10 @@ export class ReferralCommissionListener {
         this.logger.debug(`[paiement.valide] Base TTC utilisee | base=${base}`);
       }
 
-      const rate = Number(referral.commission_rate ?? 0);
-      if (rate <= 0) {
-        this.logger.warn(`[paiement.valide] Ignore: taux commission invalide | referral=${referral.id} | rate=${rate}`);
-        return;
-      }
-
-      const amount = Math.round(base * rate) / 100;
+      const amount = this.calculateCommissionAmount(referral, base);
+      if (amount <= 0) return;
       this.logger.log(
-        `[paiement.valide] Commission calculee | base=${base} | rate=${rate} | amount=${amount}`,
+        `[paiement.valide] Commission calculee | base=${base} | mode=${referral.commission_mode ?? CommissionMode.RATE} | amount=${amount}`,
       );
 
       const commission = this.commissionRepo.create({
@@ -217,5 +232,23 @@ export class ReferralCommissionListener {
     } catch (err) {
       this.logger.error('[paiement.valide] Echec du calcul automatique de commission', err as any);
     }
+  }
+
+  private calculateCommissionAmount(referral: DossierReferral, base: number): number {
+    if (referral.commission_mode === CommissionMode.FIXED_AMOUNT) {
+      const amount = Number(referral.commission_amount ?? 0);
+      if (amount <= 0) {
+        this.logger.warn(`[commission] Ignore: montant fixe invalide | referral=${referral.id} | amount=${amount}`);
+        return 0;
+      }
+      return amount;
+    }
+
+    const rate = Number(referral.commission_rate ?? 0);
+    if (rate <= 0) {
+      this.logger.warn(`[commission] Ignore: taux commission invalide | referral=${referral.id} | rate=${rate}`);
+      return 0;
+    }
+    return Math.round(base * rate) / 100;
   }
 }
