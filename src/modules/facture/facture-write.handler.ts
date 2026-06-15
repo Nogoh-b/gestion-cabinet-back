@@ -191,7 +191,10 @@ export class FactureWriteHandler extends BaseWriteHandler {
 
     // Numéro : honoré s'il est fourni, sinon auto-généré selon les settings.
     const provided = fields?.numero ? String(fields.numero).trim() : '';
-    const numero = provided || (await this.generateInvoiceNumber());
+    let numero = provided || (await this.generateInvoiceNumber());
+    if (await this.invoiceNumberExists(numero)) {
+      numero = await this.generateInvoiceNumber();
+    }
 
     // Calculs financiers
     const montantHT = Number(safeFields.montantHT ?? 0);
@@ -219,7 +222,7 @@ export class FactureWriteHandler extends BaseWriteHandler {
     } as any;
 
     const facture = Object.assign(new Facture(), data);
-    const saved = await this.factureRepo.save(facture);
+    const saved = await this.saveWithUniqueInvoiceNumber(facture);
 
     return {
       success: true,
@@ -296,6 +299,7 @@ export class FactureWriteHandler extends BaseWriteHandler {
 
     const last = await this.factureRepo
       .createQueryBuilder('f')
+      .withDeleted()
       .where('f.numero LIKE :pfx', { pfx: `${searchPrefix}%` })
       .orderBy('f.numero', 'DESC')
       .getOne();
@@ -316,10 +320,36 @@ export class FactureWriteHandler extends BaseWriteHandler {
     let numero = build(nextSeq);
     let safety = 0;
     while (safety++ < 100) {
-      const existing = await this.factureRepo.findOne({ where: { numero } });
+      const existing = await this.factureRepo.findOne({ where: { numero }, withDeleted: true });
       if (!existing) break;
       numero = build(++nextSeq);
     }
     return numero;
+  }
+
+  private async invoiceNumberExists(numero: string): Promise<boolean> {
+    const existing = await this.factureRepo.findOne({ where: { numero }, withDeleted: true });
+    return !!existing;
+  }
+
+  private isDuplicateInvoiceNumberError(error: any): boolean {
+    return (
+      error?.code === 'ER_DUP_ENTRY' &&
+      (String(error?.message ?? '').includes('numero') ||
+        String(error?.message ?? '').includes('IDX_f1c7842d8a90f22a49d66639d0'))
+    );
+  }
+
+  private async saveWithUniqueInvoiceNumber(facture: Facture): Promise<Facture> {
+    let attempt = 0;
+    while (attempt++ < 5) {
+      try {
+        return await this.factureRepo.save(facture);
+      } catch (error) {
+        if (!this.isDuplicateInvoiceNumberError(error)) throw error;
+        facture.numero = await this.generateInvoiceNumber();
+      }
+    }
+    return this.factureRepo.save(facture);
   }
 }

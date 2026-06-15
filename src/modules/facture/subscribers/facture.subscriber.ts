@@ -1,15 +1,15 @@
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
-import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
-import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 /**
  * Subscriber métier pour les factures.
@@ -39,7 +39,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
   }
 
   listenTo() {
-    return Facture;
+    return Facture; 
   }
 
   protected async onAfterCreate(

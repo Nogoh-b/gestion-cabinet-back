@@ -75,9 +75,13 @@ export class FactureService extends BaseServiceV1<Facture> {
     const client_id  =  dossier_.client.id
     // Si l'utilisateur a fourni un numéro explicitement, on l'utilise tel quel.
     // Sinon, autogénération depuis app_settings (préfixe + stratégie + padding).
-    const numero = providedNumero?.trim()
+    let numero = providedNumero?.trim()
       ? providedNumero.trim()
       : await this.generateFacNumber()
+
+    if (await this.invoiceNumberExists(numero)) {
+      numero = await this.generateFacNumber();
+    }
     let procedureInstance: ProcedureInstance | any = null;
     if (dossier_.procedureInstance) {
       // Sinon, prendre l'instance active du dossier
@@ -118,7 +122,7 @@ export class FactureService extends BaseServiceV1<Facture> {
     // Propage la case « Notifier le client » au subscriber (champ transient).
     (facture as any).notify_client = !!notify_client;
 
-    const fac = await this.repository.save(facture);
+    const fac = await this.saveWithUniqueInvoiceNumber(facture);
 
     // const currentStep = await this.stepsService.getCurrentStep(createDto.dossierId);
     
@@ -472,6 +476,7 @@ export class FactureService extends BaseServiceV1<Facture> {
 
     const last = await this.repository
       .createQueryBuilder('f')
+      .withDeleted()
       .where('f.numero LIKE :pfx', { pfx: `${searchPrefix}%` })
       .orderBy('f.numero', 'DESC')
       .getOne();
@@ -495,12 +500,38 @@ export class FactureService extends BaseServiceV1<Facture> {
     // Filet anti-collision (race conditions, soft-deletes, etc.)
     let safety = 0;
     while (safety++ < 100) {
-      const existing = await this.repository.findOne({ where: { numero } });
+      const existing = await this.repository.findOne({ where: { numero }, withDeleted: true });
       if (!existing) break;
       nextSeq++;
       numero = buildNumero(nextSeq);
     }
 
     return numero;
+  }
+
+  private async invoiceNumberExists(numero: string): Promise<boolean> {
+    const existing = await this.repository.findOne({ where: { numero }, withDeleted: true });
+    return !!existing;
+  }
+
+  private isDuplicateInvoiceNumberError(error: any): boolean {
+    return (
+      error?.code === 'ER_DUP_ENTRY' &&
+      (String(error?.message ?? '').includes('numero') ||
+        String(error?.message ?? '').includes('IDX_f1c7842d8a90f22a49d66639d0'))
+    );
+  }
+
+  private async saveWithUniqueInvoiceNumber(facture: Facture): Promise<Facture> {
+    let attempt = 0;
+    while (attempt++ < 5) {
+      try {
+        return await this.repository.save(facture);
+      } catch (error) {
+        if (!this.isDuplicateInvoiceNumberError(error)) throw error;
+        facture.numero = await this.generateFacNumber();
+      }
+    }
+    return this.repository.save(facture);
   }
 }
