@@ -2,6 +2,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Dossier, DangerLevel } from './entities/dossier.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
@@ -358,31 +360,54 @@ export class DossierWriteHandler extends BaseWriteHandler {
 
   // ── INSERT custom : génération du numéro de dossier ────────────────────────
 
-  protected async doInsert(
-    fields: Record<string, any>,
-    userId: string,
-  ): Promise<WriteResult> {
-    // Générer le numéro de dossier DOS-YYYY-XXXX
-    // Utilise le MAX existant (y compris soft-deleted) pour éviter les collisions
-    // CRITICAL: .withDeleted() est obligatoire car la contrainte UNIQUE de la BDD
-    // s'applique même aux lignes soft-deleted (deleted_at != null).
-    const year = new Date().getFullYear();
-    const prefix = `DOS-${year}-`;
-    const lastDossier = await this.dossierRepo
+  /**
+   * Génère un numéro de dossier en respectant les settings du cabinet
+   * (dossier_prefix / dossier_number_format) — même format que
+   * DossiersService.generateDossierNumber. `.withDeleted()` est obligatoire :
+   * la contrainte UNIQUE s'applique aussi aux lignes soft-deleted.
+   */
+  private async generateDossierNumber(): Promise<string> {
+    const settings = hasActiveTenant()
+      ? await this.dataSource
+          .getRepository(Cabinet)
+          .findOne({ where: { id: getCurrentTenantId() } })
+      : null;
+
+    const prefix = (settings?.dossier_prefix ?? 'DOS-').toString();
+    const padding = 4;
+    const template = (settings?.dossier_number_format ?? '{PREFIX}{YYYY}-{NNNN}').toString();
+
+    const now = new Date();
+    const YYYY = now.getFullYear().toString();
+    const MM = (now.getMonth() + 1).toString().padStart(2, '0');
+
+    const searchPrefix = template
+      .replace('{PREFIX}', prefix)
+      .replace('{YYYY}', YYYY)
+      .replace('{MM}', MM)
+      .replace('{NNNN}', '');
+
+    const last = await this.dossierRepo
       .createQueryBuilder('d')
-      .withDeleted() // ← inclure les dossiers soft-deleted
-      .where('d.dossier_number LIKE :prefix', { prefix: `${prefix}%` })
+      .withDeleted()
+      .where('d.dossier_number LIKE :pfx', { pfx: `${searchPrefix}%` })
       .orderBy('d.dossier_number', 'DESC')
       .getOne();
+
     let nextSeq = 1;
-    if (lastDossier?.dossier_number) {
-      const match = lastDossier.dossier_number.match(/DOS-\d{4}-(\d+)$/);
+    if (last?.dossier_number) {
+      const match = last.dossier_number.slice(searchPrefix.length).match(/^(\d+)/);
       if (match) nextSeq = parseInt(match[1], 10) + 1;
     }
-    let dossierNumber = `${prefix}${nextSeq.toString().padStart(4, '0')}`;
 
-    // Filet de sécurité : si malgré tout le numéro est déjà pris (race condition,
-    // ordre lexicographique ambigu, etc.), boucler jusqu'à trouver un numéro libre.
+    const build = (seq: number) =>
+      template
+        .replace('{PREFIX}', prefix)
+        .replace('{YYYY}', YYYY)
+        .replace('{MM}', MM)
+        .replace('{NNNN}', seq.toString().padStart(padding, '0'));
+
+    let dossierNumber = build(nextSeq);
     let safety = 0;
     while (safety++ < 100) {
       const existing = await this.dossierRepo
@@ -391,9 +416,19 @@ export class DossierWriteHandler extends BaseWriteHandler {
         .where('d.dossier_number = :n', { n: dossierNumber })
         .getOne();
       if (!existing) break;
-      nextSeq++;
-      dossierNumber = `${prefix}${nextSeq.toString().padStart(4, '0')}`;
+      dossierNumber = build(++nextSeq);
     }
+    return dossierNumber;
+  }
+
+  protected async doInsert(
+    fields: Record<string, any>,
+    userId: string,
+  ): Promise<WriteResult> {
+    // Numéro de dossier : honoré s'il est fourni, sinon auto-généré selon les
+    // settings du cabinet (dossier_prefix / dossier_number_format).
+    const providedNumber = fields?.dossier_number ? String(fields.dossier_number).trim() : '';
+    const dossierNumber = providedNumber || (await this.generateDossierNumber());
 
     // Filtrer les champs connus + stripper les champs auto-générés (codes, refs)
     // → on ne veut pas que le LLM impose un dossier_number qui causerait collision

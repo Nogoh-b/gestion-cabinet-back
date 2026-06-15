@@ -13,10 +13,10 @@ import { InvoiceTypeCategory, TaxRate } from '../entities/invoice-type.entity';
 
 
 export class CreateInvoiceTypeDto {
-  @ApiProperty({ description: 'Code unique du type de facture' })
+  @ApiProperty({ description: 'Code unique. Généré automatiquement si non fourni.', required: false })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  code: string;
+  code?: string;
 
   @ApiProperty({ description: 'Nom du type de facture' })
   @IsString()

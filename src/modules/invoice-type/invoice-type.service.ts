@@ -3,6 +3,7 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
@@ -24,6 +25,11 @@ export class InvoiceTypeService extends BaseServiceV1<InvoiceType> {
   }
 
   async create(dto: CreateInvoiceTypeDto): Promise<InvoiceTypeResponseDto> {
+    // Code facultatif : généré automatiquement s'il n'est pas fourni.
+    if (!dto.code?.trim()) {
+      dto.code = generateEntityCode('FAC', dto.name);
+    }
+
     const existing = await this.invoiceTypeRepository.findOne({
       where: { code: dto.code }
     });

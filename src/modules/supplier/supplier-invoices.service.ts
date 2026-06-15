@@ -1,5 +1,6 @@
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
@@ -29,6 +30,11 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
   }
 
   async create(dto: CreateSupplierInvoiceDto): Promise<SupplierInvoice> {
+    // Numéro facultatif : si le fournisseur n'a pas communiqué de numéro,
+    // une référence interne est générée automatiquement.
+    if (!dto.invoice_number?.trim()) {
+      dto.invoice_number = generateEntityCode('FF');
+    }
     const entity = this.repository.create(dto);
     const supplier = await this.supplierRepo.findOne({ where: { id: dto.supplier_id } });
     if (!supplier) throw new NotFoundException('Fournisseur non trouvé');

@@ -16,9 +16,13 @@ Système d'aide contextuelle ajouté au frontend (gestion-cabinet-front), juin 2
 
 **Branchements génériques :** `GenericDetailPage` et `DashboardTable` (→ `PageHeader`) acceptent une prop `helpKey`. Compta utilise des tables custom → `<HelpButton>` posé manuellement.
 
+**État du contenu :** les 34 ressources ont toutes une FAQ (~104 questions au total) ; dossier = ~13 FAQ couvrant tout le cycle de vie (contentieux/transaction, jugement, appel/cassation, collaborateurs, Workflow vs Étapes). Onglets : 14 ressources ; actions : 11 ; automatisations : 8 ; prérequis : 30.
+
 **Couvert (34 ressources) :** comptabilite (ecritures, comptes, exercices, rapports) ; dossiers, clients, factures, audiences ; documents, diligences, procedures ; suppliers, supplier-invoices, expense-reports ; payslips, payroll-periods, referrers, dossier-referrals ; membres, agences, jurisdictions, plans, document-categories, document-types, facture-types ; settings-app, settings-profile, settings-roles, settings-user, mails, mail-templates, pdf-templates, abonnement, recherche. Contenu dans `content/{comptabilite,modules,documents,suppliers,payroll,admin,settings}.help.ts`.
 
 Pages config = pages custom (pas de générique) : `<HelpButton variant="icon">` posé à la main dans l'en-tête (settings/*, mails, mail-templates, pdf-templates, abonnement). recherche utilise PageHeader → prop `help`.
+
+- `HelpResource.events` (type `HelpEvent[]` : `trigger`, `effect`) = automatisations / événements déclencheurs, affichés dans tous les contextes (encadré « Automatisations », bleu primary). Fidèles au backend `src/modules/comptabilite/bridge/comptabilite-event.bridge.ts` (@OnEvent) + `referral/referral-commission.listener.ts`. Événements réels : facture.envoyee → écriture vente + commission (base facturé) ; facture.annulee → extourne ; paiement.valide → écriture encaissement + commission (base encaissé) ; supplier_invoice.approuvee/.payee → écriture achat/règlement ; expense_report.remboursee → écriture ; payslip.payee → écriture paie. Renseigné sur 8 ressources (ecritures, factures, dossiers, supplier-invoices, expense-reports, payslips, dossier-referrals, referrers).
 
 **Pour ajouter un module :** créer un `HelpResource` dans `content/`, l'ajouter à `ALL_HELP` dans registry.ts, puis passer `helpKey="..."` à `<DashboardTable>` (liste) / `<GenericDetailPage>` (détail). Champs obligatoires dérivés des configs `app/configs/form/*.form.v1.ts`.
 

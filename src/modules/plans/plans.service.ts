@@ -3,6 +3,7 @@ import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -24,6 +25,10 @@ export class PlansService extends BaseServiceV1<Plan> {
   }
 
   async create(dto: CreatePlanDto): Promise<Plan> {
+    // Code facultatif : généré automatiquement s'il n'est pas fourni.
+    if (!dto.code?.trim()) {
+      dto.code = generateEntityCode('PLAN', dto.name);
+    }
     const plan = this.repository.create(dto);
     return this.repository.save(plan);
   }

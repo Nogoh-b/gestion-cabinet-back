@@ -14,10 +14,10 @@ export class CreatePlanDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: 'PLAN_PRO', description: 'Code unique du plan' })
+  @ApiProperty({ example: 'PLAN_PRO', description: 'Code unique. Généré automatiquement si non fourni.', required: false })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  code: string;
+  code?: string;
 
   @ApiPropertyOptional({ example: 'Plan pour cabinets de taille moyenne' })
   @IsString()

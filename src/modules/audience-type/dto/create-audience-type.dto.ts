@@ -11,10 +11,10 @@ import { Transform } from 'class-transformer';
 import { AudienceTypeCategory } from '../entities/audience-type.entity';
 
 export class CreateAudienceTypeDto {
-  @ApiProperty({ description: 'Code unique du type d\'audience' })
+  @ApiProperty({ description: 'Code unique. Généré automatiquement si non fourni.', required: false })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  code: string;
+  code?: string;
 
   @ApiProperty({ description: 'Nom du type d\'audience' })
   @IsString()

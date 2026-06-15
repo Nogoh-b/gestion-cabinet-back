@@ -23,6 +23,7 @@ import { StepsService } from '../dossiers/step.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 
 
@@ -97,7 +98,7 @@ export class FactureService extends BaseServiceV1<Facture> {
     }
 
     // Lire la devise courante du cabinet pour la figer sur la facture
-    const cabinet = await this.cabinetRepo.findOne({ where: {} });
+    const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } });
     const currency = cabinet?.currency ?? 'XAF';
 
     const facture = this.repository.create({
@@ -446,7 +447,7 @@ export class FactureService extends BaseServiceV1<Facture> {
    * un format minimal sécurisé : `${prefix}${YYYY}-0001`.
    */
   async generateFacNumber(): Promise<string> {
-    const settings = await this.cabinetRepo.findOne({ where: {} });
+    const settings = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } });
     const prefix  = (settings?.invoice_prefix ?? 'FAC-').toString();
     const padding = Math.max(1, Math.min(10, settings?.invoice_padding ?? 4));
     // Gabarit : "{PREFIX}{YYYY}-{NNNN}" par défaut (rétro-compatible)

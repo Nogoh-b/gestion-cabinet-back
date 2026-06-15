@@ -3,6 +3,7 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { CreateAudienceTypeDto } from './dto/create-audience-type.dto';
@@ -22,6 +23,11 @@ export class AudienceTypeService extends BaseServiceV1<AudienceType> {
   }
 
   async create(dto: CreateAudienceTypeDto): Promise<AudienceTypeResponseDto> {
+    // Code facultatif : généré automatiquement s'il n'est pas fourni.
+    if (!dto.code?.trim()) {
+      dto.code = generateEntityCode('AUD', dto.name);
+    }
+
     const existing = await this.audienceTypeRepository.findOne({
       where: { code: dto.code }
     });

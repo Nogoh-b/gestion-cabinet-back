@@ -2,15 +2,19 @@ import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Conversation } from 'src/modules/chat/entities/conversation.entity';
+import { StatutFacture, TypeFacture } from 'src/modules/facture/dto/create-facture.dto';
+import { FactureService } from 'src/modules/facture/facture.service';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/default-procedure-template.seeder';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Dossier } from '../entities/dossier.entity';
@@ -46,6 +50,10 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     private readonly procedureTypeRepo: Repository<ProcedureType>,
     @InjectRepository(ProcedureTemplate)
     private readonly procedureTemplateRepo: Repository<ProcedureTemplate>,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepo: Repository<Cabinet>,
+    @Inject(forwardRef(() => FactureService))
+    private readonly factureService: FactureService,
     private readonly procedureInstanceService: ProcedureInstanceService,
   ) {
     super(dataSource, notificationDispatcher);
@@ -72,7 +80,61 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
   ): Promise<void> {
     await this.createConversation(entity, event);
     await this.createProcedureInstance(entity, event);
+    await this.createOpeningFeeInvoice(entity);
     await this.notifyDossierCreated(entity);
+  }
+
+  private async createOpeningFeeInvoice(entity: Dossier): Promise<void> {
+    try {
+      const cabinet = await this.cabinetRepo.findOne({
+        where: { id: getCurrentTenantId() },
+      });
+
+      if (!cabinet?.dossier_opening_fee_enabled || Number(cabinet.dossier_opening_fee) <= 0) {
+        return;
+      }
+
+      const dossier = await this.load(entity.id).catch(() => null);
+      const clientId = (dossier?.client as any)?.id ?? entity.client_id;
+      if (!clientId) {
+        this.logger.warn(
+          `Facture ouverture ignorée pour dossier ${entity.dossier_number} : client introuvable`,
+        );
+        return;
+      }
+
+      const montantHT = Number(cabinet.dossier_opening_fee);
+      const tauxTVA = Number(cabinet.dossier_opening_fee_tva ?? 0);
+      const montantTVA = Math.round(montantHT * tauxTVA) / 100;
+      const montantTTC = montantHT + montantTVA;
+      const label = cabinet.dossier_opening_fee_label?.trim() || "Frais d'ouverture de dossier";
+      const today = new Date();
+      const echeance = new Date(today);
+      echeance.setDate(echeance.getDate() + 30);
+
+      await this.factureService.createFacture({
+        dossierId: entity.id,
+        clientId,
+        type: TypeFacture.FRAIS_PROCEDURE,
+        statut: StatutFacture.ENVOYEE,
+        montantHT,
+        tauxTVA,
+        montantTVA,
+        montantTTC,
+        dateFacture: today,
+        dateEcheance: echeance,
+        description: label,
+        notify_client: false,
+      } as any);
+
+      this.logger.log(
+        `Facture d'ouverture créée pour le dossier ${entity.dossier_number}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Erreur création facture ouverture dossier ${entity.dossier_number}: ${err?.message}`,
+      );
+    }
   }
 
   /**

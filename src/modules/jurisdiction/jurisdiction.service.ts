@@ -1,6 +1,7 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { Repository } from 'typeorm';
 import {
   Injectable,
@@ -50,11 +51,16 @@ export class JurisdictionService extends BaseServiceV1<Jurisdiction> {
   }
 
   async create(dto: CreateJurisdictionDto): Promise<JurisdictionResponseDto> {
+    // Code facultatif : généré automatiquement s'il n'est pas fourni.
+    if (!dto.code?.trim()) {
+      dto.code = generateEntityCode('JUR', dto.name);
+    }
+
     // Vérifier l'unicité du code
     const existing = await this.jurisdictionRepository.findOne({
       where: { code: dto.code }
     });
-    
+
     if (existing) {
       throw new ConflictException(`Une juridiction avec le code ${dto.code} existe déjà`);
     }

@@ -17,8 +17,6 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 
 
@@ -45,8 +43,6 @@ import { CreateConversationDto } from '../chat/dto/create-conversation.dto';
 import { ChatService } from '../chat/services/chat/chat.service';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
-import { TypeFacture, StatutFacture } from '../facture/dto/create-facture.dto';
-import { FactureService } from '../facture/facture.service';
 import { User } from '../iam/user/entities/user.entity';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
@@ -105,13 +101,11 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     private readonly planQuotaService: PlanQuotaService,
     @InjectRepository(Cabinet)
     private readonly cabinetRepository: Repository<Cabinet>,
-    @Inject(forwardRef(() => FactureService))
-    private readonly factureService: FactureService,
     protected readonly emailsService?: MailService, // Optionnel
 
   ) {
     super(dossierRepository, paginationService, emailsService);
-    console.log('DossiersService initialized ',  forwardRef);
+    console.log('DossiersService initialized');
   }
  
   
@@ -292,41 +286,6 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     console.log('DTO:', JSON.stringify(createDossierDto, null, 2));
     console.log('Entity before save:', dossier);
     const savedDossier = await this.dossierRepository.save(dossier);
-
-    // ── Facture de frais d'ouverture de dossier ───────────────────────────────
-    try {
-      const cabinet = await this.cabinetRepository.findOne({ where: {} });
-      console.log('Cabinet info for dossier opening fee:', cabinet);
-      if (cabinet?.dossier_opening_fee_enabled && Number(cabinet.dossier_opening_fee) > 0) {
-        const montantHT  = Number(cabinet.dossier_opening_fee);
-        const tauxTVA    = Number(cabinet.dossier_opening_fee_tva ?? 0);
-        const montantTVA = Math.round(montantHT * tauxTVA) / 100;
-        const montantTTC = montantHT + montantTVA;
-        const label      = cabinet.dossier_opening_fee_label?.trim() || "Frais d'ouverture de dossier";
-        const today      = new Date();
-        const echeance   = new Date(today);
-        echeance.setDate(echeance.getDate() + 30);
-
-        await this.factureService.createFacture({
-          dossierId:   savedDossier.id,
-          clientId:    client.id,
-          type:        TypeFacture.FRAIS_PROCEDURE,
-          statut:      StatutFacture.ENVOYEE,
-          montantHT,
-          tauxTVA,
-          montantTVA,
-          montantTTC,
-          dateFacture:  today,
-          dateEcheance: echeance,
-          description:  label,
-          notify_client: false,
-        } as any);
-      }
-    } catch (err) {
-      // On ne fait pas échouer la création du dossier si la facture échoue
-      console.error('⚠️ Erreur création facture ouverture dossier :', err?.message);
-    }
-
     // this.procedureInstanceService.update(procedureInstance.id , {data:{id: savedDossier.id}})
     let mailDto = new CreateMailDto() 
     const dossierR = await this.mapToResponseDto(savedDossier);
@@ -741,7 +700,7 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
 
   // Méthodes privées
   private async generateDossierNumber(): Promise<string> {
-    const settings = await this.cabinetRepository.findOne({ where: {} });
+    const settings = await this.cabinetRepository.findOne({ where: { id: getCurrentTenantId() } });
     const prefix   = (settings?.dossier_prefix ?? 'DOS-').toString();
     const padding  = 4;
     const template = (settings?.dossier_number_format ?? '{PREFIX}{YYYY}-{NNNN}').toString();

@@ -12,14 +12,14 @@ export class CreateProcedureTypeDto {
   @IsString()
   name: string;
 
-  @ApiProperty({
-    description: 'Code unique du type de procédure',
+  @ApiPropertyOptional({
+    description: 'Code unique. Généré automatiquement si non fourni.',
     example: 'CIVILE',
     maxLength: 50
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  code: string;
+  code?: string;
 
   @ApiPropertyOptional({
     description: 'Description du type de procédure',

@@ -3,6 +3,7 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
@@ -35,6 +36,11 @@ export class DocumentCategoryService extends BaseServiceV1<DocumentCategory> {
   }
 
   async create(dto: CreateDocumentCategoryDto): Promise<DocumentCategoryResponseDto> {
+    // Code facultatif : généré automatiquement s'il n'est pas fourni.
+    if (!dto.code?.trim()) {
+      dto.code = generateEntityCode('CAT', dto.name);
+    }
+
     const existing = await this.categoryRepository.findOne({
       where: [{ code: dto.code }, { name: dto.name }]
     });

@@ -9,6 +9,7 @@ import { StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 /**
  * Subscriber métier pour les factures.
@@ -33,7 +34,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
   /** Symbole de la devise active (ex: "FCFA", "€"). */
   private async getCurrencySymbol(): Promise<string> {
-    const cabinet = await this.cabinetRepo.findOne({ where: {} }).catch(() => null);
+    const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } }).catch(() => null);
     return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 

@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Paiement } from '../entities/paiement.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 /**
  * Subscriber métier pour les paiements.
@@ -31,7 +32,7 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
   }
 
   private async getCurrencySymbol(): Promise<string> {
-    const cabinet = await this.cabinetRepo.findOne({ where: {} }).catch(() => null);
+    const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } }).catch(() => null);
     return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 
