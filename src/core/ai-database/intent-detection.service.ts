@@ -21,7 +21,7 @@ export class IntentDetectionService {
     question: string,
     llm: ChatOpenAI,
     readSchema: string,
-    options: { forceWrite?: boolean } = {},
+    options: { forceWrite?: boolean; history?: string } = {},
   ): Promise<IntentDetectionResult> {
 
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
@@ -52,7 +52,7 @@ export class IntentDetectionService {
     this.logger.log(`📝 Schéma d'écriture généré (${writeSchema.length} chars)`);
 
     // 3️⃣ Prompt amélioré pour les plans complexes
-    const prompt = this.buildAdvancedDetectionPrompt(question, readSchema, writeSchema);
+    const prompt = this.buildAdvancedDetectionPrompt(question, readSchema, writeSchema, options.history);
     
     try {
       const response = await llm.invoke([{ role: 'user', content: prompt }]);
@@ -88,7 +88,7 @@ export class IntentDetectionService {
   /**
    * Prompt avancé pour la détection multi-opérations
    */
-  private buildAdvancedDetectionPrompt(question: string, readSchema: string, writeSchema: string): string {
+  private buildAdvancedDetectionPrompt(question: string, readSchema: string, writeSchema: string, history?: string): string {
     const genericWriteExample = `{
   "type": "WRITE",
   "writePlan": {
@@ -117,7 +117,7 @@ ${readSchema.substring(0, 10000)}
 
 ## 📝 ENTITÉS MODIFIABLES
 ${writeSchema}
-
+${history ? `\n## 🗨️ HISTORIQUE RÉCENT DE LA CONVERSATION (le plus ancien en premier)\n${history}\n` : ''}
 ## ❓ DEMANDE UTILISATEUR
 "${question}"
 
@@ -151,6 +151,17 @@ Si l'utilisateur dit "prends le plus probable" ou "je ne sais plus lequel",
 ajoute ceci dans l'opération concernée (dans le JSON du plan) :
 "resolveConfig": { "mode": "best_effort" }
 Cela permettra de prendre automatiquement la meilleure correspondance en cas d'homonymie.
+
+### 7. 🎯 Référence implicite à une entité déjà évoquée (TRÈS IMPORTANT)
+Si l'utilisateur utilise un pronom ou une référence implicite ("la", "le", "celui-ci",
+"cette audience", "ce dossier"...) SANS redonner l'identifiant, regarde
+l'HISTORIQUE RÉCENT ci-dessus : si un message précédent (utilisateur ou assistant)
+mentionne explicitement un identifiant numérique (ex: "ID: 42", "audience n°42",
+"#42") pour une entité du MÊME TYPE que celle visée par la demande, RÉUTILISE cet ID
+comme "entityId" de l'opération UPDATE/DELETE.
+N'invente JAMAIS un ID : si aucun identifiant exploitable n'apparaît dans l'historique
+ni dans la demande, NE METS PAS "entityId" (laisse-le absent) plutôt que de deviner —
+le système redemandera alors une précision à l'utilisateur.
 ${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRules}\n` : ''}
 ## 📤 FORMAT DE RÉPONSE JSON UNIQUEMENT
 
@@ -210,7 +221,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
             return {
         operation: op.operation,
         entity: op.entity.toLowerCase(),
-        entityId: op.entityId || null,
+        entityId: op.entityId ?? op.fields?.id ?? op.fields?.entityId ?? null,
         fields: cleanedFields,
         tempId: op.tempId || `op_${index}`,
         dependsOn: op.dependsOn || [],

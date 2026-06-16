@@ -641,6 +641,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     }
     const schema = await this.getCompleteSchema(relevantTables);
     const intentMode = this.normalizeIntentMode(dto.intentMode);
+    const historyForIntent = await this.getHistorySnippetForIntent(dto.conversationId);
     let intentResult: any;
     if (intentMode === 'read') {
       intentResult = { type: 'READ', requiresConfirmation: false };
@@ -651,7 +652,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         enrichedQuestion,
         this.llm,
         schema,
-        { forceWrite: intentMode === 'write' },
+        { forceWrite: intentMode === 'write', history: historyForIntent },
       );
     }
     this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
@@ -1262,6 +1263,35 @@ ${lines.join('\n')}
     return 'auto';
   }
 
+  /**
+   * Petit extrait de l'historique récent, formaté en texte, pour aider la
+   * détection WRITE à résoudre les références implicites ("la", "le",
+   * "cette audience"...) vers l'ID réel mentionné dans un tour précédent
+   * (ex: une liste d'audiences affichée juste avant avec leurs IDs).
+   *
+   * Volontairement court (3 messages / ~1500 chars) : on ne veut pas alourdir
+   * le prompt de détection d'intention, juste lui donner le minimum de
+   * contexte pour éviter un "ID requis" alors que l'utilisateur a déjà
+   * désigné l'élément concerné dans la conversation.
+   */
+  private async getHistorySnippetForIntent(conversationId?: string): Promise<string> {
+    if (!conversationId) return '';
+    try {
+      const history = await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
+        maxMessages: 3,
+        maxTokens: 1200,
+      });
+      if (!history.length) return '';
+      return history
+        .map(m => `${m.role === 'user' ? 'UTILISATEUR' : 'ASSISTANT'}: ${m.content}`.substring(0, 600))
+        .join('\n---\n')
+        .substring(0, 1500);
+    } catch (err) {
+      this.logger.warn(`getHistorySnippetForIntent: ${(err as Error).message}`);
+      return '';
+    }
+  }
+
   private enrichWritePlanWithReferencedEntities(
     plan: WritePlan | undefined,
     referenced: ReferencedEntityContext[],
@@ -1642,6 +1672,7 @@ ${blocks.join('\n\n')}
       const schema = await this.getCompleteSchema(relevantTables);
       tLog('schema prêt — appel detectIntent');
       const intentMode = this.normalizeIntentMode(dto.intentMode);
+      const historyForIntent = await this.getHistorySnippetForIntent(dto.conversationId);
 
       // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
       // Si l'utilisateur a joint OU mentionné (@) un document dont le CONTENU a
@@ -1685,9 +1716,9 @@ ${blocks.join('\n\n')}
       } else {
         intentResult = await this.intentDetectionService.detectIntent(
           enrichedQuestion, this.llm, schema,
-          { forceWrite: intentMode === 'write' },
+          { forceWrite: intentMode === 'write', history: historyForIntent },
         );
-      } 
+      }
       tLog(`detectIntent retourné → ${intentResult.type}`);
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
         intentResult.writePlan = this.enrichWritePlanWithReferencedEntities(
@@ -2102,6 +2133,7 @@ INSTRUCTIONS IMPORTANTES:
 5. Si la réponse contient des dates, formate-les de façon lisible
 6. Sois concis mais précis (max 500 mots)
 7. Termine par une phrase d'action ou de recommandation si pertinent
+8. IMPORTANT : pour CHAQUE élément listé (dossier, audience, client...), mentionne toujours son identifiant numérique réel entre parenthèses, ex: "Audience du 20 juin (ID: 42)". Cela permet à l'utilisateur de désigner cet élément précisément dans un message suivant (ex: "marque-la comme reportée").
 
 RÉPONSE (en français courant, langage métier):`;
 
@@ -2151,6 +2183,7 @@ INSTRUCTIONS IMPORTANTES:
 4. Si la réponse contient des dates, formate-les de façon lisible
 5. Sois concis mais précis (max 500 mots)
 6. Termine par une phrase d'action ou de recommandation si pertinent
+7. IMPORTANT : pour CHAQUE élément listé (dossier, audience, client...), mentionne toujours son identifiant numérique réel entre parenthèses, ex: "Audience du 20 juin (ID: 42)". Cela permet à l'utilisateur de désigner cet élément précisément dans un message suivant (ex: "marque-la comme reportée").
 
 RÉPONSE (en langage naturel):`;
 

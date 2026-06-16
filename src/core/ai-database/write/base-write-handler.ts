@@ -582,7 +582,11 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
         break;
       case 'UPDATE':
         if (!intent.entityId) {
-          throw new BadRequestException(`ID requis pour UPDATE sur ${this.entityName}`);
+          throw new BadRequestException(
+            `Je n'ai pas pu identifier précisément quel(le) ${this.entityName.replace(/s$/, '')} modifier. `
+            + `Merci de préciser un identifiant ou un critère unique (ex: numéro de dossier, date, nom) `
+            + `pour que je puisse cibler le bon enregistrement.`,
+          );
         }
         result = await this.doUpdate(intent.entityId, fields, userId);
         break;
