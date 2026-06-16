@@ -18,9 +18,10 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { isSharedEntity } from '../tenant/tenant.decorator';
-import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
@@ -34,6 +35,7 @@ import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
 
 type IntentMode = 'auto' | 'read' | 'write' | 'chat';
 
@@ -204,9 +206,9 @@ export class AiDatabaseService implements OnModuleInit {
     schema?: string,
     tables: string[] = [],
   ): Promise<string> {
-    const schemaToUse = schema || await this.getCompleteSchema(
+    const schemaToUse = schema || (await this.getCompleteSchema(
       tables.length ? tables : await this.detectRelevantTables(question),
-    );
+    ));
     const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
     const systemPrompt = this.buildReadSystemPrompt(schemaToUse, tenantId);
 
@@ -232,7 +234,7 @@ export class AiDatabaseService implements OnModuleInit {
     if (!sqlQuery && this.isNoResultsResponse(content)) {
       sqlQuery = `-- Aucun resultat trouve pour: ${question}\nSELECT NULL AS message WHERE 1=0`;
     } else if (!sqlQuery) {
-      sqlQuery = await this.askForSQLOnly(question, schemaToUse) || '';
+      sqlQuery = (await this.askForSQLOnly(question, schemaToUse)) || '';
     }
 
     if (sqlQuery) {
@@ -247,6 +249,11 @@ export class AiDatabaseService implements OnModuleInit {
       sqlQuery = this.generateFallbackQuery(question);
       this.logger.warn(`Fallback SQL final utilise: ${sqlQuery}`);
     }
+
+    // Normaliser les fonctions de date (CURDATE→CURDATE(), NOW→NOW(), etc.) dès la
+    // source : ainsi TOUT chemin d'exécution en aval reçoit un SQL MySQL valide,
+    // même si un appelant oubliait de passer par prepareReadQuery().
+    sqlQuery = this.replaceSpecialValues(sqlQuery);
 
     return sqlQuery;
   }
@@ -266,6 +273,8 @@ REGLES ABSOLUES :
 5. Toutes les valeurs doivent etre en dur, sans placeholders (:id, ?, @param)
 6. Si des documents sont fournis dans la question, utilise leur contenu uniquement comme contexte d'analyse, pas comme nom de table
 7. ⚠️ IMPORTANT : Utilise EXACTEMENT les noms de tables du schema ci-dessus. Ne devine JAMAIS les noms de tables. Par exemple, la table "document_customer" s'appelle EXACTEMENT "document_customer", pas "document" ni "documents".
+8. Base MySQL : pour la date du jour utilise CURDATE() (TOUJOURS avec parenthèses), pour l'instant présent NOW(). N'écris JAMAIS CURDATE, CURRENT_DATE, NOW ni SYSDATE sans parenthèses, sinon MySQL les prend pour des colonnes. Ex: WHERE a.audience_date >= CURDATE().
+9. N'utilise QUE de vraies colonnes des tables ci-dessus, JAMAIS des champs calculés/libellés (ex: "Est à venir", "Statut libellé"). Pour les audiences "à venir", compare audience_date >= CURDATE() (et status = 0 si pertinent).
 
 FORMAT OBLIGATOIRE :
 Reponds uniquement avec un bloc SQL parsable :
@@ -647,10 +656,17 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     }
     this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
 
+    if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+      intentResult.writePlan = this.enrichWritePlanWithReferencedEntities(
+        intentResult.writePlan,
+        requestContext.referenced,
+      );
+    }
+
     // ── 3a. BRANCHE CONVERSATIONNELLE ────────────────────────────────────────
     if (intentResult.type === 'CONVERSATIONAL') {
       const analysis = intentResult.conversationalResponse
-        ?? await this.generateConversationalResponse(enrichedQuestion);
+        ?? (await this.generateConversationalResponse(enrichedQuestion));
       return {
         success: true,
         question: dto.question,
@@ -879,6 +895,20 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         executionTimeMs: Date.now() - startTime,
         error: 'operationIndex invalide',
       };
+    }
+
+    if (!op.entityId) {
+      const fallbackEntityId = Number(
+        (op.fields as any)?.id
+        ?? (op.fields as any)?.entityId
+        ?? (op.fields as any)?.[`${op.entity}_id`],
+      );
+      if (Number.isInteger(fallbackEntityId) && fallbackEntityId > 0) {
+        op.entityId = fallbackEntityId;
+        delete (op.fields as any).id;
+        delete (op.fields as any).entityId;
+        delete (op.fields as any)[`${op.entity}_id`];
+      }
     }
 
     // ── Option « Autre » : customValue fourni ───────────────────────────────
@@ -1232,6 +1262,59 @@ ${lines.join('\n')}
     return 'auto';
   }
 
+  private enrichWritePlanWithReferencedEntities(
+    plan: WritePlan | undefined,
+    referenced: ReferencedEntityContext[],
+  ): WritePlan | undefined {
+    if (!plan || !referenced.length) return plan;
+
+    const normalizeEntityToken = (value: string): string => {
+      const normalized = value.toLowerCase().trim();
+      if (normalized.endsWith('ies')) return `${normalized.slice(0, -3)}y`;
+      if (normalized.endsWith('es')) return normalized.slice(0, -2);
+      if (normalized.endsWith('s')) return normalized.slice(0, -1);
+      return normalized;
+    };
+
+    const matchEntityId = (entityName: string): number | undefined => {
+      const normalizedEntity = normalizeEntityToken(entityName);
+      const candidates = referenced.filter(item => {
+        const type = normalizeEntityToken(String(item.type || ''));
+        return type === normalizedEntity;
+      });
+
+      if (candidates.length !== 1) return undefined;
+      const rawId = candidates[0].data?.id;
+      const id = Number(rawId);
+      return Number.isInteger(id) && id > 0 ? id : undefined;
+    };
+
+    for (const operation of plan.operations) {
+      if (operation.operation !== 'UPDATE' && operation.operation !== 'DELETE') continue;
+      if (operation.entityId) continue;
+
+      const explicitFieldId = Number(
+        (operation.fields as any)?.id
+        ?? (operation.fields as any)?.entityId
+        ?? (operation.fields as any)?.[`${operation.entity}_id`],
+      );
+      if (Number.isInteger(explicitFieldId) && explicitFieldId > 0) {
+        operation.entityId = explicitFieldId;
+        delete (operation.fields as any).id;
+        delete (operation.fields as any).entityId;
+        delete (operation.fields as any)[`${operation.entity}_id`];
+        continue;
+      }
+
+      const referencedId = matchEntityId(operation.entity);
+      if (referencedId) {
+        operation.entityId = referencedId;
+      }
+    }
+
+    return plan;
+  }
+
   private parseDocumentIds(dto: AskQuestionDto, referenced: ReferencedEntityContext[]): number[] {
     const ids = new Set<number>();
     const add = (value: unknown) => {
@@ -1402,7 +1485,7 @@ ${blocks.join('\n\n')}
     // Repli : aucune référence explicite (@ ou documentIds) mais la question évoque
     // un document par son nom (« résume le document Contrat_Dupont ») → résolution auto.
     if (documentIds.length === 0) {
-      documentIds.push(...await this.resolveDocumentIdsByName(dto.question));
+      documentIds.push(...(await this.resolveDocumentIdsByName(dto.question)));
     }
     for (const documentId of documentIds) {
       documentContext.push(await this.loadSystemDocumentContext(documentId));
@@ -1604,8 +1687,14 @@ ${blocks.join('\n\n')}
           enrichedQuestion, this.llm, schema,
           { forceWrite: intentMode === 'write' },
         );
-      }
+      } 
       tLog(`detectIntent retourné → ${intentResult.type}`);
+      if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+        intentResult.writePlan = this.enrichWritePlanWithReferencedEntities(
+          intentResult.writePlan,
+          requestContext.referenced,
+        );
+      }
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
       await this.sleep(150);
 
