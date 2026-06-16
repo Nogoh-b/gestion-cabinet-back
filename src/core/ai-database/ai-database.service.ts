@@ -34,6 +34,7 @@ import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
+import { EntityIdRequiredException } from './write/entity-id-required.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
 
 
@@ -78,6 +79,17 @@ export class AiDatabaseService implements OnModuleInit {
   private schemaJsonCache: Map<string, { value: DatabaseSchema; timestamp: number }> = new Map();
   private relationshipsCache: Map<string, any> = new Map();
   private columnLabelsCache: Map<string, any> = new Map();
+  /**
+   * Plans WRITE en attente d'un identifiant (EntityIdRequiredException) gardés
+   * en mémoire par conversationId, pour ne pas « perdre le fil » quand l'IA
+   * demande à l'utilisateur de préciser quelle entité elle doit modifier.
+   * Au message suivant dans la même conversation, on tente d'extraire un ID
+   * numérique de la réponse de l'utilisateur et de relancer le plan complété.
+   */
+  private pendingEntityIdClarifications: Map<string, {
+    plan: WritePlan; operationIndex: number; entity: string; userId: string; createdAt: number;
+  }> = new Map();
+  private readonly PENDING_CLARIFICATION_TTL = 10 * 60 * 1000; // 10 minutes
   private readonly CACHE_TTL = 3600000; // 1 heure
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
@@ -594,6 +606,55 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
 
+    // ── 0. Reprise d'un plan WRITE en attente d'identifiant ───────────────────
+    const resumed = this.tryConsumePendingEntityIdClarification(dto.conversationId, dto.question);
+    if (resumed) {
+      const conversationId = dto.conversationId!;
+      await this.conversationManager.addUserMessage(conversationId, dto.question);
+      try {
+        const results = await this.genericWriteService.executePlan(resumed.plan, resumed.userId);
+        const analysis = this.formatPlanResults(results);
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+        return {
+          success: true, question: dto.question, analysis, results,
+          conversationId, executionTimeMs: Date.now() - startTime,
+        };
+      } catch (error: any) {
+        if (error instanceof AmbiguityException) {
+          const message = this.buildAmbiguityMessage(error);
+          await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+          return {
+            success: true, question: dto.question, analysis: message,
+            pendingWritePlan: resumed.plan, requiresAmbiguityResolution: true,
+            ambiguityContext: {
+              entity: error.entity, fieldName: error.fieldName, searchTerm: error.searchTerm,
+              candidates: error.candidates, operationIndex: error.operationIndex,
+              parentEntity: error.parentEntity, allowOther: true,
+              otherLabel: this.getFieldLabel(error.fieldName),
+            },
+            conversationId, executionTimeMs: Date.now() - startTime,
+          };
+        }
+        if (error instanceof EntityIdRequiredException) {
+          this.rememberPendingEntityIdClarification(
+            conversationId, resumed.plan, error.operationIndex, error.entity, resumed.userId,
+          );
+          const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
+          await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+          return {
+            success: true, question: dto.question, analysis: message,
+            conversationId, executionTimeMs: Date.now() - startTime,
+          };
+        }
+        const errMsg = `❌ Erreur lors de l'exécution: ${error.message}`;
+        await this.conversationManager.addAssistantMessage(conversationId, errMsg, undefined);
+        return {
+          success: false, question: dto.question, analysis: errMsg,
+          conversationId, executionTimeMs: Date.now() - startTime, error: error.message,
+        };
+      }
+    }
+
     // ── 1. Enrichissement par fichier (AVANT la détection d'intention) ────────
     let enrichedQuestion = dto.question;
     let fileInfo: any;
@@ -830,6 +891,24 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
             allowOther: true,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+          ...(fileInfo && { fileInfo }),
+        };
+      }
+
+      // ── ID manquant : on garde le plan en mémoire pour la conversation ──
+      // au lieu de le perdre, et on demande une précision à l'utilisateur.
+      if (error instanceof EntityIdRequiredException) {
+        this.rememberPendingEntityIdClarification(
+          conversationId, plan, error.operationIndex, error.entity, userId,
+        );
+        const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
+        await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+        return {
+          success: true,
+          question: dto.question,
+          analysis: message,
           conversationId,
           executionTimeMs: Date.now() - startTime,
           ...(fileInfo && { fileInfo }),
@@ -1274,6 +1353,61 @@ ${lines.join('\n')}
    * contexte pour éviter un "ID requis" alors que l'utilisateur a déjà
    * désigné l'élément concerné dans la conversation.
    */
+  /** Mémorise un plan WRITE en attente d'identifiant pour cette conversation. */
+  private rememberPendingEntityIdClarification(
+    conversationId: string, plan: WritePlan, operationIndex: number, entity: string, userId: string,
+  ): void {
+    this.pendingEntityIdClarifications.set(conversationId, {
+      plan, operationIndex, entity, userId, createdAt: Date.now(),
+    });
+  }
+
+  /**
+   * Si la conversation a un plan WRITE en attente d'identifiant et que le
+   * message courant contient un nombre exploitable (ex: "c'est l'audience 6",
+   * "le numéro 6", ou juste "6"), patche le plan avec cet ID et le retourne
+   * prêt à être réexécuté. Sinon (pas de plan en attente, ou pas de nombre
+   * trouvé dans la réponse), retourne null et laisse le flux normal traiter
+   * la question comme une nouvelle demande.
+   */
+  private tryConsumePendingEntityIdClarification(
+    conversationId: string | undefined, question: string,
+  ): { plan: WritePlan; userId: string } | null {
+    if (!conversationId) return null;
+    const pending = this.pendingEntityIdClarifications.get(conversationId);
+    if (!pending) return null;
+
+    // Expiration : on ne veut pas réinterpréter un nombre dans un message
+    // sans rapport posé bien plus tard dans la même conversation.
+    if (Date.now() - pending.createdAt > this.PENDING_CLARIFICATION_TTL) {
+      this.pendingEntityIdClarifications.delete(conversationId);
+      return null;
+    }
+
+    const match = question.match(/\d+/);
+    if (!match) {
+      // La réponse ne contient pas d'identifiant exploitable : on abandonne
+      // la clarification plutôt que de deviner, et on traite la question
+      // normalement (elle peut être sans rapport avec le plan en attente).
+      this.pendingEntityIdClarifications.delete(conversationId);
+      return null;
+    }
+
+    const entityId = Number(match[0]);
+    this.pendingEntityIdClarifications.delete(conversationId);
+
+    const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pending.plan));
+    const op = patchedPlan.operations[pending.operationIndex];
+    if (!op) return null;
+    op.entityId = entityId;
+
+    this.logger.log(
+      `🔄 Reprise après clarification d'ID: opération ${pending.operationIndex} "${op.entity}" → entityId=${entityId}`,
+    );
+
+    return { plan: patchedPlan, userId: pending.userId };
+  }
+
   private async getHistorySnippetForIntent(conversationId?: string): Promise<string> {
     if (!conversationId) return '';
     try {
@@ -1643,6 +1777,49 @@ ${blocks.join('\n\n')}
     try {
       tLog('service entré');
 
+      // ── 0. Reprise d'un plan WRITE en attente d'identifiant ─────────────────
+      // (ex: "marque-la comme reportée" → entityId manquant → on a demandé
+      // "quelle audience ?" → l'utilisateur répond "c'est l'audience 6")
+      const resumed = this.tryConsumePendingEntityIdClarification(dto.conversationId, dto.question);
+      if (resumed) {
+        sendEvent('intent', { type: 'WRITE', plan: resumed.plan });
+        await emit('status', { message: `⚙️ Exécution de ${resumed.plan.operations.length} opération(s)...` });
+        const conversationId = dto.conversationId!;
+        await this.conversationManager.addUserMessage(conversationId, dto.question);
+        try {
+          const results = await this.genericWriteService.executePlan(resumed.plan, resumed.userId);
+          const analysis = this.formatPlanResults(results);
+          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+          sendEvent('result', {
+            success: true, question: dto.question, analysis, results,
+            conversationId, executionTimeMs: Date.now() - startTime,
+          });
+        } catch (error: any) {
+          if (error instanceof AmbiguityException) {
+            sendEvent('ambiguity', {
+              entity: error.entity, fieldName: error.fieldName, searchTerm: error.searchTerm,
+              candidates: error.candidates, operationIndex: error.operationIndex,
+              parentEntity: error.parentEntity, message: this.buildAmbiguityMessage(error),
+              pendingWritePlan: resumed.plan, conversationId, allowOther: true,
+              otherLabel: this.getFieldLabel(error.fieldName),
+            });
+          } else if (error instanceof EntityIdRequiredException) {
+            this.rememberPendingEntityIdClarification(
+              conversationId, resumed.plan, error.operationIndex, error.entity, resumed.userId,
+            );
+            const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
+            await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+            sendEvent('result', {
+              success: true, question: dto.question, analysis: message,
+              conversationId, executionTimeMs: Date.now() - startTime,
+            });
+          } else {
+            sendEvent('error', { message: error.message });
+          }
+        }
+        return;
+      }
+
       // ── 1. Contexte enrichi : mentions, fichiers et documents système ──────
       let enrichedQuestion = dto.question;
       let fileInfo: any;
@@ -1783,7 +1960,7 @@ ${blocks.join('\n\n')}
             conversationId, executionTimeMs: Date.now() - startTime,
             ...(fileInfo && { fileInfo }),
           });
-        } catch (error) {
+        } catch (error: any) {
           if (error instanceof AmbiguityException) {
             sendEvent('ambiguity', {
               entity: error.entity,
@@ -1797,6 +1974,18 @@ ${blocks.join('\n\n')}
               conversationId,
               allowOther: true,
               otherLabel: this.getFieldLabel(error.fieldName),
+            });
+          } else if (error instanceof EntityIdRequiredException) {
+            // On garde le plan en mémoire (par conversation) au lieu de le perdre :
+            // au message suivant, on tentera d'en extraire l'ID donné par l'utilisateur.
+            this.rememberPendingEntityIdClarification(
+              conversationId, plan, error.operationIndex, error.entity, userId,
+            );
+            const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
+            await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+            sendEvent('result', {
+              success: true, question: dto.question, analysis: message,
+              conversationId, executionTimeMs: Date.now() - startTime,
             });
           } else {
             sendEvent('error', { message: error.message });

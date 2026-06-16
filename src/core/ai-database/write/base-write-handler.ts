@@ -22,6 +22,7 @@ import { EntityWriteHandler, WriteableFieldSchema, ValidationResult } from '../i
 import { WriteIntent } from '../interface/write-intent.interface';
 import { SchemaMetadataService } from '../schema-metadata.service';
 import { AmbiguityException } from './ambiguity.exception';
+import { EntityIdRequiredException } from './entity-id-required.exception';
 import { EntityResolverService } from './entity-resolver.service';
 import { WriteResult } from './write-handler.registry';
 
@@ -582,11 +583,7 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
         break;
       case 'UPDATE':
         if (!intent.entityId) {
-          throw new BadRequestException(
-            `Je n'ai pas pu identifier précisément quel(le) ${this.entityName.replace(/s$/, '')} modifier. `
-            + `Merci de préciser un identifiant ou un critère unique (ex: numéro de dossier, date, nom) `
-            + `pour que je puisse cibler le bon enregistrement.`,
-          );
+          throw new EntityIdRequiredException(this.entityName);
         }
         result = await this.doUpdate(intent.entityId, fields, userId);
         break;
