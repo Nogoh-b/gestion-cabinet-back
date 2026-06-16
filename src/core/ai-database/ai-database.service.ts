@@ -3096,35 +3096,43 @@ Retourne UNIQUEMENT la requête corrigée.`;
       .replace(/\{\{now\}\}/gi, 'NOW()')
       // CURDATE sans parenthèses → CURDATE() (erreur fréquente du LLM)
       .replace(/\bCURDATE\b(?!\s*\()/gi, 'CURDATE()')
+      // CURRENT_DATE sans parenthèses ou style SQL standard → CURDATE()
+      .replace(/\bCURRENT_DATE\b(?!\s*\()/gi, 'CURDATE()')
       // NOW sans parenthèses → NOW()
-      .replace(/\bNOW\b(?!\s*\()/gi, 'NOW()');
+      .replace(/\bNOW\b(?!\s*\()/gi, 'NOW()')
+      // CURRENT_TIMESTAMP sans parenthèses → NOW()
+      .replace(/\bCURRENT_TIMESTAMP\b(?!\s*\()/gi, 'NOW()')
+      // SYSDATE sans parenthèses → NOW()
+      .replace(/\bSYSDATE\b(?!\s*\()/gi, 'NOW()');
+  }
+
+  /**
+   * Prépare une requête READ avant validation/exécution pour éviter les écarts
+   * entre la requête "explainée" et la requête réellement lancée.
+   */
+  private prepareReadQuery(sqlQuery: string): string {
+    let preparedQuery = sqlQuery.trim();
+
+    preparedQuery = this.replaceSpecialValues(preparedQuery);
+    preparedQuery = preparedQuery.replace(/:\w+/g, '');
+    preparedQuery = preparedQuery.replace(/\?\s*,/g, '');
+    preparedQuery = preparedQuery.replace(/,\s*\?/g, '');
+    preparedQuery = preparedQuery.replace(/=\s*\?/g, '= NULL');
+    // Ne supprime que les parenthèses réellement orphelines, pas les appels
+    // de fonction valides comme CURDATE() ou NOW().
+    preparedQuery = preparedQuery.replace(/(?<![A-Za-z0-9_])\(\s*\)/g, '');
+
+    const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    if (activeTenantId && activeTenantId !== 1) {
+      preparedQuery = this.injectTenantConditions(preparedQuery, activeTenantId);
+    }
+
+    return preparedQuery;
   }
 
   private async executeSafeQuery(sqlQuery: string): Promise<{ data: any[]; rowCount: number }> {
     // execQuery est la requête nettoyée + enrichie qui sera réellement exécutée
-    let execQuery = sqlQuery.trim();
-
-    // ✅ Remplacer les valeurs spéciales ({{today}}, {{now}}, CURDATE sans parenthèses)
-    execQuery = this.replaceSpecialValues(execQuery);
-
-    // ✅ Supprimer les paramètres nommés style :dossier_id, :param, etc.
-    execQuery = execQuery.replace(/:\w+/g, '');
-
-    // ✅ Remplacer les ? par des valeurs NULL ou les supprimer si nécessaire
-    execQuery = execQuery.replace(/\?\s*,/g, '');
-    execQuery = execQuery.replace(/,\s*\?/g, '');
-    execQuery = execQuery.replace(/=\s*\?/g, '= NULL');
-
-    // ✅ Nettoyer les parenthèses vides
-    execQuery = execQuery.replace(/\(\s*\)/g, '');
-
-    // ── Injection tenant_id (couche de sécurité — avant validation et exécution)
-    // Même si le LLM oublie de filtrer par tenant, on l'injecte systématiquement.
-    const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
-    if (activeTenantId && activeTenantId !== 1) {
-      execQuery = this.injectTenantConditions(execQuery, activeTenantId);
-      this.logger.debug(`[Tenant] Requête après injection tenant_id=${activeTenantId}:\n${execQuery.substring(0, 300)}`);
-    }
+    const execQuery = this.prepareReadQuery(sqlQuery);
 
     // normalizedQuery (lowercase) sert uniquement à la validation de sécurité
     const normalizedQuery = execQuery.toLowerCase();
@@ -3161,7 +3169,9 @@ Retourne UNIQUEMENT la requête corrigée.`;
         rowCount: limitedResults.length,
       };
     } catch (error) {
-      throw new Error(`Erreur d'exécution: ${(error as unknown as any).message}`);
+      const dbMessage = (error as unknown as any).message;
+      this.logger.error(`Erreur SQL après préparation: ${dbMessage}\nQuery:\n${execQuery}`);
+      throw new Error(`Erreur d'exécution: ${dbMessage}\nSQL: ${execQuery}`);
     }
   }
 
@@ -3195,10 +3205,14 @@ Retourne UNIQUEMENT la requête corrigée.`;
 
   async validateQuery(sqlQuery: string): Promise<{ valid: boolean; error?: string }> {
     try {
-      await this.dataSource.query(`EXPLAIN ${sqlQuery}`);
+      const preparedQuery = this.prepareReadQuery(sqlQuery);
+      await this.dataSource.query(`EXPLAIN ${preparedQuery}`);
       return { valid: true };
     } catch (error) {
-      return { valid: false, error: (error as unknown as any).message };
+      const dbMessage = (error as unknown as any).message;
+      const preparedQuery = this.prepareReadQuery(sqlQuery);
+      this.logger.warn(`Validation SQL invalide: ${dbMessage}\nQuery:\n${preparedQuery}`);
+      return { valid: false, error: `${dbMessage}\nSQL: ${preparedQuery}` };
     }
   }
 
