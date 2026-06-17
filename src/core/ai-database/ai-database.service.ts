@@ -287,6 +287,8 @@ REGLES ABSOLUES :
 7. ⚠️ IMPORTANT : Utilise EXACTEMENT les noms de tables du schema ci-dessus. Ne devine JAMAIS les noms de tables. Par exemple, la table "document_customer" s'appelle EXACTEMENT "document_customer", pas "document" ni "documents".
 8. Base MySQL : pour la date du jour utilise CURDATE() (TOUJOURS avec parenthèses), pour l'instant présent NOW(). N'écris JAMAIS CURDATE, CURRENT_DATE, NOW ni SYSDATE sans parenthèses, sinon MySQL les prend pour des colonnes. Ex: WHERE a.audience_date >= CURDATE().
 9. N'utilise QUE de vraies colonnes des tables ci-dessus, JAMAIS des champs calculés/libellés (ex: "Est à venir", "Statut libellé"). Pour les audiences "à venir", compare audience_date >= CURDATE() (et status = 0 si pertinent).
+10. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le schéma ci-dessus. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le tableau du schéma.
+11. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes listées ci-dessus, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
 
 FORMAT OBLIGATOIRE :
 Reponds uniquement avec un bloc SQL parsable :
@@ -772,7 +774,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
       }
 
       const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema);
 
       let results: { data: any[]; rowCount: number } | null = null;
       let analysis = '';
@@ -1974,7 +1976,7 @@ ${blocks.join('\n\n')}
       // validateAndFixQuery valide déjà via EXPLAIN et s'auto-corrige (jusqu'à 2 passes
       // LLM en interne) — inutile de le ré-emballer dans withRetry, qui multipliait les
       // appels LLM (jusqu'à 4) et la latence. On exécute la requête validée directement.
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema);
 
       // 🛟 Filet de sécurité : si la requête générée n'est PAS un SELECT, c'est que
       // la demande était en réalité une écriture mal classée en lecture. Plutôt que
@@ -2668,6 +2670,8 @@ RÉPONSE (en langage naturel):`;
   private expandWithRelatedTables(tables: string[], max = 14): string[] {
     const relationships = this.relationshipsCache.get('all') || {};
     const out = new Set<string>(tables);
+
+    // 1) Tables PARENTES (FK sortantes) : ex. ecritures_comptables → journaux/exercices.
     for (const t of tables) {
       const rel = relationships[t];
       if (!rel?.foreignKeys) continue;
@@ -2678,6 +2682,28 @@ RÉPONSE (en langage naturel):`;
       }
       if (out.size >= max) break;
     }
+
+    // 2) Tables ENFANTS (FK entrantes) : ex. lignes_ecriture_comptable → ecritures_comptables.
+    //    Indispensable pour les schémas « en-tête + lignes » (écritures/lignes,
+    //    factures/lignes…). Sans elles, une question sur les écritures ne verrait
+    //    pas la table des lignes et le LLM inventerait sa structure (cause directe
+    //    des hallucinations type "ecriture_lignes(sens, montant)").
+    if (out.size < max) {
+      const targets = new Set(tables.map(t => t.toLowerCase()));
+      for (const [child, rel] of Object.entries<any>(relationships)) {
+        if (out.has(child)) continue;
+        const fks = rel?.foreignKeys;
+        if (!Array.isArray(fks)) continue;
+        const pointsToTarget = fks.some(
+          (fk: any) => fk?.referencedTable && targets.has(String(fk.referencedTable).toLowerCase()),
+        );
+        if (pointsToTarget && this.schemaMetadata.hasTableMetadata(child)) {
+          out.add(child);
+          if (out.size >= max) break;
+        }
+      }
+    }
+
     return Array.from(out).slice(0, max);
   }
 
@@ -3158,38 +3184,70 @@ private async getDefaultSchema(): Promise<string> {
   📤 **RÉPONSE UNIQUEMENT** avec la requête SQL dans un bloc \`\`\`sql`;
   }
 
-  private async validateAndFixQuery(sqlQuery: string, tables: string[]): Promise<string> {
+  private async validateAndFixQuery(sqlQuery: string, tables: string[], schema?: string): Promise<string> {
     let currentQuery = sqlQuery;
     let attempts = 0;
     const maxAttempts = 2;
-    
+    let lastError: string | undefined;
+
     while (attempts < maxAttempts) {
       const validation = await this.validateQuery(currentQuery);
-      
+
       if (validation.valid) {
         return currentQuery;
       }
-      
+
+      lastError = validation.error;
       this.logger.warn(`Requête invalide (tentative ${attempts + 1}): ${validation.error}`);
-      
-      const fixPrompt = `Corrige cette requête SQL:
+
+      // ⚠️ Le prompt de correction DOIT inclure le vrai schéma : sans les colonnes
+      // réelles, le LLM ne peut pas corriger une table/colonne hallucinée et se
+      // contente de renommer au hasard. On lui redonne donc le schéma complet.
+      const fixPrompt = `Tu corriges une requête SQL MySQL invalide.
+
+## SCHÉMA RÉEL (seules ces tables/colonnes existent — n'en invente AUCUNE autre)
+${(schema ?? '').substring(0, 9000) || `Tables disponibles: ${tables.join(', ') || '(non précisées)'}`}
+
+## REQUÊTE INVALIDE
 \`\`\`sql
 ${currentQuery}
 \`\`\`
-Erreur: ${validation.error}
-Tables: ${tables.join(', ')}
-Retourne UNIQUEMENT la requête corrigée.`;
-      
+
+## ERREUR MYSQL
+${validation.error}
+
+## CONSIGNES
+- Utilise EXCLUSIVEMENT les tables et colonnes EXACTEMENT présentes dans le schéma ci-dessus (nom caractère par caractère).
+- Si la table/colonne fautive n'existe pas, remplace-la par la vraie (ex: une table de lignes "en-tête + lignes" s'appelle souvent "lignes_..." avec des colonnes "debit"/"credit", pas "sens"/"montant").
+- Si la donnée demandée est impossible avec ce schéma, renvoie \`SELECT NULL AS message WHERE 1=0\`.
+- Reste un SELECT, garde le LIMIT ${this.MAX_RESULTS}.
+Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
+
       const response = await this.llm.invoke(fixPrompt);
       const fixedQuery = this.extractSQL(response.content as string);
-      
+
       if (fixedQuery) {
         currentQuery = fixedQuery;
       }
-      
+
       attempts++;
     }
-    
+
+    // 🛟 Dernier contrôle : si la requête est TOUJOURS invalide après les tentatives,
+    // on n'exécute PAS du SQL cassé (qui renverrait une erreur technique brute à
+    // l'utilisateur). On renvoie une requête vide → le flux affichera "aucun
+    // résultat" proprement plutôt qu'un "Table doesn't exist".
+    const finalCheck = await this.validateQuery(currentQuery);
+    if (!finalCheck.valid) {
+      this.logger.error(
+        `❌ Requête toujours invalide après ${maxAttempts} corrections — repli sur requête vide. ` +
+        `Dernière erreur: ${lastError ?? finalCheck.error}`,
+      );
+      // Le SELECT doit rester en tête (un commentaire en préfixe casserait le
+      // contrôle startsWith('select') en aval et déclencherait un faux re-routage WRITE).
+      return `SELECT NULL AS message WHERE 1=0`;
+    }
+
     return currentQuery;
   }
 
