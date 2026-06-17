@@ -668,7 +668,15 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     const instance = await this.findOne(instanceId);
     const stageVisits =  await this.stageVisitRepository.find({
       where: { instanceId: instance.id },
-      relations: ['stage','subStageVisits','subStageVisits.subStage', 'subStageVisits.documents', 'subStageVisits.diligences',  'subStageVisits.audiences', 'subStageVisits.factures'],
+      relations: [
+        'stage',
+        // Relations au niveau de la SOUS-étape
+        'subStageVisits', 'subStageVisits.subStage',
+        'subStageVisits.documents', 'subStageVisits.diligences',
+        'subStageVisits.audiences', 'subStageVisits.factures',
+        // Relations au niveau de l'ÉTAPE (liées directement, sans sous-étape)
+        'factures', 'diligences', 'audiences', 'documents',
+      ],
       order: { enteredAt: 'ASC' },
     });
     return stageVisits;//.sort((a, b) => a.visitNumber - b.visitNumber);
