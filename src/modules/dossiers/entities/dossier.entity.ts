@@ -9,7 +9,7 @@ import { DocumentCustomer } from 'src/modules/documents/document-customer/entiti
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert, AfterLoad } from 'typeorm';
 import { Step, StepStatus } from './step.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
@@ -1008,6 +1008,21 @@ setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
     this.closing_date = new Date();
   }
 }
+
+  /**
+   * Recompute actual_costs from loaded factures.
+   * Called automatically by TypeORM after every SELECT that returns a Dossier.
+   * Falls back to the stored column value when factures are not eager-loaded.
+   */
+  @AfterLoad()
+  computeActualCosts(): void {
+    if (Array.isArray(this.factures) && this.factures.length > 0) {
+      this.actual_costs = this.factures.reduce(
+        (sum, f) => sum + Number(f.montantTTC ?? 0),
+        0,
+      );
+    }
+  }
 
   @BeforeInsert()
   beforeCreate() {

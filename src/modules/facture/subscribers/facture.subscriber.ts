@@ -4,7 +4,7 @@ import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { DataSource, InsertEvent, RemoveEvent, Repository, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -50,6 +50,10 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     const loaded = await this.load(entity.id).catch(() => null);
     const facture = loaded ?? entity;
     if (!facture) return;
+
+    // Resync actual_costs on parent dossier
+    await this.syncDossierActualCosts(facture.dossier_id ?? (facture.dossier as any)?.id);
+
     const notifyClient = this.resolveTransientBoolean('notify_client', entity, facture as any);
 
     const currencySymbol = await this.getCurrencySymbol();
@@ -86,6 +90,11 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     entity: Partial<Facture>,
     event: UpdateEvent<Facture>,
   ): Promise<void> {
+    // Resync actual_costs if montantTTC changed (or as a safe catch-all)
+    const dossierId =
+      (entity as any).dossier_id ?? (event.databaseEntity as any)?.dossier_id;
+    await this.syncDossierActualCosts(dossierId);
+
     if (!this.hasColumnChanged(event, 'status')) return;
 
     const change = this.getFieldChanges(event, ['status']).find(
@@ -151,11 +160,50 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     });
   }
 
+  protected async onAfterRemove(
+    entity: Facture,
+    _event: RemoveEvent<Facture>,
+  ): Promise<void> {
+    await this.syncDossierActualCosts((entity as any).dossier_id);
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
   private load(id: string | number): Promise<Facture | null> {
     return this.factureRepo.findOne({
       where: { id: id as any },
       relations: ['client', 'dossier'],
     });
+  }
+
+  /**
+   * Recalcule et persiste actual_costs sur le dossier parent.
+   * Appelé après chaque INSERT / UPDATE / DELETE de facture pour garder
+   * la colonne synchrone avec la réalité (nécessaire pour les requêtes
+   * SQL d'agrégat dans DossierStatsService : SUM(actual_costs), AVG…).
+   */
+  private async syncDossierActualCosts(
+    dossierId: number | string | undefined,
+  ): Promise<void> {
+    if (!dossierId) return;
+    try {
+      await this.dataSource.query(
+        `UPDATE dossiers
+         SET actual_costs = COALESCE(
+           (SELECT SUM(f.montant_ttc)
+            FROM factures f
+            WHERE f.dossier_id = ? AND f.deleted_at IS NULL),
+           0
+         )
+         WHERE id = ?`,
+        [dossierId, dossierId],
+      );
+      this.logger.log(`💰 actual_costs mis à jour | dossier #${dossierId}`);
+    } catch (err) {
+      this.logger.error(
+        `syncDossierActualCosts(${dossierId}): ${(err as Error).message}`,
+      );
+    }
   }
 }
 
