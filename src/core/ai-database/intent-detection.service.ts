@@ -264,6 +264,12 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       'mettre a jour', 'mise a jour', 'met a jour',
       'changer', 'change',
       'inserer', 'insere', 'insertion',
+      // Vocabulaire comptable (création/modification d'écritures, comptes, journaux…)
+      'comptabilise', 'comptabiliser',
+      'passe une ecriture', 'passer une ecriture', 'passe ecriture', 'saisis une ecriture', 'saisir une ecriture',
+      'saisis', 'saisir', 'saisie',
+      'debite', 'debiter', 'crediter', 'credite',
+      'lettrer', 'lettrage', 'rapproche', 'rapprocher',
     ];
 
     for (const keyword of strongWriteKeywords) {
@@ -313,10 +319,11 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
 Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, CHAT.
 
 READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...)
-WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer...)
+WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer, AINSI QUE les opérations comptables : passer/saisir/comptabiliser une écriture, débiter, créditer, créer un compte ou un journal, ouvrir/clôturer un exercice...)
 CHAT   = question générale sans lien avec les données du cabinet (salutation, remerciement, question de culture générale, demande d'explication hors-métier...)
 
-Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences.
+Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences, ET comptabilité (écritures comptables, comptes du plan comptable, journaux, exercices).
+⚠️ « passer une écriture », « comptabiliser », « saisir une écriture » sont des opérations WRITE (création d'une écriture comptable), jamais READ.
 
 Demande : "${question.replace(/"/g, "'")}"
 

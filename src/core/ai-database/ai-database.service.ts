@@ -1951,46 +1951,9 @@ ${blocks.join('\n\n')}
 
         await emit('status', { message: `⚙️ Exécution de ${plan.operations.length} opération(s)...` });
 
-        try {
-          const results = await this.genericWriteService.executePlan(plan, userId);
-          const analysis = this.formatPlanResults(results);
-          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
-          sendEvent('result', {
-            success: true, question: dto.question, analysis, results,
-            conversationId, executionTimeMs: Date.now() - startTime,
-            ...(fileInfo && { fileInfo }),
-          });
-        } catch (error: any) {
-          if (error instanceof AmbiguityException) {
-            sendEvent('ambiguity', {
-              entity: error.entity,
-              fieldName: error.fieldName,
-              searchTerm: error.searchTerm,
-              candidates: error.candidates,
-              operationIndex: error.operationIndex,
-              parentEntity: error.parentEntity,
-              message: this.buildAmbiguityMessage(error),
-              pendingWritePlan: plan,
-              conversationId,
-              allowOther: true,
-              otherLabel: this.getFieldLabel(error.fieldName),
-            });
-          } else if (error instanceof EntityIdRequiredException) {
-            // On garde le plan en mémoire (par conversation) au lieu de le perdre :
-            // au message suivant, on tentera d'en extraire l'ID donné par l'utilisateur.
-            this.rememberPendingEntityIdClarification(
-              conversationId, plan, error.operationIndex, error.entity, userId,
-            );
-            const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
-            await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
-            sendEvent('result', {
-              success: true, question: dto.question, analysis: message,
-              conversationId, executionTimeMs: Date.now() - startTime,
-            });
-          } else {
-            sendEvent('error', { message: error.message });
-          }
-        }
+        await this.executeWritePlanStream(
+          plan, userId, conversationId, dto, fileInfo, startTime, sendEvent,
+        );
         return;
       }
 
@@ -2012,6 +1975,41 @@ ${blocks.join('\n\n')}
       // LLM en interne) — inutile de le ré-emballer dans withRetry, qui multipliait les
       // appels LLM (jusqu'à 4) et la latence. On exécute la requête validée directement.
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+
+      // 🛟 Filet de sécurité : si la requête générée n'est PAS un SELECT, c'est que
+      // la demande était en réalité une écriture mal classée en lecture. Plutôt que
+      // de renvoyer "Seules les requêtes SELECT sont autorisées", on re-route vers
+      // la voie WRITE (forceWrite) et on exécute le plan correspondant.
+      if (!this.isSelectQuery(validatedQuery)) {
+        this.logger.warn(
+          `🛟 Requête non-SELECT générée en voie READ → re-routage WRITE: ${validatedQuery.substring(0, 120)}`,
+        );
+        const rerouted = await this.intentDetectionService.detectIntent(
+          enrichedQuestion, this.llm, schema,
+          { forceWrite: true, history: historyForIntent },
+        );
+        if (rerouted.type === 'WRITE' && rerouted.writePlan) {
+          const reroutedPlan = this.enrichWritePlanWithReferencedEntities(
+            rerouted.writePlan, requestContext.referenced,
+          ) ?? rerouted.writePlan;
+          sendEvent('intent', { type: 'WRITE', plan: reroutedPlan });
+          await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+          await emit('status', { message: `⚙️ Exécution de ${reroutedPlan.operations.length} opération(s)...` });
+          await this.executeWritePlanStream(
+            reroutedPlan, userId, conversationId, dto, fileInfo, startTime, sendEvent,
+          );
+          return;
+        }
+        // Re-routage impossible → message clair plutôt que l'erreur SQL brute
+        const msg = `Je n'ai pas pu interpréter cette demande comme une écriture en base. Reformulez en précisant l'action (ex: "passe une écriture au journal des ventes : débit 411000 1190, crédit 701000 1190").`;
+        await this.conversationManager.addAssistantMessage(conversationId, msg, undefined);
+        sendEvent('result', {
+          success: true, question: dto.question, analysis: msg,
+          conversationId, executionTimeMs: Date.now() - startTime,
+        });
+        return;
+      }
+
       const results = await this.executeSafeQuery(validatedQuery);
 
       await emit('status', { message: '📊 Analyse des résultats...' });
@@ -3439,6 +3437,74 @@ Retourne UNIQUEMENT la requête corrigée.`;
     }
 
     return preparedQuery;
+  }
+
+  /**
+   * Renvoie true si la requête est bien un SELECT (après nettoyage).
+   * Utilisé pour détecter, en voie READ, une requête d'écriture mal classée
+   * et la re-router vers la voie WRITE plutôt que de la bloquer.
+   */
+  private isSelectQuery(sqlQuery: string): boolean {
+    return this.prepareReadQuery(sqlQuery).trim().toLowerCase().startsWith('select');
+  }
+
+  /**
+   * Exécute un plan d'écriture en streaming et gère les cas particuliers
+   * (ambiguïté FK, identifiant manquant). Factorisé pour être appelé à la fois
+   * par la branche WRITE normale et par le filet de sécurité de re-routage READ→WRITE.
+   *
+   * NB : la vérification requiresConfirmation et l'ajout du message utilisateur
+   * sont gérés par l'appelant (logique différente selon le point d'entrée).
+   */
+  private async executeWritePlanStream(
+    plan: WritePlan,
+    userId: string,
+    conversationId: string,
+    dto: AskQuestionDto,
+    fileInfo: any,
+    startTime: number,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<void> {
+    try {
+      const results = await this.genericWriteService.executePlan(plan, userId);
+      const analysis = this.formatPlanResults(results);
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+      sendEvent('result', {
+        success: true, question: dto.question, analysis, results,
+        conversationId, executionTimeMs: Date.now() - startTime,
+        ...(fileInfo && { fileInfo }),
+      });
+    } catch (error: any) {
+      if (error instanceof AmbiguityException) {
+        sendEvent('ambiguity', {
+          entity: error.entity,
+          fieldName: error.fieldName,
+          searchTerm: error.searchTerm,
+          candidates: error.candidates,
+          operationIndex: error.operationIndex,
+          parentEntity: error.parentEntity,
+          message: this.buildAmbiguityMessage(error),
+          pendingWritePlan: plan,
+          conversationId,
+          allowOther: true,
+          otherLabel: this.getFieldLabel(error.fieldName),
+        });
+      } else if (error instanceof EntityIdRequiredException) {
+        // On garde le plan en mémoire (par conversation) au lieu de le perdre :
+        // au message suivant, on tentera d'en extraire l'ID donné par l'utilisateur.
+        this.rememberPendingEntityIdClarification(
+          conversationId, plan, error.operationIndex, error.entity, userId,
+        );
+        const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
+        await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+        sendEvent('result', {
+          success: true, question: dto.question, analysis: message,
+          conversationId, executionTimeMs: Date.now() - startTime,
+        });
+      } else {
+        sendEvent('error', { message: error.message });
+      }
+    }
   }
 
   private async executeSafeQuery(sqlQuery: string): Promise<{ data: any[]; rowCount: number }> {
