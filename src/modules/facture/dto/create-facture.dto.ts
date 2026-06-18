@@ -1,6 +1,6 @@
 // src/facture/dto/create-facture.dto.ts
 import { Type } from 'class-transformer';
-import { IsString, IsNumber, IsOptional, IsDate, IsEnum } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDate, IsEnum, IsUUID, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
@@ -45,13 +45,14 @@ export class CreateFactureDto {
   @IsEnum(TypeFacture)
   type: TypeFacture = TypeFacture.HONORAIRES;
 
-  @ApiProperty({
-    description: 'Numéro unique de la facture',
-    example: 'FAC-2025-001',
-    default: 'FAC-2025-001',
+  @ApiPropertyOptional({
+    description:
+      'Numéro unique de la facture. Si omis, il est auto-généré côté serveur à partir de app_settings (invoice_prefix + numbering_strategy + padding).',
+    example: 'FAC-2026-0001',
   })
   @IsString()
-  numero: string = 'FAC-2025-001';
+  @IsOptional()
+  numero?: string;
 
   @ApiProperty({
     description: 'Date de création de la facture',
@@ -130,4 +131,26 @@ export class CreateFactureDto {
   @IsString()
   @IsOptional()
   notesInternes?: string = 'Acompte sur honoraires, solde prévu fin de procédure';
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite d\'étape courante (optionnel — priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  stage_visit_id?: string;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite de sous-étape courante (optionnel — priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  sub_stage_visit_id?: string;
+
+  /**
+   * Champ transient (non persisté en colonne) — coché par l'utilisateur dans le modal.
+   * Si true, le NotificationDispatcher enverra un e-mail au client à la création.
+   */
+  @ApiPropertyOptional({
+    description: 'Notifier le client par e-mail après création de la facture',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  notify_client?: boolean;
 }

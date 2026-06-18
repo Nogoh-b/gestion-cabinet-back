@@ -59,7 +59,7 @@ export class TransitionWriteHandler extends BaseWriteHandler {
       if (!fields.toStageId) errors.push('L\'étape destination est requise (toStageId)');
     }
     if (fields.fromStageId && fields.toStageId && fields.fromStageId === fields.toStageId) {
-      errors.push('L\'étape source et destination doivent être différentes');
+      errors.push('L\'étape source et destination doivent être différentes (' + fields.fromStageId + ' === ' + fields.toStageId + ')');
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
@@ -90,10 +90,56 @@ export class TransitionWriteHandler extends BaseWriteHandler {
     ]);
     if (!fromStage) throw new NotFoundException(`Étape source ${safeFields.fromStageId} introuvable`);
     if (!toStage) throw new NotFoundException(`Étape destination ${safeFields.toStageId} introuvable`);
+
+    // Si les templateId diffèrent, on tente une récupération :
+    // l'EntityResolver a peut-être trouvé une étape orpheline d'un échec précédent
+    // (les handlers bypassaient la transaction avec repo.save() avant le fix).
+    // On cherche les étapes par nom avec le templateId de la transition (auto-injecté
+    // depuis le plan context, donc correct).
     if (fromStage.templateId !== toStage.templateId) {
-      throw new BadRequestException(
-        `Les étapes source et destination appartiennent à des modèles différents`,
-      );
+      const transitionTemplateId = safeFields.templateId;
+
+      if (transitionTemplateId) {
+        this.logger.warn(
+          `⚠️  templateId différent entre fromStage (${fromStage.templateId}) et toStage (${toStage.templateId}) — ` +
+          `tentative de récupération avec templateId=${transitionTemplateId} depuis le plan`,
+        );
+
+        const [correctFrom, correctTo] = await Promise.all([
+          this.stageRepo.findOne({
+            where: { templateId: transitionTemplateId, name: fromStage.name },
+          }),
+          this.stageRepo.findOne({
+            where: { templateId: transitionTemplateId, name: toStage.name },
+          }),
+        ]);
+
+        if (correctFrom && correctTo && correctFrom.id !== correctTo.id) {
+          this.logger.log(
+            `✅ Récupération réussie : fromStage → "${correctFrom.name}" (${correctFrom.id}), ` +
+            `toStage → "${correctTo.name}" (${correctTo.id})`,
+          );
+          safeFields.fromStageId = correctFrom.id;
+          safeFields.toStageId = correctTo.id;
+        } else {
+          this.logger.warn(
+            `⚠️  Récupération impossible — étapes introuvables avec templateId=${transitionTemplateId}` +
+            ` (from="${fromStage.name}", to="${toStage.name}")`,
+          );
+        }
+      } else {
+        this.logger.warn(
+          `⚠️  Aucun templateId sur la transition — impossible de récupérer, ` +
+          `fromStage.templateId=${fromStage.templateId}, toStage.templateId=${toStage.templateId}`,
+        );
+      }
+
+      // Vérification finale après tentative de récupération
+      if (safeFields.fromStageId === safeFields.toStageId) {
+        throw new BadRequestException(
+          `L'étape source et destination doivent être différentes (${safeFields.fromStageId} === ${safeFields.toStageId})`,
+        );
+      }
     }
 
     const data = {

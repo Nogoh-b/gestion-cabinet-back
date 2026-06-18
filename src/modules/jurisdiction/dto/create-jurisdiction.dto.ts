@@ -12,10 +12,10 @@ import { Transform } from 'class-transformer';
 import { JurisdictionLevel, JurisdictionType } from '../entities/jurisdiction.entity';
 
 export class CreateJurisdictionDto {
-  @ApiProperty({ description: 'Code unique de la juridiction' })
+  @ApiPropertyOptional({ description: 'Code unique. Généré automatiquement si non fourni.' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  code: string;
+  code?: string;
 
   @ApiProperty({ description: 'Nom de la juridiction' })
   @IsString()

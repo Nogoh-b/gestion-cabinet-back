@@ -133,7 +133,7 @@ export class MailService {
    * Récupère tous les mails (pour le contrôleur)
    */
   async findAll(): Promise<Mail[]> {
-    return this.mailRepository.find({ order: { createdAt: 'DESC' } });
+    return this.mailRepository.find({ order: { created_at: 'DESC' } });
   }
 
   /**

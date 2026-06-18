@@ -4,11 +4,11 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  CreateDateColumn,
   OneToMany,
 } from 'typeorm';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Referrer } from './referral.entity';
 import { ReferralCommission } from './referral-commission.entity';
 
@@ -19,6 +19,11 @@ export enum CommissionBasis {
   COLLECTED_TTC = 'collected_ttc',
 }
 
+export enum CommissionMode {
+  RATE = 'rate',
+  FIXED_AMOUNT = 'fixed_amount',
+}
+
 @Entity('dossier_referral')
 @BusinessTable({
   label: 'Apports de dossiers',
@@ -26,7 +31,7 @@ export enum CommissionBasis {
   icon: '📎',
   category: 'tiers',
 })
-export class DossierReferral {
+export class DossierReferral extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -88,6 +93,24 @@ export class DossierReferral {
   })
   commission_rate: number;
 
+  @Column({ type: 'enum', enum: CommissionMode, default: CommissionMode.RATE, name: 'commission_mode' })
+  @BusinessColumn({
+    label: 'Mode de commission',
+    description: 'Commission calculee par taux ou par montant fixe',
+    importance: 'high',
+    group: 'financier',
+  })
+  commission_mode: CommissionMode;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true, name: 'commission_amount' })
+  @BusinessColumn({
+    label: 'Montant fixe de commission',
+    description: 'Montant fixe negocie pour ce dossier',
+    importance: 'high',
+    group: 'financier',
+  })
+  commission_amount: number | null;
+
   @Column({ type: 'enum', enum: CommissionBasis, default: CommissionBasis.COLLECTED_HT, name: 'commission_basis' })
   @BusinessColumn({
     label: 'Base de calcul',
@@ -119,14 +142,4 @@ export class DossierReferral {
   @OneToMany(() => ReferralCommission, (commission) => commission.dossier_referral)
   commissions: ReferralCommission[];
 
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  created_at: Date;
 }

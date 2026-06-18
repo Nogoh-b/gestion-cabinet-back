@@ -1,19 +1,22 @@
 import { plainToInstance } from 'class-transformer';
+import { Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-import { CurrentUser } from 'src/core/decorators/current-user.decorator';
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
-
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
+
+
+
 import { User } from 'src/modules/iam/user/entities/user.entity';
-
-import * as fs from 'fs';
-import * as path from 'path';
-
 
 
 import {
@@ -22,6 +25,7 @@ import {
   Body,
   Get,
   Param,
+  Patch,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
@@ -31,10 +35,11 @@ import {
   ParseIntPipe,
   Res,
   NotFoundException,
+  StreamableFile,
 } from '@nestjs/common';
-
-
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
+
+
 import {
   ApiTags,
   ApiOperation,
@@ -47,12 +52,14 @@ import {
 
 
 import { DocumentCustomerService } from './document-customer.service';
+import { DocumentStatsService } from './document-stats.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
-import { DocumentStatsService } from './document-stats.service';
-import { Response } from 'express';
+import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
+
+
 
 
 
@@ -131,6 +138,29 @@ export class DocumentCustomerController {
   ) {
     return this.service.searchWithTransformer(searchParams as SearchCriteria, DocumentCustomerResponseDto , paginationParams);
   }
+  @Patch(':id')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB
+    },
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Mettre à jour un document',
+    type: UpdateDocumentCustomerDto,
+  })
+  @ApiOperation({ summary: 'Mettre à jour un document client' })
+  @ApiResponse({ status: 200, description: 'Document mis à jour', type: DocumentCustomerResponseDto })
+  @RequirePermissions('upload_document')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateDocumentCustomerDto,
+    @CurrentUser() user: User,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.service.update(id, { ...dto, file }, user?.id);
+  }
+
   @Post()
   @UseInterceptors(FileInterceptor('file', {
     limits: {
@@ -252,47 +282,52 @@ export class DocumentCustomerController {
 @UseGuards(JwtAuthGuard)
 async streamDocument(
   @Param('id') id: string,
-  @CurrentUser() user: User,
-  @Res() res: Response,
-) {
-  try {
-    const document = await this.service.findOne(+id);
-    
-    if (!document || !document.file_path) {
-      return res.status(404).json({ error: 'Document non trouvé' });
-    }
-    
-    // Vérifier les permissions
-    // await this.service.verifyAccess(id, user.id);
-    
-    // Rediriger vers l'URL publique si disponible
-    if (document.file_url && document.file_url.startsWith('http')) {
-      return res.redirect(document.file_url);
-    }
-    
-    // Sinon, servir le fichier localement
-    let filePath = document.file_path;
-    
-    // Remplacer les séparateurs pour Windows
-    filePath = filePath.replace(/\\/g, path.sep).replace(/\//g, path.sep);
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Fichier non trouvé' });
-    }
-    
-    const mimeType = document.file_mimetype || this.service.getMimeType(filePath);
-    
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${document.original_name || 'document'}"`);
-    
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
-    console.log(stream)
-    
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+): Promise<StreamableFile> {
+  const document = await this.service.findOne(+id);
+
+  if (!document) {
+    throw new NotFoundException('Document non trouvé');
   }
+
+  // Type MIME : on garde le mimetype complet stocké (ex: application/pdf),
+  // sinon on le déduit de l'extension.
+  const nameForExt = (document as any).original_name || document.name || document.file_path || '';
+  const ext = nameForExt.split('.').pop()?.toLowerCase() || '';
+  const mimeType =
+    document.file_mimetype && document.file_mimetype.includes('/')
+      ? document.file_mimetype
+      : this.service.getMimeType(ext);
+
+  // "inline" = visualisation dans le navigateur, pas de téléchargement.
+  // On renvoie un StreamableFile basé sur un Buffer (longueur connue →
+  // Content-Length défini) : indispensable pour que le proxy/rewrite Next
+  // relaie correctement la réponse au lieu de la réduire à un 204.
+  const opts = {
+    type: mimeType,
+    disposition: `inline; filename="${(document as any).original_name || document.name || 'document'}"`,
+  };
+
+  // 1) Fichier local → on lit les octets et on les renvoie.
+  //    On NE redirige JAMAIS vers l'URL statique : cela déclencherait une
+  //    requête cross-origin sans en-tête CORS côté navigateur.
+  if (document.file_path) {
+    const filePath = document.file_path.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+    if (fs.existsSync(filePath)) {
+      return new StreamableFile(fs.readFileSync(filePath), opts);
+    }
+  }
+
+  // 2) Fichier distant → on le récupère côté serveur et on renvoie les octets
+  //    (toujours aucune redirection visible par le navigateur).
+  if (document.file_url && document.file_url.startsWith('http')) {
+    const upstream = await fetch(document.file_url);
+    if (!upstream.ok) {
+      throw new NotFoundException('Fichier distant inaccessible');
+    }
+    return new StreamableFile(Buffer.from(await upstream.arrayBuffer()), opts);
+  }
+
+  throw new NotFoundException('Fichier non trouvé');
 }
 
 // Alternative plus simple - Endpoint pour obtenir l'URL de stream
@@ -328,5 +363,16 @@ async getRawFile(
   
   // Si vous avez déjà un file_url accessible publiquement
   return res.redirect(document.file_url);
+}
+
+@Get(':id/base64')
+@UseGuards(JwtAuthGuard)
+@ApiOperation({ summary: 'Récupérer un document au format base64' })
+@ApiParam({ name: 'id', description: 'ID du document' })
+@ApiResponse({ status: 200, description: 'Document encodé en base64' })
+async getBase64(
+  @Param('id', ParseIntPipe) id: number,
+) {
+  return this.service.getBase64(id);
 }
 }

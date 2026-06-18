@@ -147,12 +147,43 @@ export class UsersService {
     return user;
   }
 
+  async findByEmailForPasswordReset(email: string, tenantId?: number): Promise<any | null> {
+    let qb = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.customer', 'customer')
+      .leftJoinAndSelect('user.roleAssignments', 'roleAssignment')
+      .leftJoinAndSelect('roleAssignment.role', 'role')
+      .where('user.email = :email', { email });
+
+    if (tenantId && tenantId !== 1) {
+      qb = qb.andWhere('user.tenant_id = :tenantId', { tenantId });
+    }
+
+    const user = await qb.getOne();
+    if (!user) return null;
+
+    const activeRoleAssignment = user.roleAssignments?.find(
+      (assignment) => assignment.role?.status === 1,
+    );
+
+    user.roleAssignments = activeRoleAssignment ? [activeRoleAssignment] : [];
+    return user;
+  }
+
   async getUserPermissions(
     userId: number
   ): Promise<any> {
     const role = (await this.findOne(userId))?.role;
-    return this.roleService.getPermissionsByCode(role)
+    return this.roleService.getPermissionsByCode(role);
+  }
 
+  /**
+   * Version optimisée : récupère les permissions directement depuis le code de rôle,
+   * sans recharger l'utilisateur depuis la DB (utile quand le rôle est déjà connu).
+   */
+  async getPermissionsByRoleCode(roleCode: string | null): Promise<any[]> {
+    if (!roleCode) return [];
+    return this.roleService.getPermissionsByCode(roleCode);
   }
 
   

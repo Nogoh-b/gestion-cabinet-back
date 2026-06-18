@@ -1,106 +1,118 @@
 import * as dotenv from 'dotenv';
-import * as tls from 'tls';
+import * as express from 'express';
+import { DataSource } from 'typeorm';
 import { ExpressAdapter } from '@bull-board/express';
+import { ClassSerializerInterceptor } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
+
 import { Transport } from '@nestjs/microservices';
 
-
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
 
 
-
 import { AppModule } from './app.module';
-import { PermissionSeeder } from './core/auth/seeders/permission.seeder';
-import { RoleSeeder } from './core/auth/seeders/role.seeder';
 import { swaggerConfig } from './core/config/swagger.config';
-import { seedDatabase } from './main.seeder';
-import { DataSource } from 'typeorm';
-import { ClassSerializerInterceptor } from '@nestjs/common';
+import LocationSeeder from './modules/geography/seeder/location.seeder';
 
-
+// seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
+// import { seedDatabase } from './main.seeder';
 
 
 
 dotenv.config();
 
+async function fixRowFormat() {
+  const mysql = await import('mysql2/promise');
+  const conn = await mysql.createConnection({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306', 10),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'core_banking',
+  });
+  try {
+    await conn.execute('ALTER TABLE notifications ROW_FORMAT=DYNAMIC');
+    console.log('✅ notifications ROW_FORMAT=DYNAMIC applied');
+  } catch (err: any) {
+    // Already DYNAMIC, or table doesn't exist yet — both are fine
+    if (!err.message?.includes('already') && !err.message?.includes("doesn't exist")) {
+      console.warn('ROW_FORMAT fix skipped:', err.message);
+    }
+  } finally {
+    await conn.end();
+  }
+}
+
 async function bootstrap() {
-  const root_dir = process.cwd();
-  const SSL_KEY_PATH = ''; /*fs.readFileSync(
-    `${root_dir}/${process.env.SSL_KEY_PATH}`,
-    'utf8',
-  );*/
-  const SSL_CERTIFICATE_PATH = ''; /*fs.readFileSync(
-    `${root_dir}/${process.env.SSL_CERTIFICATE_PATH}`,
-    'utf8',
-  );*/
-
-  const SSL_CA_PATH = ''; /*fs.readFileSync(
-    `${process.env.HOME}/${process.env.SSL_CA_PATH}`,
-    'utf8',
-  );*/
-
-
-  const app = await NestFactory.create(AppModule);
+  await fixRowFormat();
+  // bodyParser:false → on remplace le parser par défaut (limite 100kb) par le nôtre
+  // avec une limite large, pour accepter les logos envoyés en data-URI base64.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+  app.use(express.json({ limit: '15mb' }));
+  app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
   // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement
   // HTTP. Le faire dans le handler de requête (res.socket.setNoDelay) est trop
   // tard — le kernel peut déjà avoir bufferisé le paquet SYN-ACK initial.
   (app.getHttpServer() as import('http').Server).on('connection', (socket) => {
-    socket.setNoDelay(true);   // désactive Nagle → chaque write() = 1 paquet TCP
-    socket.uncork();           // vide tout buffer de stream interne
+    socket.setNoDelay(true);
+    socket.uncork();
   });
-  const core = await NestFactory.createMicroservice(AppModule, {
+
+  // Microservice TCP attaché à la MÊME instance NestJS (pas de second graph DI)
+  app.connectMicroservice({
     transport: Transport.TCP,
     options: {
-      port: 2999,
-      tlsOptions: {
-        key: SSL_KEY_PATH,
-        cert: SSL_CERTIFICATE_PATH,
-        ca: SSL_CA_PATH,
-        requestCert: true,
-        rejectUnauthorized: true,
-      } as tls.TlsOptions,
+      host: process.env.MICROSERVICE_HOST || '0.0.0.0',
+      port: parseInt(process.env.MICROSERVICE_PORT || '2999', 10),
     },
   });
-  // ── Seeders : permissions puis rôles (ordre important) ──────────────────
-  await app.get(PermissionSeeder).seed();
-  await app.get(RoleSeeder).seed();
 
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector)),
   );
 
-  // Configuration Swagger
-  if (process.env.NODE_ENV === 'development') {
+  // ── Seeders globaux ──────────────────────────────────────────────────────
+  // Permissions, rôles et données de référence métier sont désormais seedés
+  // par TenantSeederService à la CRÉATION de chaque cabinet (multi-tenant).
+  // Seuls les Plans d'abonnement restent globaux (pas de tenant_id).
+  if (process.env.RUN_SEEDERS === 'true') {
+    const { default: PlanSeeder } = await import('./modules/plans/seeder/plan.seeder');
+    const { runSeeders } = await import('typeorm-extension');
+    await runSeeders(app.get(DataSource), { seeds: [PlanSeeder, LocationSeeder] });
+  }
+
+  // Swagger : dev uniquement
+  if (process.env.NODE_ENV !== 'production') {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api-docs', app, document, {
       swaggerOptions: {
-        persistAuthorization: true,
+        persistAuthorization: true, 
         defaultModelsExpandDepth: -1,
       },
     });
   }
 
+  // CORS : liste explicite (origin '*' + credentials est rejeté par le navigateur)
+  const corsOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
+    : true; // reflète l'origine de la requête en l'absence de config
   app.enableCors({
-    origin: '*',
-    credentials: true, // important si tu envoies Authorization header ou cookies
+    origin: corsOrigins,
+    credentials: true,
   });
+
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath('/admin/queues');
-
   app.use('/admin/queues', serverAdapter.getRouter());
-  // app.use(json({limit : '10mb'}))
-  // app.use(urlencoded({extended : true , limit : '10mb'}))
-  await seedDatabase(app.get(DataSource));
 
-  await Promise.all([app.listen(process.env.PORT ?? 3004), core.listen()]).then(
-    () => {
-      console.log(
-        'Microservices are listening (http) =>',
-        process.env.PORT ?? 3004,
-      );
-    },
-  );
+  const port = parseInt(process.env.PORT || '3004', 10);
+  await app.startAllMicroservices();
+  await app.listen(port);
+  console.log(`✅ HTTP en écoute sur ${port}, microservice TCP sur ${process.env.MICROSERVICE_PORT || '2999'}`);
 }
 bootstrap();

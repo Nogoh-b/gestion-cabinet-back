@@ -1,8 +1,11 @@
 import { Expose } from 'class-transformer';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, Unique } from 'typeorm';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 
+@SharedAcrossTenants()
 @Entity('document_categories')
 @BusinessTable({
   label: "Catégories de documents",
@@ -10,7 +13,8 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   icon: '📁',
   category: 'document'
 })
-export class DocumentCategory {
+@Unique(['tenant_id', 'code'])
+export class DocumentCategory extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -22,7 +26,7 @@ export class DocumentCategory {
   })
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   @Expose()
   @BusinessColumn({
     label: 'Code',
@@ -147,30 +151,6 @@ export class DocumentCategory {
     group: 'relation'
   })
   documentTypes: DocumentType[];
-
-  @CreateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création de la catégorie',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  created_at: Date;
-
-  @UpdateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  updated_at: Date;
 
   // ==================== GETTERS MÉTIER ====================
 

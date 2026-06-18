@@ -1,22 +1,26 @@
 // services/procedure-instance.service.ts
+import { Repository, DataSource, QueryRunner, IsNull } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryRunner, IsNull } from 'typeorm';
-import { ProcedureInstance } from '../entities/procedure-instance.entity';
-import { Stage } from '../entities/stage.entity';
-import { SubStage } from '../entities/sub-stage.entity';
-import { Transition } from '../entities/transition.entity';
-import { Cycle } from '../entities/cycle.entity';
-import { ProcedureTemplateService } from './procedure-template.service';
-import { WorkflowService } from './workflow.service';
-import { HistoryService } from './history.service';
+
+
 import { CreateProcedureInstanceDto, UpdateProcedureInstanceDto } from '../dto/create-procedure-instance.dto';
+import { Cycle } from '../entities/cycle.entity';
 import { EventType, InstanceStatus, TransitionType } from '../entities/enums/instance-status.enum';
 import { HistoryEntry } from '../entities/history-entry.entity';
-import { InstanceMapperService } from './instance-sub-stage.service';
-import { MappedInstance } from '../entities/type/instance-status.enum';
+import { ProcedureInstance } from '../entities/procedure-instance.entity';
 import { StageVisit } from '../entities/stage-visit.entity';
+import { Stage } from '../entities/stage.entity';
 import { SubStageVisit } from '../entities/sub-stage-visit.entity';
+import { SubStage } from '../entities/sub-stage.entity';
+import { Transition } from '../entities/transition.entity';
+import { MappedInstance } from '../entities/type/instance-status.enum';
+import { HistoryService } from './history.service';
+import { InstanceMapperService } from './instance-sub-stage.service';
+import { ProcedureTemplateService } from './procedure-template.service';
+import { WorkflowService } from './workflow.service';
+
+
 
 @Injectable()
 export class ProcedureInstanceService {
@@ -43,7 +47,7 @@ export class ProcedureInstanceService {
 
   ) {}
 
-  async create(dto: CreateProcedureInstanceDto, userId: string): Promise<ProcedureInstance> {
+  async create(dto: CreateProcedureInstanceDto, userId: string): Promise<ProcedureInstance & { _openingStageVisitId?: string }> {
       const template = await this.templateService.findOne(dto.templateId);
 
       if (!template.stages || template.stages.length === 0) {
@@ -57,25 +61,68 @@ export class ProcedureInstanceService {
         title: dto.title,
         status: InstanceStatus.ACTIVE,
         currentStageId: firstStage.id,
-        data: dto.data || {},
         completedSubStages: [],
         cycleUsageCount: {},
       });
 
       await this.instanceRepository.save(instance);
 
-      // Créer la première visite
-      await this.getCurrentStageVisit(instance.id);
+      // ── Créer dynamiquement le stage "Ouverture" (runtime uniquement) ──
+      const openingStageName = 'Ouverture';
+      const openingStage = this.stageRepository.create({
+        id: crypto.randomUUID(),
+        templateId: dto.templateId,
+        name: openingStageName,
+        description: 'Phase d\'ouverture du dossier — facturation et constitution initiale',
+        order: 0,
+        canBeSkipped: true,
+        canBeReentered: false,
+      });
+      await this.stageRepository.save(openingStage);
+
+      // ── Créer la StageVisit pour l'Ouverture (visitNumber=1) ──
+      const openingStageVisit = this.stageVisitRepository.create({
+        instanceId: instance.id,
+        stageId: openingStage.id,
+        visitNumber: 1,
+        completedSubStages: [],
+        subStageMetadata: {},
+        enteredAt: new Date(),
+        subStageVisits: [],
+      });
+      await this.stageVisitRepository.save(openingStageVisit);
+
+      console.log(
+        `Stage "Ouverture" #${openingStage.id} créé pour l'instance ${instance.id}`,
+      );
+
+      // ── Créer la StageVisit pour le premier stage du template (visitNumber=2) ──
+      const templateStageVisitCount = await this.stageVisitRepository.count({
+        where: { instanceId: instance.id, stageId: firstStage.id }
+      });
+
+      const templateStageVisit = this.stageVisitRepository.create({
+        instanceId: instance.id,
+        stageId: firstStage.id,
+        visitNumber: templateStageVisitCount + 1,
+        completedSubStages: [],
+        subStageMetadata: {},
+        enteredAt: new Date(),
+        subStageVisits: [],
+      });
+      await this.stageVisitRepository.save(templateStageVisit);
 
       await this.historyService.log(
         instance.id,
         EventType.STAGE_ENTER,
         firstStage.id,
         userId,
-        { message: 'Instance créée' },
+        { message: 'Instance créée', openingStageVisitId: openingStageVisit.id },
       );
 
-      return this.findOne(instance.id);
+      const enrichedInstance = await this.findOne(instance.id);
+      (enrichedInstance as any)._openingStageVisitId = openingStageVisit.id;
+      return enrichedInstance as ProcedureInstance & { _openingStageVisitId?: string };
     }
 
 // services/procedure-instance.service.ts
@@ -185,18 +232,12 @@ private async triggerAutomaticTransitionsSimple(
   
   for (const transition of automaticTransitions) {
 
-    const userHasChosenTransition = instance.data?._pendingTransition;
-    if (userHasChosenTransition) {
-      console.log('Skipping automatic transition because user has chosen a manual transition');
-      continue;
-    }
-
     // Évaluer la condition si présente
     let shouldTrigger = true;
     if (transition.triggerCondition) {
       const context = {
         instance: {
-          data: instance.data,
+          data: {},
           completedSubStages: instance.completedSubStages,
         },
       };
@@ -307,7 +348,7 @@ private async executeTransitionSimple(
     if (cycle.condition) {
       const context = {
         instance: { 
-          data: instance.data, 
+          data: {}, 
           completedSubStages: instance.completedSubStages 
         },
       };
@@ -333,7 +374,7 @@ private async executeTransitionSimple(
       .set({
         currentStageId: cycle.toStageId,
         cycleUsageCount: updatedCycleUsageCount,
-        updatedAt: new Date(),
+        updated_at: new Date(),
       })
       .where('id = :id', { id: instanceId })
       .execute();
@@ -352,7 +393,7 @@ private async executeTransitionSimple(
           reason: 'cycle_applied',
           label: cycle.label
         }),
-        createdAt: new Date(),
+        created_at: new Date(),
       },
       {
         id: this.generateUuid(),
@@ -366,7 +407,7 @@ private async executeTransitionSimple(
           fromStage: cycle.fromStageId,
           label: cycle.label
         }),
-        createdAt: new Date(),
+        created_at: new Date(),
       },
       {
         id: this.generateUuid(),
@@ -381,7 +422,7 @@ private async executeTransitionSimple(
           toStageId: cycle.toStageId,
           label: cycle.label
         }),
-        createdAt: new Date(),
+        created_at: new Date(),
       },
     ];
 
@@ -445,7 +486,7 @@ private generateUuid(): string {
       if (cycle.condition) {
         const context = {
           instance: { 
-            data: instance.data, 
+            data: {}, 
             completedSubStages: instance.completedSubStages 
           },
         };
@@ -493,7 +534,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     if (transition.condition) {
       const context = {
         instance: {
-          data: instance.data,
+          data: {},
           // On passe les sous-étapes complétées de la VISITE COURANTE
           completedSubStages: currentStageVisit.completedSubStages || [],
         },
@@ -525,7 +566,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     return this.instanceRepository.find({
       where,
       relations: ['template', 'currentStage', 'tasks'],
-      order: { createdAt: 'DESC' },
+      order: { created_at: 'DESC' },
     });
   }
 
@@ -575,7 +616,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     const updateResult = await this.instanceRepository.update(id, {
       // Mappez les champs du DTO vers l'entité
       ...dto,
-      updatedAt: new Date(),
+      updated_at: new Date(),
       // Autres champs à mettre à jour
     });
 
@@ -671,7 +712,15 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     const instance = await this.findOne(instanceId);
     const stageVisits =  await this.stageVisitRepository.find({
       where: { instanceId: instance.id },
-      relations: ['stage','subStageVisits','subStageVisits.subStage', 'subStageVisits.documents', 'subStageVisits.diligences',  'subStageVisits.audiences', 'subStageVisits.factures'],
+      relations: [
+        'stage',
+        // Relations au niveau de la SOUS-étape
+        'subStageVisits', 'subStageVisits.subStage',
+        'subStageVisits.documents', 'subStageVisits.diligences',
+        'subStageVisits.audiences', 'subStageVisits.factures',
+        // Relations au niveau de l'ÉTAPE (liées directement, sans sous-étape)
+        'factures', 'diligences', 'audiences', 'documents',
+      ],
       order: { enteredAt: 'ASC' },
     });
     return stageVisits;//.sort((a, b) => a.visitNumber - b.visitNumber);
@@ -1106,7 +1155,7 @@ private async checkAndTriggerAutomaticTransitions(
         const context = {
           instance: {
             id: instance.id,
-            data: instance.data,
+            data: {},
           },
           stageVisit: {
             id: currentStageVisit.id,
@@ -1238,7 +1287,7 @@ async triggerEventOnInstance(
     if (transition.triggerCondition) {
       const context = {
         instance: {
-          data: instance.data,
+          data: {},
           completedSubStages: instance.completedSubStages,
         },
         event: eventData,
@@ -1382,7 +1431,6 @@ async resetInstance(
 
     // Sauvegarder les données originales
     const originalTitle = instance.title;
-    const originalData = instance.data;
     
     // 🔥 Préparer les données de réinitialisation
     const resetData: Partial<ProcedureInstance> = {
@@ -1401,28 +1449,6 @@ async resetInstance(
       resetData.title = originalTitle;
     } else {
       resetData.title = `${originalTitle} (Réinitialisée)`;
-    }
-
-    // Gestion des données métier
-    if (options?.keepData) {
-      resetData.data = {
-        ...originalData,
-        _resetInfo: {
-          resetAt: new Date(),
-          resetBy: userId,
-          previousData: originalData,
-          reason: options?.reason,
-        }
-      };
-    } else {
-      resetData.data = {
-        ...(originalData?.clientName ? { clientName: originalData.clientName } : {}),
-        _resetInfo: {
-          resetAt: new Date(),
-          resetBy: userId,
-          reason: options?.reason,
-        }
-      };
     }
 
     // 🔥 Mettre à jour l'instance
@@ -1535,7 +1561,7 @@ async resetInstanceSimple(
             completedSubStages: [],        // Déprécié mais conservé
             cycleUsageCount: {},
             subStageMetadata: {},          // Déprécié
-            updatedAt: new Date(),
+            updated_at: new Date(),
         });
 
         // 3. Créer une nouvelle visite pour la première étape (comme à la création)

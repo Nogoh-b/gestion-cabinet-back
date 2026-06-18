@@ -5,10 +5,7 @@ import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany,
+  Column, OneToMany,
   ManyToOne,
   JoinColumn,
   BeforeInsert
@@ -23,7 +20,7 @@ import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-inst
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 @Entity('factures')
 @BusinessTable({
   label: 'Factures',
@@ -31,7 +28,14 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   icon: '💰',
   category: 'finance'
 })
-export class Facture {
+export class Facture extends BaseEntity {
+  /**
+   * Propriété TRANSIENT — lue par le FactureSubscriber pour décider
+   * d'envoyer un e-mail au client (case « Notifier le client » du modal).
+   * Non persistée en base.
+   */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',
@@ -189,27 +193,42 @@ export class Facture {
   })
   notesInternes: string;
 
-  @CreateDateColumn({ name: 'created_at' })
+  /**
+   * Code devise au moment de la création (ex: 'XAF', 'EUR', 'USD').
+   * Figé à la création — une modification de devise cabinet ne rétrograde pas
+   * les anciennes factures. Null = héritage avant migration (afficher la devise
+   * courante du cabinet).
+   */
+  @Column({ type: 'varchar', length: 10, nullable: true, name: 'currency' })
   @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création de la facture dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
+    label: 'Devise',
+    description: 'Code ISO de la devise au moment de l\'émission (XAF, EUR, USD…)',
+    importance: 'medium',
+    group: 'financier'
   })
-  created_at: Date;
+  currency: string | null;
 
-  @UpdateDateColumn({ name: 'updated_at' })
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  updated_at: Date;
+  // @CreateDateColumn({ name: 'created_at' })
+  // @BusinessColumn({
+  //   label: 'Date de création',
+  //   description: 'Date de création de la facture dans le système',
+  //   format: 'date',
+  //   importance: 'low',
+  //   group: 'audit',
+  //   ignored: true
+  // })
+  // created_at: Date;
+
+  // @UpdateDateColumn({ name: 'updated_at' })
+  // @BusinessColumn({
+  //   label: 'Date de modification',
+  //   description: 'Date de dernière modification',
+  //   format: 'date',
+  //   importance: 'low',
+  //   group: 'audit',
+  //   ignored: true
+  // })
+  // updated_at: Date;
 
   // Relations
   @OneToMany(() => Paiement, paiement => paiement.facture, { nullable: true })

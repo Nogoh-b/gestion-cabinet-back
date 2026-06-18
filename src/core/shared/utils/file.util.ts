@@ -1,14 +1,44 @@
 import { createWriteStream, existsSync } from 'fs';
+import * as fs from 'fs-extra'; // Ou utilisez 'fs/promises' avec Node.js natif
+import { mkdir } from 'fs/promises';
 import * as mime from 'mime-types';
 import { join } from 'path';
+
+
+
 import * as sharp from 'sharp';
-import * as fs from 'fs-extra'; // Ou utilisez 'fs/promises' avec Node.js natif
+import { AttachmentType } from 'src/modules/chat/entities/attachment.entity';
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
 import { BUSINESS_RULES } from '../interfaces/business-rules.constants';
-import { AttachmentType } from 'src/modules/chat/entities/attachment.entity';
-import { mkdir } from 'fs/promises';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export interface UploadedFileInfo {
   fileName: string;
@@ -25,6 +55,7 @@ export interface UploadOptions {
   maxSizeKB?: number;  // Taille maximale en KB
   quality?: number;    // Qualité pour les images (1-100)
   allowedMimeTypes?: string[];
+  fileName?: string;   // Nom de fichier personnalisé (sans extension) – en cas de doublon, _1, _2 etc. est ajouté
 }
 
 
@@ -135,16 +166,27 @@ export class FilesUtil {
 static async uploadFileV1(
   file: Express.Multer.File,
   uploadDir: string, // ex: './uploads/chat'
-  options?: { 
+  options?: {
     maxSizeKB?: number;
     width?: number;
     quality?: number;
+    fileName?: string;
   }
 ): Promise<UploadedFileInfo> {
   console.log('Upload path ', uploadDir )
   const APP_URL = process.env.APP_URL || 'http://localhost:3000';
   const UPLOADS_URL_PREFIX = '/uploads'; // Le préfixe d'URL pour vos fichiers
-  const fileName = FilesUtil.generateUniqueFilename(file.originalname);
+  
+  // Déterminer le nom du fichier : personnalisé ou généré automatiquement
+  let fileName: string;
+  if (options?.fileName) {
+    const ext = FilesUtil.getFileExtension(file.originalname);
+    const safeName = FilesUtil.sanitizeName(options.fileName);
+    fileName = await FilesUtil.getAvailableFilename(uploadDir, `${safeName}.${ext}`);
+  } else {
+    fileName = FilesUtil.generateUniqueFilename(file.originalname);
+  }
+  
   await this.ensureDirectoryExists(uploadDir, false);
 
   // Chemin physique complet sur le serveur
@@ -154,7 +196,6 @@ static async uploadFileV1(
   const fileUrl = `${APP_URL}${this.getRelativeUploadPath(uploadDir)}/${fileName}`;
   
   let finalBuffer: Buffer;
-  
   // Déterminer le type de fichier
   const fileType = this.determineFileType(file.mimetype, file.originalname);
   
@@ -167,6 +208,10 @@ static async uploadFileV1(
   let thumbnailPath: string | undefined;
 
   if (shouldProcessImage) {
+    if (!file.buffer?.length) {
+      throw new Error(`Buffer fichier vide ou absent pour l'image "${file.originalname}"`);
+    }
+
     // Traitement des images avec compression
     let sharpInstance = sharp(file.buffer);
 
@@ -200,24 +245,29 @@ static async uploadFileV1(
     }
     
     // Écrire le fichier traité
-    await sharp(finalBuffer).toFile(filePath);
+    await fs.writeFile(filePath, finalBuffer);
+  console.log('vontrol1')
     
     // Générer une miniature
     if (fileType === AttachmentType.IMAGE) {
+  console.log('vontrol1.5')
+
       const thumbnailResult = await this.generateThumbnail(
         filePath, 
-        fileName, 
+        fileName,  
         uploadDir,
         APP_URL,
         UPLOADS_URL_PREFIX
       );
       thumbnailPath = thumbnailResult.thumbnailPath;
       thumbnailUrl = thumbnailResult.thumbnailUrl;
+
     }
 
   } else {
     // Traitement des fichiers non-images
     finalBuffer = file.buffer;
+  console.log('vontrol2')
     
     await new Promise<void>((resolve, reject) => {
       const stream = createWriteStream(filePath);
@@ -226,6 +276,7 @@ static async uploadFileV1(
       stream.end(finalBuffer);
     });
   }
+  console.log('vontrol3')
 
   // Obtenir la taille réelle du fichier
   const actualFileSize = await this.getActualFileSize(filePath);
@@ -253,13 +304,14 @@ static async uploadFileV1(
  */
 private static async generateThumbnail(
   originalPath: string,
-  originalFileName: string,
+  originalFileName: string, 
   basePath: string,
   appUrl: string,
   urlPrefix: string
 ): Promise<{ thumbnailPath: string; thumbnailUrl: string }> {
-  const thumbnailName = `thumb_${originalFileName}`;
-  const thumbnailDir = join(basePath, 'thumbnails');
+  const thumbnailBaseName = originalFileName.replace(/\.[^.]+$/, '');
+  const thumbnailName = `thumb_${thumbnailBaseName}.jpg`;
+  const thumbnailDir = join(basePath, 'thumbnails'); 
   const thumbnailPath = join(thumbnailDir, thumbnailName);
   const thumbnailUrl = `${appUrl}${this.getRelativeUploadPath(basePath)}/thumbnails/${thumbnailName}`;
   
@@ -267,14 +319,25 @@ private static async generateThumbnail(
   if (!existsSync(thumbnailDir)) {
     await mkdir(thumbnailDir, { recursive: true });
   }
+      console.log('vontrol1.5.0')
   
   // Générer la miniature
-  await sharp(originalPath)
-    .resize(200, 200, {
-      fit: 'inside',
-      withoutEnlargement: true
-    })
-    .toFile(thumbnailPath);
+  try {
+    const originalBuffer = await fs.readFile(originalPath);
+    const thumbnailBuffer = await sharp(originalBuffer)
+      .resize(200, 200, {
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({ quality: 75 })
+      .toBuffer();
+
+    await fs.writeFile(thumbnailPath, thumbnailBuffer);
+      console.log('vontrol1.5.0.0.0') 
+
+  } catch (error) {
+    console.warn(`Miniature non generee pour ${originalFileName}:`, error.message);
+  }
   
   return { thumbnailPath, thumbnailUrl };
 }
@@ -424,14 +487,14 @@ private static determineFileType(mimetype: string, filename: string): Attachment
 
     // Si on arrive ici, retourner la plus petite version obtenue
     console.log(`Compression minimale: ${compressedBuffer!.length} bytes`);
-    return compressedBuffer!;
+    return compressedBuffer!; 
   }
 
   static isValidMimeType(mimeType: string): boolean {
     return BUSINESS_RULES.DOCUMENT.ALLOWED_MIME_TYPES.includes(mimeType);
   }
 
-  static isValidFileSize(size: number): boolean {
+  static isValidFileSize(size: number): boolean { 
     return size <= BUSINESS_RULES.DOCUMENT.MAX_FILE_SIZE;
   }
 
@@ -444,6 +507,40 @@ private static determineFileType(mimetype: string, filename: string): Attachment
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 15);
     return `${timestamp}-${random}.${ext}`;
+  }
+
+  /**
+   * Nettoie un nom de fichier pour supprimer les caractères spéciaux
+   */
+  static sanitizeName(name: string): string {
+    return name
+      .replace(/[^a-zA-Z0-9.\-_\s]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .substring(0, 200);
+  }
+
+  /**
+   * Vérifie si un fichier existe déjà dans le répertoire.
+   * Si oui, retourne un nom avec suffixe _1, _2, etc.
+   */
+  static async getAvailableFilename(dir: string, desiredName: string): Promise<string> {
+    const ext = FilesUtil.getFileExtension(desiredName);
+    const baseName = desiredName.substring(0, desiredName.length - ext.length - 1);
+    const filePath = join(dir, desiredName);
+
+    if (!existsSync(filePath)) {
+      return desiredName;
+    }
+
+    let counter = 1;
+    let candidate = `${baseName}_${counter}.${ext}`;
+    while (existsSync(join(dir, candidate))) {
+      counter++;
+      candidate = `${baseName}_${counter}.${ext}`;
+    }
+    return candidate;
   }
 
   /**

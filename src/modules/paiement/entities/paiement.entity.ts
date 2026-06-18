@@ -3,15 +3,13 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToOne,
   JoinColumn,
-  DeleteDateColumn
 } from 'typeorm';
 import { Facture } from '../../facture/entities/facture.entity';
 import { ModePaiement, StatutPaiement } from '../dto/create-paiement.dto';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('paiements')
 @BusinessTable({
@@ -20,7 +18,10 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   icon: '💳',
   category: 'finance'
 })
-export class Paiement {
+export class Paiement extends TenantEntity {
+  /** Transient — lu par le PaiementSubscriber pour notifier le client. */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',
@@ -29,7 +30,7 @@ export class Paiement {
     group: 'technique',
     ignored: true
   })
-  id: number;
+  id: string;
 
   @Column({ name: 'facture_id' })
   @BusinessColumn({
@@ -124,7 +125,10 @@ export class Paiement {
 
   @Column({
     type: 'enum',
-    enum: StatutPaiement
+    enum: StatutPaiement,
+    // Un paiement est considéré comme validé par défaut (cf. demande métier) :
+    // tout paiement enregistré l'est après vérification, donc VALIDE d'office.
+    default: StatutPaiement.VALIDE,
   })
   @BusinessColumn({
     label: 'Statut',
@@ -153,11 +157,7 @@ export class Paiement {
   })
   preuvePaiement: string;
 
-  @CreateDateColumn({ name: 'created_at' })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updated_at: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
   @ManyToOne(() => Facture, facture => facture.paiements)
   @JoinColumn({ name: 'facture_id' })
@@ -169,6 +169,4 @@ export class Paiement {
   })
   facture: Facture;
 
-  @DeleteDateColumn()
-  deletedAt: Date;
 }

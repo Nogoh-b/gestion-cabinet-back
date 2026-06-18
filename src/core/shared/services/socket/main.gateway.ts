@@ -910,10 +910,11 @@ private getUserSockets(userId: number): string[] {
   // ========== INJECTION DES SERVICES ==========
   constructor(
     @Inject(forwardRef(() => ChatService))
-    private chatService: ChatService, 
+    private chatService: ChatService,
+    // forwardRef obligatoire : NotificationService injecte aussi MainGateway
+    // pour pousser les notifs temps réel après create / createBulk.
+    @Inject(forwardRef(() => NotificationService))
     private notificationService: NotificationService,
     private userService: UsersService
-  ) { 
-    console.log(forwardRef)
-  }
+  ) {}
 }

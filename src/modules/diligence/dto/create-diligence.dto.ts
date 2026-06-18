@@ -7,6 +7,8 @@ import {
   IsDateString,
   IsEnum,
   IsNumber,
+  IsUUID,
+  IsBoolean,
   Min
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -113,4 +115,23 @@ export class CreateDiligenceDto {
   @IsString()
   @IsOptional()
   client_reference?: string;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite d\'étape courante (optionnel — prend la priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  stage_visit_id?: string;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite de sous-étape courante (optionnel — prend la priorité sur la détection automatique)' })
+  @IsUUID()
+  @IsOptional()
+  sub_stage_visit_id?: string;
+
+  /** Transient — case « Notifier le client » du modal. */
+  @ApiPropertyOptional({
+    description: "Notifier le client par e-mail à la création de la diligence",
+    example: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  notify_client?: boolean;
 }

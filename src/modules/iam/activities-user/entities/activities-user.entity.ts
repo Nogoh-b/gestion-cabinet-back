@@ -1,9 +1,10 @@
 // activities-user.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('activities_user')
-export class ActivitiesUser {
+export class ActivitiesUser extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -14,9 +15,5 @@ export class ActivitiesUser {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 }

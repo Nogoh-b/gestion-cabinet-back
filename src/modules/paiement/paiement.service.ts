@@ -1,19 +1,27 @@
 // src/paiement/paiement.service.ts
+import { plainToInstance } from 'class-transformer';
+import { join } from 'path';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
+
+
 import { Repository } from 'typeorm';
+
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 
-
+import { StatutFacture } from '../facture/dto/create-facture.dto';
 import { Facture } from '../facture/entities/facture.entity';
 import { CreatePaiementDto, StatutPaiement } from './dto/create-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
 import { Paiement } from './entities/paiement.entity';
-import { plainToInstance } from 'class-transformer';
-import { StatutFacture } from '../facture/dto/create-facture.dto';
+
+
 
 
 
@@ -25,6 +33,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     @InjectRepository(Facture)
     private readonly factureRepository: Repository<Facture>,
     protected readonly paginationService: PaginationServiceV1,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(repository, paginationService);
   }
@@ -38,11 +47,14 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     };
   }
 
-  async createPaiement(createDto: CreatePaiementDto): Promise<PaiementResponseDto> {
+  async createPaiement(
+    createDto: CreatePaiementDto,
+    file?: Express.Multer.File,
+  ): Promise<PaiementResponseDto> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
       where: { id: String(createDto.factureId)  },
-      relations: ['paiements']
+      relations: ['paiements', 'client']
     });
     console.log(createDto)
     if (!facture) {
@@ -56,17 +68,38 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       //   `Le montant du paiement (${createDto.montant}) dépasse le reste à payer (${resteAPayer})`
       // );
     }
+    const previousStatus = facture.status;
     facture.status = Number(facture.montantPaye) + Number(createDto.montant) >= Number(facture.montantTTC) ? StatutFacture.PAYEE : StatutFacture.PARTIELLEMENT_PAYEE;
     await this.factureRepository.save(facture);
-    // Créer le paiement
-    const paiement = this.repository.create(createDto);
-    paiement.status = StatutPaiement.VALIDE
+    // Créer le paiement — `notify_client` est transient, on le retire du DTO
+    // côté persistance et on le repose sur l'instance pour que le subscriber
+    // puisse le lire dans onAfterCreate.
+    const { notify_client, ...persistable } = createDto;
+    const paiement = this.repository.create(persistable as Partial<Paiement>);
+    paiement.status = StatutPaiement.VALIDE;
+    paiement.notify_client = !!notify_client;
     // paiement.modePaiement = createDto.modePaiment
-    const paiementSauvegarde = await this.repository.save(paiement);
 
-    // Mettre à jour la facture
+    // Preuve de paiement : si un justificatif est joint, on l'enregistre sur le
+    // serveur et on stocke son URL publique (sinon on conserve la valeur du DTO).
+    if (file) {
+      const uploaded = await FilesUtil.uploadFileV1(
+        file,
+        join(UPLOAD_DOCS_PATH, 'paiements'),
+        { maxSizeKB: 3000 },
+      );
+      paiement.preuvePaiement = uploaded.fileUrl;
+    }
+
+    const paiementSauvegarde = await this.repository.save(paiement);
+    this.emitFactureBillableEventIfNeeded(facture, previousStatus);
+
     console.log(facture.montantPaye ,' ', (paiement.montant) , ' ' ,facture.montantTTC)
 
+    if (paiementSauvegarde.status === StatutPaiement.VALIDE) {
+      console.log('Émission de l\'événement paiement.valide pour le paiement ID', paiementSauvegarde.id);
+      this.eventEmitter.emit('paiement.valide', { ...paiementSauvegarde, facture });
+    }
 
     return plainToInstance(PaiementResponseDto,paiementSauvegarde);
   }
@@ -76,7 +109,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     // Vérifier que la facture existe
     const facture = await this.factureRepository.findOne({
       where: { id: String(factureId)  },
-      relations: ['paiements']
+      relations: ['paiements', 'client']
     });
     console.log("factuereId ",factureId)
     if (!facture) {
@@ -87,8 +120,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     const resteAPayer = Number(facture.montantTTC) - Number(facture.montantPaye);
     console.log("resteAPayer ",resteAPayer)
     console.log("montantPaye ",facture.montantPaye)
+    const previousStatus = facture.status;
     facture.status = Number(facture.montantPaye)  >= Number(facture.montantTTC) ? StatutFacture.PAYEE : StatutFacture.PARTIELLEMENT_PAYEE;
     await this.factureRepository.save(facture);
+    this.emitFactureBillableEventIfNeeded(facture, previousStatus);
     // Créer le paiement
 
 
@@ -123,6 +158,9 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
 
     Object.assign(paiement, updateDto);
+    if (updateDto.notify_client !== undefined) {
+      paiement.notify_client = !!updateDto.notify_client;
+    }
     return plainToInstance(PaiementResponseDto,this.repository.save(paiement));
   }
 
@@ -219,5 +257,21 @@ export class PaiementService extends BaseServiceV1<Paiement> {
         montantTotal: parseFloat(row.montantTotal)
       }))
     };
+  }
+
+  private isBillableFactureStatus(status: StatutFacture): boolean {
+    return [
+      StatutFacture.ENVOYEE,
+      StatutFacture.PARTIELLEMENT_PAYEE,
+      StatutFacture.PAYEE,
+      StatutFacture.IMPAYEE,
+    ].includes(status);
+  }
+
+  private emitFactureBillableEventIfNeeded(facture: Facture, previousStatus: StatutFacture): void {
+    if (previousStatus === facture.status) return;
+    if (!this.isBillableFactureStatus(facture.status)) return;
+
+    this.eventEmitter.emit('facture.envoyee', facture);
   }
 }

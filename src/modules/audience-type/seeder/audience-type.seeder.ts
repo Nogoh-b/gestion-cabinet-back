@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
 import { AudienceType, AudienceTypeCategory } from '../entities/audience-type.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 
 export default class AudienceTypeSeeder implements Seeder {
@@ -215,9 +216,7 @@ export default class AudienceTypeSeeder implements Seeder {
     ];
 
     for (const typeData of audienceTypes) {
-      const existing = await repository.findOne({
-        where: { code: typeData.code }
-      });
+      const existing = await findOneForTenant(repository, 'code', typeData.code);
 
       if (!existing) {
         const audienceType = repository.create(typeData);

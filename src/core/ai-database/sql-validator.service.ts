@@ -15,8 +15,8 @@ export class SqlValidatorService {
     for (const table of tables) {
       if (!this.schemaColumnsCache.has(table)) {
         const columns = await this.dataSource.query(`
-          SELECT COLUMN_NAME 
-          FROM information_schema.COLUMNS 
+          SELECT COLUMN_NAME
+          FROM information_schema.COLUMNS
           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
         `, [table]);
         
@@ -35,6 +35,10 @@ export class SqlValidatorService {
     
     let fixedSql = sqlQuery;
     const errors: string[] = [];
+    
+    // ✅ FIX CRITIQUE : Détecter et corriger les références employee.last_name / employee.first_name
+    // Ces colonnes n'existent pas sur la table employee, elles sont dans la table user
+    fixedSql = this.fixEmployeeUserJoin(fixedSql, errors);
     
     // Extraire toutes les colonnes mentionnées dans la requête
     const mentionedColumns = this.extractColumnsFromSql(fixedSql, tables);
@@ -82,6 +86,104 @@ export class SqlValidatorService {
       fixedSql,
       errors
     };
+  }
+
+  /**
+   * 🔴 FIX CRITIQUE : Détecte et corrige les références à employee.last_name / employee.first_name
+   *
+   * La table "employee" ne contient PAS les colonnes "last_name" ni "first_name".
+   * Ces colonnes sont stockées dans la table "user", liée par employee.id = user.id.
+   *
+   * Cette méthode :
+   * 1. Détecte l'alias utilisé pour la table employee (ex: e, emp, employee)
+   * 2. Vérifie si la requête utilise [alias].last_name ou [alias].first_name
+   * 3. Ajoute LEFT JOIN user u ON u.id = [alias].id si pas déjà présent
+   * 4. Remplace [alias].last_name → u.last_name, [alias].first_name → u.first_name
+   */
+  private fixEmployeeUserJoin(sql: string, errors: string[]): string {
+    // Détecter l'alias de la table employee dans FROM/JOIN
+    // Patterns: FROM employee e, JOIN employee e, FROM employee AS e, etc.
+    const aliasRegex = /(?:FROM|JOIN)\s+employee\s+(?:AS\s+)?(\w+)\s+/gi;
+    let match: RegExpExecArray | null;
+    const aliases: Set<string> = new Set();
+
+    while ((match = aliasRegex.exec(sql)) !== null) {
+      aliases.add(match[1].toLowerCase());
+    }
+
+    if (aliases.size === 0) {
+      return sql; // Aucune référence à la table employee
+    }
+
+    let fixedSql = sql;
+    let needsUserJoin = false;
+
+    // Vérifier chaque alias trouvé pour des références aux colonnes nom/prénom
+    for (const alias of aliases) {
+      const aliasDot = alias + '.';
+      
+      // Vérifier si last_name ou first_name sont utilisés avec cet alias
+      const hasLastName = new RegExp(`\\b${alias}\\.last_name\\b`, 'i').test(fixedSql);
+      const hasFirstName = new RegExp(`\\b${alias}\\.first_name\\b`, 'i').test(fixedSql);
+      const hasFullName = new RegExp(`\\b${alias}\\.full_name\\b`, 'i').test(fixedSql);
+
+      if (hasLastName || hasFirstName || hasFullName) {
+        needsUserJoin = true;
+
+        // Remplacer les références de colonnes
+        if (hasLastName) {
+          fixedSql = fixedSql.replace(
+            new RegExp(`\\b${alias}\\.last_name\\b`, 'gi'),
+            `u.last_name`
+          );
+          this.logger.warn(`🔧 Correction employee→user: ${alias}.last_name → u.last_name`);
+          errors.push(`'${alias}.last_name' n'existe pas sur employee — corrigé vers u.last_name (table user)`);
+        }
+        if (hasFirstName) {
+          fixedSql = fixedSql.replace(
+            new RegExp(`\\b${alias}\\.first_name\\b`, 'gi'),
+            `u.first_name`
+          );
+          this.logger.warn(`🔧 Correction employee→user: ${alias}.first_name → u.first_name`);
+          errors.push(`'${alias}.first_name' n'existe pas sur employee — corrigé vers u.first_name (table user)`);
+        }
+        if (hasFullName) {
+          fixedSql = fixedSql.replace(
+            new RegExp(`\\b${alias}\\.full_name\\b`, 'gi'),
+            `CONCAT(u.first_name, ' ', u.last_name)`
+          );
+          this.logger.warn(`🔧 Correction employee→user: ${alias}.full_name → CONCAT(u.first_name, ' ', u.last_name)`);
+          errors.push(`'${alias}.full_name' n'existe pas sur employee — corrigé vers CONCAT(u.first_name, ' ', u.last_name) (table user)`);
+        }
+      }
+    }
+
+    // Ajouter le JOIN vers user si nécessaire et pas déjà présent
+    if (needsUserJoin && !/\bJOIN\s+user\s+u\s+ON\s+/i.test(fixedSql)) {
+      // Insérer le LEFT JOIN user après le dernier JOIN employee
+      // On cherche le dernier JOIN employee pour insérer après
+      const lastEmployeeJoin = fixedSql.search(
+        /JOIN\s+employee\s+(?:AS\s+)?\w+\s+(?:ON\s+[\s\S]*?)(?=LEFT|RIGHT|INNER|JOIN|WHERE|ORDER|GROUP|LIMIT|$)/i
+      );
+      
+      if (lastEmployeeJoin !== -1) {
+        // Trouver la fin du JOIN employee
+        const afterJoinMatch = fixedSql.substring(lastEmployeeJoin).match(
+          /JOIN\s+employee\s+(?:AS\s+)?\w+\s+ON\s+[\s\S]*?(?=\s+(?:LEFT|RIGHT|INNER|JOIN|WHERE|ORDER|GROUP|LIMIT|$))/i
+        );
+        
+        if (afterJoinMatch) {
+          const joinEnd = lastEmployeeJoin + afterJoinMatch[0].length;
+          fixedSql =
+            fixedSql.substring(0, joinEnd) +
+            ' LEFT JOIN user u ON u.id = e.id' +
+            fixedSql.substring(joinEnd);
+          this.logger.warn(`🔧 Correction: Ajout du LEFT JOIN user u ON u.id = e.id`);
+        }
+      }
+    }
+
+    return fixedSql;
   }
 
   /**

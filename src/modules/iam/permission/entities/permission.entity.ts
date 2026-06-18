@@ -1,13 +1,19 @@
 // permission.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, Unique } from 'typeorm';
+
 import { RolePermission } from '../../role-permission/entities/role-permission.entity';
 
+
+@SharedAcrossTenants()
 @Entity('permission')
-export class Permission {
+@Unique(['code', 'tenant_id'])
+export class Permission extends TenantEntity {
   @PrimaryGeneratedColumn({ unsigned: true, type: 'smallint' })
   id: number;
 
-  @Column({ length: 50, unique: true })
+  @Column({ length: 50 })
   code: string;
 
   @Column('text', { nullable: true })
@@ -16,14 +22,8 @@ export class Permission {
   @Column({ type: 'tinyint', nullable: true, default: 1 })
   canChange: number;
 
-  @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
-
   @OneToMany(() => RolePermission, (rp) => rp.permission)
   roles: RolePermission[];
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
 
   @Column({ type: 'tinyint', nullable: true })
   status: number;

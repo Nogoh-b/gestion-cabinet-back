@@ -17,7 +17,7 @@ import { DocumentCustomer } from 'src/modules/documents/document-customer/entiti
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('sub_stages')
 @BusinessTable({
@@ -25,6 +25,7 @@ import { BaseEntity } from 'src/core/entities/baseEntity';
   description: 'Sous-étapes d\'une étape de procédure. Représentent les actions élémentaires à réaliser pour valider une étape.',
   icon: '🔹',
   category: 'procedure',
+  ignored: false,
 })
 export class SubStage extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -33,7 +34,7 @@ export class SubStage extends BaseEntity {
     description: 'Identifiant unique de la sous-étape (format UUID)',
     importance: 'low',
     group: 'technique',
-    ignored: true,
+    ignored: false,
   })
   id: string;
 
@@ -43,7 +44,7 @@ export class SubStage extends BaseEntity {
     description: 'Identifiant de l\'étape parente',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   stageId: string;
 

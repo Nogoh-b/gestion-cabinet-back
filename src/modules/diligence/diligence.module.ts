@@ -10,10 +10,11 @@ import { DiligenceStatsService } from './diligence-stats.service';
 import { DiligenceWriteHandler } from './diligence-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { DiligenceSubscriber } from './subscribers/diligence.subscriber';
 
 @Module({
   controllers: [DiligencesController],
-  providers: [DiligencesService, DiligenceStatsService, DiligenceWriteHandler],
+  providers: [DiligencesService, DiligenceStatsService, DiligenceWriteHandler, DiligenceSubscriber],
   exports: [DiligencesService, DiligenceStatsService],
   imports: [
     forwardRef(() => FindingModule),

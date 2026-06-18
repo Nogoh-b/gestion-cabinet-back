@@ -3,6 +3,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { Conversation } from '../entities/conversation.entity';
 import { Employee, EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
+import { existsForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class ChatGroupConversationSeeder implements Seeder {
   public async run(
@@ -12,18 +13,24 @@ export default class ChatGroupConversationSeeder implements Seeder {
     const conversationRepository = dataSource.getRepository(Conversation);
     const employeeRepository = dataSource.getRepository(Employee);
 
-    // Vérifier si la conversation de groupe existe déjà
-    const existingConversation = await conversationRepository.findOne({
-      where: { name: 'Cabinet - Tous les collaborateurs', isGroup: true },
-      relations: ['participants']
+    // Vérifier si la conversation de groupe existe déjà (per-tenant exact match)
+    const alreadyExists = await existsForTenant(conversationRepository, {
+      name: 'Cabinet - Tous les collaborateurs',
+      isGroup: true,
     });
 
-    if (existingConversation) {
-      console.log('⚠️ La conversation de groupe existe déjà :', existingConversation.name);
-      console.log(`   Participants actuels : ${existingConversation.participants?.length || 0}`);
-      
-      // Optionnel : Mettre à jour les participants
-      await this.updateParticipants(existingConversation, employeeRepository, conversationRepository);
+    if (alreadyExists) {
+      const existingConversation = await conversationRepository.findOne({
+        where: { name: 'Cabinet - Tous les collaborateurs', isGroup: true },
+        relations: ['participants'],
+      });
+      if (existingConversation) {
+        console.log('⚠️ La conversation de groupe existe déjà :', existingConversation.name);
+        console.log(`   Participants actuels : ${existingConversation.participants?.length || 0}`);
+
+        // Optionnel : Mettre à jour les participants
+        await this.updateParticipants(existingConversation, employeeRepository, conversationRepository);
+      }
       return;
     }
 

@@ -2,7 +2,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { DossierReferral, CommissionBasis } from './entities/dossier-referral.entity';
+import { DossierReferral, CommissionBasis, CommissionMode } from './entities/dossier-referral.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
@@ -36,7 +36,9 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       dossier_id: { description: 'ID du dossier. Peut fournir "dossier".', required: true },
       referrer_id: { description: 'ID de l\'apporteur. Peut fournir "referrer" avec son nom.', required: true },
-      commission_rate: { description: 'Taux de commission en % (0 < x ≤ 100)', example: '10.00', required: true },
+      commission_mode: { description: 'rate ou fixed_amount (defaut: rate)', example: 'rate' },
+      commission_rate: { description: 'Taux de commission en % (requis si commission_mode=rate)', example: '10.00' },
+      commission_amount: { description: 'Montant fixe de commission (requis si commission_mode=fixed_amount)', example: '25000.00' },
       commission_basis: {
         description: 'invoiced_ht, invoiced_ttc, collected_ht (défaut), collected_ttc',
         example: 'collected_ht',
@@ -57,14 +59,22 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
     if (operation === 'INSERT') {
       if (!fields.dossier_id) errors.push('Le dossier est requis (dossier_id ou dossier)');
       if (!fields.referrer_id) errors.push('L\'apporteur est requis (referrer_id ou referrer)');
-      if (fields.commission_rate === undefined || fields.commission_rate === null) {
+      const mode = fields.commission_mode ?? CommissionMode.RATE;
+      if (mode === CommissionMode.RATE && (fields.commission_rate === undefined || fields.commission_rate === null)) {
         errors.push('Le taux de commission est requis (commission_rate)');
+      }
+      if (mode === CommissionMode.FIXED_AMOUNT && (fields.commission_amount === undefined || fields.commission_amount === null)) {
+        errors.push('Le montant fixe de commission est requis (commission_amount)');
       }
     }
     if (fields.commission_rate !== undefined) {
       const rate = Number(fields.commission_rate);
       if (rate <= 0) errors.push('Le taux de commission doit être strictement positif');
       if (rate > 100) errors.push('Le taux de commission ne peut pas excéder 100%');
+    }
+    if (fields.commission_amount !== undefined) {
+      const amount = Number(fields.commission_amount);
+      if (amount <= 0) errors.push('Le montant fixe de commission doit etre strictement positif');
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
@@ -94,7 +104,9 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
 
     const data = {
       ...safeFields,
-      commission_rate: Number(safeFields.commission_rate),
+      commission_mode: safeFields.commission_mode ?? CommissionMode.RATE,
+      commission_rate: Number(safeFields.commission_rate ?? 0),
+      commission_amount: safeFields.commission_amount != null ? Number(safeFields.commission_amount) : null,
       commission_basis: safeFields.commission_basis ?? CommissionBasis.COLLECTED_HT,
       referral_date: safeFields.referral_date ? new Date(safeFields.referral_date) : new Date(),
     };

@@ -5,6 +5,7 @@ import {
   IsUUID, IsOptional,
   IsDateString,
   IsNumber,
+  IsInt,
   Min,
   Max,
   IsArray,
@@ -39,6 +40,51 @@ export class LinkDocumentsToSubStageDto {
   dossier_id: string;
 }
 
+/**
+ * DTO pour uploader un document directement depuis le contexte d'un dossier
+ * et le lier automatiquement à une visite de sous-étape.
+ *
+ * - dossier_id et customer_id sont résolus côté serveur via l'ID du dossier passé en URL.
+ * - sub_stage_visit_id / stage_visit_id sont optionnels :
+ *   si absents, le document n'est pas lié à un contexte de procédure spécifique.
+ */
+export class UploadDocumentToSubStageDto {
+  @ApiProperty({ description: 'ID du type de document', example: 1 })
+  @IsNumber()
+  @IsNotEmpty()
+  document_type_id: number;
+
+  @ApiProperty({ description: 'ID de la catégorie du document', example: 2 })
+  @IsNumber()
+  @IsNotEmpty()
+  category_id: number;
+
+  @ApiPropertyOptional({ description: 'Nom du document' })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'Description du document' })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Document confidentiel' })
+  @IsBoolean()
+  @IsOptional()
+  is_confidential?: boolean;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite de sous-étape à laquelle lier le document' })
+  @IsUUID()
+  @IsOptional()
+  sub_stage_visit_id?: string;
+
+  @ApiPropertyOptional({ description: 'ID UUID de la visite d\'étape à laquelle lier le document' })
+  @IsUUID()
+  @IsOptional()
+  stage_visit_id?: string;
+}
+
 
 
 export class CreateDossierDto {
@@ -52,13 +98,13 @@ export class CreateDossierDto {
   object: string;
 
   @ApiProperty({
-    description: 'Juridiction compétente',
-    example: 'Tribunal de Commerce de Paris',
-    maxLength: 255
+    description: 'ID de la juridiction compétente (legacy, utiliser jurisdiction_id)',
+    example: 3,
+    required: false,
   })
-  @IsNotEmpty()
-  @IsString()
-  jurisdiction: number;
+  @IsOptional()
+  @IsInt()
+  jurisdiction?: number;
 
   @ApiProperty({
     description: 'Niveau de danger',
@@ -71,13 +117,13 @@ export class CreateDossierDto {
   danger_level?: DangerLevel;
 
   @ApiProperty({
-    description: 'Juridiction compétente',
-    example: 'Tribunal de Commerce de Paris',
-    maxLength: 255
+    description: 'ID de la juridiction compétente',
+    example: 3,
+    required: false,
   })
-  @IsNotEmpty()
-  @IsString()
-  jurisdiction_id: number;
+  @IsOptional()
+  @IsInt()
+  jurisdiction_id?: number;
 
   @ApiProperty({
     description: 'ID du client',
@@ -331,6 +377,20 @@ export class CreateDossierDto {
   @IsOptional()
   @IsBoolean()
   auto_validate?: boolean = false;
+
+  /**
+   * Coché par l'utilisateur dans le modal de création.
+   * Champ transient : non persisté en colonne, lu uniquement par le subscriber
+   * pour déclencher l'e-mail client via le NotificationDispatcher.
+   */
+  @ApiPropertyOptional({
+    description: 'Notifier le client par e-mail à la création du dossier',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  notify_client?: boolean = false;
 
   // Validation conditionnelle
   @ValidateIf(o => o.billing_type === 'hourly' || o.billing_type === 'mixed')

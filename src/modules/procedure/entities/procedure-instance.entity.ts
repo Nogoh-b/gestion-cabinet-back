@@ -1,5 +1,8 @@
 // entities/procedure-instance.entity.ts
 
+import { Expose } from 'class-transformer';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import {
   Entity,
   Column,
@@ -7,31 +10,30 @@ import {
   ManyToOne,
   JoinColumn,
   OneToMany,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToMany,
   JoinTable,
   AfterLoad,
 } from 'typeorm';
-import { ProcedureTemplate } from './procedure-template.entity';
-import { Stage } from './stage.entity';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+
 import { Decision } from './decision.entity';
-import { Task } from './task.entity';
 import { InstanceStatus } from './enums/instance-status.enum';
 import { HistoryEntry } from './history-entry.entity';
-import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
-import { Expose } from 'class-transformer';
+import { ProcedureTemplate } from './procedure-template.entity';
 import { StageVisit } from './stage-visit.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { Stage } from './stage.entity';
+import { Task } from './task.entity';
+
 
 @Entity('procedure_instances')
 @BusinessTable({
   label: 'Instances de procédure',
   description: 'Instance d\'exécution d\'un modèle de procédure. C\'est le cœur du workflow : une instance représente le suivi concret d\'un dossier à travers ses étapes et sous-étapes, avec l\'état d\'avancement réel.',
   icon: '⚙️',
-  category: 'procedure'
+  category: 'procedure',
+  ignored: false,
 })
-export class ProcedureInstance {
+export class ProcedureInstance extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
     label: 'Identifiant',
@@ -101,16 +103,6 @@ export class ProcedureInstance {
   })
   currentStage: Stage;
 
-  @Column({ type: 'json', nullable: true })
-  @BusinessColumn({
-    label: 'Données contextuelles',
-    description: 'Informations supplémentaires attachées à l\'instance (JSON)',
-    importance: 'low',
-    group: 'contenu',
-    ignored: true
-  })
-  data: any;
-
   @OneToMany(() => Decision, (decision) => decision.instance, { cascade: true })
   decisions: Decision[];
 
@@ -120,7 +112,7 @@ export class ProcedureInstance {
   @OneToMany(() => Task, (task) => task.instance, { cascade: true })
   tasks: Task[];
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   @BusinessColumn({
     label: 'Sous-étapes complétées (déprécié)',
     description: 'Ancien champ. Utiliser stageVisits à la place.',
@@ -130,7 +122,7 @@ export class ProcedureInstance {
   })
   completedSubStages: string[];
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   @BusinessColumn({
     label: 'Compteurs cycles (déprécié)',
     description: 'Ancien champ. Utiliser stageVisits à la place.',
@@ -140,7 +132,7 @@ export class ProcedureInstance {
   })
   cycleUsageCount: Record<string, number>;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   @BusinessColumn({
     label: 'Métadonnées sous-étapes (déprécié)',
     description: 'Ancien champ. Utiliser stageVisits à la place.',
@@ -150,15 +142,7 @@ export class ProcedureInstance {
   })
   subStageMetadata: Record<string, any>;
 
-  @CreateDateColumn()
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création de l\'instance',
-    format: 'date',
-    importance: 'medium',
-    group: 'dates'
-  })
-  createdAt: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
   @OneToMany(() => StageVisit, (visit) => visit.instance, { cascade: true })
   stageVisits: StageVisit[];
@@ -177,16 +161,6 @@ export class ProcedureInstance {
   })
   documents: DocumentCustomer[];
 
-  @UpdateDateColumn()
-  @BusinessColumn({
-    label: 'Date de mise à jour',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  updatedAt: Date;
 
   // ==================== GETTERS MÉTIER (exposés à l'IA) ====================
 
@@ -445,9 +419,9 @@ export class ProcedureInstance {
     group: 'dates'
   })
   get totalDurationInDays(): number | null {
-    if (!this.createdAt) return null;
+    if (!this.created_at) return null;
     const endDate = this.completedAt || new Date();
-    const diffTime = Math.abs(endDate.getTime() - this.createdAt.getTime());
+    const diffTime = Math.abs(endDate.getTime() - this.created_at.getTime());
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   }
 
@@ -460,8 +434,8 @@ export class ProcedureInstance {
     group: 'dates'
   })
   get completedAt(): Date | null {
-    if (this.status === InstanceStatus.COMPLETED && this.updatedAt) {
-      return this.updatedAt;
+    if (this.status === InstanceStatus.COMPLETED && this.updated_at) {
+      return this.updated_at;
     }
     return null;
   }

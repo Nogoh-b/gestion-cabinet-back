@@ -1,59 +1,206 @@
-import { DataSource, EntitySubscriberInterface, EventSubscriber, InsertEvent, UpdateEvent } from 'typeorm';
-import { Audience } from '../entities/audience.entity';
-import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
-import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
-import { MailService } from 'src/core/shared/emails/emails.service';
-import { AudiencesService } from '../audiences.service';
+import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
+import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
+import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
+import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
+import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
+import { Injectable } from '@nestjs/common';
 
-@EventSubscriber()
-export class AudienceSubscriber implements EntitySubscriberInterface<Audience> {
+import { Audience } from '../entities/audience.entity';
+
+/**
+ * Subscriber métier pour les audiences.
+ *
+ * Événements émis :
+ *  - AUDIENCE_CREATED → à la création
+ *  - AUDIENCE_HELD    → quand status passe à HELD (tenue)
+ *  - AUDIENCE_UPDATED → autre changement notable (postponed_to, judge, room)
+ *
+ * Le service historique conserve son propre `sendEmails()` pour les e-mails
+ * « riches » avec pièces jointes ; ce subscriber dispatche les notifications
+ * légères (in-app + e-mail récap) via le NotificationDispatcher.
+ */
+@Injectable()
+export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
   constructor(
-    private dataSource: DataSource,
-    private readonly employeeService: EmployeeService,
-    private readonly audienceService: AudiencesService,
-    private mailService: MailService, // OK maintenant
+    dataSource: DataSource,
+    notificationDispatcher: NotificationDispatcher,
   ) {
-    this.dataSource.subscribers.push(this); // ⭐ CRITIQUE
+    super(dataSource, notificationDispatcher);
   }
 
   listenTo() {
-    return Audience; // entité écoutée
+    return Audience;
   }
 
-  async beforeInsert(event: InsertEvent<Audience>) {
-    // console.log('BEFORE INSERT', event.entity);
-    // logique beforeSave
-  }
+  protected async onAfterCreate(
+    entity: Audience,
+    event: InsertEvent<Audience>,
+  ): Promise<void> {
+    const loaded = await this.load(entity.id, event).catch(() => null);
+    const audience = loaded ?? entity;
+    if (!audience) return;
+    const dossier: any = audience.dossier;
+    const client: any = dossier?.client;
+    const notifyClient = this.resolveTransientBoolean('notify_client', entity, audience as any);
 
-  async afterInsert(event: InsertEvent<Audience>) {
-    // console.log('AFTER INSERT ', event.entity.documents);
-    await this.audienceService.sendEmails(event.entity.id, event.manager);
-    return
+    this.logger.log(
+      `📢 Audience créée | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${notifyClient}`,
+    );
 
-    const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
-    const a = event.entity;
-    let mailDto = new CreateMailDto() 
-    const deduplicationKey = `commande-${a.id}-confirmation-${a.status}`;
-    mailDto.templateName = "entities/dossier/dossier-created-creator"
-    mailDto.context = a
-    mailDto.to = users.map(u => u.email)
-    mailDto.subject = "Creation de l'audience Concernant le dossier " + a.dossier.dossier_number
-    // this.mailService.create(mailDto, deduplicationKey)
-    console.log({
-      id: a.id,
-      dossier_number: a.dossier.dossier_number,
-      is_past: a.is_past,
-      is_today: a.is_today,
-      full_datetime: a.full_datetime,
+    await this.notify({
+      event: NotifiableEvent.AUDIENCE_CREATED,
+      title: `Nouvelle audience — dossier ${dossier?.dossier_number ?? ''}`,
+      content:
+        `Audience prévue le ${formatDate(audience.audience_date)}` +
+        (audience.audience_time ? ` à ${audience.audience_time}` : '') +
+        (audience.room ? ` (${audience.room})` : ''),
+      link: `/audiences/${audience.id}`,
+      audience: {
+        client: {
+          user_id: client?.user_id,
+          email: client?.email,
+          notify: notifyClient,
+        },
+        lawyer_id: dossier?.lawyer_id ?? null,
+        collaborator_ids: (dossier?.collaborators ?? [])
+          .map((c: any) => c.user_id ?? c.user?.id)
+          .filter(Boolean),
+      },
+      entity: { type: 'audience', id: audience.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'audience',
+        resource: audience as any,
+      }),
     });
-    // logique afterSave
   }
 
-  async beforeUpdate(event: UpdateEvent<Audience>) {
-    // console.log('BEFORE UPDATE', event.entity);
+  protected async onAfterUpdate(
+    entity: Partial<Audience>,
+    event: UpdateEvent<Audience>,
+  ): Promise<void> {
+    const id = entity.id ?? (event.databaseEntity as Audience)?.id;
+    if (!id) return;
+
+    if (this.hasColumnChanged(event, 'status')) {
+      const change = this.getFieldChanges(event, ['status']).find(
+        (c) => c.field === 'status',
+      );
+      // 1 = HELD selon AudienceStatus (voir audience.entity.ts)
+      if (change && Number(change.newValue) === 1) {
+        await this.dispatchHeld(id, entity, event);
+      }
+    }
+
+    if (this.hasColumnChanged(event, 'postponed_to')) {
+      await this.dispatchUpdated(id, entity, 'Report d’audience', event);
+    }
   }
 
-  async afterUpdate(event: UpdateEvent<Audience>) {
-    // console.log('AFTER UPDATE', event.entity);
+  private async dispatchHeld(
+    id: number,
+    entity: Partial<Audience>,
+    event: UpdateEvent<Audience>,
+  ): Promise<void> {
+    const audience = await this.load(id, event).catch(() => null);
+    if (!audience) return;
+    const dossier: any = audience.dossier;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      audience as any,
+    );
+
+    this.logger.log(
+      `📢 Audience tenue | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'}`,
+    );
+
+    await this.notify({
+      event: NotifiableEvent.AUDIENCE_HELD,
+      title: `Audience tenue — dossier ${dossier?.dossier_number ?? ''}`,
+      content: `L'audience du ${formatDate(audience.audience_date)} s'est tenue.`,
+      link: `/audiences/${audience.id}`,
+      audience: {
+        client: {
+          user_id: (dossier?.client as any)?.user_id,
+          email: (dossier?.client as any)?.email,
+          notify: notifyClient,
+        },
+        lawyer_id: dossier?.lawyer_id ?? null,
+        collaborator_ids: (dossier?.collaborators ?? [])
+          .map((c: any) => c.user_id ?? c.user?.id)
+          .filter(Boolean),
+      },
+      entity: { type: 'audience', id: audience.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'audience',
+        resource: audience as any,
+      }),
+    });
   }
+
+  private async dispatchUpdated(
+    id: number,
+    entity: Partial<Audience>,
+    reason: string,
+    event: UpdateEvent<Audience>,
+  ): Promise<void> {
+    const audience = await this.load(id, event).catch(() => null);
+    if (!audience) return;
+    const dossier: any = audience.dossier;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      audience as any,
+    );
+
+    this.logger.log(
+      `📢 Audience modifiée | id=${audience.id} | reason="${reason}" | dossier=${dossier?.dossier_number ?? '?'}`,
+    );
+
+    await this.notify({
+      event: NotifiableEvent.AUDIENCE_UPDATED,
+      title: `${reason} — dossier ${dossier?.dossier_number ?? ''}`,
+      content:
+        audience.postponed_to
+          ? `Reportée au ${formatDate(audience.postponed_to)}`
+          : `Audience modifiée le ${formatDate(audience.audience_date)}`,
+      link: `/audiences/${audience.id}`,
+      audience: {
+        client: {
+          user_id: (dossier?.client as any)?.user_id,
+          email: (dossier?.client as any)?.email,
+          notify: notifyClient,
+        },
+        lawyer_id: dossier?.lawyer_id ?? null,
+        collaborator_ids: (dossier?.collaborators ?? [])
+          .map((c: any) => c.user_id ?? c.user?.id)
+          .filter(Boolean),
+      },
+      entity: { type: 'audience', id: audience.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'audience',
+        resource: audience as any,
+      }),
+    });
+  }
+
+  private load(
+    id: number,
+    event?: InsertEvent<Audience> | UpdateEvent<Audience>,
+  ): Promise<Audience | null> {
+    return this.loadEntity<Audience>(id, {
+      relations: ['dossier', 'dossier.client', 'dossier.collaborators'],
+    }, event);
+  }
+}
+
+function formatDate(v: any): string {
+  if (!v) return '';
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime())
+    ? String(v)
+    : d.toLocaleDateString('fr-FR');
 }

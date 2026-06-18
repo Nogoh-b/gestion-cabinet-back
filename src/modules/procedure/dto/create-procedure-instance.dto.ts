@@ -1,5 +1,8 @@
 // dto/create-procedure-instance.dto.ts
-import { IsString, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsOptional } from 'class-validator';
+
+
+
 
 export class CreateProcedureInstanceDto {
   @IsString()
@@ -7,18 +10,10 @@ export class CreateProcedureInstanceDto {
 
   @IsString()
   title: string;
-
-  @IsOptional()
-  @IsObject()
-  data?: Record<string, any>;
 }
 
 export class UpdateProcedureInstanceDto {
   @IsOptional()
   @IsString()
   title?: string;
-
-  @IsOptional()
-  @IsObject()
-  data?: Record<string, any>;
 }

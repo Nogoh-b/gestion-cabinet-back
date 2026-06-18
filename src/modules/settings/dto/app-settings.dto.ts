@@ -1,27 +1,71 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, IsObject, IsIn } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsObject, IsIn, IsInt } from 'class-validator';
 
 const THEME_NAMES = ['ocean', 'silver', 'yellow', 'forest', 'sunset', 'rose'] as const;
 type ThemeName = (typeof THEME_NAMES)[number];
 
+const NUMBERING_STRATEGIES = ['yearly', 'monthly', 'continuous'] as const;
+type NumberingStrategy = (typeof NUMBERING_STRATEGIES)[number];
+
+/**
+ * DTO de configuration du cabinet (source UNIQUE — table `cabinets`).
+ *
+ * Remplace l'ancien `app_settings`. Les noms de champs sont désormais
+ * canoniques (alignés sur l'entité `Cabinet`).
+ */
 export class AppSettingsDto {
-  @ApiProperty({ example: 'Cabinet Me Nogoh' })
+  // ── Identité ──────────────────────────────────────────────────────────────
+  @ApiPropertyOptional({ example: 'Cabinet Me Nogoh' })
   @IsOptional()
   @IsString()
-  cabinet_name?: string;
+  name?: string;
 
   @ApiPropertyOptional({ example: null, nullable: true })
   @IsOptional()
   @IsString()
-  cabinet_logo?: string | null;
+  logo_url?: string | null;
 
-  // 🎨 Thème nommé — palette pré-configurée (light mode uniquement)
+  @ApiPropertyOptional({ example: 'Yaoundé, Cameroun' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ example: '+237 6XX XXX XXX' })
+  @IsOptional()
+  @IsString()
+  contact_phone?: string;
+
+  @ApiPropertyOptional({ example: 'contact@cabinet.com' })
+  @IsOptional()
+  @IsString()
+  contact_email?: string;
+
+  @ApiPropertyOptional({ example: 'https://cabinet.com' })
+  @IsOptional()
+  @IsString()
+  website?: string;
+
+  @ApiPropertyOptional({ example: 'Justice pour tous' })
+  @IsOptional()
+  @IsString()
+  slogan?: string;
+
+  @ApiPropertyOptional({ example: '#1d4ed8' })
+  @IsOptional()
+  @IsString()
+  brand_color?: string;
+
+  @ApiPropertyOptional({ example: null, nullable: true })
+  @IsOptional()
+  @IsString()
+  email_footer?: string;
+
+  // ── Apparence ───────────────────────────────────────────────────────────
   @ApiPropertyOptional({ enum: THEME_NAMES, example: 'ocean' })
   @IsOptional()
   @IsIn(THEME_NAMES as unknown as string[])
   theme_name?: ThemeName;
 
-  /* ── Polices (clé d'identification côté front) ──────────────────────── */
   @ApiPropertyOptional({ example: 'inter' })
   @IsOptional()
   @IsString()
@@ -37,87 +81,77 @@ export class AppSettingsDto {
   @IsString()
   font_mono?: string;
 
-  @ApiProperty({ example: 'Yaoundé, Cameroun' })
+  // ── Informations légales ──────────────────────────────────────────────────
+  @ApiPropertyOptional({ example: 'RC/YAO/2024/1234' })
   @IsOptional()
   @IsString()
-  cabinet_address?: string;
+  rccm?: string;
 
-  @ApiProperty({ example: '+237 6XX XXX XXX' })
+  @ApiPropertyOptional({ example: 'M1234567890P' })
   @IsOptional()
   @IsString()
-  cabinet_phone?: string;
+  nina?: string;
 
-  @ApiProperty({ example: 'contact@cabinet.com' })
+  @ApiPropertyOptional({ example: 'CM21 12345 67890 12345678901 95' })
   @IsOptional()
   @IsString()
-  cabinet_email?: string;
+  bank_account?: string;
 
-  @ApiProperty({ example: '' })
-  @IsOptional()
-  @IsString()
-  cabinet_website?: string;
-
-  @ApiProperty({ example: 'Justice pour tous' })
-  @IsOptional()
-  @IsString()
-  cabinet_slogan?: string;
-
-  @ApiProperty({ example: 'RC/YAO/2024/1234' })
-  @IsOptional()
-  @IsString()
-  cabinet_rccm?: string;
-
-  @ApiProperty({ example: 'M1234567890P' })
-  @IsOptional()
-  @IsString()
-  cabinet_nina?: string;
-
-  @ApiProperty({ example: 'CM21 12345 67890 12345678901 95' })
-  @IsOptional()
-  @IsString()
-  cabinet_bank_account?: string;
-
-  @ApiProperty({ example: 'fr' })
+  // ── Configuration régionale ─────────────────────────────────────────────
+  @ApiPropertyOptional({ example: 'fr' })
   @IsOptional()
   @IsString()
   app_locale?: string;
 
-  @ApiProperty({ example: 'dd/MM/yyyy' })
+  @ApiPropertyOptional({ example: 'dd/MM/yyyy' })
   @IsOptional()
   @IsString()
   date_format?: string;
 
-  @ApiProperty({ example: 'XAF' })
+  @ApiPropertyOptional({ example: 'XAF' })
   @IsOptional()
   @IsString()
   currency?: string;
 
-  @ApiProperty({ example: 'FAC-' })
+  // ── Numérotation ──────────────────────────────────────────────────────────
+  @ApiPropertyOptional({ example: 'FAC-' })
   @IsOptional()
   @IsString()
   invoice_prefix?: string;
 
-  @ApiProperty({ example: 'DOS-' })
+  @ApiPropertyOptional({ example: 4 })
+  @IsOptional()
+  @IsInt()
+  invoice_padding?: number;
+
+  @ApiPropertyOptional({ enum: NUMBERING_STRATEGIES, example: 'yearly' })
+  @IsOptional()
+  @IsIn(NUMBERING_STRATEGIES as unknown as string[])
+  invoice_numbering_strategy?: NumberingStrategy;
+
+  @ApiPropertyOptional({ example: 'DOS-' })
   @IsOptional()
   @IsString()
   dossier_prefix?: string;
 
-  @ApiProperty({ example: '08:00' })
+  // ── Horaires ──────────────────────────────────────────────────────────────
+  @ApiPropertyOptional({ example: '08:00' })
   @IsOptional()
   @IsString()
   working_hours_start?: string;
 
-  @ApiProperty({ example: '17:00' })
+  @ApiPropertyOptional({ example: '17:00' })
   @IsOptional()
   @IsString()
   working_hours_end?: string;
 
-  @ApiProperty({ example: true })
+  // ── Notifications & e-mail ──────────────────────────────────────────────
+  @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
   notification_email?: boolean;
 
-  @ApiProperty({ example: false })
+  @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
   notification_sms?: boolean;
@@ -127,6 +161,7 @@ export class AppSettingsDto {
   @IsObject()
   smtp_config?: object | null;
 
+  // ── Templates ───────────────────────────────────────────────────────────
   @ApiPropertyOptional({ example: null, nullable: true })
   @IsOptional()
   @IsString()

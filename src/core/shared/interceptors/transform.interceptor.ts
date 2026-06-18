@@ -5,6 +5,7 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  StreamableFile,
 } from '@nestjs/common';
 import { SSE_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
@@ -43,6 +44,13 @@ export class TransformInterceptor<T>
 
     return next.handle().pipe(
       map((result) => {
+        // StreamableFile (téléchargement / visualisation de fichier binaire) :
+        // ne JAMAIS envelopper dans { data } — laisser NestJS le streamer tel
+        // quel, sinon il est sérialisé en JSON et le binaire est perdu.
+        if (result instanceof StreamableFile) {
+          return result as any;
+        }
+
         // Si la réponse a été envoyée manuellement (via res.write/end)
         // — typique pour les endpoints SSE — ne pas transformer.
         if (res?.writableEnded || res?.headersSent) {

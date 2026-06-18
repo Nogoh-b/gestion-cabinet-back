@@ -1,15 +1,15 @@
 // entities/stage.entity.ts
 import {
-    Entity,
-    Column,
-    PrimaryGeneratedColumn,
-    ManyToOne,
-    OneToMany,
-    JoinColumn,
-    CreateDateColumn,
-    UpdateDateColumn,
-    OneToOne,
-    ManyToMany,
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToOne,
+  ManyToMany,
 } from 'typeorm';
 import { ProcedureTemplate } from './procedure-template.entity';
 import { SubStage } from './sub-stage.entity';
@@ -17,7 +17,7 @@ import { Transition } from './transition.entity';
 import { StageConfig } from './stage-config.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('stages')
 @BusinessTable({
@@ -25,6 +25,7 @@ import { BaseEntity } from 'src/core/entities/baseEntity';
   description: 'Étapes d\'un modèle de procédure. Chaque étape peut contenir des sous-étapes et des transitions vers d\'autres étapes.',
   icon: '📌',
   category: 'procedure',
+  ignored: false,
 })
 export class Stage extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -33,7 +34,7 @@ export class Stage extends BaseEntity {
     description: 'Identifiant unique de l\'étape (format UUID)',
     importance: 'low',
     group: 'technique',
-    ignored: true,
+    ignored: false,
   })
   id: string;
 
@@ -43,7 +44,7 @@ export class Stage extends BaseEntity {
     description: 'Identifiant du modèle de procédure parent',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   templateId: string;
 

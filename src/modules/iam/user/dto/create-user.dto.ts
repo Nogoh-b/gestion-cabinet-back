@@ -82,6 +82,12 @@ export class CreateUserDto {
   @IsOptional()
   hourly_rate?: number;
 
+  @ApiProperty({ required: false, example: 350000, description: 'Salaire mensuel de base' })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  salary?: number;
+
   @ApiProperty({ required: false, example: true })
   @IsBoolean()
   @IsOptional()

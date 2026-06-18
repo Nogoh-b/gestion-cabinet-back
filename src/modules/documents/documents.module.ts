@@ -1,5 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CabinetModule } from '../cabinet/cabinet.module';
 
 
 
@@ -25,6 +26,7 @@ import { DocumentType } from './document-type/entities/document-type.entity';
 import { DocumentStatsService } from './document-customer/document-stats.service';
 import { DocumentTypeStatsService } from './document-type/document-type-stats.service';
 import { ProcedureModule } from '../procedure/procedure.module';
+import { DocumentCustomerSubscriber } from './document-customer/subscribers/document-customer.subscriber';
 
 
 
@@ -45,13 +47,13 @@ import { ProcedureModule } from '../procedure/procedure.module';
     forwardRef(() => CustomerModule),
     forwardRef(() => DossiersModule),
     forwardRef(() => ProcedureModule),
-    
+    CabinetModule,
     forwardRef(() => IamModule),
     
 
   ],
   controllers: [DocumentTypeController, DocumentCustomerController],
-  providers: [DocumentTypeService, DocumentCustomerService,DocumentStatsService, DocumentTypeStatsService],
+  providers: [DocumentTypeService, DocumentCustomerService, DocumentStatsService, DocumentTypeStatsService, DocumentCustomerSubscriber],
   exports: [DocumentTypeService, DocumentCustomerService,DocumentStatsService, TypeOrmModule],
 })
 export class DocumentsModule {}

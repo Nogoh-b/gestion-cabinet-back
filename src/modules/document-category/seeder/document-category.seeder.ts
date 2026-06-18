@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { Seeder } from 'typeorm-extension';
 
 import { DocumentCategory } from '../entities/document-category.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class DocumentCategorySeeder implements Seeder {
   public async run(
@@ -879,9 +880,7 @@ export default class DocumentCategorySeeder implements Seeder {
     ];
 
     for (const categoryData of categories) {
-      const existing = await repository.findOne({
-        where: { code: categoryData.code }
-      });
+      const existing = await findOneForTenant(repository, 'code', categoryData.code);
 
       if (!existing) {
         const category = repository.create(

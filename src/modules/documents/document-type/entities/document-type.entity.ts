@@ -1,5 +1,5 @@
 // src/core/document/entities/document-type.entity.ts
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { TypeCustomer } from 'src/modules/customer/type-customer/entities/type_customer.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToMany, JoinTable, OneToMany } from 'typeorm';
 import { DocumentCustomer } from '../../document-customer/entities/document-customer.entity';

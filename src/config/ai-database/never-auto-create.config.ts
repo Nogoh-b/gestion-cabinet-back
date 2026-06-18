@@ -3,7 +3,7 @@
  * Modifiable librement — n'impacte pas le module core AiDatabase.
  */
 export const NEVER_AUTO_CREATE_ENTITIES: string[] = [
-  // Identité/sécurité
+  // Identité/sécurité — nécessitent un User préalable (FK id → user.id)
   'employee', 'employees',
   // Données de référence : doivent exister en base
   'procedure_types', 'procedure_type',

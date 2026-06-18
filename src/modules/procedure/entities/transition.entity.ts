@@ -11,7 +11,7 @@ import {
 import { Stage } from './stage.entity';
 import { ProcedureTemplate } from './procedure-template.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 export enum TransitionType {
   AUTOMATIC = 'automatic',
@@ -24,6 +24,7 @@ export enum TransitionType {
   description: 'Transitions entre les étapes d\'un modèle de procédure. Définissent les chemins possibles d\'une étape à une autre, avec conditions et actions.',
   icon: '➡️',
   category: 'procedure',
+  ignored: false,
 })
 export class Transition extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -32,17 +33,17 @@ export class Transition extends BaseEntity {
     description: 'Identifiant unique de la transition (format UUID)',
     importance: 'low',
     group: 'technique',
-    ignored: true,
+    ignored: false,
   })
   id: string;
 
   @Column({ name: 'fromStageId' })
   @BusinessColumn({
     label: 'Étape source',
-    description: 'Identifiant de l\'étape de départ',
+    description: 'Identifiant de l\'étape de départ. L\'étape source et destination doivent être différentes',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   fromStageId: string;
 
@@ -53,10 +54,10 @@ export class Transition extends BaseEntity {
   @Column({ name: 'toStageId' })
   @BusinessColumn({
     label: 'Étape destination',
-    description: 'Identifiant de l\'étape d\'arrivée',
+    description: 'Identifiant de l\'étape d\'arrivée. L\'étape source et destination doivent être différentes',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   toStageId: string;
 
@@ -93,7 +94,7 @@ export class Transition extends BaseEntity {
     description: 'Condition JavaScript à évaluer pour autoriser la transition',
     importance: 'low',
     group: 'règles',
-    ignored: true,
+    ignored: false,
   })
   condition: string | null;
 
@@ -109,7 +110,7 @@ export class Transition extends BaseEntity {
     description: 'Identifiant du modèle de procédure parent',
     importance: 'high',
     group: 'relation',
-    ignored: true,
+    ignored: false,
   })
   templateId: string | null;
 

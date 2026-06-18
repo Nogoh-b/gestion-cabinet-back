@@ -4,11 +4,10 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
 } from 'typeorm';
 import { DossierReferral } from './dossier-referral.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Paiement } from 'src/modules/paiement/entities/paiement.entity';
 
@@ -26,7 +25,7 @@ export enum CommissionStatus {
   icon: '💰',
   category: 'financier',
 })
-export class ReferralCommission {
+export class ReferralCommission extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -57,8 +56,11 @@ export class ReferralCommission {
   })
   dossier_referral: DossierReferral;
 
-  @Column({ type: 'int', nullable: true, name: 'facture_id' })
-  facture_id: number;
+  // ⚠️ Facture.id est un UUID (PrimaryGeneratedColumn('uuid')) → la colonne FK
+  // doit être varchar(36), pas int, sinon la valeur UUID est coercée et la
+  // contrainte FK échoue.
+  @Column({ type: 'varchar', length: 36, nullable: true, name: 'facture_id' })
+  facture_id: string;
 
   @ManyToOne(() => Facture, { nullable: true })
   @JoinColumn({ name: 'facture_id' })
@@ -70,8 +72,9 @@ export class ReferralCommission {
   })
   facture: Facture;
 
-  @Column({ type: 'int', nullable: true, name: 'paiement_id' })
-  paiement_id: number;
+  // ⚠️ Paiement.id est également un UUID → varchar(36).
+  @Column({ type: 'varchar', length: 36, nullable: true, name: 'paiement_id' })
+  paiement_id: string;
 
   @ManyToOne(() => Paiement, { nullable: true })
   @JoinColumn({ name: 'paiement_id' })
@@ -140,25 +143,4 @@ export class ReferralCommission {
   })
   notes: string;
 
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création dans le système',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true,
-  })
-  updated_at: Date;
 }

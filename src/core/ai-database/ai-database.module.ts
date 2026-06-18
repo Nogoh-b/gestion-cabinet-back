@@ -7,6 +7,7 @@ import { ConversationManagerService } from './conversation-manager.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
+import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
@@ -18,6 +19,7 @@ import { AutoHandlerFactory } from './write/auto-handler-factory.service';
     TypeOrmModule.forFeature([
       Conversation,
       ConversationMessage,
+      DocumentCustomer,
     ]),
   ],
   controllers: [AiDatabaseController],

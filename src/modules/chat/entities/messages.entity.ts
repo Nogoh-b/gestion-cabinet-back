@@ -7,9 +7,9 @@ import { Expose } from 'class-transformer';
 import { MessageRead } from './message-read.entity';
 import { Attachment } from './attachment.entity';
 
-
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 @Entity()
-export class Message {
+export class Message extends BaseEntity{
   @PrimaryGeneratedColumn()
   id: number;
 

@@ -1,18 +1,21 @@
 // type-customer.entity.ts
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToMany,
   JoinTable,
   OneToMany,
 } from 'typeorm';
-import { Customer } from '../../customer/entities/customer.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
+import { Customer } from '../../customer/entities/customer.entity';
+
+
+@SharedAcrossTenants()
 @Entity('type_customer')
 @BusinessTable({
   label: "Types de client",
@@ -20,7 +23,7 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   icon: '👥',
   category: 'client'
 })
-export class TypeCustomer {
+export class TypeCustomer extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -73,28 +76,6 @@ export class TypeCustomer {
     group: 'relation'
   })
   customers: Customer[];
-
-  @CreateDateColumn({ name: 'created_at' })
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création du type de client',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  created_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  updated_at: Date;
 
   @Column({ type: 'tinyint', nullable: true, default: 1 })
   @BusinessColumn({

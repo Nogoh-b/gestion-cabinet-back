@@ -11,8 +11,10 @@ import {
   Delete,
   Query,
   HttpStatus,
-  ParseUUIDPipe
+  ParseUUIDPipe,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
 
@@ -122,6 +124,23 @@ export class FactureController {
     return this.factureService.getFacturesByDossier(dossierId);
   }
 
+  @Get('dossier/:dossierId/export')
+  @ApiOperation({ summary: 'Exporter les factures d\'un dossier (CSV comptable)' })
+  @ApiParam({ name: 'dossierId', type: String })
+  async exportByDossier(@Param('dossierId') dossierId: string, @Res() res: Response) {
+    const { filename, content } = await this.factureService.exportDossierFacturesCsv(dossierId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(content);
+  }
+
+  @Post('dossier/:dossierId/relance')
+  @ApiOperation({ summary: 'Envoyer une relance de paiement au client pour les factures impayées du dossier' })
+  @ApiParam({ name: 'dossierId', type: String })
+  async relanceByDossier(@Param('dossierId') dossierId: string) {
+    return this.factureService.sendRelanceForDossier(dossierId);
+  }
+
   @Get('client/:clientId')
   @ApiOperation({ summary: 'Récupérer les factures d\'un client' })
   @ApiResponse({ status: HttpStatus.OK, type: [FactureResponseDto] })
@@ -154,6 +173,18 @@ export class FactureController {
     @Param('statut') statut: string
   ) {
     return this.factureService.changerStatutFacture(id, statut);
+  }
+
+  @Patch(':id/status/:status')
+  @ApiOperation({ summary: 'Changer le statut d\'une facture' })
+  @ApiResponse({ status: HttpStatus.OK, type: FactureResponseDto })
+  @ApiParam({ name: 'id', type: String })
+  @ApiParam({ name: 'status', enum: [0, 1, 2, 3, 4, 5] })
+  async changerStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('status') status: string
+  ) {
+    return this.factureService.changerStatutFacture(id, status);
   }
 
   @Get('analytics/chiffre-affaires')

@@ -2,6 +2,7 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { ProcedureType } from '../entities/procedure.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class ProcedureSubtypeSeeder implements Seeder {
   public async run(
@@ -11,15 +12,15 @@ export default class ProcedureSubtypeSeeder implements Seeder {
     const repository = dataSource.getRepository(ProcedureType);
 
     // Récupérer les types parents
-    const civilParent = await repository.findOne({ where: { code: 'CIVIL_ORDINARY' } });
-    const ohadaParent = await repository.findOne({ where: { code: 'OHADA_SPECIAL' } });
-    const urgencyParent = await repository.findOne({ where: { code: 'URGENCY' } });
-    const appealParent = await repository.findOne({ where: { code: 'APPEAL_REMEDIES' } });
-    const enforcementParent = await repository.findOne({ where: { code: 'ENFORCEMENT' } });
-    const adminParent = await repository.findOne({ where: { code: 'ADMINISTRATIVE' } });
-    const criminalParent = await repository.findOne({ where: { code: 'CRIMINAL' } });
-    const commercialParent = await repository.findOne({ where: { code: 'COMMERCIAL_OHADA' } });
-    const customaryParent = await repository.findOne({ where: { code: 'CUSTOMARY' } });
+    const civilParent = await findOneForTenant(repository, 'code', 'CIVIL_ORDINARY');
+    const ohadaParent = await findOneForTenant(repository, 'code', 'OHADA_SPECIAL');
+    const urgencyParent = await findOneForTenant(repository, 'code', 'URGENCY');
+    const appealParent = await findOneForTenant(repository, 'code', 'APPEAL_REMEDIES');
+    const enforcementParent = await findOneForTenant(repository, 'code', 'ENFORCEMENT');
+    const adminParent = await findOneForTenant(repository, 'code', 'ADMINISTRATIVE');
+    const criminalParent = await findOneForTenant(repository, 'code', 'CRIMINAL');
+    const commercialParent = await findOneForTenant(repository, 'code', 'COMMERCIAL_OHADA');
+    const customaryParent = await findOneForTenant(repository, 'code', 'CUSTOMARY');
 
     const procedureSubtypes = [
       // Sous-types Procédure Civile Ordinaire
@@ -302,9 +303,7 @@ export default class ProcedureSubtypeSeeder implements Seeder {
     ];
 
     for (const subtypeData of procedureSubtypes) {
-      const existing = await repository.findOne({
-        where: { code: subtypeData.code }
-      });
+      const existing = await findOneForTenant(repository, 'code', subtypeData.code);
 
       if (!existing) {
         const subtype = repository.create(subtypeData);

@@ -13,6 +13,27 @@ export const CABINET_JURIDIQUE_ANALYSIS_PROMPT = `Tu es un expert métier spéci
 de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.`;
 
 export const CABINET_JURIDIQUE_PROMPT_RULES = `
+### 10. 👤 Règle ABSOLUE pour les COLLABORATEURS (employee)
+Les collaborateurs NE PEUVENT PAS être créés via ce système.
+Un collaborateur (employee) est obligatoirement lié à un compte utilisateur (User) existant
+avec authentification, mot de passe et rôles — ce qui ne peut pas être géré par l'IA.
+Si l'utilisateur demande de "créer un collaborateur", "ajouter un avocat", "enregistrer un employé"
+ou toute variante, réponds UNIQUEMENT :
+{ "type": "READ" }
+Et explique que la création se fait via l'interface RH dédiée.
+En revanche, la MODIFICATION de champs métier d'un collaborateur existant est autorisée
+(spécialisation, taux horaire, disponibilité, statut, etc.).
+
+### 11. 👤 Règle CRITIQUE pour les NOMS des COLLABORATEURS (employee vs user)
+La table "employee" NE contient PAS les colonnes "last_name" ni "first_name".
+Ces colonnes se trouvent UNIQUEMENT dans la table "user", liée à "employee" via une clé primaire partagée (employee.id = user.id).
+Quand tu génères une requête SQL qui doit récupérer le nom ou le prénom d'un collaborateur, tu DOIS :
+- Faire un LEFT JOIN de "employee" vers "user" sur user.id = employee.id
+- Utiliser "user.last_name" et "user.first_name" au lieu de "employee.last_name" ou "employee.first_name"
+- Exemple correct : SELECT u.last_name, u.first_name FROM employee e LEFT JOIN user u ON u.id = e.id
+- Ne JAMAIS écrire : e.last_name, e.first_name, employee.last_name, employee.first_name
+⚠️ Pour le nom complet, utilise CONCAT(u.first_name, ' ', u.last_name).
+
 ### 9. 📄 Règle pour les DOCUMENTS
 Les documents (pièces jointes, fichiers) NE PEUVENT PAS être créés via ce système.
 Pour ajouter un document à un dossier, l'utilisateur doit utiliser l'interface d'upload dédiée.
@@ -23,7 +44,7 @@ Si l'utilisateur demande d'enregistrer, joindre ou ajouter un fichier/document, 
 Quand tu crées un dossier, tu DOIS OBLIGATOIREMENT inclure :
 - **procedure_type** : le type de procédure (ex: "Contentieux civil", "Droit de la famille", "Droit des affaires", "Droit des étrangers")
 - **procedure_subtype** : le sous-type de procédure (ex: "Divorce", "Rupture conventionnelle", "Recouvrement", "Refus de titre de séjour")
-
+- Il faudrait toujours un objet clair du dossier (ex: "Recours contre refus de renouvellement de titre de séjour") mais si tu ne peux pas le déduire, tu peux le laisser vide.
 Ces deux champs sont OBLIGATOIRES. Si l'utilisateur mentionne "divorce", "contentieux",
 "recouvrement", "civil", etc., déduis le type et sous-type de procédure correspondants.
 
@@ -81,6 +102,19 @@ crée des entités "audiences" correspondantes APRÈS le dossier.
   - champ "status" : 0=Programmée (défaut)
   - champ "notes" : contexte (ex: "Délai de réponse au recours gracieux")
   - Référence le dossier via tempId
+  
+**Règle CRITIQUE pour le report d'une audience existante** :
+Quand l'utilisateur demande de renvoyer, reporter, reprogrammer ou marquer une audience comme passée avec un renvoi :
+- génère une opération UPDATE sur "audiences"
+- inclus TOUJOURS :
+  - "status": "2"
+  - "reason": motif du renvoi
+  - "report_content": rapport d'audience rédigé
+  - "audience_date": nouvelle date du renvoi
+  - "audience_time": nouvelle heure du renvoi
+  - "outcome": "postponed"
+- ne propose PAS un simple UPDATE avec seulement "status" et "outcome"
+- si la nouvelle date, l'heure ou le rapport manquent, baisse la confiance et demande confirmation
 `;
 
 /**

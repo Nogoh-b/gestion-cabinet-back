@@ -1,32 +1,34 @@
 // src/modules/audiences/audiences.service.ts
 import { plainToInstance } from 'class-transformer';
+import { subMonths } from 'date-fns';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
+import { MailService } from 'src/core/shared/emails/emails.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { DateUtils } from 'src/core/shared/utils/date.util.';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
-import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+import { EmployeeService } from '../agencies/employee/employee.service';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
+import { AudienceType } from '../audience-type/entities/audience-type.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
+import { Dossier } from '../dossiers/entities/dossier.entity';
+import { StepsService } from '../dossiers/step.service';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
+import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
+import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
+import { AudienceStatsDto, UpcomingAudienceDto } from './dto/audience-stats.dto';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, AudienceType1, } from './entities/audience.entity';
-import { MailService } from 'src/core/shared/emails/emails.service';
-import { EmployeeService } from '../agencies/employee/employee.service';
-import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
-import { DateUtils } from 'src/core/shared/utils/date.util.';
-import { subMonths } from 'date-fns';
-import { AudienceStatsDto, UpcomingAudienceDto } from './dto/audience-stats.dto';
-import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
-import { AudienceType } from '../audience-type/entities/audience-type.entity';
-import { Dossier } from '../dossiers/entities/dossier.entity';
-import { DossierStatus } from 'src/core/enums/dossier-status.enum';
-import { StepsService } from '../dossiers/step.service';
-import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
-import { SubStage } from '../procedure/entities/sub-stage.entity';
-import { Stage } from '../procedure/entities/stage.entity';
+
+
 
 
 
@@ -91,49 +93,59 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // Vérifier si l'audience est compatible avec le statut actuel
     this.validateAudienceForDossierStatus(dossier, dto.type as AudienceType1);
     let procedureInstance: ProcedureInstance | any = null;
-    let subStage: SubStage | null = null;
-    let stage: Stage | null = null;
 
     if (dossier.procedureInstance) {
-      // Sinon, prendre l'instance active du dossier
-      procedureInstance =  dossier.procedureInstance;
+      procedureInstance = dossier.procedureInstance;
     }
 
-    let subStageId 
-    if (procedureInstance && procedureInstance.currentVisit) {
-      // Option: prendre la première sous-étape obligatoire non complétée
-      const currentVisit = procedureInstance.currentVisit;
-      const completedSubStages = procedureInstance.completedSubStages || [];
-      subStageId = currentVisit.currentSubStageVisitId
-            
-      console.log('SubStage trouvé pour la diligence :', (subStageId));
-      if (!subStageId) {
-        throw new ConflictException(
-          `Aucune sous étape en trouvé pour le dossier`
-          // `Aucune sous étape en courstrouvé pour le l'etape ${currentVisit.id}`
-        );
-      }
-      // stage = currentVisit;
+    // ── Résolution du sub_stage_visit_id et stage_visit_id ───────────────────
+    // Priorité : valeurs explicitement passées dans le DTO
+    // Fallback  : détection automatique depuis la visite courante (sans lever d’exception)
+    let subStageVisitId: string | undefined = dto.sub_stage_visit_id;
+    let stageVisitId: string | undefined = dto.stage_visit_id;
+
+    if (!subStageVisitId && procedureInstance?.currentVisit) {
+      subStageVisitId = procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
+    }
+    if (!stageVisitId && procedureInstance?.currentVisit) {
+      stageVisitId = procedureInstance.currentVisit.id ?? undefined;
+    }
+
+    // ── Juridiction : déduite du dossier si non fournie explicitement ────────
+    // Juridiction : on honore d'abord celle saisie dans le formulaire, puis on
+    // retombe sur celle du dossier si elle n'est pas fournie.
+    const resolvedJurisdictionId =
+      dto.jurisdiction_id ??
+      (dossier as any).jurisdiction_id ??
+      (dossier as any).jurisdiction?.id ??
+      null;
+      console.log('resolvedJurisdictionId', resolvedJurisdictionId, 'dto.jurisdiction_id', dto.jurisdiction_id, 'dossier.jurisdiction_id', (dossier as any).jurisdiction_id, 'dossier.jurisdiction?.id', (dossier as any).jurisdiction?.id);
+    if (!resolvedJurisdictionId) {
+      throw new NotFoundException(
+        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier."
+      );
     }
 
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
       audience_date: dto.audience_date,
       audience_time: dto.audience_time,
-      jurisdiction: { id: dto.jurisdiction_id } as Jurisdiction,
+      jurisdiction: { id: resolvedJurisdictionId } as Jurisdiction,
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
       notes: dto.notes,
       postponed_to: dto.postponed_to,
       audience_type,
-      type: AudienceType1.HEARING ,//audience_type.code as unknown as AudienceType1,
+      type: AudienceType1.HEARING,
       dossier,
       status: AudienceStatus.SCHEDULED,
       procedure_instance_id: procedureInstance?.id,
-      stageVisit_id: procedureInstance.currentVisit?.id,
-      sub_stage_visit_id: procedureInstance.currentVisit?.currentSubStageVisitId,
+      stageVisit_id: stageVisitId,
+      sub_stage_visit_id: subStageVisitId,
     });
+    // Champ transient consommé par l'AudienceSubscriber pour notifier le client.
+    (audience as any).notify_client = !!dto.notify_client;
 
     if (dto?.document_ids) {
       const documents = await this.documentCustomerService.findByIds(dto?.document_ids);
@@ -148,9 +160,9 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
   
     // Lier l'audience à l'étape (Many-to-One)
-    if (currentStep) {
-      await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id); 
-    }
+    // if (currentStep) {
+    //   await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id); 
+    // }
     return await this.findOneV1(aud.id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
   }
 
@@ -280,6 +292,9 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
   
   // 🔥 IMPORTANT: Assigner les autres champs
   Object.assign(audience, otherFields);
+  if (dto.notify_client !== undefined) {
+    (audience as any).notify_client = !!dto.notify_client;
+  }
   
   const resp = plainToInstance(AudienceResponseDto, await this.repository.save(audience));
   return await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
@@ -541,11 +556,18 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
       const attachments = await this.prepareAttachments(audience.documents);
 
-      let mailDto = new CreateMailDto() 
+      // Destinataire : le client concerné par l'audience ; à défaut, les
+      // collaborateurs du cabinet. (Plus de destinataire codé en dur.)
+      const clientEmail = (data as any)?.dossier?.client?.email;
+      const recipients = clientEmail
+        ? [clientEmail]
+        : users.map((u) => u.email).filter(Boolean);
+
+      let mailDto = new CreateMailDto()
       const deduplicationKey = `commande-${audience.id}-confirmation-${audience.status}`;
       mailDto.templateName = "entities/audience/audience-created"
       mailDto.context = audience
-      mailDto.to = ['nogohbrice@gmail.com']//users.map(u => u.email)
+      mailDto.to = recipients
       mailDto.subject = "Creation de l'audience Concernant le dossier " + audience?.dossier_details?.dossier_number
       mailDto.attachments = attachments; // Ajouter les pièces jointes
 
@@ -729,9 +751,9 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
     const query = this.repository.createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')", 'date')
-      .addSelect("SUM(CASE WHEN audience.status = 'scheduled' THEN 1 ELSE 0 END)", 'scheduled')
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)", 'held')
-      .addSelect("SUM(CASE WHEN audience.status = 'postponed' THEN 1 ELSE 0 END)", 'postponed')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.POSTPONED} THEN 1 ELSE 0 END)`, 'postponed')
       .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')")
       .orderBy('date', 'ASC');
@@ -776,8 +798,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   private async getPastAudiencesStats(filters?: any): Promise<any> {
     const query = this.repository.createQueryBuilder('audience')
       .select('COUNT(*)', 'total')
-      .addSelect('AVG(TIMESTAMPDIFF(MINUTE, audience.audience_date, audience.audience_time))', 'avgDuration')
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END) / COUNT(*) * 100", 'successRate')
+      .addSelect('AVG(audience.duration_minutes)', 'avgDuration')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END) / COUNT(*) * 100`, 'successRate')
       .where('audience.audience_date < :now', { now: new Date() });
 
     this.applyFilters(query, filters);
@@ -796,8 +818,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
     const query = this.repository.createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m')", 'month')
-      .addSelect("SUM(CASE WHEN audience.status = 'scheduled' THEN 1 ELSE 0 END)", 'scheduled')
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)", 'held')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
+      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
       .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m')")
       .orderBy('month', 'ASC');
@@ -848,7 +870,11 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     }
 
     if (filters.lawyerId) {
-      query.andWhere(`${alias}.lawyer_id = :lawyerId`, { lawyerId: filters.lawyerId });
+      // L'audience n'a pas d'avocat propre : on filtre via le dossier rattaché.
+      query.andWhere(
+        `${alias}.dossier_id IN (SELECT d.id FROM dossiers d WHERE d.lawyer_id = :lawyerId)`,
+        { lawyerId: filters.lawyerId },
+      );
     }
 
     if (filters.dossierId) {

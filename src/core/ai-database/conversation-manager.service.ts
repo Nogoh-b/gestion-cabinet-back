@@ -39,7 +39,7 @@ export class ConversationManagerService {
   async getHistory(conversationId: string): Promise<Array<{role: string, content: string}>> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { createdAt: 'ASC' }
+      order: { created_at: 'ASC' }
     });
     
     return messages.map(msg => ({
@@ -69,7 +69,7 @@ export class ConversationManagerService {
     const saved = await this.messageRepo.save(message);
     
     // Mettre à jour updated_at de la conversation
-    await this.conversationRepo.update(conversationId, { updatedAt: new Date() });
+    await this.conversationRepo.update(conversationId, { updated_at: new Date() });
     
     return saved;
   }
@@ -130,7 +130,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   async getUserConversations(userId: string): Promise<Conversation[]> {
     return this.conversationRepo.find({
       where: { userId, status: 'active' },
-      order: { updatedAt: 'DESC' }
+      order: { updated_at: 'DESC' }
     });
   }
 
@@ -141,7 +141,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   async trimHistory(conversationId: string, maxMessages: number = 20): Promise<void> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { createdAt: 'ASC' }
+      order: { created_at: 'ASC' }
     });
     
     if (messages.length > maxMessages) {
@@ -202,24 +202,79 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   async getFullHistory(conversationId: string): Promise<Array<{role: string, content: string}>> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { createdAt: 'ASC' }
+      order: { created_at: 'ASC' }
     });
     
+    // Ne JAMAIS injecter le reasoningContent dans l'historique de conversation :
+    // cela double le nombre de tokens et injecte du bruit (raisonnement interne du modèle).
     return messages.map(msg => ({
       role: msg.role,
-      content: msg.role === 'assistant' && msg.reasoningContent 
-        ? `${msg.content}\n\nRaisonnement: ${msg.reasoningContent}`
-        : msg.content
+      content: msg.content,
     }));
   }
 
   /**
-   * Récupère une conversation par son ID
+   * Retourne uniquement les derniers messages utiles pour un prompt LLM.
+   * Les messages system sont exclus car le service AiDatabase reconstruit un
+   * prompt system a jour a chaque appel (schema, tenant, documents).
+   */
+  async getRecentHistoryForPrompt(
+    conversationId: string,
+    options: { maxMessages?: number; maxTokens?: number } = {},
+  ): Promise<Array<{role: string, content: string}>> {
+    const maxMessages = options.maxMessages ?? 8;
+    const maxTokens = options.maxTokens ?? 8000;
+
+    const messages = await this.messageRepo.find({
+      where: { conversationId },
+      order: { created_at: 'DESC' },
+      take: Math.max(maxMessages * 3, maxMessages),
+    });
+
+    const selected: ConversationMessage[] = [];
+    let tokens = 0;
+
+    for (const msg of messages) {
+      if (msg.role === 'system') continue;
+      const messageTokens = msg.tokensUsed || this.estimateTokens(msg.content);
+      if (selected.length >= maxMessages || (selected.length > 0 && tokens + messageTokens > maxTokens)) {
+        break;
+      }
+      selected.push(msg);
+      tokens += messageTokens;
+    }
+
+    return selected.reverse().map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  }
+
+  /**
+   * Récupère une conversation active par son ID
    */
   async getConversation(conversationId: string): Promise<Conversation | null> {
     return this.conversationRepo.findOne({
       where: { id: conversationId, status: 'active' }
     });
+  }
+
+  /**
+   * Récupère une conversation (tous statuts) — pour la validation d'ownership.
+   * Évite de retourner 401 quand la conversation est archivée (→ 404 à la place).
+   */
+  async getConversationAny(conversationId: string): Promise<Conversation | null> {
+    return this.conversationRepo.findOne({
+      where: { id: conversationId }
+    });
+  }
+
+  /**
+   * Ré-associe une conversation anonyme à l'utilisateur maintenant authentifié.
+   */
+  async reassignConversation(conversationId: string, userId: string): Promise<void> {
+    await this.conversationRepo.update(conversationId, { userId });
+    this.logger.log(`🔄 Conversation ${conversationId} ré-associée à user ${userId}`);
   }
 
   /**
@@ -236,7 +291,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   async trimHistoryIfNeeded(conversationId: string, maxMessages: number = 20): Promise<void> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
-      order: { createdAt: 'ASC' }
+      order: { created_at: 'ASC' }
     });
     
     if (messages.length > maxMessages) {

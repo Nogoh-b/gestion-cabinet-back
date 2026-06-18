@@ -2,6 +2,7 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { TypeCustomer } from '../entities/type_customer.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class TypeCustomerSeeder implements Seeder {
   public async run(
@@ -134,9 +135,7 @@ export default class TypeCustomerSeeder implements Seeder {
     ];
 
     for (const typeData of typeCustomers) {
-      const existing = await repository.findOne({
-        where: { code: typeData.code }
-      });
+      const existing = await findOneForTenant(repository, 'code', typeData.code);
 
       if (!existing) {
         const typeCustomer = repository.create({

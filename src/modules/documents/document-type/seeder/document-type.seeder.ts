@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { Seeder } from 'typeorm-extension';
 import { DocumentType, DocumentTypeStatus } from '../entities/document-type.entity';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class DocumentTypeSeeder implements Seeder {
   public async run(dataSource: DataSource): Promise<any> {
@@ -476,10 +477,7 @@ export default class DocumentTypeSeeder implements Seeder {
     for (const docTypeData of documentTypes) {
       const { documentCategoryCodes: categoryCodes, ...docData } = docTypeData;
 
-      const existing = await documentTypeRepository.findOne({
-        where: { code: docTypeData.code },
-        relations: ['categories'], // Charger les relations existantes
-      });
+      const existing = await findOneForTenant(documentTypeRepository, 'code', docTypeData.code);
 
       if (!existing) {
         const documentType = new DocumentType();

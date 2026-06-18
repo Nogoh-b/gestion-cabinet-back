@@ -3,10 +3,10 @@ import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsNumber, IsHexColor } fro
 import { Transform } from 'class-transformer';
 
 export class CreateDocumentCategoryDto {
-  @ApiProperty({ description: 'Code unique de la catégorie' })
+  @ApiProperty({ description: 'Code unique. Généré automatiquement si non fourni.', required: false })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  code: string;
+  code?: string;
 
   @ApiProperty({ description: 'Nom de la catégorie' })
   @IsString()

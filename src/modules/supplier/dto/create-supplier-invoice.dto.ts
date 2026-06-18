@@ -22,11 +22,12 @@ export class CreateSupplierInvoiceDto {
 
   @ApiProperty({
     example: 'FAC-2026-0452',
-    description: 'Numéro de facture fournisseur',
+    description: 'Numéro de facture fournisseur. Généré automatiquement si non fourni.',
+    required: false,
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  invoice_number: string;
+  invoice_number?: string;
 
   @ApiPropertyOptional({
     example: 'Abonnement internet fibre - Mars 2026',

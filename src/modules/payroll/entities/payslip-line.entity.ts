@@ -2,12 +2,14 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 't
 import { Payslip } from './payslip.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 export enum PayslipLineType {
   BASE_SALARY = 'base_salary',
   BONUS = 'bonus',
   INTERNAL_COMMISSION = 'internal_commission',
   DEDUCTION = 'deduction',
+  ADVANCE_RECOVERY = 'advance_recovery',
   BENEFIT = 'benefit',
   OVERTIME = 'overtime',
 }
@@ -19,7 +21,7 @@ export enum PayslipLineType {
   icon: '📝',
   category: 'rh',
 })
-export class PayslipLine {
+export class PayslipLine extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',

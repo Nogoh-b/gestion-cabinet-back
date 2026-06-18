@@ -1,83 +1,168 @@
 // src/modules/auth/auth.service.ts
 import * as bcrypt from 'bcrypt';
-import { EmployeeResponseDto } from 'src/modules/agencies/employee/dto/response-employee.dto';
+import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
 
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { JwtPayload } from './interfaces/jwt-payload.interface';
+
+import { MailService } from '../shared/emails/emails.service';
+import { MailTemplateService } from '../../modules/mail-template/mail-template.service';
 import { AuthTokenService } from './auth-token.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
-import { MailService } from '../shared/emails/emails.service';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
+
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private usersService: UsersService,
     private employeeService: EmployeeService,
     private jwtService: JwtService,
     private mailService: MailService,
     private authTokenService: AuthTokenService,
+    private tenantContext: TenantContext,
+    private mailTemplateService: MailTemplateService,
   ) {}
 
-  async validateUser(username: string, pass: string): Promise<any> {
-    const user = await this.usersService.findByEmail(username);
-    
-    if (!user || !user.password) {
-      throw new UnauthorizedException('Utilisateur inexistant');
+  /**
+   * Valide les identifiants ET vérifie l'appartenance au cabinet.
+   *
+   * @param username  Email de l'utilisateur
+   * @param pass      Mot de passe en clair
+   * @param tenantId  ID du cabinet cible — transmis par LocalStrategy via req['resolvedTenantId'].
+   *                  Indépendant d'AsyncLocalStorage (qui ne se propage pas toujours à travers
+   *                  l'infrastructure Passport/NestJS au niveau des guards).
+   */
+  async validateUser(username: string, pass: string, tenantId = 1): Promise<any> {
+    this.logger.debug(`[validateUser] email="${username}" tenantId=${tenantId}`);
+
+    // ── 1. Recherche de l'utilisateur (User est global, sans tenant_id) ────
+    let user: any;
+    try {
+      user = await this.usersService.findByEmail(username);
+    } catch {
+      throw new UnauthorizedException('Identifiants invalides EMAIL');
     }
 
+    if (!user || !user.password) {
+      throw new UnauthorizedException('Identifiants invalides EMAIL ou mot de passe');
+    }
+
+    // ── 2. Vérification du mot de passe ────────────────────────────────────
     const isPasswordValid = await bcrypt.compare(pass, user.password);
-    
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Mot de passe incorrect');
+      throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
+    }
+
+    // ── 3. Vérification d'appartenance au cabinet ───────────────────────────
+    // User n'a pas de tenant_id → on vérifie + récupère le tenant via Employee.
+    let resolvedTenantId = tenantId;
+
+    if (tenantId && tenantId !== 1) {
+      let employee: any = null;
+      await this.tenantContext.run(tenantId, async () => {
+        try {
+          employee = await this.employeeService.findByEmail(username, false);
+        } catch {
+          employee = null;
+        }
+      });
+
+      if (!employee) {
+        this.logger.warn(
+          `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
+          `absent du cabinet tenant_id=${tenantId}`,
+        );
+        throw new UnauthorizedException('Identifiants invalides Aucun employé trouvé pour ce cabinet');
+      }
+
+      // tenant_id de l'employee (source de vérité pour le JWT)
+      resolvedTenantId = (employee as any).tenant_id ?? tenantId;
     }
 
     const { password, ...result } = user;
+    // Attacher le tenantId résolu pour que login() puisse l'injecter dans le JWT
+    (result as any)._resolvedTenantId = resolvedTenantId;
     return result;
   }
 
   /**
-   * Retourne le profil de l'utilisateur avec les permissions FRAÎCHES issues de la DB.
+   * Retourne les permissions FRAÎCHES depuis la DB.
    * Appelé par GET /auth/profile pour éviter que le JWT (snapshot login) serve de source de vérité.
+   *
+   * @param userId    ID de l'utilisateur (fallback si roleCode absent)
+   * @param roleCode  Code de rôle issu du JWT — évite un SELECT user inutile quand disponible
    */
-  async getFreshProfile(userId: number) {
-    const permissionObjects = await this.usersService.getUserPermissions(userId);
-    const permissions = permissionObjects.map((p: any) => p.code);
-    console.log(`[getFreshProfile] userId=${userId} → ${permissions.length} permissions`);
-    return { permissions };
+  async getFreshProfile(userId: number, roleCode?: string) {
+    const permissionObjects = roleCode
+      ? await this.usersService.getPermissionsByRoleCode(roleCode)
+      : await this.usersService.getUserPermissions(userId);
+      const user = await this.usersService.findOne(userId);
+    const permissions = (permissionObjects ?? []).map((p: any) => p.code);
+    console.log(`[getFreshProfile] userId=${userId} role=${roleCode} → ${permissions.length} permissions`);
+    return { ...user, permissions };
   }
 
   async login(data: any) {
-    const user: EmployeeResponseDto | null = await this.employeeService.findByEmail(data.email);
+    // data EST l'entité User issue de validateUser() — data.role est déjà là.
+    // On évite les doublons : findOne(userId) x2 + findByEmail(employee) x2.
+    const role: string | null = data.role ?? null;
+
+    // Paralléliser : employee (pour payload JWT) + permissions (role → codes)
+    const [user, permissionObjects] = await Promise.all([
+      this.employeeService.findByEmail(data.email),
+      this.usersService.getPermissionsByRoleCode(role),
+    ]);
+
     if (!user) {
       throw new UnauthorizedException('Utilisateur inexistant');
     }
-    const role: string | null = (await this.usersService.findOne(data.id))?.role;
-    const permissionObjects = await this.usersService.getUserPermissions(data.id);
-    const permissions = permissionObjects.map((p: any) => p.code);
+    const permissions = (permissionObjects ?? []).map((p: any) => p.code);
+
+    // Priorité pour le tenantId du JWT :
+    //  1. _resolvedTenantId posé par validateUser() (source la plus fiable — vient du guard)
+    //  2. getCurrentTenantId()  (contexte AsyncLocalStorage posé par TenantInterceptor)
+    //  3. tenant_id de l'employee (entity TypeORM si disponible)
+    //  4. Fallback 1
+    const tenantId: number =
+      (data as any)._resolvedTenantId
+      ?? getCurrentTenantId()
+      ?? (user as any).tenant_id
+      ?? 1;
+
+    this.logger.log(`[login] email="${data.email}" → JWT tenantId=${tenantId}`);
 
     const payload: JwtPayload = {
-      sub: user.id,
-      username: user.email,
-      role,
+      sub:        user.id,
+      username:   user.email,
+      role:       role ?? undefined,
       permissions,
       customerId: (data as any).customer?.id ?? null,
+      tenantId,
     };
+
+    // Écraser user.role (position de l'Employee = "avocat") avec le rôle RBAC réel
+    // (User.role = "admin"|"secretaire"|…) pour que le frontend n'affiche pas
+    // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile. 
+    const userWithRole = role ? { ...user, role } : user;
 
     return {
       access_token: this.jwtService.sign(payload),
-      user,
+      user: userWithRole,
       permissions,
     };
   }
@@ -87,9 +172,10 @@ export class AuthService {
    */
   async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ success: boolean; message: string }> {
     const { email } = forgotPasswordDto;
+    const tenantId = this.tenantContext.getTenantId();
 
     // Vérifier si l'utilisateur existe
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmailForPasswordReset(email, tenantId);
     if (!user) {
       // Pour des raisons de sécurité, on ne révèle pas si l'email existe ou non
       return { 
@@ -101,17 +187,28 @@ export class AuthService {
     // Créer un OTP
     const { otp, expiresAt } = await this.authTokenService.createOTP(email, 'reset_password');
 
-    // Envoyer l'email avec l'OTP
-    await this.mailService.sendDirect({
-      to: email,
-      subject: 'Code de réinitialisation de mot de passe',
-      templateName: 'auth/otp-reset-password',
-      context: {
-        otp,
-        expiresIn: 10,
-        userName: user.first_name || user.username || 'Utilisateur',
-      }
-    });
+    // Envoyer l'email avec l'OTP — template DB `otp_code` en priorité,
+    // repli sur le template fichier si le template DB n'est pas disponible.
+    const otpUserName = user.first_name || user.username || 'Utilisateur';
+    try {
+      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
+        firstName: otpUserName,
+        otpCode: otp,
+        expiryMinutes: 10,
+      });
+      await this.mailService.sendDirect({
+        to: email,
+        subject: rendered.subject || 'Code de réinitialisation de mot de passe',
+        html: rendered.html,
+      });
+    } catch {
+      await this.mailService.sendDirect({
+        to: email,
+        subject: 'Code de réinitialisation de mot de passe',
+        templateName: 'auth/otp-reset-password',
+        context: { otp, expiresIn: 10, userName: otpUserName },
+      });
+    }
 
     return {
       success: true,
@@ -158,31 +255,66 @@ export class AuthService {
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
+    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
 
     // Hasher le nouveau mot de passe
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Mettre à jour le mot de passe
-    await this.usersService.update(user.id, {password:hashedPassword});
+    await this.tenantContext.run(userTenantId, async () => {
+      await this.usersService.update(user.id, {password:hashedPassword});
+    });
 
     // Marquer le token comme utilisé
     await this.authTokenService.markTokenAsUsed(token);
 
+    // Confirmation de changement de mot de passe (ne bloque jamais le flux).
+    // Template DB `password_changed` en priorité, repli sur un HTML inline.
+    try {
+      const pcFirstName = user.first_name || user.username || '';
+      const pcChangedAt = new Date().toLocaleString('fr-FR');
+      let pcSubject = 'Votre mot de passe a été modifié';
+      let pcHtml =
+        `<h2 style="margin-top:0;">Mot de passe modifié</h2>` +
+        `<p>Bonjour ${pcFirstName},</p>` +
+        `<p>Nous vous confirmons que votre mot de passe a bien été modifié le ${pcChangedAt}.</p>` +
+        `<p style="color:#dc2626;font-size:13px;">Si vous n'êtes pas à l'origine de cette opération, contactez immédiatement votre administrateur.</p>`;
+      try {
+        const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('password_changed', {
+          firstName: pcFirstName,
+          changedAt: pcChangedAt,
+        });
+        if (rendered?.html) {
+          pcSubject = rendered.subject || pcSubject;
+          pcHtml = rendered.html;
+        }
+      } catch {
+        // template DB indisponible → repli inline
+      }
+      await this.mailService.sendDirect({ to: email, subject: pcSubject, html: pcHtml });
+    } catch (mailErr) {
+      this.logger.warn(`[resetPassword] Email de confirmation non envoyé : ${(mailErr as Error)?.message}`);
+    }
+
     // Optionnel: Générer un nouveau token JWT pour connecter l'utilisateur automatiquement
-    const employee = await this.employeeService.findByEmail(email);
+    let employee: any = null;
+    await this.tenantContext.run(userTenantId, async () => {
+      employee = await this.employeeService.findByEmail(email);
+    });
     const role = user.role;
-    const permissionObjects = await this.usersService.getUserPermissions(user.id);
+    const permissionObjects = await this.tenantContext.run(userTenantId, () => this.usersService.getUserPermissions(user.id));
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
-      sub: employee?.id || user.id,
+      sub:      employee?.id || user.id,
       username: user.email,
       role,
       permissions,
+      tenantId: (employee as any)?.tenant_id ?? userTenantId,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -217,10 +349,11 @@ export class AuthService {
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
+    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
 
     // Vérifier si l'utilisateur a déjà un mot de passe
     if (user.password) {
@@ -231,35 +364,48 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Mettre à jour le mot de passe
-    await this.usersService.update(user.id, {password:hashedPassword});
+    await this.tenantContext.run(userTenantId, async () => {
+      await this.usersService.update(user.id, {password:hashedPassword});
+    });
 
     // Marquer le token comme utilisé
     await this.authTokenService.markTokenAsUsed(token);
 
     // Générer un token JWT pour connecter l'utilisateur automatiquement
-    const employee = await this.employeeService.findByEmail(email);
+    let employee: any = null;
+    await this.tenantContext.run(userTenantId, async () => {
+      employee = await this.employeeService.findByEmail(email);
+    });
     const role = user.role;
-    const permissionObjects = await this.usersService.getUserPermissions(user.id);
+    const permissionObjects = await this.tenantContext.run(userTenantId, () => this.usersService.getUserPermissions(user.id));
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
-      sub: employee?.id || user.id,
+      sub:      employee?.id || user.id,
       username: user.email,
       role,
       permissions,
+      tenantId: (employee as any)?.tenant_id ?? userTenantId,
     };
 
     const accessToken = this.jwtService.sign(payload);
 
-    // Envoyer un email de confirmation
-    await this.mailService.sendDirect({
-      to: email,
-      subject: 'Bienvenue sur LexiGuard',
-      templateName: 'entities/auth/welcome-set-password',
-      context: {
-        userName: user.first_name || user.username || 'Utilisateur',
-      }
-    });
+    // Email de bienvenue — template DB `account_opening` en priorité, repli fichier.
+    const spFirstName = user.first_name || user.username || 'Utilisateur';
+    try {
+      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('account_opening', {
+        firstName: spFirstName,
+        loginUrl: process.env.APP_FRONTEND_URL ? `${process.env.APP_FRONTEND_URL}/login` : '',
+      });
+      await this.mailService.sendDirect({ to: email, subject: rendered.subject, html: rendered.html });
+    } catch {
+      await this.mailService.sendDirect({
+        to: email,
+        subject: 'Bienvenue sur LexiGuard',
+        templateName: 'entities/auth/welcome-set-password',
+        context: { userName: spFirstName },
+      });
+    }
 
     return {
       success: true,

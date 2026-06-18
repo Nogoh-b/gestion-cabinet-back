@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
 import { InvoiceType, InvoiceTypeCategory, TaxRate } from '../entities/invoice-type.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 
 export default class InvoiceTypeSeeder implements Seeder {
@@ -271,9 +272,7 @@ export default class InvoiceTypeSeeder implements Seeder {
     ];
 
     for (const typeData of invoiceTypes) {
-      const existing = await repository.findOne({
-        where: { code: typeData.code }
-      });
+      const existing = await findOneForTenant(repository, 'code', typeData.code);
 
       if (!existing) {
         const invoiceType = repository.create(typeData);

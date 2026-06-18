@@ -68,8 +68,8 @@ async getPermissionsByRole(role_id: number): Promise<Permission[]> {
       'permission.code', 
       'permission.description',
       'permission.status',
-      'permission.create_at',
-      'permission.update_at'
+      'permission.created_at',
+      'permission.updated_at'
     ])
     .getMany()
     .then(results => results.map(r => r.permission));

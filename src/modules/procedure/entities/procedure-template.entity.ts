@@ -1,9 +1,9 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, Unique } from 'typeorm';
 import { Stage } from './stage.entity';
 import { Transition } from './transition.entity';
 import { Cycle } from './cycle.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('procedure_templates')
 @BusinessTable({
@@ -11,7 +11,9 @@ import { BaseEntity } from 'src/core/entities/baseEntity';
   description: 'Modèles de procédure définissant les étapes, transitions et cycles pour différents types de procédures juridiques',
   icon: '📋',
   category: 'procedure',
+  ignored: false,
 })
+@Unique(['tenant_id', 'name'])
 export class ProcedureTemplate extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
@@ -23,7 +25,7 @@ export class ProcedureTemplate extends BaseEntity {
   })
   id: string;
 
-  @Column({ unique: true })
+  @Column()
   @BusinessColumn({
     label: 'Nom',
     description: 'Nom du modèle de procédure',

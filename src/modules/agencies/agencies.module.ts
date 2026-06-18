@@ -13,6 +13,7 @@ import { EmployeeSubscriber } from './employee/suscribers/employee.suscribers';
 import { EmployeeWriteHandler } from './employee/employee-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { PlansModule } from '../plans/plans.module';
 
 
 @Module({
@@ -20,6 +21,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     forwardRef(() => GeographyModule),
     TypeOrmModule.forFeature([Branch, Employee]),
     AiDatabaseModule,
+    PlansModule,
   ],
   controllers: [BranchController, EmployeeController],
   providers: [BranchService, EmployeeService, EmployeeStatsService, EmployeeSubscriber, BranchStatsService, EmployeeWriteHandler],
@@ -32,6 +34,6 @@ export class AgenciesModule {
   ) {}
 
   onModuleInit() {
-    this.registry.register(this.handler);
+    // this.registry.register(this.handler);
   }
 }

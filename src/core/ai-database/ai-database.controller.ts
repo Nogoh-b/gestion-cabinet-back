@@ -1,6 +1,6 @@
 import {
   Controller, Post, Get, Body, HttpCode, HttpStatus,
-  Query, UseGuards, Req, UnauthorizedException, Param,
+  Query, UseGuards, Req, UnauthorizedException, NotFoundException, Param,
   Logger, UseInterceptors, UploadedFile, Res,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -14,6 +14,7 @@ import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
@@ -27,6 +28,7 @@ export class AiDatabaseController {
     private readonly aiDbService: AiDatabaseService,
     private readonly schemaMetadata: SchemaMetadataService,
     private readonly conversationManager: ConversationManagerService,
+    private readonly tenantContext: TenantContext,
   ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
@@ -35,9 +37,12 @@ export class AiDatabaseController {
     storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
     fileFilter: (req, file, cb) => {
-      const allowed = ['application/pdf', 'text/csv', 'application/vnd.ms-excel',
+      const allowed = ['application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain', 'application/json'];
+      ];
       if (allowed.includes(file.mimetype)) {
         cb(null, true);
       } else {
@@ -52,6 +57,8 @@ export class AiDatabaseController {
       properties: {
         question: { type: 'string' },
         conversationId: { type: 'string' },
+        documentIds: { type: 'string', description: 'JSON array ou liste separee par virgules' },
+        intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat'] },
         file: { type: 'string', format: 'binary' },
       },
     },
@@ -89,9 +96,11 @@ export class AiDatabaseController {
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
       const allowed = [
-        'application/pdf', 'text/csv', 'application/vnd.ms-excel',
+        'application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain', 'application/json',
       ];
       cb(allowed.includes(file.mimetype) ? null : new Error(`Type non supporté: ${file.mimetype}`), allowed.includes(file.mimetype));
     },
@@ -133,8 +142,18 @@ export class AiDatabaseController {
       if (typeof (res as any).flush === 'function') (res as any).flush();
     };
 
+    // Garantit l'isolation tenant sur TOUTE la durée du streaming SSE.
+    // L'interceptor global pose déjà le contexte, mais l'enrobage d'un Observable
+    // SSE long ne garantit pas la propagation de l'AsyncLocalStorage à chaque
+    // hop async (LLM, file d'attente de tokens…). On ré-ancre donc explicitement
+    // le contexte avec le tenant du JWT pour que `getCurrentTenantId()` (utilisé
+    // par l'injection SQL tenant et le patch Repository) reste fiable tout du long.
+    const tenantId: number = (user?.tenantId as number) ?? getCurrentTenantId();
+
     try {
-      await this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent);
+      await this.tenantContext.run(tenantId, () =>
+        this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent),
+      );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });
     } finally {
@@ -271,12 +290,26 @@ export class AiDatabaseController {
   @Get('conversations/:id/messages')
   async getConversationMessages(@Param('id') conversationId: string, @Req() req) {
     const userId = req.user?.id || 'anonymous';
-    // Vérifier que la conversation appartient à l'utilisateur
-    const conversation = await this.conversationManager.getConversation(conversationId);
-    if (!conversation || conversation.userId.toString() !== userId.toString()) {
-      Logger.warn(`⚠️ Accès non autorisé à la conversation ${conversationId} pour user ${userId} ${conversation?.userId}`);
-      throw new UnauthorizedException();
+
+    // Cherche la conversation sans filtre de statut pour distinguer 404 vs 403
+    const conversation = await this.conversationManager.getConversationAny(conversationId);
+
+    if (!conversation) {
+      throw new NotFoundException(`Conversation ${conversationId} introuvable`);
     }
+
+    // Si la conversation était créée en mode anonyme et que l'utilisateur est maintenant authentifié,
+    // on ré-associe automatiquement la conversation à l'utilisateur connecté.
+    if (conversation.userId === 'anonymous' && userId !== 'anonymous') {
+      await this.conversationManager.reassignConversation(conversationId, String(userId));
+    } else if (conversation.userId.toString() !== userId.toString()) {
+      this.logger.warn(
+        `⚠️ Accès refusé à la conversation ${conversationId}: ` +
+        `owner=${conversation.userId}, requester=${userId}`
+      );
+      throw new UnauthorizedException('Cette conversation ne vous appartient pas.');
+    }
+
     return this.conversationManager.getFullHistory(conversationId);
   }
 

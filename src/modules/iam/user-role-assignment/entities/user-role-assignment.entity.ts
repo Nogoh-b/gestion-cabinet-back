@@ -4,17 +4,16 @@ import {
   ManyToOne,
   JoinColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   PrimaryColumn,
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { UserRole } from '../../user-role/entities/user-role.entity';
 import { User } from '../../user/entities/user.entity';
 
 @Entity('user_role_assignment')
-export class UserRoleAssignment {
+export class UserRoleAssignment extends TenantEntity {
 
-  
+
   @PrimaryColumn({ type: 'int' })
   user_id: number;
 
@@ -34,12 +33,6 @@ export class UserRoleAssignment {
 
   @Column({ name: 'assigned_by', nullable: true })
   assigned_by: number;
-
-  @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
 
   @Column({ type: 'tinyint', nullable: true })
   status: number;

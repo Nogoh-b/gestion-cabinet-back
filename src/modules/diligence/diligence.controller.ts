@@ -1,4 +1,6 @@
 // src/modules/diligences/diligences.controller.ts
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import {
   Controller,
   Get,
@@ -9,16 +11,21 @@ import {
   Delete,
   Query,
   ParseIntPipe,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags, ApiConsumes } from '@nestjs/swagger';
+
+
+import { DiligenceStatsService } from './diligence-stats.service';
+import { DiligencesService } from './diligence.service';
 import { CreateDiligenceDto } from './dto/create-diligence.dto';
-import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { DiligenceSearchDto } from './dto/search-diligence.dto';
-import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-import { DiligencesService } from './diligence.service';
-import { DiligenceStatsService } from './diligence-stats.service';
+import { UpdateDiligenceDto } from './dto/update-diligence.dto';
+
+
 
 @ApiTags('Diligences')
 @Controller('diligences')
@@ -76,9 +83,18 @@ export class DiligencesController {
 
   
   @Post()
+  @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Créer une nouvelle mission de diligence' })
+  @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, type: DiligenceResponseDto })
-  async create(@Body() createDiligenceDto: CreateDiligenceDto) {
+  async create(
+    @Body() createDiligenceDto: CreateDiligenceDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    console.log('Données reçues pour création de diligence:', createDiligenceDto);
+    if (file) {
+      console.log('Fichier reçu:', file.originalname, file.mimetype, file.size);
+    }
     return await this.diligencesService.create(createDiligenceDto);
   }
 

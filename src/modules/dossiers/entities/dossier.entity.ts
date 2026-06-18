@@ -1,4 +1,5 @@
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { ClientDecision, DossierStatus, RecommendationType } from 'src/core/enums/dossier-status.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
@@ -8,11 +9,12 @@ import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
-import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert } from 'typeorm';
-import { Step, StepStatus } from './step.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert, AfterLoad } from 'typeorm';
+
+import { Step, StepStatus } from './step.entity';
+
 
 export enum DangerLevel {
   Faible = 0,
@@ -46,13 +48,21 @@ export enum DossierOutcome {
   ignored : false
 })
 export class Dossier extends BaseEntity {
+  /**
+   * Propriété TRANSIENT (pas un @Column) — passée par le service create()
+   * depuis CreateDossierDto.notify_client, lue par le DossierSubscriber
+   * dans onAfterCreate pour décider si on envoie un e-mail au client.
+   * Non persistée en base.
+   */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant technique',
     description: 'Numéro unique généré automatiquement par le système',
     importance: 'low',
     group: 'technique',
-    ignored: true 
+    ignored: true
   })
   id: number;
 
@@ -253,15 +263,15 @@ export class Dossier extends BaseEntity {
   })
   budget_estimate: number;
 
-  @Column({ name: 'actual_costs', type: 'decimal', precision: 10, scale: 2, default: 0 })
-  @BusinessColumn({
-    label: 'Coûts réels',
-    description: 'Montant réel des honoraires engagés',
-    unit: '€',
-    format: 'currency',
-    importance: 'high',
-    group: 'financier'
-  })
+  // @Column({ name: 'actual_costs', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  // @BusinessColumn({
+  //   label: 'Coûts réels',
+  //   description: 'Montant réel des honoraires engagés',
+  //   unit: '€',
+  //   format: 'currency',
+  //   importance: 'high',
+  //   group: 'financier'
+  // })
   actual_costs: number;
 
   @Column({ name: 'success_probability', type: 'int', nullable: true })
@@ -918,7 +928,7 @@ get currentStep(): Step | null {
   // ou la première selon ton workflow
   return this.steps
     .filter(s => s.status === StepStatus.IN_PROGRESS)
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] || null;
+    .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())[0] || null;
 }
 
 /**
@@ -1000,6 +1010,21 @@ setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
     this.closing_date = new Date();
   }
 }
+
+  /**
+   * Recompute actual_costs from loaded factures.
+   * Called automatically by TypeORM after every SELECT that returns a Dossier.
+   * Falls back to the stored column value when factures are not eager-loaded.
+   */
+  @AfterLoad()
+  computeActualCosts(): void {
+    if (Array.isArray(this.factures) && this.factures.length > 0) {
+      this.actual_costs = this.factures.reduce(
+        (sum, f) => sum + Number(f.montantTTC ?? 0),
+        0,
+      );
+    }
+  }
 
   @BeforeInsert()
   beforeCreate() {

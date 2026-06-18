@@ -1,14 +1,16 @@
 import { Expose } from 'class-transformer';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany
+  OneToMany,
+  Unique
 } from 'typeorm';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+
 
 export enum AudienceTypeCategory {
   PRELIMINARY = 'preliminary',
@@ -20,6 +22,7 @@ export enum AudienceTypeCategory {
   CASATION = 'casation'
 }
 
+@SharedAcrossTenants()
 @Entity('audience_types')
 @BusinessTable({
   label: 'Types d\'audience',
@@ -27,7 +30,8 @@ export enum AudienceTypeCategory {
   icon: '⚖️',
   category: 'procedure'
 })
-export class AudienceType {
+@Unique(['tenant_id', 'code'])
+export class AudienceType extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -39,7 +43,7 @@ export class AudienceType {
   })
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   @Expose()
   @BusinessColumn({
     label: 'Code',
@@ -158,30 +162,6 @@ export class AudienceType {
   @OneToMany(() => Audience, audience => audience.audience_type)
   @Expose()
   audiences: Audience[];
-
-  @CreateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de création',
-    description: 'Date de création de l\'enregistrement',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  created_at: Date;
-
-  @UpdateDateColumn()
-  @Expose()
-  @BusinessColumn({
-    label: 'Date de modification',
-    description: 'Date de dernière modification',
-    format: 'date',
-    importance: 'low',
-    group: 'audit',
-    ignored: true
-  })
-  updated_at: Date;
 
   // ==================== GETTERS MÉTIER ====================
 

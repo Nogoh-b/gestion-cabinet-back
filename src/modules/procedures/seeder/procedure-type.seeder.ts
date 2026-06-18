@@ -2,6 +2,7 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import { ProcedureType } from '../entities/procedure.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 export default class ProcedureTypeSeeder implements Seeder {
   public async run(
@@ -133,9 +134,7 @@ export default class ProcedureTypeSeeder implements Seeder {
     const savedTypes: ProcedureType[] = [];
 
     for (const typeData of procedureTypes) {
-      const existing = await repository.findOne({
-        where: { code: typeData.code }
-      });
+      const existing = await findOneForTenant(repository, 'code', typeData.code);
 
       if (!existing) {
         const procedureType = repository.create(typeData);

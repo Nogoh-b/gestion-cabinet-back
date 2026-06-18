@@ -1,7 +1,9 @@
 // create-referrer.dto.ts
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 import { ReferrerPaymentMethod, ReferrerType } from '../entities/referral.entity';
+
 
 export class CreateReferrerDto {
   @ApiProperty({ example: 'Cabinet Dupont & Associés', description: 'Raison sociale ou nom complet' })
@@ -80,4 +82,9 @@ export class CreateReferrerDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({ example: true, description: 'Actif (true) ou Inactif (false)', default: true })
+  @IsBoolean()
+  @IsOptional()
+  status?: boolean = true;
 }

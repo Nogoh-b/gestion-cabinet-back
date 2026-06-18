@@ -2,6 +2,7 @@ import { Permission } from 'src/modules/iam/permission/entities/permission.entit
 import { Repository } from 'typeorm';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
 @Injectable()
 export class PermissionSeeder {
@@ -190,6 +191,26 @@ export class PermissionSeeder {
       { code: 'reimburse_expense_report',    description: 'Rembourser une note de frais' },
 
       // ===================================================================
+      // CABINET — MODÈLES PDF (PDF TEMPLATES)
+      // ===================================================================
+      { code: 'view_pdf_templates',      description: 'Voir les modèles PDF' },
+      { code: 'create_pdf_template',     description: 'Créer un modèle PDF' },
+      { code: 'edit_pdf_template',       description: 'Modifier un modèle PDF' },
+      { code: 'delete_pdf_template',     description: 'Supprimer un modèle PDF' },
+
+      // ===================================================================
+      // CABINET — COMPTABILITÉ (ACCOUNTING)
+      // ===================================================================
+      { code: 'view_accounting',           description: 'Voir la comptabilité' },
+      { code: 'create_ecriture',           description: 'Créer une écriture comptable' },
+      { code: 'edit_ecriture',             description: 'Modifier une écriture comptable' },
+      { code: 'delete_ecriture',           description: 'Supprimer une écriture comptable' },
+      { code: 'manage_chart_of_accounts',  description: 'Gérer le plan comptable et la synchronisation' },
+      { code: 'open_exercice',             description: 'Ouvrir un exercice comptable' },
+      { code: 'close_exercice',            description: 'Clôturer un exercice comptable' },
+      { code: 'view_accounting_reports',   description: 'Voir les rapports comptables (balance, résultat, TVA)' },
+
+      // ===================================================================
       // SYSTÈME — Permissions spéciales (non modifiables)
       // ===================================================================
       { code: 'SUPER_ADMIN',    description: 'Accès total au système',        canChange: 0 },
@@ -236,7 +257,7 @@ export class PermissionSeeder {
     let skipped = 0;
 
     for (const perm of permissions) {
-      const exists = await this.permissionRepo.findOne({ where: { code: perm.code } });
+      const exists = await findOneForTenant(this.permissionRepo, 'code', perm.code);
       if (!exists) {
         await this.permissionRepo.save(this.permissionRepo.create(perm));
         created++;

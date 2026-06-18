@@ -1,7 +1,7 @@
 // src/modules/dossiers/dossiers.controller.ts
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { Roles } from 'src/core/decorators/roles.decorator';
@@ -12,6 +12,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -20,10 +21,11 @@ import {
   UseGuards,
   ParseIntPipe,
   UseInterceptors,
+  UploadedFile,
   UploadedFiles,
   Request
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiBody } from '@nestjs/swagger';
+import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
 
 
@@ -31,23 +33,28 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, 
 
 
 
+
+
+
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, ApiBody, ApiConsumes } from '@nestjs/swagger';
 
 
 
 import { User } from '../iam/user/entities/user.entity';
+import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
+import { DossierStatsService } from './dossier-stats.service';
 import { DossiersService } from './dossiers.service';
 import { ChangeStatusDto } from './dto/change-status.dto';
-import { CreateDossierDto, LinkDocumentsToSubStageDto } from './dto/create-dossier.dto';
+import { CloseDossierDto } from './dto/close-dossier.dto';
+import { CreateDossierDto, LinkDocumentsToSubStageDto, UploadDocumentToSubStageDto } from './dto/create-dossier.dto';
+import { PreliminaryAnalysisDto } from './dto/dossier-analysis.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
-import { UpdateDossierDto } from './dto/update-dossier.dto';
 import { DossierStatsDto } from './dto/dossier-stats.dto';
-import { DossierStatsService } from './dossier-stats.service';
-import { ClientDecisionDto, JudgmentDto, PreliminaryAnalysisDto } from './dto/dossier-analysis.dto';
-import { Step } from './entities/step.entity';
-import { CloseDossierDto } from './dto/close-dossier.dto';
-import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
+import { UpdateDossierDto } from './dto/update-dossier.dto';
+
+
+
 
 
 
@@ -337,7 +344,55 @@ export class DossiersController {
     );
   }
 
+  /**
+   * Ajouter un collaborateur (Employee) à un dossier.
+   */
+  @Post(':id/collaborators')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Ajouter un collaborateur au dossier' })
+  @ApiResponse({ status: 201, description: 'Collaborateur ajouté avec succès', type: DossierResponseDto })
+  @ApiResponse({ status: 404, description: 'Dossier ou collaborateur non trouvé' })
+  @ApiParam({ name: 'id', description: 'ID du dossier' })
+  async addCollaborator(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { employee_id: number },
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.addCollaborator(id, body?.employee_id, user);
+  }
 
+  /**
+   * Retirer un collaborateur (Employee) d'un dossier.
+   */
+  @Delete(':id/collaborators/:employeeId')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Retirer un collaborateur du dossier' })
+  @ApiResponse({ status: 200, description: 'Collaborateur retiré avec succès', type: DossierResponseDto })
+  @ApiParam({ name: 'id', description: 'ID du dossier' })
+  @ApiParam({ name: 'employeeId', description: 'ID du collaborateur à retirer' })
+  async removeCollaborator(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.removeCollaborator(id, employeeId, user);
+  }
+
+  /**
+   * Synchroniser la liste des collaborateurs du dossier (remplace toute la liste).
+   */
+  @Put(':id/collaborators')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Synchroniser les collaborateurs du dossier' })
+  @ApiResponse({ status: 200, description: 'Collaborateurs synchronisés', type: DossierResponseDto })
+  @ApiParam({ name: 'id', description: 'ID du dossier' })
+  async syncCollaborators(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { employee_ids: number[] },
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.syncCollaborators(id, body?.employee_ids ?? [], user);
+  }
 
     @Post(':id/transitions/:transitionId/apply')
     @RequirePermissions('edit_dossier')
@@ -389,50 +444,9 @@ export class DossiersController {
       );
     }
   
-    @Post(':id/client-decision')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async clientDecision(
-      @Param('id') id: string,
-      @Body() dto: ClientDecisionDto,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.processClientDecision(+id, dto.decision as any, user);
-    }
-  
-    @Post(':id/judgment')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async registerJudgment(
-      @Param('id') id: string,
-      @Body() dto: JudgmentDto,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.registerJudgment(+id, dto.decision, dto.isSatisfied, user);
-    }  
 
-    @Post(':id/register/apeal/decision')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async registerAppealDecision(
-      @Param('id') id: string,
-      @Body() dto: JudgmentDto,
-      @CurrentUser() user: User
-    ) {
-      // return dto
-      return this.dossiersService.registerAppealDecision(+id, dto.decision, dto.isSatisfied, user);
-    }
 
-    @Post(':id/register/cassation/decision')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async registerCassationDecision(
-      @Param('id') id: string,
-      @Body() dto: JudgmentDto,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.registerCassationDecision(+id, dto.decision as any, dto.isSatisfied, user);
-    }
+
   
     @Post(':id/appeal')
     @Roles(UserRole.AVOCAT, UserRole.ADMIN)
@@ -454,16 +468,7 @@ export class DossiersController {
       return this.dossiersService.fileCassation(+id, user);
     }
   
-    @Post(':id/execute')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async executeDecision(
-      @Param('id') id: string,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.executeDecision(+id, user);
-    }
-  
+
   // Dans dossiers.controller.ts
   @Post(':id/close')
   @Roles(UserRole.AVOCAT, UserRole.ADMIN)
@@ -482,66 +487,70 @@ export class DossiersController {
     summary: 'Obtenir l\'historique des visites de stage',
     description: 'Retourne l\'historique complet des visites de stage pour un dossier donné, avec les sous-étapes, documents, diligences, audiences et factures associés à chaque visite.'
   })
-  @ApiParam({
-    name: 'dossierId',
-    description: 'ID du dossier',
-    type: Number,
-    example: 1
-  })
+  @ApiParam({ name: 'dossierId', description: 'ID du dossier', type: Number, example: 1 })
   async getStageVisits(@Param('dossierId', ParseIntPipe) dossierId: number) {
     return this.dossiersService.getStageVisits(dossierId);
   }
 
-
-  @Get(':dossierId/steps/current')
+  /**
+   * Liste simplifiée des StageVisit d'un dossier — pour les selects de formulaires.
+   * Retourne { data: [{ id, label, visitNumber, stageName, enteredAt, isActive, badge }] }
+   */
+  @Get(':dossierId/stage-visits/select')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({
-    summary: 'Obtenir l\'étape courante',
-    description: 'Retourne l\'étape actuellement en cours pour le dossier'
-  })
-  @ApiParam({
-    name: 'dossierId',
-    description: 'ID du dossier',
-    type: Number,
-    example: 1
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Étape courante récupérée avec succès',
-    type: Step
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Dossier non trouvé ou aucune étape en cours'
-  })
-  async getCurrentStep(@Param('dossierId', ParseIntPipe) dossierId: number) {
-    return this.dossiersService.getCurrentStep(dossierId);
+  @ApiOperation({ summary: 'Liste des visites d\'étape pour select (formulaires)' })
+  @ApiParam({ name: 'dossierId', description: 'ID du dossier', type: Number })
+  async getStageVisitsSelect(@Param('dossierId', ParseIntPipe) dossierId: number) {
+    return this.dossiersService.getStageVisitsForSelect(dossierId);
   }
 
-  @Get(':dossierId/steps/workflow')
+  /**
+   * Liste simplifiée des SubStageVisit d'une StageVisit — pour les selects de formulaires.
+   * Retourne { data: [{ id, label, subStageName, isCompleted, startedAt, badge }] }
+   */
+  @Get(':dossierId/stage-visits/:stageVisitId/sub-stage-visits')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({
-    summary: 'Obtenir le workflow complet du dossier',
-    description: 'Retourne toutes les étapes du dossier dans l\'ordre chronologique'
-  })
-  @ApiParam({
-    name: 'dossierId',
-    description: 'ID du dossier',
-    type: Number,
-    example: 1
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Workflow récupéré avec succès',
-    type: [Step]
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Dossier non trouvé'
-  })
-  async getWorkflow(@Param('dossierId', ParseIntPipe) dossierId: number) {
-    return this.dossiersService.getDossierWorkflow(dossierId);
+  @ApiOperation({ summary: 'Liste des visites de sous-étape pour select (formulaires)' })
+  @ApiParam({ name: 'dossierId', description: 'ID du dossier', type: Number })
+  @ApiParam({ name: 'stageVisitId', description: 'ID UUID de la visite d\'étape', type: String })
+  async getSubStageVisitsSelect(
+    @Param('dossierId', ParseIntPipe) dossierId: number,
+    @Param('stageVisitId') stageVisitId: string,
+  ) {
+    return this.dossiersService.getSubStageVisitsForSelect(dossierId, stageVisitId);
   }
+
+
+
+
+  /**
+   * Uploader un document et le lier directement à une visite de sous-étape de procédure.
+   *
+   * - dossier_id est résolu depuis le paramètre d'URL :id
+   * - customer_id est résolu depuis le client du dossier
+   * - sub_stage_visit_id / stage_visit_id sont optionnels : si fournis, le document
+   *   est ajouté à la table de jointure sub_stage_visit_documents / stage_visit_documents
+   */
+  @Post(':id/documents/upload')
+  @RequirePermissions('upload_document')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: 'Uploader un document lié à une sous-étape de procédure',
+    description: 'Crée un document et le lie automatiquement à la visite de sous-étape spécifiée (ou courante)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiResponse({ status: 201, description: 'Document créé et lié avec succès' })
+  @ApiResponse({ status: 404, description: 'Dossier ou type de document introuvable' })
+  async uploadDocumentToSubStage(
+    @Param('id', ParseIntPipe) dossierId: number,
+    @Body() dto: UploadDocumentToSubStageDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.uploadDocumentToSubStage(dossierId, dto, file, user);
+  }
+
+
 
 
 

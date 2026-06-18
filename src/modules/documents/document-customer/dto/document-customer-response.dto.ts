@@ -15,6 +15,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 export enum DocumentCustomerStatus {
   PENDING = 0,
   ACCEPTED = 1,
@@ -206,6 +207,14 @@ export class DocumentCustomerResponseDto {
   @Expose()
   @Transform(({ obj }) => obj.metadata?.audit_trail?.find((a: any) => a.action === 'rejected')?.details)
   rejection_reason?: string;
+
+  @ApiPropertyOptional()  
+  @Expose()
+  stage_visits?: any[];
+
+  @ApiPropertyOptional()  
+  @Expose()
+  sub_stage_visits?: any[];
 
   // Champs calculés
   @ApiProperty()

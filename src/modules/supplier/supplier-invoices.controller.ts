@@ -73,6 +73,22 @@ export class SupplierInvoicesController {
     return this.service.findOne(+id);
   }
 
+  @Patch(':id/approve')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('edit_supplier_invoice')
+  @ApiOperation({ summary: 'Approuver une facture fournisseur' })
+  approve(@Param('id') id: string) {
+    return this.service.approve(+id);
+  }
+
+  @Patch(':id/pay')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('edit_supplier_invoice')
+  @ApiOperation({ summary: 'Marquer une facture fournisseur comme payée' })
+  pay(@Param('id') id: string) {
+    return this.service.markAsPaid(+id);
+  }
+
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_supplier_invoice')

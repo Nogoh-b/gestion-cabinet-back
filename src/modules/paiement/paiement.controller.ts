@@ -9,9 +9,12 @@ import {
   Delete,
   Query,
   HttpStatus,
-  ParseUUIDPipe
+  ParseUUIDPipe,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiParam, ApiConsumes } from '@nestjs/swagger';
 import { PaiementService } from './paiement.service';
 import { CreatePaiementDto } from './dto/create-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
@@ -26,10 +29,15 @@ export class PaiementController {
   constructor(private readonly paiementService: PaiementService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Enregistrer un nouveau paiement' })
+  @UseInterceptors(FileInterceptor('preuve', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @ApiOperation({ summary: 'Enregistrer un nouveau paiement (avec preuve optionnelle)' })
   @ApiResponse({ status: HttpStatus.CREATED, type: PaiementResponseDto })
-  async create(@Body() createPaiementDto: CreatePaiementDto) {
-    return this.paiementService.createPaiement(createPaiementDto);
+  async create(
+    @Body() createPaiementDto: CreatePaiementDto,
+    @UploadedFile() preuve?: Express.Multer.File,
+  ) {
+    return this.paiementService.createPaiement(createPaiementDto, preuve);
   }
 
   @Get()

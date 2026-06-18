@@ -4,31 +4,10 @@ import { Employee } from 'src/modules/agencies/employee/entities/employee.entity
 
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
-
-
-
-
-
-
 import { PermissionsService } from 'src/modules/iam/permission/permission.service';
-
-
-
-
-
 import { RolePermission } from 'src/modules/iam/role-permission/entities/role-permission.entity';
-
-
-
-
-
-
-
 import { RolePermissionService } from 'src/modules/iam/role-permission/role-permission.service';
-
-
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
-
 // import { swaggerConfig } from './config/swagger.config';
 import { UserRolesService } from 'src/modules/iam/user-role/user-role.service';
 
@@ -42,7 +21,7 @@ import { forwardRef, Global, Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { JwtModule } from '@nestjs/jwt';
 
@@ -76,13 +55,20 @@ import { PaginationService as MyPaginationService, PaginationService } from './s
 import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
 import { SocketService } from './shared/services/socket/socket.service';
 import { MainGateway } from './shared/services/socket/main.gateway';
+import { TenantContext } from './tenant/tenant.context';
+import { TenantInterceptor } from './tenant/tenant.interceptor';
+import { TenantRepositoryPatch } from './tenant/tenant-repository.patch';
+import { TenantResolverMiddleware } from './tenant/tenant-resolver.middleware';
 import { ChatModule } from 'src/modules/chat/chat.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 import { EmailsModule } from './shared/emails/emails.module';
+import { MailTemplateModule } from 'src/modules/mail-template/mail-template.module';
 import { EmailService } from './shared/services/email/email.service copy';
 import { AuthToken } from './auth/entities/auth-token.entity';
 import { AuthTokenService } from './auth/auth-token.service';
 import { AiDatabaseModule } from './ai-database/ai-database.module';
+import { PlansModule } from 'src/modules/plans/plans.module';
+import { CoreNotificationsModule } from './notifications/core-notifications.module';
 
 
 
@@ -118,6 +104,7 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     // forwardRef(() => AgenciesModule),
     // forwardRef(() => SavingsAccountModule),
     EmailsModule,
+    MailTemplateModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
@@ -158,7 +145,8 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     forwardRef(() => NotificationModule) ,// Pour éviter les dépendances circulaires
     // forwardRef(() => NotificationModule),
     // SeedersModule,
-    ScheduleModule.forRoot(), AiDatabaseModule,
+    ScheduleModule.forRoot(), AiDatabaseModule, PlansModule,
+    CoreNotificationsModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [
@@ -190,6 +178,10 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     AuthTokenService,
     EmailService,
     MainGateway,
+    TenantContext,
+    TenantRepositoryPatch,
+    TenantResolverMiddleware,
+    { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
     TypeOrmModule
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
@@ -197,6 +189,7 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     ConfigModule,
     EmailService,
     EmailsModule,
+    MailTemplateModule,
     JwtModule,
     TypeOrmModule,
     JwtModule,
@@ -215,7 +208,9 @@ import { AiDatabaseModule } from './ai-database/ai-database.module';
     // JwtAuthGuard,
     KeyGeneratorService,
     SocketService,
-    MainGateway
+    MainGateway,
+    TenantContext,
+    CoreNotificationsModule,
   ],
 })
 export class CoreModule {}

@@ -1,7 +1,7 @@
 // dossier-referral-response.dto.ts
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { CommissionBasis } from '../entities/dossier-referral.entity';
+import { CommissionBasis, CommissionMode } from '../entities/dossier-referral.entity';
 
 export class DossierReferralResponseDto {
   @ApiProperty({ example: 1 })
@@ -15,6 +15,14 @@ export class DossierReferralResponseDto {
   @ApiProperty({ example: 10.0 })
   @Expose()
   commission_rate: number;
+
+  @ApiProperty({ enum: CommissionMode })
+  @Expose()
+  commission_mode: CommissionMode;
+
+  @ApiProperty({ example: 25000.0, required: false })
+  @Expose()
+  commission_amount: number;
 
   @ApiProperty({ enum: CommissionBasis })
   @Expose()

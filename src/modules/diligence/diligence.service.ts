@@ -3,21 +3,28 @@ import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { LessThan, MoreThan, Repository, In } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DossiersService } from '../dossiers/dossiers.service';
+
+
+
+
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
-import { CreateDiligenceDto } from './dto/create-diligence.dto';
-import { UpdateDiligenceDto } from './dto/update-diligence.dto';
-import { DiligenceResponseDto } from './dto/response-diligence.dto';
-import { Diligence, DiligenceStatus, DiligencePriority } from './entities/diligence.entity';
-import { UsersService } from '../iam/user/user.service';
+import { DossiersService } from '../dossiers/dossiers.service';
 import { FindingsService } from '../finding/finding.service';
 import { User } from '../iam/user/entities/user.entity';
-import { StepsService } from '../dossiers/step.service';
-import { SubStage } from '../procedure/entities/sub-stage.entity';
-import { Stage } from '../procedure/entities/stage.entity';
+import { UsersService } from '../iam/user/user.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
+import { CreateDiligenceDto } from './dto/create-diligence.dto';
+import { DiligenceResponseDto } from './dto/response-diligence.dto';
+import { UpdateDiligenceDto } from './dto/update-diligence.dto';
+import { Diligence, DiligenceStatus, DiligencePriority } from './entities/diligence.entity';
+
+
+
+
+
+
 
 @Injectable()
 export class DiligencesService extends BaseServiceV1<Diligence> {
@@ -31,8 +38,8 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     private readonly documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => FindingsService))
     private readonly findingsService: FindingsService,
-    @Inject(forwardRef(() => StepsService))
-    private stepsService: StepsService,
+    // @Inject(forwardRef(() => StepsService))
+    // private stepsService: StepsService,
     
   ) {
     console.log(forwardRef)
@@ -55,6 +62,7 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    * ➕ Création d'une diligence
    */
   async create(dto: CreateDiligenceDto): Promise<DiligenceResponseDto> {
+    console.log('Création de diligence avec les données suivantes:', dto);
     // Vérifier que le dossier existe
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     if (!dossier) {
@@ -78,31 +86,24 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     }
     
     let procedureInstance: ProcedureInstance | any = null;
-    let subStage: SubStage | null = null;
-    let stage: Stage | null = null;
 
     if (dossier.procedureInstance) {
-      // Sinon, prendre l'instance active du dossier
-      procedureInstance =  dossier.procedureInstance;
+      procedureInstance = dossier.procedureInstance;
     }
 
+    // ── Résolution du sub_stage_visit_id et stage_visit_id ───────────────────
+    // Priorité : valeurs explicitement passées dans le DTO
+    // Fallback  : détection automatique depuis la visite courante (sans lever d'exception)
+    let subStageVisitId: string | undefined = dto.sub_stage_visit_id;
+    let stageVisitId: string | undefined = dto.stage_visit_id;
 
-    // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
-    let subStageId 
-    if (procedureInstance && procedureInstance.currentVisit) {
-      // Option: prendre la première sous-étape obligatoire non complétée
-      const currentVisit = procedureInstance.currentVisit;
-      const completedSubStages = procedureInstance.completedSubStages || [];
-      subStageId = currentVisit.currentSubStageVisitId
-            
-      console.log('SubStage trouvé pour la diligence :', (subStageId));
-      if (!subStageId) {
-        throw new ConflictException(
-          `Aucun subStage en cours (in_progress) trouvé pour le stage ${currentVisit.id}`
-        );
-      }
-      // stage = currentVisit;
+    if (!subStageVisitId && procedureInstance?.currentVisit) {
+      subStageVisitId = procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
     }
+    if (!stageVisitId && procedureInstance?.currentVisit) {
+      stageVisitId = procedureInstance.currentVisit.id ?? undefined;
+    }
+
     // Création de l'entité
     const diligence = this.repository.create({
       title: dto.title,
@@ -117,19 +118,21 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       dossier: { id: dossier.id },
       assigned_lawyer: dto.assigned_lawyer_id ? { id: dto.assigned_lawyer_id } : undefined,
       status: DiligenceStatus.DRAFT,
-      // sub_stage_id: (subStage as any)?.id,
-      sub_stage_visit_id: subStageId,
-      stageVisit_id: procedureInstance.currentVisit?.id,
-      procedure_instance_id: procedureInstance?.id
+      sub_stage_visit_id: subStageVisitId,
+      stageVisit_id: stageVisitId,
+      procedure_instance_id: procedureInstance?.id,
     });
+    // Champ transient consommé par le DiligenceSubscriber.
+    (diligence as any).notify_client = !!dto.notify_client;
+    console.log('Diligence créée avec les données suivantes:', diligence);
 
       // Récupérer l'étape courante
-    const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
+    // const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
     
-    // Lier la diligence à l'étape (Many-to-One)
-    if (currentStep) {
-      await this.stepsService.syncActionWithStep('diligence', diligence.id, currentStep.id);
-    }
+    // // Lier la diligence à l'étape (Many-to-One)
+    // if (currentStep) {
+    //   await this.stepsService.syncActionWithStep('diligence', diligence.id, currentStep.id);
+    // }
     
 
     return plainToInstance(DiligenceResponseDto,await this.repository.save(diligence));
@@ -220,6 +223,9 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       client_reference: dto.client_reference ?? diligence.client_reference,
       status : dto.status ?? diligence.status
     });
+    if (dto.notify_client !== undefined) {
+      (diligence as any).notify_client = !!dto.notify_client;
+    }
 
     return this.repository.save(diligence);
   }

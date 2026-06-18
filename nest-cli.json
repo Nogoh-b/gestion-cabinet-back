@@ -4,7 +4,7 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "assets": ["uploads/**/*", "core/shared/emails/templates/**/*"  ],
-    "watchAssets": true
+    "assets": ["core/shared/emails/templates/**/*"],
+    "watchAssets": false
   }
 }

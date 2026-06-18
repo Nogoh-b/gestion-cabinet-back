@@ -5,7 +5,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
 
+
 import { DocumentCustomerStatus } from '../entities/document-customer.entity';
+
 
 
 
@@ -79,6 +81,10 @@ export class CreateDocumentCustomerDto {
   @IsJSON()
   metadata?: string;
 
+  @ApiPropertyOptional({ description: 'ID de la sous-étape de visite associée' })
+  @IsOptional()
+  sub_stage_visit_id?: any;
+
   @ApiPropertyOptional({ description: 'Mode strict (lève des exceptions)' })
   @IsOptional()
   @IsBoolean()
@@ -87,4 +93,14 @@ export class CreateDocumentCustomerDto {
 
   @ApiProperty({ type: 'string', format: 'binary', description: 'Fichier à uploader' })
   file: Express.Multer.File;
+
+  /** Transient — case « Notifier le client » du modal. */
+  @ApiPropertyOptional({
+    description: "Notifier le client par e-mail à l'upload du document",
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  notify_client?: boolean;
 }

@@ -1,4 +1,5 @@
 import * as bcrypt from 'bcrypt';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { plainToInstance } from 'class-transformer';
 import { UserRole } from 'src/core/enums/user-role.enum';
 
@@ -21,6 +22,9 @@ import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
+import { MailTemplateService } from 'src/modules/mail-template/mail-template.service';
+import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 // import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
@@ -37,9 +41,10 @@ export class EmployeeService  extends BaseServiceV1<Employee> {
     // private mailerService: EmailService,
     private userService: UsersService,
     private mailService: MailService,
+    private readonly mailTemplateService: MailTemplateService,
+    private readonly planQuotaService: PlanQuotaService,
     protected readonly paginationService: PaginationServiceV1,
   ) {
-
     super(employeeRepository, paginationService);
   }
 /**
@@ -93,6 +98,13 @@ async createEmployee(
   dto: CreateUserDto,
   is_strict = true,
 ): Promise<EmployeeResponseDto> {
+  // ── Vérification quota plan ────────────────────────────────────────────
+  const tenantId = getCurrentTenantId();
+  if (tenantId) {
+    const currentCount = await this.employeeRepository.count();
+    await this.planQuotaService.checkLimit(tenantId, 'employees', currentCount);
+  }
+
   // Vérification de la branche
   const branch = await this.branchRepository.findOne({
     where: { id: dto.branch_id, status: 1 },
@@ -103,8 +115,8 @@ async createEmployee(
   }
 
   // Vérification des doublons d'email
-  const existingUser = await this.userRepo.findOne({
-    where: { email: dto.email }
+  const existingUser = await this.repository.findOne({
+    where: { user: { email: dto.email } }
   });
 
   if (existingUser && is_strict) {
@@ -128,11 +140,11 @@ async createEmployee(
     // isActive: true,
   });
 
-  const savedUser = await this.userRepo.save(user); 
+  const savedUser = await this.userRepo.save(user);
 
   // Création de l'employé avec tous les champs
   const employeeData: Partial<Employee> = {
-    user: savedUser[0],
+    user: savedUser,
     id: savedUser.id,  // Utiliser le même ID !
     branch: branch || undefined,
     position: dto.position,
@@ -143,6 +155,7 @@ async createEmployee(
     bar_association_city: dto.bar_association_city,
     years_of_experience: dto.years_of_experience,
     hourly_rate: dto.hourly_rate,
+    salary: dto.salary,
     is_available: dto.is_available ?? true,
     max_dossiers: dto.max_dossiers ?? 50,
     bio: dto.bio,
@@ -159,14 +172,44 @@ async createEmployee(
   const employee = await this.employeeRepository.save(
     this.employeeRepository.create(employeeData)
   );
-  this.findOneV1(employee.id)
-  const e : any = await this.findOneV1(employee.id, ['user', 'branch', 'managed_dossiers', 'collaborating_dossiers'], Employee)
-  // e.email = 'nogohbrice@gmail.com'
-  // console.log('merdddddddddde1 ', e)
 
-  await this.mailService.sendActivationEmail(e,'Okkk')
-  await this.mailService.sendResetPasswordEmail(e,'Okkk')
-  await this.mailService.sendWelcomeWithPasswordEmail(e,'1234567890')
+  // Envoi des identifiants de connexion au nouveau collaborateur avec son
+  // mot de passe temporaire RÉEL (à changer à la première connexion).
+  // Template DB `employee_credentials` en priorité, repli sur le template fichier.
+  // Un échec d'envoi ne doit pas bloquer la création du collaborateur.
+  const frontendUrl = (process.env.APP_FRONTEND_URL ?? '').replace(/\/$/, '');
+  const loginUrl = frontendUrl ? `${frontendUrl}/auth/login` : '';
+  const recipientEmail = savedUser.email;
+  const firstName = savedUser.first_name ?? '';
+  try {
+    const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('employee_credentials', {
+      firstName,
+      email: recipientEmail,
+      tempPassword: plain_password,
+      loginUrl,
+    });
+    await this.mailService.sendDirect({
+      to: recipientEmail,
+      subject: rendered.subject,
+      html: rendered.html,
+    });
+  } catch (mailErr) {
+    // Repli : template fichier existant (welcome-password)
+    try {
+      await this.mailService.sendWelcomeWithPasswordEmail({
+        ...employee,
+        user: savedUser,
+        email: recipientEmail,
+        first_name: firstName,
+        last_name: savedUser.last_name ?? '',
+      }, plain_password);
+    } catch (fallbackErr) {
+      console.error(
+        `Échec envoi email identifiants employé ${employee.id} (${recipientEmail}):`,
+        (fallbackErr as Error)?.message ?? fallbackErr,
+      );
+    }
+  }
 
   return plainToInstance(EmployeeResponseDto, employee);
 }
@@ -192,7 +235,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
   async findAllEmployees(
     branch_id: number = 0,
   ): Promise<EmployeeResponseDto[]> {
-    const employees = await this.employeeRepository
+    let qb = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('employee.collaborating_dossiers', 'collaborating_dossiers')
@@ -209,8 +252,10 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
         branch_id != 0 ? 'branch.id = :branch_id' : '',
         { branch_id },
       )
-      .where('user.status = 1')
-      .getMany();
+      .where('user.status = 1');
+
+    qb = addTenantCondition(qb, 'employee');
+    const employees = await qb.getMany();
     return plainToInstance(EmployeeResponseDto, employees);
   }
 
@@ -218,7 +263,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     username: string,
     is_strict = true,
   ): Promise<EmployeeResponseDto> {
-    const employee = await this.employeeRepository
+    let qb = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('user.customer', 'customer')
@@ -230,8 +275,10 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
       .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
       .leftJoinAndSelect('employee.branch', 'branch')
       .where('user.username = :username', { username })
-      .andWhere('user.status = 1')
-      .getOne();
+      .andWhere('user.status = 1');
+
+    qb = addTenantCondition(qb, 'employee');
+    const employee = await qb.getOne();
 
     if (!employee && is_strict) {
       throw new NotFoundException(
@@ -245,7 +292,7 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     email: string,
     is_strict = true,
   ): Promise<EmployeeResponseDto> {
-    const employee = await this.employeeRepository
+    let qb = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('user.customer', 'customer')
@@ -257,8 +304,16 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
       .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
       .leftJoinAndSelect('employee.branch', 'branch')
       .where('user.email = :email', { email })
-      .andWhere('user.status = 1')
-      .getOne();
+      .andWhere('user.status = 1');
+
+    // ── Filtre tenant obligatoire ─────────────────────────────────────────
+    // Les QueryBuilders ne passent pas par TenantRepositoryPatch (qui ne couvre
+    // que les méthodes find* du Repository). addTenantCondition injecte
+    // WHERE employee.tenant_id = <currentTenantId> en lisant AsyncLocalStorage.
+    qb = addTenantCondition(qb, 'employee');
+    // ─────────────────────────────────────────────────────────────────────
+
+    const employee = await qb.getOne();
 
     if (!employee && is_strict) {
       throw new NotFoundException(
@@ -339,6 +394,28 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     <p>Par mesure de sécurité, merci de le changer dès votre prochaine connexion.</p>
     <p>— Support</p>`,
       });*/
+
+    const frontendUrl = (process.env.APP_FRONTEND_URL ?? '').replace(/\/$/, '');
+    const loginUrl = frontendUrl ? `${frontendUrl}/auth/login` : '';
+    try {
+      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('employee_credentials', {
+        firstName: (user as any).first_name ?? '',
+        email: user.email,
+        tempPassword: plain_password,
+        loginUrl,
+      });
+      await this.mailService.sendDirect({
+        to: user.email,
+        subject: rendered.subject || 'Votre nouveau mot de passe',
+        html: rendered.html,
+      });
+    } catch {
+      await this.mailService.sendDirect({
+        to: user.email,
+        subject: 'Votre nouveau mot de passe',
+        html,
+      });
+    }
 
     // 6) Retour clair en français
     return { message: 'Mot de passe réinitialisé et envoyé par email.' };

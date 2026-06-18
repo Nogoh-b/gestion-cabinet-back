@@ -1,32 +1,108 @@
-import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
-import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
+import * as fs from 'fs';
+import * as path from 'path';
+import { DataSource, Repository } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
+import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
+import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
+import { isSharedEntity } from '../tenant/tenant.decorator';
+import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
-import { AskQuestionDto } from './dto/ask-question.dto';
+import { ConversationManagerService } from './conversation-manager.service';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
+import { AskQuestionDto, parseReferencedContext, ReferencedEntityContext } from './dto/ask-question.dto';
+import { GenericWriteService } from './generic-write.service';
+import { IntentDetectionService } from './intent-detection.service';
+import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
+import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
-import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
-import { ConversationManagerService } from './conversation-manager.service';
-import { IntentDetectionService } from './intent-detection.service';
-import { GenericWriteService } from './generic-write.service';
-import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
 import { AmbiguityException } from './write/ambiguity.exception';
+import { EntityIdRequiredException } from './write/entity-id-required.exception';
+import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
+
+
+
+type IntentMode = 'auto' | 'read' | 'write' | 'chat';
+
+interface DocumentContextItem {
+  id?: number;
+  name: string;
+  type?: string;
+  size?: number;
+  source: 'upload' | 'system';
+  content: string;
+  truncated: boolean;
+  error?: string;
+}
+
+interface RequestContext {
+  enrichedQuestion: string;
+  fileInfo?: any;
+  documentContext: DocumentContextItem[];
+  referenced: ReferencedEntityContext[];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
   private readonly logger = new Logger(AiDatabaseService.name);
   private llm!: ChatOpenAI;
   private schemaCache: Map<string, { schema: string; timestamp: number }> = new Map();
+  private schemaJsonCache: Map<string, { value: DatabaseSchema; timestamp: number }> = new Map();
   private relationshipsCache: Map<string, any> = new Map();
   private columnLabelsCache: Map<string, any> = new Map();
+  /**
+   * Plans WRITE en attente d'un identifiant (EntityIdRequiredException) gardés
+   * en mémoire par conversationId, pour ne pas « perdre le fil » quand l'IA
+   * demande à l'utilisateur de préciser quelle entité elle doit modifier.
+   * Au message suivant dans la même conversation, on tente d'extraire un ID
+   * numérique de la réponse de l'utilisateur et de relancer le plan complété.
+   */
+  private pendingEntityIdClarifications: Map<string, {
+    plan: WritePlan; operationIndex: number; entity: string; userId: string; createdAt: number;
+  }> = new Map();
+  private readonly PENDING_CLARIFICATION_TTL = 10 * 60 * 1000; // 10 minutes
   private readonly CACHE_TTL = 3600000; // 1 heure
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
   private readonly MAX_CHARS = 180000;
+  private readonly MAX_HISTORY_MESSAGES = 8;
+  private readonly MAX_HISTORY_TOKENS = 9000;
+  private readonly MAX_FILE_CONTEXT_CHARS = 12000;
+  private readonly MAX_DOCUMENT_CONTEXT_CHARS = 16000;
+  private readonly MAX_SYSTEM_DOCUMENTS = 5;
   private schemaInitialized = false;
   private readonly SCHEMA_CACHE_KEY = 'database_schema_context';
   private schemaLoaded = false;
@@ -34,6 +110,8 @@ export class AiDatabaseService implements OnModuleInit {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
+    @InjectRepository(DocumentCustomer)
+    private readonly documentRepository: Repository<DocumentCustomer>,
     private readonly schemaMetadata: SchemaMetadataService,
     private readonly sqlValidator: SqlValidatorService,
     private readonly intentDetectionService: IntentDetectionService,
@@ -85,7 +163,8 @@ export class AiDatabaseService implements OnModuleInit {
     SELECT * FROM dossiers WHERE reference = 'ABC123' LIMIT 50;
     \`\`\`
 
-    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
+    Ne réponds PAS avec du texte explicatif. Juste le bloc SQL et parsable. la requete doit être conforme au schéma fourni et respecter les règles énoncées.`;
+   ;
         
     this.schemaLoaded = true;
     return this.cachedSystemPrompt
@@ -119,72 +198,118 @@ export class AiDatabaseService implements OnModuleInit {
   /**
    * ✅ NOUVELLE MÉTHODE : Pose une question dans une conversation spécifique
    */
-  async askQuestionWithSession(conversationId: string, question: string): Promise<string> {
+  async askQuestionWithSession(
+    conversationId: string,
+    question: string,
+    schema?: string,
+    tables: string[] = [],
+  ): Promise<string> {
     // 1. Vérifier que la conversation existe
-    let conversation = await this.conversationManager.getConversation(conversationId);
+    const conversation = await this.conversationManager.getConversation(conversationId);
     if (!conversation) {
       throw new Error(`Conversation ${conversationId} non trouvée`);
     }
-    
-    // 2. Vérifier le contexte système
-    const hasSystemMessage = await this.conversationManager.hasSystemMessage(conversationId);
-    if (!hasSystemMessage && this.cachedSystemPrompt) {
-      Logger.warn(`⚠️ Conversation ${conversationId} sans message système, ajout du prompt préchargé...`);
-      await this.conversationManager.addSystemMessage(conversationId, this.cachedSystemPrompt);
-    }
-    
-    // 3. Ajouter la question
-    await this.conversationManager.addUserMessage(conversationId, question);
-    
-    // 4. Récupérer et envoyer l'historique
-    const history = await this.conversationManager.getFullHistory(conversationId);
-    const response = await this.llm.invoke(history);
-    let content = response.content as string;
-    
-    // 🔍 LOG CRITIQUE
-    this.logger.log(`📝 Réponse brute (200 premiers chars): ${content.substring(0, 200)}`);
-    
-    // 5. Extraction SQL avec fallback amélioré
-    let sqlQuery = this.extractSQL(content);
-    
-    if (!sqlQuery) {
-      this.logger.warn(`⚠️ Aucun bloc SQL trouvé, tentative avec regex plus permissif...`);
-      sqlQuery = this.extractSQLRelaxed(content);
-    }
-    
-    if (!sqlQuery && this.isNoResultsResponse(content)) {
-      // DeepSeek a répondu qu'il n'y a pas de résultats
-      sqlQuery = `-- Aucun résultat trouvé pour: ${question}\nSELECT NULL AS message WHERE 1=0;`;
-      this.logger.log(`ℹ️ Réponse "aucun résultat" détectée, SQL généré automatiquement`);
-    } else if (!sqlQuery) {
-      this.logger.warn(`⚠️ Pas de SQL trouvé, demande de reformatage...`);
-      sqlQuery = await this.askForSQLOnly(question);
-    }
-    
-    // 6. Vérifier que c'est bien une requête SELECT
-    if (sqlQuery) {
-      const normalizedLower = sqlQuery.toLowerCase().trim();
-      if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
-        this.logger.error(`❌ Requête non SELECT détectée: ${sqlQuery.substring(0, 100)}`);
-        sqlQuery = null;
-      }
-    }
-    
-    // 7. Dernier recours : générer une requête de recherche basée sur la question
-    if (!sqlQuery) {
-      sqlQuery = this.generateFallbackQuery(question);
-      this.logger.warn(`⚠️ Utilisation du fallback final: ${sqlQuery}`);
-    }
-    
-    // 8. Sauvegarder la réponse originale (pour debug)
-    await this.conversationManager.addAssistantMessage(conversationId, content);
-    
-    return sqlQuery;
+
+    return this.generateSqlForConversation(conversationId, question, schema, tables);
   }
 
   /**
   * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
   */
+  private async generateSqlForConversation(
+    conversationId: string,
+    question: string,
+    schema?: string,
+    tables: string[] = [],
+  ): Promise<string> {
+    const schemaToUse = schema || (await this.getCompleteSchema(
+      tables.length ? tables : await this.detectRelevantTables(question),
+    ));
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    const systemPrompt = this.buildReadSystemPrompt(schemaToUse, tenantId);
+
+    await this.conversationManager.addUserMessage(conversationId, question);
+
+    const recentHistory = await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
+      maxMessages: this.MAX_HISTORY_MESSAGES,
+      maxTokens: this.MAX_HISTORY_TOKENS,
+    });
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...recentHistory,
+    ];
+    const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
+    this.logger.log(`Tokens estimes prompt SQL: ${estimatedTokens} | ${messages.length} messages | tables=${tables.join(',') || 'auto'}`);
+
+    const response = await this.llm.invoke(messages);
+    const content = response.content as string;
+    this.logger.log(`Reponse SQL brute (200 chars): ${content.substring(0, 200)}`);
+
+    let sqlQuery = this.extractSQL(content) || this.extractSQLRelaxed(content);
+
+    if (!sqlQuery && this.isNoResultsResponse(content)) {
+      sqlQuery = `-- Aucun resultat trouve pour: ${question}\nSELECT NULL AS message WHERE 1=0`;
+    } else if (!sqlQuery) {
+      sqlQuery = (await this.askForSQLOnly(question, schemaToUse)) || '';
+    }
+
+    if (sqlQuery) {
+      const normalizedLower = sqlQuery.toLowerCase().trim();
+      if (!normalizedLower.startsWith('select') && !normalizedLower.includes('--')) {
+        this.logger.error(`Requete non SELECT detectee: ${sqlQuery.substring(0, 100)}`);
+        sqlQuery = '';
+      }
+    }
+
+    if (!sqlQuery) {
+      sqlQuery = this.generateFallbackQuery(question);
+      this.logger.warn(`Fallback SQL final utilise: ${sqlQuery}`);
+    }
+
+    // Normaliser les fonctions de date (CURDATE→CURDATE(), NOW→NOW(), etc.) dès la
+    // source : ainsi TOUT chemin d'exécution en aval reçoit un SQL MySQL valide,
+    // même si un appelant oubliait de passer par prepareReadQuery().
+    sqlQuery = this.replaceSpecialValues(sqlQuery);
+
+    return sqlQuery;
+  }
+
+  private buildReadSystemPrompt(schema: string, tenantId: number | null): string {
+    const prompt = `Tu es un expert SQL pour une base de donnees juridique.
+
+Voici le schema utile de la base :
+
+${schema}
+
+REGLES ABSOLUES :
+1. Ignore toujours les colonnes deleted_at, deleted_by, deleted_date
+2. Ajoute systematiquement LIMIT ${this.MAX_RESULTS}
+3. Utilise des alias courts
+4. Ne genere JAMAIS de DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
+5. Toutes les valeurs doivent etre en dur, sans placeholders (:id, ?, @param)
+6. Si des documents sont fournis dans la question, utilise leur contenu uniquement comme contexte d'analyse, pas comme nom de table
+7. ⚠️ IMPORTANT : Utilise EXACTEMENT les noms de tables du schema ci-dessus. Ne devine JAMAIS les noms de tables. Par exemple, la table "document_customer" s'appelle EXACTEMENT "document_customer", pas "document" ni "documents".
+8. Base MySQL : pour la date du jour utilise CURDATE() (TOUJOURS avec parenthèses), pour l'instant présent NOW(). N'écris JAMAIS CURDATE, CURRENT_DATE, NOW ni SYSDATE sans parenthèses, sinon MySQL les prend pour des colonnes. Ex: WHERE a.audience_date >= CURDATE().
+9. N'utilise QUE de vraies colonnes des tables ci-dessus, JAMAIS des champs calculés/libellés (ex: "Est à venir", "Statut libellé"). Pour les audiences "à venir", compare audience_date >= CURDATE() (et status = 0 si pertinent).
+10. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le schéma ci-dessus. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le tableau du schéma.
+11. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes listées ci-dessus, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
+
+FORMAT OBLIGATOIRE :
+Reponds uniquement avec un bloc SQL parsable :
+
+\`\`\`sql
+SELECT * FROM dossiers d LIMIT ${this.MAX_RESULTS};
+\`\`\``;
+
+    if (!tenantId || tenantId === 1) return prompt;
+
+    return `${prompt}
+
+REGLE TENANT OBLIGATOIRE :
+Cette session appartient au cabinet tenant_id = ${tenantId}.
+Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
+  }
+
   private isNoResultsResponse(content: string): boolean {
     const lower = content.toLowerCase();
     const noResultPatterns = [
@@ -223,18 +348,19 @@ export class AiDatabaseService implements OnModuleInit {
   /**
   * Demande explicitement du SQL (avec meilleur prompt)
   */
-  private async askForSQLOnly(originalQuestion: string): Promise<string | null> {
-    const reformatPrompt = `La base de données contient une table "dossiers" avec les colonnes: id, reference, numero_dossier, titre, statut, created_at.
+  private async askForSQLOnly(originalQuestion: string, schema?: string): Promise<string | null> {
+    // ⚠️ Ne JAMAIS hardcoder un schéma (ex: "dossiers") : pour toute autre question
+    // cela produit du SQL faux → 0 résultat. On s'appuie sur le schéma réel fourni.
+    const schemaBlock = schema ? `Voici le schéma des tables disponibles :\n${schema}\n\n` : '';
+    const reformatPrompt = `${schemaBlock}La question est : "${originalQuestion}"
 
-  La question est: "${originalQuestion}"
-
-  Génère une requête SELECT pour répondre à cette question.
-  Si la valeur recherchée est un numéro de dossier, cherche dans les colonnes "reference" OU "numero_dossier".
+  Génère UNE requête SQL SELECT (MySQL) qui répond à cette question, en te basant STRICTEMENT sur le schéma ci-dessus.
 
   RÈGLES:
-  - UNIQUEMENT une requête SELECT
+  - UNIQUEMENT une requête SELECT, dans un bloc \`\`\`sql
+  - Utilise EXACTEMENT les noms de tables et colonnes du schéma
   - Pas d'explication, pas de texte
-  - Ajoute LIMIT 10
+  - Ajoute LIMIT ${this.MAX_RESULTS}
 
   Requête SQL:`;
 
@@ -262,22 +388,42 @@ export class AiDatabaseService implements OnModuleInit {
   * Extrait le contenu textuel d'un fichier uploadé
   */
   private async extractFileContent(file: Express.Multer.File): Promise<string> {
-    const { mimetype, buffer, originalname } = file;
+    return this.extractBufferContent(file.buffer, file.mimetype, file.originalname);
+  }
 
-    // Fichiers texte / JSON / CSV
-    if (mimetype === 'text/plain' || mimetype === 'text/csv' || mimetype === 'application/json') {
+
+  // ── Endpoint de confirmation ──────────────────────────────
+  private async extractBufferContent(buffer: Buffer, mimetype = '', filename = ''): Promise<string> {
+    const mime = (mimetype || '').toLowerCase();
+    const ext = path.extname(filename || '').toLowerCase();
+
+    if (
+      mime.startsWith('text/') ||
+      ['.txt', '.csv', '.json', '.html', '.htm', '.md', '.xml'].includes(ext) ||
+      ['application/json', 'application/xml', 'application/xhtml+xml'].includes(mime)
+    ) {
       return buffer.toString('utf-8');
     }
 
-    // PDF : utiliser pdf-parse
-    if (mimetype === 'application/pdf') {
+    if (mime === 'application/pdf' || ext === '.pdf') {
       const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
-      return data.text;
+      const text = (data.text || '').trim();
+      // PDF scanné (images sans couche texte) → pdf-parse ne renvoie (quasi) rien.
+      // On le signale honnêtement au lieu de laisser croire à un document vide :
+      // la réponse sera « ce document est un scan, OCR requis » plutôt qu'une
+      // hallucination ou un repli silencieux sur les seules métadonnées.
+      if (text.length < 20) {
+        return `[Document PDF "${filename || 'sans nom'}" sans texte extractible : il s'agit probablement d'un document scanné (images). Sa lecture nécessite un OCR, non activé sur le serveur.]`;
+      }
+      return text;
     }
 
-    // Excel : utiliser xlsx
-    if (mimetype.includes('spreadsheetml') || mimetype.includes('ms-excel')) {
+    if (
+      mime.includes('spreadsheetml') ||
+      mime.includes('ms-excel') ||
+      ['.xls', '.xlsx'].includes(ext)
+    ) {
       const XLSX = require('xlsx');
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       let text = '';
@@ -289,11 +435,29 @@ export class AiDatabaseService implements OnModuleInit {
       return text;
     }
 
-    throw new Error(`Type de fichier non supporté: ${mimetype}`);
+    if (
+      mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      ext === '.docx'
+    ) {
+      return this.extractDocxText(buffer);
+    }
+
+    if (mime.startsWith('image/')) {
+      return `[Image ${filename || 'sans nom'}: analyse OCR non disponible cote serveur. Ajoutez une description ou joignez un PDF/texte si le contenu doit etre lu.]`;
+    }
+
+    throw new Error(`Type de fichier non supporte: ${mimetype || ext || 'inconnu'}`);
   }
 
+  private async extractDocxText(buffer: Buffer): Promise<string> {
+    try {
+      const mammoth = require('mammoth');
+      return mammoth.extractRawText({ buffer }).then((result: any) => result.value || '');
+    } catch {
+      throw new Error('Lecture DOCX indisponible: dependance mammoth absente');
+    }
+  }
 
-  // ── Endpoint de confirmation ──────────────────────────────
   async confirmWrite(
     pendingIntent: WritePlan,
     userId: string
@@ -373,6 +537,10 @@ export class AiDatabaseService implements OnModuleInit {
       return `🔍 ${intro}Veuillez choisir parmi les ${n} option(s) disponible(s) ci-dessous.`;
     }
 
+    if (n === 0) {
+      return `🔍 ${intro}Aucune correspondance trouvée pour **« ${error.searchTerm} »**. Veuillez vérifier l'orthographe ou fournir plus de détails.`;
+    }
+
     return `🔍 ${intro}Plusieurs correspondances ont été trouvées pour **« ${error.searchTerm} »** (${n} résultat(s)). Veuillez sélectionner le bon :`;
   }
 
@@ -444,33 +612,64 @@ export class AiDatabaseService implements OnModuleInit {
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
 
+    // ── 0. Reprise d'un plan WRITE en attente d'identifiant ───────────────────
+    const resumed = this.tryConsumePendingEntityIdClarification(dto.conversationId, dto.question);
+    if (resumed) {
+      const conversationId = dto.conversationId!;
+      await this.conversationManager.addUserMessage(conversationId, dto.question);
+      try {
+        const results = await this.genericWriteService.executePlan(resumed.plan, resumed.userId);
+        const analysis = this.formatPlanResults(results);
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+        return {
+          success: true, question: dto.question, analysis, results,
+          conversationId, executionTimeMs: Date.now() - startTime,
+        };
+      } catch (error: any) {
+        if (error instanceof AmbiguityException) {
+          const message = this.buildAmbiguityMessage(error);
+          await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+          return {
+            success: true, question: dto.question, analysis: message,
+            pendingWritePlan: resumed.plan, requiresAmbiguityResolution: true,
+            ambiguityContext: {
+              entity: error.entity, fieldName: error.fieldName, searchTerm: error.searchTerm,
+              candidates: error.candidates, operationIndex: error.operationIndex,
+              parentEntity: error.parentEntity, allowOther: true,
+              otherLabel: this.getFieldLabel(error.fieldName),
+            },
+            conversationId, executionTimeMs: Date.now() - startTime,
+          };
+        }
+        if (error instanceof EntityIdRequiredException) {
+          this.rememberPendingEntityIdClarification(
+            conversationId, resumed.plan, error.operationIndex, error.entity, resumed.userId,
+          );
+          const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
+          await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+          return {
+            success: true, question: dto.question, analysis: message,
+            conversationId, executionTimeMs: Date.now() - startTime,
+          };
+        }
+        const errMsg = `❌ Erreur lors de l'exécution: ${error.message}`;
+        await this.conversationManager.addAssistantMessage(conversationId, errMsg, undefined);
+        return {
+          success: false, question: dto.question, analysis: errMsg,
+          conversationId, executionTimeMs: Date.now() - startTime, error: error.message,
+        };
+      }
+    }
+
     // ── 1. Enrichissement par fichier (AVANT la détection d'intention) ────────
     let enrichedQuestion = dto.question;
     let fileInfo: any;
 
-    if (file) {
-      this.logger.log(`📎 Fichier reçu: ${file.originalname} (${file.mimetype}, ${file.size} octets)`);
-      try {
-        const fileContent = await this.extractFileContent(file);
-        const truncated = fileContent.substring(0, 5000);
-        enrichedQuestion = `${dto.question}
+    // ── 1. Contexte enrichi : mentions, fichiers et documents système ────────
+    const requestContext = await this.buildRequestContext(dto, file);
+    enrichedQuestion = requestContext.enrichedQuestion;
+    fileInfo = requestContext.fileInfo ?? fileInfo;
 
---- CONTENU DU FICHIER: ${file.originalname} ---
-${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractères]' : ''}
---- FIN DU FICHIER ---`;
-        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
-        this.logger.log(`✅ Contenu extrait du fichier (${fileContent.length} caractères)`);
-      } catch (fileError) {
-        this.logger.warn(`⚠️ Impossible de lire le fichier: ${fileError.message}`);
-        enrichedQuestion += `\n\n[Note: Le fichier ${file.originalname} n'a pas pu être lu: ${fileError.message}]`;
-        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype, error: fileError.message };
-      }
-    }
-
-    // ── 1bis. Mode "génération de texte pure" — court-circuite la détection ──
-    // Utilisé par la modale IA des éditeurs (corps d'email, notes…). Aucune
-    // opération en base, juste appel direct au LLM avec la question complète
-    // (le prompt côté front spécifie déjà le format de sortie HTML/texte).
     if (dto.textGenerationOnly) {
       this.logger.log(`✍️ Mode textGenerationOnly — détection d'intention désactivée`);
       try {
@@ -503,22 +702,43 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     }
 
     // ── 2. Détection d'intention sur la question enrichie ────────────────────
-    const allTables = this.schemaMetadata.getAllVisibleTables();
-    const schema = await this.getCompleteSchema(allTables);
-
-    const intentResult = await this.intentDetectionService.detectIntent(
-      enrichedQuestion,
-      this.llm,
-      schema,
-    );
+    const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables);
+    if (requestContext.documentContext.length && !relevantTables.includes('document_customer')) {
+      relevantTables.push('document_customer');
+    }
+    const schema = await this.getCompleteSchema(relevantTables);
+    const intentMode = this.normalizeIntentMode(dto.intentMode);
+    const historyForIntent = await this.getHistorySnippetForIntent(dto.conversationId);
+    let intentResult: any;
+    if (intentMode === 'read') {
+      intentResult = { type: 'READ', requiresConfirmation: false };
+    } else if (intentMode === 'chat') {
+      intentResult = { type: 'CONVERSATIONAL', requiresConfirmation: false };
+    } else {
+      intentResult = await this.intentDetectionService.detectIntent(
+        enrichedQuestion,
+        this.llm,
+        schema,
+        { forceWrite: intentMode === 'write', history: historyForIntent },
+      );
+    }
     this.logger.log(`🎯 Intention détectée: ${intentResult.type}`);
+
+    if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+      intentResult.writePlan = this.enrichWritePlanWithReferencedEntities(
+        intentResult.writePlan,
+        requestContext.referenced,
+      );
+    }
 
     // ── 3a. BRANCHE CONVERSATIONNELLE ────────────────────────────────────────
     if (intentResult.type === 'CONVERSATIONAL') {
+      const analysis = intentResult.conversationalResponse
+        ?? (await this.generateConversationalResponse(enrichedQuestion));
       return {
         success: true,
         question: dto.question,
-        analysis: intentResult.conversationalResponse ?? '',
+        analysis,
         executionTimeMs: Date.now() - startTime,
         conversationId: dto.conversationId,
       };
@@ -538,8 +758,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     }
 
     // ── 3c. BRANCHE LECTURE ───────────────────────────────────────────────────
-    const schemaJSON = await this.getCompleteSchemaJson(allTables);
-
+    // (schemaJSON/schema ne sont plus calculés ni renvoyés : non exploités par le front,
+    //  et getCompleteSchemaJson déclenchait COUNT(*) + information_schema par table.)
     try {
       let conversationId = dto.conversationId;
 
@@ -557,8 +777,8 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         }
       }
 
-      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema);
 
       let results: { data: any[]; rowCount: number } | null = null;
       let analysis = '';
@@ -576,8 +796,6 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         question: dto.question,
         sqlQuery: validatedQuery,
         analysis,
-        schemaJSON,
-        schema,
         results: results?.data,
         executionTimeMs: Date.now() - startTime,
         rowCount: results?.rowCount || 0,
@@ -590,8 +808,6 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         success: false,
         question: dto.question,
         analysis: `Erreur: ${error.message}`,
-        schemaJSON,
-        schema,
         executionTimeMs: Date.now() - startTime,
         error: error.message,
       };
@@ -687,6 +903,24 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         };
       }
 
+      // ── ID manquant : on garde le plan en mémoire pour la conversation ──
+      // au lieu de le perdre, et on demande une précision à l'utilisateur.
+      if (error instanceof EntityIdRequiredException) {
+        this.rememberPendingEntityIdClarification(
+          conversationId, plan, error.operationIndex, error.entity, userId,
+        );
+        const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
+        await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+        return {
+          success: true,
+          question: dto.question,
+          analysis: message,
+          conversationId,
+          executionTimeMs: Date.now() - startTime,
+          ...(fileInfo && { fileInfo }),
+        };
+      }
+
       this.logger.error(`❌ Erreur écriture: ${error.message}`);
       const errMsg = `❌ Erreur lors de l'exécution: ${error.message}`;
       await this.conversationManager.addAssistantMessage(conversationId, errMsg, undefined);
@@ -747,6 +981,20 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         executionTimeMs: Date.now() - startTime,
         error: 'operationIndex invalide',
       };
+    }
+
+    if (!op.entityId) {
+      const fallbackEntityId = Number(
+        (op.fields as any)?.id
+        ?? (op.fields as any)?.entityId
+        ?? (op.fields as any)?.[`${op.entity}_id`],
+      );
+      if (Number.isInteger(fallbackEntityId) && fallbackEntityId > 0) {
+        op.entityId = fallbackEntityId;
+        delete (op.fields as any).id;
+        delete (op.fields as any).entityId;
+        delete (op.fields as any)[`${op.entity}_id`];
+      }
     }
 
     // ── Option « Autre » : customValue fourni ───────────────────────────────
@@ -910,9 +1158,12 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       if (!parentId && operationFields.procedure_type && typeof operationFields.procedure_type === 'string') {
         try {
           // Chercher le type principal par correspondance de nom (is_subtype=false)
+          const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+          const tenantClause = activeTenantId ? ' AND tenant_id = ?' : '';
+          const tenantParams = activeTenantId ? [`%${operationFields.procedure_type}%`, activeTenantId] : [`%${operationFields.procedure_type}%`];
           const rows: any[] = await this.dataSource.query(
-            `SELECT id FROM procedure_types WHERE name LIKE ? AND is_subtype = 0 LIMIT 1`,
-            [`%${operationFields.procedure_type}%`],
+            `SELECT id FROM procedure_types WHERE name LIKE ? AND is_subtype = 0${tenantClause} LIMIT 1`,
+            tenantParams,
           );
           if (rows.length > 0) {
             parentId = rows[0].id;
@@ -1045,6 +1296,475 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  /**
+   * Exécute une fonction asynchrone avec tentatives de réessai.
+   * @param fn Fonction asynchrone à exécuter
+   * @param retries Nombre de tentatives (défaut: 2)
+   * @param delayMs Délai entre chaque tentative en ms (défaut: 1000)
+   */
+  private async withRetry<T>(
+    fn: () => Promise<T>,
+    retries = 2,
+    delayMs = 1000,
+  ): Promise<T> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`⚠️ [Retry] Tentative ${attempt}/${retries} échouée: ${errMsg} — nouvelle tentative dans ${delayMs}ms...`);
+        if (attempt === retries) throw err;
+        await this.sleep(delayMs);
+      }
+    }
+    throw new Error('withRetry: sortie de boucle inattendue');
+  }
+
+  /**
+   * Met en forme les entités référencées via `@` en un bloc texte injecté dans
+   * le prompt. Expose les IDs exacts afin que le LLM cible les bonnes lignes
+   * plutôt que de deviner (« ce client », « ce dossier »…).
+   */
+  private formatReferencedContext(items: ReferencedEntityContext[]): string {
+    const lines = items.map(it => {
+      const id = it.data?.id;
+      const idPart = id !== undefined && id !== null ? ` (id=${id})` : '';
+      const extra: string[] = [];
+      const d = it.data ?? {};
+      for (const key of ['reference', 'numero', 'email', 'phone', 'telephone']) {
+        if (d[key]) extra.push(`${key}=${d[key]}`);
+      }
+      const extraPart = extra.length ? ` [${extra.join(', ')}]` : '';
+      return `- ${it.type}: "${it.label}"${idPart}${extraPart}`;
+    });
+    return `\n\n--- ENTITÉS RÉFÉRENCÉES PAR L'UTILISATEUR (via @) ---
+Utilise EXACTEMENT ces entités (et leurs IDs) quand la question y fait référence :
+${lines.join('\n')}
+---`;
+  }
+
+  private normalizeIntentMode(mode?: string): IntentMode {
+    if (mode === 'read' || mode === 'write' || mode === 'chat') return mode;
+    return 'auto';
+  }
+
+  /**
+   * Petit extrait de l'historique récent, formaté en texte, pour aider la
+   * détection WRITE à résoudre les références implicites ("la", "le",
+   * "cette audience"...) vers l'ID réel mentionné dans un tour précédent
+   * (ex: une liste d'audiences affichée juste avant avec leurs IDs).
+   *
+   * Volontairement court (3 messages / ~1500 chars) : on ne veut pas alourdir
+   * le prompt de détection d'intention, juste lui donner le minimum de
+   * contexte pour éviter un "ID requis" alors que l'utilisateur a déjà
+   * désigné l'élément concerné dans la conversation.
+   */
+  /** Mémorise un plan WRITE en attente d'identifiant pour cette conversation. */
+  private rememberPendingEntityIdClarification(
+    conversationId: string, plan: WritePlan, operationIndex: number, entity: string, userId: string,
+  ): void {
+    this.pendingEntityIdClarifications.set(conversationId, {
+      plan, operationIndex, entity, userId, createdAt: Date.now(),
+    });
+  }
+
+  /**
+   * Si la conversation a un plan WRITE en attente d'identifiant et que le
+   * message courant contient un nombre exploitable (ex: "c'est l'audience 6",
+   * "le numéro 6", ou juste "6"), patche le plan avec cet ID et le retourne
+   * prêt à être réexécuté. Sinon (pas de plan en attente, ou pas de nombre
+   * trouvé dans la réponse), retourne null et laisse le flux normal traiter
+   * la question comme une nouvelle demande.
+   */
+  private tryConsumePendingEntityIdClarification(
+    conversationId: string | undefined, question: string,
+  ): { plan: WritePlan; userId: string } | null {
+    if (!conversationId) return null;
+    const pending = this.pendingEntityIdClarifications.get(conversationId);
+    if (!pending) return null;
+
+    // Expiration : on ne veut pas réinterpréter un nombre dans un message
+    // sans rapport posé bien plus tard dans la même conversation.
+    if (Date.now() - pending.createdAt > this.PENDING_CLARIFICATION_TTL) {
+      this.pendingEntityIdClarifications.delete(conversationId);
+      return null;
+    }
+
+    const match = question.match(/\d+/);
+    if (!match) {
+      // La réponse ne contient pas d'identifiant exploitable : on abandonne
+      // la clarification plutôt que de deviner, et on traite la question
+      // normalement (elle peut être sans rapport avec le plan en attente).
+      this.pendingEntityIdClarifications.delete(conversationId);
+      return null;
+    }
+
+    const entityId = Number(match[0]);
+    this.pendingEntityIdClarifications.delete(conversationId);
+
+    const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pending.plan));
+    const op = patchedPlan.operations[pending.operationIndex];
+    if (!op) return null;
+    op.entityId = entityId;
+
+    this.logger.log(
+      `🔄 Reprise après clarification d'ID: opération ${pending.operationIndex} "${op.entity}" → entityId=${entityId}`,
+    );
+
+    return { plan: patchedPlan, userId: pending.userId };
+  }
+
+  private async getHistorySnippetForIntent(conversationId?: string): Promise<string> {
+    if (!conversationId) return '';
+    try {
+      const history = await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
+        maxMessages: 3,
+        maxTokens: 1200,
+      });
+      if (!history.length) return '';
+      return history
+        .map(m => `${m.role === 'user' ? 'UTILISATEUR' : 'ASSISTANT'}: ${m.content}`.substring(0, 600))
+        .join('\n---\n')
+        .substring(0, 1500);
+    } catch (err) {
+      this.logger.warn(`getHistorySnippetForIntent: ${(err as Error).message}`);
+      return '';
+    }
+  }
+
+  private enrichWritePlanWithReferencedEntities(
+    plan: WritePlan | undefined,
+    referenced: ReferencedEntityContext[],
+  ): WritePlan | undefined {
+    if (!plan || !referenced.length) return plan;
+
+    const normalizeEntityToken = (value: string): string => {
+      const normalized = value.toLowerCase().trim();
+      if (normalized.endsWith('ies')) return `${normalized.slice(0, -3)}y`;
+      if (normalized.endsWith('es')) return normalized.slice(0, -2);
+      if (normalized.endsWith('s')) return normalized.slice(0, -1);
+      return normalized;
+    };
+
+    const matchEntityId = (entityName: string): number | undefined => {
+      const normalizedEntity = normalizeEntityToken(entityName);
+      const candidates = referenced.filter(item => {
+        const type = normalizeEntityToken(String(item.type || ''));
+        return type === normalizedEntity;
+      });
+
+      if (candidates.length !== 1) return undefined;
+      const rawId = candidates[0].data?.id;
+      const id = Number(rawId);
+      return Number.isInteger(id) && id > 0 ? id : undefined;
+    };
+
+    for (const operation of plan.operations) {
+      if (operation.operation !== 'UPDATE' && operation.operation !== 'DELETE') continue;
+      if (operation.entityId) continue;
+
+      const explicitFieldId = Number(
+        (operation.fields as any)?.id
+        ?? (operation.fields as any)?.entityId
+        ?? (operation.fields as any)?.[`${operation.entity}_id`],
+      );
+      if (Number.isInteger(explicitFieldId) && explicitFieldId > 0) {
+        operation.entityId = explicitFieldId;
+        delete (operation.fields as any).id;
+        delete (operation.fields as any).entityId;
+        delete (operation.fields as any)[`${operation.entity}_id`];
+        continue;
+      }
+
+      const referencedId = matchEntityId(operation.entity);
+      if (referencedId) {
+        operation.entityId = referencedId;
+      }
+    }
+
+    return plan;
+  }
+
+  private parseDocumentIds(dto: AskQuestionDto, referenced: ReferencedEntityContext[]): number[] {
+    const ids = new Set<number>();
+    const add = (value: unknown) => {
+      const num = Number(value);
+      if (Number.isInteger(num) && num > 0) ids.add(num);
+    };
+
+    const raw = dto.documentIds as unknown;
+    if (Array.isArray(raw)) {
+      raw.forEach(add);
+    } else if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) parsed.forEach(add);
+        else add(parsed);
+      } catch {
+        raw.split(',').forEach(part => add(part.trim()));
+      }
+    }
+
+    for (const item of referenced) {
+      if (['document', 'documents', 'document_customer'].includes(item.type?.toLowerCase())) {
+        add(item.data?.id);
+      }
+    }
+
+    return Array.from(ids).slice(0, this.MAX_SYSTEM_DOCUMENTS);
+  }
+
+  /**
+   * Résout des documents par leur NOM lorsqu'aucune référence explicite (@ ou
+   * documentIds) n'est fournie, mais que la question évoque un document.
+   *
+   * Stratégie sûre : on ne matche QUE si le nom stocké (sans extension, ≥ 3 car.)
+   * apparaît littéralement dans la question — limite les faux positifs.
+   * Gardé derrière un filtre de mots-clés pour ne pas scanner document_customer à
+   * chaque question (le LIKE sur fonction ne peut pas utiliser d'index ; un index
+   * FULLTEXT sur `name` serait l'optimisation suivante si le volume l'exige).
+   */
+  private async resolveDocumentIdsByName(question: string): Promise<number[]> {
+    const docIntent = /\b(document|pi[eè]ces?|contrat|fichier|acte|jugement|conclusions?|attestation|pdf)\b/i;
+    if (!question || !docIntent.test(question)) return [];
+
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    const params: any[] = [question];
+    let tenantClause = '';
+    if (tenantId && tenantId !== 1) {
+      tenantClause = ' AND tenant_id = ?';
+      params.push(tenantId);
+    }
+
+    try {
+      const rows: Array<{ id: number }> = await this.dataSource.query(
+        `SELECT id FROM document_customer
+         WHERE deleted_at IS NULL
+           AND CHAR_LENGTH(SUBSTRING_INDEX(name, '.', 1)) >= 3
+           AND ? LIKE CONCAT('%', SUBSTRING_INDEX(name, '.', 1), '%')${tenantClause}
+         ORDER BY CHAR_LENGTH(name) DESC, uploaded_at DESC
+         LIMIT ${this.MAX_SYSTEM_DOCUMENTS}`,
+        params,
+      );
+      const ids = rows.map(r => Number(r.id)).filter(id => Number.isInteger(id) && id > 0);
+      if (ids.length) {
+        this.logger.log(`📄 Document(s) résolu(s) par nom depuis la question: [${ids.join(', ')}]`);
+      }
+      return ids;
+    } catch (e) {
+      this.logger.warn(`Résolution document par nom échouée: ${(e as Error).message}`);
+      return [];
+    }
+  }
+
+  private normalizeStringArray(value?: string[] | string): string[] | undefined {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value.filter(Boolean);
+    if (typeof value !== 'string' || !value.trim()) return undefined;
+
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => String(item)).filter(Boolean);
+      }
+    } catch {
+      // Fallback CSV ci-dessous.
+    }
+
+    return value.split(',').map(item => item.trim()).filter(Boolean);
+  }
+
+  private buildDocumentContextBlock(items: DocumentContextItem[]): string {
+    if (!items.length) return '';
+
+    const blocks = items.map((item, index) => {
+      const title = item.id ? `Document systeme #${item.id}` : `Fichier joint #${index + 1}`;
+      const meta = [
+        `nom="${item.name}"`,
+        item.type ? `type=${item.type}` : null,
+        item.size ? `taille=${item.size}` : null,
+        `source=${item.source}`,
+      ].filter(Boolean).join(', ');
+
+      const content = item.error
+        ? `[Erreur de lecture: ${item.error}]`
+        : item.content;
+
+      return `### ${title} (${meta})
+${content}
+${item.truncated ? '\n[Contenu tronque pour rester dans la limite de contexte]' : ''}`;
+    });
+
+    return `\n\n--- DOCUMENTS A ANALYSER ---
+Les extraits suivants proviennent des documents explicitement joints ou mentionnes par l'utilisateur.
+Base tes reponses sur ces extraits quand la question parle de "ce document", "la piece", "le contrat", etc.
+
+${blocks.join('\n\n')}
+--- FIN DOCUMENTS ---`;
+  }
+
+  private truncateContextText(text: string, maxChars: number): { content: string; truncated: boolean } {
+    const normalized = (text || '').replace(/\u0000/g, '').trim();
+    if (normalized.length <= maxChars) {
+      return { content: normalized, truncated: false };
+    }
+    return {
+      content: normalized.substring(0, maxChars),
+      truncated: true,
+    };
+  }
+
+  private async buildRequestContext(
+    dto: AskQuestionDto,
+    file?: Express.Multer.File,
+  ): Promise<RequestContext> {
+    const referenced = parseReferencedContext(dto.context);
+    const documentContext: DocumentContextItem[] = [];
+    let enrichedQuestion = dto.question;
+    let fileInfo: any;
+
+    if (file) {
+      try {
+        const content = await this.extractFileContent(file);
+        const truncated = this.truncateContextText(content, this.MAX_FILE_CONTEXT_CHARS);
+        documentContext.push({
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+          source: 'upload',
+          content: truncated.content,
+          truncated: truncated.truncated,
+        });
+        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        documentContext.push({
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+          source: 'upload',
+          content: '',
+          truncated: false,
+          error: message,
+        });
+        fileInfo = { name: file.originalname, size: file.size, type: file.mimetype, error: message };
+      }
+    }
+
+    const documentIds = this.parseDocumentIds(dto, referenced);
+    // Repli : aucune référence explicite (@ ou documentIds) mais la question évoque
+    // un document par son nom (« résume le document Contrat_Dupont ») → résolution auto.
+    if (documentIds.length === 0) {
+      documentIds.push(...(await this.resolveDocumentIdsByName(dto.question)));
+    }
+    for (const documentId of documentIds) {
+      documentContext.push(await this.loadSystemDocumentContext(documentId));
+    }
+
+    if (referenced.length) {
+      enrichedQuestion += this.formatReferencedContext(referenced);
+    }
+
+    enrichedQuestion += this.buildDocumentContextBlock(documentContext);
+
+    return { enrichedQuestion, fileInfo, documentContext, referenced };
+  }
+
+  private async loadSystemDocumentContext(documentId: number): Promise<DocumentContextItem> {
+    const base: DocumentContextItem = {
+      id: documentId,
+      name: `Document #${documentId}`,
+      source: 'system',
+      content: '',
+      truncated: false,
+    };
+
+    try {
+      const document = await this.documentRepository.findOne({
+        where: { id: documentId },
+        relations: ['customer', 'document_type', 'dossier', 'category'],
+      });
+
+      if (!document) {
+        return { ...base, error: 'Document introuvable' };
+      }
+
+      const name = document.name || document.metadata?.original_filename || `Document #${documentId}`;
+      const type = document.file_mimetype || this.inferMimeFromName(name);
+      const buffer = await this.readDocumentBuffer(document);
+      const extracted = await this.extractBufferContent(buffer, type, name);
+      const truncated = this.truncateContextText(extracted, this.MAX_DOCUMENT_CONTEXT_CHARS);
+
+      const header = [
+        `Nom: ${name}`,
+        document.document_type?.name ? `Type metier: ${document.document_type.name}` : null,
+        document.category?.name ? `Categorie: ${document.category.name}` : null,
+        document.dossier?.dossier_number ? `Dossier: ${document.dossier.dossier_number}` : null,
+        document.customer?.full_name ? `Client: ${document.customer.full_name}` : null,
+        document.description ? `Description: ${document.description}` : null,
+      ].filter(Boolean).join('\n');
+
+      return {
+        id: document.id,
+        name,
+        type,
+        size: document.file_size,
+        source: 'system',
+        content: `${header}\n\n${truncated.content}`.trim(),
+        truncated: truncated.truncated,
+      };
+    } catch (error) {
+      return {
+        ...base,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  private async readDocumentBuffer(document: DocumentCustomer): Promise<Buffer> {
+    if (document.file_path) {
+      const filePath = document.file_path.replace(/\//g, path.sep).replace(/\\/g, path.sep);
+      const candidates = [
+        filePath,
+        path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath),
+      ];
+      const existing = candidates.find(candidate => fs.existsSync(candidate));
+      if (existing) {
+        return fs.promises.readFile(existing);
+      }
+    }
+
+    if (document.file_url?.startsWith('http')) {
+      const response = await fetch(document.file_url);
+      if (!response.ok) {
+        throw new Error(`Document distant inaccessible (${response.status})`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    }
+
+    throw new Error('Fichier physique introuvable');
+  }
+
+  private inferMimeFromName(name: string): string {
+    const ext = path.extname(name || '').toLowerCase();
+    const map: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.txt': 'text/plain',
+      '.csv': 'text/csv',
+      '.json': 'application/json',
+      '.html': 'text/html',
+      '.htm': 'text/html',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xls': 'application/vnd.ms-excel',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp',
+    };
+    return map[ext] || 'application/octet-stream';
+  }
+
   async analyzeQuestionStream(
     dto: AskQuestionDto,
     userId: string,
@@ -1063,34 +1783,132 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     try {
       tLog('service entré');
 
-      // ── 1. Fichier ──────────────────────────────────────────────────────────
+      // ── 0. Reprise d'un plan WRITE en attente d'identifiant ─────────────────
+      // (ex: "marque-la comme reportée" → entityId manquant → on a demandé
+      // "quelle audience ?" → l'utilisateur répond "c'est l'audience 6")
+      const resumed = this.tryConsumePendingEntityIdClarification(dto.conversationId, dto.question);
+      if (resumed) {
+        sendEvent('intent', { type: 'WRITE', plan: resumed.plan });
+        await emit('status', { message: `⚙️ Exécution de ${resumed.plan.operations.length} opération(s)...` });
+        const conversationId = dto.conversationId!;
+        await this.conversationManager.addUserMessage(conversationId, dto.question);
+        try {
+          const results = await this.genericWriteService.executePlan(resumed.plan, resumed.userId);
+          const analysis = this.formatPlanResults(results);
+          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+          sendEvent('result', {
+            success: true, question: dto.question, analysis, results,
+            conversationId, executionTimeMs: Date.now() - startTime,
+          });
+        } catch (error: any) {
+          if (error instanceof AmbiguityException) {
+            sendEvent('ambiguity', {
+              entity: error.entity, fieldName: error.fieldName, searchTerm: error.searchTerm,
+              candidates: error.candidates, operationIndex: error.operationIndex,
+              parentEntity: error.parentEntity, message: this.buildAmbiguityMessage(error),
+              pendingWritePlan: resumed.plan, conversationId, allowOther: true,
+              otherLabel: this.getFieldLabel(error.fieldName),
+            });
+          } else if (error instanceof EntityIdRequiredException) {
+            this.rememberPendingEntityIdClarification(
+              conversationId, resumed.plan, error.operationIndex, error.entity, resumed.userId,
+            );
+            const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
+            await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+            sendEvent('result', {
+              success: true, question: dto.question, analysis: message,
+              conversationId, executionTimeMs: Date.now() - startTime,
+            });
+          } else {
+            sendEvent('error', { message: error.message });
+          }
+        }
+        return;
+      }
+
+      // ── 1. Contexte enrichi : mentions, fichiers et documents système ──────
       let enrichedQuestion = dto.question;
       let fileInfo: any;
-
-      if (file) {
-        await emit('status', { message: `📎 Lecture du fichier ${file.originalname}...` });
-        try {
-          const content = await this.extractFileContent(file);
-          const truncated = content.substring(0, 5000);
-          enrichedQuestion = `${dto.question}\n\n--- CONTENU: ${file.originalname} ---\n${truncated}${content.length > 5000 ? '\n[tronqué]' : ''}\n---`;
-          fileInfo = { name: file.originalname, size: file.size, type: file.mimetype };
-          await emit('status', { message: `✅ Fichier lu (${content.length} caractères)` });
-        } catch (e) {
-          await emit('status', { message: `⚠️ Fichier illisible: ${e.message}` });
-        }
-      }
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
       tLog('avant status 🔍');
       await emit('status', { message: '🔍 Analyse de la demande...' });
       tLog('après status sleep(200ms) — DeepSeek lightClassify démarre');
-      const allTables = this.schemaMetadata.getAllVisibleTables();
-      const schema = await this.getCompleteSchema(allTables);
+      const requestContext = await this.buildRequestContext(dto, file);
+      enrichedQuestion = requestContext.enrichedQuestion;
+      fileInfo = requestContext.fileInfo ?? fileInfo;
+      if (requestContext.documentContext.length) {
+        await emit('status', {
+          message: `📄 ${requestContext.documentContext.length} document(s) pris en compte`,
+        }, 80);
+      }
+      if (requestContext.referenced.length) {
+        await emit('status', {
+          message: `🔗 ${requestContext.referenced.length} référence(s) prise(s) en compte`,
+        }, 80);
+      }
+
+      const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables);
+      if (requestContext.documentContext.length && !relevantTables.includes('document_customer')) {
+        relevantTables.push('document_customer');
+      }
+      const schema = await this.getCompleteSchema(relevantTables);
       tLog('schema prêt — appel detectIntent');
-      const intentResult = await this.intentDetectionService.detectIntent(
-        enrichedQuestion, this.llm, schema,
+      const intentMode = this.normalizeIntentMode(dto.intentMode);
+      const historyForIntent = await this.getHistorySnippetForIntent(dto.conversationId);
+
+      // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
+      // Si l'utilisateur a joint OU mentionné (@) un document dont le CONTENU a
+      // pu être extrait, et que l'intention n'est pas une écriture explicite, on
+      // analyse directement le TEXTE du document (résumé, extraction de clauses…)
+      // au lieu de générer du SQL — qui ne verrait que les métadonnées.
+      const hasReadableDocument = requestContext.documentContext.some(
+        d => !d.error && !!d.content && d.content.trim().length > 40,
       );
+      if (hasReadableDocument && intentMode !== 'write') {
+        sendEvent('intent', { type: 'READ' });
+        await emit('status', { message: '📄 Lecture et analyse du contenu du document...' }, 80);
+
+        let conversationId = dto.conversationId;
+        if (!conversationId) {
+          const conv = await this.conversationManager.createConversation(
+            userId, this.generateConversationTitle(dto.question),
+          );
+          conversationId = conv.id;
+        }
+        await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+
+        const analysis = await this.analyzeDocumentsStream(
+          dto.question, requestContext.documentContext, sendEvent,
+        );
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+
+        sendEvent('result', {
+          success: true, question: dto.question, analysis,
+          conversationId, executionTimeMs: Date.now() - startTime,
+          ...(fileInfo && { fileInfo }),
+        });
+        return;
+      }
+
+      let intentResult: any;
+      if (intentMode === 'read') {
+        intentResult = { type: 'READ', requiresConfirmation: false };
+      } else if (intentMode === 'chat') {
+        intentResult = { type: 'CONVERSATIONAL', requiresConfirmation: false };
+      } else {
+        intentResult = await this.intentDetectionService.detectIntent(
+          enrichedQuestion, this.llm, schema,
+          { forceWrite: intentMode === 'write', history: historyForIntent },
+        );
+      }
       tLog(`detectIntent retourné → ${intentResult.type}`);
+      if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+        intentResult.writePlan = this.enrichWritePlanWithReferencedEntities(
+          intentResult.writePlan,
+          requestContext.referenced,
+        );
+      }
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
       await this.sleep(150);
 
@@ -1139,40 +1957,14 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
 
         await emit('status', { message: `⚙️ Exécution de ${plan.operations.length} opération(s)...` });
 
-        try {
-          const results = await this.genericWriteService.executePlan(plan, userId);
-          const analysis = this.formatPlanResults(results);
-          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
-          sendEvent('result', {
-            success: true, question: dto.question, analysis, results,
-            conversationId, executionTimeMs: Date.now() - startTime,
-            ...(fileInfo && { fileInfo }),
-          });
-        } catch (error) {
-          if (error instanceof AmbiguityException) {
-            sendEvent('ambiguity', {
-              entity: error.entity,
-              fieldName: error.fieldName,
-              searchTerm: error.searchTerm,
-              candidates: error.candidates,
-              operationIndex: error.operationIndex,
-              parentEntity: error.parentEntity,
-              message: this.buildAmbiguityMessage(error),
-              pendingWritePlan: plan,
-              conversationId,
-              allowOther: true,
-              otherLabel: this.getFieldLabel(error.fieldName),
-            });
-          } else {
-            sendEvent('error', { message: error.message });
-          }
-        }
+        await this.executeWritePlanStream(
+          plan, userId, conversationId, dto, fileInfo, startTime, sendEvent,
+        );
         return;
       }
 
       // ── 3c. READ ─────────────────────────────────────────────────────────────
       await emit('status', { message: '🗄️ Génération de la requête SQL...' });
-      const schemaJSON = await this.getCompleteSchemaJson(allTables);
 
       let conversationId = dto.conversationId;
       if (!conversationId) {
@@ -1182,10 +1974,48 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
         conversationId = conv.id;
       }
 
-      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion);
+      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
       await emit('status', { message: '✅ Requête générée, exécution en cours...' });
 
-      const validatedQuery = await this.validateAndFixQuery(sqlQuery, dto.specificTables || []);
+      // validateAndFixQuery valide déjà via EXPLAIN et s'auto-corrige (jusqu'à 2 passes
+      // LLM en interne) — inutile de le ré-emballer dans withRetry, qui multipliait les
+      // appels LLM (jusqu'à 4) et la latence. On exécute la requête validée directement.
+      const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema);
+
+      // 🛟 Filet de sécurité : si la requête générée n'est PAS un SELECT, c'est que
+      // la demande était en réalité une écriture mal classée en lecture. Plutôt que
+      // de renvoyer "Seules les requêtes SELECT sont autorisées", on re-route vers
+      // la voie WRITE (forceWrite) et on exécute le plan correspondant.
+      if (!this.isSelectQuery(validatedQuery)) {
+        this.logger.warn(
+          `🛟 Requête non-SELECT générée en voie READ → re-routage WRITE: ${validatedQuery.substring(0, 120)}`,
+        );
+        const rerouted = await this.intentDetectionService.detectIntent(
+          enrichedQuestion, this.llm, schema,
+          { forceWrite: true, history: historyForIntent },
+        );
+        if (rerouted.type === 'WRITE' && rerouted.writePlan) {
+          const reroutedPlan = this.enrichWritePlanWithReferencedEntities(
+            rerouted.writePlan, requestContext.referenced,
+          ) ?? rerouted.writePlan;
+          sendEvent('intent', { type: 'WRITE', plan: reroutedPlan });
+          await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+          await emit('status', { message: `⚙️ Exécution de ${reroutedPlan.operations.length} opération(s)...` });
+          await this.executeWritePlanStream(
+            reroutedPlan, userId, conversationId, dto, fileInfo, startTime, sendEvent,
+          );
+          return;
+        }
+        // Re-routage impossible → message clair plutôt que l'erreur SQL brute
+        const msg = `Je n'ai pas pu interpréter cette demande comme une écriture en base. Reformulez en précisant l'action (ex: "passe une écriture au journal des ventes : débit 411000 1190, crédit 701000 1190").`;
+        await this.conversationManager.addAssistantMessage(conversationId, msg, undefined);
+        sendEvent('result', {
+          success: true, question: dto.question, analysis: msg,
+          conversationId, executionTimeMs: Date.now() - startTime,
+        });
+        return;
+      }
+
       const results = await this.executeSafeQuery(validatedQuery);
 
       await emit('status', { message: '📊 Analyse des résultats...' });
@@ -1197,9 +2027,12 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
       );
       await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
 
+      // ⚡ On NE renvoie PLUS schemaJSON/schema : le front ne les exploite pas et leur
+      // génération (COUNT(*) + information_schema par table) + leur transfert alourdissaient
+      // CHAQUE réponse. Suppression = gain direct de latence et de bande passante.
       sendEvent('result', {
         success: true, question: dto.question,
-        sqlQuery: validatedQuery, analysis, schemaJSON, schema,
+        sqlQuery: validatedQuery, analysis,
         results: results.data, rowCount: results.rowCount,
         conversationId, executionTimeMs: Date.now() - startTime,
         ...(fileInfo && { fileInfo }),
@@ -1211,7 +2044,86 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
     }
   }
 
-  
+  /**
+   * Analyse DIRECTE du contenu d'un/des document(s) — sans passer par le SQL.
+   *
+   * Utilisé quand l'utilisateur joint ou mentionne (@) un document dont le texte
+   * a été extrait : la question porte sur le CONTENU du fichier (résumé,
+   * extraction de clauses, dates, montants…), pas sur les métadonnées en base.
+   * On envoie le texte extrait directement au LLM et on streame la réponse.
+   */
+  private async analyzeDocumentsStream(
+    question: string,
+    documentContext: DocumentContextItem[],
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    const prompt = this.buildDocumentAnalysisPrompt(question, documentContext);
+
+    let fullText = '';
+    let tokenCount = 0;
+    this.logger.log(`🌊 [DOC STREAM] Analyse directe — prompt ${prompt.length} chars`);
+
+    try {
+      const stream = await this.llm.stream(prompt);
+      for await (const chunk of stream) {
+        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        if (text) {
+          fullText += text;
+          tokenCount++;
+          sendEvent('token', { text });
+        }
+      }
+      this.logger.log(`✅ [DOC STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
+    } catch (err) {
+      this.logger.warn(`⚠️ [DOC STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
+      const response = await this.llm.invoke(prompt);
+      fullText = response.content as string;
+      sendEvent('token', { text: fullText });
+    }
+
+    return fullText;
+  }
+
+  /**
+   * Construit le prompt d'analyse directe à partir du texte extrait des documents.
+   * Le modèle doit s'appuyer UNIQUEMENT sur le contenu fourni (anti-hallucination).
+   */
+  private buildDocumentAnalysisPrompt(
+    question: string,
+    documentContext: DocumentContextItem[],
+  ): string {
+    const docs = documentContext
+      .filter(d => !d.error && !!d.content && d.content.trim().length > 0)
+      .map((d, i) => {
+        const title = d.id
+          ? `Document système #${d.id} — ${d.name}`
+          : `Fichier joint — ${d.name || `#${i + 1}`}`;
+        return `### ${title}\n${d.content}`;
+      })
+      .join('\n\n');
+
+    const role = this.projectConfig?.analysisSystemPrompt
+      ?? `Tu es un assistant juridique expert qui lit et analyse des documents (contrats, jugements, conclusions, pièces…).`;
+
+    return `${role}
+
+Tu dois répondre à la demande de l'utilisateur en t'appuyant EXCLUSIVEMENT sur le contenu des documents ci-dessous.
+⚠️ Si une information demandée ne figure pas dans les documents, dis-le explicitement. N'invente JAMAIS de contenu.
+
+## DEMANDE DE L'UTILISATEUR
+"${question}"
+
+## CONTENU DES DOCUMENTS
+${docs}
+
+## CONSIGNES DE RÉPONSE
+- Réponds en français, dans un langage clair et professionnel.
+- Structure la réponse (points clés, parties, dates, montants, obligations, échéances…).
+- Cite les éléments importants tels qu'ils apparaissent dans le document.
+- Sois synthétique mais complet (≈ 600 mots maximum).
+
+RÉPONSE :`;
+  }
 
   // ai-database.service.ts
   /**
@@ -1303,14 +2215,17 @@ ${truncated}${fileContent.length > 5000 ? '\n[Contenu tronqué à 5000 caractèr
 
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
-    model: 'deepseek-chat',
+    // model: 'deepseek-v4-flash',
+    // model: 'deepseek-v4-pro',
+    model: 'agnes-2.0-flash',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
-    maxTokens: 4000,           // ✅ Augmenté pour les plans d'écriture JSON complexes
-    apiKey: process.env.DEEPSEEK_API_KEY,
+    maxTokens: 8000,           // Sortie max de DeepSeek-chat (≈ 8K tokens) — suffit pour SQL + analyses
+    apiKey: process.env.AGNES_API_KEY,
     configuration: {
-      baseURL: 'https://api.deepseek.com/v1',
+      baseURL: 'https://apihub.agnes-ai.com/v1',
     },
-    timeout: 30000,            // ✅ 30s pour laisser le temps au raisonnement
+    streaming: true,           // ✅ Streaming activé (réponses longues + 1er token rapide)
+    timeout: 60000,            // 60s : marge de raisonnement sans couper les analyses longues
     maxRetries: 2,
   });
 }
@@ -1411,6 +2326,7 @@ INSTRUCTIONS IMPORTANTES:
 5. Si la réponse contient des dates, formate-les de façon lisible
 6. Sois concis mais précis (max 500 mots)
 7. Termine par une phrase d'action ou de recommandation si pertinent
+8. IMPORTANT : pour CHAQUE élément listé (dossier, audience, client...), mentionne toujours son identifiant numérique réel entre parenthèses, ex: "Audience du 20 juin (ID: 42)". Cela permet à l'utilisateur de désigner cet élément précisément dans un message suivant (ex: "marque-la comme reportée").
 
 RÉPONSE (en français courant, langage métier):`;
 
@@ -1460,6 +2376,7 @@ INSTRUCTIONS IMPORTANTES:
 4. Si la réponse contient des dates, formate-les de façon lisible
 5. Sois concis mais précis (max 500 mots)
 6. Termine par une phrase d'action ou de recommandation si pertinent
+7. IMPORTANT : pour CHAQUE élément listé (dossier, audience, client...), mentionne toujours son identifiant numérique réel entre parenthèses, ex: "Audience du 20 juin (ID: 42)". Cela permet à l'utilisateur de désigner cet élément précisément dans un message suivant (ex: "marque-la comme reportée").
 
 RÉPONSE (en langage naturel):`;
 
@@ -1535,6 +2452,18 @@ RÉPONSE (en langage naturel):`;
     return fullText;
   }
 
+  private async generateConversationalResponse(question: string): Promise<string> {
+    const systemPrompt = this.projectConfig?.conversationalSystemPrompt
+      ?? `Tu es un assistant IA. Reponds aux questions generales et aux salutations de facon courtoise et professionnelle.`;
+
+    const response = await this.llm.invoke([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: question },
+    ]);
+
+    return response.content as string;
+  }
+
   /**
    * @deprecated — Remplacé par generateConversationalResponseStream (qui fait du vrai streaming LLM).
    * Conservé pour compatibilité mais plus appelé depuis analyzeQuestionStream.
@@ -1602,63 +2531,184 @@ RÉPONSE (en langage naturel):`;
    * Détecte automatiquement les tables pertinentes
    */
   /**
-  * Détecte automatiquement les tables pertinentes (UNIQUEMENT celles avec métadonnées)
+   * Normalise un mot-clé pour le matching : vire les marques du pluriel français
+   * pour matcher "documents" → "document", "dossiers" → "dossier", etc.
+   */
+  private stemKeyword(word: string): string {
+    const w = word.toLowerCase();
+    if (w.endsWith('s') && w.length > 3) return w.slice(0, -1);
+    if (w.endsWith('x') && w.length > 3) return w.slice(0, -1);
+    return w;
+  }
+
+  /**
+   * Decoupe un nom de table snake_case en mots individuels
+   * Ex: "document_customer" → ["document", "customer"]
+   */
+  private splitTableName(name: string): string[] {
+    return name.toLowerCase().split('_').filter(w => w.length > 0);
+  }
+
+  /**
+  * Detecte automatiquement les tables pertinentes avec matching ameliore :
+  * - Word-level matching (decoupage en mots des noms de tables)
+  * - Stemming pour gerer singulier/pluriel (ex: "documents" → "document" dans "document_customer")
+  * - Matching sur la categorie BusinessTable
+  * - Tri stable (score DESC + nom ASC)
   */
-  private async detectRelevantTables(question: string, specificTables?: string[]): Promise<string[]> {
-    if (specificTables && specificTables.length > 0) {
-      // ✅ Filtrer les tables spécifiques qui ont des métadonnées
-      const validTables = specificTables.filter(table => 
+  private async detectRelevantTables(question: string, specificTables?: string[] | string): Promise<string[]> {
+    const normalizedSpecificTables = this.normalizeStringArray(specificTables);
+    if (normalizedSpecificTables && normalizedSpecificTables.length > 0) {
+      const validTables = normalizedSpecificTables.filter(table => 
         this.schemaMetadata.hasTableMetadata(table)
       );
       
       if (validTables.length === 0) {
-        this.logger.warn(`⚠️ Aucune table spécifiée n'a de métadonnées, utilisation des tables par défaut`);
+        this.logger.warn(`Aucune table specifiee n'a de metadonnees, utilisation des tables par defaut`);
         return this.getDefaultVisibleTables();
       }
       
-      return validTables;
+      return this.expandWithRelatedTables(validTables);
     }
 
     const keywords = question.toLowerCase().split(/\s+/);
-    
-    // ✅ Récupérer UNIQUEMENT les tables qui ont des métadonnées
     const visibleTables = this.schemaMetadata.getAllVisibleTables();
+    const keywordStems = keywords.map(k => this.stemKeyword(k));
     
-    const tableScores: any[] = [];
+    const tableScores: { name: string; score: number; reasons: string[] }[] = [];
     for (const tableName of visibleTables) {
       let score = 0;
+      const reasons: string[] = [];
       
-      if (keywords.includes(tableName.toLowerCase())) score += 10;
+      // 1. Nom de table EXACT dans les mots-cles (ex: "dossiers")
+      if (keywords.includes(tableName.toLowerCase())) {
+        score += 10;
+        reasons.push('exact_table_name');
+      }
       
-      // Récupérer le label métier pour améliorer la détection
+      const tableWords = this.splitTableName(tableName);
+      const tableStems = tableWords.map(w => this.stemKeyword(w));
+      
       const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(tableName);
       const businessName = tableMeta?.label?.toLowerCase() || '';
+      const category = tableMeta?.category?.toLowerCase() || '';
       
-      for (const keyword of keywords) {
-        if (tableName.toLowerCase().includes(keyword) || keyword.includes(tableName.toLowerCase())) {
+      for (let ki = 0; ki < keywords.length; ki++) {
+        const keyword = keywords[ki];
+        const stem = keywordStems[ki];
+        
+        // 2. Word-level matching avec stemming
+        // Ex: "documents" (stem="document") match "document" dans "document_customer"
+        const wordMatch = tableWords.some(w => w === keyword || w === stem);
+        const stemMatch = tableStems.some(s => s === keyword || s === stem);
+        
+        if (wordMatch || stemMatch) {
           score += 5;
+          reasons.push(`word_match:${keyword}`);
         }
-        if (businessName.includes(keyword) || keyword.includes(businessName)) {
-          score += 7; // Score plus élevé pour le nom métier
+        
+        // 2b. Fallback substring (pReserve l'ancien comportement: "dossier" matche "dossiers")
+        if (tableName.toLowerCase().includes(keyword)) {
+          score += 3;
+          reasons.push(`contains_match:${keyword}`);
+        }
+        
+        // 3. Label metier (ex: "Documents clients" → "documents")
+        const businessWords = businessName.split(/[\s_]+/).filter(Boolean);
+        const businessStems = businessWords.map(w => this.stemKeyword(w));
+        
+        const labelWordMatch = businessWords.some(w => w === keyword || w === stem);
+        const labelStemMatch = businessStems.some(s => s === keyword || s === stem);
+        
+        if (labelWordMatch || labelStemMatch) {
+          score += 7;
+          reasons.push(`label_match:${keyword}`);
+        }
+        
+        // 3b. Fallback substring label (ex: "Dossiers contentieux" contient "dossier")
+        if (businessName.includes(keyword)) {
+          score += 4;
+          reasons.push(`label_contains:${keyword}`);
+        }
+        
+        // 4. Categorie BusinessTable (ex: category: 'document' → match "documents")
+        if (category) {
+          const catWords = category.split(/[\s_]+/).filter(Boolean);
+          const catStems = catWords.map(w => this.stemKeyword(w));
+          if (catWords.some(w => w === keyword || w === stem) ||
+              catStems.some(s => s === keyword || s === stem)) {
+            score += 6;
+            reasons.push(`category_match:${keyword}`);
+          }
         }
       }
       
       if (score > 0) {
-        tableScores.push({ name: tableName, score });
+        tableScores.push({ name: tableName, score, reasons });
       }
     }
     
-    tableScores.sort((a, b) => b.score - a.score);
+    // Tri stable : score DESC, puis nom ASC
+    tableScores.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.name.localeCompare(b.name);
+    });
     const detectedTables = tableScores.slice(0, 10).map(t => t.name);
     
-    this.logger.log(`🎯 Tables détectées: ${detectedTables.join(', ')}`);
+    this.logger.log(`🎯 Tables detectees: ${detectedTables.join(', ')}`);
+    this.logger.debug(`Scores: ${JSON.stringify(tableScores.map(t => ({ name: t.name, score: t.score })))}`);
     
-    // ✅ Si aucune table détectée, retourner les tables par défaut visibles
     if (detectedTables.length === 0) {
       return this.getDefaultVisibleTables();
     }
-    
-    return detectedTables;
+
+    return this.expandWithRelatedTables(detectedTables);
+  }
+
+  /**
+   * Étend une liste de tables avec leurs tables FK-référencées (1 saut) afin que les
+   * JOINs nécessaires soient présents dans le schéma envoyé au LLM. Sans ça, une
+   * question comme « les dossiers avec le nom du client » détecte `dossiers` mais
+   * pas `customer` → le LLM ne peut pas joindre → résultats incomplets ou vides.
+   */
+  private expandWithRelatedTables(tables: string[], max = 14): string[] {
+    const relationships = this.relationshipsCache.get('all') || {};
+    const out = new Set<string>(tables);
+
+    // 1) Tables PARENTES (FK sortantes) : ex. ecritures_comptables → journaux/exercices.
+    for (const t of tables) {
+      const rel = relationships[t];
+      if (!rel?.foreignKeys) continue;
+      for (const fk of rel.foreignKeys) {
+        const ref = fk.referencedTable;
+        if (ref && this.schemaMetadata.hasTableMetadata(ref)) out.add(ref);
+        if (out.size >= max) break;
+      }
+      if (out.size >= max) break;
+    }
+
+    // 2) Tables ENFANTS (FK entrantes) : ex. lignes_ecriture_comptable → ecritures_comptables.
+    //    Indispensable pour les schémas « en-tête + lignes » (écritures/lignes,
+    //    factures/lignes…). Sans elles, une question sur les écritures ne verrait
+    //    pas la table des lignes et le LLM inventerait sa structure (cause directe
+    //    des hallucinations type "ecriture_lignes(sens, montant)").
+    if (out.size < max) {
+      const targets = new Set(tables.map(t => t.toLowerCase()));
+      for (const [child, rel] of Object.entries<any>(relationships)) {
+        if (out.has(child)) continue;
+        const fks = rel?.foreignKeys;
+        if (!Array.isArray(fks)) continue;
+        const pointsToTarget = fks.some(
+          (fk: any) => fk?.referencedTable && targets.has(String(fk.referencedTable).toLowerCase()),
+        );
+        if (pointsToTarget && this.schemaMetadata.hasTableMetadata(child)) {
+          out.add(child);
+          if (out.size >= max) break;
+        }
+      }
+    }
+
+    return Array.from(out).slice(0, max);
   }
 
   /**
@@ -1854,6 +2904,17 @@ private async getDefaultSchema(): Promise<string> {
       }
     }
     
+    // ⚠️ HINT spécial pour la table employee : les noms sont dans user
+    if (table === 'employee') {
+      schema += '\n### ⚠️ ATTENTION : Noms des collaborateurs\n\n';
+      schema += 'La table "employee" ne contient PAS les colonnes "last_name" ni "first_name".\n';
+      schema += 'Ces colonnes se trouvent dans la table "user", liée via une clé primaire partagée (employee.id = user.id).\n';
+      schema += 'Pour récupérer le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec "user" sur user.id = employee.id\n';
+      schema += 'et sélectionner user.last_name et user.first_name.\n';
+      schema += 'Ne JAMAIS utiliser employee.last_name ou employee.first_name — ces colonnes n\'existent PAS.\n';
+      schema += 'Pour le nom complet : CONCAT(user.first_name, \' \', user.last_name).\n';
+    }
+    
     return schema;
   }
 
@@ -1990,6 +3051,14 @@ private async getDefaultSchema(): Promise<string> {
 
   // Dans AiDatabaseService
   public async getCompleteSchemaJson(tables: string[]): Promise<DatabaseSchema> {
+    // Cache (TTL = CACHE_TTL) : getTableInfoJson déclenche COUNT(*) + information_schema
+    // par table — coûteux à régénérer. Clé = liste de tables triée.
+    const cacheKey = [...tables].sort().join(',');
+    const cachedJson = this.schemaJsonCache.get(cacheKey);
+    if (cachedJson && (Date.now() - cachedJson.timestamp) < this.CACHE_TTL) {
+      return cachedJson.value;
+    }
+
     const relationships = this.relationshipsCache.get('all') || {};
     const resultTables: TableSchema[] = [];
     const allRelationships: { from: { table: string; column: string }; to: { table: string; column: string } }[] = [];
@@ -2017,12 +3086,14 @@ private async getDefaultSchema(): Promise<string> {
       }
     }
     
-    return {
+    const result: DatabaseSchema = {
       database: process.env.DB_NAME || 'unknown',
       generatedAt: new Date().toISOString(),
       tables: resultTables,
       relationships: allRelationships
     };
+    this.schemaJsonCache.set(cacheKey, { value: result, timestamp: Date.now() });
+    return result;
   }
 
   private async generateSQLQuery(question: string, schema: string, tables: string[]): Promise<string> {
@@ -2094,19 +3165,22 @@ private async getDefaultSchema(): Promise<string> {
   3. **N'UTILISE JAMAIS** les paramètres nommés comme :dossier_id, :param, etc.
   4. Utilise des alias courts (d = dossiers, c = customers)
   5. Ajoute toujours LIMIT ${this.MAX_RESULTS}
-  6. Pour les dates, utilise DATE() si comparaison partielle
-  7. **TOUTES les valeurs doivent être en dur** (pas de placeholders)
+  6. Pour la date du jour, utilise **CURDATE()** (ex: WHERE d.created_at >= CURDATE() - INTERVAL 7 DAY)
+  7. Pour le timestamp actuel, utilise **NOW()**
+  8. Pour comparer une partie d'une date, utilise **DATE()** (ex: WHERE DATE(d.created_at) = CURDATE())
+  9. **TOUTES les valeurs doivent être en dur** (pas de placeholders)
 
   ❌ **STRICTEMENT INTERDIT :**
   - DELETE, UPDATE, INSERT, DROP, ALTER, CREATE, TRUNCATE
   - Toute mention de "deleted_at" dans la requête
   - Les paramètres nommés (:, @, $)
   - Les placeholders (?) dans la requête
+  - CURDATE sans parenthèses (toujours CURDATE())
 
   ✅ **BONNE PRATIQUE :**
   \`\`\`sql
-  SELECT d.id, d.dossier_number, d.title 
-  FROM dossiers d 
+  SELECT d.id, d.dossier_number, d.title
+  FROM dossiers d
   WHERE d.dossier_number = 'ABC123' AND d.status = 'active'
   LIMIT 10;
   \`\`\`
@@ -2114,38 +3188,70 @@ private async getDefaultSchema(): Promise<string> {
   📤 **RÉPONSE UNIQUEMENT** avec la requête SQL dans un bloc \`\`\`sql`;
   }
 
-  private async validateAndFixQuery(sqlQuery: string, tables: string[]): Promise<string> {
+  private async validateAndFixQuery(sqlQuery: string, tables: string[], schema?: string): Promise<string> {
     let currentQuery = sqlQuery;
     let attempts = 0;
     const maxAttempts = 2;
-    
+    let lastError: string | undefined;
+
     while (attempts < maxAttempts) {
       const validation = await this.validateQuery(currentQuery);
-      
+
       if (validation.valid) {
         return currentQuery;
       }
-      
+
+      lastError = validation.error;
       this.logger.warn(`Requête invalide (tentative ${attempts + 1}): ${validation.error}`);
-      
-      const fixPrompt = `Corrige cette requête SQL:
+
+      // ⚠️ Le prompt de correction DOIT inclure le vrai schéma : sans les colonnes
+      // réelles, le LLM ne peut pas corriger une table/colonne hallucinée et se
+      // contente de renommer au hasard. On lui redonne donc le schéma complet.
+      const fixPrompt = `Tu corriges une requête SQL MySQL invalide.
+
+## SCHÉMA RÉEL (seules ces tables/colonnes existent — n'en invente AUCUNE autre)
+${(schema ?? '').substring(0, 9000) || `Tables disponibles: ${tables.join(', ') || '(non précisées)'}`}
+
+## REQUÊTE INVALIDE
 \`\`\`sql
 ${currentQuery}
 \`\`\`
-Erreur: ${validation.error}
-Tables: ${tables.join(', ')}
-Retourne UNIQUEMENT la requête corrigée.`;
-      
+
+## ERREUR MYSQL
+${validation.error}
+
+## CONSIGNES
+- Utilise EXCLUSIVEMENT les tables et colonnes EXACTEMENT présentes dans le schéma ci-dessus (nom caractère par caractère).
+- Si la table/colonne fautive n'existe pas, remplace-la par la vraie (ex: une table de lignes "en-tête + lignes" s'appelle souvent "lignes_..." avec des colonnes "debit"/"credit", pas "sens"/"montant").
+- Si la donnée demandée est impossible avec ce schéma, renvoie \`SELECT NULL AS message WHERE 1=0\`.
+- Reste un SELECT, garde le LIMIT ${this.MAX_RESULTS}.
+Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
+
       const response = await this.llm.invoke(fixPrompt);
       const fixedQuery = this.extractSQL(response.content as string);
-      
+
       if (fixedQuery) {
         currentQuery = fixedQuery;
       }
-      
+
       attempts++;
     }
-    
+
+    // 🛟 Dernier contrôle : si la requête est TOUJOURS invalide après les tentatives,
+    // on n'exécute PAS du SQL cassé (qui renverrait une erreur technique brute à
+    // l'utilisateur). On renvoie une requête vide → le flux affichera "aucun
+    // résultat" proprement plutôt qu'un "Table doesn't exist".
+    const finalCheck = await this.validateQuery(currentQuery);
+    if (!finalCheck.valid) {
+      this.logger.error(
+        `❌ Requête toujours invalide après ${maxAttempts} corrections — repli sur requête vide. ` +
+        `Dernière erreur: ${lastError ?? finalCheck.error}`,
+      );
+      // Le SELECT doit rester en tête (un commentaire en préfixe casserait le
+      // contrôle startsWith('select') en aval et déclencherait un faux re-routage WRITE).
+      return `SELECT NULL AS message WHERE 1=0`;
+    }
+
     return currentQuery;
   }
 
@@ -2157,21 +3263,318 @@ Retourne UNIQUEMENT la requête corrigée.`;
     return fixed;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ISOLATION TENANT — lecture de requêtes SQL générées par l'IA
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retourne l'ensemble des noms de tables qui ont une colonne tenant_id
+   * (= toutes les entités qui étendent TenantEntity).
+   * Résultat mis en cache dans la propriété privée.
+   */
+  private _tenantTablesCache: Set<string> | null = null;
+  private getTenantTables(): Set<string> {
+    if (this._tenantTablesCache) return this._tenantTablesCache;
+    const tables = new Set<string>();
+    for (const meta of this.dataSource.entityMetadatas) {
+      const hasTenant = meta.columns.some(
+        c => c.propertyName === 'tenant_id' || c.databaseName === 'tenant_id',
+      );
+      if (hasTenant && meta.tableName) {
+        tables.add(meta.tableName.toLowerCase());
+      }
+    }
+    this._tenantTablesCache = tables;
+    return tables;
+  }
+
+  /**
+   * Sous-ensemble des tables tenant marquées @SharedAcrossTenants (référentiels
+   * globaux seedés avec tenant_id = 1). En lecture, elles doivent être filtrées
+   * par `tenant_id IN (1, X)` — comme le fait déjà TenantRepositoryPatch — sinon
+   * les données globales sont invisibles → « aucun résultat » sur les référentiels.
+   */
+  private _sharedTenantTablesCache: Set<string> | null = null;
+  private getSharedTenantTables(): Set<string> {
+    if (this._sharedTenantTablesCache) return this._sharedTenantTablesCache;
+    const tables = new Set<string>();
+    for (const meta of this.dataSource.entityMetadatas) {
+      const target = meta.target;
+      if (typeof target === 'function' && isSharedEntity(target) && meta.tableName) {
+        tables.add(meta.tableName.toLowerCase());
+      }
+    }
+    this._sharedTenantTablesCache = tables;
+    return tables;
+  }
+
+  /**
+   * Post-processeur SQL : injecte automatiquement les conditions tenant_id
+   * sur toutes les tables référencées dans le SELECT qui ont cette colonne.
+   *
+   * Exemple :
+   *   SELECT d.id FROM dossiers d JOIN customers c ON d.customer_id = c.id WHERE d.statut='actif'
+   *   → WHERE d.tenant_id = 5 AND c.tenant_id = 5 AND d.statut='actif'
+   *
+   * Idempotent : si la condition existe déjà pour un alias, elle n'est pas dupliquée.
+   */
+  private injectTenantConditions(sql: string, tenantId: number): string {
+    if (!tenantId || tenantId === 1) return sql; // tenant 1 = accès global (admin)
+    const tenantTables = this.getTenantTables();
+    if (tenantTables.size === 0) return sql;
+
+    // Mots-clés SQL réservés qui ne peuvent PAS être des alias de table
+    const SQL_KEYWORDS = new Set([
+      'where', 'on', 'set', 'limit', 'order', 'group', 'having', 'union',
+      'left', 'right', 'inner', 'outer', 'cross', 'join', 'select', 'from',
+      'and', 'or', 'not', 'in', 'is', 'null', 'like', 'between', 'exists',
+      'case', 'when', 'then', 'else', 'end', 'as', 'by', 'asc', 'desc',
+      'distinct', 'all', 'any', 'into', 'values', 'insert', 'update',
+      'delete', 'create', 'drop', 'alter', 'index', 'table', 'view',
+    ]);
+
+    /** Résout l'alias d'une table : si le mot capturé est un mot-clé SQL, ignore-le. */
+    const resolveAlias = (tableName: string, captured: string | undefined): string => {
+      const raw = captured?.toLowerCase();
+      if (raw && !SQL_KEYWORDS.has(raw)) return raw;
+      return tableName.toLowerCase(); // pas d'alias → utiliser le nom de table
+    };
+
+    // Construire la map alias → tableName pour les tables tenant-aware
+    const aliasMap = new Map<string, string>(); // alias → tableName
+
+    // FIX 1 — l'alias est entièrement optionnel : `(?:\s+(?:AS\s+)?alias)?`
+    // Avant : `\s+` était obligatoire → `FROM table` (fin de string) ne matchait pas.
+    // FROM table [AS alias]
+    const fromRe = /\bFROM\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
+    let m: RegExpExecArray | null;
+    while ((m = fromRe.exec(sql)) !== null) {
+      const tbl = m[1].toLowerCase();
+      const alias = resolveAlias(tbl, m[2]);
+      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+    }
+
+    // [LEFT|RIGHT|INNER|OUTER|CROSS] JOIN table [AS alias]
+    const joinRe = /\bJOIN\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
+    while ((m = joinRe.exec(sql)) !== null) {
+      const tbl = m[1].toLowerCase();
+      const alias = resolveAlias(tbl, m[2]);
+      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+    }
+
+    if (aliasMap.size === 0) {
+      this.logger.warn(`[Tenant] ⚠️ Aucune table tenant détectée dans la requête — injection impossible`);
+      return sql;
+    }
+
+    // FIX 2 — idempotence : ne sauter que si le BON tenant_id est déjà présent.
+    // Avant : `tenant_id =` sans valeur → le LLM pouvait mettre tenant_id = 0 et
+    // tromper le check. On vérifie maintenant `alias.tenant_id = <tenantId>` exact.
+    // FIX 4 — entités @SharedAcrossTenants (référentiels globaux) : on filtre par
+    // tenant_id IN (1, X) au lieu de = X, sinon les données globales (tenant_id=1)
+    // sont masquées → « aucun résultat » sur les types/catégories/référentiels.
+    const sharedTables = this.getSharedTenantTables();
+    const newConditions = Array.from(aliasMap.entries())
+      .map(([alias, tbl]) => {
+        const isShared = sharedTables.has(tbl);
+        const condition = isShared
+          ? `${alias}.tenant_id IN (1, ${tenantId})`
+          : `${alias}.tenant_id = ${tenantId}`;
+        // Idempotence : ne pas réinjecter si la condition correcte est déjà présente
+        const already = isShared
+          ? new RegExp(`\\b${alias}\\.tenant_id\\s+IN\\s*\\(\\s*1\\s*,\\s*${tenantId}\\s*\\)`, 'i')
+          : new RegExp(`\\b${alias}\\.tenant_id\\s*=\\s*${tenantId}\\b`, 'i');
+        return already.test(sql) ? null : condition;
+      })
+      .filter((c): c is string => c !== null);
+
+    if (newConditions.length === 0) return sql; // déjà correctement filtré ✅
+
+    const conditions = newConditions.join(' AND ');
+    this.logger.debug(`[Tenant] injection SQL tenant_id=${tenantId}: ${conditions}`);
+
+    if (/\bWHERE\b/i.test(sql)) {
+      // FIX 3 — protection OR-bypass : on enveloppe la condition existante entre ()
+      // Avant : `WHERE ${cond} AND <existing>` — si <existing> = `x OR 1=1`,
+      // résultat = `WHERE (cond AND x) OR 1=1` → retourne tout.
+      // Après  : `WHERE (<existing>) AND (${cond})` — la parenthèse isole le OR.
+      const whereRe = /^([\s\S]*?\bWHERE\b\s*)([\s\S]*?)(\s*(?:\b(?:ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT)\b[\s\S]*)?;?\s*)$/i;
+      const wm = whereRe.exec(sql);
+      if (wm) {
+        const existingCond = wm[2].trim();
+        return `${wm[1]}(${existingCond}) AND (${conditions})${wm[3]}`;
+      }
+      // Fallback (ne devrait pas arriver)
+      return sql.replace(/\bWHERE\b\s*/i, `WHERE ${conditions} AND `);
+    }
+
+    // Pas de WHERE : insérer avant ORDER BY / GROUP BY / HAVING / LIMIT
+    const insertBefore = /\b(ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT)\b/i;
+    if (insertBefore.test(sql)) {
+      return sql.replace(insertBefore, (_, kw) => `WHERE ${conditions}\n${kw}`);
+    }
+
+    // Dernier recours : ajouter en fin de requête
+    return sql.trimEnd().replace(/;?\s*$/, ` WHERE ${conditions}`);
+  }
+
+  /**
+   * Construit le prompt système tenant-aware.
+   * Si un tenantId actif est détecté, injecte une règle explicite :
+   * "toutes les requêtes DOIVENT filtrer par tenant_id = X".
+   */
+  private buildTenantAwareSystemPrompt(tenantId: number | null): string {
+    const base = this.cachedSystemPrompt ?? '';
+    if (!tenantId || tenantId === 1) return base;
+
+    const tenantRule = `
+    ⚠️ RÈGLE TENANT OBLIGATOIRE (ne jamais ignorer) :
+    Cette session appartient au cabinet avec tenant_id = ${tenantId}.
+    CHAQUE table métier possède une colonne tenant_id.
+    Tu DOIS filtrer par tenant_id = ${tenantId} pour CHAQUE table mentionnée dans tes requêtes.
+
+    Exemple CORRECT :
+    \`\`\`sql
+    SELECT d.id, d.reference FROM dossiers d
+    LEFT JOIN customers c ON d.customer_id = c.id AND c.tenant_id = ${tenantId}
+    WHERE d.tenant_id = ${tenantId} AND d.statut = 'actif'
+    LIMIT ${this.MAX_RESULTS};
+    \`\`\`
+    Exemple INTERDIT (oubli du tenant_id) :
+    \`\`\`sql
+    SELECT d.id FROM dossiers d WHERE d.statut = 'actif'; -- ❌
+    \`\`\`
+
+    `;
+
+    // Injecter la règle tenant juste avant les RÈGLES ABSOLUES
+    return base.replace(
+      /RÈGLES ABSOLUES\s*:/i,
+      `${tenantRule}    RÈGLES ABSOLUES :`,
+    );
+  }
+
+  /**
+   * Remplace les valeurs spéciales utilisées par le LLM dans les requêtes SQL :
+   * - {{today}} → CURDATE() (date du jour)
+   * - {{now}}  → NOW()    (timestamp actuel)
+   * - CURDATE  → CURDATE() si parenthèses manquantes (correction automatique)
+   */
+  private replaceSpecialValues(sql: string): string {
+    return sql
+      // {{today}} et {{now}} (documentés dans le prompt de détection d'intention)
+      .replace(/\{\{today\}\}/gi, 'CURDATE()')
+      .replace(/\{\{now\}\}/gi, 'NOW()')
+      // CURDATE sans parenthèses → CURDATE() (erreur fréquente du LLM)
+      .replace(/\bCURDATE\b(?!\s*\()/gi, 'CURDATE()')
+      // CURRENT_DATE sans parenthèses ou style SQL standard → CURDATE()
+      .replace(/\bCURRENT_DATE\b(?!\s*\()/gi, 'CURDATE()')
+      // NOW sans parenthèses → NOW()
+      .replace(/\bNOW\b(?!\s*\()/gi, 'NOW()')
+      // CURRENT_TIMESTAMP sans parenthèses → NOW()
+      .replace(/\bCURRENT_TIMESTAMP\b(?!\s*\()/gi, 'NOW()')
+      // SYSDATE sans parenthèses → NOW()
+      .replace(/\bSYSDATE\b(?!\s*\()/gi, 'NOW()');
+  }
+
+  /**
+   * Prépare une requête READ avant validation/exécution pour éviter les écarts
+   * entre la requête "explainée" et la requête réellement lancée.
+   */
+  private prepareReadQuery(sqlQuery: string): string {
+    let preparedQuery = sqlQuery.trim();
+
+    preparedQuery = this.replaceSpecialValues(preparedQuery);
+    preparedQuery = preparedQuery.replace(/:\w+/g, '');
+    preparedQuery = preparedQuery.replace(/\?\s*,/g, '');
+    preparedQuery = preparedQuery.replace(/,\s*\?/g, '');
+    preparedQuery = preparedQuery.replace(/=\s*\?/g, '= NULL');
+    // Ne supprime que les parenthèses réellement orphelines, pas les appels
+    // de fonction valides comme CURDATE() ou NOW().
+    preparedQuery = preparedQuery.replace(/(?<![A-Za-z0-9_])\(\s*\)/g, '');
+
+    const activeTenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    if (activeTenantId && activeTenantId !== 1) {
+      preparedQuery = this.injectTenantConditions(preparedQuery, activeTenantId);
+    }
+
+    return preparedQuery;
+  }
+
+  /**
+   * Renvoie true si la requête est bien un SELECT (après nettoyage).
+   * Utilisé pour détecter, en voie READ, une requête d'écriture mal classée
+   * et la re-router vers la voie WRITE plutôt que de la bloquer.
+   */
+  private isSelectQuery(sqlQuery: string): boolean {
+    return this.prepareReadQuery(sqlQuery).trim().toLowerCase().startsWith('select');
+  }
+
+  /**
+   * Exécute un plan d'écriture en streaming et gère les cas particuliers
+   * (ambiguïté FK, identifiant manquant). Factorisé pour être appelé à la fois
+   * par la branche WRITE normale et par le filet de sécurité de re-routage READ→WRITE.
+   *
+   * NB : la vérification requiresConfirmation et l'ajout du message utilisateur
+   * sont gérés par l'appelant (logique différente selon le point d'entrée).
+   */
+  private async executeWritePlanStream(
+    plan: WritePlan,
+    userId: string,
+    conversationId: string,
+    dto: AskQuestionDto,
+    fileInfo: any,
+    startTime: number,
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<void> {
+    try {
+      const results = await this.genericWriteService.executePlan(plan, userId);
+      const analysis = this.formatPlanResults(results);
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+      sendEvent('result', {
+        success: true, question: dto.question, analysis, results,
+        conversationId, executionTimeMs: Date.now() - startTime,
+        ...(fileInfo && { fileInfo }),
+      });
+    } catch (error: any) {
+      if (error instanceof AmbiguityException) {
+        sendEvent('ambiguity', {
+          entity: error.entity,
+          fieldName: error.fieldName,
+          searchTerm: error.searchTerm,
+          candidates: error.candidates,
+          operationIndex: error.operationIndex,
+          parentEntity: error.parentEntity,
+          message: this.buildAmbiguityMessage(error),
+          pendingWritePlan: plan,
+          conversationId,
+          allowOther: true,
+          otherLabel: this.getFieldLabel(error.fieldName),
+        });
+      } else if (error instanceof EntityIdRequiredException) {
+        // On garde le plan en mémoire (par conversation) au lieu de le perdre :
+        // au message suivant, on tentera d'en extraire l'ID donné par l'utilisateur.
+        this.rememberPendingEntityIdClarification(
+          conversationId, plan, error.operationIndex, error.entity, userId,
+        );
+        const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
+        await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
+        sendEvent('result', {
+          success: true, question: dto.question, analysis: message,
+          conversationId, executionTimeMs: Date.now() - startTime,
+        });
+      } else {
+        sendEvent('error', { message: error.message });
+      }
+    }
+  }
+
   private async executeSafeQuery(sqlQuery: string): Promise<{ data: any[]; rowCount: number }> {
-    let normalizedQuery = sqlQuery.trim();
-    
-    // ✅ Supprimer les paramètres nommés style :dossier_id, :param, etc.
-    normalizedQuery = normalizedQuery.replace(/:\w+/g, '');
-    
-    // ✅ Remplacer les ? par des valeurs NULL ou les supprimer si nécessaire
-    normalizedQuery = normalizedQuery.replace(/\?\s*,/g, '');
-    normalizedQuery = normalizedQuery.replace(/,\s*\?/g, '');
-    normalizedQuery = normalizedQuery.replace(/=\s*\?/g, '= NULL');
-    
-    // ✅ Nettoyer les parenthèses vides
-    normalizedQuery = normalizedQuery.replace(/\(\s*\)/g, '');
-    
-    normalizedQuery = normalizedQuery.toLowerCase();
+    // execQuery est la requête nettoyée + enrichie qui sera réellement exécutée
+    const execQuery = this.prepareReadQuery(sqlQuery);
+
+    // normalizedQuery (lowercase) sert uniquement à la validation de sécurité
+    const normalizedQuery = execQuery.toLowerCase();
     
     if (!normalizedQuery.startsWith('select')) {
       throw new Error('Seules les requêtes SELECT sont autorisées');
@@ -2196,15 +3599,18 @@ Retourne UNIQUEMENT la requête corrigée.`;
     
     
     try {
-      const results = await this.dataSource.query(sqlQuery);
+      // Exécuter execQuery (nettoyée + tenant injecté), pas sqlQuery (l'original brut)
+      const results = await this.dataSource.query(execQuery);
       const limitedResults = results.slice(0, this.MAX_RESULTS);
-      
+
       return {
         data: limitedResults,
         rowCount: limitedResults.length,
       };
     } catch (error) {
-      throw new Error(`Erreur d'exécution: ${(error as unknown as any).message}`);
+      const dbMessage = (error as unknown as any).message;
+      this.logger.error(`Erreur SQL après préparation: ${dbMessage}\nQuery:\n${execQuery}`);
+      throw new Error(`Erreur d'exécution: ${dbMessage}\nSQL: ${execQuery}`);
     }
   }
 
@@ -2238,10 +3644,14 @@ Retourne UNIQUEMENT la requête corrigée.`;
 
   async validateQuery(sqlQuery: string): Promise<{ valid: boolean; error?: string }> {
     try {
-      await this.dataSource.query(`EXPLAIN ${sqlQuery}`);
+      const preparedQuery = this.prepareReadQuery(sqlQuery);
+      await this.dataSource.query(`EXPLAIN ${preparedQuery}`);
       return { valid: true };
     } catch (error) {
-      return { valid: false, error: (error as unknown as any).message };
+      const dbMessage = (error as unknown as any).message;
+      const preparedQuery = this.prepareReadQuery(sqlQuery);
+      this.logger.warn(`Validation SQL invalide: ${dbMessage}\nQuery:\n${preparedQuery}`);
+      return { valid: false, error: `${dbMessage}\nSQL: ${preparedQuery}` };
     }
   }
 
@@ -2277,6 +3687,7 @@ Retourne UNIQUEMENT la requête corrigée.`;
 
   async refreshSchema(): Promise<void> {
     this.schemaCache.clear();
+    this.schemaJsonCache.clear();
     await this.loadDatabaseRelationships();
     this.logger.log('✅ Caches vidés et relations rechargées');
   }

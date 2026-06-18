@@ -4,11 +4,21 @@ import { UserRole } from 'src/core/enums/user-role.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany, OneToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+  OneToOne,
+} from 'typeorm';
 import { UserRoleAssignment } from '../../user-role-assignment/entities/user-role-assignment.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
+
 
 @Entity('user')
 @BusinessTable({
@@ -18,7 +28,7 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
   category: 'iam',
   ignored: true, // 🔒 Sécurité : jamais créer un user via IA (mot de passe, rôles, FK user_role, etc.)
 })
-export class User {
+export class User extends BaseEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
@@ -135,8 +145,6 @@ export class User {
   })
   customer: Customer;
 
-  @CreateDateColumn({ name: 'created_at' })
-  create_at: Date;
 
   @OneToMany(() => Dossier, (dossier) => dossier.lawyer)
   managed_dossiers: Dossier[];
@@ -150,8 +158,6 @@ export class User {
   @OneToMany(() => Finding, (finding) => finding.validated_by)
   validated_findings: Finding[];
 
-  @UpdateDateColumn({ name: 'updated_at' })
-  update_at: Date;
 
   @Expose()
   get full_name(): string {

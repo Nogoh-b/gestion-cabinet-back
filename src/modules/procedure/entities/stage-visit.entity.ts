@@ -18,7 +18,7 @@ import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { SubStageVisit } from './sub-stage-visit.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('stage_visits')
 @BusinessTable({

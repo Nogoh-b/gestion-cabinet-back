@@ -4,6 +4,7 @@ export interface JwtPayload {
   role?: string;
   permissions?: string[];
   customerId?: number | null;
+  tenantId?: number;        // ← cabinet auquel appartient l'utilisateur
   iat?: number;
   exp?: number;
 }

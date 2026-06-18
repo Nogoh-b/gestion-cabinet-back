@@ -3,14 +3,12 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import {
   Entity,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
   ManyToOne,
   JoinColumn,
   Index,
-  BaseEntity,
   PrimaryColumn,
 } from 'typeorm';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 
 
@@ -51,11 +49,7 @@ export class Partner extends BaseEntity {
   @Column({ type: 'tinyint', default: 1 })
   status: number; // Statut du partenaire (1=actif, 0=inactif)
 
-  @CreateDateColumn()
-  created_at: Date;
-
-  @UpdateDateColumn()
-  updated_at: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
   // @OneToMany(() => SavingsAccount, account => account.partner)
   // created_savings_accounts: SavingsAccount[];

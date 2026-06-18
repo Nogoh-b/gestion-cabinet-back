@@ -20,11 +20,13 @@ import { Injectable, Optional } from '@nestjs/common';
 
 
 
+
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
-import { PaginatedResult, PaginationServiceV1 } from '../pagination/paginations-v1.service';
+import { CreateMailDto } from '../../emails/dto/create-mail.dto';
 import { MailService } from '../../emails/emails.service';
 import { Mail } from '../../emails/entities/mail.entity';
-import { CreateMailDto } from '../../emails/dto/create-mail.dto';
+import { PaginatedResult, PaginationServiceV1 } from '../pagination/paginations-v1.service';
+
 
 
 
@@ -807,6 +809,7 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     criteria: SearchCriteria,
     searchOptions: SearchOptions
   ): void {
+    return
     console.log('=== DEBUG BUILD WHERE CONDITIONS ===');
     console.log('Criteria reçu:', criteria);
     

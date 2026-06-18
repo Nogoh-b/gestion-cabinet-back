@@ -5,6 +5,7 @@ import { DocumentType } from 'src/modules/documents/document-type/entities/docum
 import { AssignDocumentsToTypeDto } from 'src/modules/documents/shared/assign-documents-to-type.dto';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
@@ -70,6 +71,10 @@ export class TypeCustomersService extends BaseServiceV1<TypeCustomer>  {
     }
 
   create(dto: CreateTypeCustomerDto): Promise<TypeCustomer> {
+    // Code facultatif : généré automatiquement s'il n'est pas fourni.
+    if (!dto.code?.trim()) {
+      dto.code = generateEntityCode('CLI', dto.name);
+    }
     return this.repository.save(dto);
   }
 

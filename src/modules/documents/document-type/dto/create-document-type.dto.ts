@@ -6,11 +6,11 @@ export class CreateDocumentTypeDto {
   @IsString()
   @ApiProperty({
     example: 'front_cni',
-    description: 'Code de type de document',
-    required: true,
+    description: 'Code de type de document. Généré automatiquement si non fourni.',
+    required: false,
   })
-  @IsNotEmpty()
-  code: string;
+  @IsOptional()
+  code?: string;
 
   @IsString()
   @ApiProperty({

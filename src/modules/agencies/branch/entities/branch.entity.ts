@@ -1,14 +1,15 @@
 /* eslint-disable prettier/prettier */
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
-import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity, OneToMany, BeforeInsert } from 'typeorm';
+import { Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Entity, OneToMany, BeforeInsert, Unique } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Employee } from '../../employee/entities/employee.entity';
 import { Expose } from 'class-transformer';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('branch')
+@Unique(['code', 'tenant_id'])   // unique par tenant, pas globalement
 @BusinessTable({
   label: 'Agences / Succursales',
   description: 'Gestion des agences et succursales du cabinet. Une agence est un lieu physique où travaillent des avocats et collaborateurs, et où sont reçus les clients.',
@@ -28,7 +29,7 @@ export class Branch extends BaseEntity {
   id: number;
 
   @ApiProperty({ example: 'BR-001' })
-  @Column({ length: 10, unique: true })
+  @Column({ length: 10 })
   @BusinessColumn({
     label: 'Code agence',
     description: 'Code unique identifiant l\'agence (format: BR-XXX). Utilisé pour la recherche rapide.',

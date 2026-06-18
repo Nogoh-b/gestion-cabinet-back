@@ -145,6 +145,11 @@ export class PayslipResponseDto {
   )
   total_commissions: number;
 
+  @ApiProperty({ example: 35000, required: false })
+  @Expose()
+  @Transform(({ obj }) => (obj.total_employer_charges != null ? Number(obj.total_employer_charges) : null))
+  total_employer_charges: number | null;
+
   @ApiProperty({ example: 'Payée' })
   @Expose()
   @Transform(({ obj }) => {
@@ -169,6 +174,16 @@ export class PayslipListResponseDto {
   @Transform(({ obj }) => obj.employee?.full_name)
   employee_name: string;
 
+  @ApiProperty({ example: 'EMP-AVO-2026-001' })
+  @Expose()
+  @Transform(({ obj }) => obj.employee?.employee_number)
+  employee_number: string;
+
+  @ApiProperty({ example: 'avocat' })
+  @Expose()
+  @Transform(({ obj }) => obj.employee?.position)
+  employee_position: string;
+
   @ApiProperty({ example: 'Paie Mars 2026' })
   @Expose()
   @Transform(({ obj }) => obj.period?.label)
@@ -181,6 +196,15 @@ export class PayslipListResponseDto {
   @ApiProperty({ example: 3200.0 })
   @Expose()
   net_amount: number;
+
+  @ApiProperty({ example: '2026-04-01', required: false })
+  @Expose()
+  payment_date: Date;
+
+  @ApiProperty({ example: 1300.0 })
+  @Expose()
+  @Transform(({ obj }) => Number(obj.gross_amount) - Number(obj.net_amount))
+  total_deductions: number;
 
   @ApiProperty({ enum: PayslipStatus })
   @Expose()

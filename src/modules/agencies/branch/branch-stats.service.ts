@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Branch } from './entities/branch.entity';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { BranchStatsDto } from './dto/branch-stats.dto';
 import { SingleBranchStatsDto } from './dto/single-branch-stats.dto';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
@@ -445,6 +446,7 @@ export class BranchStatsService {
         secretaire: EmployeePosition.SECRETAIRE,
       })
       .groupBy('b.id');
+    addTenantCondition(employeesQuery, 'b');
 
     if (filters?.startDate) {
       employeesQuery.andWhere('e.created_at >= :startDate', { startDate: filters.startDate });
@@ -470,6 +472,7 @@ export class BranchStatsService {
         pro: 'PRO',
       })
       .groupBy('b.id');
+    addTenantCondition(customersQuery, 'b');
 
     if (filters?.startDate) {
       customersQuery.andWhere('c.created_at >= :startDate', { startDate: filters.startDate });
@@ -495,6 +498,7 @@ export class BranchStatsService {
         clos: 5,
       })
       .groupBy('b.id');
+    addTenantCondition(dossiersQuery, 'b');
 
     if (filters?.startDate) {
       dossiersQuery.andWhere('d.created_at >= :startDate', { startDate: filters.startDate });
@@ -527,6 +531,7 @@ export class BranchStatsService {
         payee: 'PAYEE',
       })
       .groupBy('b.id');
+    addTenantCondition(performanceQuery, 'b');
 
     if (filters?.startDate) {
       performanceQuery.andWhere('d.created_at >= :startDate', { startDate: filters.startDate });
@@ -665,6 +670,7 @@ export class BranchStatsService {
         'SUM(f.montantTTC) as chiffreAffaires',
       ])
       .where('b.id = :branchId', { branchId });
+    addTenantCondition(query, 'b');
 
     if (filters?.startDate) {
       query.andWhere('d.created_at >= :startDate', { startDate: filters.startDate });

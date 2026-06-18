@@ -2,9 +2,8 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn
 } from 'typeorm';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 export enum MailStatus {
   PENDING = 'pending',
@@ -22,7 +21,7 @@ export interface AttachmentMail {
 }
 
 @Entity('mails')
-export class Mail {
+export class Mail extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -32,7 +31,7 @@ export class Mail {
   @Column({ nullable: true })
   templateName?: string; // Nom du template (ex: 'welcome', 'invoice')
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   context?: Record<string, any>; // Données pour le template
 
   @Column({ type: 'simple-array' })
@@ -47,13 +46,13 @@ export class Mail {
   @Column({ nullable: true })
   subject?: string; // Sujet (peut être surchargé ou utilisé si pas de template)
 
-  @Column({ type: 'text', nullable: true })
-  html?: string; // Contenu HTML si pas de template
+  @Column({ type: 'longtext', nullable: true })
+  html?: string; // Contenu HTML si pas de template (longtext: l'en-tête peut contenir un logo base64 > 64 Ko)
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'longtext', nullable: true })
   text?: string; // Version texte
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   attachments?: Array<AttachmentMail>;
 
   @Column({ type: 'enum', enum: MailStatus, default: MailStatus.PENDING })
@@ -77,12 +76,8 @@ export class Mail {
   @Column({ nullable: true })
   lastAttemptAt?: Date;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'simple-json', nullable: true })
   metadata?: Record<string, any>; // Pour stocker des infos supplémentaires (ex: entité liée)
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
+  // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 }

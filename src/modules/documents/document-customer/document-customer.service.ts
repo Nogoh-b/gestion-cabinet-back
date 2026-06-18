@@ -1,21 +1,26 @@
 import { plainToInstance } from 'class-transformer';
+import * as fs from 'fs';
+import * as path from 'path';
+import { join } from 'path';
 import { UPLOAD_DOCS_PATH, UPLOAD_PATH } from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { FilesUtil, UploadedFileInfo } from 'src/core/shared/utils/file.util';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { CabinetService } from 'src/modules/cabinet/cabinet.service';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { DocumentCategoryService } from 'src/modules/document-category/document-category.service';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { DossiersService } from 'src/modules/dossiers/dossiers.service';
+
 import { DossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
+import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { Repository } from 'typeorm';
-import * as fs from 'fs';
-import * as path from 'path';
-
 import {
   BadRequestException,
   forwardRef,
@@ -24,15 +29,28 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+
+
 import { DocumentType } from '../document-type/entities/document-type.entity';
+
+
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
 import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
+import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
 import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
-import { join } from 'path';
-import { StepsService } from 'src/modules/dossiers/step.service';
-import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
-import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
+
+
+
+
+
+
+
+
 
 export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
   constructor(
@@ -52,9 +70,10 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     private dossierService: DossiersService,
     protected readonly paginationService: PaginationServiceV1,
     private documentCategoryService: DocumentCategoryService,
-    @Inject(forwardRef(() => StepsService))
-    private stepsService: StepsService,
-  ) {    
+    // @Inject(forwardRef(() => StepsService))
+    // private stepsService: StepsService,
+    private cabinetService: CabinetService,
+  ) {
         super(docRepository, paginationService);console.log(forwardRef)
   }
 
@@ -111,7 +130,8 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
         'dossier',
         'uploaded_by',
         'previous_version',
-        'subStages'
+        'stageVisits',
+        'sub_stage_visits'
       ],
   
     };
@@ -224,9 +244,22 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       }
       if (!file && !strict) return null;
       
-      const dir = `${dossier.dossier_number}/${category.name}/${docType!.name}`
-      // 7. Upload du fichier
-      const uploadedFile = await this.uploadFile(file, dir);
+      // 7. Récupération du nom du cabinet depuis le tenant
+      const tenantId = getCurrentTenantId();
+      let cabinetName = 'cabinet';
+      try {
+        const cabinet = await this.cabinetService.findById(tenantId);
+        if (cabinet?.name) {
+          cabinetName = FilesUtil.sanitizeName(cabinet.name).toLowerCase();
+        }
+      } catch {
+        cabinetName = 'cabinet';
+      }
+
+      const dir = `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType!.name}`
+      // 8. Upload du fichier
+      const docName = restDto.name || docType!.name;
+      const uploadedFile = await this.uploadFile(file, dir, docName);
 
         // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
     // let procedureInstance: ProcedureInstance | null = null;
@@ -258,6 +291,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         status : DocumentCustomerStatus.ACCEPTED,
         category : plainToInstance(DocumentCategory, category),
         dossier: plainToInstance(Dossier, dossier), // ou gardez l'objet tel quel
+        notify_client: !!createDto.notify_client,
         uploadedFile,
 
         uploadedByUserId
@@ -289,6 +323,9 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       // if (createDto.status === DocumentCustomerStatus.ACCEPTED) {
       //   await this.stepsService.updateStepMetrics(document.id);
       // }
+      if(createDto.sub_stage_visit_id){
+        await this.linkDocumentsToSubStage([document.id], createDto.sub_stage_visit_id);
+      }
 
       return plainToInstance(DocumentCustomerResponseDto, document);
 
@@ -299,14 +336,128 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   }
 
   /**
-   * Valide le type de document
+   * Met à jour un document client existant
+   */
+  async update(
+    id: number,
+    updateDto: UpdateDocumentCustomerDto & { file?: Express.Multer.File },
+    userId?: number,
+  ): Promise<DocumentCustomerResponseDto> {
+    const existing = await this.docRepository.findOne({
+      where: { id },
+      relations: ['customer', 'document_type', 'dossier', 'category'],
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
+    }
+
+    const { file, ...restDto } = updateDto;
+
+    // 1. Si un nouveau fichier est fourni, l'uploader
+    if (file) {
+      const tenantId = getCurrentTenantId();
+      let cabinetName = 'cabinet';
+      try {
+        const cabinet = await this.cabinetService.findById(tenantId);
+        if (cabinet?.name) {
+          cabinetName = FilesUtil.sanitizeName(cabinet.name).toLowerCase();
+        }
+      } catch {
+        cabinetName = 'cabinet';
+      }
+
+      const dossier = existing.dossier
+        ? await this.dossierService.findOne(existing.dossier.id)
+        : null;
+      const category = existing.category;
+      const docType = existing.document_type;
+      const dir = dossier && category && docType
+        ? `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType.name}`
+        : `${cabinetName}/documents`;
+
+      const docName = restDto.name || existing.name;
+      const uploadedFile = await this.uploadFile(file, dir, docName);
+      existing.file_path = uploadedFile.filePath;
+      existing.file_url = uploadedFile.fileUrl;
+      existing.file_size = uploadedFile.fileSize;
+      existing.file_mimetype = uploadedFile.mimeType;
+    }
+
+    // 2. Si document_type_id change, valider le nouveau type
+    if (updateDto.document_type_id && updateDto.document_type_id !== existing.document_type_id) {
+      const docType = await this.validateDocumentType(updateDto.document_type_id, true);
+      if (docType) {
+        existing.document_type = docType;
+        existing.document_type_id = docType.id;
+      }
+    }
+
+    // 3. Si dossier_id change, valider le nouveau dossier
+    if (updateDto.dossier_id && updateDto.dossier_id !== existing.dossier_id) {
+      const dossier = await this.validateDossier(updateDto.dossier_id, true);
+      if (dossier) {
+        existing.dossier = plainToInstance(Dossier, dossier);
+        existing.dossier_id = dossier.id;
+      }
+    }
+
+    // 4. Si customer_id change, valider le nouveau client
+    if (updateDto.customer_id && updateDto.customer_id !== existing.customer_id) {
+      const customer = await this.validateCustomer(
+        updateDto.customer_id,
+        existing.document_type_id ?? 0,
+        true,
+      );
+      if (customer) {
+        existing.customer = customer;
+        existing.customer_id = customer.id;
+      }
+    }
+
+    // 5. Si category_id change, valider la nouvelle catégorie
+    if (updateDto.category_id && updateDto.category_id !== existing.category_id) {
+      const category = await this.documentCategoryService.findOne(updateDto.category_id);
+      if (category) {
+        existing.category = plainToInstance(DocumentCategory, category);
+        existing.category_id = category.id;
+      }
+    }
+
+    // 6. Mise à jour des champs simples
+    if (updateDto.name !== undefined) existing.name = updateDto.name;
+    if (updateDto.description !== undefined) existing.description = updateDto.description;
+    if (updateDto.required_for_hearing !== undefined) existing.required_for_hearing = updateDto.required_for_hearing;
+    if (updateDto.is_confidential !== undefined) existing.is_confidential = updateDto.is_confidential;
+    if (updateDto.status !== undefined) existing.status = updateDto.status;
+    if (updateDto.metadata !== undefined) {
+      try {
+        existing.metadata = typeof updateDto.metadata === 'string'
+          ? JSON.parse(updateDto.metadata)
+          : updateDto.metadata;
+      } catch {
+        // existing.metadata = { error: 'Invalid JSON format' };
+      }
+    }
+
+    // 7. Versioning
+    existing.version = (existing.version ?? 1) + 1;
+
+    const saved = await this.docRepository.save(existing);
+    return plainToInstance(DocumentCustomerResponseDto, saved);
+  }
+
+  /**
+   * Valide le type de document.
+   * Le TenantRepositoryPatch injecte automatiquement tenant_id IN (1, tenantId) :
+   * types du cabinet courant + types globaux seedés sont inclus.
    */
   private async validateDocumentType(
-    documentTypeId: number, 
+    documentTypeId: number,
     strict: boolean
   ): Promise<DocumentType | null> {
     const docType = await this.docTypeRepository.findOne({
-      where: { id: documentTypeId }
+      where: { id: documentTypeId },
     });
 
     if (!docType && strict) {
@@ -417,14 +568,17 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
    */
   private async uploadFile(
     file: Express.Multer.File,
-    dir: string
+    dir: string,
+    fileName?: string
   ): Promise<UploadedFileInfo> {
 
     try {
       console.log(join(UPLOAD_DOCS_PATH, dir))
       return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, dir),{
-        maxSizeKB: 300, // 3MB
-        quality: 70,
+        maxSizeKB: 3072, // 3MB
+        width: 1600,
+        quality: 75,
+        ...(fileName && { fileName }),
       });
     } catch (error) {
       throw new InternalServerErrorException(
@@ -480,6 +634,7 @@ async linkDocumentsToSubStage(
     status?: DocumentCustomerStatus;
     required_for_hearing?: boolean;
     is_confidential?: boolean;
+    notify_client?: boolean;
     metadata?: string;
   }): Promise<DocumentCustomer | any> {
     const {
@@ -519,6 +674,8 @@ async linkDocumentsToSubStage(
     }
 
     const document = this.docRepository.create(documentData);
+    // Champ transient consommé par le DocumentCustomerSubscriber.
+    (document as any).notify_client = !!(documentData as any).notify_client;
     return this.docRepository.save(document);
   }
 
@@ -691,6 +848,31 @@ async linkDocumentsToSubStage(
       'gif': 'image/gif',
     };
     return mimeTypes[fileType] || 'application/octet-stream';
+  }
+
+  /**
+   * Returns the base64 encoded content of a document file.
+   */
+  async getBase64(id: number): Promise<{ base64: string; mimeType: string; fileName: string; fileSize?: number }> {
+    const document = await this.findOne(id);
+
+    if (!document || !document.file_path) {
+      throw new NotFoundException(`Document avec l'ID ${id} introuvable ou fichier manquant`);
+    }
+
+    let filePath = document.file_path;
+    filePath = filePath.replace(/\\/g, path.sep).replace(/\//g, path.sep);
+
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundException(`Fichier physique non trouvé: ${filePath}`);
+    }
+
+    const fileBuffer = fs.readFileSync(filePath);
+    const base64 = fileBuffer.toString('base64');
+    const mimeType = document.file_mimetype || this.getMimeType(path.extname(filePath).replace('.', ''));
+    const fileName = document.original_name || path.basename(filePath);
+
+    return { base64, mimeType, fileName, fileSize: document.file_size ?? 0 };
   }
 
   

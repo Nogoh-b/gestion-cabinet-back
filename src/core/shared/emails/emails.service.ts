@@ -1,12 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual } from 'typeorm';
-import { MailerService } from '@nestjs-modules/mailer';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { AttachmentMail, Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { CreateMailDto } from './dto/create-mail.dto';
 import { helpers } from 'src/utils/helper-template-maill';
+import { Repository, LessThanOrEqual } from 'typeorm';
+import { MailerService } from '@nestjs-modules/mailer';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+
+
+
+
+import { CreateMailDto } from './dto/create-mail.dto';
+
+
+
+
 
 @Injectable()
 export class MailService {
@@ -81,13 +89,20 @@ export class MailService {
 
       // Si template, l'utiliser
       if (mail.templateName) {
+        // Rendu via fichier Handlebars (.hbs)
         mailOptions.template = mail.templateName;
-        mailOptions.context = mail.context || {};
+        mailOptions.context  = mail.context || {};
       } else {
-        // Sinon utiliser le html/text fourni
-        mailOptions.html = mail.html;
-        mailOptions.text = mail.text;
-        mailOptions.layout = 'layout'; // ou passer dans context
+        // HTML déjà rendu (composer frontend) — court-circuit Handlebars complet.
+        // On utilise la propriété nodemailer native `html` ET on désactive le
+        // layout par défaut (`defaultLayout: 'layout'` dans app.module) afin que
+        // le HandlebarsAdapter ne tente pas de re-compiler le HTML via Handlebars
+        // (ce qui échouerait en mode strict sur des accolades CSS / non résolues).
+        mailOptions.html    = mail.html;
+        mailOptions.text    = mail.text;
+        // layout: false → désactive le defaultLayout pour cet envoi uniquement
+        (mailOptions as any).context  = { ...(mail.context || {}) };
+        (mailOptions as any).layout   = false;
       }
 
       // Envoyer
@@ -163,10 +178,13 @@ export class MailService {
 
     if (templateName) {
       mailOptions.template = templateName;
-      mailOptions.context = context || {};
+      mailOptions.context  = context || {};
     } else {
-      mailOptions.html = html;
-      mailOptions.text = text;
+      // HTML inline — désactive le defaultLayout Handlebars (évite erreur strict mode)
+      mailOptions.html    = html;
+      mailOptions.text    = text;
+      (mailOptions as any).layout  = false;
+      (mailOptions as any).context = {};
     }
 
     // Envoyer
@@ -258,7 +276,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
    * Récupère tous les mails (pour le contrôleur)
    */
   async findAll(): Promise<Mail[]> {
-    return this.mailRepository.find({ order: { createdAt: 'DESC' } });
+    return this.mailRepository.find({ order: { created_at: 'DESC' } });
   }
 
   /**
@@ -266,16 +284,25 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
    * Convention de stockage : `metadata = { linkedEntity: { type: 'dossier', id: 42 } }`.
    * Utilise une requête JSON (compatible MySQL 5.7+).
    */
-  async findByEntity(entityType: string, entityId: string | number): Promise<Mail[]> {
+  async findByEntity(entityType: string, entityId: string | number): Promise<Mail[]> {    
+    const idStr = String(entityId);
     return this.mailRepository
       .createQueryBuilder('mail')
-      .where(`JSON_EXTRACT(mail.metadata, '$.linkedEntity.type') = :type`, { type: entityType })
-      .andWhere(
-        `(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :id ` +
-        ` OR JSON_EXTRACT(mail.metadata, '$.linkedEntity.id') = :idStr)`,
-        { id: Number(entityId) || -1, idStr: String(entityId) },
+      // 1. Mail directement lié à l'entité (linkedEntity)
+      .where(
+        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = :type
+          AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id')) = :idStr)`,
+        { type: entityType, idStr },
       )
-      .orderBy('mail.createdAt', 'DESC')
+      // 2. Mail lié à une sous-ressource MAIS rattaché à ce parent (parentRef).
+      //    Ex : mail envoyé depuis une facture/audience d'un dossier → doit
+      //    apparaître dans l'historique du dossier parent.
+      .orWhere(
+        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.type')) = :type
+          AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.id')) = :idStr)`,
+        { type: entityType, idStr },
+      )
+      .orderBy('mail.created_at', 'DESC')
       .getMany();
   }
 
@@ -342,7 +369,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
       );
     }
 
-    const results = await qb.orderBy('mail.createdAt', 'DESC').getMany();
+    const results = await qb.orderBy('mail.created_at', 'DESC').getMany();
     this.logger.debug(`[findByClient] ${results.length} mail(s) trouvé(s)`);
     return results;
   }

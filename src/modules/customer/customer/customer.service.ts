@@ -1,5 +1,9 @@
+import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { UserRole } from 'src/core/enums/user-role.enum';
+import { EmailService } from 'src/core/shared/services/email/email.service copy';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions as SearchOptionV1 } from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
@@ -49,6 +53,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
+import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
@@ -58,6 +64,11 @@ import {
   CustomerCreatedFrom,
   CustomerStatus,
 } from './entities/customer.entity';
+import {
+  CustomerCommunication,
+  CommunicationStatus,
+} from './entities/customer-communication.entity';
+import { CreateCustomerCommunicationDto } from './dto/create-customer-communication.dto';
 
 
 
@@ -92,6 +103,8 @@ export class CustomersService extends BaseServiceV1<Customer> {
     protected readonly oldPaginationService: PaginationService,
     protected readonly paginationServiceV1: PaginationServiceV1,
     private readonly dataSource: DataSource,
+    private readonly planQuotaService: PlanQuotaService,
+    private readonly emailService: EmailService,
   ) {
     console.log(forwardRef);
     super(customerRepository, paginationServiceV1);
@@ -140,7 +153,9 @@ export class CustomersService extends BaseServiceV1<Customer> {
         ],*/
         
         // Champs de relations pour filtrage
-        relationFields: ['type_customer', 'location_city']
+        // `dossiers` est chargé pour permettre le calcul de dossier_count /
+        // active_dossier_count dans le CustomerResponseDto (affiché dans la liste).
+        relationFields: ['type_customer', 'location_city', 'dossiers']
       };
     }
  toNumberOrNull(value: any): number | null {
@@ -148,11 +163,14 @@ export class CustomersService extends BaseServiceV1<Customer> {
   return isNaN(num) ? null : num;
 }
   async create(createCustomerDto: CreateCustomerDto): Promise<any> {
+    // ── Vérification quota plan ────────────────────────────────────────────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      const currentCount = await this.customerRepository.count();
+      await this.planQuotaService.checkLimit(tenantId, 'clients', currentCount);
+    }
+
     return await this.dataSource.transaction(async (manager) => {
-      // const customerRes = new CustomerResponseDto()
-      // customerRes.customer_code = GenCOde.generateCode(10)
-      // return customerRes
-      // const errors = await validateDto(CreateCustomerDto, createCustomerDto);
       console.log(createCustomerDto)
 
       // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
@@ -610,5 +628,168 @@ async update(
       }, 'sentCount')
       .having('sentCount < requiredCount')
       .getMany();
+  }
+
+  // ==================== COMMUNICATIONS CLIENT ====================
+
+  /**
+   * Récupère l'historique des communications d'un client (appels, emails,
+   * réunions, courriers) trié de la plus récente à la plus ancienne.
+   */
+  async getCommunications(customerId: number): Promise<CustomerCommunication[]> {
+    const customer = await this.customerRepository.findOne({
+      where: { id: customerId },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Client ${customerId} non trouvé`);
+    }
+
+    const repo = this.dataSource.getRepository(CustomerCommunication);
+    return repo.find({
+      where: { customer: { id: customerId } },
+      order: { date: 'DESC', id: 'DESC' },
+    });
+  }
+
+  /**
+   * Ajoute une communication (appel, email, réunion, courrier) à un client.
+   * Aucune ValidationPipe globale n'étant active, on coerce manuellement les
+   * valeurs sensibles (durée, date).
+   */
+  async addCommunication(
+    customerId: number,
+    dto: CreateCustomerCommunicationDto,
+  ): Promise<CustomerCommunication> {
+    const customer = await this.customerRepository.findOne({
+      where: { id: customerId },
+    });
+    if (!customer) {
+      throw new NotFoundException(`Client ${customerId} non trouvé`);
+    }
+
+    if (!dto?.type) {
+      throw new BadRequestException('Le type de communication est requis');
+    }
+    if (!dto?.subject) {
+      throw new BadRequestException("L'objet de la communication est requis");
+    }
+
+    const repo = this.dataSource.getRepository(CustomerCommunication);
+    const parsedDuration =
+      dto.duration === undefined || dto.duration === null
+        ? undefined
+        : Number(dto.duration);
+    const durationValue =
+      parsedDuration !== undefined && Number.isNaN(parsedDuration)
+        ? undefined
+        : parsedDuration;
+
+    const communication = repo.create({
+      customer: { id: customerId } as Customer,
+      type: dto.type,
+      subject: dto.subject,
+      content: dto.content ?? undefined,
+      date: dto.date ? new Date(dto.date) : new Date(),
+      status: dto.status ?? CommunicationStatus.SENT,
+      duration: durationValue,
+      participants: dto.participants ?? undefined,
+    });
+
+    return repo.save(communication);
+  }
+
+  /**
+   * Supprime une communication client.
+   */
+  async removeCommunication(
+    customerId: number,
+    communicationId: number,
+  ): Promise<{ success: boolean }> {
+    const repo = this.dataSource.getRepository(CustomerCommunication);
+    const communication = await repo.findOne({
+      where: { id: communicationId, customer: { id: customerId } },
+    });
+    if (!communication) {
+      throw new NotFoundException(
+        `Communication ${communicationId} non trouvée pour le client ${customerId}`,
+      );
+    }
+    await repo.remove(communication);
+    return { success: true };
+  }
+
+  /**
+   * Crée (ou réinitialise) un compte utilisateur CLIENT pour le client donné,
+   * puis envoie les identifiants de connexion par email.
+   */
+  async sendClientAccess(customerId: number): Promise<{ success: boolean; message: string }> {
+    // 1. Récupérer le client
+    const customer = await this.customerRepository.findOneBy({ id: customerId });
+    if (!customer) {
+      throw new NotFoundException(`Client ${customerId} introuvable`);
+    }
+    if (!customer.email) {
+      throw new BadRequestException('Ce client n\'a pas d\'adresse email enregistrée');
+    }
+
+    const userRepo = this.dataSource.getRepository(User);
+
+    // 2. Générer un mot de passe aléatoire
+    const rawPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    // 3. Chercher un compte existant pour ce client
+    let user = await userRepo.findOne({ where: { customer: { id: customerId } } });
+
+    if (user) {
+      // Réinitialiser le mot de passe
+      user.password = hashedPassword;
+      user.status = 1;
+      await userRepo.save(user);
+    } else {
+      // Créer un nouveau compte client
+      const username = customer.email.split('@')[0] + '_client';
+      user = userRepo.create({
+        username,
+        email: customer.email,
+        password: hashedPassword,
+        role: UserRole.CLIENT,
+        first_name: customer.first_name ?? '',
+        last_name: customer.last_name ?? '',
+        status: 1,
+        customer: { id: customerId } as Customer,
+      });
+      await userRepo.save(user);
+    }
+
+    // 4. Envoyer les identifiants par email
+    const emailBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb;">Accès à votre espace client</h2>
+        <p>Bonjour ${customer.first_name} ${customer.last_name},</p>
+        <p>Voici vos identifiants de connexion à l'espace client du cabinet :</p>
+        <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+          <tr>
+            <td style="padding: 8px; font-weight: bold; background: #f3f4f6;">Identifiant</td>
+            <td style="padding: 8px;">${user.username}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; font-weight: bold; background: #f3f4f6;">Mot de passe</td>
+            <td style="padding: 8px;">${rawPassword}</td>
+          </tr>
+        </table>
+        <p>Connectez-vous sur : <a href="${process.env.FRONTEND_URL ?? ''}/auth/login">${process.env.FRONTEND_URL ?? 'votre espace client'}</a></p>
+        <p style="color: #6b7280; font-size: 13px;">Pour des raisons de sécurité, nous vous recommandons de changer votre mot de passe lors de votre première connexion.</p>
+        <p>Cordialement,<br>Le cabinet</p>
+      </div>
+    `;
+
+    await this.emailService.sendMail({
+      to: customer.email,
+      subject: 'Vos accès à l\'espace client',
+      message: emailBody,
+    });
+
+    return { success: true, message: 'Accès envoyés avec succès' };
   }
 }

@@ -4,6 +4,8 @@ import { In, Repository } from 'typeorm';
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
 import { RolePermission } from 'src/modules/iam/role-permission/entities/role-permission.entity';
+import { findOneForTenant } from 'src/core/tenant/seeder-helper';
+import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
 
 // ─── Configuration des rôles cabinet (miroir du front roles.permissions.ts) ─────
 
@@ -43,6 +45,8 @@ const ROLES_CONFIG: {
       'attach_document_to_diligence', 'add_diligence_note',
       // Utilisateurs & Administration
       'view_users', 'create_user', 'edit_user', 'delete_user', 'manage_roles', 'view_audit_logs', 'manage_settings',
+      // Modèles PDF
+      'view_pdf_templates', 'create_pdf_template', 'edit_pdf_template', 'delete_pdf_template',
       // Communications
       'view_messages', 'send_message', 'delete_message', 'view_all_messages',
       // Rapports
@@ -61,6 +65,9 @@ const ROLES_CONFIG: {
       'validate_supplier_invoice', 'pay_supplier_invoice',
       'view_expense_reports', 'create_expense_report', 'edit_expense_report', 'delete_expense_report',
       'validate_expense_report', 'reimburse_expense_report',
+      // Comptabilité (accès complet)
+      'view_accounting', 'create_ecriture', 'edit_ecriture', 'delete_ecriture',
+      'manage_chart_of_accounts', 'open_exercice', 'close_exercice', 'view_accounting_reports',
     ],
   },
 
@@ -97,6 +104,8 @@ const ROLES_CONFIG: {
       'view_payroll', 'view_payroll_periods', 'view_payslips', 'download_payslip',
       // Dépenses (consultation + notes de frais)
       'view_expenses', 'view_suppliers', 'view_supplier_invoices', 'view_expense_reports', 'create_expense_report',
+      // Comptabilité (consultation)
+      'view_accounting', 'view_accounting_reports',
     ],
   },
 
@@ -142,6 +151,8 @@ const ROLES_CONFIG: {
       'view_expenses', 'view_suppliers', 'create_supplier', 'edit_supplier',
       'view_supplier_invoices', 'create_supplier_invoice', 'edit_supplier_invoice',
       'view_expense_reports', 'create_expense_report', 'edit_expense_report',
+      // Comptabilité (gestion courante)
+      'view_accounting', 'create_ecriture', 'edit_ecriture', 'open_exercice', 'view_accounting_reports',
     ],
   },
 
@@ -241,8 +252,8 @@ export class RoleSeeder {
     this.logger.log('Seeding roles & role-permissions...');
 
     for (const config of ROLES_CONFIG) {
-      // 1. Créer le rôle s'il n'existe pas
-      let role = await this.roleRepo.findOne({ where: { code: config.code } });
+      // 1. Créer le rôle s'il n'existe pas (recherche exacte par tenant)
+      let role = await findOneForTenant(this.roleRepo, 'code', config.code);
       const isNew = !role;
 
       if (isNew) {
@@ -266,10 +277,13 @@ export class RoleSeeder {
         continue;
       }
 
-      // 3. Récupérer les permissions correspondantes en DB
-      const permissions = await this.permissionRepo.find({
-        where: { code: In(config.permissions) },
-      });
+      // 3. Récupérer les permissions du tenant courant (QueryBuilder exact)
+      const qb = this.permissionRepo.createQueryBuilder('p')
+        .where('p.code IN (:...codes)', { codes: config.permissions });
+      if (hasActiveTenant()) {
+        qb.andWhere('p.tenant_id = :tid', { tid: getCurrentTenantId() });
+      }
+      const permissions = await qb.getMany();
 
       const foundCodes = permissions.map((p) => p.code);
       const missingCodes = config.permissions.filter((c) => !foundCodes.includes(c));

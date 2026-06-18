@@ -1,10 +1,19 @@
-import { BaseEntity } from 'src/core/entities/baseEntity';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
+import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { Step } from 'src/modules/dossiers/entities/step.entity';
+import { Finding } from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
+import { Stage } from 'src/modules/procedure/entities/stage.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
+import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -18,16 +27,9 @@ import {
   JoinTable,
   BeforeInsert,
 } from 'typeorm';
+
 import { DocumentType } from '../../document-type/entities/document-type.entity';
-import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
-import { Finding } from 'src/modules/finding/entities/finding.entity';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
-import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
-import { Stage } from 'src/modules/procedure/entities/stage.entity';
-import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
-import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
-import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+
 
 export enum DocumentCustomerStatus {
   PENDING = 0,
@@ -45,6 +47,9 @@ export enum DocumentCustomerStatus {
   category: 'document'
 })
 export class DocumentCustomer extends BaseEntity {
+  /** Transient — lu par le DocumentSubscriber pour notifier le client. */
+  notify_client?: boolean;
+
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant technique',
@@ -58,7 +63,7 @@ export class DocumentCustomer extends BaseEntity {
   @Column()
   @BusinessColumn({
     label: 'Nom du document',
-    description: 'Nom original du fichier uploadé. Utilisé pour rechercher un document par son nom.',
+    description: 'Nom original du fichier uploadé. Utitalisé pour rechercher un document par son nom.',
     example: 'Contrat_MeDupont_2025.pdf',
     importance: 'critical',
     group: 'identification'
@@ -311,7 +316,7 @@ export class DocumentCustomer extends BaseEntity {
   })
   is_confidential: boolean;
 
-  @Column({ name: 'metadata', type: 'json', nullable: true })
+  @Column({ name: 'metadata', type: 'simple-json', nullable: true })
   @BusinessColumn({
     label: 'Métadonnées',
     description: 'Informations supplémentaires (mots-clés, nombre de pages, langue, etc.)',

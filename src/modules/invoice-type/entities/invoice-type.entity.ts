@@ -1,15 +1,17 @@
 // invoice-type.entity.ts
+import { Expose } from 'class-transformer';
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity } from 'src/core/entities/tenant.entity';
+import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
+import { Facture } from 'src/modules/facture/entities/facture.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany
+  OneToMany,
+  Unique
 } from 'typeorm';
-import { Expose } from 'class-transformer';
-import { Facture } from 'src/modules/facture/entities/facture.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+
 
 export enum InvoiceTypeCategory {
   LEGAL_FEES = 'legal_fees',
@@ -26,6 +28,7 @@ export enum TaxRate {
   STANDARD = 20
 }
 
+@SharedAcrossTenants()
 @Entity('invoice_types')
 @BusinessTable({
   label: "Types d'honoraires",
@@ -33,7 +36,8 @@ export enum TaxRate {
   icon: '💰',
   category: 'finance'
 })
-export class InvoiceType {
+@Unique(['tenant_id', 'code'])
+export class InvoiceType extends TenantEntity {
   @PrimaryGeneratedColumn()
   @Expose()
   @BusinessColumn({
@@ -45,7 +49,7 @@ export class InvoiceType {
   })
   id: number;
 
-  @Column({ unique: true })
+  @Column()
   @Expose()
   @BusinessColumn({
     label: 'Code',
@@ -169,11 +173,4 @@ export class InvoiceType {
   @Expose()
   invoices: Facture[];
 
-  @CreateDateColumn()
-  @Expose()
-  created_at: Date;
-
-  @UpdateDateColumn()
-  @Expose()
-  updated_at: Date;
 }

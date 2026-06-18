@@ -1,0 +1,123 @@
+import {
+  DataSource,
+  EntityTarget,
+  FindOneOptions,
+  InsertEvent,
+  ObjectLiteral,
+  RemoveEvent,
+  UpdateEvent,
+} from 'typeorm';
+
+import {
+  DispatchPayload,
+  NotificationDispatcher,
+} from '../notifications/notification-dispatcher.service';
+import { BaseEntitySubscriber } from './base-entity.subscriber';
+
+/**
+ * Base class pour tout subscriber qui veut déclencher des notifications.
+ *
+ * Différences vs `BaseEntitySubscriber` :
+ *  - injecte `NotificationDispatcher`
+ *  - fournit `notify()` qui n'échoue jamais (le dispatcher swallow ses erreurs)
+ *
+ * Usage type dans un subscriber métier :
+ *
+ *   protected async onAfterCreate(entity, event) {
+ *     await this.notify({
+ *       event: NotifiableEvent.DOSSIER_CREATED,
+ *       title: `Nouveau dossier ${entity.dossier_number}`,
+ *       content: entity.object,
+ *       link: `/dossiers/${entity.id}`,
+ *       audience: {
+ *         client: { user_id: entity.client?.user_id, notify: !!(entity as any).notify_client },
+ *         lawyer_id: entity.lawyer_id,
+ *         collaborator_ids: (entity.collaborators ?? []).map(c => c.user_id),
+ *       },
+ *       entity: { type: 'dossier', id: entity.id },
+ *     });
+ *   }
+ */
+export abstract class NotifiableSubscriber<
+  T extends ObjectLiteral,
+> extends BaseEntitySubscriber<T> {
+  constructor(
+    dataSource: DataSource,
+    protected readonly notificationDispatcher: NotificationDispatcher,
+  ) {
+    super(dataSource);
+  }
+
+  /**
+   * Helper unique pour déclencher une notification depuis un hook
+   * (`onAfterCreate` / `onAfterUpdate`).
+   *
+   * Ne re-throw jamais : si la cible est mal résolue ou si le mail tombe,
+   * le subscriber et donc la transaction métier ne sont pas impactés.
+   */
+  protected async notify(payload: DispatchPayload): Promise<void> {
+    const entityInfo = payload.entity ? ` | entity=${payload.entity.type}#${payload.entity.id}` : '';
+    this.logger.log(
+      `📢 notify(${payload.event}) | title="${payload.title}"${entityInfo} | lawyer=${payload.audience.lawyer_id ?? '?'} | client.notify=${!!payload.audience.client?.notify}`,
+    );
+    try {
+      await this.notificationDispatcher.dispatch(payload);
+      this.logger.log(`✅ notify(${payload.event}) dispatch terminé`); 
+    } catch (err) {
+      this.logger.error(
+        `notify(${payload.event}) ignoré : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
+  }
+
+  /**
+   * Recharge une entité depuis un subscriber avec le bon EntityManager.
+   *
+   * Dans les hooks TypeORM, utiliser le repository injecté peut lire hors de la
+   * transaction en cours ou trop tôt après un insert/update. Ce helper privilégie
+   * donc `event.manager`, puis retombe sur le DataSource si aucun event n'est fourni.
+   */
+  protected async loadEntity<TLoad extends ObjectLiteral = T>(
+    id: string | number,
+    options: Omit<FindOneOptions<TLoad>, 'where'> = {},
+    event?: InsertEvent<any> | UpdateEvent<any> | RemoveEvent<any>,
+    target?: EntityTarget<TLoad>,
+  ): Promise<TLoad | null> {
+    const entityTarget = target ?? (this.listenTo() as EntityTarget<TLoad>);
+    const manager = event?.manager ?? this.dataSource.manager;
+
+    return manager.findOne(entityTarget, {
+      ...options,
+      where: { id } as any,
+    });
+  }
+
+  /**
+   * Résout un booléen transient (ex: `notify_client`) depuis plusieurs sources.
+   * Priorité : première source qui porte explicitement un booléen.
+   */
+  protected resolveTransientBoolean(
+    key: string,
+    ...sources: Array<Record<string, any> | null | undefined>
+  ): boolean {
+    for (const source of sources) {
+      if (typeof source?.[key] === 'boolean') {
+        return source[key];
+      }
+      if (typeof source?.[key] === 'string') {
+        const normalized = source[key].trim().toLowerCase();
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'off', ''].includes(normalized)) return false;
+      }
+      if (typeof source?.[key] === 'number') {
+        return source[key] === 1;
+      }
+    }
+    return false;
+  }
+
+  // Les hooks `onAfterCreate` / `onAfterUpdate` sont hérités de
+  // `BaseEntitySubscriber` (no-op par défaut). À surcharger dans la classe
+  // fille pour brancher des notify().
+}

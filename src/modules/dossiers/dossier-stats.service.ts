@@ -252,13 +252,19 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
   }
 
   private async getFinancialStats(filters?: StatsFilterDto): Promise<FinancialStatsDto> {
+    // actual_costs = total des factures du dossier (calculé dynamiquement).
+    // On évite toute référence directe à la colonne stockée `actual_costs`
+    // pour rester robuste si elle n'a pas encore été synchronisée par TypeORM.
+    const facturesSumExpr =
+      '(SELECT COALESCE(SUM(f.montant_ttc), 0) FROM factures f WHERE f.dossier_id = dossier.id AND f.deleted_at IS NULL)';
+
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('SUM(dossier.budget_estimate)', 'totalBudget')
-      .addSelect('SUM(dossier.actual_costs)', 'totalActual')
+      .addSelect(`SUM(${facturesSumExpr})`, 'totalActual')
       .addSelect('AVG(dossier.budget_estimate)', 'avgBudget')
-      .addSelect('AVG(dossier.actual_costs)', 'avgActual')
-      .where('dossier.budget_estimate IS NOT NULL OR dossier.actual_costs IS NOT NULL');
+      .addSelect(`AVG(${facturesSumExpr})`, 'avgActual')
+      .where(`dossier.budget_estimate IS NOT NULL OR ${facturesSumExpr} > 0`);
 
     this.applyFilters(query, filters, 'dossier'); ;
 
@@ -268,8 +274,8 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .createQueryBuilder('dossier')
       .select('dossier.status', 'status')
       .addSelect('SUM(dossier.budget_estimate)', 'budgetEstimate')
-      .addSelect('SUM(dossier.actual_costs)', 'actualCosts')
-      .where('dossier.budget_estimate IS NOT NULL OR dossier.actual_costs IS NOT NULL')
+      .addSelect(`SUM(${facturesSumExpr})`, 'actualCosts')
+      .where(`dossier.budget_estimate IS NOT NULL OR ${facturesSumExpr} > 0`)
       .groupBy('dossier.status');
 
     this.applyFilters(byStatusQuery, filters, 'dossier');

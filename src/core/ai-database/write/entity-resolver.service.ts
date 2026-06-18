@@ -1,9 +1,13 @@
 // src/core/ai-database/write/entity-resolver.service.ts
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { DataSource, ILike, Repository } from 'typeorm';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+
+
 import { BUSINESS_METADATA_KEY, BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
 import { AI_DATABASE_PROJECT_CONFIG } from '../ai-database.tokens';
 import { AiDatabaseProjectConfig } from '../interfaces/ai-database-project-config.interface';
+
+
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -77,37 +81,148 @@ function normalize(s: string | null | undefined): string {
 }
 
 /**
- * Score de similitude entre deux chaînes normalisées (0–100)
- * Combine contenance exacte + distance de Levenshtein légère
+ * Distance d'édition de Levenshtein entre deux chaînes (itératif, O(n·m),
+ * mémoire O(min(n,m))). Sert de base à la tolérance aux fautes de frappe.
  */
-function similarityScore(a: string, b: string): number {
-  const na = normalize(a);
-  const nb = normalize(b);
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  // On itère sur la plus courte en colonnes pour limiter la mémoire.
+  if (a.length > b.length) [a, b] = [b, a];
 
-  if (!na || !nb) return 0;
-  if (na === nb) return 100;
-  if (na.includes(nb) || nb.includes(na)) return 85;
+  let prev = Array.from({ length: a.length + 1 }, (_, i) => i);
+  const curr = new Array<number>(a.length + 1);
 
-  // Tokens communs
-  const tokensA = new Set(na.split(' ').filter(t => t.length > 1));
-  const tokensB = new Set(nb.split(' ').filter(t => t.length > 1));
-  const common = [...tokensA].filter(t => tokensB.has(t)).length;
-  const tokenScore = common / Math.max(tokensA.size, tokensB.size, 1);
-
-  // Levenshtein simplifié (bigrammes)
-  const bigramsA = bigrams(na);
-  const bigramsB = bigrams(nb);
-  const bigramIntersect = bigramsA.filter(bg => bigramsB.includes(bg)).length;
-  const bigramScore =
-    (2 * bigramIntersect) / (bigramsA.length + bigramsB.length || 1);
-
-  return Math.round(Math.max(tokenScore, bigramScore) * 80);
+  for (let j = 1; j <= b.length; j++) {
+    curr[0] = j;
+    for (let i = 1; i <= a.length; i++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[i] = Math.min(
+        prev[i] + 1,        // suppression
+        curr[i - 1] + 1,    // insertion
+        prev[i - 1] + cost, // substitution
+      );
+    }
+    prev = curr.slice();
+  }
+  return prev[a.length];
 }
 
+/** Ratio de similarité dérivé de Levenshtein (0–1, 1 = identique). */
+function levenshteinRatio(a: string, b: string): number {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  return 1 - levenshtein(a, b) / maxLen;
+}
+
+/** Bigrammes d'une chaîne (espaces retirés). */
 function bigrams(s: string): string[] {
+  const clean = s.replace(/\s+/g, '');
   const result: string[] = [];
-  for (let i = 0; i < s.length - 1; i++) result.push(s.slice(i, i + 2));
+  for (let i = 0; i < clean.length - 1; i++) result.push(clean.slice(i, i + 2));
   return result;
+}
+
+/**
+ * Coefficient de Sørensen–Dice sur bigrammes (0–1).
+ * Robuste à l'ordre des mots et aux petites fautes ; comparaison en multiset.
+ */
+function diceCoefficient(a: string, b: string): number {
+  const A = bigrams(a);
+  const B = bigrams(b);
+  if (A.length === 0 || B.length === 0) return a === b ? 1 : 0;
+
+  const counts = new Map<string, number>();
+  for (const bg of A) counts.set(bg, (counts.get(bg) ?? 0) + 1);
+
+  let inter = 0;
+  for (const bg of B) {
+    const c = counts.get(bg) ?? 0;
+    if (c > 0) { inter++; counts.set(bg, c - 1); }
+  }
+  return (2 * inter) / (A.length + B.length);
+}
+
+/** Échappe une chaîne pour une insertion sûre dans une RegExp. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Similarité entre deux tokens (mots) (0–1).
+ * Priorité : égalité > préfixe (couverture) > distance d'édition.
+ */
+function tokenSimilarity(q: string, t: string): number {
+  if (!q || !t) return 0;
+  if (q === t) return 1;
+  // Préfixe : "dup" ~ "dupont", "jean" ~ "jeannot"
+  if (t.startsWith(q) || q.startsWith(t)) {
+    const ratio = Math.min(q.length, t.length) / Math.max(q.length, t.length);
+    return 0.82 + 0.18 * ratio; // 0.82 → 1.0 selon la couverture
+  }
+  // Tolérance aux fautes de frappe via Levenshtein, pénalisée si trop éloigné.
+  const lev = levenshteinRatio(q, t);
+  return lev >= 0.6 ? lev : lev * 0.6;
+}
+
+/**
+ * Score de similitude entre un terme de recherche et une valeur cible (0–100).
+ *
+ * Améliorations vs l'algorithme précédent :
+ *  - Distance d'édition (Levenshtein) réelle → tolérance aux fautes de frappe.
+ *  - Couverture des tokens de la REQUÊTE (et non du champ) : une requête
+ *    partielle ("jean" sur "Jean Dupont Martin") n'est plus sous-notée.
+ *  - Bonus de préfixe / frontière de mot → "dup" matche fortement "Dupont".
+ *  - Containment pondéré par la couverture → "a" ne vaut plus 85 sur "Alexandre"
+ *    et un match au début d'un mot prime sur un match en milieu de chaîne.
+ *  - Dice (bigrammes) + Levenshtein global comme filets de sécurité.
+ *
+ * Le premier argument est TOUJOURS le terme recherché (query), le second la
+ * valeur candidate — l'asymétrie est volontaire (couverture orientée requête).
+ */
+function similarityScore(query: string, target: string): number {
+  const nq = normalize(query);
+  const nt = normalize(target);
+
+  if (!nq || !nt) return 0;
+  if (nq === nt) return 100;
+
+  const qTokens = nq.split(' ').filter(Boolean);
+  const tTokens = nt.split(' ').filter(Boolean);
+
+  // 1. Containment de la requête entière dans la cible, pondéré par la couverture.
+  //    Un match en frontière de mot (^ ou après un espace) est privilégié.
+  if (nt.includes(nq)) {
+    const coverage = nq.length / nt.length; // 0–1
+    const atBoundary = new RegExp(`(^|\\s)${escapeRegExp(nq)}`).test(nt);
+    const base = (atBoundary ? 80 : 70) + Math.round(coverage * 18);
+    return Math.min(98, base);
+  }
+  // Cas inverse : la cible est un mot contenu dans la requête (ex: cible "dupont",
+  // requête "jean dupont"). Significatif seulement pour des cibles non triviales.
+  if (nq.includes(nt) && nt.length >= 3) return 86;
+
+  // 2. Couverture des tokens de la requête : chaque token de la requête est
+  //    apparié à son meilleur token cible (égalité / préfixe / édition).
+  let acc = 0;
+  for (const qt of qTokens) {
+    let best = 0;
+    for (const tt of tTokens) {
+      best = Math.max(best, tokenSimilarity(qt, tt));
+      if (best >= 0.999) break;
+    }
+    acc += best;
+  }
+  const queryCoverage = qTokens.length ? acc / qTokens.length : 0;
+
+  // 3. Filets de sécurité globaux : Dice (ordre/typo) + Levenshtein (mono-token).
+  const dice = diceCoefficient(nq, nt);
+  const lev = levenshteinRatio(nq, nt);
+
+  // Composite : la couverture orientée requête domine, dice/lev en soutien.
+  const composite = Math.max(queryCoverage * 0.96, dice * 0.85, lev * 0.78);
+  return Math.round(composite * 100);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -424,6 +539,8 @@ export class EntityResolverService {
       this.logger.warn(`⛔ Création automatique refusée pour "${tableName}" (donnée de référence)`);
 
       // Chercher les meilleures suggestions sans seuil de score
+      // Utilise d'abord les candidats du resolver spécialisé s'ils existent,
+      // sinon lance une recherche large (via searchAllCandidates améliorée)
       const allCandidates = resolved.candidates.length > 0
         ? resolved.candidates
         : await this.searchAllCandidates(tableName, searchTerm, additionalFilters);
@@ -441,7 +558,10 @@ export class EntityResolverService {
       }
 
       return {
-        resolved,
+        resolved: {
+          ...resolved,
+          candidates: allCandidates, // ← garantir que candidates est rempli pour AmbiguityException
+        },
         created: false,
         message: hint,
       };
@@ -472,11 +592,42 @@ export class EntityResolverService {
         message: `${tableName} "${searchTerm}" créé(e) automatiquement (ID: ${entityId})`,
       };
     } catch (error) {
-      this.logger.error(`❌ Échec création automatique de "${searchTerm}" dans ${tableName}: ${(error as Error).message}`);
+      // ❌ Échec : retourner les candidats de la résolution pour permettre
+      //    des suggestions à l'utilisateur au lieu d'une erreur fatale.
+      const errMessage = (error as Error).message;
+      // Nettoyer les messages d'erreur internes (TypeORM, etc.) pour l'affichage
+      const cleanMessage = errMessage.includes('substring')
+        ? `Erreur interne lors de la création (contrainte de structure).`
+        : errMessage;
+
+      this.logger.error(
+        `❌ Échec création automatique de "${searchTerm}" dans ${tableName}: ${errMessage}`,
+      );
+
+      // Inclure les candidats de la résolution précédente pour suggestions
+      const fallbackCandidates = resolved.candidates.length > 0
+        ? resolved.candidates
+        : await this.searchAllCandidates(tableName, searchTerm, additionalFilters);
+
+      this.logger.log(
+        `🔍 Retour de ${fallbackCandidates.length} suggestions pour "${searchTerm}" dans ${tableName} ` +
+        `(après échec de création)`,
+      );
+
       return {
-        resolved: { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false },
+        resolved: {
+          found: false,
+          best: null,
+          score: 0,
+          matchedOn: '',
+          candidates: fallbackCandidates,
+          ambiguous: false,
+        },
         created: false,
-        message: `Impossible de créer "${searchTerm}" dans ${tableName}: ${(error as Error).message}`,
+        message: `Impossible de créer "${searchTerm}" dans ${tableName}. ${cleanMessage}` +
+          (fallbackCandidates.length > 0
+            ? ` Voici les suggestions disponibles (${fallbackCandidates.length} résultat(s)).`
+            : ` Aucune correspondance trouvée. Veuillez fournir plus de détails.`),
       };
     }
   }
@@ -484,12 +635,41 @@ export class EntityResolverService {
   /**
    * Recherche tous les candidats pour un terme sans seuil de score minimum.
    * Utilisé pour fournir des suggestions quand une entité de référence n'est pas trouvée.
+   *
+   * Stratégie améliorée :
+   *  1. Si un resolver spécialisé existe (employee, customer), l'utiliser en priorité
+   *     car il sait faire les jointures (ex: employee → user.first_name)
+   *  2. Sinon → résolution générique via TypeORM metadata
    */
   private async searchAllCandidates(
     tableName: string,
     searchTerm: string,
     additionalFilters?: Record<string, any>,
   ): Promise<ResolveMatch<any>[]> {
+    // ── 1. Resolver spécialisé (joins, relations) ──
+    const specializedResolver = this.projectConfig?.specializedResolvers?.find(
+      r => r.tables.includes(tableName),
+    );
+    if (specializedResolver) {
+      try {
+        this.logger.debug(`🔍 searchAllCandidates via resolver spécialisé pour "${tableName}"`);
+        const result = await specializedResolver.resolve(searchTerm, {
+          mode: ResolveMode.BEST_EFFORT,
+          minScore: 0,
+          ambiguityGap: 0,
+        });
+        if (result.candidates && result.candidates.length > 0) {
+          this.logger.log(
+            `🔍 ${result.candidates.length} candidats trouvés via resolver spécialisé "${tableName}"`,
+          );
+          return result.candidates;
+        }
+      } catch (err) {
+        this.logger.warn(`⚠️ Resolver spécialisé échoué pour "${tableName}": fallback générique`);
+      }
+    }
+
+    // ── 2. Résolution générique ──
     const entityMeta = this.dataSource.entityMetadatas.find(m => m.tableName === tableName);
     if (!entityMeta) return [];
 
