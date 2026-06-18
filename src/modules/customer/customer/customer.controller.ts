@@ -267,4 +267,15 @@ export class CustomerController {
   ) {
     return this.customerService.removeCommunication(id, communicationId);
   }
+
+  // ==================== ACCÈS ESPACE CLIENT ====================
+
+  @Post(':id/send-access')
+  @RequirePermissions('edit_client')
+  @ApiOperation({ summary: 'Envoyer les identifiants de connexion à l\'espace client par email' })
+  @ApiParam({ name: 'id', description: 'ID du client' })
+  @ApiResponse({ status: 201, description: 'Accès envoyés avec succès' })
+  async sendClientAccess(@Param('id', ParseIntPipe) id: number) {
+    return this.customerService.sendClientAccess(id);
+  }
 }

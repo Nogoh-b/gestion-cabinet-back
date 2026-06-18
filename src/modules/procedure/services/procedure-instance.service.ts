@@ -47,7 +47,7 @@ export class ProcedureInstanceService {
 
   ) {}
 
-  async create(dto: CreateProcedureInstanceDto, userId: string): Promise<ProcedureInstance> {
+  async create(dto: CreateProcedureInstanceDto, userId: string): Promise<ProcedureInstance & { _openingStageVisitId?: string }> {
       const template = await this.templateService.findOne(dto.templateId);
 
       if (!template.stages || template.stages.length === 0) {
@@ -67,18 +67,62 @@ export class ProcedureInstanceService {
 
       await this.instanceRepository.save(instance);
 
-      // Créer la première visite
-      await this.getCurrentStageVisit(instance.id);
+      // ── Créer dynamiquement le stage "Ouverture" (runtime uniquement) ──
+      const openingStageName = 'Ouverture';
+      const openingStage = this.stageRepository.create({
+        id: crypto.randomUUID(),
+        templateId: dto.templateId,
+        name: openingStageName,
+        description: 'Phase d\'ouverture du dossier — facturation et constitution initiale',
+        order: 0,
+        canBeSkipped: true,
+        canBeReentered: false,
+      });
+      await this.stageRepository.save(openingStage);
+
+      // ── Créer la StageVisit pour l'Ouverture (visitNumber=1) ──
+      const openingStageVisit = this.stageVisitRepository.create({
+        instanceId: instance.id,
+        stageId: openingStage.id,
+        visitNumber: 1,
+        completedSubStages: [],
+        subStageMetadata: {},
+        enteredAt: new Date(),
+        subStageVisits: [],
+      });
+      await this.stageVisitRepository.save(openingStageVisit);
+
+      console.log(
+        `Stage "Ouverture" #${openingStage.id} créé pour l'instance ${instance.id}`,
+      );
+
+      // ── Créer la StageVisit pour le premier stage du template (visitNumber=2) ──
+      const templateStageVisitCount = await this.stageVisitRepository.count({
+        where: { instanceId: instance.id, stageId: firstStage.id }
+      });
+
+      const templateStageVisit = this.stageVisitRepository.create({
+        instanceId: instance.id,
+        stageId: firstStage.id,
+        visitNumber: templateStageVisitCount + 1,
+        completedSubStages: [],
+        subStageMetadata: {},
+        enteredAt: new Date(),
+        subStageVisits: [],
+      });
+      await this.stageVisitRepository.save(templateStageVisit);
 
       await this.historyService.log(
         instance.id,
         EventType.STAGE_ENTER,
         firstStage.id,
         userId,
-        { message: 'Instance créée' },
+        { message: 'Instance créée', openingStageVisitId: openingStageVisit.id },
       );
 
-      return this.findOne(instance.id);
+      const enrichedInstance = await this.findOne(instance.id);
+      (enrichedInstance as any)._openingStageVisitId = openingStageVisit.id;
+      return enrichedInstance as ProcedureInstance & { _openingStageVisitId?: string };
     }
 
 // services/procedure-instance.service.ts

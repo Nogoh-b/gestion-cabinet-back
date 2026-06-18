@@ -1,5 +1,9 @@
+import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { UserRole } from 'src/core/enums/user-role.enum';
+import { EmailService } from 'src/core/shared/services/email/email.service copy';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 import { DateRange, PaginatedResult, PaginationOptions, SearchOptions as SearchOptionV1 } from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
@@ -100,6 +104,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
     protected readonly paginationServiceV1: PaginationServiceV1,
     private readonly dataSource: DataSource,
     private readonly planQuotaService: PlanQuotaService,
+    private readonly emailService: EmailService,
   ) {
     console.log(forwardRef);
     super(customerRepository, paginationServiceV1);
@@ -711,5 +716,80 @@ async update(
     }
     await repo.remove(communication);
     return { success: true };
+  }
+
+  /**
+   * Crée (ou réinitialise) un compte utilisateur CLIENT pour le client donné,
+   * puis envoie les identifiants de connexion par email.
+   */
+  async sendClientAccess(customerId: number): Promise<{ success: boolean; message: string }> {
+    // 1. Récupérer le client
+    const customer = await this.customerRepository.findOneBy({ id: customerId });
+    if (!customer) {
+      throw new NotFoundException(`Client ${customerId} introuvable`);
+    }
+    if (!customer.email) {
+      throw new BadRequestException('Ce client n\'a pas d\'adresse email enregistrée');
+    }
+
+    const userRepo = this.dataSource.getRepository(User);
+
+    // 2. Générer un mot de passe aléatoire
+    const rawPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+    // 3. Chercher un compte existant pour ce client
+    let user = await userRepo.findOne({ where: { customer: { id: customerId } } });
+
+    if (user) {
+      // Réinitialiser le mot de passe
+      user.password = hashedPassword;
+      user.status = 1;
+      await userRepo.save(user);
+    } else {
+      // Créer un nouveau compte client
+      const username = customer.email.split('@')[0] + '_client';
+      user = userRepo.create({
+        username,
+        email: customer.email,
+        password: hashedPassword,
+        role: UserRole.CLIENT,
+        first_name: customer.first_name ?? '',
+        last_name: customer.last_name ?? '',
+        status: 1,
+        customer: { id: customerId } as Customer,
+      });
+      await userRepo.save(user);
+    }
+
+    // 4. Envoyer les identifiants par email
+    const emailBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2563eb;">Accès à votre espace client</h2>
+        <p>Bonjour ${customer.first_name} ${customer.last_name},</p>
+        <p>Voici vos identifiants de connexion à l'espace client du cabinet :</p>
+        <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+          <tr>
+            <td style="padding: 8px; font-weight: bold; background: #f3f4f6;">Identifiant</td>
+            <td style="padding: 8px;">${user.username}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; font-weight: bold; background: #f3f4f6;">Mot de passe</td>
+            <td style="padding: 8px;">${rawPassword}</td>
+          </tr>
+        </table>
+        <p>Connectez-vous sur : <a href="${process.env.FRONTEND_URL ?? ''}/auth/login">${process.env.FRONTEND_URL ?? 'votre espace client'}</a></p>
+        <p style="color: #6b7280; font-size: 13px;">Pour des raisons de sécurité, nous vous recommandons de changer votre mot de passe lors de votre première connexion.</p>
+        <p>Cordialement,<br>Le cabinet</p>
+      </div>
+    `;
+
+    await this.emailService.sendMail({
+      to: customer.email,
+      subject: 'Vos accès à l\'espace client',
+      message: emailBody,
+    });
+
+    return { success: true, message: 'Accès envoyés avec succès' };
   }
 }

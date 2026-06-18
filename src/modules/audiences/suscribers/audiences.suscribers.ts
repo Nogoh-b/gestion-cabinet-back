@@ -2,9 +2,8 @@ import { NotificationDispatcher } from 'src/core/notifications/notification-disp
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 
 import { Audience } from '../entities/audience.entity';
 
@@ -25,8 +24,6 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
-    @InjectRepository(Audience)
-    private readonly audienceRepo: Repository<Audience>,
   ) {
     super(dataSource, notificationDispatcher);
   }
@@ -37,9 +34,9 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
 
   protected async onAfterCreate(
     entity: Audience,
-    _event: InsertEvent<Audience>,
+    event: InsertEvent<Audience>,
   ): Promise<void> {
-    const loaded = await this.load(entity.id).catch(() => null);
+    const loaded = await this.load(entity.id, event).catch(() => null);
     const audience = loaded ?? entity;
     if (!audience) return;
     const dossier: any = audience.dossier;
@@ -91,17 +88,21 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       );
       // 1 = HELD selon AudienceStatus (voir audience.entity.ts)
       if (change && Number(change.newValue) === 1) {
-        await this.dispatchHeld(id, entity);
+        await this.dispatchHeld(id, entity, event);
       }
     }
 
     if (this.hasColumnChanged(event, 'postponed_to')) {
-      await this.dispatchUpdated(id, entity, 'Report d’audience');
+      await this.dispatchUpdated(id, entity, 'Report d’audience', event);
     }
   }
 
-  private async dispatchHeld(id: number, entity: Partial<Audience>): Promise<void> {
-    const audience = await this.load(id).catch(() => null);
+  private async dispatchHeld(
+    id: number,
+    entity: Partial<Audience>,
+    event: UpdateEvent<Audience>,
+  ): Promise<void> {
+    const audience = await this.load(id, event).catch(() => null);
     if (!audience) return;
     const dossier: any = audience.dossier;
     const notifyClient = this.resolveTransientBoolean(
@@ -143,8 +144,9 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     id: number,
     entity: Partial<Audience>,
     reason: string,
+    event: UpdateEvent<Audience>,
   ): Promise<void> {
-    const audience = await this.load(id).catch(() => null);
+    const audience = await this.load(id, event).catch(() => null);
     if (!audience) return;
     const dossier: any = audience.dossier;
     const notifyClient = this.resolveTransientBoolean(
@@ -185,11 +187,13 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     });
   }
 
-  private load(id: number): Promise<Audience | null> {
-    return this.audienceRepo.findOne({
-      where: { id },
+  private load(
+    id: number,
+    event?: InsertEvent<Audience> | UpdateEvent<Audience>,
+  ): Promise<Audience | null> {
+    return this.loadEntity<Audience>(id, {
       relations: ['dossier', 'dossier.client', 'dossier.collaborators'],
-    });
+    }, event);
   }
 }
 

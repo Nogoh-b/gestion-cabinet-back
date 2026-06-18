@@ -1,4 +1,12 @@
-import { DataSource, ObjectLiteral } from 'typeorm';
+import {
+  DataSource,
+  EntityTarget,
+  FindOneOptions,
+  InsertEvent,
+  ObjectLiteral,
+  RemoveEvent,
+  UpdateEvent,
+} from 'typeorm';
 
 import {
   DispatchPayload,
@@ -61,6 +69,28 @@ export abstract class NotifiableSubscriber<
         (err as Error).stack,
       );
     }
+  }
+
+  /**
+   * Recharge une entité depuis un subscriber avec le bon EntityManager.
+   *
+   * Dans les hooks TypeORM, utiliser le repository injecté peut lire hors de la
+   * transaction en cours ou trop tôt après un insert/update. Ce helper privilégie
+   * donc `event.manager`, puis retombe sur le DataSource si aucun event n'est fourni.
+   */
+  protected async loadEntity<TLoad extends ObjectLiteral = T>(
+    id: string | number,
+    options: Omit<FindOneOptions<TLoad>, 'where'> = {},
+    event?: InsertEvent<any> | UpdateEvent<any> | RemoveEvent<any>,
+    target?: EntityTarget<TLoad>,
+  ): Promise<TLoad | null> {
+    const entityTarget = target ?? (this.listenTo() as EntityTarget<TLoad>);
+    const manager = event?.manager ?? this.dataSource.manager;
+
+    return manager.findOne(entityTarget, {
+      ...options,
+      where: { id } as any,
+    });
   }
 
   /**

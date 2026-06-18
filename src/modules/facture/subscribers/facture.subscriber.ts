@@ -24,8 +24,6 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
-    @InjectRepository(Facture)
-    private readonly factureRepo: Repository<Facture>,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
   ) {
@@ -44,15 +42,15 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
   protected async onAfterCreate(
     entity: Facture,
-    _event: InsertEvent<Facture>,
+    event: InsertEvent<Facture>,
   ): Promise<void> {
     // const facture = await this.load(entity.id);
-    const loaded = await this.load(entity.id).catch(() => null);
+    const loaded = await this.load(entity.id, event).catch(() => null);
     const facture = loaded ?? entity;
     if (!facture) return;
 
     // Resync actual_costs on parent dossier
-    await this.syncDossierActualCosts(facture.dossier_id ?? (facture.dossier as any)?.id);
+    await this.syncDossierActualCosts(facture.dossier_id ?? (facture.dossier as any)?.id, event);
 
     const notifyClient = this.resolveTransientBoolean('notify_client', entity, facture as any);
 
@@ -93,7 +91,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     // Resync actual_costs if montantTTC changed (or as a safe catch-all)
     const dossierId =
       (entity as any).dossier_id ?? (event.databaseEntity as any)?.dossier_id;
-    await this.syncDossierActualCosts(dossierId);
+    await this.syncDossierActualCosts(dossierId, event);
 
     if (!this.hasColumnChanged(event, 'status')) return;
 
@@ -104,7 +102,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
     const id = entity.id ?? (event.databaseEntity as Facture)?.id;
     if (!id) return;
-    const facture = await this.load(id).catch(() => null);
+    const facture = await this.load(id, event).catch(() => null);
     if (!facture) return;
     const notifyClient = this.resolveTransientBoolean(
       'notify_client',
@@ -162,18 +160,20 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
   protected async onAfterRemove(
     entity: Facture,
-    _event: RemoveEvent<Facture>,
+    event: RemoveEvent<Facture>,
   ): Promise<void> {
-    await this.syncDossierActualCosts((entity as any).dossier_id);
+    await this.syncDossierActualCosts((entity as any).dossier_id, event);
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  private load(id: string | number): Promise<Facture | null> {
-    return this.factureRepo.findOne({
-      where: { id: id as any },
+  private load(
+    id: string | number,
+    event?: InsertEvent<Facture> | UpdateEvent<Facture>,
+  ): Promise<Facture | null> {
+    return this.loadEntity<Facture>(id, {
       relations: ['client', 'dossier'],
-    });
+    }, event);
   }
 
   /**
@@ -184,10 +184,11 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
    */
   private async syncDossierActualCosts(
     dossierId: number | string | undefined,
+    event?: InsertEvent<Facture> | UpdateEvent<Facture> | RemoveEvent<Facture>,
   ): Promise<void> {
     if (!dossierId) return;
     try {
-      await this.dataSource.query(
+      await (event?.manager ?? this.dataSource.manager).query(
         `UPDATE dossiers
          SET actual_costs = COALESCE(
            (SELECT SUM(f.montant_ttc)

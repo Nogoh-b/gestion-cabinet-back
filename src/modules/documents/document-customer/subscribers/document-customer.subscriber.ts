@@ -1,9 +1,8 @@
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
-import { DataSource, InsertEvent, Repository } from 'typeorm';
+import { DataSource, InsertEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 
 import { DocumentCustomer } from '../entities/document-customer.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
@@ -21,8 +20,6 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
-    @InjectRepository(DocumentCustomer)
-    private readonly docRepo: Repository<DocumentCustomer>,
   ) {
     super(dataSource, notificationDispatcher);
   }
@@ -33,10 +30,10 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
 
   protected async onAfterCreate(
     entity: DocumentCustomer,
-    _event: InsertEvent<DocumentCustomer>,
+    event: InsertEvent<DocumentCustomer>,
   ): Promise<void> {
     // Recharger pour récupérer dossier + client + lawyer
-    const doc = await this.load(entity.id).catch(() => null);
+    const doc = await this.load(entity.id, event).catch(() => null);
     if (!doc) return;
 
     const dossier: any = doc.dossier;
@@ -71,10 +68,12 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
     });
   }
 
-  private load(id: number): Promise<DocumentCustomer | null> {
-    return this.docRepo.findOne({
-      where: { id },
+  private load(
+    id: number,
+    event?: InsertEvent<DocumentCustomer>,
+  ): Promise<DocumentCustomer | null> {
+    return this.loadEntity<DocumentCustomer>(id, {
       relations: ['dossier', 'dossier.client', 'customer'],
-    });
+    }, event);
   }
 }

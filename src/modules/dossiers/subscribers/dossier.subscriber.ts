@@ -12,12 +12,14 @@ import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables
 import { ProcedureTemplate } from 'src/modules/procedure/entities/procedure-template.entity';
 import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/default-procedure-template.seeder';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
+import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Dossier } from '../entities/dossier.entity';
+import { Facture } from 'src/modules/facture/entities/facture.entity';
 
 /**
  * Subscriber métier pour l'entité Dossier.
@@ -42,8 +44,6 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     notificationDispatcher: NotificationDispatcher,
     @InjectRepository(Conversation)
     private readonly conversationRepo: Repository<Conversation>,
-    @InjectRepository(Dossier)
-    private readonly dossierRepo: Repository<Dossier>,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(ProcedureType)
@@ -52,11 +52,16 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     private readonly procedureTemplateRepo: Repository<ProcedureTemplate>,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
+    @InjectRepository(StageVisit)
+    private readonly stageVisitRepo: Repository<StageVisit>,
+    @InjectRepository(Facture)
+    private readonly factureRepo: Repository<Facture>,
     @Inject(forwardRef(() => FactureService))
     private readonly factureService: FactureService,
     private readonly procedureInstanceService: ProcedureInstanceService,
   ) {
     super(dataSource, notificationDispatcher);
+    console.log(forwardRef);
   }
 
   listenTo() {
@@ -80,39 +85,96 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
   ): Promise<void> {
     await this.createConversation(entity, event);
     await this.createProcedureInstance(entity, event);
-    await this.createOpeningFeeInvoice(entity);
-    await this.notifyDossierCreated(entity);
+    await this.createOpeningFeeInvoice(entity, event);
+    await this.notifyDossierCreated(entity, event);
   }
 
-  private async createOpeningFeeInvoice(entity: Dossier): Promise<void> {
+  private async createOpeningFeeInvoice(
+    entity: Dossier,
+    event: InsertEvent<Dossier>,
+  ): Promise<void> {
+    this.logger.log(`[createOpeningFeeInvoice] Démarrage pour dossier ${entity.dossier_number} (id: ${entity.id})`);
+    
     try {
+      // Étape 1 : Récupération du cabinet
+      this.logger.debug(`[createOpeningFeeInvoice] Récupération du cabinet pour tenant: ${getCurrentTenantId()}`);
       const cabinet = await this.cabinetRepo.findOne({
         where: { id: getCurrentTenantId() },
       });
 
-      if (!cabinet?.dossier_opening_fee_enabled || Number(cabinet.dossier_opening_fee) <= 0) {
+      if (!cabinet) {
+        this.logger.warn(`[createOpeningFeeInvoice] Cabinet introuvable pour tenant ${getCurrentTenantId()}`);
         return;
       }
 
-      const dossier = await this.load(entity.id).catch(() => null);
+      this.logger.debug(`[createOpeningFeeInvoice] Cabinet trouvé: dossier_opening_fee_enabled=${cabinet.dossier_opening_fee_enabled}, dossier_opening_fee=${cabinet.dossier_opening_fee}`);
+
+      // Étape 2 : Vérification des conditions d'activation
+      if (!cabinet.dossier_opening_fee_enabled) {
+        this.logger.log(`[createOpeningFeeInvoice] Frais d'ouverture désactivés pour le cabinet, abandon`);
+        return;
+      }
+
+      if (Number(cabinet.dossier_opening_fee) <= 0) {
+        this.logger.log(`[createOpeningFeeInvoice] Frais d'ouverture <= 0 (${cabinet.dossier_opening_fee}), abandon`);
+        return;
+      }
+
+      // Étape 3 : Chargement du dossier complet
+      this.logger.debug(`[createOpeningFeeInvoice] Chargement du dossier complet pour id: ${entity.id}`);
+      const dossier = await this.load(entity.id, event).catch((err) => {
+        this.logger.warn(`[createOpeningFeeInvoice] Erreur lors du chargement du dossier: ${err?.message || err}`);
+        return null;
+      });
+
+      if (!dossier) {
+        this.logger.warn(`[createOpeningFeeInvoice] Impossible de charger le dossier ${entity.id}`);
+      }
+
+      // Étape 4 : Récupération du client
       const clientId = (dossier?.client as any)?.id ?? entity.client_id;
+      this.logger.debug(`[createOpeningFeeInvoice] Client ID trouvé: ${clientId} (dossier?.client?.id=${dossier?.client?.id}, entity.client_id=${entity.client_id})`);
+
       if (!clientId) {
         this.logger.warn(
-          `Facture ouverture ignorée pour dossier ${entity.dossier_number} : client introuvable`,
+          `[createOpeningFeeInvoice] Facture ouverture ignorée pour dossier ${entity.dossier_number} : client introuvable`,
         );
         return;
       }
 
+      // Étape 5 : Calcul des montants
       const montantHT = Number(cabinet.dossier_opening_fee);
       const tauxTVA = Number(cabinet.dossier_opening_fee_tva ?? 0);
       const montantTVA = Math.round(montantHT * tauxTVA) / 100;
       const montantTTC = montantHT + montantTVA;
       const label = cabinet.dossier_opening_fee_label?.trim() || "Frais d'ouverture de dossier";
+      
+      this.logger.debug(`[createOpeningFeeInvoice] Calculs: montantHT=${montantHT}, tauxTVA=${tauxTVA}, montantTVA=${montantTVA}, montantTTC=${montantTTC}, label="${label}"`);
+
+      // Étape 6 : Calcul de l'échéance
       const today = new Date();
       const echeance = new Date(today);
       echeance.setDate(echeance.getDate() + 30);
+      this.logger.debug(`[createOpeningFeeInvoice] Date facture: ${today.toISOString()}, échéance: ${echeance.toISOString()}`);
 
-      await this.factureService.createFacture({
+      // Étape 7 : Création de la facture
+      this.logger.log(`[createOpeningFeeInvoice] Tentative de création de facture pour dossier ${entity.dossier_number}, client ${clientId}`);
+      
+      // Récupérer l'ID de la StageVisit d'ouverture (créée par createProcedureInstance)
+      const openingStageVisitId = (entity as any)._openingStageVisitId;
+      
+      if (!openingStageVisitId) {
+        this.logger.warn(
+          `[createOpeningFeeInvoice] ⚠️ openingStageVisitId introuvable pour dossier ${entity.dossier_number} — ` +
+          `la facture ne sera pas liée à l'étape Ouverture`,
+        );
+      } else {
+        this.logger.debug(
+          `[createOpeningFeeInvoice] openingStageVisitId trouvé: ${openingStageVisitId}`,
+        );
+      }
+      
+      const factureData = {
         dossierId: entity.id,
         clientId,
         type: TypeFacture.FRAIS_PROCEDURE,
@@ -125,18 +187,46 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         dateEcheance: echeance,
         description: label,
         notify_client: false,
-      } as any);
+        stage_visit_id: openingStageVisitId,
+      };
+      
+      this.logger.debug(`[createOpeningFeeInvoice] Données facture: ${JSON.stringify(factureData)}`);
+      
+      const createdFacture = await this.factureService.createFacture(factureData as any, {
+        manager: event.manager,
+        dossier: dossier ?? entity,
+        client: dossier?.client,
+      });
+
+      // Vérifier que la facture a bien été liée à la StageVisit d'ouverture
+      if (openingStageVisitId) {
+        const updatedFacture = await event.manager
+          .getRepository(Facture)
+          .findOne({ where: { id: createdFacture.id } });
+        
+        if (updatedFacture?.stageVisit_id !== openingStageVisitId) {
+          this.logger.warn(
+            `[createOpeningFeeInvoice] ⚠️ stageVisit_id non renseigné pour la facture ${createdFacture.numero} — ` +
+            `mise à jour manuelle`,
+          );
+          await event.manager.getRepository(Facture).update(createdFacture.id, {
+            stageVisit_id: openingStageVisitId,
+          });
+        }
+      }
 
       this.logger.log(
-        `Facture d'ouverture créée pour le dossier ${entity.dossier_number}`,
+        `[createOpeningFeeInvoice] ✅ Facture d'ouverture créée avec succès pour le dossier ${entity.dossier_number} ` +
+        `(facture: ${createdFacture?.numero ?? '?'}, stageVisit: ${openingStageVisitId})`,
       );
+      
     } catch (err) {
       this.logger.error(
-        `Erreur création facture ouverture dossier ${entity.dossier_number}: ${err?.message}`,
+        `[createOpeningFeeInvoice] ❌ Erreur création facture ouverture dossier ${entity.dossier_number}: ${err?.message}`,
+        err?.stack // Ajout du stack trace pour mieux déboguer
       );
     }
   }
-
   /**
    * Déclenche les notifications de création de dossier via le dispatcher central.
    *  - Client       → e-mail si entity.notify_client === true (case cochée dans le modal)
@@ -144,9 +234,12 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
    *  - Collabs      → in-app + e-mail selon leurs préférences
    *  - Admins       → toujours (résolus par le dispatcher via role.code = 'admin')
    */
-  private async notifyDossierCreated(entity: Dossier): Promise<void> {
+  private async notifyDossierCreated(
+    entity: Dossier,
+    event: InsertEvent<Dossier>,
+  ): Promise<void> {
     // Recharger les relations utiles si pas encore en mémoire
-    const loaded = await this.load(entity.id).catch(() => null);
+    const loaded = await this.load(entity.id, event).catch(() => null);
     const dossier = loaded ?? entity;
     if (!dossier) return;
 
@@ -272,8 +365,12 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
 
     entity.procedureInstanceId = instance.id;
 
+    // Stocker l'ID de la StageVisit d'ouverture pour la liaison de la facture
+    (entity as any)._openingStageVisitId = (instance as any)?._openingStageVisitId;
+
     this.logger.log(
-      `ProcedureInstance #${instance.id} créée et liée au dossier ${entity.dossier_number}`,
+      `ProcedureInstance #${instance.id} créée et liée au dossier ${entity.dossier_number} ` +
+      `(openingStageVisitId: ${(entity as any)._openingStageVisitId})`,
     );
   }
 
@@ -322,7 +419,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     const id = entity.id ?? (event.databaseEntity as Dossier)?.id;
     if (!id) return;
 
-    const loaded = await this.load(id).catch(() => null);
+    const loaded = await this.load(id, event).catch(() => null);
     const dossier = loaded ?? (event.databaseEntity as Dossier);
     if (!dossier) return;
     const notifyClient = this.resolveTransientBoolean(
@@ -386,7 +483,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       return;
     }
 
-    const dossier = await this.loadWithConversation(dossierId);
+    const dossier = await this.loadWithConversation(dossierId, event);
 
     this.logger.log(
       `🔄 syncCollaborators loaded dossier | found=${!!dossier} | conversation_id=${dossier?.conversation_id ?? dossier?.conversation?.id ?? 'NONE'} | collaborators=${dossier?.collaborators?.length ?? 0} | conversation.participants=${dossier?.conversation?.participants?.length ?? 0}`,
@@ -432,7 +529,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       .map((emp) => (emp as any).user_id ?? (emp as any).user?.id)
       .filter(Boolean);
     if (newCollabUserIds.length > 0) {
-      const mailDossier = (await this.load(dossier.id).catch(() => null)) ?? dossier;
+      const mailDossier = (await this.load(dossier.id, event).catch(() => null)) ?? dossier;
 
       this.logger.log(
         `📢 Collaborateurs ajoutés au dossier | id=${dossier.id} | number="${dossier.dossier_number}" | new_users=[${newCollabUserIds.join(', ')}]`,
@@ -458,18 +555,22 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
 
   // ── Helpers de rechargement (pattern uniformisé avec DiligenceSubscriber) ──
 
-  private load(id: number): Promise<Dossier | null> {
-    return this.dossierRepo.findOne({
-      where: { id },
+  private load(
+    id: number,
+    event?: InsertEvent<Dossier> | UpdateEvent<Dossier>,
+  ): Promise<Dossier | null> {
+    return this.loadEntity<Dossier>(id, {
       relations: ['client', 'lawyer', 'collaborators'],
-    });
+    }, event);
   }
 
-  private loadWithConversation(id: number): Promise<Dossier | null> {
-    return this.dossierRepo.findOne({
-      where: { id },
+  private loadWithConversation(
+    id: number,
+    event?: InsertEvent<Dossier> | UpdateEvent<Dossier>,
+  ): Promise<Dossier | null> {
+    return this.loadEntity<Dossier>(id, {
       relations: ['collaborators', 'conversation', 'conversation.participants'],
-    });
+    }, event);
   }
 }
 

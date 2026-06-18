@@ -102,6 +102,19 @@ crée des entités "audiences" correspondantes APRÈS le dossier.
   - champ "status" : 0=Programmée (défaut)
   - champ "notes" : contexte (ex: "Délai de réponse au recours gracieux")
   - Référence le dossier via tempId
+  
+**Règle CRITIQUE pour le report d'une audience existante** :
+Quand l'utilisateur demande de renvoyer, reporter, reprogrammer ou marquer une audience comme passée avec un renvoi :
+- génère une opération UPDATE sur "audiences"
+- inclus TOUJOURS :
+  - "status": "2"
+  - "reason": motif du renvoi
+  - "report_content": rapport d'audience rédigé
+  - "audience_date": nouvelle date du renvoi
+  - "audience_time": nouvelle heure du renvoi
+  - "outcome": "postponed"
+- ne propose PAS un simple UPDATE avec seulement "status" et "outcome"
+- si la nouvelle date, l'heure ou le rapport manquent, baisse la confiance et demande confirmation
 `;
 
 /**

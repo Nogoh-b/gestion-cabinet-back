@@ -2,7 +2,7 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { Like, Repository } from 'typeorm';
+import { EntityManager, Like, Repository } from 'typeorm';
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
@@ -13,6 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { DossiersService } from '../dossiers/dossiers.service';
 import { Dossier } from '../dossiers/entities/dossier.entity';
+import { Customer } from '../customer/customer/entities/customer.entity';
 import { CreateFactureDto, StatutFacture } from './dto/create-facture.dto';
 import { FactureResponseDto } from './dto/facture-response.dto';
 import { SearchFactureDto } from './dto/search-facture.dto';
@@ -59,7 +60,14 @@ export class FactureService extends BaseServiceV1<Facture> {
     };
   }
 
-  async createFacture(createDto: CreateFactureDto): Promise<Facture> {
+  async createFacture(
+    createDto: CreateFactureDto,
+    options: {
+      manager?: EntityManager;
+      dossier?: Dossier | any;
+      client?: Customer | any;
+    } = {},
+  ): Promise<Facture> {
     console.log('Création de la facture avec les données suivantes  :', createDto);
     // Calcul automatique des montants si nécessaire
     if (!createDto.montantTVA) {
@@ -76,10 +84,20 @@ export class FactureService extends BaseServiceV1<Facture> {
       statut,
       ...rest
     } = createDto as CreateFactureDto & { status?: StatutFacture };
-    const dossier_ = await this.dossiersService.findOne(dossierId)
+    const dossier_ = options.dossier ?? await (
+      options.manager
+        ? options.manager.findOne(Dossier, {
+            where: { id: dossierId as any },
+            relations: ['client', 'procedureInstance', 'procedureInstance.currentVisit'],
+          })
+        : this.dossiersService.findOne(dossierId)
+    );
+    if (!dossier_) {
+      throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+    }
     const dossier = { id: dossierId } as Dossier
-    const client  =  dossier_.client
-    const client_id  =  dossier_.client.id
+    const client = options.client ?? dossier_.client;
+    const client_id = client?.id ?? clientId;
     // Si l'utilisateur a fourni un numéro explicitement, on l'utilise tel quel.
     // Sinon, autogénération depuis app_settings (préfixe + stratégie + padding).
     let numero = providedNumero?.trim()
@@ -130,8 +148,10 @@ export class FactureService extends BaseServiceV1<Facture> {
     // Propage la case « Notifier le client » au subscriber (champ transient).
     (facture as any).notify_client = !!notify_client;
 
-    const fac = await this.saveWithUniqueInvoiceNumber(facture);
-    await this.emitStatusEventsIfNeeded(fac.id, StatutFacture.BROUILLON, fac.status);
+    const fac = await this.saveWithUniqueInvoiceNumber(facture, options.manager);
+    if (!options.manager) {
+      await this.emitStatusEventsIfNeeded(fac.id, StatutFacture.BROUILLON, fac.status);
+    }
 
     // const currentStep = await this.stepsService.getCurrentStep(createDto.dossierId);
     
@@ -530,17 +550,21 @@ export class FactureService extends BaseServiceV1<Facture> {
     );
   }
 
-  private async saveWithUniqueInvoiceNumber(facture: Facture): Promise<Facture> {
+  private async saveWithUniqueInvoiceNumber(
+    facture: Facture,
+    manager?: EntityManager,
+  ): Promise<Facture> {
+    const repo = manager?.getRepository(Facture) ?? this.repository;
     let attempt = 0;
     while (attempt++ < 5) {
       try {
-        return await this.repository.save(facture);
+        return await repo.save(facture);
       } catch (error) {
         if (!this.isDuplicateInvoiceNumberError(error)) throw error;
         facture.numero = await this.generateFacNumber();
       }
     }
-    return this.repository.save(facture);
+    return repo.save(facture);
   }
 
   private normalizeStatus(value: string | number | StatutFacture): StatutFacture {

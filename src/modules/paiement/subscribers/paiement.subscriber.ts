@@ -23,8 +23,6 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
-    @InjectRepository(Paiement)
-    private readonly paiementRepo: Repository<Paiement>,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
   ) {
@@ -42,10 +40,10 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
 
   protected async onAfterCreate(
     entity: Paiement,
-    _event: InsertEvent<Paiement>,
+    event: InsertEvent<Paiement>,
   ): Promise<void> {
     // Recharger avec la facture + dossier + client pour résoudre l'audience
-    const paiement = await this.load(entity.id as any);
+    const paiement = await this.load(entity.id as any, event);
     if (!paiement?.facture) return;
     const facture: any = paiement.facture;
     const notifyClient = this.resolveTransientBoolean('notify_client', entity, paiement as any);
@@ -80,11 +78,13 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     });
   }
 
-  private load(id: string | number): Promise<Paiement | null> {
-    return this.paiementRepo.findOne({
-      where: { id: id as any },
+  private load(
+    id: string | number,
+    event?: InsertEvent<Paiement>,
+  ): Promise<Paiement | null> {
+    return this.loadEntity<Paiement>(id, {
       relations: ['facture', 'facture.client', 'facture.dossier'],
-    });
+    }, event);
   }
 }
 

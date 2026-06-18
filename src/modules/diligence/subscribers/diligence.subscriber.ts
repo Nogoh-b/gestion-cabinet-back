@@ -2,9 +2,8 @@ import { NotificationDispatcher } from 'src/core/notifications/notification-disp
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 
 import { Diligence, DiligenceStatus } from '../entities/diligence.entity';
 
@@ -20,8 +19,6 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
-    @InjectRepository(Diligence)
-    private readonly diligenceRepo: Repository<Diligence>,
   ) {
     super(dataSource, notificationDispatcher);
   }
@@ -32,12 +29,12 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
 
   protected async onAfterCreate(
     entity: Diligence,
-    _event: InsertEvent<Diligence>,
+    event: InsertEvent<Diligence>,
   ): Promise<void> {
     // Tentative de rechargement avec les relations (dossier, client, avocat).
     // Si le findOne échoue (ex. contexte transactionnel ou filtre tenant),
     // on utilise les champs scalaires de l'entité passée en paramètre.
-    const loaded = await this.load(entity.id).catch(() => null);
+    const loaded = await this.load(entity.id, event).catch(() => null);
     const diligence = loaded ?? entity;
     // En fallback (loaded === null), le dossier n'est pas chargé via la relation,
     // on utilise un objet partiel avec au moins l'id pour le lien.
@@ -87,7 +84,7 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
 
     const id = entity.id ?? (event.databaseEntity as Diligence)?.id;
     if (!id) return;
-    const diligence = await this.load(id).catch(() => null);
+    const diligence = await this.load(id, event).catch(() => null);
     if (!diligence) return;
     const dossier: any = diligence.dossier;
     const notifyClient = this.resolveTransientBoolean(
@@ -119,10 +116,12 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
     });
   }
 
-  private load(id: number): Promise<Diligence | null> {
-    return this.diligenceRepo.findOne({
-      where: { id },
+  private load(
+    id: number,
+    event?: InsertEvent<Diligence> | UpdateEvent<Diligence>,
+  ): Promise<Diligence | null> {
+    return this.loadEntity<Diligence>(id, {
       relations: ['dossier', 'dossier.client', 'assigned_lawyer'],
-    });
+    }, event);
   }
 }
