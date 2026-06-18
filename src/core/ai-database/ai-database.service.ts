@@ -19,6 +19,8 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
 import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { isSharedEntity } from '../tenant/tenant.decorator';
@@ -36,6 +38,8 @@ import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { EntityIdRequiredException } from './write/entity-id-required.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
+
 
 
 type IntentMode = 'auto' | 'read' | 'write' | 'chat';
@@ -2213,12 +2217,12 @@ RÉPONSE :`;
   this.llm = new ChatOpenAI({
     // model: 'deepseek-v4-flash',
     // model: 'deepseek-v4-pro',
-    model: 'deepseek-chat',
+    model: 'agnes-2.0-flash',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
     maxTokens: 8000,           // Sortie max de DeepSeek-chat (≈ 8K tokens) — suffit pour SQL + analyses
-    apiKey: process.env.DEEPSEEK_API_KEY,
+    apiKey: process.env.AGNES_API_KEY,
     configuration: {
-      baseURL: 'https://api.deepseek.com/v1',
+      baseURL: 'https://apihub.agnes-ai.com/v1',
     },
     streaming: true,           // ✅ Streaming activé (réponses longues + 1er token rapide)
     timeout: 60000,            // 60s : marge de raisonnement sans couper les analyses longues
