@@ -2535,10 +2535,22 @@ RÉPONSE (en langage naturel):`;
    * pour matcher "documents" → "document", "dossiers" → "dossier", etc.
    */
   private stemKeyword(word: string): string {
-    const w = word.toLowerCase();
+    const w = this.stripAccents(word.toLowerCase());
     if (w.endsWith('s') && w.length > 3) return w.slice(0, -1);
     if (w.endsWith('x') && w.length > 3) return w.slice(0, -1);
     return w;
+  }
+
+  /**
+   * Minuscule + suppression des accents (é→e, à→a…).
+   * Indispensable pour un matching FR robuste : sans ça, "l'étape" ou
+   * "sous-étapes" tapés par l'utilisateur ne retrouvent pas les libellés
+   * "Étapes"/"Sous-étapes" et les tables workflow ne sont jamais incluses
+   * dans le schéma envoyé au LLM.
+   */
+  private stripAccents(s: string): string {
+    // ̀-ͯ = bloc des diacritiques combinants isolés par NFD.
+    return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 
   /**
@@ -2571,7 +2583,12 @@ RÉPONSE (en langage naturel):`;
       return this.expandWithRelatedTables(validTables);
     }
 
-    const keywords = question.toLowerCase().split(/\s+/);
+    // On découpe aussi sur apostrophes et traits d'union et on retire les accents :
+    // ainsi "l'étape" et "sous-étapes" produisent les tokens "etape"/"etapes" qui
+    // matchent les libellés "Étapes"/"Sous-étapes" des tables workflow.
+    const keywords = this.stripAccents(question.toLowerCase())
+      .split(/[\s'’\-]+/)
+      .filter(Boolean);
     const visibleTables = this.schemaMetadata.getAllVisibleTables();
     const keywordStems = keywords.map(k => this.stemKeyword(k));
     
@@ -2590,8 +2607,8 @@ RÉPONSE (en langage naturel):`;
       const tableStems = tableWords.map(w => this.stemKeyword(w));
       
       const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(tableName);
-      const businessName = tableMeta?.label?.toLowerCase() || '';
-      const category = tableMeta?.category?.toLowerCase() || '';
+      const businessName = this.stripAccents(tableMeta?.label?.toLowerCase() || '');
+      const category = this.stripAccents(tableMeta?.category?.toLowerCase() || '');
       
       for (let ki = 0; ki < keywords.length; ki++) {
         const keyword = keywords[ki];
@@ -2614,7 +2631,7 @@ RÉPONSE (en langage naturel):`;
         }
         
         // 3. Label metier (ex: "Documents clients" → "documents")
-        const businessWords = businessName.split(/[\s_]+/).filter(Boolean);
+        const businessWords = businessName.split(/[\s_'’\-]+/).filter(Boolean);
         const businessStems = businessWords.map(w => this.stemKeyword(w));
         
         const labelWordMatch = businessWords.some(w => w === keyword || w === stem);
