@@ -65,7 +65,9 @@ import { PdfTemplatesModule } from './modules/pdf-templates/pdf-templates.module
 import { MailTemplateModule } from './modules/mail-template/mail-template.module';
 import { TemplateBlocksModule } from './modules/template-blocks/template-blocks.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 
 
 
@@ -89,6 +91,7 @@ dotenv.config();
     OnboardingModule,
 
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     ComptabiliteModule,
 
     // 2. Modules indépendants
@@ -201,6 +204,7 @@ dotenv.config();
     SupplierModule,
     SettingsModule,
     PlansModule,
+    SubscriptionsModule,
     PdfTemplatesModule,
     MailTemplateModule,
     TemplateBlocksModule,

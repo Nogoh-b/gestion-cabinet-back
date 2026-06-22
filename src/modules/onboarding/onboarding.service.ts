@@ -16,6 +16,7 @@ import { UserRole } from 'src/core/enums/user-role.enum';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import { CabinetService } from '../cabinet/cabinet.service';
 import { PlansService } from '../plans/plans.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { OnboardingDto } from './onboarding.dto';
 import { JwtPayload } from 'src/core/auth/interfaces/jwt-payload.interface';
 import { MailService } from 'src/core/shared/emails/emails.service';
@@ -35,6 +36,7 @@ export class OnboardingService {
     private readonly tenantContext:  TenantContext,
     private readonly cabinetService: CabinetService,
     private readonly plansService:   PlansService,
+    private readonly subscriptionsService: SubscriptionsService,
     private readonly jwtService:     JwtService,
     private readonly dataSource:     DataSource,
     private readonly mailService:    MailService,
@@ -146,6 +148,17 @@ export class OnboardingService {
           await this.assignmentRepo.save(assignment);
         }
 
+        // ── 2e. Abonnement + échéance de facturation ─────────────────────
+        // Crée l'abonnement selon la politique configurée (essai 30j par
+        // défaut). Synchronise le statut + trial_ends_at du cabinet.
+        const subscription = await this.subscriptionsService.createForCabinet(
+          cabinet.id,
+          selectedPlan?.id ?? null,
+          dto.billing_cycle ?? 'monthly',
+        );
+        // Reflète le statut résolu sur l'objet en mémoire pour la réponse.
+        cabinet.status = subscription.status === 'trial' ? 'trial' : 'active';
+
         // ── 3. Génération du JWT ─────────────────────────────────────────
         const payload: JwtPayload = {
           sub:         savedUser.id,
@@ -199,6 +212,14 @@ export class OnboardingService {
       await this.cabinetRepo.delete(cabinet.id).catch(() => {});
       throw new InternalServerErrorException(`Erreur lors de la création du cabinet : ${err.message}`);
     }
+  }
+
+  /**
+   * Liste publique des plans actifs — utilisée par l'écran d'inscription
+   * (non authentifié) pour proposer TOUS les plans, pas seulement le Starter.
+   */
+  async listActivePlans() {
+    return this.plansService.findActive();
   }
 
   private trialEnd(days: number): Date {

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from 'src/core/decorators/public.decorator';
 import { OnboardingService } from './onboarding.service';
@@ -24,5 +24,16 @@ export class OnboardingController {
   @ApiOperation({ summary: 'Créer un nouveau cabinet (plan trial)' })
   register(@Body() dto: OnboardingDto) {
     return this.service.register(dto);
+  }
+
+  /**
+   * Liste publique des plans actifs pour l'écran d'inscription.
+   * Route publique — accessible sans authentification (contrairement à
+   * GET /plans/active qui exige un token).
+   */
+  @Get('plans')
+  @ApiOperation({ summary: 'Plans actifs proposés à l\'inscription (public)' })
+  listPlans() {
+    return this.service.listActivePlans();
   }
 }

@@ -2220,7 +2220,7 @@ RÉPONSE :`;
     model: 'agnes-2.0-flash',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
     maxTokens: 8000,           // Sortie max de DeepSeek-chat (≈ 8K tokens) — suffit pour SQL + analyses
-    apiKey: process.env.AGNES_API_KEY,
+    apiKey: process.env.AGNES_API_KEY, 
     configuration: {
       baseURL: 'https://apihub.agnes-ai.com/v1',
     },
