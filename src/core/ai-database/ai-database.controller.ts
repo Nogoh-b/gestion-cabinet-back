@@ -68,7 +68,7 @@ export class AiDatabaseController {
     @CurrentUser() user,
     @UploadedFile() file?: Express.Multer.File
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto, user.id, file);
+    return this.aiDbService.analyzeQuestion(dto, user, file);
   }
 
 
@@ -152,7 +152,7 @@ export class AiDatabaseController {
 
     try {
       await this.tenantContext.run(tenantId, () =>
-        this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent),
+        this.aiDbService.analyzeQuestionStream(dto, user, file, sendEvent),
       );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });
@@ -172,7 +172,7 @@ export class AiDatabaseController {
     @Body('pendingIntent') pendingIntent: WritePlan,
     @CurrentUser() user
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.confirmWrite(pendingIntent, user.id);
+    return this.aiDbService.confirmWrite(pendingIntent, user);
   }
 
   // ── Résolution d'ambiguïté ───────────────────────────────────────────────────
@@ -218,7 +218,7 @@ export class AiDatabaseController {
       operationIndex,
       fieldName,
       resolvedId,
-      user.id,
+      user,
       conversationId,
       customValue,
       entity,
@@ -228,8 +228,8 @@ export class AiDatabaseController {
   @Post('execute')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exécute une requête SQL (SELECT uniquement)' })
-  async executeCustomQuery(@Body('sql') sqlQuery: string) {
-    return this.aiDbService.executeQuery(sqlQuery);
+  async executeCustomQuery(@Body('sql') sqlQuery: string, @CurrentUser() user) {
+    return this.aiDbService.executeQuery(sqlQuery, user);
   }
 
   @Get('metrics')

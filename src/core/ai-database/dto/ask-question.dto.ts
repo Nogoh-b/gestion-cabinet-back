@@ -100,6 +100,9 @@ export class AskQuestionDto {
 export interface ReferencedEntityContext {
   type: string;
   label: string;
+  id?: string | number;
+  href?: string;
+  meta?: Record<string, any>;
   data?: Record<string, any> & { id?: string | number };
 }
 
@@ -113,12 +116,25 @@ export function parseReferencedContext(raw?: string): ReferencedEntityContext[] 
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
+    const cleanText = (value: unknown): string => String(value ?? '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
     return parsed
       .filter(it => it && typeof it === 'object' && typeof it.label === 'string')
       .map(it => ({
         type: typeof it.type === 'string' ? it.type : 'entité',
-        label: it.label,
-        data: it.data && typeof it.data === 'object' ? it.data : undefined,
+        label: cleanText(it.label),
+        id: it.id ?? it.data?.id,
+        href: typeof it.href === 'string' && it.href.startsWith('/') ? it.href : undefined,
+        meta: it.meta && typeof it.meta === 'object' ? it.meta : undefined,
+        data: it.data && typeof it.data === 'object'
+          ? { ...it.data, ...(it.meta && typeof it.meta === 'object' ? it.meta : {}), id: it.id ?? it.data?.id }
+          : { ...(it.meta && typeof it.meta === 'object' ? it.meta : {}), id: it.id },
       }));
   } catch {
     return [];

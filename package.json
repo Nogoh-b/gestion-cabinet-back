@@ -35,6 +35,7 @@
     "@iarna/toml": "^2.2.5",
     "@langchain/community": "^1.1.28",
     "@langchain/core": "^1.1.48",
+    "@langchain/google-genai": "^2.2.0",
     "@langchain/openai": "^0.4.9",
     "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/axios": "^4.0.0",

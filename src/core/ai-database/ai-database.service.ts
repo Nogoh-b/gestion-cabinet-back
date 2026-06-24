@@ -21,9 +21,18 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
+
+
+
+
+
 import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { isSharedEntity } from '../tenant/tenant.decorator';
+import { AiDatabasePermissionService, AiUserContext } from './ai-database-permission.service';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
@@ -38,6 +47,14 @@ import { SqlValidatorService } from './sql-validator.service';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { EntityIdRequiredException } from './write/entity-id-required.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
+
+
+
+
+
+
+
 
 
 
@@ -118,9 +135,15 @@ export class AiDatabaseService implements OnModuleInit {
     private readonly genericWriteService: GenericWriteService,
     private readonly conversationManager: ConversationManagerService,
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
+    private readonly aiPermissionService: AiDatabasePermissionService,
     @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
   ) {}
+
+  private getUserId(user: AiUserContext | string | number | undefined | null): string {
+    if (typeof user === 'string' || typeof user === 'number') return String(user);
+    return String(user?.id ?? user?.userId ?? 'anonymous');
+  }
 
   async onModuleInit() {
     await this.initializeLLM();
@@ -203,6 +226,8 @@ export class AiDatabaseService implements OnModuleInit {
     question: string,
     schema?: string,
     tables: string[] = [],
+    historyQuestion?: string,
+    references: ReferencedEntityContext[] = [],
   ): Promise<string> {
     // 1. Vérifier que la conversation existe
     const conversation = await this.conversationManager.getConversation(conversationId);
@@ -210,7 +235,7 @@ export class AiDatabaseService implements OnModuleInit {
       throw new Error(`Conversation ${conversationId} non trouvée`);
     }
 
-    return this.generateSqlForConversation(conversationId, question, schema, tables);
+    return this.generateSqlForConversation(conversationId, question, schema, tables, historyQuestion, references);
   }
 
   /**
@@ -221,6 +246,8 @@ export class AiDatabaseService implements OnModuleInit {
     question: string,
     schema?: string,
     tables: string[] = [],
+    historyQuestion?: string,
+    references: ReferencedEntityContext[] = [],
   ): Promise<string> {
     const schemaToUse = schema || (await this.getCompleteSchema(
       tables.length ? tables : await this.detectRelevantTables(question),
@@ -228,15 +255,15 @@ export class AiDatabaseService implements OnModuleInit {
     const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
     const systemPrompt = this.buildReadSystemPrompt(schemaToUse, tenantId);
 
-    await this.conversationManager.addUserMessage(conversationId, question);
-
     const recentHistory = await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
       maxMessages: this.MAX_HISTORY_MESSAGES,
       maxTokens: this.MAX_HISTORY_TOKENS,
     });
+    await this.conversationManager.addUserMessage(conversationId, historyQuestion ?? question, references);
     const messages = [
       { role: 'system', content: systemPrompt },
       ...recentHistory,
+      { role: 'user', content: question },
     ];
     const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
     this.logger.log(`Tokens estimes prompt SQL: ${estimatedTokens} | ${messages.length} messages | tables=${tables.join(',') || 'auto'}`);
@@ -460,11 +487,13 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
 
   async confirmWrite(
     pendingIntent: WritePlan,
-    userId: string
+    user: AiUserContext | string
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
+    const userId = this.getUserId(user);
 
     try {
+      await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, pendingIntent);
       const writeResult = await this.genericWriteService.executePlan(pendingIntent, userId);
       return {
         success: true,
@@ -607,18 +636,24 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
    */
   async analyzeQuestion(
     dto: AskQuestionDto,
-    userId: string,
+    user: AiUserContext | string,
     file?: Express.Multer.File,
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
+    const userId = this.getUserId(user);
 
     // ── 0. Reprise d'un plan WRITE en attente d'identifiant ───────────────────
     const resumed = this.tryConsumePendingEntityIdClarification(dto.conversationId, dto.question);
     if (resumed) {
       const conversationId = dto.conversationId!;
-      await this.conversationManager.addUserMessage(conversationId, dto.question);
+      await this.conversationManager.addUserMessage(
+        conversationId,
+        dto.question,
+        parseReferencedContext(dto.context),
+      );
       try {
-        const results = await this.genericWriteService.executePlan(resumed.plan, resumed.userId);
+        await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, resumed.plan);
+        const results = await this.genericWriteService.executePlan(resumed.plan, userId);
         const analysis = this.formatPlanResults(results);
         await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
         return {
@@ -643,7 +678,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         }
         if (error instanceof EntityIdRequiredException) {
           this.rememberPendingEntityIdClarification(
-            conversationId, resumed.plan, error.operationIndex, error.entity, resumed.userId,
+            conversationId, resumed.plan, error.operationIndex, error.entity, userId,
           );
           const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
           await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
@@ -733,19 +768,34 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
 
     // ── 3a. BRANCHE CONVERSATIONNELLE ────────────────────────────────────────
     if (intentResult.type === 'CONVERSATIONAL') {
+      let conversationId = dto.conversationId;
+      if (!conversationId) {
+        const newConversation = await this.conversationManager.createConversation(
+          userId,
+          this.generateConversationTitle(dto.question),
+        );
+        conversationId = newConversation.id;
+      }
+      await this.conversationManager.addUserMessage(
+        conversationId,
+        dto.question,
+        requestContext.referenced,
+      );
       const analysis = intentResult.conversationalResponse
         ?? (await this.generateConversationalResponse(enrichedQuestion));
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
       return {
         success: true,
         question: dto.question,
         analysis,
         executionTimeMs: Date.now() - startTime,
-        conversationId: dto.conversationId,
+        conversationId,
       };
     }
 
     // ── 3b. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
     if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+      await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, intentResult.writePlan);
       return this.handleWriteIntent(
         intentResult.writePlan,
         intentResult.requiresConfirmation ?? false,
@@ -754,6 +804,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         userId,
         startTime,
         fileInfo,
+        requestContext.referenced,
       );
     }
 
@@ -761,6 +812,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     // (schemaJSON/schema ne sont plus calculés ni renvoyés : non exploités par le front,
     //  et getCompleteSchemaJson déclenchait COUNT(*) + information_schema par table.)
     try {
+      await this.aiPermissionService.assertCanReadTables(user as AiUserContext, relevantTables);
       let conversationId = dto.conversationId;
 
       if (!conversationId) {
@@ -777,8 +829,16 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         }
       }
 
-      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
+      const sqlQuery = await this.askQuestionWithSession(
+        conversationId,
+        enrichedQuestion,
+        schema,
+        relevantTables,
+        dto.question,
+        requestContext.referenced,
+      );
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema);
+      await this.aiPermissionService.assertCanReadSql(user as AiUserContext, validatedQuery);
 
       let results: { data: any[]; rowCount: number } | null = null;
       let analysis = '';
@@ -823,12 +883,14 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     requiresConfirmation: boolean,
     enrichedQuestion: string,
     dto: AskQuestionDto,
-    userId: string,
+    user: AiUserContext | string,
     startTime: number,
     fileInfo?: any,
+    references: ReferencedEntityContext[] = [],
   ): Promise<AnalysisResponseDto> {
 
     // ── Gérer / créer la conversation (historique write) ───────────────────
+    const userId = this.getUserId(user);
     let conversationId = dto.conversationId;
     if (!conversationId) {
       const title = this.generateConversationTitle(dto.question);
@@ -836,7 +898,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
       conversationId = conv.id;
     }
     // Enregistrer la question dans l'historique
-    await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+    await this.conversationManager.addUserMessage(conversationId, dto.question, references);
 
     // ── Confirmation requise ────────────────────────────────────────────────
     if (requiresConfirmation) {
@@ -962,12 +1024,13 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     operationIndex: number,
     fieldName: string,
     resolvedId: string | number | undefined,
-    userId: string,
+    user: AiUserContext | string,
     conversationId?: string,
     customValue?: string,
     entity?: string,
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
+    const userId = this.getUserId(user);
 
     // Deep clone du plan pour ne pas muter l'original
     const patchedPlan: WritePlan = JSON.parse(JSON.stringify(pendingPlan));
@@ -1001,7 +1064,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     if (customValue && !resolvedId) {
       return this.handleOtherChoice(
         patchedPlan, op, operationIndex, fieldName,
-        customValue, entity ?? '', userId, conversationId, startTime,
+        customValue, entity ?? '', user, userId, conversationId, startTime,
       );
     }
 
@@ -1014,6 +1077,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
       `"${fieldName}" → ID ${resolvedId}`,
     );
 
+    await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, patchedPlan);
     return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime);
   }
 
@@ -1026,6 +1090,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     fieldName: string,
     customValue: string,
     entityTable: string,
+    user: AiUserContext | string,
     userId: string,
     conversationId: string | undefined,
     startTime: number,
@@ -1036,6 +1101,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     );
 
     // 1. Trouver le handler enregistré pour cette table
+    await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, patchedPlan);
     const handler = this.writeHandlerRegistry.getHandler(entityTable);
     if (!handler) {
       // Pas de handler → on injecte le texte brut et on laisse la résolution retenter
@@ -1046,6 +1112,17 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     }
 
     // 2. Construire les champs minimaux pour la création
+    await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, {
+      transaction: false,
+      operations: [{
+        operation: 'INSERT',
+        entity: entityTable,
+        fields: {},
+        humanReadable: `Creation de ${entityTable}`,
+      }],
+      humanReadable: `Creation de ${entityTable}`,
+      confidence: 1,
+    });
     const createFields = await this.buildMinimalFields(entityTable, customValue, fieldName, op.fields);
 
     try {
@@ -1326,16 +1403,25 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
    * plutôt que de deviner (« ce client », « ce dossier »…).
    */
   private formatReferencedContext(items: ReferencedEntityContext[]): string {
+    const cleanText = (value: unknown): string => String(value ?? '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     const lines = items.map(it => {
       const id = it.data?.id;
       const idPart = id !== undefined && id !== null ? ` (id=${id})` : '';
       const extra: string[] = [];
       const d = it.data ?? {};
       for (const key of ['reference', 'numero', 'email', 'phone', 'telephone']) {
-        if (d[key]) extra.push(`${key}=${d[key]}`);
+        if (d[key]) extra.push(`${key}=${cleanText(d[key])}`);
       }
       const extraPart = extra.length ? ` [${extra.join(', ')}]` : '';
-      return `- ${it.type}: "${it.label}"${idPart}${extraPart}`;
+      return `- ${cleanText(it.type)}: "${cleanText(it.label)}"${idPart}${extraPart}`;
     });
     return `\n\n--- ENTITÉS RÉFÉRENCÉES PAR L'UTILISATEUR (via @) ---
 Utilise EXACTEMENT ces entités (et leurs IDs) quand la question y fait référence :
@@ -1767,11 +1853,12 @@ ${blocks.join('\n\n')}
 
   async analyzeQuestionStream(
     dto: AskQuestionDto,
-    userId: string,
+    user: AiUserContext | string,
     file: Express.Multer.File | undefined,
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
     const startTime = Date.now();
+    const userId = this.getUserId(user);
     const tLog = (label: string) => this.logger.log(`🕐 [STREAM] ${label} @ +${Date.now() - startTime}ms`);
 
     /** sendEvent avec délai : chaque status est visible ~200ms avant le suivant */
@@ -1791,9 +1878,14 @@ ${blocks.join('\n\n')}
         sendEvent('intent', { type: 'WRITE', plan: resumed.plan });
         await emit('status', { message: `⚙️ Exécution de ${resumed.plan.operations.length} opération(s)...` });
         const conversationId = dto.conversationId!;
-        await this.conversationManager.addUserMessage(conversationId, dto.question);
+        await this.conversationManager.addUserMessage(
+          conversationId,
+          dto.question,
+          parseReferencedContext(dto.context),
+        );
         try {
-          const results = await this.genericWriteService.executePlan(resumed.plan, resumed.userId);
+          await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, resumed.plan);
+          const results = await this.genericWriteService.executePlan(resumed.plan, userId);
           const analysis = this.formatPlanResults(results);
           await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
           sendEvent('result', {
@@ -1811,7 +1903,7 @@ ${blocks.join('\n\n')}
             });
           } else if (error instanceof EntityIdRequiredException) {
             this.rememberPendingEntityIdClarification(
-              conversationId, resumed.plan, error.operationIndex, error.entity, resumed.userId,
+              conversationId, resumed.plan, error.operationIndex, error.entity, userId,
             );
             const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
             await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
@@ -1866,6 +1958,7 @@ ${blocks.join('\n\n')}
         d => !d.error && !!d.content && d.content.trim().length > 40,
       );
       if (hasReadableDocument && intentMode !== 'write') {
+        await this.aiPermissionService.assertCanReadTables(user as AiUserContext, relevantTables);
         sendEvent('intent', { type: 'READ' });
         await emit('status', { message: '📄 Lecture et analyse du contenu du document...' }, 80);
 
@@ -1876,7 +1969,11 @@ ${blocks.join('\n\n')}
           );
           conversationId = conv.id;
         }
-        await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+        await this.conversationManager.addUserMessage(
+          conversationId,
+          dto.question,
+          requestContext.referenced,
+        );
 
         const analysis = await this.analyzeDocumentsStream(
           dto.question, requestContext.documentContext, sendEvent,
@@ -1914,18 +2011,31 @@ ${blocks.join('\n\n')}
 
       // ── 3a. CONVERSATIONAL ───────────────────────────────────────────────────
       if (intentResult.type === 'CONVERSATIONAL') {
+        let conversationId = dto.conversationId;
+        if (!conversationId) {
+          const conv = await this.conversationManager.createConversation(
+            userId, this.generateConversationTitle(dto.question),
+          );
+          conversationId = conv.id;
+        }
+        await this.conversationManager.addUserMessage(
+          conversationId,
+          dto.question,
+          requestContext.referenced,
+        );
         // Stream directement depuis le LLM (llm.stream), token par token en temps réel.
         // On n'utilise plus conversationalResponse pré-générée (qui bloquait 30s).
         const fullText = await this.generateConversationalResponseStream(
           enrichedQuestion,
           sendEvent,
         );
+        await this.conversationManager.addAssistantMessage(conversationId, fullText, undefined);
         sendEvent('result', {
           success: true,
           question: dto.question,
           analysis: fullText,
           executionTimeMs: Date.now() - startTime,
-          conversationId: dto.conversationId,
+          conversationId,
         });
         return;
       }
@@ -1933,6 +2043,7 @@ ${blocks.join('\n\n')}
       // ── 3b. WRITE ────────────────────────────────────────────────────────────
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
         const plan = intentResult.writePlan;
+        await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, plan);
 
         let conversationId = dto.conversationId;
         if (!conversationId) {
@@ -1941,7 +2052,11 @@ ${blocks.join('\n\n')}
           );
           conversationId = conv.id;
         }
-        await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+        await this.conversationManager.addUserMessage(
+          conversationId,
+          dto.question,
+          requestContext.referenced,
+        );
 
         if (intentResult.requiresConfirmation) {
           sendEvent('confirmation', { plan, conversationId });
@@ -1974,7 +2089,16 @@ ${blocks.join('\n\n')}
         conversationId = conv.id;
       }
 
-      const sqlQuery = await this.askQuestionWithSession(conversationId, enrichedQuestion, schema, relevantTables);
+      await this.aiPermissionService.assertCanReadTables(user as AiUserContext, relevantTables);
+      const sqlQuery = await this.askQuestionWithSession(
+        conversationId,
+        enrichedQuestion,
+        schema,
+        relevantTables,
+        dto.question,
+        requestContext.referenced,
+      );
+      await this.aiPermissionService.assertCanReadSql(user as AiUserContext, sqlQuery);
       await emit('status', { message: '✅ Requête générée, exécution en cours...' });
 
       // validateAndFixQuery valide déjà via EXPLAIN et s'auto-corrige (jusqu'à 2 passes
@@ -1998,8 +2122,13 @@ ${blocks.join('\n\n')}
           const reroutedPlan = this.enrichWritePlanWithReferencedEntities(
             rerouted.writePlan, requestContext.referenced,
           ) ?? rerouted.writePlan;
+          await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, reroutedPlan);
           sendEvent('intent', { type: 'WRITE', plan: reroutedPlan });
-          await this.conversationManager.addUserMessage(conversationId, enrichedQuestion);
+          await this.conversationManager.addUserMessage(
+            conversationId,
+            dto.question,
+            requestContext.referenced,
+          );
           await emit('status', { message: `⚙️ Exécution de ${reroutedPlan.operations.length} opération(s)...` });
           await this.executeWritePlanStream(
             reroutedPlan, userId, conversationId, dto, fileInfo, startTime, sendEvent,
@@ -2213,21 +2342,75 @@ RÉPONSE :`;
   }
 
 
+  private installApproximateTokenCounter(model: ChatOpenAI) {
+    const getNumTokens = async (content: unknown): Promise<number> => {
+      const text = this.stringifyTokenContent(content);
+      return Math.max(1, Math.ceil(text.length / 4));
+    };
+
+    (model as ChatOpenAI & { getNumTokens: (content: unknown) => Promise<number> }).getNumTokens = getNumTokens;
+  }
+
+  private stringifyTokenContent(content: unknown): string {
+    if (content == null) {
+      return '';
+    }
+
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    if (typeof content === 'number' || typeof content === 'boolean' || typeof content === 'bigint') {
+      return String(content);
+    }
+
+    if (Array.isArray(content)) {
+      return content.map((item) => this.stringifyTokenContent(item)).join('\n');
+    }
+
+    if (typeof content === 'object') {
+      const record = content as Record<string, unknown>;
+      if (typeof record.text === 'string') {
+        return record.text;
+      }
+      if (typeof record.content === 'string') {
+        return record.content;
+      }
+
+      try {
+        return JSON.stringify(content);
+      } catch {
+        return String(content);
+      }
+    }
+
+    return String(content);
+  }
+
   private async initializeLLM() {
   this.llm = new ChatOpenAI({
     // model: 'deepseek-v4-flash',
     // model: 'deepseek-v4-pro',
-    model: 'agnes-2.0-flash',
+    // model: 'gemini-2.5-flash',
+    model: 'GLM-5.1',
+    // model: 'agnes-2.0-flash',
     temperature: 0,            // ✅ Déterministe pour des analyses précises
     maxTokens: 8000,           // Sortie max de DeepSeek-chat (≈ 8K tokens) — suffit pour SQL + analyses
-    apiKey: process.env.AGNES_API_KEY, 
+    apiKey: process.env.GLM_API_KEY, 
+    // apiKey: process.env.DEEPSEEK_API_KEY, 
+    // apiKey: process.env.AGNES_API_KEY, 
+    // configuration: {
+    //   baseURL: 'https://apihub.agnes-ai.com/v1',
+    // },
     configuration: {
-      baseURL: 'https://apihub.agnes-ai.com/v1',
+      baseURL: 'https://api.z.ai/api/paas/v4/',
+      // baseURL: 'https://api.deepseek.com',
     },
     streaming: true,           // ✅ Streaming activé (réponses longues + 1er token rapide)
     timeout: 60000,            // 60s : marge de raisonnement sans couper les analyses longues
     maxRetries: 2,
   });
+  this.installApproximateTokenCounter(this.llm);
 }
 
   /**
@@ -3655,7 +3838,8 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     }
   }
 
-  async executeQuery(sqlQuery: string): Promise<any> {
+  async executeQuery(sqlQuery: string, user: AiUserContext | string): Promise<any> {
+    await this.aiPermissionService.assertCanReadSql(user as AiUserContext, sqlQuery);
     const result = await this.executeSafeQuery(sqlQuery);
     return {
       success: true,

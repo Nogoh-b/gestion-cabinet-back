@@ -93,7 +93,9 @@ export class OnboardingService {
       plan:         planCode as CabinetPlan,
       plan_id:      selectedPlan?.id ?? null,
       routing_mode: dto.routing_mode ?? 'path',
-      trial_ends_at: this.trialEnd(30),
+      trial_ends_at: selectedPlan?.trial_enabled
+        ? this.trialEnd(selectedPlan.trial_days)
+        : null,
     });
     await this.cabinetRepo.save(cabinet);
     this.logger.log(`[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan?.id ?? 'none'}`);

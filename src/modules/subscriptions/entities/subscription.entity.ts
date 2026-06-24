@@ -71,6 +71,15 @@ export class Subscription {
   @Column({ type: 'datetime', nullable: true, name: 'ends_at' })
   ends_at: Date | null;
 
+  /**
+   * Fin de la portion d'essai gratuite. `null` = pas d'essai.
+   * Tant que `now < trial_ends_at`, `is_trial=true` et le décompte affiché vise
+   * cette date. Une fois dépassée, `is_trial` bascule à `false` et le décompte
+   * payant prend le relais vers `ends_at`.
+   */
+  @Column({ type: 'datetime', nullable: true, name: 'trial_ends_at' })
+  trial_ends_at: Date | null;
+
   /** true tant que la période en cours est une période d'essai gratuite. */
   @Column({ type: 'boolean', default: false, name: 'is_trial' })
   is_trial: boolean;

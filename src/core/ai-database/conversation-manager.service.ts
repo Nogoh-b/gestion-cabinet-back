@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
+import type { ReferencedEntityContext } from './dto/ask-question.dto';
 
 @Injectable()
 export class ConversationManagerService {
@@ -56,14 +57,16 @@ export class ConversationManagerService {
     role: 'system' | 'user' | 'assistant',
     content: string,
     reasoningContent?: string,
-    tokensUsed?: number
+    tokensUsed?: number,
+    references?: ReferencedEntityContext[],
   ): Promise<ConversationMessage> {
     const message = this.messageRepo.create({
       conversationId,
       role,
       content,
       reasoningContent,
-      tokensUsed: tokensUsed || this.estimateTokens(content)
+      tokensUsed: tokensUsed || this.estimateTokens(content),
+      references: references?.length ? references : undefined,
     });
     
     const saved = await this.messageRepo.save(message);
@@ -185,8 +188,12 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   /**
    * Ajoute un message utilisateur
    */
-  async addUserMessage(conversationId: string, content: string): Promise<void> {
-    await this.addMessage(conversationId, 'user', content);
+  async addUserMessage(
+    conversationId: string,
+    content: string,
+    references?: ReferencedEntityContext[],
+  ): Promise<void> {
+    await this.addMessage(conversationId, 'user', content, undefined, undefined, references);
   }
 
   /**
@@ -199,7 +206,13 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   /**
    * Récupère l'historique complet au format LangChain
    */
-  async getFullHistory(conversationId: string): Promise<Array<{role: string, content: string}>> {
+  async getFullHistory(conversationId: string): Promise<Array<{
+    id: number;
+    role: string;
+    content: string;
+    created_at: Date;
+    references?: ReferencedEntityContext[];
+  }>> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
       order: { created_at: 'ASC' }
@@ -208,8 +221,11 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     // Ne JAMAIS injecter le reasoningContent dans l'historique de conversation :
     // cela double le nombre de tokens et injecte du bruit (raisonnement interne du modèle).
     return messages.map(msg => ({
+      id: msg.id,
       role: msg.role,
       content: msg.content,
+      created_at: msg.created_at,
+      references: msg.references,
     }));
   }
 

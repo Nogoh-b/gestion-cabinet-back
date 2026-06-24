@@ -1,3 +1,4 @@
+import { Plan } from 'src/modules/plans/entities/plan.entity';
 import {
   Column,
   CreateDateColumn,
@@ -7,8 +8,9 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Plan } from 'src/modules/plans/entities/plan.entity';
+
 import { logoFileToUrl } from '../cabinet-logo.util';
+
 
 export type CabinetStatus = 'active' | 'trial' | 'suspended';
 export type CabinetPlan   =
@@ -52,8 +54,8 @@ export class Cabinet {
   @Column({ default: 'path' })
   routing_mode: 'subdomain' | 'path';
 
-  @Column({ nullable: true })
-  trial_ends_at: Date;
+  @Column({ type: 'datetime', nullable: true })
+  trial_ends_at: Date | null;
 
   // ── Branding / coordonnées (utilisés dans les en-têtes/pieds d'e-mail) ─────
   // NOTE: ces champs constituent la source de configuration UNIQUE du cabinet

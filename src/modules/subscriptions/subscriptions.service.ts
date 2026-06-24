@@ -78,6 +78,7 @@ export class SubscriptionsService {
       status: period.is_trial ? 'trial' : 'active',
       started_at: startedAt,
       ends_at: period.ends_at,
+      trial_ends_at: period.trial_ends_at,
       is_trial: period.is_trial,
       amount: period.amount,
       currency,
@@ -131,6 +132,7 @@ export class SubscriptionsService {
       status: 'active',
       started_at: startedAt,
       ends_at: period.ends_at,
+      trial_ends_at: null, // un renouvellement n'est jamais un essai
       is_trial: false,
       amount: period.amount,
       currency,
@@ -201,7 +203,12 @@ export class SubscriptionsService {
     const plan = sub.plan ?? (await this.planRepo.findOne({ where: { id: sub.plan_id } }));
 
     sub.billing_cycle = cycle;
-    if (!sub.is_trial && !(isFreePlan(plan) && !sub.ends_at)) {
+    if (sub.is_trial && sub.trial_ends_at) {
+      // Essai en cours : on garde l'essai intact, on recale juste la période
+      // payante qui suivra (ends_at = fin d'essai + nouveau cycle) et le montant.
+      sub.ends_at = addCycle(new Date(sub.trial_ends_at), cycle);
+      sub.amount = planPriceForCycle(plan, cycle);
+    } else if (!(isFreePlan(plan) && !sub.ends_at)) {
       // Période payante en cours : on recalibre la fin sur le nouveau cycle.
       sub.ends_at = addCycle(new Date(sub.started_at), cycle);
       sub.amount = planPriceForCycle(plan, cycle);
@@ -244,7 +251,10 @@ export class SubscriptionsService {
     if (sub) sub = await this.expireIfDue(sub);
 
     const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
-    const remaining = daysRemaining(sub?.ends_at ?? null);
+    // Pendant l'essai, le décompte vise la fin d'essai ; sinon la fin de période.
+    const countdownTarget =
+      sub?.is_trial ? sub.trial_ends_at ?? sub.ends_at ?? null : sub?.ends_at ?? null;
+    const remaining = daysRemaining(countdownTarget);
     const isExpired =
       sub?.status === 'expired' || sub?.status === 'suspended' ||
       (remaining !== null && remaining < 0);
@@ -258,6 +268,16 @@ export class SubscriptionsService {
       is_expired: isExpired,
       cabinet_status: cabinet?.status ?? null,
     };
+  }
+
+  /**
+   * Rafraîchit l'état d'abonnement d'un cabinet (transition essai→payant /
+   * suspension) sans construire la réponse enrichie. Utilisé par le guard
+   * global pour mettre l'abonnement à jour avant de traiter une requête.
+   */
+  async refreshCabinetSubscription(cabinetId: number): Promise<void> {
+    const sub = await this.getRawCurrent(cabinetId);
+    if (sub) await this.expireIfDue(sub);
   }
 
   /** Historique de facturation du cabinet (échéances + paiements). */
@@ -275,8 +295,31 @@ export class SubscriptionsService {
    * on suspend le cabinet. Retourne l'abonnement à jour.
    */
   private async expireIfDue(sub: Subscription): Promise<Subscription> {
+    const now = Date.now();
+
+    // ── Phase 1 : fin de l'essai → bascule en période payante (active) ────────
+    // L'essai et la période payante sont empilés dans la même ligne : quand on
+    // dépasse trial_ends_at, on quitte l'essai et le décompte payant (vers
+    // ends_at) prend le relais. Le cabinet repasse 'active'.
+    if (
+      sub.is_trial &&
+      sub.trial_ends_at &&
+      new Date(sub.trial_ends_at).getTime() <= now &&
+      (sub.status === 'trial' || sub.status === 'active')
+    ) {
+      sub.is_trial = false;
+      sub.status = 'active';
+      await this.subRepo.save(sub);
+      await this.syncCabinet(sub.cabinet_id, sub);
+      this.logger.log(
+        `[Subscriptions] Essai terminé — cabinet=${sub.cabinet_id} → période payante ` +
+          `(ends_at=${sub.ends_at?.toISOString() ?? 'illimité'})`,
+      );
+    }
+
+    // ── Phase 2 : fin de la période payante → suspension ──────────────────────
     if (!sub.ends_at) return sub; // illimité
-    if (new Date(sub.ends_at).getTime() > Date.now()) return sub; // pas encore échu
+    if (new Date(sub.ends_at).getTime() > now) return sub; // pas encore échu
     if (sub.status === 'expired' || sub.status === 'suspended' || sub.status === 'cancelled') {
       return sub;
     }
@@ -299,18 +342,20 @@ export class SubscriptionsService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async expireDueSubscriptions(): Promise<void> {
+    const now = new Date();
+    // Abonnements dont la période payante OU la période d'essai est arrivée à
+    // échéance. On délègue la décision (transition essai→payant / suspension) à
+    // expireIfDue pour garder une seule source de vérité.
     const due = await this.subRepo.find({
-      where: {
-        status: In(['trial', 'active']),
-        ends_at: LessThan(new Date()),
-      },
+      where: [
+        { status: In(['trial', 'active']), ends_at: LessThan(now) },
+        { status: In(['trial', 'active']), trial_ends_at: LessThan(now) },
+      ],
     });
     if (!due.length) return;
-    this.logger.log(`[Subscriptions] ${due.length} abonnement(s) à échoir — traitement…`);
+    this.logger.log(`[Subscriptions] ${due.length} abonnement(s) à traiter (essai/échéance)…`);
     for (const sub of due) {
-      sub.status = 'suspended';
-      await this.subRepo.save(sub);
-      await this.suspendCabinet(sub.cabinet_id);
+      await this.expireIfDue(sub);
     }
   }
 
@@ -343,7 +388,7 @@ export class SubscriptionsService {
     const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
     if (!cabinet) return;
     cabinet.status = sub.is_trial ? 'trial' : 'active';
-    cabinet.trial_ends_at = sub.ends_at as Date; // null = illimité
+    cabinet.trial_ends_at = sub.ends_at; // null = illimité
     cabinet.plan_id = sub.plan_id || cabinet.plan_id;
     await this.cabinetRepo.save(cabinet);
   }
@@ -392,6 +437,23 @@ export class SubscriptionsService {
     }
     await this.syncCabinet(cabinetId, sub);
     // getCurrent déclenche l'expiration paresseuse si la date est passée.
+    return this.getCurrent(cabinetId);
+  }
+
+  /**
+   * Termine immédiatement l'essai en cours → bascule en période payante.
+   * Permet de vérifier la transition « fin d'essai → début du décompte payant ».
+   */
+  async devEndTrialNow(cabinetId: number): Promise<CurrentSubscription> {
+    this.assertDev();
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    if (!sub.is_trial || !sub.trial_ends_at) {
+      throw new ForbiddenException("L'abonnement courant n'est pas en période d'essai");
+    }
+    sub.trial_ends_at = new Date(Date.now() - 1000);
+    await this.subRepo.save(sub);
+    await this.expireIfDue(sub); // déclenche la transition essai→payant
     return this.getCurrent(cabinetId);
   }
 

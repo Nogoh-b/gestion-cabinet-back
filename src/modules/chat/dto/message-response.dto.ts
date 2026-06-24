@@ -5,6 +5,7 @@ import { ApiProperty } from '@nestjs/swagger';
 
 
 import { Conversation } from '../entities/conversation.entity';
+import { ChatReferenceDto } from './create-conversation.dto';
 
 
 
@@ -31,4 +32,7 @@ export class MessageResponseDto {
   @ApiProperty({ type: () => Conversation })
   @Type(() => Conversation)
   conversation: Conversation;
+
+  @ApiProperty({ required: false })
+  references?: ChatReferenceDto[];
 }

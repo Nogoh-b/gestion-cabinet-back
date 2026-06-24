@@ -1,6 +1,6 @@
 // src/chat/dto/create-conversation.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsNotEmpty, IsOptional, IsBoolean, IsString, IsNumber, IsEmpty } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsBoolean, IsString, IsNumber } from 'class-validator';
 
 export class CreateConversationDto {
   @ApiProperty({
@@ -45,18 +45,41 @@ export class SendMessageDto {
     description: 'Contenu du message',
     example: 'Bonjour, comment ça va ?',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  content: string;
+  content?: string;
 
   @ApiProperty({
     description: 'Ids Attachements',
     example: '[23]',
   })
+  @IsOptional()
   @IsArray()
-  @IsEmpty()
-  attachmentIds: number[];
+  attachmentIds?: number[];
 
+  @ApiProperty({
+    description: 'Entites metier referencees dans le message',
+    required: false,
+    example: [{ type: 'dossier', id: 12, label: '#DOS-001 - Affaire Dupont' }],
+  })
+  @IsOptional()
+  @IsArray()
+  references?: ChatReferenceDto[];
+
+}
+
+export interface ChatReferenceDto {
+  type: string;
+  id: string | number;
+  label: string;
+  href?: string;
+  meta?: {
+    reference?: string;
+    numero?: string;
+    email?: string;
+    phone?: string;
+    date?: string;
+  };
 }
 
 

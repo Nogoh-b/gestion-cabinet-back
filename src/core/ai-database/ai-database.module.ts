@@ -13,9 +13,12 @@ import { IntentDetectionService } from './intent-detection.service';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { EntityResolverService } from './write/entity-resolver.service';
 import { AutoHandlerFactory } from './write/auto-handler-factory.service';
+import { AiDatabasePermissionService } from './ai-database-permission.service';
+import { IamModule } from 'src/modules/iam/iam.module';
 
 @Module({
   imports: [
+    IamModule,
     TypeOrmModule.forFeature([
       Conversation,
       ConversationMessage,
@@ -33,13 +36,15 @@ import { AutoHandlerFactory } from './write/auto-handler-factory.service';
     IntentDetectionService,
     EntityResolverService,
     AutoHandlerFactory,
+    AiDatabasePermissionService,
   ],
   exports: [
     AiDatabaseService,
     WriteHandlerRegistry,
     GenericWriteService,
     EntityResolverService,
-    SchemaMetadataService
+    SchemaMetadataService,
+    AiDatabasePermissionService
   ],
 })
 export class AiDatabaseModule {}

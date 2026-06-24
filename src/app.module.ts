@@ -4,6 +4,7 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
@@ -68,6 +69,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { SuspendedCabinetGuard } from './core/common/guards/suspended-cabinet.guard';
 
 
 
@@ -210,7 +212,13 @@ dotenv.config();
     TemplateBlocksModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: SuspendedCabinetGuard,
+    },
+  ],
   exports: [MailerModule],
 })
 export class AppModule implements NestModule {

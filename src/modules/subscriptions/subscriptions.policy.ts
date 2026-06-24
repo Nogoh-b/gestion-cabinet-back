@@ -2,40 +2,20 @@ import { Plan } from 'src/modules/plans/entities/plan.entity';
 import { BillingCycle } from './entities/subscription.entity';
 
 /**
- * Politique d'attribution de la date de fin d'abonnement (décompte).
+ * Politique d'essai configurable par plan.
  *
- * Configurable via la variable d'environnement `SUBSCRIPTION_TRIAL_POLICY` :
+ * Chaque plan définit sa propre politique via 3 champs :
+ *   - trial_enabled   : l'essai est-il activé pour ce plan ?
+ *   - trial_days      : durée de l'essai en jours (si trial_enabled)
+ *   - min_commitment_months : mois d'engagement après l'essai
  *
- *   - `trial_first`    (défaut) : toute nouvelle souscription démarre par une
- *                       période d'essai gratuite de `SUBSCRIPTION_TRIAL_DAYS`
- *                       jours (is_trial = true). À l'échéance, le cycle
- *                       mensuel/annuel prend le relais.
- *   - `free_unlimited` : le plan gratuit (price_monthly = 0) n'a PAS de date de
- *                       fin (illimité). Les plans payants ont une date de fin
- *                       calculée selon le cycle.
- *   - `always_period`  : tous les plans (gratuit inclus) ont une date de fin =
- *                       début + 1 mois / 1 an selon le cycle.
- *
- * Pour BASCULER : modifier `SUBSCRIPTION_TRIAL_POLICY` dans le `.env` puis
- * redémarrer le backend. `SUBSCRIPTION_TRIAL_DAYS` ajuste la durée d'essai.
+ * Règles :
+ *   - L'essai n'est accordé que si trial_enabled=true ET le plan est payant
+ *     (price_monthly > 0). Les plans gratuits n'ont pas d'essai.
+ *   - À l'initialisation : is_trial=true, ends_at=now+trial_days, amount=0
+ *   - Au renouvellement : si min_commitment_months>0, la période est forcée
+ *     à X mois. Sinon, cycle standard (1 mois ou 1 an selon billing_cycle).
  */
-export type TrialPolicy = 'trial_first' | 'free_unlimited' | 'always_period';
-
-const VALID_POLICIES: TrialPolicy[] = [
-  'trial_first',
-  'free_unlimited',
-  'always_period',
-];
-
-export function getTrialPolicy(): TrialPolicy {
-  const raw = (process.env.SUBSCRIPTION_TRIAL_POLICY ?? 'trial_first').trim() as TrialPolicy;
-  return VALID_POLICIES.includes(raw) ? raw : 'trial_first';
-}
-
-export function getTrialDays(): number {
-  const n = parseInt(process.env.SUBSCRIPTION_TRIAL_DAYS ?? '30', 10);
-  return Number.isFinite(n) && n > 0 ? n : 30;
-}
 
 // ── Helpers de dates ──────────────────────────────────────────────────────────
 
@@ -60,9 +40,21 @@ export function addCycle(from: Date, cycle: BillingCycle): Date {
 
 export interface PeriodResolution {
   ends_at: Date | null;
+  /** Fin de la portion d'essai (null = pas d'essai). */
+  trial_ends_at: Date | null;
   is_trial: boolean;
   /** Montant dû pour la période (0 si essai ou plan gratuit). */
   amount: number;
+}
+
+/** Vrai si le plan ouvre droit à un essai (activé, durée > 0, et plan payant). */
+export function hasTrial(plan: Plan | null): boolean {
+  return (
+    !!plan &&
+    !isFreePlan(plan) &&
+    !!plan.trial_enabled &&
+    Number(plan.trial_days ?? 0) > 0
+  );
 }
 
 export function planPriceForCycle(plan: Plan | null, cycle: BillingCycle): number {
@@ -78,32 +70,38 @@ export function isFreePlan(plan: Plan | null): boolean {
 }
 
 /**
- * Calcule la fin de la première période d'un abonnement selon la politique
- * active. `startedAt` par défaut = maintenant.
+ * Calcule la fin de la première période d'un abonnement selon la configuration
+ * du plan (essai configurable). `startedAt` par défaut = maintenant.
+ *
+ * Règles :
+ *   - Si plan.trial_enabled=true ET plan payant → essai gratuit de trial_days jours
+ *     suivi d'une période payante (empilé) : ends_at = now + trial_days + cycle
+ *   - Sinon → période payante directe calculée selon le cycle
  */
 export function resolveInitialPeriod(
   plan: Plan | null,
   cycle: BillingCycle,
   startedAt: Date = new Date(),
 ): PeriodResolution {
-  const policy = getTrialPolicy();
-
-  if (policy === 'trial_first') {
+  // Pas d'essai si plan inexistant, gratuit, trial désactivé OU trial_days <= 0.
+  if (!hasTrial(plan)) {
     return {
-      ends_at: addDays(startedAt, getTrialDays()),
-      is_trial: true,
-      amount: 0,
+      ends_at: addCycle(startedAt, cycle),
+      trial_ends_at: null,
+      is_trial: false,
+      amount: planPriceForCycle(plan, cycle),
     };
   }
 
-  if (policy === 'free_unlimited' && isFreePlan(plan)) {
-    return { ends_at: null, is_trial: false, amount: 0 };
-  }
+  // Essai activé sur plan payant → empiler : essai + période payante.
+  // trial_ends_at borne l'essai ; ends_at = fin de la période payante qui suit.
+  const trialEnd = addDays(startedAt, plan!.trial_days);
+  const paidEnd = addCycle(trialEnd, cycle);
 
-  // always_period, ou free_unlimited avec un plan payant
   return {
-    ends_at: addCycle(startedAt, cycle),
-    is_trial: false,
+    ends_at: paidEnd,
+    trial_ends_at: trialEnd,
+    is_trial: true,
     amount: planPriceForCycle(plan, cycle),
   };
 }
@@ -111,20 +109,36 @@ export function resolveInitialPeriod(
 /**
  * Calcule la période de renouvellement (après expiration d'un essai ou d'une
  * période payante). Le renouvellement n'est jamais un essai.
+ *
+ * Règles :
+ *   - Plan gratuit → illimité (ends_at=null)
+ *   - Si min_commitment_months > 0 → période forcée à X mois
+ *   - Sinon → cycle standard (1 mois ou 1 an selon billing_cycle)
  */
 export function resolveRenewalPeriod(
   plan: Plan | null,
   cycle: BillingCycle,
   startedAt: Date = new Date(),
 ): PeriodResolution {
-  const policy = getTrialPolicy();
-
-  if (policy === 'free_unlimited' && isFreePlan(plan)) {
-    return { ends_at: null, is_trial: false, amount: 0 };
+  // Plan gratuit = illimité
+  if (isFreePlan(plan)) {
+    return { ends_at: null, trial_ends_at: null, is_trial: false, amount: 0 };
   }
 
+  // Engagement : durée forcée si min_commitment_months > 0
+  if (plan?.min_commitment_months && plan.min_commitment_months > 0) {
+    return {
+      ends_at: addMonths(startedAt, plan.min_commitment_months),
+      trial_ends_at: null,
+      is_trial: false,
+      amount: planPriceForCycle(plan, cycle),
+    };
+  }
+
+  // Cycle standard (1 mois ou 1 an)
   return {
     ends_at: addCycle(startedAt, cycle),
+    trial_ends_at: null,
     is_trial: false,
     amount: planPriceForCycle(plan, cycle),
   };

@@ -1,9 +1,10 @@
 // src/core/ai-database/write/entity-resolver.service.ts
 import { DataSource, ILike, Repository } from 'typeorm';
-import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, Optional, Inject } from '@nestjs/common';
 
 
 import { BUSINESS_METADATA_KEY, BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
+import { AiDatabasePermissionService } from '../ai-database-permission.service';
 import { AI_DATABASE_PROJECT_CONFIG } from '../ai-database.tokens';
 import { AiDatabaseProjectConfig } from '../interfaces/ai-database-project-config.interface';
 
@@ -245,6 +246,7 @@ export class EntityResolverService {
 
   constructor(
     private readonly dataSource: DataSource,
+    private readonly aiPermissionService: AiDatabasePermissionService,
     @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
   ) {}
@@ -570,6 +572,17 @@ export class EntityResolverService {
     // 2. ❌ Non trouvé → créer l'entité automatiquement
     this.logger.log(`➕ Création automatique de "${searchTerm}" dans ${tableName}`);
     try {
+      await this.aiPermissionService.assertCanWritePlan(userId, {
+        transaction: false,
+        operations: [{
+          operation: 'INSERT',
+          entity: tableName,
+          fields: {},
+          humanReadable: `Creation automatique de ${tableName}`,
+        }],
+        humanReadable: `Creation automatique de ${tableName}`,
+        confidence: 1,
+      });
       const newEntity = await this.createEntityFromText(tableName, searchTerm, userId, contextFields);
       const entityId = (newEntity as any).id;
 
@@ -592,6 +605,7 @@ export class EntityResolverService {
         message: `${tableName} "${searchTerm}" créé(e) automatiquement (ID: ${entityId})`,
       };
     } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
       // ❌ Échec : retourner les candidats de la résolution pour permettre
       //    des suggestions à l'utilisateur au lieu d'une erreur fatale.
       const errMessage = (error as Error).message;
