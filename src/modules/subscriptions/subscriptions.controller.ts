@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Body,
   Request,
@@ -75,6 +76,36 @@ export class SubscriptionsController {
   @ApiOperation({ summary: "Renouveler l'abonnement (réactive le cabinet)" })
   renew(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
     return this.service.renewForCabinet(this.tenantOf(req), dto?.cycle);
+  }
+
+  // ── Paiement (passerelle) ───────────────────────────────────────────────────
+
+  /** Initie une session de paiement pour l'échéance en attente (retourne l'URL). */
+  @Public()
+  @Post('/pay')
+  @ApiOperation({ summary: "Initier le paiement de l'échéance en attente" })
+  pay(@Request() req: any) {
+    return this.service.initiatePaymentForCurrent(this.tenantOf(req));
+  }
+
+  /**
+   * Webhook de la passerelle : confirme/échoue un paiement via sa référence.
+   * Public et SANS tenant (la passerelle rappelle ce endpoint, identifie par
+   * référence). À sécuriser par signature quand une vraie passerelle est branchée.
+   */
+  @Public()
+  @Post('/payments/webhook')
+  @ApiOperation({ summary: 'Webhook passerelle (confirmation de paiement)' })
+  webhook(@Body() dto: { reference?: string; status?: 'paid' | 'failed' }) {
+    return this.service.handleWebhook(dto?.reference ?? '', dto?.status ?? 'paid');
+  }
+
+  /** [TEST] Simule un encaissement réussi (passerelle de test uniquement). */
+  @Public()
+  @Post('/payments/simulate')
+  @ApiOperation({ summary: '[TEST] Simuler un paiement réussi' })
+  simulate(@Request() req: any, @Body() dto: { payment_id?: number }) {
+    return this.service.simulatePayment(this.tenantOf(req), dto?.payment_id);
   }
 
   // ── Outils DEV (403 en production) ─────────────────────────────────────────

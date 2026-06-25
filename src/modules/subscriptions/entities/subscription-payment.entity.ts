@@ -73,9 +73,17 @@ export class SubscriptionPayment {
   @Column({ type: 'varchar', length: 30, nullable: true })
   method: string | null;
 
-  /** Référence de transaction externe — null pour l'instant. */
+  /** Référence de transaction externe (fournie par la passerelle). */
   @Column({ type: 'varchar', length: 100, nullable: true })
   reference: string | null;
+
+  /** Passerelle utilisée (ex: test, cinetpay, stripe). */
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  provider: string | null;
+
+  /** URL de paiement (page de la passerelle) à présenter au client. */
+  @Column({ type: 'varchar', length: 512, nullable: true, name: 'checkout_url' })
+  checkout_url: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;

@@ -10,6 +10,7 @@ import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -32,7 +33,7 @@ export class AiDatabaseController {
   ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
@@ -90,7 +91,7 @@ export class AiDatabaseController {
    *   done          → fin du flux
    */
   @Post('ask/stream')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },

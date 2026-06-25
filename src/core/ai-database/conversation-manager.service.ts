@@ -59,6 +59,7 @@ export class ConversationManagerService {
     reasoningContent?: string,
     tokensUsed?: number,
     references?: ReferencedEntityContext[],
+    metadata?: Record<string, any>,
   ): Promise<ConversationMessage> {
     const message = this.messageRepo.create({
       conversationId,
@@ -67,6 +68,7 @@ export class ConversationManagerService {
       reasoningContent,
       tokensUsed: tokensUsed || this.estimateTokens(content),
       references: references?.length ? references : undefined,
+      metadata: metadata && Object.keys(metadata).length ? metadata : undefined,
     });
     
     const saved = await this.messageRepo.save(message);
@@ -168,6 +170,38 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     return Math.ceil(text.length / 4);
   }
 
+  private normalizeJsonValue<T>(value: unknown, fallback: T): T {
+    if (value == null) return fallback;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value) as T;
+      } catch {
+        return fallback;
+      }
+    }
+    return value as T;
+  }
+
+  private buildConversationTitle(content: string): string {
+    const cleaned = String(content ?? '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned) return 'Nouvelle conversation';
+    return cleaned.length > 60 ? `${cleaned.slice(0, 60)}...` : cleaned;
+  }
+
+  private async updateTitleFromFirstUserMessage(conversationId: string, content: string): Promise<void> {
+    const conversation = await this.conversationRepo.findOne({ where: { id: conversationId } });
+    if (!conversation) return;
+    const title = String(conversation.title ?? '').trim();
+    if (title && title !== 'Nouvelle conversation') return;
+    await this.conversationRepo.update(conversationId, {
+      title: this.buildConversationTitle(content),
+      updated_at: new Date(),
+    });
+  }
+
    /**
    * Vérifie si la conversation a déjà un message système
    */
@@ -194,13 +228,19 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     references?: ReferencedEntityContext[],
   ): Promise<void> {
     await this.addMessage(conversationId, 'user', content, undefined, undefined, references);
+    await this.updateTitleFromFirstUserMessage(conversationId, content);
   }
 
   /**
    * Ajoute un message assistant
    */
-  async addAssistantMessage(conversationId: string, content: string, reasoningContent?: string): Promise<void> {
-    await this.addMessage(conversationId, 'assistant', content, reasoningContent);
+  async addAssistantMessage(
+    conversationId: string,
+    content: string,
+    reasoningContent?: string,
+    metadata?: Record<string, any>,
+  ): Promise<void> {
+    await this.addMessage(conversationId, 'assistant', content, reasoningContent, undefined, undefined, metadata);
   }
 
   /**
@@ -212,6 +252,12 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     content: string;
     created_at: Date;
     references?: ReferencedEntityContext[];
+    metadata?: Record<string, any>;
+    sqlQuery?: string;
+    results?: any;
+    rowCount?: number;
+    recommendations?: string[];
+    fileInfo?: any;
   }>> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
@@ -220,13 +266,23 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     
     // Ne JAMAIS injecter le reasoningContent dans l'historique de conversation :
     // cela double le nombre de tokens et injecte du bruit (raisonnement interne du modèle).
-    return messages.map(msg => ({
-      id: msg.id,
-      role: msg.role,
-      content: msg.content,
-      created_at: msg.created_at,
-      references: msg.references,
-    }));
+    return messages.map(msg => {
+      const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+      const references = this.normalizeJsonValue<ReferencedEntityContext[]>(msg.references, []);
+      return {
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        created_at: msg.created_at,
+        references,
+        metadata,
+        sqlQuery: metadata.sqlQuery,
+        results: metadata.results,
+        rowCount: metadata.rowCount,
+        recommendations: metadata.recommendations,
+        fileInfo: metadata.fileInfo,
+      };
+    });
   }
 
   /**

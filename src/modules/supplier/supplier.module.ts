@@ -29,6 +29,7 @@ import { ExpenseReportWriteHandler } from './expense-report-write.handler';
 import { ExpenseLineWriteHandler } from './expense-line-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     IamModule,
     DossiersModule,
     AiDatabaseModule,
+    PlansModule,
   ],
   controllers: [
     SuppliersController,

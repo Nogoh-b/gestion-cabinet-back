@@ -27,6 +27,7 @@ import { DocumentStatsService } from './document-customer/document-stats.service
 import { DocumentTypeStatsService } from './document-type/document-type-stats.service';
 import { ProcedureModule } from '../procedure/procedure.module';
 import { DocumentCustomerSubscriber } from './document-customer/subscribers/document-customer.subscriber';
+import { PlansModule } from '../plans/plans.module';
 
 
 
@@ -49,8 +50,7 @@ import { DocumentCustomerSubscriber } from './document-customer/subscribers/docu
     forwardRef(() => ProcedureModule),
     CabinetModule,
     forwardRef(() => IamModule),
-    
-
+    PlansModule,
   ],
   controllers: [DocumentTypeController, DocumentCustomerController],
   providers: [DocumentTypeService, DocumentCustomerService, DocumentStatsService, DocumentTypeStatsService, DocumentCustomerSubscriber],

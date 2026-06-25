@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { LessThan, Repository, In } from 'typeorm';
@@ -7,6 +7,7 @@ import { Subscription, BillingCycle } from './entities/subscription.entity';
 import { SubscriptionPayment } from './entities/subscription-payment.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { Plan } from '../plans/entities/plan.entity';
+import { PaymentGatewayService } from './payment/payment-gateway.service';
 import {
   addCycle,
   daysRemaining,
@@ -16,6 +17,15 @@ import {
   resolveRenewalPeriod,
 } from './subscriptions.policy';
 
+export interface PendingPaymentInfo {
+  id: number;
+  amount: number;
+  currency: string;
+  provider: string | null;
+  reference: string | null;
+  checkout_url: string | null;
+}
+
 export interface CurrentSubscription {
   subscription: Subscription | null;
   plan: Plan | null;
@@ -24,6 +34,10 @@ export interface CurrentSubscription {
   is_expiring: boolean;
   is_expired: boolean;
   cabinet_status: string | null;
+  /** Vrai quand un paiement doit être réglé pour (ré)activer l'abonnement. */
+  requires_payment: boolean;
+  /** Échéance à régler (avec l'URL de la passerelle), si requires_payment. */
+  pending_payment: PendingPaymentInfo | null;
 }
 
 /** Seuil (jours) à partir duquel on considère que l'abonnement « expire bientôt ». */
@@ -42,7 +56,22 @@ export class SubscriptionsService {
     private readonly cabinetRepo: Repository<Cabinet>,
     @InjectRepository(Plan)
     private readonly planRepo: Repository<Plan>,
+    private readonly gateway: PaymentGatewayService,
   ) {}
+
+  /** Une période exige un paiement amont si elle est payante et hors essai. */
+  private requiresUpfrontPayment(period: { is_trial: boolean; amount: number }): boolean {
+    return !period.is_trial && Number(period.amount) > 0;
+  }
+
+  /** Met le cabinet en attente de paiement (pas d'accès tant que non réglé). */
+  private async holdCabinetForPayment(cabinetId: number, planId: number): Promise<void> {
+    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+    if (!cabinet) return;
+    cabinet.status = 'suspended';
+    if (planId) cabinet.plan_id = planId;
+    await this.cabinetRepo.save(cabinet);
+  }
 
   // ── Création (onboarding / changement de plan) ────────────────────────────
 
@@ -70,12 +99,15 @@ export class SubscriptionsService {
     const startedAt = new Date();
     const period = resolveInitialPeriod(plan, cycle, startedAt);
     const currency = await this.resolveCurrency(cabinetId);
+    // Essai et plan gratuit → activation immédiate. Plan payant sans essai →
+    // attente de paiement (gating) : pas d'accès tant que non réglé.
+    const gated = this.requiresUpfrontPayment(period);
 
     const sub = this.subRepo.create({
       cabinet_id: cabinetId,
       plan_id: plan?.id ?? planId ?? 0,
       billing_cycle: cycle,
-      status: period.is_trial ? 'trial' : 'active',
+      status: period.is_trial ? 'trial' : gated ? 'pending_payment' : 'active',
       started_at: startedAt,
       ends_at: period.ends_at,
       trial_ends_at: period.trial_ends_at,
@@ -86,8 +118,13 @@ export class SubscriptionsService {
     });
     const saved = await this.subRepo.save(sub);
 
-    await this.createPaymentForPeriod(saved, period.amount, startedAt, period.ends_at);
-    await this.syncCabinet(cabinetId, saved);
+    const payment = await this.createPaymentForPeriod(saved, period.amount, startedAt, period.ends_at);
+    if (gated) {
+      await this.gateway.initiate(payment); // session de paiement (provider + url)
+      await this.holdCabinetForPayment(cabinetId, saved.plan_id);
+    } else {
+      await this.syncCabinet(cabinetId, saved);
+    }
 
     this.logger.log(
       `[Subscriptions] Abonnement créé — cabinet=${cabinetId} plan=${saved.plan_id} ` +
@@ -124,12 +161,15 @@ export class SubscriptionsService {
     const startedAt = new Date();
     const period = resolveRenewalPeriod(plan, targetCycle, startedAt);
     const currency = await this.resolveCurrency(cabinetId);
+    // Renouvellement payant → attente de paiement avant réactivation.
+    // Plan gratuit (montant 0) → réactivation immédiate.
+    const gated = this.requiresUpfrontPayment(period);
 
     const sub = this.subRepo.create({
       cabinet_id: cabinetId,
       plan_id: plan?.id ?? planId ?? 0,
       billing_cycle: targetCycle,
-      status: 'active',
+      status: gated ? 'pending_payment' : 'active',
       started_at: startedAt,
       ends_at: period.ends_at,
       trial_ends_at: null, // un renouvellement n'est jamais un essai
@@ -140,12 +180,17 @@ export class SubscriptionsService {
     });
     const saved = await this.subRepo.save(sub);
 
-    await this.createPaymentForPeriod(saved, period.amount, startedAt, period.ends_at);
-    await this.syncCabinet(cabinetId, saved); // repasse le cabinet en 'active'
+    const payment = await this.createPaymentForPeriod(saved, period.amount, startedAt, period.ends_at);
+    if (gated) {
+      await this.gateway.initiate(payment);
+      // Le cabinet reste suspendu jusqu'à confirmation du paiement.
+    } else {
+      await this.syncCabinet(cabinetId, saved); // repasse le cabinet en 'active'
+    }
 
     this.logger.log(
       `[Subscriptions] Renouvellement — cabinet=${cabinetId} cycle=${targetCycle} ` +
-        `ends_at=${saved.ends_at?.toISOString() ?? 'illimité'}`,
+        `status=${saved.status} ends_at=${saved.ends_at?.toISOString() ?? 'illimité'}`,
     );
     return saved;
   }
@@ -238,7 +283,10 @@ export class SubscriptionsService {
   /** Abonnement courant brut (le plus récent non annulé), sans calcul. */
   private async getRawCurrent(cabinetId: number): Promise<Subscription | null> {
     return this.subRepo.findOne({
-      where: { cabinet_id: cabinetId, status: In(['trial', 'active', 'expired', 'suspended']) },
+      where: {
+        cabinet_id: cabinetId,
+        status: In(['trial', 'active', 'expired', 'suspended', 'pending_payment']),
+      },
       order: { created_at: 'DESC' },
     });
   }
@@ -255,18 +303,41 @@ export class SubscriptionsService {
     const countdownTarget =
       sub?.is_trial ? sub.trial_ends_at ?? sub.ends_at ?? null : sub?.ends_at ?? null;
     const remaining = daysRemaining(countdownTarget);
+    const requiresPayment = sub?.status === 'pending_payment';
     const isExpired =
-      sub?.status === 'expired' || sub?.status === 'suspended' ||
-      (remaining !== null && remaining < 0);
+      !requiresPayment &&
+      (sub?.status === 'expired' || sub?.status === 'suspended' ||
+        (remaining !== null && remaining < 0));
+
+    // Échéance à régler (pour afficher le bouton « Payer » + l'URL passerelle).
+    let pendingPayment: PendingPaymentInfo | null = null;
+    if (requiresPayment && sub) {
+      const p = await this.payRepo.findOne({
+        where: { subscription_id: sub.id, status: 'pending' },
+        order: { id: 'DESC' },
+      });
+      if (p) {
+        pendingPayment = {
+          id: p.id,
+          amount: Number(p.amount),
+          currency: p.currency,
+          provider: p.provider,
+          reference: p.reference,
+          checkout_url: p.checkout_url,
+        };
+      }
+    }
 
     return {
       subscription: sub,
       plan: sub?.plan ?? null,
-      days_remaining: remaining,
+      days_remaining: requiresPayment ? null : remaining,
       is_expiring:
-        !isExpired && remaining !== null && remaining <= EXPIRING_SOON_THRESHOLD_DAYS,
+        !isExpired && !requiresPayment && remaining !== null && remaining <= EXPIRING_SOON_THRESHOLD_DAYS,
       is_expired: isExpired,
       cabinet_status: cabinet?.status ?? null,
+      requires_payment: requiresPayment,
+      pending_payment: pendingPayment,
     };
   }
 
@@ -288,6 +359,96 @@ export class SubscriptionsService {
     });
   }
 
+  // ── Paiement (passerelle) ─────────────────────────────────────────────────
+
+  /**
+   * (Ré)initie une session de paiement pour l'échéance en attente du cabinet et
+   * retourne l'URL de la passerelle. Utilisé par le bouton « Payer ».
+   */
+  async initiatePaymentForCurrent(cabinetId: number): Promise<{
+    payment_id: number;
+    provider: string;
+    reference: string;
+    checkout_url: string;
+  }> {
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    const payment = await this.payRepo.findOne({
+      where: { subscription_id: sub.id, status: 'pending' },
+      order: { id: 'DESC' },
+    });
+    if (!payment) throw new BadRequestException('Aucune échéance à régler');
+    if (Number(payment.amount) <= 0) {
+      throw new BadRequestException('Cette échéance ne nécessite pas de paiement');
+    }
+    const res = await this.gateway.initiate(payment);
+    return {
+      payment_id: payment.id,
+      provider: this.gateway.providerName,
+      reference: res.reference,
+      checkout_url: res.checkoutUrl,
+    };
+  }
+
+  /**
+   * Confirme un encaissement : marque l'échéance payée, active l'abonnement
+   * (pending_payment → active) et réactive le cabinet. Idempotent.
+   */
+  async confirmPayment(payment: SubscriptionPayment): Promise<Subscription | null> {
+    if (payment.status !== 'paid') {
+      payment.status = 'paid';
+      payment.paid_at = new Date();
+      payment.method = payment.method ?? this.gateway.providerName;
+      await this.payRepo.save(payment);
+    }
+
+    const sub = await this.subRepo.findOne({ where: { id: payment.subscription_id } });
+    if (sub && sub.status !== 'cancelled') {
+      if (sub.status === 'pending_payment') sub.status = 'active';
+      await this.subRepo.save(sub);
+      await this.syncCabinet(sub.cabinet_id, sub);
+      this.logger.log(
+        `[Subscriptions] Paiement #${payment.id} confirmé — cabinet=${payment.cabinet_id} activé`,
+      );
+    }
+    return sub;
+  }
+
+  /** Webhook passerelle : confirme/échoue un paiement via sa référence. */
+  async handleWebhook(reference: string, status: 'paid' | 'failed' = 'paid'): Promise<void> {
+    if (!reference) throw new BadRequestException('Référence manquante');
+    const payment = await this.payRepo.findOne({ where: { reference } });
+    if (!payment) throw new NotFoundException('Paiement introuvable');
+    if (status === 'failed') {
+      payment.status = 'failed';
+      await this.payRepo.save(payment);
+      return;
+    }
+    await this.confirmPayment(payment);
+  }
+
+  /**
+   * [TEST] Simule un encaissement réussi pour une échéance du cabinet.
+   * Disponible uniquement avec la passerelle de test.
+   */
+  async simulatePayment(cabinetId: number, paymentId?: number): Promise<CurrentSubscription> {
+    if (!this.gateway.isTest) {
+      throw new ForbiddenException('Simulation indisponible : passerelle réelle active');
+    }
+    const where = paymentId
+      ? { id: paymentId, cabinet_id: cabinetId }
+      : undefined;
+    const payment = where
+      ? await this.payRepo.findOne({ where })
+      : await this.payRepo.findOne({
+          where: { cabinet_id: cabinetId, status: 'pending' },
+          order: { id: 'DESC' },
+        });
+    if (!payment) throw new NotFoundException('Aucune échéance à régler');
+    await this.confirmPayment(payment);
+    return this.getCurrent(cabinetId);
+  }
+
   // ── Expiration & renouvellement ─────────────────────────────────────────────
 
   /**
@@ -296,6 +457,10 @@ export class SubscriptionsService {
    */
   private async expireIfDue(sub: Subscription): Promise<Subscription> {
     const now = Date.now();
+
+    // En attente de paiement : ni transition d'essai ni suspension automatique
+    // (le cabinet est déjà bloqué tant que le paiement n'est pas confirmé).
+    if (sub.status === 'pending_payment') return sub;
 
     // ── Phase 1 : fin de l'essai → bascule en période payante (active) ────────
     // L'essai et la période payante sont empilés dans la même ligne : quand on

@@ -14,7 +14,7 @@ import { DEFAULT_PROCEDURE_TEMPLATE_NAME } from 'src/modules/procedure/seeder/de
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
+import { DataSource, In, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -282,21 +282,40 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     event: InsertEvent<Dossier>,
   ): Promise<void> {
     const participants: Employee[] = [];
+    const seen = new Set<number>();
 
+    // Avocat référent
     if (entity.lawyer_id) {
       const lawyer = await this.employeeRepo.findOne({
         where: { id: entity.lawyer_id as any },
       });
-      if (lawyer) participants.push(lawyer);
+      if (lawyer) {
+        participants.push(lawyer);
+        seen.add(lawyer.id);
+      }
     }
 
-    const conversation = this.conversationRepo.create({
+    // Collaborateurs du dossier (rattachés sur l'entité avant l'insert).
+    const collaboratorIds = (entity.collaborators ?? [])
+      .map((c) => c?.id)
+      .filter((id): id is number => !!id && !seen.has(id));
+    if (collaboratorIds.length) {
+      const collaborators = await this.employeeRepo.find({
+        where: { id: In(collaboratorIds) },
+      });
+      participants.push(...collaborators);
+    }
+
+    // Enregistrée via event.manager → même transaction que l'insertion du
+    // dossier : un rollback annule aussi la conversation (pas d'orphelin).
+    const convRepo = event.manager.getRepository(Conversation);
+    const conversation = convRepo.create({
       name: `Dossier ${entity.dossier_number}`,
       isGroup: true,
       participants,
       tenant_id: entity.tenant_id,
     });
-    const saved = await this.conversationRepo.save(conversation);
+    const saved = await convRepo.save(conversation);
 
     await event.manager
       .createQueryBuilder()
@@ -308,7 +327,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity.conversation_id = saved.id;
 
     this.logger.log(
-      `Conversation #${saved.id} créée et liée au dossier ${entity.dossier_number}`,
+      `Conversation #${saved.id} créée (${participants.length} participant(s)) et liée au dossier ${entity.dossier_number}`,
     );
   }
 

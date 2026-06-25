@@ -70,6 +70,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { SuspendedCabinetGuard } from './core/common/guards/suspended-cabinet.guard';
+import { ReminderSchedulerModule } from './core/scheduler/reminder.scheduler.module';
 
 
 
@@ -210,6 +211,7 @@ dotenv.config();
     PdfTemplatesModule,
     MailTemplateModule,
     TemplateBlocksModule,
+    ReminderSchedulerModule,
   ],
   controllers: [AppController],
   providers: [

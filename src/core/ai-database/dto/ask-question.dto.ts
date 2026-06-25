@@ -94,6 +94,14 @@ export class AskQuestionDto {
   })
   @IsOptional()
   documentIds?: number[] | string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Historique visible envoye par le front pour les branches de conversation (JSON).',
+  })
+  @IsOptional()
+  @IsString()
+  historyOverride?: string;
 }
 
 /** Une entité référencée via `@` côté front, après parsing du JSON. */
@@ -104,6 +112,29 @@ export interface ReferencedEntityContext {
   href?: string;
   meta?: Record<string, any>;
   data?: Record<string, any> & { id?: string | number };
+}
+
+export interface VisibleHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export function parseVisibleHistory(raw?: string): VisibleHistoryMessage[] {
+  if (!raw || typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(item => item && typeof item === 'object')
+      .map(item => ({
+        role: item.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        content: String(item.content ?? '').trim(),
+      }))
+      .filter(item => item.content.length > 0)
+      .slice(-12);
+  } catch {
+    return [];
+  }
 }
 
 /**

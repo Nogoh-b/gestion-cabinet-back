@@ -15,14 +15,19 @@ import { EntityResolverService } from './write/entity-resolver.service';
 import { AutoHandlerFactory } from './write/auto-handler-factory.service';
 import { AiDatabasePermissionService } from './ai-database-permission.service';
 import { IamModule } from 'src/modules/iam/iam.module';
+import { PlansModule } from 'src/modules/plans/plans.module';
+import { AiRequestLog } from './entities/ai-request-log.entity';
+import { AiQuotaGuard } from './guards/ai-quota.guard';
 
 @Module({
   imports: [
     IamModule,
+    PlansModule,
     TypeOrmModule.forFeature([
       Conversation,
       ConversationMessage,
       DocumentCustomer,
+      AiRequestLog,
     ]),
   ],
   controllers: [AiDatabaseController],
@@ -37,6 +42,7 @@ import { IamModule } from 'src/modules/iam/iam.module';
     EntityResolverService,
     AutoHandlerFactory,
     AiDatabasePermissionService,
+    AiQuotaGuard,
   ],
   exports: [
     AiDatabaseService,

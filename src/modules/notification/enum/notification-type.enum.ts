@@ -14,6 +14,8 @@ export enum NotificationType {
   FACTURE_OVERDUE = 'facture_overdue',
   DILIGENCE_ASSIGNED = 'diligence_assigned',
   DILIGENCE_COMPLETED = 'diligence_completed',
+  DILIGENCE_DEADLINE = 'diligence_deadline',
+  DOSSIER_DEADLINE = 'dossier_deadline',
   COLLABORATOR_ADDED = 'collaborator_added',
   COLLABORATOR_REMOVED = 'collaborator_removed',
   SYSTEM = 'system',

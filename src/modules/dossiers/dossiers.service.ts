@@ -275,26 +275,13 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       dossier.collaborators = collaborators;
     }
 
-    let conversationDto = new CreateConversationDto()
-    const users = await this.userRepository.find({
-      // select: ['id'],
-      relations : ['user']
-    });
-    conversationDto.participantIds = dossier.collaborators?.length  > 0 ? createDossierDto.collaborator_ids : users.map(u => u.id)
-    const conversation = await this.chatService.createConversation(conversationDto, createdBy.id)
-    dossier.conversation = conversation;
-    console.log('DTO:', JSON.stringify(createDossierDto, null, 2));
-    console.log('Entity before save:', dossier);
+    // La conversation de suivi est créée par le DossierSubscriber
+    // (onAfterCreate), source unique, dans la transaction d'insertion et avec
+    // l'avocat + les collaborateurs comme participants. On ne la crée donc plus
+    // ici : la créer en amont produisait une conversation orpheline doublonnée
+    // (le subscriber écrasait ensuite le lien).
     const savedDossier = await this.dossierRepository.save(dossier);
-    // this.procedureInstanceService.update(procedureInstance.id , {data:{id: savedDossier.id}})
-    let mailDto = new CreateMailDto() 
-    const dossierR = await this.mapToResponseDto(savedDossier);
-    mailDto.templateName = "entities/dossier/dossier-created-creator"
-    mailDto.context = dossierR
-    mailDto.to = users.map(u => u.email)
-    mailDto.subject = "Creation d'un nouveau dossier"
-    // this.sendMail(mailDto)
-    return dossierR
+    return this.mapToResponseDto(savedDossier);
   }
 
   async findAll(searchDto: DossierSearchDto, user: User): Promise<any[]> {

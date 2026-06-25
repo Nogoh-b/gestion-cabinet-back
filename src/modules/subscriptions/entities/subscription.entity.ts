@@ -15,7 +15,9 @@ export type SubscriptionStatus =
   | 'active'
   | 'expired'
   | 'suspended'
-  | 'cancelled';
+  | 'cancelled'
+  /** Période payante créée mais en attente d'encaissement (gating paiement). */
+  | 'pending_payment';
 
 /**
  * Abonnement d'un cabinet à un plan.
@@ -58,7 +60,7 @@ export class Subscription {
 
   @Column({
     type: 'enum',
-    enum: ['trial', 'active', 'expired', 'suspended', 'cancelled'],
+    enum: ['trial', 'active', 'expired', 'suspended', 'cancelled', 'pending_payment'],
     default: 'trial',
   })
   status: SubscriptionStatus;

@@ -37,7 +37,7 @@ import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
-import { AskQuestionDto, parseReferencedContext, ReferencedEntityContext } from './dto/ask-question.dto';
+import { AskQuestionDto, parseReferencedContext, parseVisibleHistory, ReferencedEntityContext, VisibleHistoryMessage } from './dto/ask-question.dto';
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
@@ -115,8 +115,8 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
   private readonly MAX_CHARS = 180000;
-  private readonly MAX_HISTORY_MESSAGES = 8;
-  private readonly MAX_HISTORY_TOKENS = 9000;
+  private readonly MAX_HISTORY_MESSAGES = 6;
+  private readonly MAX_HISTORY_TOKENS = 3500;
   private readonly MAX_FILE_CONTEXT_CHARS = 12000;
   private readonly MAX_DOCUMENT_CONTEXT_CHARS = 16000;
   private readonly MAX_SYSTEM_DOCUMENTS = 5;
@@ -228,6 +228,7 @@ export class AiDatabaseService implements OnModuleInit {
     tables: string[] = [],
     historyQuestion?: string,
     references: ReferencedEntityContext[] = [],
+    historyOverride: VisibleHistoryMessage[] = [],
   ): Promise<string> {
     // 1. Vérifier que la conversation existe
     const conversation = await this.conversationManager.getConversation(conversationId);
@@ -235,7 +236,7 @@ export class AiDatabaseService implements OnModuleInit {
       throw new Error(`Conversation ${conversationId} non trouvée`);
     }
 
-    return this.generateSqlForConversation(conversationId, question, schema, tables, historyQuestion, references);
+    return this.generateSqlForConversation(conversationId, question, schema, tables, historyQuestion, references, historyOverride);
   }
 
   /**
@@ -248,17 +249,20 @@ export class AiDatabaseService implements OnModuleInit {
     tables: string[] = [],
     historyQuestion?: string,
     references: ReferencedEntityContext[] = [],
+    historyOverride: VisibleHistoryMessage[] = [],
   ): Promise<string> {
     const schemaToUse = schema || (await this.getCompleteSchema(
-      tables.length ? tables : await this.detectRelevantTables(question),
+      tables.length ? tables : await this.detectRelevantTables(question, undefined, references),
     ));
     const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
     const systemPrompt = this.buildReadSystemPrompt(schemaToUse, tenantId);
 
-    const recentHistory = await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
-      maxMessages: this.MAX_HISTORY_MESSAGES,
-      maxTokens: this.MAX_HISTORY_TOKENS,
-    });
+    const recentHistory = historyOverride.length
+      ? historyOverride.slice(-this.MAX_HISTORY_MESSAGES)
+      : await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
+        maxMessages: this.MAX_HISTORY_MESSAGES,
+        maxTokens: this.MAX_HISTORY_TOKENS,
+      });
     await this.conversationManager.addUserMessage(conversationId, historyQuestion ?? question, references);
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -655,7 +659,9 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         await this.aiPermissionService.assertCanWritePlan(user as AiUserContext, resumed.plan);
         const results = await this.genericWriteService.executePlan(resumed.plan, userId);
         const analysis = this.formatPlanResults(results);
-        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+          results,
+        });
         return {
           success: true, question: dto.question, analysis, results,
           conversationId, executionTimeMs: Date.now() - startTime,
@@ -704,6 +710,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     const requestContext = await this.buildRequestContext(dto, file);
     enrichedQuestion = requestContext.enrichedQuestion;
     fileInfo = requestContext.fileInfo ?? fileInfo;
+    const historyOverride = parseVisibleHistory(dto.historyOverride);
 
     if (dto.textGenerationOnly) {
       this.logger.log(`✍️ Mode textGenerationOnly — détection d'intention désactivée`);
@@ -737,13 +744,15 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     }
 
     // ── 2. Détection d'intention sur la question enrichie ────────────────────
-    const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables);
+    const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables, requestContext.referenced);
     if (requestContext.documentContext.length && !relevantTables.includes('document_customer')) {
       relevantTables.push('document_customer');
     }
     const schema = await this.getCompleteSchema(relevantTables);
     const intentMode = this.normalizeIntentMode(dto.intentMode);
-    const historyForIntent = await this.getHistorySnippetForIntent(dto.conversationId);
+    const historyForIntent = historyOverride.length
+      ? this.formatVisibleHistoryForIntent(historyOverride)
+      : await this.getHistorySnippetForIntent(dto.conversationId);
     let intentResult: any;
     if (intentMode === 'read') {
       intentResult = { type: 'READ', requiresConfirmation: false };
@@ -782,7 +791,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         requestContext.referenced,
       );
       const analysis = intentResult.conversationalResponse
-        ?? (await this.generateConversationalResponse(enrichedQuestion));
+        ?? (await this.generateConversationalResponse(enrichedQuestion, historyOverride));
       await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
       return {
         success: true,
@@ -836,6 +845,7 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         relevantTables,
         dto.question,
         requestContext.referenced,
+        historyOverride,
       );
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema);
       await this.aiPermissionService.assertCanReadSql(user as AiUserContext, validatedQuery);
@@ -848,7 +858,12 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
         analysis = await this.generateBusinessAnalysis(
           dto.question, validatedQuery, results, dto.specificTables || [],
         );
-        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+          sqlQuery: validatedQuery,
+          results: results.data,
+          rowCount: results.rowCount,
+          ...(fileInfo && { fileInfo }),
+        });
       }
 
       return {
@@ -903,7 +918,11 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     // ── Confirmation requise ────────────────────────────────────────────────
     if (requiresConfirmation) {
       const display = `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
-      await this.conversationManager.addAssistantMessage(conversationId, display, undefined);
+      await this.conversationManager.addAssistantMessage(conversationId, display, undefined, {
+        pendingWritePlan: plan,
+        requiresConfirmation: true,
+        ...(fileInfo && { fileInfo }),
+      });
       return {
         success: true,
         question: dto.question,
@@ -920,7 +939,10 @@ Filtre chaque table metier tenant-aware avec tenant_id = ${tenantId}.`;
     try {
       const results = await this.genericWriteService.executePlan(plan, userId);
       const analysis = this.formatPlanResults(results);
-      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+        results,
+        ...(fileInfo && { fileInfo }),
+      });
 
       return {
         success: true,
@@ -1518,6 +1540,14 @@ ${lines.join('\n')}
     }
   }
 
+  private formatVisibleHistoryForIntent(history: VisibleHistoryMessage[]): string {
+    return history
+      .slice(-6)
+      .map(m => `${m.role === 'user' ? 'UTILISATEUR' : 'ASSISTANT'}: ${m.content}`.substring(0, 600))
+      .join('\n---\n')
+      .substring(0, 1800);
+  }
+
   private enrichWritePlanWithReferencedEntities(
     plan: WritePlan | undefined,
     referenced: ReferencedEntityContext[],
@@ -1929,6 +1959,7 @@ ${blocks.join('\n\n')}
       const requestContext = await this.buildRequestContext(dto, file);
       enrichedQuestion = requestContext.enrichedQuestion;
       fileInfo = requestContext.fileInfo ?? fileInfo;
+      const historyOverride = parseVisibleHistory(dto.historyOverride);
       if (requestContext.documentContext.length) {
         await emit('status', {
           message: `📄 ${requestContext.documentContext.length} document(s) pris en compte`,
@@ -1940,14 +1971,16 @@ ${blocks.join('\n\n')}
         }, 80);
       }
 
-      const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables);
+      const relevantTables = await this.detectRelevantTables(enrichedQuestion, dto.specificTables, requestContext.referenced);
       if (requestContext.documentContext.length && !relevantTables.includes('document_customer')) {
         relevantTables.push('document_customer');
       }
       const schema = await this.getCompleteSchema(relevantTables);
       tLog('schema prêt — appel detectIntent');
       const intentMode = this.normalizeIntentMode(dto.intentMode);
-      const historyForIntent = await this.getHistorySnippetForIntent(dto.conversationId);
+      const historyForIntent = historyOverride.length
+        ? this.formatVisibleHistoryForIntent(historyOverride)
+        : await this.getHistorySnippetForIntent(dto.conversationId);
 
       // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
       // Si l'utilisateur a joint OU mentionné (@) un document dont le CONTENU a
@@ -2028,6 +2061,7 @@ ${blocks.join('\n\n')}
         const fullText = await this.generateConversationalResponseStream(
           enrichedQuestion,
           sendEvent,
+          historyOverride,
         );
         await this.conversationManager.addAssistantMessage(conversationId, fullText, undefined);
         sendEvent('result', {
@@ -2061,7 +2095,10 @@ ${blocks.join('\n\n')}
         if (intentResult.requiresConfirmation) {
           sendEvent('confirmation', { plan, conversationId });
           const display = `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
-          await this.conversationManager.addAssistantMessage(conversationId, display, undefined);
+          await this.conversationManager.addAssistantMessage(conversationId, display, undefined, {
+            pendingWritePlan: plan,
+            requiresConfirmation: true,
+          });
           sendEvent('result', {
             success: true, question: dto.question, analysis: display,
             pendingWritePlan: plan, requiresConfirmation: true,
@@ -2097,6 +2134,7 @@ ${blocks.join('\n\n')}
         relevantTables,
         dto.question,
         requestContext.referenced,
+        historyOverride,
       );
       await this.aiPermissionService.assertCanReadSql(user as AiUserContext, sqlQuery);
       await emit('status', { message: '✅ Requête générée, exécution en cours...' });
@@ -2154,7 +2192,12 @@ ${blocks.join('\n\n')}
         dto.question, validatedQuery, results, dto.specificTables || [],
         sendEvent,
       );
-      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+        sqlQuery: validatedQuery,
+        results: results.data,
+        rowCount: results.rowCount,
+        ...(fileInfo && { fileInfo }),
+      });
 
       // ⚡ On NE renvoie PLUS schemaJSON/schema : le front ne les exploite pas et leur
       // génération (COUNT(*) + information_schema par table) + leur transfert alourdissaient
@@ -2600,6 +2643,7 @@ RÉPONSE (en langage naturel):`;
   private async generateConversationalResponseStream(
     question: string,
     sendEvent: (event: string, data: any) => void,
+    history: VisibleHistoryMessage[] = [],
   ): Promise<string> {
     const systemPrompt = this.projectConfig?.conversationalSystemPrompt
       ?? `Tu es un assistant IA. Réponds aux questions générales et aux salutations de façon courtoise et professionnelle.`;
@@ -2611,8 +2655,9 @@ RÉPONSE (en langage naturel):`;
     try {
       const stream = await this.llm.stream([
         { role: 'system', content: systemPrompt },
+        ...history.slice(-8).map(m => ({ role: m.role, content: m.content })),
         { role: 'user',   content: question },
-      ]);
+      ] as any);
       for await (const chunk of stream) {
         const text = typeof chunk.content === 'string' ? chunk.content : '';
         if (text) {
@@ -2626,8 +2671,9 @@ RÉPONSE (en langage naturel):`;
       this.logger.warn(`⚠️ [CONV STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
       const response = await this.llm.invoke([
         { role: 'system', content: systemPrompt },
+        ...history.slice(-8).map(m => ({ role: m.role, content: m.content })),
         { role: 'user',   content: question },
-      ]);
+      ] as any);
       fullText = response.content as string;
       sendEvent('token', { text: fullText });
     }
@@ -2635,14 +2681,18 @@ RÉPONSE (en langage naturel):`;
     return fullText;
   }
 
-  private async generateConversationalResponse(question: string): Promise<string> {
+  private async generateConversationalResponse(
+    question: string,
+    history: VisibleHistoryMessage[] = [],
+  ): Promise<string> {
     const systemPrompt = this.projectConfig?.conversationalSystemPrompt
       ?? `Tu es un assistant IA. Reponds aux questions generales et aux salutations de facon courtoise et professionnelle.`;
 
     const response = await this.llm.invoke([
       { role: 'system', content: systemPrompt },
+      ...history.slice(-8).map(m => ({ role: m.role, content: m.content })),
       { role: 'user', content: question },
-    ]);
+    ] as any);
 
     return response.content as string;
   }
@@ -2739,7 +2789,11 @@ RÉPONSE (en langage naturel):`;
   * - Matching sur la categorie BusinessTable
   * - Tri stable (score DESC + nom ASC)
   */
-  private async detectRelevantTables(question: string, specificTables?: string[] | string): Promise<string[]> {
+  private async detectRelevantTables(
+    question: string,
+    specificTables?: string[] | string,
+    references: ReferencedEntityContext[] = [],
+  ): Promise<string[]> {
     const normalizedSpecificTables = this.normalizeStringArray(specificTables);
     if (normalizedSpecificTables && normalizedSpecificTables.length > 0) {
       const validTables = normalizedSpecificTables.filter(table => 
@@ -2754,6 +2808,7 @@ RÉPONSE (en langage naturel):`;
       return this.expandWithRelatedTables(validTables);
     }
 
+    const referenceTables = this.getReferenceTableHints(references);
     const keywords = question.toLowerCase().split(/\s+/);
     const visibleTables = this.schemaMetadata.getAllVisibleTables();
     const keywordStems = keywords.map(k => this.stemKeyword(k));
@@ -2836,16 +2891,51 @@ RÉPONSE (en langage naturel):`;
       if (b.score !== a.score) return b.score - a.score;
       return a.name.localeCompare(b.name);
     });
-    const detectedTables = tableScores.slice(0, 10).map(t => t.name);
+    const detectedTables = tableScores.slice(0, referenceTables.length ? 5 : 10).map(t => t.name);
     
     this.logger.log(`🎯 Tables detectees: ${detectedTables.join(', ')}`);
     this.logger.debug(`Scores: ${JSON.stringify(tableScores.map(t => ({ name: t.name, score: t.score })))}`);
     
+    if (referenceTables.length > 0) {
+      const combined = [...new Set([...referenceTables, ...detectedTables])];
+      const expanded = this.expandWithRelatedTables(combined, 10);
+      this.logger.log(`Tables contraintes par references: ${expanded.join(', ')}`);
+      return expanded;
+    }
+
     if (detectedTables.length === 0) {
       return this.getDefaultVisibleTables();
     }
 
     return this.expandWithRelatedTables(detectedTables);
+  }
+
+  private getReferenceTableHints(references: ReferencedEntityContext[]): string[] {
+    if (!references.length) return [];
+    const byType: Record<string, string[]> = {
+      audience: ['audiences', 'dossiers', 'jurisdictions', 'audience_types'],
+      hearing: ['audiences', 'dossiers', 'jurisdictions', 'audience_types'],
+      dossier: ['dossiers', 'customer', 'procedure_instances', 'procedure_templates'],
+      case: ['dossiers', 'customer', 'procedure_instances', 'procedure_templates'],
+      client: ['customer', 'dossiers'],
+      customer: ['customer', 'dossiers'],
+      document: ['document_customer', 'dossiers', 'customer'],
+      facture: ['factures', 'customer', 'dossiers'],
+      invoice: ['factures', 'customer', 'dossiers'],
+      diligence: ['diligences', 'dossiers', 'employee'],
+      employee: ['employee'],
+      collaborateur: ['employee'],
+      supplier: ['supplier'],
+      fournisseur: ['supplier'],
+      referrer: ['referrer', 'dossier_referral'],
+      apporteur: ['referrer', 'dossier_referral'],
+    };
+
+    return [...new Set(
+      references
+        .flatMap(ref => byType[String(ref.type ?? '').toLowerCase()] ?? [])
+        .filter(table => this.schemaMetadata.hasTableMetadata(table)),
+    )];
   }
 
   /**
@@ -2854,7 +2944,7 @@ RÉPONSE (en langage naturel):`;
    * question comme « les dossiers avec le nom du client » détecte `dossiers` mais
    * pas `customer` → le LLM ne peut pas joindre → résultats incomplets ou vides.
    */
-  private expandWithRelatedTables(tables: string[], max = 14): string[] {
+  private expandWithRelatedTables(tables: string[], max = 12): string[] {
     const relationships = this.relationshipsCache.get('all') || {};
     const out = new Set<string>(tables);
 

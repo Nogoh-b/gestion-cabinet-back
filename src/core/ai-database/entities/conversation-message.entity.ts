@@ -27,6 +27,9 @@ export class ConversationMessage extends BaseEntity {
   @Column({ type: 'json', nullable: true })
   references?: ReferencedEntityContext[];
 
+  @Column({ type: 'json', nullable: true })
+  metadata?: Record<string, any>;
+
   // created_at hérité de BaseEntity → pas de redéclaration
   get createdAt(): Date { return this.created_at; }
 
