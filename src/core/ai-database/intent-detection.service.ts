@@ -158,7 +158,14 @@ export class IntentDetectionService {
     ];
 
     if (readPatterns.some(pattern => pattern.test(normalized))) {
-      return 'READ';
+      // Vérifier qu'un mot-clé du domaine métier est aussi présent.
+      // Sans cela, "quel est la racine carree de 4" serait classé READ
+      // car le pattern ^quels? matche toute question commençant par "quel".
+      const domainKeywords = /\b(dossiers?|clients?|audiences?|factures?|paiements?|documents?|avocats?|diligences?|ecritures?|comptes?|journa(?:l|ux)|exercices?|salaires?|employes?|procedures?|etapes?|chiffre|montant|encaiss|impay|regl|honoraires?|stage|savings?|loan|customer|employee)\b/;
+      if (domainKeywords.test(normalized)) {
+        return 'READ';
+      }
+      // Pas de mot-clé métier → laisser le LLM classifier (question générale probable)
     }
 
     if (this.isWriteIntent(question)) {
