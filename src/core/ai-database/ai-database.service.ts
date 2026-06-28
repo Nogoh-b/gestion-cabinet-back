@@ -252,6 +252,21 @@ export class AiDatabaseService implements OnModuleInit {
     return String(content ?? '');
   }
 
+  private extractChunkText(chunk: any): string {
+    if (!chunk) return '';
+    const content = chunk.content;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content
+        .filter((block: any) => block?.type === 'text' || typeof block === 'string' || block?.text)
+        .map((block: any) => block?.text ?? (typeof block === 'string' ? block : ''))
+        .join('');
+    }
+    if (typeof chunk === 'string') return chunk;
+    if (chunk.text) return String(chunk.text);
+    return '';
+  }
+
   private async flushAiMetrics(metrics: AiRequestMetrics): Promise<void> {
     if (!metrics.logId) return;
     try {
@@ -417,7 +432,7 @@ export class AiDatabaseService implements OnModuleInit {
     }
 
     const response = await this.invokeModel('quality', messages, 1200);
-    const content = response.content as string;
+    const content = this.extractLlmText(response);
     this.logger.log(`Reponse SQL brute (200 chars): ${content.substring(0, 200)}`);
 
     let sqlQuery = this.extractSQL(content) || this.extractSQLRelaxed(content);
@@ -757,117 +772,427 @@ Contraintes ABSOLUES:
     normalizedQuestion: string,
     tables: string[],
   ): ReadClarificationContext | null {
-    const financialTerms = [
-      'chiffre d affaire', 'chiffre d affaires', 'ca du cabinet',
-      'revenu', 'revenus', 'recette', 'recettes', 'honoraire', 'honoraires',
-      'montant facture', 'facturation', 'rentabilite',
-    ];
-    if (financialTerms.some(term => this.containsNormalizedPhrase(normalizedQuestion, term))) {
-      return {
-        reason: 'Le chiffre d\'affaires peut etre calcule de plusieurs manieres.',
-        question: 'Quel indicateur financier souhaitez-vous ?',
-        options: [
-          {
-            id: 'ca_facture',
-            label: 'CA facture',
-            description: 'Total HT des factures emises (chiffre d\'affaires facture).',
-            followUpQuestion: 'Quel est le montant total HT de toutes les factures emises ?',
-            specificTables: ['factures'],
-          },
-          {
-            id: 'ca_encaisse',
-            label: 'CA encaisse',
-            description: 'Total des paiements effectivement recus.',
-            followUpQuestion: 'Quel est le montant total des paiements recus ?',
-            specificTables: ['paiements'],
-          },
-          {
-            id: 'ca_periode',
-            label: 'CA par periode',
-            description: 'Chiffre d\'affaires facture ventile par mois ou par annee.',
-            followUpQuestion: 'Donne le chiffre d\'affaires facture HT par mois pour l\'annee en cours',
-            specificTables: ['factures'],
-          },
-          {
-            id: 'ca_avocat',
-            label: 'CA par avocat',
-            description: 'Repartition du chiffre d\'affaires par collaborateur.',
-            followUpQuestion: 'Quel est le chiffre d\'affaires facture HT par avocat ?',
-            specificTables: ['factures', 'employee'],
-          },
+    const domainRules: Array<{
+      terms: string[];
+      result: ReadClarificationContext;
+    }> = [
+      // ── Finance / CA ──
+      {
+        terms: [
+          'chiffre d affaire', 'chiffre d affaires', 'ca du cabinet',
+          'revenu', 'revenus', 'recette', 'recettes', 'honoraire', 'honoraires',
+          'montant facture', 'facturation', 'rentabilite', 'benefice', 'marge',
+          'resultat financier', 'bilan financier', 'situation financiere',
         ],
-      };
+        result: {
+          reason: 'Le chiffre d\'affaires peut etre calcule de plusieurs manieres.',
+          question: 'Quel indicateur financier souhaitez-vous ?',
+          options: [
+            {
+              id: 'ca_facture',
+              label: 'CA facture',
+              description: 'Total HT des factures emises (chiffre d\'affaires facture).',
+              followUpQuestion: 'Quel est le montant total HT de toutes les factures emises ?',
+              specificTables: ['factures'],
+            },
+            {
+              id: 'ca_encaisse',
+              label: 'CA encaisse',
+              description: 'Total des paiements effectivement recus.',
+              followUpQuestion: 'Quel est le montant total des paiements recus ?',
+              specificTables: ['paiements'],
+            },
+            {
+              id: 'ca_periode',
+              label: 'CA par periode',
+              description: 'Chiffre d\'affaires facture ventile par mois ou par annee.',
+              followUpQuestion: 'Donne le chiffre d\'affaires facture HT par mois pour l\'annee en cours',
+              specificTables: ['factures'],
+            },
+            {
+              id: 'ca_avocat',
+              label: 'CA par avocat',
+              description: 'Repartition du chiffre d\'affaires par collaborateur.',
+              followUpQuestion: 'Quel est le chiffre d\'affaires facture HT par avocat ?',
+              specificTables: ['factures', 'employee'],
+            },
+          ],
+        },
+      },
+      // ── Factures ──
+      {
+        terms: [
+          'facture impayee', 'factures impayees', 'facture en retard', 'factures en retard',
+          'facture en attente', 'factures en attente', 'relance facture', 'impayes',
+          'creance', 'creances', 'solde client', 'encours client',
+        ],
+        result: {
+          reason: 'Les factures peuvent etre consultees selon plusieurs criteres.',
+          question: 'Quel aspect des factures souhaitez-vous consulter ?',
+          options: [
+            {
+              id: 'factures_impayees',
+              label: 'Factures impayees',
+              description: 'Liste des factures non reglees avec leur anciennete.',
+              followUpQuestion: 'Liste les factures dont le statut est impaye avec le client, le montant et la date d\'emission',
+              specificTables: ['factures', 'customer'],
+            },
+            {
+              id: 'total_impayes',
+              label: 'Total des impayes',
+              description: 'Montant total des factures en attente de reglement.',
+              followUpQuestion: 'Quel est le montant total des factures impayees ?',
+              specificTables: ['factures'],
+            },
+            {
+              id: 'factures_par_client',
+              label: 'Par client',
+              description: 'Repartition des factures par client.',
+              followUpQuestion: 'Quel est le montant total des factures par client ?',
+              specificTables: ['factures', 'customer'],
+            },
+          ],
+        },
+      },
+      // ── Paiements ──
+      {
+        terms: [
+          'paiement recu', 'paiements recus', 'reglement', 'reglements',
+          'encaissement', 'encaissements', 'tresorerie',
+        ],
+        result: {
+          reason: 'Les paiements peuvent etre consultes de differentes manieres.',
+          question: 'Que souhaitez-vous savoir sur les paiements ?',
+          options: [
+            {
+              id: 'paiements_recents',
+              label: 'Paiements recents',
+              description: 'Liste des derniers paiements recus.',
+              followUpQuestion: 'Liste les 20 derniers paiements recus avec le client, le montant et la date',
+              specificTables: ['paiements', 'customer'],
+            },
+            {
+              id: 'total_paiements',
+              label: 'Total encaisse',
+              description: 'Montant total des paiements recus.',
+              followUpQuestion: 'Quel est le montant total des paiements recus cette annee ?',
+              specificTables: ['paiements'],
+            },
+            {
+              id: 'paiements_mois',
+              label: 'Par mois',
+              description: 'Evolution des paiements par mois.',
+              followUpQuestion: 'Donne le total des paiements recus par mois pour l\'annee en cours',
+              specificTables: ['paiements'],
+            },
+          ],
+        },
+      },
+      // ── Dossiers ──
+      {
+        terms: [
+          'dossier en cours', 'dossiers en cours', 'dossiers ouverts', 'dossiers actifs',
+          'etat des dossiers', 'situation des dossiers', 'bilan des dossiers',
+          'dossiers du cabinet', 'mes dossiers', 'nos dossiers', 'tous les dossiers',
+          'nombre de dossiers', 'combien de dossiers', 'statistiques dossiers',
+        ],
+        result: {
+          reason: 'La consultation des dossiers peut prendre plusieurs angles.',
+          question: 'Que souhaitez-vous savoir sur les dossiers ?',
+          options: [
+            {
+              id: 'dossiers_count',
+              label: 'Nombre de dossiers',
+              description: 'Compter les dossiers en cours, clos et total.',
+              followUpQuestion: 'Combien de dossiers sont en cours et combien sont clotures ?',
+              specificTables: ['dossiers'],
+            },
+            {
+              id: 'dossiers_list',
+              label: 'Liste des dossiers',
+              description: 'Afficher la liste des dossiers ouverts avec leurs details.',
+              followUpQuestion: 'Liste les dossiers en cours avec leur reference, client et date d\'ouverture',
+              specificTables: ['dossiers', 'customer'],
+            },
+            {
+              id: 'dossiers_avocat',
+              label: 'Dossiers par avocat',
+              description: 'Repartition des dossiers par collaborateur.',
+              followUpQuestion: 'Combien de dossiers en cours par avocat ?',
+              specificTables: ['dossiers', 'employee'],
+            },
+          ],
+        },
+      },
+      // ── Audiences ──
+      {
+        terms: [
+          'audience a venir', 'audiences a venir', 'prochaine audience', 'prochaines audiences',
+          'calendrier audience', 'planning audience', 'audience prevue', 'audiences prevues',
+          'audience passee', 'audiences passees', 'audience du jour', 'audiences du jour',
+          'audience cette semaine', 'audiences cette semaine', 'audience ce mois',
+        ],
+        result: {
+          reason: 'Les audiences peuvent etre consultees de differentes manieres.',
+          question: 'Que souhaitez-vous consulter sur les audiences ?',
+          options: [
+            {
+              id: 'audiences_semaine',
+              label: 'Cette semaine',
+              description: 'Audiences programmees pour la semaine en cours.',
+              followUpQuestion: 'Liste les audiences prevues cette semaine avec la date, le dossier et la juridiction',
+              specificTables: ['audiences', 'dossiers'],
+            },
+            {
+              id: 'audiences_mois',
+              label: 'Ce mois',
+              description: 'Toutes les audiences du mois en cours.',
+              followUpQuestion: 'Liste les audiences prevues ce mois avec la date, le dossier et la juridiction',
+              specificTables: ['audiences', 'dossiers'],
+            },
+            {
+              id: 'audiences_avocat',
+              label: 'Par avocat',
+              description: 'Audiences a venir ventilees par collaborateur.',
+              followUpQuestion: 'Combien d\'audiences a venir par avocat ?',
+              specificTables: ['audiences', 'employee', 'dossiers'],
+            },
+          ],
+        },
+      },
+      // ── Clients ──
+      {
+        terms: [
+          'liste des clients', 'tous les clients', 'mes clients', 'nos clients',
+          'clients actifs', 'clients du cabinet', 'nombre de clients',
+          'combien de clients', 'nouveaux clients', 'client recent',
+        ],
+        result: {
+          reason: 'Les clients peuvent etre consultes selon differents criteres.',
+          question: 'Que souhaitez-vous savoir sur les clients ?',
+          options: [
+            {
+              id: 'clients_list',
+              label: 'Liste des clients',
+              description: 'Afficher tous les clients avec leurs coordonnees.',
+              followUpQuestion: 'Liste les clients avec leur nom, email et telephone',
+              specificTables: ['customer'],
+            },
+            {
+              id: 'clients_count',
+              label: 'Nombre de clients',
+              description: 'Compter le nombre total de clients.',
+              followUpQuestion: 'Combien de clients sont enregistres dans le cabinet ?',
+              specificTables: ['customer'],
+            },
+            {
+              id: 'clients_dossiers',
+              label: 'Clients avec dossiers',
+              description: 'Clients ayant des dossiers en cours.',
+              followUpQuestion: 'Liste les clients qui ont au moins un dossier en cours avec le nombre de dossiers',
+              specificTables: ['customer', 'dossiers'],
+            },
+          ],
+        },
+      },
+      // ── Collaborateurs / Avocats ──
+      {
+        terms: [
+          'avocat', 'avocats', 'collaborateur', 'collaborateurs',
+          'equipe', 'effectif', 'personnel', 'charge de travail',
+          'performance avocat', 'activite avocat', 'productivite',
+        ],
+        result: {
+          reason: 'L\'activite des collaborateurs peut etre consultee selon plusieurs axes.',
+          question: 'Que souhaitez-vous savoir sur les collaborateurs ?',
+          options: [
+            {
+              id: 'avocats_list',
+              label: 'Liste des avocats',
+              description: 'Afficher les collaborateurs du cabinet.',
+              followUpQuestion: 'Liste les avocats et collaborateurs du cabinet avec leur poste',
+              specificTables: ['employee'],
+            },
+            {
+              id: 'charge_travail',
+              label: 'Charge de travail',
+              description: 'Nombre de dossiers en cours par avocat.',
+              followUpQuestion: 'Combien de dossiers en cours sont assignes a chaque avocat ?',
+              specificTables: ['dossiers', 'employee'],
+            },
+            {
+              id: 'ca_par_avocat',
+              label: 'CA par avocat',
+              description: 'Chiffre d\'affaires genere par chaque collaborateur.',
+              followUpQuestion: 'Quel est le chiffre d\'affaires facture par avocat ?',
+              specificTables: ['factures', 'employee'],
+            },
+          ],
+        },
+      },
+      // ── Documents ──
+      {
+        terms: [
+          'document', 'documents', 'piece jointe', 'pieces jointes',
+          'fichier', 'fichiers', 'contrat', 'contrats',
+        ],
+        result: {
+          reason: 'Les documents peuvent etre consultes de differentes manieres.',
+          question: 'Que souhaitez-vous consulter sur les documents ?',
+          options: [
+            {
+              id: 'documents_recents',
+              label: 'Documents recents',
+              description: 'Derniers documents ajoutes au systeme.',
+              followUpQuestion: 'Liste les 20 derniers documents ajoutes avec leur nom, type et le dossier associe',
+              specificTables: ['document_customer', 'dossiers'],
+            },
+            {
+              id: 'documents_par_dossier',
+              label: 'Par dossier',
+              description: 'Nombre de documents par dossier.',
+              followUpQuestion: 'Combien de documents sont associes a chaque dossier ?',
+              specificTables: ['document_customer', 'dossiers'],
+            },
+            {
+              id: 'documents_par_type',
+              label: 'Par type',
+              description: 'Repartition des documents par type.',
+              followUpQuestion: 'Combien de documents par type de document ?',
+              specificTables: ['document_customer'],
+            },
+          ],
+        },
+      },
+      // ── Diligences ──
+      {
+        terms: [
+          'diligence', 'diligences', 'tache', 'taches',
+          'a faire', 'en retard', 'echeance', 'echeances',
+        ],
+        result: {
+          reason: 'Les diligences peuvent etre consultees selon leur statut ou leur echeance.',
+          question: 'Que souhaitez-vous savoir sur les diligences ?',
+          options: [
+            {
+              id: 'diligences_en_cours',
+              label: 'En cours',
+              description: 'Diligences actuellement en cours.',
+              followUpQuestion: 'Liste les diligences en cours avec leur echeance, le dossier et l\'avocat responsable',
+              specificTables: ['diligences', 'dossiers', 'employee'],
+            },
+            {
+              id: 'diligences_retard',
+              label: 'En retard',
+              description: 'Diligences dont l\'echeance est depassee.',
+              followUpQuestion: 'Liste les diligences dont la date d\'echeance est depassee',
+              specificTables: ['diligences', 'dossiers'],
+            },
+            {
+              id: 'diligences_avocat',
+              label: 'Par avocat',
+              description: 'Repartition des diligences par collaborateur.',
+              followUpQuestion: 'Combien de diligences en cours par avocat ?',
+              specificTables: ['diligences', 'employee'],
+            },
+          ],
+        },
+      },
+      // ── Comptabilite ──
+      {
+        terms: [
+          'comptabilite', 'ecriture comptable', 'ecritures comptables',
+          'journal comptable', 'grand livre', 'balance', 'compte comptable',
+          'plan comptable', 'exercice comptable',
+        ],
+        result: {
+          reason: 'La comptabilite peut etre consultee selon differents axes.',
+          question: 'Quel aspect de la comptabilite souhaitez-vous consulter ?',
+          options: [
+            {
+              id: 'ecritures_recentes',
+              label: 'Ecritures recentes',
+              description: 'Dernieres ecritures comptables enregistrees.',
+              followUpQuestion: 'Liste les 20 dernieres ecritures comptables avec le journal, la date, le libelle et le montant',
+              specificTables: ['ecriture', 'journal'],
+            },
+            {
+              id: 'solde_comptes',
+              label: 'Solde des comptes',
+              description: 'Solde actuel des principaux comptes comptables.',
+              followUpQuestion: 'Donne le solde (total debit - total credit) de chaque compte comptable',
+              specificTables: ['ecriture', 'compte'],
+            },
+            {
+              id: 'ecritures_journal',
+              label: 'Par journal',
+              description: 'Ecritures ventilees par journal comptable.',
+              followUpQuestion: 'Combien d\'ecritures et quel montant total par journal comptable ?',
+              specificTables: ['ecriture', 'journal'],
+            },
+          ],
+        },
+      },
+    ];
+
+    for (const rule of domainRules) {
+      if (rule.terms.some(term => this.containsNormalizedPhrase(normalizedQuestion, term))) {
+        return rule.result;
+      }
     }
 
-    const dossierTerms = [
-      'dossier en cours', 'dossiers en cours', 'dossiers ouverts', 'dossiers actifs',
-      'etat des dossiers', 'situation des dossiers', 'bilan des dossiers',
-    ];
-    if (dossierTerms.some(term => this.containsNormalizedPhrase(normalizedQuestion, term))) {
-      return {
-        reason: 'La consultation des dossiers peut prendre plusieurs angles.',
-        question: 'Que souhaitez-vous savoir sur les dossiers ?',
-        options: [
-          {
-            id: 'dossiers_count',
-            label: 'Nombre de dossiers',
-            description: 'Compter les dossiers en cours, clos et total.',
-            followUpQuestion: 'Combien de dossiers sont en cours et combien sont clotures ?',
-            specificTables: ['dossiers'],
-          },
-          {
-            id: 'dossiers_list',
-            label: 'Liste des dossiers',
-            description: 'Afficher la liste des dossiers ouverts avec leurs details.',
-            followUpQuestion: 'Liste les dossiers en cours avec leur reference, client et date d\'ouverture',
-            specificTables: ['dossiers', 'customer'],
-          },
-          {
-            id: 'dossiers_avocat',
-            label: 'Dossiers par avocat',
-            description: 'Repartition des dossiers par collaborateur.',
-            followUpQuestion: 'Combien de dossiers en cours par avocat ?',
-            specificTables: ['dossiers', 'employee'],
-          },
-        ],
-      };
-    }
+    // Dernier recours : detecter via les tables trouvees
+    return this.buildFallbackFromDetectedTables(normalizedQuestion, tables);
+  }
 
-    const audienceTerms = [
-      'audience a venir', 'audiences a venir', 'prochaine audience', 'prochaines audiences',
-      'calendrier audience', 'planning audience',
-    ];
-    if (audienceTerms.some(term => this.containsNormalizedPhrase(normalizedQuestion, term))) {
-      return {
-        reason: 'Les audiences peuvent etre consultees de differentes manieres.',
-        question: 'Que souhaitez-vous consulter sur les audiences ?',
-        options: [
-          {
-            id: 'audiences_semaine',
-            label: 'Cette semaine',
-            description: 'Audiences programmees pour la semaine en cours.',
-            followUpQuestion: 'Liste les audiences prevues cette semaine avec la date, le dossier et la juridiction',
-            specificTables: ['audiences', 'dossiers'],
-          },
-          {
-            id: 'audiences_mois',
-            label: 'Ce mois',
-            description: 'Toutes les audiences du mois en cours.',
-            followUpQuestion: 'Liste les audiences prevues ce mois avec la date, le dossier et la juridiction',
-            specificTables: ['audiences', 'dossiers'],
-          },
-          {
-            id: 'audiences_avocat',
-            label: 'Par avocat',
-            description: 'Audiences a venir ventilees par collaborateur.',
-            followUpQuestion: 'Combien d\'audiences a venir par avocat ?',
-            specificTables: ['audiences', 'employee', 'dossiers'],
-          },
-        ],
-      };
-    }
+  private buildFallbackFromDetectedTables(
+    normalizedQuestion: string,
+    tables: string[],
+  ): ReadClarificationContext | null {
+    if (!tables.length) return null;
 
-    return null;
+    const tableLabels: Record<string, { label: string; listQuestion: string; countQuestion: string }> = {
+      dossiers:          { label: 'dossiers',   listQuestion: 'Liste les dossiers avec leur reference, client et statut', countQuestion: 'Combien de dossiers au total ?' },
+      customer:          { label: 'clients',    listQuestion: 'Liste les clients avec leur nom et coordonnees', countQuestion: 'Combien de clients au total ?' },
+      employee:          { label: 'avocats',    listQuestion: 'Liste les avocats et collaborateurs du cabinet', countQuestion: 'Combien d\'avocats et collaborateurs ?' },
+      audiences:         { label: 'audiences',  listQuestion: 'Liste les audiences a venir avec la date et le dossier', countQuestion: 'Combien d\'audiences programmees ?' },
+      factures:          { label: 'factures',   listQuestion: 'Liste les factures avec le client, le montant et le statut', countQuestion: 'Quel est le montant total des factures ?' },
+      paiements:         { label: 'paiements',  listQuestion: 'Liste les derniers paiements recus avec le client et le montant', countQuestion: 'Quel est le montant total des paiements recus ?' },
+      diligences:        { label: 'diligences', listQuestion: 'Liste les diligences en cours avec leur echeance', countQuestion: 'Combien de diligences en cours ?' },
+      document_customer: { label: 'documents',  listQuestion: 'Liste les derniers documents ajoutes', countQuestion: 'Combien de documents au total ?' },
+    };
+
+    const primaryTable = tables.find(t => tableLabels[t]) ?? tables[0];
+    const info = tableLabels[primaryTable];
+    if (!info) return null;
+
+    return {
+      reason: `La demande concerne les ${info.label} mais necessite plus de precision.`,
+      question: `Que souhaitez-vous savoir sur les ${info.label} ?`,
+      options: [
+        {
+          id: `${primaryTable}_list`,
+          label: `Liste des ${info.label}`,
+          description: `Afficher les ${info.label} avec leurs details.`,
+          followUpQuestion: info.listQuestion,
+          specificTables: [primaryTable],
+        },
+        {
+          id: `${primaryTable}_count`,
+          label: `Nombre / Total`,
+          description: `Compter ou totaliser les ${info.label}.`,
+          followUpQuestion: info.countQuestion,
+          specificTables: [primaryTable],
+        },
+        {
+          id: `${primaryTable}_period`,
+          label: `Filtrer par periode`,
+          description: `Les ${info.label} de cette annee ou de ce mois.`,
+          followUpQuestion: `${info.listQuestion} pour l'annee en cours`,
+          specificTables: [primaryTable],
+        },
+      ],
+    };
   }
 
   /**
@@ -924,7 +1249,7 @@ Contraintes ABSOLUES:
         role: "user",
         content: reformatPrompt
       }], 1000);
-      const content = response.content as string;
+      const content = this.extractLlmText(response);
       const sql = this.extractSQLRelaxed(content);
       
       if (sql && sql.toLowerCase().includes('select')) {
@@ -962,7 +1287,7 @@ Contraintes obligatoires :
 
     try {
       const response = await this.invokeModel('quality', retryMessages, 1200);
-      const content = response.content as string;
+      const content = this.extractLlmText(response);
       const sql = this.extractSQL(content) || this.extractSQLRelaxed(content);
       return sql || currentQuery;
     } catch (error) {
@@ -1773,7 +2098,7 @@ Règles :
     question: string,
     history: VisibleHistoryMessage[] = [],
   ): Promise<string> {
-    const response = await this.invokeModel('fast', this.buildAdviceMessages(question, history), 1400);
+    const response = await this.invokeModel('fast', this.buildAdviceMessages(question, history), this.MAX_TOKENS);
     return this.extractLlmText(response);
   }
 
@@ -1786,9 +2111,9 @@ Règles :
     let fullText = '';
 
     try {
-      const stream = await this.streamModel('streaming', messages, 1600);
+      const stream = await this.streamModel('streaming', messages, this.MAX_TOKENS);
       for await (const chunk of stream) {
-        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        const text = this.extractChunkText(chunk);
         if (text) {
           fullText += text;
           this.recordOutput(text, true);
@@ -1797,7 +2122,7 @@ Règles :
       }
     } catch (error) {
       this.logger.warn(`Advice stream echoue, fallback invoke: ${(error as Error).message}`);
-      const response = await this.invokeModel('fast', messages, 1400);
+      const response = await this.invokeModel('fast', messages, this.MAX_TOKENS);
       fullText = this.extractLlmText(response);
       sendEvent('token', { text: fullText });
     }
@@ -3366,9 +3691,9 @@ ${blocks.join('\n\n')}
     this.logger.log(`🌊 [DOC STREAM] Analyse directe — prompt ${prompt.length} chars`);
 
     try {
-      const stream = await this.streamModel('streaming', prompt, 1800);
+      const stream = await this.streamModel('streaming', prompt, this.MAX_TOKENS);
       for await (const chunk of stream) {
-        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        const text = this.extractChunkText(chunk);
         if (text) {
           fullText += text;
           tokenCount++;
@@ -3379,8 +3704,8 @@ ${blocks.join('\n\n')}
       this.logger.log(`✅ [DOC STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
     } catch (err) {
       this.logger.warn(`⚠️ [DOC STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
-      const response = await this.invokeModel('streaming', prompt, 1800);
-      fullText = response.content as string;
+      const response = await this.invokeModel('streaming', prompt, this.MAX_TOKENS);
+      fullText = this.extractLlmText(response);
       sendEvent('token', { text: fullText });
     }
 
@@ -3397,9 +3722,9 @@ ${blocks.join('\n\n')}
   ): Promise<string> {
     let fullText = '';
     try {
-      const stream = await this.streamModel('streaming', prompt, 2000);
+      const stream = await this.streamModel('streaming', prompt, this.MAX_TOKENS);
       for await (const chunk of stream) {
-        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        const text = this.extractChunkText(chunk);
         if (text) {
           fullText += text;
           this.recordOutput(text, true);
@@ -3408,7 +3733,7 @@ ${blocks.join('\n\n')}
       }
     } catch (err) {
       this.logger.warn(`Text streaming echoue, fallback invoke: ${(err as Error).message}`);
-      const response = await this.invokeModel('fast', [{ role: 'user', content: prompt }], 2000);
+      const response = await this.invokeModel('fast', [{ role: 'user', content: prompt }], this.MAX_TOKENS);
       fullText = this.extractLlmText(response);
       sendEvent('token', { text: fullText });
     }
@@ -3715,8 +4040,61 @@ INSTRUCTIONS IMPORTANTES:
 
 RÉPONSE (en français courant, langage métier):`;
 
-    const response = await this.invokeModel('streaming', prompt, 1800);
-    return response.content as string;
+    const response = await this.invokeModel('streaming', prompt, this.MAX_TOKENS);
+    const analysis = this.extractLlmText(response).trim();
+    if (analysis) return analysis;
+    return this.buildFallbackAnalysisFromResults(question, results.data);
+  }
+
+  private buildFallbackAnalysisFromResults(question: string, data: any[]): string {
+    const count = data.length;
+    const lower = question.toLowerCase();
+
+    const entityGuesses: Array<{ test: RegExp; singular: string; plural: string }> = [
+      { test: /audience/i,    singular: 'audience',    plural: 'audiences' },
+      { test: /dossier/i,     singular: 'dossier',     plural: 'dossiers' },
+      { test: /client/i,      singular: 'client',      plural: 'clients' },
+      { test: /facture/i,     singular: 'facture',     plural: 'factures' },
+      { test: /paiement|reglement/i, singular: 'paiement', plural: 'paiements' },
+      { test: /diligence|tache/i,    singular: 'diligence', plural: 'diligences' },
+      { test: /document|piece/i,     singular: 'document',  plural: 'documents' },
+      { test: /avocat|collaborateur/i, singular: 'collaborateur', plural: 'collaborateurs' },
+      { test: /ecriture|comptab/i, singular: 'ecriture comptable', plural: 'ecritures comptables' },
+    ];
+
+    let entity = 'resultat';
+    let entityPlural = 'resultats';
+    for (const guess of entityGuesses) {
+      if (guess.test.test(lower)) {
+        entity = guess.singular;
+        entityPlural = guess.plural;
+        break;
+      }
+    }
+
+    const label = count === 1 ? `1 ${entity} trouve` : `${count} ${entityPlural} trouves`;
+    const lines = [`${label}.`];
+
+    const sample = data.slice(0, 5);
+    for (const row of sample) {
+      const parts: string[] = [];
+      const id = row.id ?? row.ID;
+      if (id !== undefined) parts.push(`ID: ${id}`);
+      for (const key of Object.keys(row)) {
+        if (['id', 'ID', 'deleted_at', 'deleted_by', 'tenant_id'].includes(key)) continue;
+        const val = row[key];
+        if (val === null || val === undefined || val === '') continue;
+        parts.push(`${key}: ${String(val).substring(0, 80)}`);
+        if (parts.length >= 5) break;
+      }
+      lines.push(`- ${parts.join(', ')}`);
+    }
+
+    if (data.length > 5) {
+      lines.push(`... et ${data.length - 5} autre(s).`);
+    }
+
+    return lines.join('\n');
   }
 
   /**
@@ -3771,13 +4149,12 @@ RÉPONSE (en langage naturel):`;
 
     this.logger.log(`🌊 [STREAM] Démarrage llm.stream() — prompt ${prompt.length} chars`);
     try {
-      const stream = await this.streamModel('streaming', prompt, 1800);
+      const stream = await this.streamModel('streaming', prompt, this.MAX_TOKENS);
       for await (const chunk of stream) {
-        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        const text = this.extractChunkText(chunk);
         if (text) {
           fullText += text;
           tokenCount++;
-          // Log chaque 10 tokens pour ne pas spammer
           if (tokenCount <= 3 || tokenCount % 10 === 0) {
             this.logger.debug(`🔤 [STREAM] token #${tokenCount}: "${text.replace(/\n/g, '\\n').substring(0, 30)}"`);
           }
@@ -3788,9 +4165,15 @@ RÉPONSE (en langage naturel):`;
       this.logger.log(`✅ [STREAM] Terminé — ${tokenCount} tokens, ${fullText.length} chars`);
     } catch (err) {
       this.logger.warn(`⚠️ [STREAM] llm.stream() échoué → fallback invoke: ${(err as Error).message}`);
-      const response = await this.invokeModel('streaming', prompt, 1800);
-      fullText = response.content as string;
+      const response = await this.invokeModel('streaming', prompt, this.MAX_TOKENS);
+      fullText = this.extractLlmText(response);
       this.logger.debug(`📤 [FALLBACK] token unique: ${fullText.length} chars`);
+      sendEvent('token', { text: fullText });
+    }
+
+    if (!fullText.trim()) {
+      fullText = this.buildFallbackAnalysisFromResults(question, results.data);
+      this.logger.warn(`⚠️ [STREAM] Analyse vide — fallback construit: ${fullText.substring(0, 80)}`);
       sendEvent('token', { text: fullText });
     }
 
@@ -3820,7 +4203,7 @@ RÉPONSE (en langage naturel):`;
         { role: 'user',   content: question },
       ] as any, 1600);
       for await (const chunk of stream) {
-        const text = typeof chunk.content === 'string' ? chunk.content : '';
+        const text = this.extractChunkText(chunk);
         if (text) {
           fullText += text;
           tokenCount++;
@@ -3836,7 +4219,7 @@ RÉPONSE (en langage naturel):`;
         ...history.slice(-8).map(m => ({ role: m.role, content: m.content })),
         { role: 'user',   content: question },
       ] as any, 1200);
-      fullText = response.content as string;
+      fullText = this.extractLlmText(response);
       sendEvent('token', { text: fullText });
     }
 
@@ -3856,7 +4239,7 @@ RÉPONSE (en langage naturel):`;
       { role: 'user', content: question },
     ] as any, 1200);
 
-    return response.content as string;
+    return this.extractLlmText(response);
   }
 
   /**
@@ -3904,22 +4287,73 @@ RÉPONSE (en langage naturel):`;
    * Message personnalisé quand aucun résultat n'est trouvé
    */
   private getNoResultsMessage(question: string, tables: string[]): string {
-    // Détecter le type de question
-    const lowerQuestion = question.toLowerCase();
-    
-    if (lowerQuestion.includes('étape') || lowerQuestion.includes('step')) {
-      return "📋 **Aucune étape trouvée pour ce dossier.**\n\nCela peut signifier que :\n- Le dossier n'a pas encore commencé son parcours procédural\n- Le dossier n'est pas associé à une procédure active\n- L'identifiant du dossier est incorrect\n\n💡 **Recommandation :** Vérifiez l'identifiant du dossier ou consultez la fiche client pour confirmer la procédure associée.";
+    const lower = question.toLowerCase();
+
+    const rules: Array<{ test: (q: string) => boolean; message: string }> = [
+      {
+        test: q => /\b[eé]tape|step|procedure|parcours/i.test(q),
+        message: 'Aucune etape trouvee pour ce dossier. Le dossier n\'a peut-etre pas encore de parcours procedural actif, ou l\'identifiant est incorrect.',
+      },
+      {
+        test: q => /dossier|affaire|litige/i.test(q),
+        message: 'Aucun dossier ne correspond a ces criteres. Verifiez le numero de dossier ou elargissez la recherche (periode, statut, client).',
+      },
+      {
+        test: q => /client|customer|partie/i.test(q),
+        message: 'Aucun client ne correspond a cette recherche. Verifiez l\'orthographe du nom ou essayez avec moins de criteres.',
+      },
+      {
+        test: q => /audience/i.test(q),
+        message: 'Aucune audience trouvee pour ces criteres. Verifiez la periode ou le dossier concerne.',
+      },
+      {
+        test: q => /facture|honoraire/i.test(q),
+        message: 'Aucune facture trouvee pour ces criteres. Verifiez le client, la periode ou le statut de facturation.',
+      },
+      {
+        test: q => /paiement|reglement|encaissement/i.test(q),
+        message: 'Aucun paiement enregistre pour ces criteres. Verifiez le client ou la periode.',
+      },
+      {
+        test: q => /chiffre d.affaire|ca |revenu|recette/i.test(q),
+        message: 'Aucune donnee financiere trouvee pour cette periode. Il n\'y a peut-etre pas encore de factures ou de paiements enregistres.',
+      },
+      {
+        test: q => /diligence|tache|echeance/i.test(q),
+        message: 'Aucune diligence trouvee pour ces criteres. Verifiez le dossier ou la periode concernee.',
+      },
+      {
+        test: q => /document|piece|fichier|contrat/i.test(q),
+        message: 'Aucun document ne correspond a cette recherche. Verifiez le nom du document ou le dossier associe.',
+      },
+      {
+        test: q => /avocat|collaborateur|employe/i.test(q),
+        message: 'Aucun collaborateur ne correspond a cette recherche. Verifiez le nom ou les criteres saisis.',
+      },
+      {
+        test: q => /comptab|ecriture|journal|compte/i.test(q),
+        message: 'Aucune ecriture comptable trouvee pour ces criteres. Verifiez le journal, la periode ou le compte concerne.',
+      },
+    ];
+
+    for (const rule of rules) {
+      if (rule.test(lower)) {
+        return rule.message;
+      }
     }
-    
-    if (lowerQuestion.includes('dossier') || lowerQuestion.includes('dossiers')) {
-      return "📁 **Aucun dossier trouvé correspondant à votre recherche.**\n\nCela peut être dû à :\n- Un numéro de dossier inexistant\n- Des critères de recherche trop restrictifs\n- Un dossier récemment archivé\n\n💡 **Recommandation :** Vérifiez le numéro de dossier ou élargissez vos critères de recherche.";
+
+    // Dernier recours : construire un message à partir des tables détectées
+    const tableLabels: Record<string, string> = {
+      dossiers: 'dossier', customer: 'client', employee: 'collaborateur',
+      audiences: 'audience', factures: 'facture', paiements: 'paiement',
+      diligences: 'diligence', document_customer: 'document',
+    };
+    const primaryTable = tables.find(t => tableLabels[t]);
+    if (primaryTable) {
+      return `Aucun(e) ${tableLabels[primaryTable]} ne correspond a votre recherche. Essayez avec des criteres differents (periode, statut, nom).`;
     }
-    
-    if (lowerQuestion.includes('client') || lowerQuestion.includes('customer')) {
-      return "👤 **Aucun client trouvé correspondant à votre recherche.**\n\nVérifiez l'identifiant client ou les critères saisis.\n\n💡 **Recommandation :** Consultez l'annuaire clients ou contactez le service commercial.";
-    }
-    
-    return "ℹ️ **Aucun résultat trouvé** pour votre question.\n\nVérifiez les informations saisies ou reformulez votre demande avec plus de précision.";
+
+    return `Aucun resultat pour cette recherche. Essayez de reformuler avec des criteres plus precis (nom, date, statut).`;
   }
 
   /**
@@ -4584,7 +5018,7 @@ private async getDefaultSchema(): Promise<string> {
     // Utiliser le prompt validé
     const prompt = await this.sqlValidator.buildValidatedPrompt(question, schema, tables);
     const response = await this.invokeModel('quality', prompt, 1200);
-    let sql = this.extractSQL(response.content as string);
+    let sql = this.extractSQL(this.extractLlmText(response));
     
     if (!sql) {
       throw new Error('Impossible d\'extraire la requête SQL');
@@ -4728,7 +5162,7 @@ ${validation.error}
 Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
 
       const response = await this.invokeModel('quality', fixPrompt, 1000);
-      const fixedQuery = this.extractSQL(response.content as string);
+      const fixedQuery = this.extractSQL(this.extractLlmText(response));
 
       if (fixedQuery) {
         currentQuery = fixedQuery;
