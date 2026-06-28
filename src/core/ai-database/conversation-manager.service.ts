@@ -285,6 +285,112 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     });
   }
 
+  private formatMessageForPrompt(msg: ConversationMessage): { role: string; content: string } {
+    const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+    let content = msg.content;
+
+    if (msg.role === 'assistant') {
+      const context = this.buildAssistantResultContext(metadata);
+      if (context) {
+        content = `${content}\n\n${context}`;
+      }
+    }
+
+    return {
+      role: msg.role,
+      content,
+    };
+  }
+
+  private buildAssistantResultContext(metadata: Record<string, any>): string {
+    const sqlQuery = typeof metadata.sqlQuery === 'string' ? metadata.sqlQuery.trim() : '';
+    const rowCount = typeof metadata.rowCount === 'number' ? metadata.rowCount : undefined;
+    const rows = Array.isArray(metadata.results) ? metadata.results.slice(0, 3) : [];
+
+    if ((rowCount ?? 0) === 0 && rows.length === 0) return '';
+    if (!sqlQuery && rows.length === 0 && rowCount === undefined) return '';
+
+    const lines: string[] = ['[CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI]'];
+    if (sqlQuery) {
+      lines.push(`SQL precedent: ${sqlQuery.replace(/\s+/g, ' ').substring(0, 600)}`);
+    }
+    if (rowCount !== undefined) {
+      lines.push(`Nombre de lignes precedent: ${rowCount}`);
+    }
+    if (rows.length > 0) {
+      lines.push('Resultats cles precedents:');
+      rows.forEach((row, index) => {
+        lines.push(`- ligne ${index + 1}: ${this.formatResultRowForPrompt(row)}`);
+      });
+    }
+    lines.push(
+      'Instruction: pour "ce/cette/cet" element, reutilise ces identifiants et filtres exacts; ne devine pas un autre numero.',
+    );
+
+    return lines.join('\n');
+  }
+
+  private formatResultRowForPrompt(row: Record<string, any>): string {
+    const priorityKeys = [
+      'id',
+      'uuid',
+      'numero',
+      'number',
+      'reference',
+      'dossier_id',
+      'dossier_number',
+      'client_id',
+      'customer_id',
+      'invoice_id',
+      'facture_id',
+      'paiement_id',
+      'jurisdiction_id',
+      'invoice_type_id',
+      'type',
+      'status',
+      'first_name',
+      'last_name',
+      'company_name',
+      'name',
+      'title',
+      'object',
+      'description',
+      'date_facture',
+      'date_echeance',
+      'montant_ht',
+      'montant_ttc',
+      'amount',
+      'currency',
+      'tenant_id',
+    ];
+    const entries: string[] = [];
+    const seen = new Set<string>();
+
+    for (const key of priorityKeys) {
+      if (Object.prototype.hasOwnProperty.call(row, key)) {
+        entries.push(`${key}=${this.formatPromptValue(row[key])}`);
+        seen.add(key);
+      }
+    }
+
+    for (const [key, value] of Object.entries(row)) {
+      if (entries.length >= 25) break;
+      if (seen.has(key)) continue;
+      if (key.endsWith('_id') || key.endsWith('_number') || key.includes('numero')) {
+        entries.push(`${key}=${this.formatPromptValue(value)}`);
+      }
+    }
+
+    return entries.join(', ') || JSON.stringify(row).substring(0, 500);
+  }
+
+  private formatPromptValue(value: unknown): string {
+    if (value === null || value === undefined) return 'NULL';
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'object') return JSON.stringify(value).substring(0, 120);
+    return String(value).replace(/\s+/g, ' ').substring(0, 120);
+  }
+
   /**
    * Retourne uniquement les derniers messages utiles pour un prompt LLM.
    * Les messages system sont exclus car le service AiDatabase reconstruit un
@@ -308,7 +414,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
 
     for (const msg of messages) {
       if (msg.role === 'system') continue;
-      const messageTokens = msg.tokensUsed || this.estimateTokens(msg.content);
+      const promptMessage = this.formatMessageForPrompt(msg);
+      const messageTokens = this.estimateTokens(promptMessage.content);
       if (selected.length >= maxMessages || (selected.length > 0 && tokens + messageTokens > maxTokens)) {
         break;
       }
@@ -316,10 +423,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       tokens += messageTokens;
     }
 
-    return selected.reverse().map(msg => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    return selected.reverse().map(msg => this.formatMessageForPrompt(msg));
   }
 
   /**

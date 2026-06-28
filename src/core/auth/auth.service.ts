@@ -137,6 +137,65 @@ export class AuthService {
   }
 
   async login(data: any) {
+    // Double authentification : si activée, on n'émet pas le token tout de
+    // suite — on envoie un OTP par e-mail et on renvoie un « challenge ».
+    if (data?.mfa_enabled) {
+      await this.sendMfaOtp(data.email, data.first_name || data.username);
+      return {
+        mfa_required: true,
+        email: data.email,
+        message: 'Code de vérification envoyé par e-mail.',
+      };
+    }
+    return this.issueSession(data);
+  }
+
+  /** Envoie l'OTP de connexion (réutilise l'infrastructure OTP existante). */
+  private async sendMfaOtp(email: string, name?: string): Promise<void> {
+    const { otp } = await this.authTokenService.createOTP(email, 'mfa');
+    try {
+      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
+        firstName: name || 'Utilisateur',
+        otpCode: otp,
+        expiryMinutes: 10,
+      });
+      await this.mailService.sendDirect({
+        to: email,
+        subject: rendered.subject || 'Code de connexion',
+        html: rendered.html,
+      });
+    } catch {
+      await this.mailService.sendDirect({
+        to: email,
+        subject: 'Code de connexion',
+        html: `<p>Votre code de connexion : <b>${otp}</b> (valable 10 minutes).</p>`,
+      });
+    }
+  }
+
+  /** Vérifie l'OTP de connexion et émet le token (2e étape du MFA). */
+  async verifyMfa(email: string, otp: string) {
+    const { isValid } = await this.authTokenService.verifyOTP(email, otp, 'mfa');
+    if (!isValid) {
+      throw new UnauthorizedException('Code invalide ou expiré');
+    }
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable');
+    }
+    (user as any)._resolvedTenantId =
+      (user as any).tenant_id ?? this.tenantContext.getTenantId();
+    return this.issueSession(user);
+  }
+
+  /** Active/désactive le MFA pour un utilisateur. */
+  async setMfa(userId: number, enabled: boolean): Promise<{ mfa_enabled: boolean }> {
+    await this.usersService.update(userId, { mfa_enabled: enabled } as any);
+    return { mfa_enabled: enabled };
+  }
+
+  /** Émet la session (token + user + permissions). */
+  private async issueSession(data: any) {
     // data EST l'entité User issue de validateUser() — data.role est déjà là.
     // On évite les doublons : findOne(userId) x2 + findByEmail(employee) x2.
     const role: string | null = data.role ?? null;

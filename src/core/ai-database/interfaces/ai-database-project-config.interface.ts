@@ -11,6 +11,22 @@ export interface SpecializedEntityResolver {
   resolve(term: string, config?: ResolveConfig): Promise<ResolveResult<any>>;
 }
 
+export interface ReadClarificationOption {
+  id: string;
+  label: string;
+  description: string;
+  followUpQuestion: string;
+  specificTables?: string[];
+}
+
+export interface ReadClarificationPreset {
+  id: string;
+  keywords: string[];
+  reason: string;
+  question: string;
+  options: ReadClarificationOption[];
+}
+
 /**
  * Configuration projet injectée dans le module AiDatabase.
  * Fournie par AiDatabaseProjectModule (src/config/ai-database/).
@@ -34,6 +50,18 @@ export interface AiDatabaseProjectConfig {
    * Texte Markdown. Inséré après les règles génériques.
    */
   promptDomainRules?: string;
+
+  /**
+   * Règles métier spécifiques aux lectures SQL (READ).
+   * Le core les injecte dans les prompts SQL sans connaître leur contenu.
+   */
+  readDomainRules?: string;
+
+  /**
+   * Presets de clarification READ fournis par le projet.
+   * Utilises quand une question READ genere une requete vide synthetique.
+   */
+  readClarificationPresets?: ReadClarificationPreset[];
 
   /**
    * Exemple complet de plan write JSON pour guider l'IA sur le domaine métier.
@@ -69,5 +97,6 @@ export interface AiDatabaseProjectConfig {
     ignoredTables?: string[];
     sampling?: { sampleRows: number; maxStringLength: number };
     tableDescriptions?: Record<string, string>;
+    tableSynonyms?: Record<string, string[]>;
   };
 }

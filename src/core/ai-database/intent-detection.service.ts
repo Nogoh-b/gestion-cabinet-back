@@ -7,9 +7,14 @@ import { WriteOperation, WritePlan } from './dto/analysis-response.dto';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 
+type IntentClass = 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT';
+
 @Injectable()
 export class IntentDetectionService {
   private readonly logger = new Logger(IntentDetectionService.name);
+  private readonly CACHE_TTL = 2 * 60 * 1000;
+  private readonly classificationCache = new Map<string, { value: IntentClass; timestamp: number }>();
+  private writeSchemaCache: { value: string; timestamp: number } | null = null;
 
   constructor(
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
@@ -21,17 +26,49 @@ export class IntentDetectionService {
     question: string,
     llm: ChatOpenAI,
     readSchema: string,
-    options: { forceWrite?: boolean; history?: string } = {},
+    options: {
+      forceWrite?: boolean;
+      history?: string;
+      plannerLlm?: ChatOpenAI;
+      onLlmCall?: (info: { profile: 'fast' | 'quality'; input: unknown; modelName?: string }) => void;
+      classifierModelName?: string;
+      plannerModelName?: string;
+    } = {},
   ): Promise<IntentDetectionResult> {
 
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
-    const isObviousWrite = options.forceWrite || this.isWriteIntent(question);
+    const localClass = options.forceWrite ? 'WRITE' : this.classifyLocal(question);
+    const isObviousWrite = options.forceWrite || localClass === 'WRITE';
+
+    if (localClass === 'HELP') {
+      return { type: 'HELP', requiresConfirmation: false };
+    }
+
+    if (localClass === 'ADVICE') {
+      return { type: 'ADVICE', requiresConfirmation: false };
+    }
+
+    if (localClass === 'CHAT') {
+      return { type: 'CONVERSATIONAL', requiresConfirmation: false };
+    }
+
+    if (localClass === 'READ') {
+      return { type: 'READ', requiresConfirmation: false };
+    }
 
     if (!isObviousWrite) {
       // 1b. Classification légère via LLM : READ | WRITE | CHAT
       //     (plus fiable que des heuristiques statiques)
-      const lightClass = await this.lightClassify(question, llm);
+      const lightClass = await this.lightClassify(question, llm, options);
       this.logger.log(`🏷️ Light classify → ${lightClass}`);
+
+      if (lightClass === 'HELP') {
+        return { type: 'HELP', requiresConfirmation: false };
+      }
+
+      if (lightClass === 'ADVICE') {
+        return { type: 'ADVICE', requiresConfirmation: false };
+      }
 
       if (lightClass === 'CHAT') {
         // Ne pas pré-générer la réponse ici (appel bloquant).
@@ -48,14 +85,17 @@ export class IntentDetectionService {
     const handlers = this.writeHandlerRegistry.getAllHandlers();
     this.logger.log(`📝 Handlers enregistrés: ${handlers.length} → [${handlers.map(h => h.entityName).join(', ')}]`);
 
-    const writeSchema = await this.writeHandlerRegistry.generateGlobalWriteSchema();
+    const writeSchema = await this.getCachedWriteSchema();
     this.logger.log(`📝 Schéma d'écriture généré (${writeSchema.length} chars)`);
 
     // 3️⃣ Prompt amélioré pour les plans complexes
     const prompt = this.buildAdvancedDetectionPrompt(question, readSchema, writeSchema, options.history);
     
     try {
-      const response = await llm.invoke([{ role: 'user', content: prompt }]);
+      const planner = options.plannerLlm ?? llm;
+      const input = [{ role: 'user', content: prompt }];
+      options.onLlmCall?.({ profile: 'quality', input, modelName: options.plannerModelName });
+      const response = await planner.invoke(input);
       const content = response.content as string;
       
       this.logger.debug(`📥 Réponse LLM: ${content.substring(0, 500)}...`);
@@ -64,6 +104,14 @@ export class IntentDetectionService {
       
       if (result.type === 'READ') {
         return { type: 'READ', requiresConfirmation: false };
+      }
+
+      if (result.type === 'HELP') {
+        return { type: 'HELP', requiresConfirmation: false };
+      }
+
+      if (result.type === 'ADVICE') {
+        return { type: 'ADVICE', requiresConfirmation: false };
       }
       
       // Valider et enrichir le plan
@@ -88,6 +136,48 @@ export class IntentDetectionService {
   /**
    * Prompt avancé pour la détection multi-opérations
    */
+  public classifyLocal(question: string): IntentClass | null {
+    const normalized = this.normalizeText(question).trim();
+    if (!normalized) return 'CHAT';
+
+    if (this.isHelpIntent(question)) {
+      return 'HELP';
+    }
+
+    if (this.isAdviceIntent(question)) {
+      return 'ADVICE';
+    }
+
+    if (/^(bonjour|bonsoir|salut|hello|hi|merci|ok|d'accord|dac|ca va|ça va)[\s!.?]*$/.test(normalized)) {
+      return 'CHAT';
+    }
+
+    const readPatterns = [
+      /^(liste|lister|affiche|afficher|montre|montrer|cherche|chercher|trouve|trouver|combien|quels?|quelles?|qui|donne moi|donnez moi)\b/,
+      /\b(nombre|total|statut|dossiers?|clients?|audiences?|factures?|paiements?|documents?)\b.*\?/,
+    ];
+
+    if (readPatterns.some(pattern => pattern.test(normalized))) {
+      return 'READ';
+    }
+
+    if (this.isWriteIntent(question)) {
+      return 'WRITE';
+    }
+
+    return null;
+  }
+
+  private async getCachedWriteSchema(): Promise<string> {
+    const now = Date.now();
+    if (this.writeSchemaCache && now - this.writeSchemaCache.timestamp < this.CACHE_TTL) {
+      return this.writeSchemaCache.value;
+    }
+    const value = await this.writeHandlerRegistry.generateGlobalWriteSchema();
+    this.writeSchemaCache = { value, timestamp: now };
+    return value;
+  }
+
   private buildAdvancedDetectionPrompt(question: string, readSchema: string, writeSchema: string, history?: string): string {
     const genericWriteExample = `{
   "type": "WRITE",
@@ -124,6 +214,8 @@ ${history ? `\n## 🗨️ HISTORIQUE RÉCENT DE LA CONVERSATION (le plus ancien 
 ## 🎯 OBJECTIF
 Décomposer cette demande en un PLAN d'opérations.
 - Si c'est une simple lecture → { "type": "READ" }
+- Si l'utilisateur demande comment faire, où cliquer, ou une procédure à suivre → { "type": "HELP" }
+- Si l'utilisateur demande un conseil, une recommandation, quoi ajouter, quoi améliorer, ou une suggestion basée sur le contexte → { "type": "ADVICE" }
 - Si c'est une création/modification → génère un plan avec les dépendances
 
 ## ⚠️ RÈGLES CRITIQUES
@@ -167,6 +259,8 @@ ${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRu
 
 Pour une LECTURE:
 {"type": "READ"}
+Pour un CONSEIL:
+{"type": "ADVICE"}
 ${this.projectConfig?.promptDomainExample ? `\nPour une CRÉATION MULTI-ENTITÉS:\n${this.projectConfig.promptDomainExample}\n` : `\nPour une CRÉATION:\n${genericWriteExample}\n`}
 Pour une MODIFICATION:
 {
@@ -245,6 +339,39 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
    * car normalizeText() supprime les accents du texte d'entrée.
    * Il faut comparer des pommes avec des pommes.
    */
+  private isHelpIntent(question: string): boolean {
+    const normalized = this.normalizeText(question);
+    const patterns = [
+      /comment\s+(?:faire|creer|ajouter|modifier|supprimer)/,
+      /ou\s+cliquer/,
+      /explique.*(?:creer|ajouter|modifier|supprimer)/,
+      /procedure\s+pour/,
+      /guide\s+pour/,
+    ];
+
+    return patterns.some(pattern => pattern.test(normalized));
+  }
+
+  private isAdviceIntent(question: string): boolean {
+    const normalized = this.normalizeText(question);
+    const patterns = [
+      /\bconseil(?:le|ler|s)?\b/,
+      /\brecommand(?:e|er|ation|ations)\b/,
+      /\bsuggestions?\b/,
+      /\bproposes?\b/,
+      /\bidees?\b/,
+      /\bquoi\s+ajouter\b/,
+      /\bque\s+(?:peux|peut|pourrais|pourrait)[-\s]*tu\s+me\s+conseil/,
+      /\bque\s+(?:me\s+)?(?:conseilles?|recommandes?)[-\s]*tu\b/,
+      /\bque\s+manque\b/,
+      /\bqu(?:e|oi)\s+(?:ameliorer|optimiser)\b/,
+      /\b(?:ajouter|ajjouter)\s+encore\b/,
+      /\bprochaine?s?\s+etapes?\b/,
+    ];
+
+    return patterns.some(pattern => pattern.test(normalized));
+  }
+
   private isWriteIntent(question: string): boolean {
     const normalized = this.normalizeText(question);
 
@@ -314,12 +441,27 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
    * Appelé uniquement quand `isWriteIntent()` n'a pas trouvé de mots-clés évidents,
    * donc pas de surcoût pour les WRITE évidents.
    */
-  private async lightClassify(question: string, llm: ChatOpenAI): Promise<'READ' | 'WRITE' | 'CHAT'> {
+  private async lightClassify(
+    question: string,
+    llm: ChatOpenAI,
+    options: {
+      onLlmCall?: (info: { profile: 'fast' | 'quality'; input: unknown; modelName?: string }) => void;
+      classifierModelName?: string;
+    } = {},
+  ): Promise<IntentClass> {
+    const cacheKey = this.normalizeText(question).trim();
+    const cached = this.classificationCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.value;
+    }
+
     const prompt = `Tu es un classificateur pour un assistant IA de cabinet d'avocats.
-Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, CHAT.
+Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, HELP, ADVICE, CHAT.
 
 READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...)
 WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer, AINSI QUE les opérations comptables : passer/saisir/comptabiliser une écriture, débiter, créditer, créer un compte ou un journal, ouvrir/clôturer un exercice...)
+HELP   = expliquer comment utiliser l'application, ou guider l'utilisateur dans une procédure (comment faire, comment créer, où cliquer, procédure pour, guide pour). Une demande "comment créer..." est HELP, pas WRITE.
+ADVICE = donner des conseils, recommandations, suggestions, pistes d'amélioration ou prochaines étapes, souvent à partir du contexte précédent. Une demande "que peux-tu me conseiller d'ajouter encore ?" est ADVICE, pas READ.
 CHAT   = question générale sans lien avec les données du cabinet (salutation, remerciement, question de culture générale, demande d'explication hors-métier...)
 
 Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences, ET comptabilité (écritures comptables, comptes du plan comptable, journaux, exercices).
@@ -327,14 +469,24 @@ Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences
 
 Demande : "${question.replace(/"/g, "'")}"
 
-Réponds UNIQUEMENT avec READ, WRITE ou CHAT. Rien d'autre.`;
+Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
 
     try {
-      const response = await llm.invoke([{ role: 'user', content: prompt }]);
+      const input = [{ role: 'user', content: prompt }];
+      options.onLlmCall?.({ profile: 'fast', input, modelName: options.classifierModelName });
+      const response = await llm.invoke(input);
       const raw = (response.content as string).trim().toUpperCase().replace(/[^A-Z]/g, '');
-      if (raw.startsWith('WRITE')) return 'WRITE';
-      if (raw.startsWith('CHAT')) return 'CHAT';
-      return 'READ'; // défaut sûr : on essaie le SQL
+      const value: IntentClass = raw.startsWith('WRITE')
+        ? 'WRITE'
+        : raw.startsWith('HELP')
+          ? 'HELP'
+        : raw.startsWith('ADVICE')
+          ? 'ADVICE'
+        : raw.startsWith('CHAT')
+          ? 'CHAT'
+          : 'READ';
+      this.classificationCache.set(cacheKey, { value, timestamp: Date.now() });
+      return value;
     } catch {
       return 'READ'; // en cas d'erreur, on tente le SQL
     }

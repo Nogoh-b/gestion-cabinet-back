@@ -151,7 +151,7 @@ export class DocumentType extends BaseEntity {
   @Column({ nullable: true })
   @BusinessColumn({
     label: 'Statut',
-    description: '0 = En attente, 1 = Accepté, 2 = Refusé',
+    description: 'BD: 0=PENDING/En attente, 1=ACCEPTED/Actif, 2=REFUSED/Refusé. En SQL utiliser le nombre.',
     importance: 'high',
     group: 'état'
   })

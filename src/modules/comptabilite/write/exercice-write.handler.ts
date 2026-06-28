@@ -36,7 +36,7 @@ export class ExerciceWriteHandler extends BaseWriteHandler {
       annee: { description: 'Année de l\'exercice (obligatoire)', example: '2026', required: true },
       dateDebut: { description: 'Date de début (par défaut 1er janvier de l\'année)', example: '2026-01-01' },
       dateFin: { description: 'Date de fin (par défaut 31 décembre de l\'année)', example: '2026-12-31' },
-      statut: { description: 'OUVERT (par défaut) ou CLOTURE' },
+      statut: { description: "BD: 'OUVERT' ou 'CLOTURE'." },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

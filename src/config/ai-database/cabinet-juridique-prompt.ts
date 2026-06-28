@@ -12,6 +12,72 @@
 export const CABINET_JURIDIQUE_ANALYSIS_PROMPT = `Tu es un expert métier spécialisé dans la gestion \
 de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.`;
 
+export const CABINET_JURIDIQUE_READ_RULES = `
+### Chiffre d'affaires / CA
+- Par defaut, "chiffre d'affaires", "chiffre d'affaire", "CA" ou "revenu facture" signifie chiffre d'affaires facture HT du cabinet.
+- Requete par defaut: utiliser la table factures avec l'alias f et calculer SUM(f.montant_ht).
+- Exclure les factures annulees: f.status <> 5.
+- Ne pas ajouter de filtre de date si l'utilisateur ne mentionne aucune periode.
+- "mon chiffre d'affaires" designe le cabinet courant/tenant courant, pas le dernier client ou dossier du fil.
+- Le filtre tenant est gere par le core: ne hardcode jamais tenant_id.
+- Exemple sans periode: SELECT COALESCE(SUM(f.montant_ht), 0) AS chiffre_affaires_ht FROM factures f WHERE f.status <> 5 LIMIT 50.
+
+### Chiffre d'affaires encaisse
+- Si la question mentionne "encaisse", "recu", "paye", "regle" ou "paiements recus", calculer les encaissements avec paiements p.
+- Utiliser p.status = 1 pour les paiements valides.
+- Joindre factures f ON p.facture_id = f.id pour exclure les factures annulees avec f.status <> 5.
+- Pour une periode sur l'encaisse, filtrer p.date_paiement. Pour une periode sur le CA facture, filtrer f.date_facture.
+
+### Chiffre d'affaires par client
+- Si l'utilisateur demande le chiffre d'affaires d'un client, joindre customer c ON f.client_id = c.id et filtrer le client par ses champs reels.
+- Sans client explicitement demande, ne reprends pas automatiquement le client du fil pour une question "mon chiffre d'affaires".
+`;
+
+export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [
+  {
+    id: 'chiffre_affaires',
+    keywords: [
+      'chiffre d affaires',
+      'chiffre d affaire',
+      'ca',
+      'revenu facture',
+      'revenus factures',
+    ],
+    reason: 'La demande parle de chiffre d\'affaires, mais il faut choisir l\'angle de calcul.',
+    question: 'Quel chiffre veux-tu consulter ?',
+    options: [
+      {
+        id: 'factures_payees',
+        label: 'Factures payees',
+        description: 'Compter uniquement les factures marquees comme payees.',
+        followUpQuestion: 'Combien de factures payees composent le chiffre d\'affaires de mon cabinet ?',
+        specificTables: ['factures'],
+      },
+      {
+        id: 'paiements_recus',
+        label: 'Paiements recus',
+        description: 'Additionner les paiements valides reellement encaisses.',
+        followUpQuestion: 'Quel montant mon cabinet a-t-il encaisse via les paiements recus valides ?',
+        specificTables: ['paiements', 'factures'],
+      },
+      {
+        id: 'ca_facture_ht',
+        label: 'CA facture HT',
+        description: 'Somme HT des factures emises non annulees, sans tenir compte des encaissements.',
+        followUpQuestion: 'Quel est le chiffre d\'affaires facture HT de mon cabinet ?',
+        specificTables: ['factures'],
+      },
+      {
+        id: 'ca_apres_salaires',
+        label: 'Inclure salaires',
+        description: 'Comparer le chiffre d\'affaires avec la masse salariale.',
+        followUpQuestion: 'Quel est le chiffre d\'affaires de mon cabinet apres deduction des salaires ?',
+        specificTables: ['factures', 'paiements', 'payslip', 'payslip_line'],
+      },
+    ],
+  },
+];
+
 export const CABINET_JURIDIQUE_PROMPT_RULES = `
 ### 10. 👤 Règle ABSOLUE pour les COLLABORATEURS (employee)
 Les collaborateurs NE PEUVENT PAS être créés via ce système.

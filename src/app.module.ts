@@ -71,6 +71,9 @@ import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { SuspendedCabinetGuard } from './core/common/guards/suspended-cabinet.guard';
 import { ReminderSchedulerModule } from './core/scheduler/reminder.scheduler.module';
+import { BackupModule } from './modules/backup/backup.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { ExportModule } from './modules/export/export.module';
 
 
 
@@ -212,6 +215,9 @@ dotenv.config();
     MailTemplateModule,
     TemplateBlocksModule,
     ReminderSchedulerModule,
+    BackupModule,
+    ReportsModule,
+    ExportModule,
   ],
   controllers: [AppController],
   providers: [

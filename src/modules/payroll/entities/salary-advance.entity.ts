@@ -102,7 +102,7 @@ export class SalaryAdvance extends TenantEntity {
   @Column({ type: 'enum', enum: SalaryAdvanceStatus, default: SalaryAdvanceStatus.PENDING })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Demandée, approuvée, versée, récupérée, annulée',
+    description: "BD: 'pending'=Demandée, 'approved'=Approuvée, 'paid'=Versée, 'recovered'=Récupérée, 'cancelled'=Annulée.",
     importance: 'high',
     group: 'statut',
   })

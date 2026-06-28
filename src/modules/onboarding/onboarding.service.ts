@@ -153,13 +153,23 @@ export class OnboardingService {
         // ── 2e. Abonnement + échéance de facturation ─────────────────────
         // Crée l'abonnement selon la politique configurée (essai 30j par
         // défaut). Synchronise le statut + trial_ends_at du cabinet.
+        // À l'inscription : tout plan PAYANT exige le paiement d'abord (même
+        // s'il propose un essai). L'essai est conservé et démarre après paiement.
+        // Plan gratuit → accès direct.
         const subscription = await this.subscriptionsService.createForCabinet(
           cabinet.id,
           selectedPlan?.id ?? null,
           dto.billing_cycle ?? 'monthly',
+          { gateAllPaid: true },
         );
         // Reflète le statut résolu sur l'objet en mémoire pour la réponse.
-        cabinet.status = subscription.status === 'trial' ? 'trial' : 'active';
+        // Plan payant sans essai → pending_payment → cabinet suspendu (paiement requis).
+        cabinet.status =
+          subscription.status === 'trial'
+            ? 'trial'
+            : subscription.status === 'pending_payment'
+            ? 'suspended'
+            : 'active';
 
         // ── 3. Génération du JWT ─────────────────────────────────────────
         const payload: JwtPayload = {
@@ -187,6 +197,9 @@ export class OnboardingService {
         // ── 5. Retour — valeur propagée via la Promise de run() ──────────
         return {
           success: true,
+          // Vrai quand un paiement doit être réglé avant l'accès (plan payant
+          // sans essai). Le front oriente alors vers l'étape de paiement.
+          requires_payment: subscription.status === 'pending_payment',
           cabinet: {
             id:           cabinet.id,
             code:         cabinet.code,

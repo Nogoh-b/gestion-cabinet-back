@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { LessThan, Repository, In } from 'typeorm';
+import { DataSource, LessThan, Repository, In } from 'typeorm';
 
 import { Subscription, BillingCycle } from './entities/subscription.entity';
 import { SubscriptionPayment } from './entities/subscription-payment.entity';
@@ -57,6 +57,7 @@ export class SubscriptionsService {
     @InjectRepository(Plan)
     private readonly planRepo: Repository<Plan>,
     private readonly gateway: PaymentGatewayService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   /** Une période exige un paiement amont si elle est payante et hors essai. */
@@ -85,6 +86,7 @@ export class SubscriptionsService {
     cabinetId: number,
     planId: number | null,
     cycle: BillingCycle = 'monthly',
+    opts?: { gateAllPaid?: boolean },
   ): Promise<Subscription> {
     const plan = planId
       ? await this.planRepo.findOne({ where: { id: planId } })
@@ -97,17 +99,25 @@ export class SubscriptionsService {
     );
 
     const startedAt = new Date();
+    // On conserve TOUJOURS l'essai éventuel du plan (is_trial / trial_ends_at).
     const period = resolveInitialPeriod(plan, cycle, startedAt);
     const currency = await this.resolveCurrency(cabinetId);
-    // Essai et plan gratuit → activation immédiate. Plan payant sans essai →
-    // attente de paiement (gating) : pas d'accès tant que non réglé.
-    const gated = this.requiresUpfrontPayment(period);
+
+    // Gating :
+    //  - gateAllPaid (onboarding) → tout plan PAYANT exige le paiement amont,
+    //    MÊME avec essai. L'essai (is_trial/trial_ends_at) est préservé et
+    //    reprend ses droits dès la confirmation du paiement.
+    //  - sinon → politique standard (paiement seulement si payant ET sans essai).
+    const paidPlan = !isFreePlan(plan) && Number(period.amount) > 0;
+    const gated = (opts?.gateAllPaid && paidPlan) || this.requiresUpfrontPayment(period);
 
     const sub = this.subRepo.create({
       cabinet_id: cabinetId,
       plan_id: plan?.id ?? planId ?? 0,
       billing_cycle: cycle,
-      status: period.is_trial ? 'trial' : gated ? 'pending_payment' : 'active',
+      // pending_payment masque temporairement l'essai ; is_trial reste vrai et
+      // est réappliqué à la confirmation du paiement (confirmPayment).
+      status: gated ? 'pending_payment' : period.is_trial ? 'trial' : 'active',
       started_at: startedAt,
       ends_at: period.ends_at,
       trial_ends_at: period.trial_ends_at,
@@ -404,11 +414,16 @@ export class SubscriptionsService {
 
     const sub = await this.subRepo.findOne({ where: { id: payment.subscription_id } });
     if (sub && sub.status !== 'cancelled') {
-      if (sub.status === 'pending_payment') sub.status = 'active';
+      // Paiement confirmé → on lève le verrou. Si le plan comporte un essai, on
+      // (re)passe en 'trial' (l'essai s'applique après paiement) ; sinon 'active'.
+      if (sub.status === 'pending_payment') {
+        sub.status = sub.is_trial ? 'trial' : 'active';
+      }
       await this.subRepo.save(sub);
       await this.syncCabinet(sub.cabinet_id, sub);
       this.logger.log(
-        `[Subscriptions] Paiement #${payment.id} confirmé — cabinet=${payment.cabinet_id} activé`,
+        `[Subscriptions] Paiement #${payment.id} confirmé — cabinet=${payment.cabinet_id} ` +
+          `→ ${sub.status}`,
       );
     }
     return sub;
@@ -522,6 +537,78 @@ export class SubscriptionsService {
     for (const sub of due) {
       await this.expireIfDue(sub);
     }
+  }
+
+  /**
+   * [Opt-in] Supprime les cabinets restés en attente de paiement (jamais
+   * réglés) au-delà de CLEANUP_UNPAID_CABINETS_DAYS jours. DÉSACTIVÉ par défaut
+   * (variable d'env absente ou ≤ 0). Évite l'accumulation de cabinets fantômes
+   * dans le modèle « créer-puis-verrouiller ».
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async cleanupUnpaidCabinets(): Promise<void> {
+    const days = Number(process.env.CLEANUP_UNPAID_CABINETS_DAYS ?? 0);
+    if (!days || days <= 0) return; // désactivé
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const stale = await this.subRepo.find({
+      where: { status: 'pending_payment', created_at: LessThan(cutoff) },
+    });
+    if (!stale.length) return;
+
+    this.logger.warn(`[Cleanup] ${stale.length} cabinet(s) non payé(s) à purger (> ${days} j)`);
+    for (const sub of stale) {
+      try {
+        await this.purgeUnpaidCabinet(sub.cabinet_id);
+      } catch (e: any) {
+        this.logger.error(`[Cleanup] échec cabinet=${sub.cabinet_id}: ${e?.message ?? e}`);
+      }
+    }
+  }
+
+  /** Tables portant une colonne tenant_id (données propres aux cabinets). */
+  private async tenantTables(): Promise<string[]> {
+    const db = process.env.DB_NAME || 'core';
+    const rows: Array<{ t: string }> = await this.dataSource.query(
+      `SELECT TABLE_NAME AS t FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND COLUMN_NAME = 'tenant_id'`,
+      [db],
+    );
+    return rows.map((r) => r.t).filter(Boolean);
+  }
+
+  /** Purge complète d'un cabinet jamais payé (données tenant + users + abonnement). */
+  private async purgeUnpaidCabinet(cabinetId: number): Promise<void> {
+    // Sécurité absolue : ne jamais supprimer un cabinet ayant déjà payé.
+    const paid = await this.payRepo.count({ where: { cabinet_id: cabinetId, status: 'paid' } });
+    if (paid > 0) return;
+
+    const tables = await this.tenantTables();
+    await this.dataSource.transaction(async (m) => {
+      const emps: Array<{ id: number }> = await m.query(
+        'SELECT id FROM employee WHERE tenant_id = ?',
+        [cabinetId],
+      );
+      const empIds = emps.map((e) => e.id);
+
+      // FK off : permet de supprimer dans n'importe quel ordre sans violer les
+      // contraintes (purge totale d'un tenant).
+      await m.query('SET FOREIGN_KEY_CHECKS=0');
+      try {
+        for (const t of tables) {
+          await m.query(`DELETE FROM \`${t}\` WHERE tenant_id = ?`, [cabinetId]);
+        }
+        if (empIds.length) {
+          await m.query('DELETE FROM `user` WHERE id IN (?)', [empIds]);
+        }
+        await m.query('DELETE FROM subscription_payments WHERE cabinet_id = ?', [cabinetId]);
+        await m.query('DELETE FROM subscriptions WHERE cabinet_id = ?', [cabinetId]);
+        await m.query('DELETE FROM cabinets WHERE id = ?', [cabinetId]);
+      } finally {
+        await m.query('SET FOREIGN_KEY_CHECKS=1');
+      }
+    });
+    this.logger.warn(`[Cleanup] cabinet non payé supprimé: ${cabinetId}`);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

@@ -53,11 +53,11 @@ export class PaiementWriteHandler extends BaseWriteHandler {
         required: true,
       },
       modePaiement: {
-        description: '0=VIREMENT, 1=CHEQUE, 2=ESPECES, 3=CARTE, 4=PRELEVEMENT, 5=Mobile, 6=AUTRE',
+        description: 'BD: 0=VIREMENT, 1=CHEQUE, 2=ESPECES, 3=CARTE, 4=PRELEVEMENT, 5=Mobile, 6=AUTRE.',
         example: '0',
       },
       status: {
-        description: '0=EN_ATTENTE, 1=VALIDE, 2=REJETE, 3=ANNULE',
+        description: 'BD: 0=EN_ATTENTE, 1=VALIDE, 2=REJETE, 3=ANNULE.',
         example: '1',
       },
       datePaiement: {

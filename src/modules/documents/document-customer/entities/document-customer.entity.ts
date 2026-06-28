@@ -156,7 +156,7 @@ export class DocumentCustomer extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Statut',
-    description: '0=En attente, 1=Validé, 2=Refusé, 3=Expiré, 4=Archivé',
+    description: 'BD: 0=PENDING/En attente, 1=ACCEPTED/Validé, 2=REFUSED/Refusé, 3=EXPIRED/Expiré, 4=ARCHIVED/Archivé.',
     example: '1 = Validé',
     importance: 'high',
     group: 'validation'

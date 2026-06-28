@@ -47,7 +47,7 @@ export class EmployeeWriteHandler extends BaseWriteHandler {
       hourly_rate: { description: 'Tarif horaire (€)', example: '150.00' },
       is_available: { description: '1=disponible pour nouveaux dossiers, 0=indisponible' },
       max_dossiers: { description: 'Capacité max de dossiers simultanés' },
-      status: { description: '1=Actif, 0=Inactif, -1=Suspendu, 2=Vacation' },
+      status: { description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=SUSPENDED/Suspendu, 2=VACATION.' },
       branch_id: { description: 'ID agence. Peut fournir "branch".' },
     };
     for (const f of fields) {

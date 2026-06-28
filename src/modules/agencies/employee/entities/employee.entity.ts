@@ -75,7 +75,7 @@ export class Employee extends BaseEntity {
   @Column({ type: 'enum', enum: EmployeePosition })
   @BusinessColumn({
     label: 'Fonction',
-    description: 'avocat, secretaire, assistant, stagiaire, huissier, administratif',
+    description: "BD: 'avocat', 'secretaire', 'assistant', 'stagiaire', 'huissier', 'administratif'.",
     example: 'avocat',
     importance: 'critical',
     group: 'identification'
@@ -97,7 +97,7 @@ export class Employee extends BaseEntity {
   @Column({ type: 'tinyint', default: EmployeeStatus.ACTIVE })
   @BusinessColumn({
     label: 'Statut',
-    description: '1=Actif, 0=Inactif, -1=Suspendu, 2=Vacation',
+    description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=SUSPENDED/Suspendu, 2=VACATION.',
     example: '1 = Actif',
     importance: 'high',
     group: 'état'

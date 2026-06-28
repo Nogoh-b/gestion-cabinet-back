@@ -18,6 +18,7 @@ import { IamModule } from 'src/modules/iam/iam.module';
 import { PlansModule } from 'src/modules/plans/plans.module';
 import { AiRequestLog } from './entities/ai-request-log.entity';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
+import { AiModelRouterService } from './ai-model-router.service';
 
 @Module({
   imports: [
@@ -42,10 +43,12 @@ import { AiQuotaGuard } from './guards/ai-quota.guard';
     EntityResolverService,
     AutoHandlerFactory,
     AiDatabasePermissionService,
+    AiModelRouterService,
     AiQuotaGuard,
   ],
   exports: [
     AiDatabaseService,
+    AiModelRouterService,
     WriteHandlerRegistry,
     GenericWriteService,
     EntityResolverService,

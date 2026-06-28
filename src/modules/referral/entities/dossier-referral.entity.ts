@@ -96,7 +96,7 @@ export class DossierReferral extends TenantEntity {
   @Column({ type: 'enum', enum: CommissionMode, default: CommissionMode.RATE, name: 'commission_mode' })
   @BusinessColumn({
     label: 'Mode de commission',
-    description: 'Commission calculee par taux ou par montant fixe',
+    description: "BD: 'rate'=Commission par taux, 'fixed_amount'=Montant fixe.",
     importance: 'high',
     group: 'financier',
   })
@@ -114,7 +114,7 @@ export class DossierReferral extends TenantEntity {
   @Column({ type: 'enum', enum: CommissionBasis, default: CommissionBasis.COLLECTED_HT, name: 'commission_basis' })
   @BusinessColumn({
     label: 'Base de calcul',
-    description: 'Sur quelle assiette la commission est-elle calculée ?',
+    description: "BD: 'invoiced_ht', 'invoiced_ttc', 'collected_ht', 'collected_ttc'.",
     importance: 'medium',
     group: 'financier',
   })

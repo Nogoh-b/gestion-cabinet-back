@@ -195,7 +195,10 @@ getTableLabel(tableName: string): string {
         const meta = columnMap.get(colName);
         const label = meta?.label || this.formatTechnicalName(colName);
         const description = meta?.description || '';
-        schema += `| ${colName} | ${col.DATA_TYPE} | ${label} | ${description} |\n`;
+        const type = (col.DATA_TYPE === 'enum' || col.DATA_TYPE === 'set') && col.COLUMN_TYPE
+          ? col.COLUMN_TYPE
+          : col.DATA_TYPE;
+        schema += `| ${colName} | ${type} | ${label} | ${description} |\n`;
       }
       
       schema += '\n';
@@ -209,7 +212,7 @@ getTableLabel(tableName: string): string {
    */
   private async getColumnsInfo(table: string): Promise<any[]> {
     return this.dataSource.query(`
-      SELECT COLUMN_NAME, DATA_TYPE 
+      SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE 
       FROM information_schema.COLUMNS 
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
       ORDER BY ORDINAL_POSITION

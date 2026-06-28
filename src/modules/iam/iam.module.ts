@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditInterceptor } from 'src/core/shared/interceptors/audit.interceptor';
 
 
 
@@ -63,6 +65,8 @@ import { UsersService } from './user/user.service';
      UsersService,
      ActivitiesUserService,
      UserRoleAssignmentService,
+     // Journal d'audit global (enregistre les mutations authentifiées).
+     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
      ],
      exports:[
       PermissionsService,

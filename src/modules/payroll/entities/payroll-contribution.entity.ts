@@ -81,7 +81,7 @@ export class PayrollContribution extends TenantEntity {
   @Column({ type: 'enum', enum: ContributionBase, default: ContributionBase.GROSS, name: 'base_type' })
   @BusinessColumn({
     label: 'Assiette',
-    description: 'gross (brut), taxable (imposable) ou fixed (montant fixe)',
+    description: "BD: 'gross'=Brut, 'taxable'=Imposable, 'fixed'=Montant fixe.",
     importance: 'high',
     group: 'financier',
   })
@@ -90,7 +90,7 @@ export class PayrollContribution extends TenantEntity {
   @Column({ type: 'enum', enum: ContributionPayer })
   @BusinessColumn({
     label: 'Supporté par',
-    description: 'employee (retenue salariale) ou employer (charge patronale)',
+    description: "BD: 'employee'=Retenue salariale, 'employer'=Charge patronale.",
     importance: 'high',
     group: 'financier',
   })

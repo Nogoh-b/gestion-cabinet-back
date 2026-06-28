@@ -101,7 +101,7 @@ export class Payslip extends TenantEntity {
   @Column({ type: 'enum', enum: PayslipStatus, default: PayslipStatus.DRAFT })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Brouillon, validée, payée',
+    description: "BD: 'draft'=Brouillon, 'validated'=Validée, 'paid'=Payée.",
     importance: 'high',
     group: 'statut',
   })

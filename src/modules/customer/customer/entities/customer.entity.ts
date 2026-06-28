@@ -112,7 +112,7 @@ export class Customer extends BaseEntity {
   @Column({ name: 'billing_type', length: 50, nullable: true })
   @BusinessColumn({
     label: 'Type de facturation',
-    description: 'forfait, temps_passe, mixte',
+    description: "BD attendu: 'forfait', 'temps_passe', 'mixte'.",
     example: 'forfait = Facturation au forfait, temps_passe = Facturation à l\'heure, mixte = Combinaison',
     importance: 'high',
     group: 'financier'
@@ -263,7 +263,7 @@ export class Customer extends BaseEntity {
   @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY })
   @BusinessColumn({
     label: 'Créé depuis',
-    description: '1 = En ligne, 0 = En agence',
+    description: 'BD: 1=ONLINE/En ligne, 0=AGENCY/En agence. En SQL utiliser le nombre.',
     importance: 'medium',
     group: 'provenance'
   })
@@ -302,7 +302,7 @@ export class Customer extends BaseEntity {
   @Column({ nullable: true, default: 1 })
   @BusinessColumn({
     label: 'Statut',
-    description: '1=Actif, 0=Inactif, -1=Supprimé, -2=Bloqué, -3=Suspendu, -4=Verrouillé',
+    description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=DELETED/Supprimé, -2=BLOCKED/Bloqué, -3=SUSPENDED/Suspendu, -4=LOCKED/Verrouillé.',
     importance: 'critical',
     group: 'état'
   })

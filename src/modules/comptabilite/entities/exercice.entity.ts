@@ -55,7 +55,7 @@ export class ExerciceComptable extends TenantEntity {
   @Column({ type: 'enum', enum: StatutExercice, default: StatutExercice.OUVERT })
   @BusinessColumn({
     label: 'Statut',
-    description: 'OUVERT ou CLOTURE',
+    description: "BD: 'OUVERT' ou 'CLOTURE'.",
     importance: 'critical',
     group: 'état',
   })

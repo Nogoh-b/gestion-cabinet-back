@@ -89,7 +89,7 @@ export class Jurisdiction  extends BaseEntity{
   @Expose()
   @BusinessColumn({
     label: 'Niveau',
-    description: 'municipal (Municipal), regional (Régional), national (National), international (International)',
+    description: "BD: 'municipal', 'regional', 'national', 'international'.",
     importance: 'high',
     group: 'classification'
   })
@@ -103,7 +103,7 @@ export class Jurisdiction  extends BaseEntity{
   @Expose()
   @BusinessColumn({
     label: 'Type',
-    description: 'civil (Civil), commercial (Commercial), administrative (Administratif), penal (Pénal), labor (Prud\'hommes), family (Famille)',
+    description: "BD: 'civil', 'commercial', 'administrative', 'penal', 'labor', 'family'.",
     importance: 'critical',
     group: 'classification'
   })

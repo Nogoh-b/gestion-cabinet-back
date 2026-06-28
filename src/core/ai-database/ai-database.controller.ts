@@ -67,9 +67,10 @@ export class AiDatabaseController {
   async askQuestion(
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
+    @Req() req,
     @UploadedFile() file?: Express.Multer.File
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto, user, file);
+    return this.aiDbService.analyzeQuestion(dto, user, file, req?.aiRequestLogId);
   }
 
 
@@ -152,8 +153,9 @@ export class AiDatabaseController {
     const tenantId: number = (user?.tenantId as number) ?? getCurrentTenantId();
 
     try {
+      sendEvent('status', { message: 'Connexion IA etablie...' });
       await this.tenantContext.run(tenantId, () =>
-        this.aiDbService.analyzeQuestionStream(dto, user, file, sendEvent),
+        this.aiDbService.analyzeQuestionStream(dto, user, file, sendEvent, (res.req as any)?.aiRequestLogId),
       );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });

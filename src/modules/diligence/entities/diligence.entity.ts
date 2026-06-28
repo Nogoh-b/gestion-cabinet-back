@@ -83,7 +83,7 @@ export class Diligence extends BaseEntity {
   })
   @BusinessColumn({
     label: "Type d'investigation",
-    description: 'acquisition, investment, ipo, compliance, litigation, contract',
+    description: "BD: 'acquisition', 'investment', 'ipo', 'compliance', 'litigation', 'contract'.",
     example: 'compliance = Conformité réglementaire, litigation = Contentieux',
     importance: 'critical',
     group: 'classification'
@@ -97,7 +97,7 @@ export class Diligence extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Statut',
-    description: "draft = Brouillon, in_progress = En cours, review = En relecture, completed = Terminé, cancelled = Annulé",
+    description: "BD: 'draft'=Brouillon, 'in_progress'=En cours, 'review'=En relecture, 'completed'=Terminé, 'cancelled'=Annulé.",
     importance: 'critical',
     group: 'état'
   })
@@ -110,7 +110,7 @@ export class Diligence extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Priorité',
-    description: 'low = Faible, medium = Moyenne, high = Haute, critical = Critique',
+    description: "BD: 'low'=Faible, 'medium'=Moyenne, 'high'=Haute, 'critical'=Critique.",
     importance: 'high',
     group: 'priorité'
   })

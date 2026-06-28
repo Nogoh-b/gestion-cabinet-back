@@ -53,9 +53,10 @@ export class AiQuotaGuard implements CanActivate {
     }
 
     // Enregistre la requête (comptée comme une tentative).
-    await this.repo.save(
+    const log = await this.repo.save(
       this.repo.create({ tenant_id: tenantId, user_id: req.user?.userId ?? null }),
     );
+    req.aiRequestLogId = log.id;
     return true;
   }
 }

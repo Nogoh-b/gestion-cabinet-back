@@ -8,6 +8,8 @@ import { AI_DATABASE_PROJECT_CONFIG } from 'src/core/ai-database/ai-database.tok
 import { AiDatabaseProjectConfig } from 'src/core/ai-database/interfaces/ai-database-project-config.interface';
 import {
   CABINET_JURIDIQUE_PROMPT_RULES,
+  CABINET_JURIDIQUE_READ_RULES,
+  CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS,
   CABINET_JURIDIQUE_PROMPT_EXAMPLE,
   CABINET_JURIDIQUE_CONVERSATIONAL_PROMPT,
   CABINET_JURIDIQUE_ANALYSIS_PROMPT,
@@ -42,6 +44,8 @@ import { DATABASE_TABLES_CONFIG } from './database-tables.config';
         specializedResolvers: [customerResolver, employeeResolver],
         neverAutoCreate: NEVER_AUTO_CREATE_ENTITIES,
         promptDomainRules: CABINET_JURIDIQUE_PROMPT_RULES,
+        readDomainRules: CABINET_JURIDIQUE_READ_RULES,
+        readClarificationPresets: CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS,
         promptDomainExample: CABINET_JURIDIQUE_PROMPT_EXAMPLE,
         conversationalSystemPrompt: CABINET_JURIDIQUE_CONVERSATIONAL_PROMPT,
         analysisSystemPrompt: CABINET_JURIDIQUE_ANALYSIS_PROMPT,
