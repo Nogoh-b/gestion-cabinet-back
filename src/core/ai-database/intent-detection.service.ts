@@ -148,7 +148,7 @@ export class IntentDetectionService {
       return 'ADVICE';
     }
 
-    if (/^(bonjour|bonsoir|salut|hello|hi|merci|ok|d'accord|dac|ca va|ça va)[\s!.?]*$/.test(normalized)) {
+    if (this.isChatIntent(normalized)) {
       return 'CHAT';
     }
 
@@ -337,6 +337,70 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       humanReadable: plan.humanReadable || `Exécution de ${enrichedOperations.length} opération(s)`,
       confidence: Math.min(plan.confidence || 0.8, 1),
     };
+  }
+
+  /**
+   * Détection des questions conversationnelles / culture générale.
+   *
+   * Deux critères complémentaires :
+   * 1. Salutations, remerciements et formules courtes → CHAT direct
+   * 2. Si la question NE contient AUCUN mot-clé métier du cabinet ET contient
+   *    un marqueur de culture générale / conversation → CHAT
+   *
+   * @param normalized texte déjà normalisé (minuscules, sans accents)
+   */
+  private isChatIntent(normalized: string): boolean {
+    // 1️⃣ Salutations et formules courtes
+    if (/^(bonjour|bonsoir|salut|hello|hi|hey|coucou|merci|ok|d'accord|dac|ca va|bien|super|genial|cool|top|parfait|entendu|compris|c'est note|pas de souci|bonne journee|bonne soiree|a bientot|au revoir|bye|oui|non|exactement|tout a fait)[\s!.?,]*$/i.test(normalized)) {
+      return true;
+    }
+
+    // 2️⃣ Vérifier l'absence de mots-clés du domaine métier
+    const domainKeywords = /\b(dossiers?|clients?|audiences?|factures?|paiements?|documents?|avocats?|diligences?|ecritures?|comptes?|journa(?:l|ux)|exercices?|salaires?|employes?|procedures?|etapes?|chiffre|montant|encaiss|impay|regl|honoraires?|stage|savings?|loan|customer|employee|contentieux|juridique|tribunal|jugement|assignation|requete|conclusions?|plaidoirie|greffe|magistrat)\b/;
+
+    // Si la question contient un mot-clé métier, ce n'est PAS du chat
+    if (domainKeywords.test(normalized)) {
+      return false;
+    }
+
+    // 3️⃣ Marqueurs de questions générales / culture générale / conversation
+    const chatMarkers = [
+      // Questions de culture générale
+      /\b(racine\s+carree?|calcul|mathematique|physique|chimie|biologie|histoire|geographie|philosophie|science|astronomie|planete|capitale|population|superficie|distance|vitesse|temperature|formule)\b/,
+      // Questions "c'est quoi / qu'est-ce que"
+      /\b(c'est\s+quoi|qu'est[- ]ce\s+qu[e']|definition\s+d[eu']|signifie?|signification|veut\s+dire)\b/,
+      // Demandes d'explication hors-métier
+      /\b(explique|expliquer|raconte|raconter|decris|decrire|resume|resumer|traduis|traduire|convertis|convertir)\b.*\b(mot|phrase|texte|concept|notion|theorie|principe|loi\s+de|theorem|equation|reaction)\b/,
+      // Questions "qui est / qui a / qui était"
+      /\bqui\s+(est|etait|a\s+(invente|decouvert|cree|ecrit|fonde|gagne|remporte))\b/,
+      // Questions de conversation courante
+      /\b(quel\s+(?:est\s+le\s+sens|temps\s+fait|jour\s+(?:sommes|est|on\s+est)|age|heure))\b/,
+      // Culture générale directe
+      /\b(president|roi|reine|empereur|premier\s+ministre|secretaire\s+general)\b.*\b(de|du|des|d')\b/,
+      // Demandes créatives
+      /\b(ecris|ecrire|redige|rediger|compose|composer|invente|inventer)\s+(un\s+(?:poeme|texte|histoire|conte|blague|haiku|sonnet|chanson|email|mail))\b/,
+      // Questions existentielles / philosophiques
+      /\b(pourquoi\s+(?:le\s+ciel|la\s+terre|l'eau|les\s+etoiles|on\s+dort|on\s+reve))\b/,
+      // Informatique / programmation (hors métier cabinet)
+      /\b(langage|programmation|algorithme|javascript|python|java|html|css|react|angular|base\s+de\s+donnees|sql\b|api\b|code|fonction|variable|boucle|tableau)\b/,
+      // Demandes de type "donne moi des elements/informations sur" + sujet non-métier
+      /\b(elements?|informations?|infos?|details?|renseignements?)\s+(sur|de|du|des|d')\s+(la|le|les|l')?\s*(jurisprudence|droit\s+(?:civil|penal|commercial|international|constitutionnel|administratif|social|fiscal|du\s+travail)|code\s+(?:civil|penal)|constitution|loi|legislation|reglementation|doctrine|coutume)\b/,
+      // Cuisine, sport, musique, cinéma...
+      /\b(recette|cuisine|cuisinier|ingredient|sport|football|basket|tennis|musique|film|cinema|serie|livre|auteur|artiste|chanteur|acteur|peintre|sculpteur)\b/,
+    ];
+
+    if (chatMarkers.some(pattern => pattern.test(normalized))) {
+      return true;
+    }
+
+    // 4️⃣ Questions très courtes sans mot-clé métier : probablement du chat
+    // ex: "comment ca marche ?", "c'est possible ?", "tu peux m'aider ?"
+    const words = normalized.split(/\s+/).length;
+    if (words <= 4 && /\?$/.test(normalized.trim()) && !domainKeywords.test(normalized)) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
