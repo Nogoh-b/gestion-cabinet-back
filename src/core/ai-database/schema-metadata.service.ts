@@ -160,6 +160,36 @@ getTableLabel(tableName: string): string {
     return '';
   }
 
+  /**
+   * Récupère l'exemple de valeur d'une colonne depuis les décorateurs.
+   * Permet au générateur SQL de distinguer un identifiant lisible (numero,
+   * reference) d'un id numérique/UUID.
+   */
+  getColumnExample(tableName: string, columnName: string): string {
+    const columnMap = this.columnMetadataCache.get(tableName);
+    if (columnMap) {
+      // ✅ Essayer avec le nom exact
+      let meta = columnMap.get(columnName);
+
+      // ✅ Si pas trouvé, essayer en snake_case → camelCase
+      if (!meta && columnName.includes('_')) {
+        const camelCase = this.snakeToCamel(columnName);
+        meta = columnMap.get(camelCase);
+      }
+
+      // ✅ Si pas trouvé, essayer en camelCase → snake_case
+      if (!meta) {
+        const snakeCase = this.camelToSnake(columnName);
+        meta = columnMap.get(snakeCase);
+      }
+
+      if (meta?.example) {
+        return meta.example;
+      }
+    }
+    return '';
+  }
+
   // Utilitaires
   private snakeToCamel(str: string): string {
     return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());

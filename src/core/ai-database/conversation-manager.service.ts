@@ -427,6 +427,30 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   }
 
   /**
+   * Retourne le bloc structuré de contexte de suivi (SQL + lignes de résultats
+   * avec identifiants exacts) construit à partir du dernier message assistant
+   * porteur de résultats. Sert à ancrer les questions de suivi quand le chemin
+   * `historyOverride` (chat) court-circuite getRecentHistoryForPrompt.
+   *
+   * @returns le bloc [CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI] ou null.
+   */
+  async getStructuredFollowUpContext(conversationId: string): Promise<string | null> {
+    const messages = await this.messageRepo.find({
+      where: { conversationId },
+      order: { created_at: 'DESC' },
+      take: 12,
+    });
+
+    for (const msg of messages) {
+      if (msg.role !== 'assistant') continue;
+      const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+      const block = this.buildAssistantResultContext(metadata);
+      if (block) return block;
+    }
+    return null;
+  }
+
+  /**
    * Récupère une conversation active par son ID
    */
   async getConversation(conversationId: string): Promise<Conversation | null> {

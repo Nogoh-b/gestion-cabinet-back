@@ -99,4 +99,30 @@ export interface AiDatabaseProjectConfig {
     tableDescriptions?: Record<string, string>;
     tableSynonyms?: Record<string, string[]>;
   };
+
+  /**
+   * Mots-clés du domaine métier (normalisés, sans accents).
+   * Utilisés par le classificateur d'intention pour distinguer les questions
+   * portant sur les données métier (READ/WRITE) des questions générales (CHAT).
+   *
+   * Exemples pour un cabinet d'avocats :
+   *   ['dossier', 'client', 'audience', 'facture', 'paiement', 'avocat', 'payee', 'solde', ...]
+   *
+   * Le module core fournit un fallback minimal (noms des essentialTables)
+   * si cette liste n'est pas renseignée.
+   */
+  domainKeywords?: string[];
+
+  /**
+   * Entités du domaine métier reconnaissables dans l'historique de conversation.
+   * Utilisées pour résoudre les questions de suivi avec pronoms anaphoriques
+   * ("donne moi celle qui est payée" → détection de "facture" dans l'historique).
+   *
+   * Chaque entrée mappe un pattern (regex sans accents) vers un label lisible.
+   * Ex: [{ pattern: 'factures?', label: 'facture' }, { pattern: 'dossiers?', label: 'dossier' }]
+   *
+   * Le module core ne fournit aucun fallback si cette liste est absente :
+   * la résolution de suivi est simplement désactivée.
+   */
+  domainEntities?: Array<{ pattern: string; label: string }>;
 }

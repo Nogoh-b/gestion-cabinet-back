@@ -57,6 +57,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { helpers } from './utils/helper-template-maill';
 import { ProcedureModule } from './modules/procedure/procedure.module';
 import { AiDatabaseModule } from './core/ai-database/ai-database.module';
+import { AiDatabaseProjectModule } from './config/ai-database/ai-database-project.module';
 import { ReferralModule } from './modules/referral/referral.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
@@ -204,6 +205,7 @@ dotenv.config();
     StatsModule,
     DashboardModule,
     ProcedureModule,
+    AiDatabaseProjectModule,
     AiDatabaseModule,
     ReferralModule,
     PayrollModule,

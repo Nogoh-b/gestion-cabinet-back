@@ -18,6 +18,14 @@ export class AnalysisResponseDto {
   pendingWritePlan?: WritePlan;
 
   /**
+   * Ensembles de résultats multiples, un par ressource, quand la question
+   * portait sur plusieurs ressources (ex: un client + ses dossiers + ses factures).
+   * Le frontend affiche un tableau étiqueté par ensemble. `results`/`sqlQuery`
+   * restent renseignés (premier ensemble + requêtes concaténées) pour rétro-compat.
+   */
+  resultSets?: Array<{ title: string; sqlQuery: string; data: any[]; rowCount: number }>;
+
+  /**
    * true quand une demande READ est trop ambigue ou incomprise pour generer
    * une requete fiable. Le frontend doit afficher les options de clarification.
    */

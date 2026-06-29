@@ -399,12 +399,25 @@ export class AiDatabaseService implements OnModuleInit {
     const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
     const systemPrompt = this.buildReadSystemPrompt(schemaToUse, tenantId);
 
-    const recentHistory = historyOverride.length
+    const recentHistory: Array<{ role: string; content: string }> = historyOverride.length
       ? historyOverride.slice(-this.MAX_HISTORY_MESSAGES)
       : await this.conversationManager.getRecentHistoryForPrompt(conversationId, {
         maxMessages: this.MAX_HISTORY_MESSAGES,
         maxTokens: this.MAX_HISTORY_TOKENS,
       });
+
+    // Le chat envoie toujours `historyOverride` (texte visible), ce qui court-circuite
+    // getRecentHistoryForPrompt et donc le bloc [CONTEXTE STRUCTURE...] (SQL + lignes
+    // de résultats avec identifiants exacts). On le réinjecte ici pour ancrer les
+    // questions de suivi ("ce dossier", "celle-ci", "aucune sous-étape en cours ?").
+    if (historyOverride.length && conversationId) {
+      const structured = await this.conversationManager.getStructuredFollowUpContext(conversationId);
+      if (structured && !recentHistory.some(m => m.content.includes('[CONTEXTE STRUCTURE'))) {
+        recentHistory.push({ role: 'user', content: structured });
+        this.logger.log(`🔗 [SUIVI] Contexte structuré réinjecté (${structured.length} chars)`);
+      }
+    }
+
     await this.conversationManager.addUserMessage(conversationId, historyQuestion ?? question, references);
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -503,6 +516,7 @@ REGLES ABSOLUES :
 10. N'utilise QUE de vraies colonnes des tables ci-dessus, JAMAIS des champs calculés/libellés (ex: "Est à venir", "Statut libellé"). Pour les audiences "à venir", compare audience_date >= CURDATE() (et status = 0 si pertinent).
 11. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le schéma ci-dessus. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le tableau du schéma.
 12. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes listées ci-dessus, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
+13. Un identifiant LISIBLE contenant des lettres/chiffres/tirets/slashs (ex: \`F-2025-001\`, \`FAC2-202606-0001\`, \`DOS-2024-12\`) correspond TOUJOURS à une colonne d'identifiant métier (\`numero\`, \`reference\`, ou une colonne se terminant par \`_number\`/\`_reference\`), JAMAIS à la colonne \`id\` (qui est numérique ou UUID). Pour filtrer par un tel identifiant, utilise la colonne \`numero\`/\`reference\` correspondante (ex: \`WHERE f.numero = 'FAC2-202606-0001'\`), pas \`id\`. Réserve \`id\` aux valeurs purement numériques/UUID. La colonne Exemple du schéma indique le format réel de chaque colonne.
 
 ${readDomainRules}
 
@@ -561,6 +575,73 @@ ${rules}`;
   ): boolean {
     return intentMode === 'read'
       && (this.isObviousWriteQuestion(originalQuestion) || this.isObviousWriteQuestion(enrichedQuestion));
+  }
+
+  /**
+   * Résout le contexte implicite des questions de suivi.
+   *
+   * Quand l'utilisateur dit "donne moi celle qui est payée" après avoir parlé
+   * de factures, cette méthode détecte le pronom anaphorique et enrichit la
+   * question avec l'entité manquante extraite de l'historique.
+   *
+   * Les entités reconnaissables sont définies dans la config projet
+   * (`domainEntities`), pas dans le module core.
+   *
+   * @returns la question enrichie, ou la question originale si aucun contexte de suivi
+   */
+  private resolveFollowUpContext(
+    question: string,
+    historyOverride: VisibleHistoryMessage[],
+  ): string {
+    const domainEntities = this.projectConfig?.domainEntities;
+    if (!domainEntities?.length || !historyOverride.length) {
+      return question;
+    }
+
+    const normalized = question
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '');
+
+    // Vérifier la présence de pronoms de suivi (grammaire française, agnostique du métier)
+    const followUpPattern = /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|les?\s+(?:dernier|premier|meme)|la\s+(?:derniere|premiere|meme)|ce(?:t|tte|s)?\b|l[ea]\s+(?:plus|moins|seul|premier|dernier)|parmi\s+(?:eux|elles|ces|les))\b/;
+    if (!followUpPattern.test(normalized)) {
+      return question;
+    }
+
+    // Construire les regex à partir de la config projet
+    const entityRegexes = domainEntities.map(e => ({
+      regex: new RegExp(`\\b${e.pattern}\\b`, 'i'),
+      label: e.label,
+    }));
+
+    // Scanner l'historique du plus récent au plus ancien
+    const recentMessages = [...historyOverride].reverse().slice(0, 8);
+    for (const message of recentMessages) {
+      const content = message.content
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
+      for (const { regex, label } of entityRegexes) {
+        if (regex.test(content)) {
+          this.logger.log(`🔗 Follow-up résolu: "${question}" → entité "${label}" depuis l'historique`);
+          return `[Contexte: la question porte sur les ${label}s mentionné(e)s précédemment] ${question}`;
+        }
+      }
+    }
+
+    return question;
+  }
+
+  /**
+   * Heuristique légère : la question fait-elle référence à un élément du tour
+   * précédent (anaphore) ? Sert à éviter une clarification générique inutile
+   * quand un suivi échoue (« ce dossier », « celle-ci », « aucune … ? »).
+   */
+  private looksLikeFollowUp(question: string, historyOverride: VisibleHistoryMessage[]): boolean {
+    if (!historyOverride.length) return false;
+    const normalized = question.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|ce(?:t|tte|s)?\s+\w+|l[ea]\s+(?:meme|precedent|precedente|derniere?|premiere?)|de\s+ce\s+\w+|dans\s+ce(?:t|tte)?\s+\w+|son|sa|ses|leurs?)\b/.test(normalized);
   }
 
   private isGenericReadClarification(context: ReadClarificationContext | null): boolean {
@@ -650,12 +731,22 @@ ${preset.options.map(option =>
   `- ${option.label}: ${option.description} -> ${option.followUpQuestion} [tables=${(option.specificTables ?? []).join(',')}]`,
 ).join('\n')}`
       : '';
+    const historyBlock = visibleHistory
+      ? `Historique recent de la conversation (analyse-le pour comprendre l'intention reelle):\n${visibleHistory}`
+      : '';
+    const referencedBlock = referencedContext
+      ? `Entites explicitement referencees par l'utilisateur:\n${referencedContext}`
+      : '';
     const prompt = `Tu aides a clarifier une question READ qui n'a pas donne de requete SQL fiable.
-Tu dois proposer des reformulations CONCRETES et SPECIFIQUES au domaine metier de la question.
+Tu dois ANALYSER le contexte, l'historique et la question pour proposer des reformulations CONCRETES, SPECIFIQUES a ce que l'utilisateur cherche vraiment.
 
 Question utilisateur: "${question}"
 
 Raison: ${reason}
+
+${historyBlock}
+
+${referencedBlock}
 
 Tables pertinentes: ${tables.join(', ') || '(non detectees)'}
 
@@ -682,6 +773,7 @@ Retourne uniquement un JSON valide:
 }
 
 Contraintes ABSOLUES:
+- Appuie-toi sur l'HISTORIQUE et le CONTEXTE pour cerner le vrai sujet (ex: si la conversation portait sur un dossier precis, propose des angles lies a ce dossier), MAIS ne recopie JAMAIS un identifiant/numero/nom vu dans l'historique dans tes options sauf si l'utilisateur le redonne dans sa question.
 - 2 a 4 options maximum.
 - Chaque followUpQuestion doit etre une VRAIE question exploitable en SQL (ex: "Quel est le total des factures payees" et non "Voir le detail").
 - Les options doivent etre SPECIFIQUES au sujet de la question: si l'utilisateur demande le chiffre d'affaires, propose des options sur les factures, paiements, periodes, pas des options generiques.
@@ -735,9 +827,10 @@ Contraintes ABSOLUES:
     reason: string,
   ): ReadClarificationContext {
     const normalized = this.normalizeForKeywordMatch(question);
-    const domainOptions = this.detectDomainFallbackOptions(normalized, tables);
-
-    if (domainOptions) return domainOptions;
+    // Dernier recours GENERIQUE (aucune connaissance metier en dur dans le core) :
+    // on s'appuie sur les tables detectees + leurs libelles metier issus du schema/config.
+    const tableFallback = this.buildFallbackFromDetectedTables(normalized, tables);
+    if (tableFallback) return tableFallback;
 
     return {
       reason,
@@ -768,427 +861,40 @@ Contraintes ABSOLUES:
     };
   }
 
-  private detectDomainFallbackOptions(
-    normalizedQuestion: string,
-    tables: string[],
-  ): ReadClarificationContext | null {
-    const domainRules: Array<{
-      terms: string[];
-      result: ReadClarificationContext;
-    }> = [
-      // ── Finance / CA ──
-      {
-        terms: [
-          'chiffre d affaire', 'chiffre d affaires', 'ca du cabinet',
-          'revenu', 'revenus', 'recette', 'recettes', 'honoraire', 'honoraires',
-          'montant facture', 'facturation', 'rentabilite', 'benefice', 'marge',
-          'resultat financier', 'bilan financier', 'situation financiere',
-        ],
-        result: {
-          reason: 'Le chiffre d\'affaires peut etre calcule de plusieurs manieres.',
-          question: 'Quel indicateur financier souhaitez-vous ?',
-          options: [
-            {
-              id: 'ca_facture',
-              label: 'CA facture',
-              description: 'Total HT des factures emises (chiffre d\'affaires facture).',
-              followUpQuestion: 'Quel est le montant total HT de toutes les factures emises ?',
-              specificTables: ['factures'],
-            },
-            {
-              id: 'ca_encaisse',
-              label: 'CA encaisse',
-              description: 'Total des paiements effectivement recus.',
-              followUpQuestion: 'Quel est le montant total des paiements recus ?',
-              specificTables: ['paiements'],
-            },
-            {
-              id: 'ca_periode',
-              label: 'CA par periode',
-              description: 'Chiffre d\'affaires facture ventile par mois ou par annee.',
-              followUpQuestion: 'Donne le chiffre d\'affaires facture HT par mois pour l\'annee en cours',
-              specificTables: ['factures'],
-            },
-            {
-              id: 'ca_avocat',
-              label: 'CA par avocat',
-              description: 'Repartition du chiffre d\'affaires par collaborateur.',
-              followUpQuestion: 'Quel est le chiffre d\'affaires facture HT par avocat ?',
-              specificTables: ['factures', 'employee'],
-            },
-          ],
-        },
-      },
-      // ── Factures ──
-      {
-        terms: [
-          'facture impayee', 'factures impayees', 'facture en retard', 'factures en retard',
-          'facture en attente', 'factures en attente', 'relance facture', 'impayes',
-          'creance', 'creances', 'solde client', 'encours client',
-        ],
-        result: {
-          reason: 'Les factures peuvent etre consultees selon plusieurs criteres.',
-          question: 'Quel aspect des factures souhaitez-vous consulter ?',
-          options: [
-            {
-              id: 'factures_impayees',
-              label: 'Factures impayees',
-              description: 'Liste des factures non reglees avec leur anciennete.',
-              followUpQuestion: 'Liste les factures dont le statut est impaye avec le client, le montant et la date d\'emission',
-              specificTables: ['factures', 'customer'],
-            },
-            {
-              id: 'total_impayes',
-              label: 'Total des impayes',
-              description: 'Montant total des factures en attente de reglement.',
-              followUpQuestion: 'Quel est le montant total des factures impayees ?',
-              specificTables: ['factures'],
-            },
-            {
-              id: 'factures_par_client',
-              label: 'Par client',
-              description: 'Repartition des factures par client.',
-              followUpQuestion: 'Quel est le montant total des factures par client ?',
-              specificTables: ['factures', 'customer'],
-            },
-          ],
-        },
-      },
-      // ── Paiements ──
-      {
-        terms: [
-          'paiement recu', 'paiements recus', 'reglement', 'reglements',
-          'encaissement', 'encaissements', 'tresorerie',
-        ],
-        result: {
-          reason: 'Les paiements peuvent etre consultes de differentes manieres.',
-          question: 'Que souhaitez-vous savoir sur les paiements ?',
-          options: [
-            {
-              id: 'paiements_recents',
-              label: 'Paiements recents',
-              description: 'Liste des derniers paiements recus.',
-              followUpQuestion: 'Liste les 20 derniers paiements recus avec le client, le montant et la date',
-              specificTables: ['paiements', 'customer'],
-            },
-            {
-              id: 'total_paiements',
-              label: 'Total encaisse',
-              description: 'Montant total des paiements recus.',
-              followUpQuestion: 'Quel est le montant total des paiements recus cette annee ?',
-              specificTables: ['paiements'],
-            },
-            {
-              id: 'paiements_mois',
-              label: 'Par mois',
-              description: 'Evolution des paiements par mois.',
-              followUpQuestion: 'Donne le total des paiements recus par mois pour l\'annee en cours',
-              specificTables: ['paiements'],
-            },
-          ],
-        },
-      },
-      // ── Dossiers ──
-      {
-        terms: [
-          'dossier en cours', 'dossiers en cours', 'dossiers ouverts', 'dossiers actifs',
-          'etat des dossiers', 'situation des dossiers', 'bilan des dossiers',
-          'dossiers du cabinet', 'mes dossiers', 'nos dossiers', 'tous les dossiers',
-          'nombre de dossiers', 'combien de dossiers', 'statistiques dossiers',
-        ],
-        result: {
-          reason: 'La consultation des dossiers peut prendre plusieurs angles.',
-          question: 'Que souhaitez-vous savoir sur les dossiers ?',
-          options: [
-            {
-              id: 'dossiers_count',
-              label: 'Nombre de dossiers',
-              description: 'Compter les dossiers en cours, clos et total.',
-              followUpQuestion: 'Combien de dossiers sont en cours et combien sont clotures ?',
-              specificTables: ['dossiers'],
-            },
-            {
-              id: 'dossiers_list',
-              label: 'Liste des dossiers',
-              description: 'Afficher la liste des dossiers ouverts avec leurs details.',
-              followUpQuestion: 'Liste les dossiers en cours avec leur reference, client et date d\'ouverture',
-              specificTables: ['dossiers', 'customer'],
-            },
-            {
-              id: 'dossiers_avocat',
-              label: 'Dossiers par avocat',
-              description: 'Repartition des dossiers par collaborateur.',
-              followUpQuestion: 'Combien de dossiers en cours par avocat ?',
-              specificTables: ['dossiers', 'employee'],
-            },
-          ],
-        },
-      },
-      // ── Audiences ──
-      {
-        terms: [
-          'audience a venir', 'audiences a venir', 'prochaine audience', 'prochaines audiences',
-          'calendrier audience', 'planning audience', 'audience prevue', 'audiences prevues',
-          'audience passee', 'audiences passees', 'audience du jour', 'audiences du jour',
-          'audience cette semaine', 'audiences cette semaine', 'audience ce mois',
-        ],
-        result: {
-          reason: 'Les audiences peuvent etre consultees de differentes manieres.',
-          question: 'Que souhaitez-vous consulter sur les audiences ?',
-          options: [
-            {
-              id: 'audiences_semaine',
-              label: 'Cette semaine',
-              description: 'Audiences programmees pour la semaine en cours.',
-              followUpQuestion: 'Liste les audiences prevues cette semaine avec la date, le dossier et la juridiction',
-              specificTables: ['audiences', 'dossiers'],
-            },
-            {
-              id: 'audiences_mois',
-              label: 'Ce mois',
-              description: 'Toutes les audiences du mois en cours.',
-              followUpQuestion: 'Liste les audiences prevues ce mois avec la date, le dossier et la juridiction',
-              specificTables: ['audiences', 'dossiers'],
-            },
-            {
-              id: 'audiences_avocat',
-              label: 'Par avocat',
-              description: 'Audiences a venir ventilees par collaborateur.',
-              followUpQuestion: 'Combien d\'audiences a venir par avocat ?',
-              specificTables: ['audiences', 'employee', 'dossiers'],
-            },
-          ],
-        },
-      },
-      // ── Clients ──
-      {
-        terms: [
-          'liste des clients', 'tous les clients', 'mes clients', 'nos clients',
-          'clients actifs', 'clients du cabinet', 'nombre de clients',
-          'combien de clients', 'nouveaux clients', 'client recent',
-        ],
-        result: {
-          reason: 'Les clients peuvent etre consultes selon differents criteres.',
-          question: 'Que souhaitez-vous savoir sur les clients ?',
-          options: [
-            {
-              id: 'clients_list',
-              label: 'Liste des clients',
-              description: 'Afficher tous les clients avec leurs coordonnees.',
-              followUpQuestion: 'Liste les clients avec leur nom, email et telephone',
-              specificTables: ['customer'],
-            },
-            {
-              id: 'clients_count',
-              label: 'Nombre de clients',
-              description: 'Compter le nombre total de clients.',
-              followUpQuestion: 'Combien de clients sont enregistres dans le cabinet ?',
-              specificTables: ['customer'],
-            },
-            {
-              id: 'clients_dossiers',
-              label: 'Clients avec dossiers',
-              description: 'Clients ayant des dossiers en cours.',
-              followUpQuestion: 'Liste les clients qui ont au moins un dossier en cours avec le nombre de dossiers',
-              specificTables: ['customer', 'dossiers'],
-            },
-          ],
-        },
-      },
-      // ── Collaborateurs / Avocats ──
-      {
-        terms: [
-          'avocat', 'avocats', 'collaborateur', 'collaborateurs',
-          'equipe', 'effectif', 'personnel', 'charge de travail',
-          'performance avocat', 'activite avocat', 'productivite',
-        ],
-        result: {
-          reason: 'L\'activite des collaborateurs peut etre consultee selon plusieurs axes.',
-          question: 'Que souhaitez-vous savoir sur les collaborateurs ?',
-          options: [
-            {
-              id: 'avocats_list',
-              label: 'Liste des avocats',
-              description: 'Afficher les collaborateurs du cabinet.',
-              followUpQuestion: 'Liste les avocats et collaborateurs du cabinet avec leur poste',
-              specificTables: ['employee'],
-            },
-            {
-              id: 'charge_travail',
-              label: 'Charge de travail',
-              description: 'Nombre de dossiers en cours par avocat.',
-              followUpQuestion: 'Combien de dossiers en cours sont assignes a chaque avocat ?',
-              specificTables: ['dossiers', 'employee'],
-            },
-            {
-              id: 'ca_par_avocat',
-              label: 'CA par avocat',
-              description: 'Chiffre d\'affaires genere par chaque collaborateur.',
-              followUpQuestion: 'Quel est le chiffre d\'affaires facture par avocat ?',
-              specificTables: ['factures', 'employee'],
-            },
-          ],
-        },
-      },
-      // ── Documents ──
-      {
-        terms: [
-          'document', 'documents', 'piece jointe', 'pieces jointes',
-          'fichier', 'fichiers', 'contrat', 'contrats',
-        ],
-        result: {
-          reason: 'Les documents peuvent etre consultes de differentes manieres.',
-          question: 'Que souhaitez-vous consulter sur les documents ?',
-          options: [
-            {
-              id: 'documents_recents',
-              label: 'Documents recents',
-              description: 'Derniers documents ajoutes au systeme.',
-              followUpQuestion: 'Liste les 20 derniers documents ajoutes avec leur nom, type et le dossier associe',
-              specificTables: ['document_customer', 'dossiers'],
-            },
-            {
-              id: 'documents_par_dossier',
-              label: 'Par dossier',
-              description: 'Nombre de documents par dossier.',
-              followUpQuestion: 'Combien de documents sont associes a chaque dossier ?',
-              specificTables: ['document_customer', 'dossiers'],
-            },
-            {
-              id: 'documents_par_type',
-              label: 'Par type',
-              description: 'Repartition des documents par type.',
-              followUpQuestion: 'Combien de documents par type de document ?',
-              specificTables: ['document_customer'],
-            },
-          ],
-        },
-      },
-      // ── Diligences ──
-      {
-        terms: [
-          'diligence', 'diligences', 'tache', 'taches',
-          'a faire', 'en retard', 'echeance', 'echeances',
-        ],
-        result: {
-          reason: 'Les diligences peuvent etre consultees selon leur statut ou leur echeance.',
-          question: 'Que souhaitez-vous savoir sur les diligences ?',
-          options: [
-            {
-              id: 'diligences_en_cours',
-              label: 'En cours',
-              description: 'Diligences actuellement en cours.',
-              followUpQuestion: 'Liste les diligences en cours avec leur echeance, le dossier et l\'avocat responsable',
-              specificTables: ['diligences', 'dossiers', 'employee'],
-            },
-            {
-              id: 'diligences_retard',
-              label: 'En retard',
-              description: 'Diligences dont l\'echeance est depassee.',
-              followUpQuestion: 'Liste les diligences dont la date d\'echeance est depassee',
-              specificTables: ['diligences', 'dossiers'],
-            },
-            {
-              id: 'diligences_avocat',
-              label: 'Par avocat',
-              description: 'Repartition des diligences par collaborateur.',
-              followUpQuestion: 'Combien de diligences en cours par avocat ?',
-              specificTables: ['diligences', 'employee'],
-            },
-          ],
-        },
-      },
-      // ── Comptabilite ──
-      {
-        terms: [
-          'comptabilite', 'ecriture comptable', 'ecritures comptables',
-          'journal comptable', 'grand livre', 'balance', 'compte comptable',
-          'plan comptable', 'exercice comptable',
-        ],
-        result: {
-          reason: 'La comptabilite peut etre consultee selon differents axes.',
-          question: 'Quel aspect de la comptabilite souhaitez-vous consulter ?',
-          options: [
-            {
-              id: 'ecritures_recentes',
-              label: 'Ecritures recentes',
-              description: 'Dernieres ecritures comptables enregistrees.',
-              followUpQuestion: 'Liste les 20 dernieres ecritures comptables avec le journal, la date, le libelle et le montant',
-              specificTables: ['ecriture', 'journal'],
-            },
-            {
-              id: 'solde_comptes',
-              label: 'Solde des comptes',
-              description: 'Solde actuel des principaux comptes comptables.',
-              followUpQuestion: 'Donne le solde (total debit - total credit) de chaque compte comptable',
-              specificTables: ['ecriture', 'compte'],
-            },
-            {
-              id: 'ecritures_journal',
-              label: 'Par journal',
-              description: 'Ecritures ventilees par journal comptable.',
-              followUpQuestion: 'Combien d\'ecritures et quel montant total par journal comptable ?',
-              specificTables: ['ecriture', 'journal'],
-            },
-          ],
-        },
-      },
-    ];
-
-    for (const rule of domainRules) {
-      if (rule.terms.some(term => this.containsNormalizedPhrase(normalizedQuestion, term))) {
-        return rule.result;
-      }
-    }
-
-    // Dernier recours : detecter via les tables trouvees
-    return this.buildFallbackFromDetectedTables(normalizedQuestion, tables);
-  }
-
   private buildFallbackFromDetectedTables(
     normalizedQuestion: string,
     tables: string[],
   ): ReadClarificationContext | null {
     if (!tables.length) return null;
 
-    const tableLabels: Record<string, { label: string; listQuestion: string; countQuestion: string }> = {
-      dossiers:          { label: 'dossiers',   listQuestion: 'Liste les dossiers avec leur reference, client et statut', countQuestion: 'Combien de dossiers au total ?' },
-      customer:          { label: 'clients',    listQuestion: 'Liste les clients avec leur nom et coordonnees', countQuestion: 'Combien de clients au total ?' },
-      employee:          { label: 'avocats',    listQuestion: 'Liste les avocats et collaborateurs du cabinet', countQuestion: 'Combien d\'avocats et collaborateurs ?' },
-      audiences:         { label: 'audiences',  listQuestion: 'Liste les audiences a venir avec la date et le dossier', countQuestion: 'Combien d\'audiences programmees ?' },
-      factures:          { label: 'factures',   listQuestion: 'Liste les factures avec le client, le montant et le statut', countQuestion: 'Quel est le montant total des factures ?' },
-      paiements:         { label: 'paiements',  listQuestion: 'Liste les derniers paiements recus avec le client et le montant', countQuestion: 'Quel est le montant total des paiements recus ?' },
-      diligences:        { label: 'diligences', listQuestion: 'Liste les diligences en cours avec leur echeance', countQuestion: 'Combien de diligences en cours ?' },
-      document_customer: { label: 'documents',  listQuestion: 'Liste les derniers documents ajoutes', countQuestion: 'Combien de documents au total ?' },
-    };
-
-    const primaryTable = tables.find(t => tableLabels[t]) ?? tables[0];
-    const info = tableLabels[primaryTable];
-    if (!info) return null;
+    // GENERIQUE : le libelle metier vient du schema/config (getTableLabel), pas
+    // d'une table codee en dur dans le core. Aucune connaissance metier ici.
+    const primaryTable = tables[0];
+    const label = (this.schemaMetadata.getTableLabel(primaryTable) || primaryTable).toLowerCase();
 
     return {
-      reason: `La demande concerne les ${info.label} mais necessite plus de precision.`,
-      question: `Que souhaitez-vous savoir sur les ${info.label} ?`,
+      reason: `La demande concerne ${label} mais necessite plus de precision.`,
+      question: `Que souhaitez-vous savoir sur ${label} ?`,
       options: [
         {
           id: `${primaryTable}_list`,
-          label: `Liste des ${info.label}`,
-          description: `Afficher les ${info.label} avec leurs details.`,
-          followUpQuestion: info.listQuestion,
+          label: `Lister`,
+          description: `Afficher ${label} avec leurs details.`,
+          followUpQuestion: `Liste ${label} avec leurs informations principales`,
           specificTables: [primaryTable],
         },
         {
           id: `${primaryTable}_count`,
           label: `Nombre / Total`,
-          description: `Compter ou totaliser les ${info.label}.`,
-          followUpQuestion: info.countQuestion,
+          description: `Compter ou totaliser ${label}.`,
+          followUpQuestion: `Combien de ${label} au total ?`,
           specificTables: [primaryTable],
         },
         {
           id: `${primaryTable}_period`,
           label: `Filtrer par periode`,
-          description: `Les ${info.label} de cette annee ou de ce mois.`,
-          followUpQuestion: `${info.listQuestion} pour l'annee en cours`,
+          description: `${label} de cette annee ou de ce mois.`,
+          followUpQuestion: `Liste ${label} pour l'annee en cours`,
           specificTables: [primaryTable],
         },
       ],
@@ -1607,6 +1313,10 @@ Contraintes obligatoires :
     const historyOverride = parseVisibleHistory(dto.historyOverride);
     const intentMode = this.normalizeIntentMode(dto.intentMode);
 
+    // ── 1b. Résolution des questions de suivi (pronoms anaphoriques) ─────────
+    // "donne moi celle qui est payée" → "[Contexte: factures] donne moi celle…"
+    enrichedQuestion = this.resolveFollowUpContext(enrichedQuestion, historyOverride);
+
     if (dto.textGenerationOnly) {
       this.markMetric({ intent: 'TEXT' });
       this.logger.log(`✍️ Mode textGenerationOnly — détection d'intention désactivée`);
@@ -1794,6 +1504,17 @@ Contraintes obligatoires :
         }
       }
 
+      // ── Question multi-ressources → décomposition en sous-requêtes ──────────
+      const subQuestions = this.decomposeReadQuestion(dto.question, enrichedQuestion);
+      if (subQuestions.length > 1) {
+        const multi = await this.handleMultiResourceRead(
+          subQuestions, dto, schema, relevantTables, requestContext.referenced,
+          conversationId, user, fileInfo, startTime,
+        );
+        if (multi) return multi;
+        // Sinon (aucune sous-requête exploitable) → on retombe sur le chemin mono-requête.
+      }
+
       const sqlQuery = await this.askQuestionWithSession(
         conversationId,
         enrichedQuestion,
@@ -1806,6 +1527,19 @@ Contraintes obligatoires :
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema, enrichedQuestion);
 
       if (this.isSyntheticEmptyQuery(validatedQuery)) {
+        // Question de suivi qui échoue → message honnête plutôt qu'une clarification
+        // générique de table (qui « perd le nord » au milieu d'une conversation).
+        if (this.looksLikeFollowUp(dto.question, historyOverride)) {
+          const analysis = `Je n'ai pas pu déterminer cela à partir du contexte précédent. Pouvez-vous préciser sur quel élément porte votre question (par exemple en redonnant le numéro ou le nom concerné) ?`;
+          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+            sqlQuery: validatedQuery, results: [], rowCount: 0, ...(fileInfo && { fileInfo }),
+          });
+          return {
+            success: true, question: dto.question, sqlQuery: validatedQuery, analysis,
+            results: [], executionTimeMs: Date.now() - startTime, rowCount: 0, conversationId,
+            ...(fileInfo && { fileInfo }),
+          };
+        }
         const clarificationContext = await this.buildReadClarificationContext(
           dto.question,
           enrichedQuestion,
@@ -3287,6 +3021,11 @@ ${blocks.join('\n\n')}
       fileInfo = requestContext.fileInfo ?? fileInfo;
       const historyOverride = parseVisibleHistory(dto.historyOverride);
       const intentMode = this.normalizeIntentMode(dto.intentMode);
+
+      // ── 1b. Résolution des questions de suivi (pronoms anaphoriques) ─────
+      // "donne moi celle qui est payée" → "[Contexte: factures] donne moi celle…"
+      enrichedQuestion = this.resolveFollowUpContext(enrichedQuestion, historyOverride);
+
       if (dto.textGenerationOnly) {
         this.markMetric({ intent: 'TEXT' });
         const fullText = await this.generateTextOnlyResponseStream(enrichedQuestion, sendEvent);
@@ -3537,6 +3276,17 @@ ${blocks.join('\n\n')}
       }
 
       await this.aiPermissionService.assertCanReadTables(user as AiUserContext, relevantTables);
+
+      // ── Question multi-ressources → décomposition en sous-requêtes ──────────
+      const subQuestions = this.decomposeReadQuestion(dto.question, enrichedQuestion);
+      if (subQuestions.length > 1) {
+        await this.handleMultiResourceReadStream(
+          subQuestions, dto, schema, relevantTables, requestContext.referenced,
+          conversationId, user, fileInfo, startTime, sendEvent, emit,
+        );
+        return;
+      }
+
       const sqlQuery = await this.askQuestionWithSession(
         conversationId,
         enrichedQuestion,
@@ -3553,6 +3303,21 @@ ${blocks.join('\n\n')}
       // appels LLM (jusqu'à 4) et la latence. On exécute la requête validée directement.
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema, enrichedQuestion);
       if (this.isSyntheticEmptyQuery(validatedQuery)) {
+        // Question de suivi qui échoue → message honnête plutôt qu'une clarification
+        // générique de table (qui « perd le nord » au milieu d'une conversation).
+        if (this.looksLikeFollowUp(dto.question, historyOverride)) {
+          const analysis = `Je n'ai pas pu déterminer cela à partir du contexte précédent. Pouvez-vous préciser sur quel élément porte votre question (par exemple en redonnant le numéro ou le nom concerné) ?`;
+          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+            sqlQuery: validatedQuery, results: [], rowCount: 0, ...(fileInfo && { fileInfo }),
+          });
+          sendEvent('token', { text: analysis });
+          sendEvent('result', {
+            success: true, question: dto.question, sqlQuery: validatedQuery, analysis,
+            results: [], rowCount: 0, conversationId, executionTimeMs: Date.now() - startTime,
+            ...(fileInfo && { fileInfo }),
+          });
+          return;
+        }
         const clarificationContext = await this.buildReadClarificationContext(
           dto.question,
           enrichedQuestion,
@@ -3669,6 +3434,123 @@ ${blocks.join('\n\n')}
       this.markMetric({ status: 'error' });
       sendEvent('error', { message: error.message });
     }
+  }
+
+  /**
+   * Traite une question multi-ressources (SSE) : exécute une sous-requête par
+   * ressource, puis streame UNE analyse combinée. Renvoie aussi `resultSets`
+   * (un tableau par ressource) + `results`/`sqlQuery` rétro-compatibles.
+   */
+  private async handleMultiResourceReadStream(
+    subQuestions: Array<{ question: string; title: string }>,
+    dto: AskQuestionDto,
+    schema: string,
+    relevantTables: string[],
+    referenced: ReferencedEntityContext[],
+    conversationId: string,
+    user: AiUserContext | string,
+    fileInfo: any,
+    startTime: number,
+    sendEvent: (event: string, data: any) => void,
+    emit: (event: string, data: any, delayMs?: number) => Promise<void>,
+  ): Promise<void> {
+    await emit('status', { message: `🧩 Question multi-ressources — ${subQuestions.length} recherches...` });
+    await this.conversationManager.addUserMessage(conversationId, dto.question, referenced);
+
+    const parts: Array<{ title: string; sqlQuery: string; data: any[]; rowCount: number }> = [];
+    for (const sub of subQuestions) {
+      const part = await this.runSubQuestion(sub, schema, relevantTables, user);
+      if (part) parts.push(part);
+    }
+
+    // Aucune sous-requête exploitable → message clair plutôt qu'une clarification générique.
+    if (parts.length === 0) {
+      const msg = this.getNoResultsMessage(dto.question, relevantTables);
+      await this.conversationManager.addAssistantMessage(conversationId, msg, undefined);
+      sendEvent('token', { text: msg });
+      sendEvent('result', {
+        success: true, question: dto.question, analysis: msg,
+        results: [], rowCount: 0, conversationId,
+        executionTimeMs: Date.now() - startTime, ...(fileInfo && { fileInfo }),
+      });
+      return;
+    }
+
+    await emit('status', { message: '📊 Analyse combinée des résultats...' });
+    const analysis = await this.generateCombinedAnalysisStream(
+      dto.question, parts, relevantTables, sendEvent,
+    );
+
+    const combinedSql = parts.map(p => `-- ${p.title}\n${p.sqlQuery}`).join('\n\n');
+    const totalRows = parts.reduce((sum, p) => sum + p.rowCount, 0);
+
+    await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+      sqlQuery: combinedSql,
+      results: parts[0].data,
+      rowCount: totalRows,
+      resultSets: parts,
+      ...(fileInfo && { fileInfo }),
+    });
+
+    sendEvent('result', {
+      success: true, question: dto.question,
+      sqlQuery: combinedSql, analysis,
+      results: parts[0].data, rowCount: totalRows,
+      resultSets: parts,
+      conversationId, executionTimeMs: Date.now() - startTime,
+      ...(fileInfo && { fileInfo }),
+    });
+  }
+
+  /**
+   * Traite une question multi-ressources (REST/non-stream) : une sous-requête
+   * par ressource, puis une analyse combinée. Renvoie le DTO complet, ou null
+   * si aucune sous-requête n'a donné de résultat exploitable (l'appelant
+   * retombe alors sur le chemin mono-requête).
+   */
+  private async handleMultiResourceRead(
+    subQuestions: Array<{ question: string; title: string }>,
+    dto: AskQuestionDto,
+    schema: string,
+    relevantTables: string[],
+    referenced: ReferencedEntityContext[],
+    conversationId: string,
+    user: AiUserContext | string,
+    fileInfo: any,
+    startTime: number,
+  ): Promise<AnalysisResponseDto | null> {
+    const parts: Array<{ title: string; sqlQuery: string; data: any[]; rowCount: number }> = [];
+    for (const sub of subQuestions) {
+      const part = await this.runSubQuestion(sub, schema, relevantTables, user);
+      if (part) parts.push(part);
+    }
+    if (parts.length === 0) return null;
+
+    await this.conversationManager.addUserMessage(conversationId, dto.question, referenced);
+    const analysis = await this.generateCombinedAnalysis(dto.question, parts, relevantTables);
+    const combinedSql = parts.map(p => `-- ${p.title}\n${p.sqlQuery}`).join('\n\n');
+    const totalRows = parts.reduce((sum, p) => sum + p.rowCount, 0);
+
+    await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
+      sqlQuery: combinedSql,
+      results: parts[0].data,
+      rowCount: totalRows,
+      resultSets: parts,
+      ...(fileInfo && { fileInfo }),
+    });
+
+    return {
+      success: true,
+      question: dto.question,
+      sqlQuery: combinedSql,
+      analysis,
+      results: parts[0].data,
+      rowCount: totalRows,
+      resultSets: parts,
+      conversationId,
+      executionTimeMs: Date.now() - startTime,
+      ...(fileInfo && { fileInfo }),
+    };
   }
 
   /**
@@ -4178,6 +4060,214 @@ RÉPONSE (en langage naturel):`;
     }
 
     return fullText;
+  }
+
+  // ── Questions multi-ressources (décomposition) ────────────────────────────
+
+  /**
+   * Décompose une question portant sur PLUSIEURS ressources en sous-questions
+   * ciblées (une par ressource détectée). Décomposition DÉTERMINISTE : la liste
+   * des entités du domaine vient de `projectConfig.domainEntities` (aucune logique
+   * métier dans le core, aucun appel LLM aléatoire).
+   *
+   * @returns un tableau de sous-questions (>= 2) si décomposition pertinente,
+   *          sinon un tableau vide (la question suivra le chemin mono-requête).
+   */
+  private decomposeReadQuestion(
+    rawQuestion: string,
+    contextForPrompt: string,
+  ): Array<{ question: string; title: string }> {
+    const entities = this.projectConfig?.domainEntities ?? [];
+    if (entities.length === 0) {
+      this.logger.warn(`🧩 [DECOMP] Aucune domainEntities dans projectConfig → décomposition désactivée`);
+      return [];
+    }
+
+    // La PORTE d'entrée se base sur la question BRUTE de l'utilisateur, pas sur
+    // la version enrichie (qui contient des blocs de contexte avec virgules/mots
+    // qui fausseraient le comptage d'entités et le test de connecteur).
+    const normalized = rawQuestion.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const detected: Array<{ label: string; pos: number }> = [];
+    const seen = new Set<string>();
+    for (const e of entities) {
+      try {
+        const m = new RegExp(`\\b(?:${e.pattern})\\b`, 'i').exec(normalized);
+        if (m && !seen.has(e.label)) {
+          seen.add(e.label);
+          detected.push({ label: e.label, pos: m.index });
+        }
+      } catch {
+        /* pattern invalide → ignorer */
+      }
+    }
+    // Au moins 2 ressources distinctes ET un connecteur de coordination ("et",
+    // "notamment", "ses"...) qui suggère plusieurs demandes séparées. Évite la
+    // décomposition sur les questions mono-demande type "factures du dossier 12".
+    const hasConnector = /\b(et|ainsi que|ainsi qu|notamment|notement|aussi|egalement|puis|avec ses|de ses|leurs?|ses)\b|,/.test(normalized);
+    this.logger.log(`🧩 [DECOMP] gate — entités=[${detected.map(d => d.label).join(', ')}] (${detected.length}), connecteur=${hasConnector}`);
+    if (detected.length < 2 || !hasConnector) return [];
+
+    // Ordonner par apparition dans la question (lecture naturelle).
+    detected.sort((a, b) => a.pos - b.pos);
+    const base = contextForPrompt.trim();
+
+    const subs = detected.slice(0, 5).map(d => ({
+      // La question complète (avec ses filtres : nom du client, références @, période…)
+      // est conservée comme contexte ; on demande au générateur SQL de se focaliser
+      // sur UNE seule ressource. → une requête propre par ressource.
+      question: `${base}\n\n(Pour cette recherche précise, concentre-toi UNIQUEMENT sur les ${d.label}. Ignore les autres ressources mentionnées.)`,
+      title: this.pluralizeLabel(d.label),
+    }));
+    this.logger.log(`🧩 [DECOMP] ${subs.length} sous-question(s): ${subs.map(s => s.title).join(' | ')}`);
+    return subs;
+  }
+
+  /** Capitalise un libellé d'entité (et le met au pluriel s'il est en un seul mot). */
+  private pluralizeLabel(label: string): string {
+    const trimmed = label.trim();
+    const cap = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+    // Les libellés multi-mots ("etape en cours") ne se pluralisent pas naïvement.
+    if (trimmed.includes(' ')) return cap;
+    return /[sx]$/.test(trimmed) ? cap : `${cap}s`;
+  }
+
+  /**
+   * Génère le SQL, valide et exécute une sous-question (chemin stateless,
+   * sans effet de bord sur l'historique de conversation).
+   * @returns la partie résultat, ou null si la sous-question n'a rien donné d'exploitable.
+   */
+  private async runSubQuestion(
+    sub: { question: string; title: string },
+    schema: string,
+    relevantTables: string[],
+    user: AiUserContext | string,
+  ): Promise<{ title: string; sqlQuery: string; data: any[]; rowCount: number } | null> {
+    try {
+      // Réutiliser EXACTEMENT le pipeline du chemin mono-requête : prompt système
+      // complet (13 règles + filtre tenant + exemples + règles métier) au format
+      // system+user, puis extraction multi-niveaux. Bien plus fiable que askForSQLOnly.
+      const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+      const systemPrompt = this.buildReadSystemPrompt(schema, tenantId);
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: sub.question },
+      ];
+      const response = await this.invokeModel('quality', messages, 1500);
+      const content = this.extractLlmText(response);
+      let sql = this.extractSQL(content) || this.extractSQLRelaxed(content);
+      if (!sql) {
+        // Dernier recours : générateur minimal.
+        sql = (await this.askForSQLOnly(sub.question, schema)) || '';
+      }
+      if (!sql) {
+        this.logger.warn(`🧩 [DECOMP] "${sub.title}" → pas de SQL généré. Extrait réponse: ${content.replace(/\n/g, ' ').substring(0, 200)}`);
+        return null;
+      }
+      sql = this.replaceSpecialValues(sql);
+      const validated = await this.validateAndFixQuery(sql, relevantTables, schema, sub.question);
+      if (this.isSyntheticEmptyQuery(validated) || !this.isSelectQuery(validated)) {
+        this.logger.warn(`🧩 [DECOMP] "${sub.title}" → requête vide/non-SELECT, ignorée`);
+        return null;
+      }
+      await this.aiPermissionService.assertCanReadSql(user as AiUserContext, validated);
+      const res = await this.executeSafeQuery(validated);
+      this.logger.log(`🧩 [DECOMP] "${sub.title}" → ${res.rowCount} résultat(s)`);
+      return { title: sub.title, sqlQuery: validated, data: res.data, rowCount: res.rowCount };
+    } catch (e) {
+      this.logger.warn(`🧩 [DECOMP] "${sub.title}" échouée: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Construit le prompt d'analyse combinée à partir de plusieurs ensembles de résultats. */
+  private buildCombinedAnalysisPrompt(
+    question: string,
+    parts: Array<{ title: string; data: any[]; rowCount: number }>,
+    tables: string[],
+  ): string {
+    const expertRole = this.projectConfig?.analysisSystemPrompt
+      ?? `Tu es un assistant IA spécialisé dans l'analyse de données.`;
+    const blocks = parts.map(p => {
+      const business = this.transformToBusinessResults(p.data, tables);
+      return `### ${p.title} (${p.rowCount} résultat(s))\n${JSON.stringify(business, null, 2)}`;
+    }).join('\n\n');
+
+    return `${expertRole}
+
+QUESTION GLOBALE DE L'UTILISATEUR:
+"${question}"
+
+La réponse combine plusieurs ensembles de résultats (un par ressource demandée) :
+${blocks}
+
+INSTRUCTIONS IMPORTANTES:
+1. Rédige UNE réponse unique et cohérente couvrant TOUTES les ressources demandées.
+2. Structure clairement la réponse par ressource (une section par ressource, ex: le client, puis ses dossiers, puis ses factures).
+3. Réponds comme à un collègue non technique. N'utilise JAMAIS de termes techniques (SQL, requête, base de données, table, colonne).
+4. Pour CHAQUE élément listé (dossier, facture, audience...), mentionne son identifiant numérique réel entre parenthèses, ex: "Dossier Dupont (ID: 12)".
+5. Formate les dates de façon lisible. Si un ensemble est vide, indique-le brièvement.
+6. Format d'affichage: texte simple uniquement. Pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes "- Libellé : valeur".
+7. Sois complet mais concis (max ~700 mots).
+
+RÉPONSE (en langage naturel):`;
+  }
+
+  /** Repli textuel combiné si l'analyse LLM est vide. */
+  private buildCombinedFallbackAnalysis(
+    parts: Array<{ title: string; data: any[] }>,
+  ): string {
+    return parts
+      .map(p => `${p.title}\n${this.buildFallbackAnalysisFromResults(p.title, p.data)}`)
+      .join('\n\n');
+  }
+
+  /**
+   * Version streaming de l'analyse combinée (multi-ressources).
+   * Streame la narration token par token et retourne le texte complet.
+   */
+  private async generateCombinedAnalysisStream(
+    question: string,
+    parts: Array<{ title: string; data: any[]; rowCount: number }>,
+    tables: string[],
+    sendEvent: (event: string, data: any) => void,
+  ): Promise<string> {
+    const prompt = this.buildCombinedAnalysisPrompt(question, parts, tables);
+    let fullText = '';
+
+    try {
+      const stream = await this.streamModel('streaming', prompt, this.MAX_TOKENS);
+      for await (const chunk of stream) {
+        const text = this.extractChunkText(chunk);
+        if (text) {
+          fullText += text;
+          this.recordOutput(text, true);
+          sendEvent('token', { text });
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`⚠️ [MULTI STREAM] stream échoué → fallback invoke: ${(err as Error).message}`);
+      const response = await this.invokeModel('streaming', prompt, this.MAX_TOKENS);
+      fullText = this.extractLlmText(response);
+      sendEvent('token', { text: fullText });
+    }
+
+    if (!fullText.trim()) {
+      fullText = this.buildCombinedFallbackAnalysis(parts);
+      sendEvent('token', { text: fullText });
+    }
+    return fullText;
+  }
+
+  /** Version non-streaming de l'analyse combinée (chemin REST). */
+  private async generateCombinedAnalysis(
+    question: string,
+    parts: Array<{ title: string; data: any[]; rowCount: number }>,
+    tables: string[],
+  ): Promise<string> {
+    const prompt = this.buildCombinedAnalysisPrompt(question, parts, tables);
+    const response = await this.invokeModel('streaming', prompt, this.MAX_TOKENS);
+    const analysis = this.extractLlmText(response).trim();
+    return analysis || this.buildCombinedFallbackAnalysis(parts);
   }
 
   /**
@@ -4766,8 +4856,8 @@ private async getDefaultSchema(): Promise<string> {
       }
       schema += `\n`;
     }
-    schema += '| Colonne technique | Type détaillé | Contraintes | Libellé métier | Description |\n';
-    schema += '|------------------|---------------|-------------|----------------|-------------|\n';
+    schema += '| Colonne technique | Type détaillé | Contraintes | Libellé métier | Exemple | Description |\n';
+    schema += '|------------------|---------------|-------------|----------------|---------|-------------|\n';
     
     for (const col of visibleColumns) {  // ✅ Utiliser visibleColumns
       // Type détaillé
@@ -4799,8 +4889,11 @@ private async getDefaultSchema(): Promise<string> {
         const metaDesc = this.schemaMetadata.getColumnDescription(table, col.COLUMN_NAME);
         description = metaDesc || this.getDefaultDescription(col.COLUMN_NAME);
       }
-      
-      schema += `| ${col.COLUMN_NAME} | ${detailedType} | ${constraints.join(', ') || '-'} | ${businessLabel} | ${description.substring(0, 240)}${description.length > 240 ? '...' : ''} |\n`;
+
+      // Exemple de valeur (distingue numero/reference lisibles d'un id numérique/UUID)
+      const example = this.schemaMetadata.getColumnExample(table, col.COLUMN_NAME) || '-';
+
+      schema += `| ${col.COLUMN_NAME} | ${detailedType} | ${constraints.join(', ') || '-'} | ${businessLabel} | ${example} | ${description.substring(0, 240)}${description.length > 240 ? '...' : ''} |\n`;
     }
     
     // Ajouter les relations (filtrer aussi les colonnes FK ignorées)

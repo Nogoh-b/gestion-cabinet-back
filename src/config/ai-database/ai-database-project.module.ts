@@ -16,7 +16,7 @@ import {
 } from './cabinet-juridique-prompt';
 import { NEVER_AUTO_CREATE_ENTITIES } from './never-auto-create.config';
 import { FIELD_LABELS } from './field-labels.config';
-import { DATABASE_TABLES_CONFIG } from './database-tables.config';
+import { DATABASE_TABLES_CONFIG, DOMAIN_KEYWORDS, DOMAIN_ENTITIES } from './database-tables.config';
 
 /**
  * Module de configuration projet pour AiDatabaseModule.
@@ -51,6 +51,8 @@ import { DATABASE_TABLES_CONFIG } from './database-tables.config';
         analysisSystemPrompt: CABINET_JURIDIQUE_ANALYSIS_PROMPT,
         fieldLabels: FIELD_LABELS,
         databaseTablesConfig: DATABASE_TABLES_CONFIG,
+        domainKeywords: DOMAIN_KEYWORDS,
+        domainEntities: DOMAIN_ENTITIES,
       }),
       inject: [CustomerAiResolver, EmployeeAiResolver],
     },

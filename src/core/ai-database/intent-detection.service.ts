@@ -16,11 +16,48 @@ export class IntentDetectionService {
   private readonly classificationCache = new Map<string, { value: IntentClass; timestamp: number }>();
   private writeSchemaCache: { value: string; timestamp: number } | null = null;
 
+  /**
+   * Regex des mots-clés métier, construite à partir de la config projet.
+   * Fallback : noms des essentialTables si aucun domainKeywords fourni.
+   */
+  private domainKeywordsRegex!: RegExp;
+
+  /**
+   * Pronoms/références anaphoriques qui signalent une question de suivi.
+   * Agnostique du domaine métier — seule la grammaire française est encodée ici.
+   */
+  private readonly FOLLOW_UP_SIGNALS = /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|le(?:s)?\s+(?:dernier|premier|meme)|la\s+(?:derniere|premiere|meme)|l[ea]\s+(?:plus|moins|seul|premier|dernier)|parmi\s+(?:eux|elles|ces|les)|dans\s+(?:cette|ce|ces|la)\s+liste)\b/;
+
   constructor(
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
     @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
-  ) {}
+  ) {
+    this.buildDomainKeywordsRegex();
+  }
+
+  /**
+   * Construit la regex des mots-clés métier à partir de la config projet.
+   * Si `domainKeywords` n'est pas fourni, utilise les noms des `essentialTables`.
+   */
+  private buildDomainKeywordsRegex(): void {
+    const keywords = this.projectConfig?.domainKeywords;
+    if (keywords?.length) {
+      // Échapper les caractères regex spéciaux dans les mots-clés
+      const escaped = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      this.domainKeywordsRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i');
+      return;
+    }
+    // Fallback : noms des essentialTables
+    const tables = this.projectConfig?.databaseTablesConfig?.essentialTables ?? [];
+    if (tables.length) {
+      const escaped = tables.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      this.domainKeywordsRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i');
+      return;
+    }
+    // Dernier recours : regex qui ne matche jamais
+    this.domainKeywordsRegex = /(?!)/;
+  }
 
   async detectIntent(
     question: string,
@@ -59,7 +96,7 @@ export class IntentDetectionService {
     if (!isObviousWrite) {
       // 1b. Classification légère via LLM : READ | WRITE | CHAT
       //     (plus fiable que des heuristiques statiques)
-      const lightClass = await this.lightClassify(question, llm, options);
+      const lightClass = await this.lightClassify(question, llm, { ...options, history: options.history });
       this.logger.log(`🏷️ Light classify → ${lightClass}`);
 
       if (lightClass === 'HELP') {
@@ -152,20 +189,20 @@ export class IntentDetectionService {
       return 'CHAT';
     }
 
-    const readPatterns = [
-      /^(liste|lister|affiche|afficher|montre|montrer|cherche|chercher|trouve|trouver|combien|quels?|quelles?|qui|donne moi|donnez moi)\b/,
-      /\b(nombre|total|statut|dossiers?|clients?|audiences?|factures?|paiements?|documents?)\b.*\?/,
-    ];
+    // Verbes de lecture (liste, affiche, montre, combien, quel…)
+    const readVerbPattern = /^(liste|lister|affiche|afficher|montre|montrer|cherche|chercher|trouve|trouver|combien|quels?|quelles?|qui|donne moi|donnez moi)\b/;
+    // Mots interrogatifs génériques (nombre, total, statut) suivis d'un ?
+    const readQuestionPattern = /\b(nombre|total|statut)\b.*\?/;
 
-    if (readPatterns.some(pattern => pattern.test(normalized))) {
-      // Vérifier qu'un mot-clé du domaine métier est aussi présent.
-      // Sans cela, "quel est la racine carree de 4" serait classé READ
-      // car le pattern ^quels? matche toute question commençant par "quel".
-      const domainKeywords = /\b(dossiers?|clients?|audiences?|factures?|paiements?|documents?|avocats?|diligences?|ecritures?|comptes?|journa(?:l|ux)|exercices?|salaires?|employes?|procedures?|etapes?|chiffre|montant|encaiss|impay|regl|honoraires?|stage|savings?|loan|customer|employee)\b/;
-      if (domainKeywords.test(normalized)) {
-        return 'READ';
-      }
-      // Pas de mot-clé métier → laisser le LLM classifier (question générale probable)
+    if ((readVerbPattern.test(normalized) || readQuestionPattern.test(normalized))
+        && this.domainKeywordsRegex.test(normalized)) {
+      return 'READ';
+    }
+
+    // Questions de suivi avec pronom anaphorique + mot-clé métier
+    // Ex: "donne moi celle qui est totalement payée" → READ
+    if (this.FOLLOW_UP_SIGNALS.test(normalized) && this.domainKeywordsRegex.test(normalized)) {
+      return 'READ';
     }
 
     if (this.isWriteIntent(question)) {
@@ -356,10 +393,14 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     }
 
     // 2️⃣ Vérifier l'absence de mots-clés du domaine métier
-    const domainKeywords = /\b(dossiers?|clients?|audiences?|factures?|paiements?|documents?|avocats?|diligences?|ecritures?|comptes?|journa(?:l|ux)|exercices?|salaires?|employes?|procedures?|etapes?|chiffre|montant|encaiss|impay|regl|honoraires?|stage|savings?|loan|customer|employee|contentieux|juridique|tribunal|jugement|assignation|requete|conclusions?|plaidoirie|greffe|magistrat)\b/;
-
     // Si la question contient un mot-clé métier, ce n'est PAS du chat
-    if (domainKeywords.test(normalized)) {
+    if (this.domainKeywordsRegex.test(normalized)) {
+      return false;
+    }
+
+    // 2b. Si la question contient un pronom de suivi (celle, celui…), c'est
+    // probablement une question de suivi sur des résultats précédents → pas du chat
+    if (this.FOLLOW_UP_SIGNALS.test(normalized)) {
       return false;
     }
 
@@ -396,7 +437,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     // 4️⃣ Questions très courtes sans mot-clé métier : probablement du chat
     // ex: "comment ca marche ?", "c'est possible ?", "tu peux m'aider ?"
     const words = normalized.split(/\s+/).length;
-    if (words <= 4 && /\?$/.test(normalized.trim()) && !domainKeywords.test(normalized)) {
+    if (words <= 4 && /\?$/.test(normalized.trim()) && !this.domainKeywordsRegex.test(normalized)) {
       return true;
     }
 
@@ -486,11 +527,9 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       /il\s+faut\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       /(?:merci de|veuillez)\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       // Patterns d'analyse structurée avec données brutes → intent WRITE implicite
-      /cree\s+un\s+dossier/,
-      /dossier\s+(?:client|juridique|structure)/,
       /INSTRUCTION\s*:/i,
       /DONNEES\s+BRUTES/i,
-      /fiche\s+(?:client|de\s+synthese|synthetique)/,
+      /fiche\s+(?:de\s+synthese|synthetique)/,
     ];
 
     for (const pattern of patterns) {
@@ -518,6 +557,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     options: {
       onLlmCall?: (info: { profile: 'fast' | 'quality'; input: unknown; modelName?: string }) => void;
       classifierModelName?: string;
+      history?: string;
     } = {},
   ): Promise<IntentClass> {
     const cacheKey = this.normalizeText(question).trim();
@@ -526,10 +566,16 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       return cached.value;
     }
 
+    // Inclure l'historique récent pour que le LLM comprenne les questions
+    // de suivi ("celle qui est payée", "le dernier", "parmi ceux-là"…)
+    const historyBlock = options.history
+      ? `\nHistorique récent de la conversation :\n${options.history}\n`
+      : '';
+
     const prompt = `Tu es un classificateur pour un assistant IA de cabinet d'avocats.
 Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, HELP, ADVICE, CHAT.
 
-READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...)
+READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...). Inclut aussi les QUESTIONS DE SUIVI qui font référence à des résultats précédents avec des pronoms ("celle qui...", "le dernier", "parmi ceux-là", "donne moi celle qui est payée").
 WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer, AINSI QUE les opérations comptables : passer/saisir/comptabiliser une écriture, débiter, créditer, créer un compte ou un journal, ouvrir/clôturer un exercice...)
 HELP   = expliquer comment utiliser l'application, ou guider l'utilisateur dans une procédure (comment faire, comment créer, où cliquer, procédure pour, guide pour). Une demande "comment créer..." est HELP, pas WRITE.
 ADVICE = donner des conseils, recommandations, suggestions, pistes d'amélioration ou prochaines étapes, souvent à partir du contexte précédent. Une demande "que peux-tu me conseiller d'ajouter encore ?" est ADVICE, pas READ.
@@ -537,7 +583,8 @@ CHAT   = question générale sans lien avec les données du cabinet (salutation,
 
 Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences, ET comptabilité (écritures comptables, comptes du plan comptable, journaux, exercices).
 ⚠️ « passer une écriture », « comptabiliser », « saisir une écriture » sont des opérations WRITE (création d'une écriture comptable), jamais READ.
-
+⚠️ Si l'utilisateur fait référence à un résultat précédent (« celle-ci », « celui-là », « la première », « parmi ceux-là ») en lien avec des données du cabinet, c'est READ, pas CHAT.
+${historyBlock}
 Demande : "${question.replace(/"/g, "'")}"
 
 Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
