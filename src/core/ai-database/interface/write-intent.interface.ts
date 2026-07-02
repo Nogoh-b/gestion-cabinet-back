@@ -39,4 +39,11 @@ export interface IntentDetectionResult {
   requiresConfirmation: boolean;
   /** Réponse directe de l'IA (mode CONVERSATIONAL uniquement) */
   conversationalResponse?: string;
+  /**
+   * Présent uniquement quand type === 'WRITE' sans writePlan : la génération
+   * du plan d'écriture a échoué malgré le mode WRITE forcé par l'utilisateur.
+   * L'appelant doit afficher ce message tel quel plutôt que de retomber sur
+   * le chemin READ (qui produirait des refus SQL incohérents).
+   */
+  writePlanError?: string;
 }

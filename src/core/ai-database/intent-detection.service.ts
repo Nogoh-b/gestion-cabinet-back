@@ -127,47 +127,131 @@ export class IntentDetectionService {
 
     // 3️⃣ Prompt amélioré pour les plans complexes
     const prompt = this.buildAdvancedDetectionPrompt(question, readSchema, writeSchema, options.history);
-    
-    try {
-      const planner = options.plannerLlm ?? llm;
-      const input = [{ role: 'user', content: prompt }];
-      options.onLlmCall?.({ profile: 'quality', input, modelName: options.plannerModelName });
-      const response = await planner.invoke(input);
-      const content = response.content as string;
-      
-      this.logger.debug(`📥 Réponse LLM: ${content.substring(0, 500)}...`);
-      
-      const result = this.parseResponse(content);
-      
-      if (result.type === 'READ') {
-        return { type: 'READ', requiresConfirmation: false };
-      }
+    const planner = options.plannerLlm ?? llm;
 
-      if (result.type === 'HELP') {
-        return { type: 'HELP', requiresConfirmation: false };
+    // « Tout faire » pour honorer une demande WRITE avant d'abandonner — surtout
+    // quand l'utilisateur a explicitement forcé le mode écriture (forceWrite) :
+    // dans ce cas on ne doit JAMAIS retomber silencieusement en READ (ça envoie
+    // la demande dans la mauvaise branche, qui génère alors des refus SQL
+    // absurdes du type "opération non autorisée").
+    //
+    // Trois natures d'échec, trois stratégies de retry :
+    // - erreur de CONNEXION (réseau/fournisseur, ex: "Connection error.") →
+    //   on retente le MÊME prompt après un court délai (le modèle n'a rien
+    //   répondu, le gronder n'a aucun sens).
+    // - réponse TRONQUÉE (finish_reason=length, JSON coupé en plein milieu) →
+    //   le budget de tokens était insuffisant : on retente en demandant un
+    //   plan plus concis (pas de texte superflu), jamais la scolarisation
+    //   "ta reponse etait invalide" qui n'aide pas ici.
+    // - réponse reçue complète mais JSON invalide / plan incomplet → on
+    //   retente avec un prompt correctif qui pointe l'erreur.
+    let lastError: string | undefined;
+    let lastWasConnectionError = false;
+    let lastWasTruncated = false;
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0 && lastWasConnectionError) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
       }
+      const attemptPrompt = attempt === 0 || lastWasConnectionError
+        ? prompt
+        : lastWasTruncated
+          ? `${prompt}\n\n⚠️ Ta reponse precedente a ete COUPEE avant la fin (JSON incomplet) car trop longue. Reponds UNIQUEMENT avec le JSON, SANS aucun texte de reflexion avant/apres, avec des "humanReadable" TRES courts (moins de 15 mots). Va droit au but.`
+          : `${prompt}\n\n⚠️ Ta reponse precedente etait invalide (${lastError}). Reponds UNIQUEMENT avec un JSON strictement valide, sans commentaire ni texte autour, en respectant exactement le format demande.`;
+      let isTruncated = false;
+      try {
+        const input = [{ role: 'user', content: attemptPrompt }];
+        options.onLlmCall?.({ profile: 'quality', input, modelName: options.plannerModelName });
+        const response = await planner.invoke(input);
+        const content = this.extractLlmText(response);
+        const finishReason = (response as any)?.response_metadata?.finish_reason
+          ?? (response as any)?.generationInfo?.finish_reason;
+        isTruncated = finishReason === 'length';
 
-      if (result.type === 'ADVICE') {
-        return { type: 'ADVICE', requiresConfirmation: false };
+        this.logger.debug(
+          `📥 Réponse LLM (tentative ${attempt + 1}, ${content.length} chars, finish_reason=${finishReason ?? '?'}): ` +
+          `${content.substring(0, 500)}...`,
+        );
+        if (isTruncated) {
+          this.logger.warn(
+            `✂️ Réponse tronquée (finish_reason=length) — le budget de tokens du planner est insuffisant pour ce plan.`,
+          );
+        }
+
+        const result = this.parseResponse(content);
+
+        if (result.type === 'READ') {
+          return { type: 'READ', requiresConfirmation: false };
+        }
+        if (result.type === 'HELP') {
+          return { type: 'HELP', requiresConfirmation: false };
+        }
+        if (result.type === 'ADVICE') {
+          return { type: 'ADVICE', requiresConfirmation: false };
+        }
+
+        // Valider et enrichir le plan
+        const validatedPlan = this.validateAndEnrichPlan(result.writePlan);
+
+        const requiresConfirmation = validatedPlan.confidence < 0.85 ||
+                                      validatedPlan.operations.length > 1 ||
+                                      validatedPlan.operations.some(op => op.operation === 'DELETE');
+
+        if (attempt > 0) this.logger.log(`✅ Plan WRITE généré à la tentative ${attempt + 1}`);
+        return {
+          type: 'WRITE',
+          writePlan: validatedPlan,
+          requiresConfirmation,
+        };
+      } catch (error) {
+        lastWasConnectionError = this.isConnectionError(error);
+        lastWasTruncated = !lastWasConnectionError && isTruncated;
+        lastError = (error as Error).message;
+        this.logger.warn(
+          `⚠️ Génération du plan WRITE — tentative ${attempt + 1} échouée` +
+          `${lastWasConnectionError ? ' (erreur de connexion)' : lastWasTruncated ? ' (reponse tronquee)' : ''}: ${lastError}`,
+        );
       }
-      
-      // Valider et enrichir le plan
-      const validatedPlan = this.validateAndEnrichPlan(result.writePlan);
-      
-      const requiresConfirmation = validatedPlan.confidence < 0.85 || 
-                                    validatedPlan.operations.length > 1 ||
-                                    validatedPlan.operations.some(op => op.operation === 'DELETE');
-      
+    }
+
+    this.logger.error(`❌ Génération du plan WRITE impossible après ${maxAttempts} tentatives: ${lastError}`);
+
+    if (options.forceWrite) {
+      // L'utilisateur a explicitement demandé l'écriture : ne JAMAIS masquer
+      // l'échec en READ silencieux. On remonte un échec explicite que
+      // l'appelant doit afficher tel quel à l'utilisateur.
+      const humanMessage = lastWasConnectionError
+        ? 'Le service IA est temporairement injoignable (erreur de connexion). Réessayez dans quelques instants.'
+        : lastWasTruncated
+          ? 'La demande est trop complexe pour être traitée en une seule fois. Essayez de la découper en plusieurs étapes (ex: créer d\'abord le dossier avec le client et l\'avocat, puis ajouter la procédure et les autres détails dans un second message).'
+          : (lastError || 'Le plan d\'ecriture n\'a pas pu etre genere.');
       return {
         type: 'WRITE',
-        writePlan: validatedPlan,
-        requiresConfirmation,
+        requiresConfirmation: false,
+        writePlanError: humanMessage,
       };
-      
-    } catch (error) {
-      this.logger.error(`❌ Erreur: ${error.message}`);
-      return { type: 'READ', requiresConfirmation: false };
     }
+
+    // Mode auto (pas de forceWrite) : on tente le SQL en dernier recours,
+    // comportement historique conservé pour ne pas regresser les cas READ.
+    return { type: 'READ', requiresConfirmation: false };
+  }
+
+  /**
+   * Détecte une erreur de connexion réseau/fournisseur (ex: APIConnectionError
+   * du SDK OpenAI, message "Connection error.") plutôt qu'une réponse invalide.
+   * Ces erreurs ne doivent jamais être traitées comme une faute du modèle
+   * (pas de prompt correctif "ta réponse était invalide" dans ce cas).
+   */
+  private isConnectionError(error: unknown): boolean {
+    const err = error as { constructor?: { name?: string }; name?: string; message?: string; code?: string };
+    const ctorName = err?.constructor?.name || '';
+    const name = err?.name || '';
+    const message = err?.message || '';
+    const code = err?.code || '';
+    return /connection|network|timeout|econnreset|econnrefused|etimedout|enotfound|fetch failed/i.test(
+      `${ctorName} ${name} ${message} ${code}`,
+    );
   }
 
   /**
@@ -593,7 +677,7 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
       const input = [{ role: 'user', content: prompt }];
       options.onLlmCall?.({ profile: 'fast', input, modelName: options.classifierModelName });
       const response = await llm.invoke(input);
-      const raw = (response.content as string).trim().toUpperCase().replace(/[^A-Z]/g, '');
+      const raw = this.extractLlmText(response).trim().toUpperCase().replace(/[^A-Z]/g, '');
       const value: IntentClass = raw.startsWith('WRITE')
         ? 'WRITE'
         : raw.startsWith('HELP')
@@ -624,10 +708,25 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
         { role: 'system', content: systemPrompt },
         { role: 'user',   content: question },
       ]);
-      return response.content as string;
+      return this.extractLlmText(response);
     } catch {
       return `Bonjour ! Comment puis-je vous aider ?`;
     }
+  }
+
+  /**
+   * Extrait le texte d'une réponse LLM, quel que soit son format (string ou
+   * tableau de blocs, cas des modèles "thinking"). Sans ça, `response.content
+   * as string` plante silencieusement sur un tableau et le catch avale
+   * l'erreur → fallback READ inattendu, y compris en mode WRITE forcé.
+   */
+  private extractLlmText(response: any): string {
+    const content = response?.content ?? response;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content.map((item: any) => item?.text ?? item?.content ?? item ?? '').join('');
+    }
+    return String(content ?? '');
   }
 
   /**

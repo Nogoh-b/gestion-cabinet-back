@@ -1,6 +1,6 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AsyncLocalStorage } from 'async_hooks';
 import { DataSource, Repository } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
 import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
@@ -30,27 +30,33 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 
 
 
+
+
+
 import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { isSharedEntity } from '../tenant/tenant.decorator';
+import { buildAiCacheKey } from './ai-cache-key.util';
 import { AiDatabasePermissionService, AiUserContext } from './ai-database-permission.service';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { AiModelProfile, AiModelRouterService } from './ai-model-router.service';
-import { buildAiCacheKey } from './ai-cache-key.util';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
 import { AnalysisResponseDto, ReadClarificationContext, WritePlan } from './dto/analysis-response.dto';
 import { AskQuestionDto, parseReferencedContext, parseVisibleHistory, ReferencedEntityContext, VisibleHistoryMessage } from './dto/ask-question.dto';
+import { AiRequestLog } from './entities/ai-request-log.entity';
 import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { ColumnSchema, DatabaseSchema, TableSchema } from './interface/schema.interface';
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
-import { AiRequestLog } from './entities/ai-request-log.entity';
 import { AmbiguityException } from './write/ambiguity.exception';
 import { EntityIdRequiredException } from './write/entity-id-required.exception';
 import { WriteHandlerRegistry, WriteResult } from './write/write-handler.registry';
+
+
+
 
 
 
@@ -135,6 +141,13 @@ export class AiDatabaseService implements OnModuleInit {
   private readonly CACHE_TTL = 3600000; // 1 heure
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
+  // Budget dédié au planner WRITE : le prompt inclut le schéma READ complet +
+  // le schéma WRITE de TOUS les handlers + les règles métier, et la réponse
+  // (raisonnement du modèle "thinking" + JSON du plan) peut dépasser 4000
+  // tokens sur une demande multi-entités (ex: client + avocat + procédure +
+  // dossier en une seule opération). Un budget insuffisant tronque le JSON en
+  // plein milieu → "Unexpected end of JSON input" au parsing.
+  private readonly WRITE_PLAN_MAX_TOKENS = 6000;
   private readonly MAX_CHARS = 180000;
   private readonly MAX_HISTORY_MESSAGES = 4;
   private readonly MAX_HISTORY_TOKENS = 2200;
@@ -225,6 +238,8 @@ export class AiDatabaseService implements OnModuleInit {
 
   private async invokeModel(profile: AiModelProfile, input: unknown, maxTokens?: number): Promise<any> {
     this.recordLlmCall(profile, input);
+    const modelName = this.aiModelRouter.getModelName(profile);
+    this.logger.log(`🤖 [LLM] invoke → profil=${profile} modele=${modelName} maxTokens=${maxTokens ?? '(defaut)'}`);
     const response = await this.aiModelRouter.invoke(profile, input, maxTokens);
     this.recordOutput(this.extractLlmText(response));
     return response;
@@ -232,15 +247,19 @@ export class AiDatabaseService implements OnModuleInit {
 
   private async streamModel(profile: AiModelProfile, input: unknown, maxTokens?: number): Promise<any> {
     this.recordLlmCall(profile, input);
+    const modelName = this.aiModelRouter.getModelName(profile);
+    this.logger.log(`🤖 [LLM] stream → profil=${profile} modele=${modelName} maxTokens=${maxTokens ?? '(defaut)'}`);
     return this.aiModelRouter.stream(profile, input, maxTokens);
   }
 
   private trackExternalLlmCall = (info: { profile: AiModelProfile; input: unknown; modelName?: string }) => {
+    const modelName = info.modelName || this.aiModelRouter.getModelName(info.profile);
+    this.logger.log(`🤖 [LLM] invoke (externe) → profil=${info.profile} modele=${modelName}`);
     const metrics = this.metricsStorage.getStore();
     if (!metrics) return;
     metrics.llmCalls += 1;
     metrics.estimatedPromptTokens += this.aiModelRouter.estimateTokens(info.input);
-    metrics.models.add(info.modelName || this.aiModelRouter.getModelName(info.profile));
+    metrics.models.add(modelName);
   };
 
   private extractLlmText(response: any): string {
@@ -633,26 +652,6 @@ ${rules}`;
     return question;
   }
 
-  /**
-   * Heuristique légère : la question fait-elle référence à un élément du tour
-   * précédent (anaphore) ? Sert à éviter une clarification générique inutile
-   * quand un suivi échoue (« ce dossier », « celle-ci », « aucune … ? »).
-   */
-  private looksLikeFollowUp(question: string, historyOverride: VisibleHistoryMessage[]): boolean {
-    if (!historyOverride.length) return false;
-    const normalized = question.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-    return /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|ce(?:t|tte|s)?\s+\w+|l[ea]\s+(?:meme|precedent|precedente|derniere?|premiere?)|de\s+ce\s+\w+|dans\s+ce(?:t|tte)?\s+\w+|son|sa|ses|leurs?)\b/.test(normalized);
-  }
-
-  private isGenericReadClarification(context: ReadClarificationContext | null): boolean {
-    if (!context?.options?.length) return false;
-    const genericTerms = ['details', 'detail', 'count', 'compter', 'precise', 'preciser', 'voir le detail'];
-    return context.options.every(option => {
-      const value = this.normalizeForKeywordMatch(`${option.id} ${option.label} ${option.description}`);
-      return genericTerms.some(term => this.containsNormalizedPhrase(value, this.normalizeForKeywordMatch(term)));
-    });
-  }
-
   private async buildReadClarificationContext(
     question: string,
     enrichedQuestion: string,
@@ -665,8 +664,11 @@ ${rules}`;
     } = {},
     reason = 'La demande READ n\'a pas permis de generer une requete SQL fiable.',
   ): Promise<ReadClarificationContext> {
+    // 1. PRIORITÉ ABSOLUE : l'IA génère les suggestions à partir du contexte,
+    //    de l'historique et de la question. Le preset projet n'est qu'un INDICE
+    //    pour guider l'IA (il ne court-circuite jamais la génération).
     const preset = this.findReadClarificationPreset(question);
-    const fallback = await this.generateReadClarificationWithModel(
+    const aiClarification = await this.generateReadClarificationWithModel(
       question,
       enrichedQuestion,
       schema,
@@ -675,16 +677,11 @@ ${rules}`;
       context,
       preset,
     );
-    if (fallback && !(preset && this.isGenericReadClarification(fallback))) return fallback;
+    if (aiClarification) return aiClarification;
 
-    if (preset) {
-      return {
-        reason: preset.reason,
-        question: preset.question,
-        options: preset.options,
-      };
-    }
-
+    // 2. RELAIS : si (et seulement si) l'IA n'a rien pu générer, on retombe sur
+    //    un fallback générique basé sur les tables détectées (libellés du schéma).
+    this.logger.warn('🟠 Clarification IA indisponible → relais buildFallbackFromDetectedTables');
     return this.buildContextualFallbackClarification(question, tables, reason);
   }
 
@@ -784,32 +781,61 @@ Contraintes ABSOLUES:
 - Ne propose jamais une option WRITE ici: uniquement des relances READ.
 - specificTables doit contenir les tables exactes du schema necessaires pour la requete.`;
 
-    try {
-      const response = await this.invokeModel('fast', [{ role: 'user', content: prompt }], 900);
-      const content = this.extractLlmText(response);
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return null;
-      const parsed = JSON.parse(jsonMatch[0]) as ReadClarificationContext;
-      if (!parsed.question || !Array.isArray(parsed.options) || parsed.options.length === 0) {
-        return null;
+    // « Tout faire » pour que l'IA génère : plusieurs tentatives, modèles
+    // différents et budget de tokens confortable. On ne renonce qu'après échec
+    // répété (alors seulement buildFallbackFromDetectedTables prend le relais).
+    const attempts: Array<{ profile: 'fast' | 'quality'; maxTokens: number }> = [
+      { profile: 'fast', maxTokens: 1200 },
+      { profile: 'quality', maxTokens: 1500 },
+    ];
+    for (let i = 0; i < attempts.length; i++) {
+      const { profile, maxTokens } = attempts[i];
+      try {
+        const response = await this.invokeModel(profile, [{ role: 'user', content: prompt }], maxTokens);
+        const content = this.extractLlmText(response);
+        const parsed = this.parseClarificationJson(content, question, reason);
+        if (parsed) {
+          if (i > 0) this.logger.log(`✅ Clarification IA générée à la tentative ${i + 1} (${profile})`);
+          return parsed;
+        }
+        this.logger.warn(`Clarification IA tentative ${i + 1} (${profile}) : JSON invalide/incomplet`);
+      } catch (error) {
+        this.logger.warn(`Clarification IA tentative ${i + 1} (${profile}) échouée: ${(error as Error).message}`);
       }
-      return {
-        reason: String(parsed.reason || reason),
-        question: String(parsed.question),
-        options: parsed.options.slice(0, 4).map((option, index) => ({
-          id: String(option.id || `option_${index + 1}`),
-          label: String(option.label || `Option ${index + 1}`).substring(0, 80),
-          description: String(option.description || '').substring(0, 240),
-          followUpQuestion: String(option.followUpQuestion || question),
-          specificTables: Array.isArray(option.specificTables)
-            ? option.specificTables.map(String).filter(Boolean).slice(0, 5)
-            : undefined,
-        })),
-      };
-    } catch (error) {
-      this.logger.warn(`Clarification READ generique impossible: ${(error as Error).message}`);
+    }
+    return null;
+  }
+
+  /** Parse + normalise la réponse JSON de clarification de l'IA. */
+  private parseClarificationJson(
+    content: string,
+    question: string,
+    reason: string,
+  ): ReadClarificationContext | null {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    let parsed: ReadClarificationContext;
+    try {
+      parsed = JSON.parse(jsonMatch[0]) as ReadClarificationContext;
+    } catch {
       return null;
     }
+    if (!parsed.question || !Array.isArray(parsed.options) || parsed.options.length === 0) {
+      return null;
+    }
+    return {
+      reason: String(parsed.reason || reason),
+      question: String(parsed.question),
+      options: parsed.options.slice(0, 4).map((option, index) => ({
+        id: String(option.id || `option_${index + 1}`),
+        label: String(option.label || `Option ${index + 1}`).substring(0, 80),
+        description: String(option.description || '').substring(0, 240),
+        followUpQuestion: String(option.followUpQuestion || question),
+        specificTables: Array.isArray(option.specificTables)
+          ? option.specificTables.map(String).filter(Boolean).slice(0, 5)
+          : undefined,
+      })),
+    };
   }
 
   private isNoResultsResponse(content: string): boolean {
@@ -823,13 +849,13 @@ Contraintes ABSOLUES:
 
   private buildContextualFallbackClarification(
     question: string,
-    tables: string[],
+    tables: string[], 
     reason: string,
   ): ReadClarificationContext {
     const normalized = this.normalizeForKeywordMatch(question);
     // Dernier recours GENERIQUE (aucune connaissance metier en dur dans le core) :
     // on s'appuie sur les tables detectees + leurs libelles metier issus du schema/config.
-    const tableFallback = this.buildFallbackFromDetectedTables(normalized, tables);
+    const tableFallback = this.buildFallbackFromDetectedTables(normalized, tables); 
     if (tableFallback) return tableFallback;
 
     return {
@@ -1401,7 +1427,7 @@ Contraintes obligatoires :
         {
           forceWrite: intentMode === 'write' || forceWriteDespiteReadMode,
           history: historyForIntent,
-          plannerLlm: this.aiModelRouter.getModel('quality', 1400),
+          plannerLlm: this.aiModelRouter.getModel('quality', this.WRITE_PLAN_MAX_TOKENS),
           onLlmCall: this.trackExternalLlmCall,
           classifierModelName: this.aiModelRouter.getModelName('fast'),
           plannerModelName: this.aiModelRouter.getModelName('quality'),
@@ -1416,6 +1442,27 @@ Contraintes obligatoires :
         intentResult.writePlan,
         requestContext.referenced,
       );
+    }
+
+    // Mode écriture forcé mais génération du plan impossible : message honnête,
+    // JAMAIS de repli silencieux vers la branche READ (qui produirait des refus
+    // SQL incohérents pour une demande de création/modification).
+    if (intentResult.type === 'WRITE' && !intentResult.writePlan) {
+      let conversationId = dto.conversationId;
+      if (!conversationId) {
+        const conv = await this.conversationManager.createConversation(userId, this.generateConversationTitle(dto.question));
+        conversationId = conv.id;
+      }
+      const analysis = `Je n'ai pas réussi à construire un plan de création/modification fiable pour cette demande (${intentResult.writePlanError || 'raison inconnue'}). Essayez de la simplifier ou de la découper en plusieurs étapes (ex: créer d'abord le dossier, puis y ajouter les détails).`;
+      await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+      return {
+        success: false,
+        question: dto.question,
+        analysis,
+        error: intentResult.writePlanError,
+        executionTimeMs: Date.now() - startTime,
+        conversationId,
+      };
     }
 
     // ── 3a. BRANCHE CONVERSATIONNELLE ────────────────────────────────────────
@@ -1527,19 +1574,8 @@ Contraintes obligatoires :
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema, enrichedQuestion);
 
       if (this.isSyntheticEmptyQuery(validatedQuery)) {
-        // Question de suivi qui échoue → message honnête plutôt qu'une clarification
-        // générique de table (qui « perd le nord » au milieu d'une conversation).
-        if (this.looksLikeFollowUp(dto.question, historyOverride)) {
-          const analysis = `Je n'ai pas pu déterminer cela à partir du contexte précédent. Pouvez-vous préciser sur quel élément porte votre question (par exemple en redonnant le numéro ou le nom concerné) ?`;
-          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
-            sqlQuery: validatedQuery, results: [], rowCount: 0, ...(fileInfo && { fileInfo }),
-          });
-          return {
-            success: true, question: dto.question, sqlQuery: validatedQuery, analysis,
-            results: [], executionTimeMs: Date.now() - startTime, rowCount: 0, conversationId,
-            ...(fileInfo && { fileInfo }),
-          };
-        }
+        // Requête vide → l'IA génère des suggestions (avec contexte + historique),
+        // sinon buildFallbackFromDetectedTables prend le relais.
         const clarificationContext = await this.buildReadClarificationContext(
           dto.question,
           enrichedQuestion,
@@ -3145,7 +3181,7 @@ ${blocks.join('\n\n')}
           {
             forceWrite: intentMode === 'write' || forceWriteDespiteReadMode,
             history: historyForIntent,
-            plannerLlm: this.aiModelRouter.getModel('quality', 1400),
+            plannerLlm: this.aiModelRouter.getModel('quality', this.WRITE_PLAN_MAX_TOKENS),
             onLlmCall: this.trackExternalLlmCall,
             classifierModelName: this.aiModelRouter.getModelName('fast'),
             plannerModelName: this.aiModelRouter.getModelName('quality'),
@@ -3162,6 +3198,29 @@ ${blocks.join('\n\n')}
       }
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
       await this.sleep(150);
+
+      // Mode écriture forcé mais génération du plan impossible : message honnête,
+      // JAMAIS de repli silencieux vers la branche READ (qui produirait des refus
+      // SQL incohérents pour une demande de création/modification).
+      if (intentResult.type === 'WRITE' && !intentResult.writePlan) {
+        let conversationId = dto.conversationId;
+        if (!conversationId) {
+          const conv = await this.conversationManager.createConversation(userId, this.generateConversationTitle(dto.question));
+          conversationId = conv.id;
+        }
+        const analysis = `Je n'ai pas réussi à construire un plan de création/modification fiable pour cette demande (${intentResult.writePlanError || 'raison inconnue'}). Essayez de la simplifier ou de la découper en plusieurs étapes (ex: créer d'abord le dossier, puis y ajouter les détails).`;
+        await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined);
+        sendEvent('token', { text: analysis });
+        sendEvent('result', {
+          success: false,
+          question: dto.question,
+          analysis,
+          error: intentResult.writePlanError,
+          executionTimeMs: Date.now() - startTime,
+          conversationId,
+        });
+        return;
+      }
 
       if (intentResult.type === 'HELP') {
         const result = await this.handleHelpIntent(
@@ -3303,21 +3362,8 @@ ${blocks.join('\n\n')}
       // appels LLM (jusqu'à 4) et la latence. On exécute la requête validée directement.
       const validatedQuery = await this.validateAndFixQuery(sqlQuery, relevantTables, schema, enrichedQuestion);
       if (this.isSyntheticEmptyQuery(validatedQuery)) {
-        // Question de suivi qui échoue → message honnête plutôt qu'une clarification
-        // générique de table (qui « perd le nord » au milieu d'une conversation).
-        if (this.looksLikeFollowUp(dto.question, historyOverride)) {
-          const analysis = `Je n'ai pas pu déterminer cela à partir du contexte précédent. Pouvez-vous préciser sur quel élément porte votre question (par exemple en redonnant le numéro ou le nom concerné) ?`;
-          await this.conversationManager.addAssistantMessage(conversationId, analysis, undefined, {
-            sqlQuery: validatedQuery, results: [], rowCount: 0, ...(fileInfo && { fileInfo }),
-          });
-          sendEvent('token', { text: analysis });
-          sendEvent('result', {
-            success: true, question: dto.question, sqlQuery: validatedQuery, analysis,
-            results: [], rowCount: 0, conversationId, executionTimeMs: Date.now() - startTime,
-            ...(fileInfo && { fileInfo }),
-          });
-          return;
-        }
+        // Requête vide → l'IA génère des suggestions (avec contexte + historique),
+        // sinon buildFallbackFromDetectedTables prend le relais.
         const clarificationContext = await this.buildReadClarificationContext(
           dto.question,
           enrichedQuestion,
@@ -3369,7 +3415,7 @@ ${blocks.join('\n\n')}
           {
             forceWrite: true,
             history: historyForIntent,
-            plannerLlm: this.aiModelRouter.getModel('quality', 1400),
+            plannerLlm: this.aiModelRouter.getModel('quality', this.WRITE_PLAN_MAX_TOKENS),
             onLlmCall: this.trackExternalLlmCall,
             classifierModelName: this.aiModelRouter.getModelName('fast'),
             plannerModelName: this.aiModelRouter.getModelName('quality'),

@@ -102,7 +102,11 @@ export class AiModelRouterService {
       maxTokens: maxTokens ?? this.getProfileNumber(profile, 'MAX_TOKENS', defaults[profile]),
       streaming: profile === 'streaming',
       timeout: this.getProfileNumber(profile, 'TIMEOUT_MS', Number(process.env.AI_TIMEOUT_MS || 35000)),
-      maxRetries: this.getProfileNumber(profile, 'MAX_RETRIES', Number(process.env.AI_MAX_RETRIES || 0)),
+      // Défaut à 2 (au lieu de 0) : le SDK OpenAI retente en interne (backoff
+      // exponentiel) les erreurs de connexion transitoires ("Connection error.")
+      // avant de remonter une erreur. Sans ça, le moindre accroc réseau
+      // provoquait un échec immédiat et visible sur chaque appel LLM du module.
+      maxRetries: this.getProfileNumber(profile, 'MAX_RETRIES', Number(process.env.AI_MAX_RETRIES ?? 2)),
       temperature: this.getProfileNumber(profile, 'TEMPERATURE', Number(process.env.AI_TEMPERATURE || 0)),
       apiKey: this.getApiKey(profile),
       baseURL: this.getBaseUrl(profile),
