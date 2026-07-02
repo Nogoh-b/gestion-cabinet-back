@@ -132,7 +132,12 @@ export class AuthService {
       : await this.usersService.getUserPermissions(userId);
       const user = await this.usersService.findOne(userId);
     const permissions = (permissionObjects ?? []).map((p: any) => p.code);
-    console.log(`[getFreshProfile] userId=${userId} role=${roleCode} → ${permissions.length} permissions`);
+    // Logger les permissions en clair dans la console = fuite d'information.
+    // En cas de besoin de débogage, utiliser this.logger.debug() (Winston)
+    // qui respecte les niveaux de log configurés.
+    this.logger.debug(
+      `[getFreshProfile] userId=${userId} role=${roleCode} → ${permissions.length} permissions`,
+    );
     return { ...user, permissions };
   }
 
