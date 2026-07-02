@@ -1,5 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as express from 'express';
+import helmet from 'helmet';
 import { DataSource } from 'typeorm';
 import { ExpressAdapter } from '@bull-board/express';
 import { ClassSerializerInterceptor } from '@nestjs/common';
@@ -58,6 +59,20 @@ async function bootstrap() {
   app.use(express.json({ limit: '15mb' }));
   app.use(express.urlencoded({ limit: '15mb', extended: true }));
 
+  // ── Sécurité : en-têtes HTTP via Helmet ──────────────────────────────────
+  // Ajoute X-Content-Type-Options, X-Frame-Options (anti clickjacking),
+  // Strict-Transport-Security (HSTS), masque X-Powered-By, etc.
+  // contentSecurityPolicy désactivé ici car l'API sert surtout du JSON ;
+  // le CSP doit être géré côté front Next.js.
+  app.use(helmet({ contentSecurityPolicy: false }));
+  // Refuser l'affichage de l'API dans des frames externes (anti-clickjacking).
+  app.use(helmet.frameguard({ action: 'deny' }));
+
+  // ── Trust proxy : récupération fiable de l'IP client et du schéma (https)
+  // derrière un reverse proxy (Nginx, load balancer). Indispensable pour que
+  // les logs, le rate limiting et les vérifications d'origine soient exacts.
+  app.set('trust proxy', 1);
+
   // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement
   // HTTP. Le faire dans le handler de requête (res.socket.setNoDelay) est trop
@@ -101,19 +116,24 @@ async function bootstrap() {
     });
   }
 
-  // CORS : liste explicite (origin '*' + credentials est rejeté par le navigateur)
+  // CORS : liste blanche EXPLICITE d'origines.
+  // Règle de sécurité : ne jamais utiliser origin: '*' avec credentials: true,
+  // cela exposerait l'API à des requêtes authentifiées depuis n'importe quel site.
   const corsOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
-    : true; // reflète l'origine de la requête en l'absence de config
+    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    : ['http://localhost:3000'];
+  if (process.env.NODE_ENV === 'production' && corsOrigins.includes('*')) {
+    console.warn(
+      '⚠️  [SECURITE] CORS_ORIGINS contient "*" en production — configuration dangereuse. ' +
+        'Définissez une liste explicite d\'origines.',
+    );
+  }
   app.enableCors({
-    origin: '*', 
+    origin: corsOrigins,
     credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type,Authorization,X-Tenant-Code,X-Requested-With',
   });
-// app.enableCors({
-//   origin: 'http://localhost:3000', // ou ton origine exacte
-//   methods: 'GET,POST,OPTIONS',     // méthodes autorisées
-//   allowedHeaders: 'Content-Type',  // en-têtes autorisés
-// });
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath('/admin/queues');
   app.use('/admin/queues', serverAdapter.getRouter());
