@@ -1,5 +1,6 @@
 import { Controller, Post, UseGuards, HttpCode, Req, HttpStatus, Request, Get, Body } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'; // Ajouter
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
@@ -39,6 +40,7 @@ export class AuthController {
   @Public()
   @UseGuards(LocalAuthGuard)
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 tentatives / minute
   async login(@Request() req) {
     return this.authService.login(req.user);
   }
@@ -47,6 +49,7 @@ export class AuthController {
   @Public()
   @Post('verify-mfa')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vérifications / minute
   @ApiOperation({ summary: 'Vérifier le code de connexion (MFA)' })
   async verifyMfa(@Body() body: { email: string; otp: string }) {
     return this.authService.verifyMfa(body?.email, body?.otp);
@@ -110,6 +113,7 @@ export class AuthController {
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 demandes / minute
   @ApiOperation({ summary: 'Demander la réinitialisation du mot de passe' })
   @ApiResponse({ status: 200, description: 'Email envoyé avec succès' })
   async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
@@ -119,6 +123,7 @@ export class AuthController {
   @Public()
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vérifications / minute
   @ApiOperation({ summary: 'Vérifier le code OTP' })
   @ApiResponse({ status: 200, description: 'Code vérifié avec succès' })
   async verifyOTP(@Body() verifyOtpDto: VerifyOtpDto) {
@@ -128,6 +133,7 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 réinitialisations / minute
   @ApiOperation({ summary: 'Réinitialiser le mot de passe' })
   @ApiResponse({ status: 200, description: 'Mot de passe réinitialisé' })
   async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
@@ -137,6 +143,7 @@ export class AuthController {
   @Public()
   @Post('set-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 créations / minute
   @ApiOperation({ summary: 'Créer le mot de passe (invitation)' })
   @ApiResponse({ status: 200, description: 'Mot de passe créé' })
   async setPassword(@Body() setPasswordDto: SetPasswordDto) {

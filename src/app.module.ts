@@ -68,6 +68,7 @@ import { MailTemplateModule } from './modules/mail-template/mail-template.module
 import { TemplateBlocksModule } from './modules/template-blocks/template-blocks.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { SuspendedCabinetGuard } from './core/common/guards/suspended-cabinet.guard';
@@ -99,6 +100,15 @@ dotenv.config();
 
     EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
+    // Rate limiting global : protège contre le brute-force (login, OTP...) et
+    // les abus d'API. Limites configurables via RATE_LIMIT_TTL / RATE_LIMIT_MAX.
+    // Des @Throttle spécifiques resserrent les routes d'authentification.
+    ThrottlerModule.forRoot([
+      {
+        ttl: parseInt(process.env.RATE_LIMIT_TTL || '60', 10) * 1000,
+        limit: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+      },
+    ]),
     ComptabiliteModule,
 
     // 2. Modules indépendants
@@ -229,6 +239,12 @@ dotenv.config();
   controllers: [AppController],
   providers: [
     AppService,
+    // ThrottlerGuard AVANT SuspendedCabinetGuard : le rate limiting s'applique
+    // en premier à toutes les routes (anti brute-force).
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: SuspendedCabinetGuard,
