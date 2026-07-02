@@ -1,8 +1,10 @@
 import { registerAs } from '@nestjs/config';
 
+import { getJwtSecret } from 'src/core/config/secrets';
+
 export default registerAs('security', () => ({
   jwt: {
-    secret: process.env.JWT_SECRET || 'defaultSecretKey',
+    secret: getJwtSecret(),
     expiresIn: process.env.JWT_EXPIRES_IN || '1d',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },

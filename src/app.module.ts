@@ -5,7 +5,7 @@ import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
 
@@ -122,37 +122,42 @@ dotenv.config();
       rootPath: UPLOAD_PATH,
       serveRoot: `/${UPLOAD_FOLDER_NAME}/`,
     }),
-    MailerModule.forRoot({
-      transport: {
-        host: 'mail.nouyadjamassociates.com',
-        port: 465,
-        secure: true, // true pour le port 465
-        auth: {
-          user: 'emelineenanga@nouyadjamassociates.com',
-          pass: 'Aq123456789!',
-        },
-      },
-      defaults: {
-        from: '"No Reply NOUYADJAM & ASSOCIATES" <emelineenanga@nouyadjamassociates.com>',
-      }, 
-      template: {
-        dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
-        // adapter: new HandlebarsAdapter(helpers), // Moteur de template
-        adapter: new HandlebarsAdapter(helpers), // Moteur de template
-        options: { 
-          strict: true,
-          defaultLayout: 'layout', 
-        },
-        
-      },
-      options: {
-        partials: {
-          dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
-          options: {
-            strict: true, 
+    MailerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        transport: {
+          host: config.get<string>('SMTP_HOST'),
+          port: config.get<number>('SMTP_PORT', 465),
+          secure: config.get<string>('SMTP_SECURE', 'true') === 'true',
+          auth: {
+            user: config.get<string>('SMTP_USER'),
+            pass: config.get<string>('SMTP_PASSWORD'),
           },
         },
-      },
+        defaults: {
+          from: config.get<string>(
+            'MAIL_FROM',
+            '"No Reply" <no-reply@example.com>',
+          ),
+        },
+        template: {
+          dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+          adapter: new HandlebarsAdapter(helpers),
+          options: {
+            strict: true,
+            defaultLayout: 'layout',
+          },
+        },
+        options: {
+          partials: {
+            dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+            options: {
+              strict: true,
+            },
+          },
+        },
+      }),
     }),
     ClientsModule.register([
       {
