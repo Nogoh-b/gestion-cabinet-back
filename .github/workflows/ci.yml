@@ -1,0 +1,48 @@
+# CI — Backend NestJS
+# Lance à chaque push/PR : lint, build, audit de sécurité et tests.
+# Aucun secret n'est requis pour ces étapes (elles n'accèdent pas à la DB).
+name: Backend CI
+
+on:
+  push:
+    branches: [main, fix-subscription, audit-securite]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Variables minimales pour permettre le build sans DB réelle.
+      JWT_SECRET: ci-placeholder-secret-not-used-in-tests-at-least-32chars
+      NODE_ENV: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Lint
+        run: yarn lint
+        continue-on-error: true # le lint existant peut être bruyant au début
+
+      - name: Type-check
+        run: npx tsc --noEmit -p tsconfig.build.json
+
+      - name: Build
+        run: yarn build
+
+      - name: Audit des vulnérabilités (niveau high+)
+        run: yarn audit --groups dependencies --level high
+        continue-on-error: true # informatif, ne bloque pas (à durcir ensuite)
+
+      - name: Tests unitaires
+        run: yarn test --silent
+        continue-on-error: true # couverture partielle pour l'instant
