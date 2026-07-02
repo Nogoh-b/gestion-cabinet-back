@@ -14,7 +14,7 @@ import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor';
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 
 @ApiTags('AI Database Analysis')
@@ -34,23 +34,7 @@ export class AiDatabaseController {
   @Post('ask')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, AiQuotaGuard)
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
-    fileFilter: (req, file, cb) => {
-      const allowed = ['application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
-        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      ];
-      if (allowed.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(new Error(`Type de fichier non supporté: ${file.mimetype}`), false);
-      }
-    }
-  }))
+  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -93,20 +77,7 @@ export class AiDatabaseController {
    */
   @Post('ask/stream')
   @UseGuards(JwtAuthGuard, AiQuotaGuard)
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-      const allowed = [
-        'application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
-        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      ];
-      cb(allowed.includes(file.mimetype) ? null : new Error(`Type non supporté: ${file.mimetype}`), allowed.includes(file.mimetype));
-    },
-  }))
+  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Version streaming (SSE) de /ask' })
   async askStream(

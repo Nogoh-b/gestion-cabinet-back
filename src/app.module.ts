@@ -23,10 +23,6 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantResolverMiddleware } from './core/tenant/tenant-resolver.middleware';
-import {
-  UPLOAD_FOLDER_NAME,
-  UPLOAD_PATH,
-} from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
 import { CabinetModule } from './modules/cabinet/cabinet.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -128,10 +124,11 @@ dotenv.config();
       isGlobal: true,
       envFilePath: ['.env'],
     }),
-    ServeStaticModule.forRoot({
-      rootPath: UPLOAD_PATH,
-      serveRoot: `/${UPLOAD_FOLDER_NAME}/`,
-    }),
+    // NB: le service statique des uploads est désormais géré par un middleware
+    // Express sécurisé dans main.ts (Content-Disposition: attachment +
+    // X-Content-Type-Options: nosniff), au lieu du ServeStaticModule qui
+    // n'ajoutait aucun en-tête de sécurité (risque XSS/sniffing sur les
+    // pièces de dossiers juridiques).
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

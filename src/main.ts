@@ -73,6 +73,24 @@ async function bootstrap() {
   // les logs, le rate limiting et les vérifications d'origine soient exacts.
   app.set('trust proxy', 1);
 
+  // ── Service statique des uploads SÉCURISÉ ─────────────────────────────────
+  // Les pièces de dossiers juridiques (PDF, images de CNI, conclusions...)
+  // sont servies en forçant le téléchargement (Content-Disposition: attachment)
+  // et en interdisant le sniffing de type (X-Content-Type-Options: nosniff).
+  // Sans cela, un navigateur pourrait interpréter/exécuter un fichier malveillant
+  // (HTML/SVG → XSS) affiché dans une iframe.
+  const UPLOADS_DIR = require('path').join(process.cwd(), 'uploads');
+  const uploadsStatic = express.static(UPLOADS_DIR, {
+    index: false,            // ne sert jamais d'index.html
+    dotfiles: 'ignore',      // ignore les fichiers cachés
+    setHeaders: (res) => {
+      res.setHeader('Content-Disposition', 'attachment');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'no-store');
+    },
+  });
+  app.use('/uploads', uploadsStatic);
+
   // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement
   // HTTP. Le faire dans le handler de requête (res.socket.setNoDelay) est trop
