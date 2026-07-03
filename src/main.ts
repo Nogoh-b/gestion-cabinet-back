@@ -150,7 +150,13 @@ async function bootstrap() {
     origin: corsOrigins,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type,Authorization,X-Tenant-Code,X-Requested-With',
+    // En-têtes autorisés : on accepte les en-têtes standard envoyés par le
+    // front (notamment cache-control/pragma pour le streaming SSE/IA, et les
+    // en-têtes de négociation de contenu). Les en-têtes sont listés plutôt
+    // que d'utiliser '*' qui est refusé par les navigateurs avec credentials.
+    allowedHeaders:
+      'Content-Type,Authorization,X-Tenant-Code,X-Requested-With,' +
+      'Accept,Accept-Language,Cache-Control,Pragma,If-None-Match,Last-Event-ID',
   });
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath('/admin/queues');
