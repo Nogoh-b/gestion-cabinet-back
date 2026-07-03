@@ -25,6 +25,7 @@ import { ProcedureInstance } from '../procedure/entities/procedure-instance.enti
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 
 
@@ -415,44 +416,48 @@ export class FactureService extends BaseServiceV1<Facture> {
   }
 
   async getChiffreAffairesParPeriode(dateDebut: Date, dateFin: Date): Promise<number> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('facture')
       .select('SUM(facture.montantTTC)', 'chiffreAffaires')
       .where('facture.dateFacture BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin })
-      .andWhere('facture.status IN (:...statuts)', { 
-        statuts: ['envoyee', 'partiellement_payee', 'payee'] 
-      })
-      .getRawOne();
+      .andWhere('facture.status IN (:...statuts)', {
+        statuts: ['envoyee', 'partiellement_payee', 'payee']
+      });
+    addTenantCondition(qb, 'facture');
+    const result = await qb.getRawOne();
 
     return parseFloat(result.chiffreAffaires) || 0;
   }
 
   async getMontantEncaisseParPeriode(dateDebut: Date, dateFin: Date): Promise<number> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('facture')
       .select('SUM(facture.montantPaye)', 'montantEncaisse')
-      .where('facture.dateFacture BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin })
-      .getRawOne();
+      .where('facture.dateFacture BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin });
+    addTenantCondition(qb, 'facture');
+    const result = await qb.getRawOne();
 
     return parseFloat(result.montantEncaisse) || 0;
   }
 
   async getStatistiquesPaiements(): Promise<any> {
-    const totalFactures = await this.repository
+    const totalQB = this.repository
       .createQueryBuilder('facture')
       .select('COUNT(*)', 'total')
       .addSelect('SUM(facture.montantTTC)', 'totalTTC')
       .addSelect('SUM(facture.montantPaye)', 'totalPaye')
-      .addSelect('SUM(facture.resteAPayer)', 'totalRestant')
-      .getRawOne();
+      .addSelect('SUM(facture.resteAPayer)', 'totalRestant');
+    addTenantCondition(totalQB, 'facture');
+    const totalFactures = await totalQB.getRawOne();
 
-    const parStatut = await this.repository
+    const parStatutQB = this.repository
       .createQueryBuilder('facture')
       .select('facture.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'montantTotal')
-      .groupBy('facture.status')
-      .getRawMany();
+      .groupBy('facture.status');
+    addTenantCondition(parStatutQB, 'facture');
+    const parStatut = await parStatutQB.getRawMany();
 
     return {
       total: parseInt(totalFactures.total),
@@ -502,12 +507,13 @@ export class FactureService extends BaseServiceV1<Facture> {
       .replace('{MM}',     MM)
       .replace('{NNNN}',   ''); // sera complété par le compteur
 
-    const last = await this.repository
+    const lastQB = this.repository
       .createQueryBuilder('f')
       .withDeleted()
       .where('f.numero LIKE :pfx', { pfx: `${searchPrefix}%` })
-      .orderBy('f.numero', 'DESC')
-      .getOne();
+      .orderBy('f.numero', 'DESC');
+    addTenantCondition(lastQB, 'f');
+    const last = await lastQB.getOne();
 
     let nextSeq = 1;
     if (last?.numero) {

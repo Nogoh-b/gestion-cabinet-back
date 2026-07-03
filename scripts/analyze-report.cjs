@@ -28,3 +28,16 @@ for (const [m, c] of Object.entries(byModule).sort((a, b) => b[1] - a[1])) {
 console.log('\n─ Top 20 fichiers les plus exposés ─');
 const files = Object.entries(byFile).sort((a, b) => b[1] - a[1]).slice(0, 20);
 for (const [f, c] of files) console.log('  ' + String(c).padStart(3) + '  ' + f);
+
+// ── Filtre par pattern de fichier (argument CLI) ───────────────────────
+// Usage: node scripts/analyze-report.cjs facture
+const filter = process.argv[2];
+if (filter) {
+  console.log('\n─ Détail pour "' + filter + '" ─');
+  for (const h of report.unprotected) {
+    const norm = normalize(h.file);
+    if (norm.includes(filter)) {
+      console.log('  ' + norm + ':' + h.line + '  ' + h.text.slice(0, 70));
+    }
+  }
+}
