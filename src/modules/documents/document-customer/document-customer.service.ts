@@ -182,6 +182,8 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       .leftJoinAndSelect('doc.customer', 'customer')
       .leftJoinAndSelect('doc.dossier', 'dossier')
       .leftJoinAndSelect('doc.uploaded_by', 'uploaded_by');
+    // Isolation multi-tenant.
+    addTenantCondition(query, 'doc');
 
     if (documentTypeId) {
       query.andWhere('document_type.id = :documentTypeId', { documentTypeId });

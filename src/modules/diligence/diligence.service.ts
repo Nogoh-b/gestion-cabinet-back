@@ -2,6 +2,7 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { LessThan, MoreThan, Repository, In } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -364,12 +365,14 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    * 📊 Statistiques par type
    */
   async getStatsByType(): Promise<any> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('diligence')
       .select('diligence.type', 'type')
       .addSelect('COUNT(diligence.id)', 'count')
-      .groupBy('diligence.type')
-      .getRawMany();
+      .groupBy('diligence.type');
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'diligence');
+    const result = await qb.getRawMany();
 
     return result;
   }
@@ -378,12 +381,14 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
    * 📊 Statistiques par statut
    */
   async getStatsByStatus(): Promise<any> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('diligence')
       .select('diligence.status', 'status')
       .addSelect('COUNT(diligence.id)', 'count')
-      .groupBy('diligence.status')
-      .getRawMany();
+      .groupBy('diligence.status');
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'diligence');
+    const result = await qb.getRawMany();
 
     return result;
   }

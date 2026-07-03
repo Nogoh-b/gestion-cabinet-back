@@ -3,6 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Dossier, DangerLevel } from './entities/dossier.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
@@ -304,13 +305,15 @@ export class DossierWriteHandler extends BaseWriteHandler {
   /** Récupère les 10 employés les plus récents avec leur user (pour avocat) */
   private async fetchTopEmployees(): Promise<Array<{ id: any; label: string; score: number; data: any }>> {
     try {
-      const employees = await this.dataSource
+      const employeesQB = this.dataSource
         .getRepository('employee')
         .createQueryBuilder('e')
         .leftJoinAndSelect('e.user', 'u')
         .orderBy('e.id', 'DESC')
-        .limit(10)
-        .getMany();
+        .limit(10);
+      // Isolation multi-tenant.
+      addTenantCondition(employeesQB, 'e');
+      const employees = await employeesQB.getMany();
       return employees.map((e: any) => ({
         id: e.id,
         label: `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim() +
@@ -334,6 +337,8 @@ export class DossierWriteHandler extends BaseWriteHandler {
         .getRepository('procedure_types')
         .createQueryBuilder('pt')
         .where('pt.is_active = :active', { active: true });
+      // Isolation multi-tenant.
+      addTenantCondition(qb, 'pt');
 
       if (isSubtype) {
         if (parentId) {
@@ -387,12 +392,14 @@ export class DossierWriteHandler extends BaseWriteHandler {
       .replace('{MM}', MM)
       .replace('{NNNN}', '');
 
-    const last = await this.dossierRepo
+    const lastQB = this.dossierRepo
       .createQueryBuilder('d')
       .withDeleted()
       .where('d.dossier_number LIKE :pfx', { pfx: `${searchPrefix}%` })
-      .orderBy('d.dossier_number', 'DESC')
-      .getOne();
+      .orderBy('d.dossier_number', 'DESC');
+    // Isolation multi-tenant.
+    addTenantCondition(lastQB, 'd');
+    const last = await lastQB.getOne();
 
     let nextSeq = 1;
     if (last?.dossier_number) {
@@ -410,11 +417,13 @@ export class DossierWriteHandler extends BaseWriteHandler {
     let dossierNumber = build(nextSeq);
     let safety = 0;
     while (safety++ < 100) {
-      const existing = await this.dossierRepo
+      const existingQB = this.dossierRepo
         .createQueryBuilder('d')
         .withDeleted()
-        .where('d.dossier_number = :n', { n: dossierNumber })
-        .getOne();
+        .where('d.dossier_number = :n', { n: dossierNumber });
+      // Isolation multi-tenant.
+      addTenantCondition(existingQB, 'd');
+      const existing = await existingQB.getOne();
       if (!existing) break;
       dossierNumber = build(++nextSeq);
     }
