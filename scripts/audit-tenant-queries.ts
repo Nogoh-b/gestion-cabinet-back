@@ -64,7 +64,9 @@ function scan(): Hit[] {
       // addTenantCondition(), soit par l'un des helpers de BaseStatsService
       // (applyFilters / getEvolution / getTotalCount) qui appliquent déjà le
       // filtre tenant automatiquement via la classe de base.
-      const window = lines.slice(i, i + 12).join('\n');
+      // Fenêtre élargie à 25 lignes (certaines QB ont de longues chaînes de
+      // jointures avant l'appel à addTenantCondition).
+      const window = lines.slice(i, i + 25).join('\n');
       const protectedByHelper =
         /addTenantCondition\s*\(/.test(window) ||
         /\bapplyFilters\s*\(/.test(window) ||
