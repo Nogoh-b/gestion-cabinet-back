@@ -1,6 +1,8 @@
 // src/chat/services/chat.service.ts
 import { plainToInstance } from 'class-transformer';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { In, Repository } from 'typeorm';
 import { BadRequestException, forwardRef, Injectable, NotFoundException } from '@nestjs/common';
 
@@ -467,7 +469,7 @@ export class ChatService {
 
 
 async getUserConversations(userId: number): Promise<Conversation[]> {
-  const conversations = await this.conversationRepository
+  const conversationsQB = this.conversationRepository
     .createQueryBuilder('conversation')
     .leftJoinAndSelect('conversation.participants', 'participant')
     .leftJoinAndSelect('participant.user', 'user')
@@ -481,8 +483,10 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
         .andWhere('read.isRead = :isRead', { isRead: false })
     )
     .where('EXISTS (SELECT 1 FROM conversation_participants_employee cp WHERE cp.conversationId = conversation.id AND cp.employeeId = :userId)', { userId })
-    .orderBy('conversation.lastMessageAt', 'DESC')
-    .getMany();
+    .orderBy('conversation.lastMessageAt', 'DESC');
+  // Isolation multi-tenant : limite aux conversations du cabinet courant.
+  addTenantCondition(conversationsQB, 'conversation');
+  const conversations = await conversationsQB.getMany();
 
   // Récupérer les derniers messages avec leurs pièces jointes
   const conversationIds = conversations.map(c => c.id);
@@ -494,7 +498,7 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
   }
 
   // Requête corrigée - ne pas utiliser la notation pointée dans select
-  const lastMessages = await this.messageRepository
+  const lastMessagesQB = this.messageRepository
     .createQueryBuilder('message')
     .leftJoinAndSelect('message.attachments', 'attachments')
     .leftJoin('message.sender', 'sender')
@@ -516,8 +520,10 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
         .where('m.conversationId = message.conversationId')
         .getQuery();
       return 'message.createdAt = ' + subQuery;
-    })
-    .getMany();
+    });
+  // Isolation multi-tenant.
+  addTenantCondition(lastMessagesQB, 'message');
+  const lastMessages = await lastMessagesQB.getMany();
 
   // Créer un map des derniers messages par conversation
   const lastMessagesMap = new Map();
@@ -590,7 +596,7 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
   }
 
 async getConversation(conversationId: number, userId?: number) {
-  const conversation = await this.conversationRepository
+  const conversationQB = this.conversationRepository
     .createQueryBuilder('conversation')
     .leftJoinAndSelect('conversation.participants', 'participant')
     .leftJoinAndSelect('participant.user', 'user')
@@ -601,8 +607,10 @@ async getConversation(conversationId: number, userId?: number) {
     .leftJoinAndSelect('reads.reader', 'reader')
     .leftJoinAndSelect('sender.user', 'senderUser')
     .addSelect(['reads.id', 'reads.isRead', 'reads.readAt', 'reader.id'])
-    .where('conversation.id = :id', { id: conversationId })
-    .getOne();
+    .where('conversation.id = :id', { id: conversationId });
+  // Isolation multi-tenant.
+  addTenantCondition(conversationQB, 'conversation');
+  const conversation = await conversationQB.getOne();
 
   if (
     !conversation ||
@@ -674,6 +682,8 @@ async getConversation(conversationId: number, userId?: number) {
       .where('readerId = :userId', { userId })
       .andWhere('isRead = false')
       .andWhere('messageId IN (:...messageIds)', { messageIds })
+      // Isolation multi-tenant (UPDATE sur table tenantée).
+      .andWhere('tenant_id = :tenantId', { tenantId: getCurrentTenantId() })
       .execute();
 
     // 3️⃣ count AFTER
@@ -745,6 +755,8 @@ async setReceiveMessagesWithCount(userId: number): Promise<{ updated: number }> 
       .set({ isReceive: true })
       .where('reader.id = :userId', { userId })
       .andWhere('isReceive = :isReceive', { isReceive: false })
+      // Isolation multi-tenant (UPDATE sur table tenantée).
+      .andWhere('tenant_id = :tenantId', { tenantId: getCurrentTenantId() })
       .execute();
 
     return { updated: result.affected || 0 };

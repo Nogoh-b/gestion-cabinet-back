@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-03T11:49:00.971Z",
+  "generatedAt": "2026-07-03T11:52:46.389Z",
   "total": 253,
-  "protectedCount": 155,
-  "unprotectedCount": 98,
+  "protectedCount": 158,
+  "unprotectedCount": 95,
   "unprotected": [
     {
       "file": "app.controller.ts",
@@ -212,24 +212,6 @@
       "file": "modules\\comptabilite\\services\\ecritures.service.ts",
       "line": 178,
       "text": ".createQueryBuilder('e')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\comptabilite\\services\\rapports.service.ts",
-      "line": 28,
-      "text": ".createQueryBuilder('l')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\comptabilite\\services\\rapports.service.ts",
-      "line": 88,
-      "text": ".createQueryBuilder('l')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\comptabilite\\services\\rapports.service.ts",
-      "line": 121,
-      "text": ".createQueryBuilder('l')",
       "protectedByHelper": false
     },
     {
