@@ -9,6 +9,7 @@ import { PaginatedResult, PaginationServiceV1 } from 'src/core/shared/services/p
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 
 import { Repository, In, FindOptionsWhere } from 'typeorm';
@@ -664,17 +665,20 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     if (user.role === 'avocat') {
       queryBuilder.where('dossier.lawyer_id = :lawyerId', { lawyerId: user.id });
     }
+    // Isolation multi-tenant : limite aux dossiers du cabinet courant.
+    addTenantCondition(queryBuilder, 'dossier');
 
     const stats = await queryBuilder.getRawMany();
 
     // Statistiques par statut
-    const statusStats = await this.dossierRepository
+    const statusStatsQB = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('dossier.status', 'status')
       .addSelect('COUNT(dossier.id)', 'count')
       .where(user.role === 'avocat' ? 'dossier.lawyer_id = :lawyerId' : '1=1', { lawyerId: user.id })
-      .groupBy('dossier.status')
-      .getRawMany();
+      .groupBy('dossier.status');
+    addTenantCondition(statusStatsQB, 'dossier');
+    const statusStats = await statusStatsQB.getRawMany();
 
     return {
       by_procedure_type: stats,
@@ -703,11 +707,12 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       .replace('{MM}',     MM)
       .replace('{NNNN}',   '');
 
-    const last = await this.dossierRepository
+    const lastQB = this.dossierRepository
       .createQueryBuilder('d')
       .where('d.dossier_number LIKE :pfx', { pfx: `${searchPrefix}%` })
-      .orderBy('d.dossier_number', 'DESC')
-      .getOne();
+      .orderBy('d.dossier_number', 'DESC');
+    addTenantCondition(lastQB, 'd');
+    const last = await lastQB.getOne();
 
     let nextSeq = 1;
     if (last?.dossier_number) {
@@ -840,6 +845,8 @@ async getCollaboratorDossiers(
     .leftJoinAndSelect('dossier.procedure_subtype', 'procedure_subtype')
     .where('collaborator.id = :collaboratorId', { collaboratorId })
     .orderBy('dossier.created_at', 'DESC');
+  // Isolation multi-tenant : limitée aux dossiers du cabinet courant.
+  addTenantCondition(queryBuilder, 'dossier');
 
   // Alternative avec une sous-requête si la première ne fonctionne pas
   // .where(qb => {

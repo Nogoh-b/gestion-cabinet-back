@@ -17,6 +17,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 
 import { AdvancedSearchOptionsDto } from '../../dto/advanced-search.dto';
 import { validateDto } from '../../pipes/validate-dto';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 
 
@@ -87,6 +88,9 @@ export abstract class BaseService<T extends ObjectLiteral> {
     const metadata = repo.metadata;
     const rootAlias = metadata.tableName;
     const qb: SelectQueryBuilder<T> = repo.createQueryBuilder(rootAlias);
+    // Isolation multi-tenant : limite la recherche globale aux données du
+    // cabinet courant (appliqué avant les jointures/conditions de recherche).
+    addTenantCondition(qb, rootAlias);
     // 1. Construire la liste des chemins de relations
     const relationPaths = this.collectRelationPaths(metadata);
 
@@ -251,6 +255,8 @@ async searchDynamic(
   mode: 'like' | 'exact' = 'like',
 ): Promise<T[]> {
   const qb = this.getRepository().createQueryBuilder('entity');
+  // Isolation multi-tenant.
+  addTenantCondition(qb, 'entity');
 
   Object.keys(query).forEach((key) => {
     const value = query[key];
@@ -290,6 +296,8 @@ async enhancedSearch_1({
 })
 
   const qb = this.getRepository().createQueryBuilder(alias);
+  // Isolation multi-tenant : limite la recherche avancée au cabinet courant.
+  addTenantCondition(qb, alias);
   const joinedRelations = new Set<string>();
   const metadata = this.getRepository().metadata;
 
@@ -432,6 +440,8 @@ async enhancedSearchv0({
 }: AdvancedSearchOptions): Promise<T[]> {
   const repo = this.getRepository();
   const qb = repo.createQueryBuilder(alias);
+  // Isolation multi-tenant.
+  addTenantCondition(qb, alias);
   const metadata = repo.metadata as EntityMetadata;
   const joined = new Set<string>();
   const aliasMap = new Map<string, string>();
@@ -567,6 +577,8 @@ async enhancedSearch({
 }: AdvancedSearchOptions): Promise<T[]> {
   const repo = this.getRepository();
   const qb = repo.createQueryBuilder(alias);
+  // Isolation multi-tenant.
+  addTenantCondition(qb, alias);
   const metadata = repo.metadata as EntityMetadata;
   const joined = new Set<string>();
   const aliasMap = new Map<string, string>();
@@ -728,6 +740,8 @@ async searchWithJoinsAdvanced_V_0({
   orderBy,
 }: SearchOptions): Promise<T[]> {
   let qb = this.getRepository().createQueryBuilder(alias);
+  // Isolation multi-tenant.
+  addTenantCondition(qb, alias);
 
   // Joins
   for (const join of joins) {
@@ -790,6 +804,8 @@ async searchWithJoinsAdvanced({
   orderBy,
 }: SearchOptions): Promise<T[]> {
   let qb = this.getRepository().createQueryBuilder(alias);
+  // Isolation multi-tenant.
+  addTenantCondition(qb, alias);
 
   // Joins
   for (const join of joins) {

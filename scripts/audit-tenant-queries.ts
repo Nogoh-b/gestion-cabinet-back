@@ -60,10 +60,16 @@ function scan(): Hit[] {
       const line = lines[i];
       if (!PATTERNS.some((p) => p.test(line))) continue;
 
-      // Vérifie si addTenantCondition est appelé dans les 12 lignes suivantes
-      // (une QueryBuilder est typiquement construite puis filtrée peu après).
+      // Vérifie si la requête est protégée : soit par appel direct à
+      // addTenantCondition(), soit par l'un des helpers de BaseStatsService
+      // (applyFilters / getEvolution / getTotalCount) qui appliquent déjà le
+      // filtre tenant automatiquement via la classe de base.
       const window = lines.slice(i, i + 12).join('\n');
-      const protectedByHelper = /addTenantCondition\s*\(/.test(window);
+      const protectedByHelper =
+        /addTenantCondition\s*\(/.test(window) ||
+        /\bapplyFilters\s*\(/.test(window) ||
+        /\bgetEvolution\s*\(/.test(window) ||
+        /\bgetTotalCount\s*\(/.test(window);
 
       hits.push({
         file: path.relative(SRC_ROOT, file),
@@ -109,3 +115,22 @@ if (unprotected.length) {
 } else {
   console.log('\n✅ Aucune requête non protégée détectée.');
 }
+
+// ── Rapport JSON pour automatisation ────────────────────────────────────
+// Écrit dans scripts/audit-tenant-report.json (ignoré par git).
+const reportPath = path.resolve(__dirname, 'audit-tenant-report.json');
+fs.writeFileSync(
+  reportPath,
+  JSON.stringify(
+    {
+      generatedAt: new Date().toISOString(),
+      total: hits.length,
+      protectedCount: protected_.length,
+      unprotectedCount: unprotected.length,
+      unprotected,
+    },
+    null,
+    2,
+  ),
+);
+console.log(`\n📝 Rapport JSON écrit : ${reportPath}`);
