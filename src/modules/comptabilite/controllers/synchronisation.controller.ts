@@ -1,12 +1,15 @@
 import { Controller, Get, Post, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { SynchronisationService } from '../services/synchronisation.service';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
 import { InitialisationComptableService } from '../services/initialisation.service';
+import { SynchronisationService } from '../services/synchronisation.service';
 
 @ApiTags('comptabilite-synchronisation')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('comptabilite/synchronisation')
 export class SynchronisationController {
   constructor(
@@ -15,19 +18,22 @@ export class SynchronisationController {
   ) {}
 
   @Get('etat')
-  @ApiOperation({ summary: 'Aperçu : nombre de documents historiques à synchroniser' })
+  @RequirePermissions('view_accounting')
+  @ApiOperation({ summary: 'Apercu des documents historiques a synchroniser' })
   etat() {
     return this.service.etat();
   }
 
   @Post('initialiser')
-  @ApiOperation({ summary: 'Crée le plan comptable du tenant courant (SYSCOHADA + journaux + exercice)' })
+  @RequirePermissions('manage_chart_of_accounts')
+  @ApiOperation({ summary: 'Cree le plan comptable du tenant courant' })
   initialiser() {
     return this.initialisation.initialiser();
   }
 
   @Post()
-  @ApiOperation({ summary: 'Lance la synchronisation initiale (backfill) — idempotent' })
+  @RequirePermissions('manage_chart_of_accounts')
+  @ApiOperation({ summary: 'Lance la synchronisation initiale' })
   synchroniser() {
     return this.service.synchroniser();
   }

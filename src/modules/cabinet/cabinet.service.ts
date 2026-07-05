@@ -10,7 +10,6 @@ import {
 import { Plan } from '../plans/entities/plan.entity';
 import { applyLogoInput, logoFileToUrl, writeLogoFile } from './cabinet-logo.util';
 import { CreateCabinetDto } from './dto/create-cabinet.dto';
-import { TenantSeederService } from './tenant-seeder.service';
 
 @Injectable()
 export class CabinetService implements OnModuleInit {
@@ -21,7 +20,6 @@ export class CabinetService implements OnModuleInit {
     private readonly repo: Repository<Cabinet>,
     @InjectRepository(Plan)
     private readonly planRepo: Repository<Plan>,
-    private readonly tenantSeeder: TenantSeederService,
   ) {}
 
   /**
@@ -157,16 +155,6 @@ export class CabinetService implements OnModuleInit {
     if (logo_url) {
       applyLogoInput(saved, logo_url);
       await this.repo.save(saved);
-    }
-
-    // ── Seed des données de référence pour ce cabinet ────────────────
-    try {
-      await this.tenantSeeder.seedForNewCabinet(saved.id);
-    } catch (err) {
-      this.logger.error(
-        `Seeding pour cabinet #${saved.id} échoué — le cabinet existe mais les données de référence sont incomplètes`,
-        err,
-      );
     }
 
     return saved;

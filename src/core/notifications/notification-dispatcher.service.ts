@@ -198,6 +198,7 @@ export class NotificationDispatcher {
       [NotifiableEvent.COLLABORATOR_REMOVED]: 'collaborator_removed',
       [NotifiableEvent.AUDIENCE_CREATED]: 'audience_created',
       [NotifiableEvent.AUDIENCE_HELD]: 'audience_held',
+      [NotifiableEvent.AUDIENCE_CANCELLED]: 'audience_cancelled',
       [NotifiableEvent.AUDIENCE_UPDATED]: 'audience_updated',
       [NotifiableEvent.AUDIENCE_REMINDER]: 'audience_reminder',
       [NotifiableEvent.FACTURE_CREATED]: 'facture_created',

@@ -7,6 +7,8 @@ export enum NotificationType {
   AUDIENCE_CREATED = 'audience_created',
   AUDIENCE_UPDATED = 'audience_updated',
   AUDIENCE_REMINDER = 'audience_reminder',
+  AUDIENCE_HELD = 'audience_held',
+  AUDIENCE_CANCELLED = 'audience_cancelled',
   DOCUMENT_UPLOADED = 'document_uploaded',
   DOCUMENT_SHARED = 'document_shared',
   FACTURE_CREATED = 'facture_created',

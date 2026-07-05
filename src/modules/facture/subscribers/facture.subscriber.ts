@@ -7,6 +7,7 @@ import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables
 import { DataSource, InsertEvent, RemoveEvent, Repository, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
@@ -24,6 +25,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
+    private readonly eventEmitter: EventEmitter2,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
   ) {
@@ -51,6 +53,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
     // Resync actual_costs on parent dossier
     await this.syncDossierActualCosts(facture.dossier_id ?? (facture.dossier as any)?.id, event);
+    this.emitAccountingLifecycleEvents(null, facture);
 
     const notifyClient = this.resolveTransientBoolean('notify_client', entity, facture as any);
 
@@ -104,6 +107,8 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     if (!id) return;
     const facture = await this.load(id, event).catch(() => null);
     if (!facture) return;
+    this.emitAccountingLifecycleEvents(change.oldValue, facture);
+
     const notifyClient = this.resolveTransientBoolean(
       'notify_client',
       entity as any,
@@ -205,6 +210,47 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
         `syncDossierActualCosts(${dossierId}): ${(err as Error).message}`,
       );
     }
+  }
+
+  private emitAccountingLifecycleEvents(
+    previousStatus: StatutFacture | number | string | null,
+    facture: Facture,
+  ): void {
+    const nextStatus = this.normalizeStatus(facture.status);
+    const previous = previousStatus === null || previousStatus === undefined
+      ? null
+      : this.normalizeStatus(previousStatus);
+
+    if (this.isBillableStatus(nextStatus) && (previous === null || !this.isBillableStatus(previous))) {
+      this.logger.log(`📣 facture.envoyee | facture=${facture.id} | status=${nextStatus}`);
+      this.eventEmitter.emit('facture.envoyee', facture);
+      return;
+    }
+
+    if (
+      nextStatus === StatutFacture.ANNULEE &&
+      previous !== null &&
+      previous !== StatutFacture.ANNULEE &&
+      this.isBillableStatus(previous)
+    ) {
+      this.logger.log(`📣 facture.annulee | facture=${facture.id} | previous=${previous}`);
+      this.eventEmitter.emit('facture.annulee', facture);
+    }
+  }
+
+  private isBillableStatus(status: StatutFacture): boolean {
+    return [
+      StatutFacture.ENVOYEE,
+      StatutFacture.PARTIELLEMENT_PAYEE,
+      StatutFacture.PAYEE,
+      StatutFacture.IMPAYEE,
+    ].includes(status);
+  }
+
+  private normalizeStatus(value: StatutFacture | number | string): StatutFacture {
+    if (typeof value === 'number') return value as StatutFacture;
+    const numeric = Number(value);
+    return Number.isNaN(numeric) ? (value as unknown as StatutFacture) : numeric as StatutFacture;
   }
 }
 

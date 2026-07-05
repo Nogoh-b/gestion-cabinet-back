@@ -1,63 +1,70 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-import { EcrituresService } from '../services/ecritures.service';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
 import { CreateEcritureDto } from '../dto/create-ecriture.dto';
 import { SourceModule } from '../enums/comptabilite.enums';
+import { EcrituresService } from '../services/ecritures.service';
 
 @ApiTags('comptabilite-ecritures')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('comptabilite/ecritures')
 export class EcrituresController {
   constructor(private readonly service: EcrituresService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Liste et filtre les écritures comptables' })
-  @ApiQuery({ name: 'journalId',    required: false })
-  @ApiQuery({ name: 'exerciceId',   required: false })
+  @RequirePermissions('view_accounting')
+  @ApiOperation({ summary: 'Liste et filtre les ecritures comptables' })
+  @ApiQuery({ name: 'journalId', required: false })
+  @ApiQuery({ name: 'exerciceId', required: false })
   @ApiQuery({ name: 'sourceModule', required: false, enum: SourceModule })
-  @ApiQuery({ name: 'dateDebut',    required: false })
-  @ApiQuery({ name: 'dateFin',      required: false })
-  @ApiQuery({ name: 'page',         required: false })
-  @ApiQuery({ name: 'limit',        required: false })
+  @ApiQuery({ name: 'dateDebut', required: false })
+  @ApiQuery({ name: 'dateFin', required: false })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
   search(
-    @Query('journalId')    journalId?:    number,
-    @Query('exerciceId')   exerciceId?:   number,
+    @Query('journalId') journalId?: number,
+    @Query('exerciceId') exerciceId?: number,
     @Query('sourceModule') sourceModule?: SourceModule,
-    @Query('dateDebut')    dateDebut?:    string,
-    @Query('dateFin')      dateFin?:      string,
-    @Query('page')         page?:         number,
-    @Query('limit')        limit?:        number,
+    @Query('dateDebut') dateDebut?: string,
+    @Query('dateFin') dateFin?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
     return this.service.search({
-      journalId:    journalId    ? +journalId    : undefined,
-      exerciceId:   exerciceId   ? +exerciceId   : undefined,
+      journalId: journalId ? +journalId : undefined,
+      exerciceId: exerciceId ? +exerciceId : undefined,
       sourceModule,
       dateDebut,
       dateFin,
-      page:  page  ? +page  : 1,
+      page: page ? +page : 1,
       limit: limit ? +limit : 50,
     });
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: "Détail d'une écriture avec ses lignes" })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id);
-  }
-
   @Get('source/:module/:sourceId')
-  @ApiOperation({ summary: 'Écritures liées à un document source (facture, paiement…)' })
+  @RequirePermissions('view_accounting')
+  @ApiOperation({ summary: 'Ecritures liees a un document source' })
   findBySource(
-    @Param('module')   sourceModule: SourceModule,
-    @Param('sourceId') sourceId:     string,
+    @Param('module') sourceModule: SourceModule,
+    @Param('sourceId') sourceId: string,
   ) {
     return this.service.findBySource(sourceModule, sourceId);
   }
 
+  @Get(':id')
+  @RequirePermissions('view_accounting')
+  @ApiOperation({ summary: "Detail d'une ecriture avec ses lignes" })
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.service.findOne(id);
+  }
+
   @Post()
-  @ApiOperation({ summary: 'Saisie manuelle d\'une écriture' })
+  @RequirePermissions('create_ecriture')
+  @ApiOperation({ summary: "Saisie manuelle d'une ecriture" })
   create(@Body() dto: CreateEcritureDto) {
     return this.service.creer(dto, false);
   }

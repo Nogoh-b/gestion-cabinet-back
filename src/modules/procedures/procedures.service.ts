@@ -2,6 +2,7 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -413,14 +414,17 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
   }
 
   async getStatistics(): Promise<any> {
-    const stats = await this.procedureTypeRepository
+    const statsQB = this.procedureTypeRepository
       .createQueryBuilder('procedure_type')
       .leftJoin('procedure_type.dossiers', 'dossier')
       .select('procedure_type.name', 'name')
       .addSelect('procedure_type.code', 'code')
       .addSelect('COUNT(dossier.id)', 'dossier_count')
       .where('procedure_type.is_subtype = :isSubtype', { isSubtype: false })
-      .andWhere('procedure_type.is_active = :isActive', { isActive: true })
+      .andWhere('procedure_type.is_active = :isActive', { isActive: true });
+    // Isolation multi-tenant : filtre les dossiers joints (entité tenantée).
+    addTenantCondition(statsQB, 'dossier');
+    const stats = await statsQB
       .groupBy('procedure_type.id, procedure_type.name, procedure_type.code')
       .orderBy('dossier_count', 'DESC')
       .getRawMany();

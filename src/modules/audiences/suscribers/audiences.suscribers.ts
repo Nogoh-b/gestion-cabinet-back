@@ -5,7 +5,7 @@ import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables
 import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
-import { Audience } from '../entities/audience.entity';
+import { Audience, AudienceStatus } from '../entities/audience.entity';
 
 /**
  * Subscriber métier pour les audiences.
@@ -13,6 +13,7 @@ import { Audience } from '../entities/audience.entity';
  * Événements émis :
  *  - AUDIENCE_CREATED → à la création
  *  - AUDIENCE_HELD    → quand status passe à HELD (tenue)
+ *  - AUDIENCE_CANCELLED → quand status passe à CANCELLED (annulée)
  *  - AUDIENCE_UPDATED → autre changement notable (postponed_to, judge, room)
  *
  * Le service historique conserve son propre `sendEmails()` pour les e-mails
@@ -86,9 +87,13 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       const change = this.getFieldChanges(event, ['status']).find(
         (c) => c.field === 'status',
       );
-      // 1 = HELD selon AudienceStatus (voir audience.entity.ts)
-      if (change && Number(change.newValue) === 1) {
-        await this.dispatchHeld(id, entity, event);
+      if (change) {
+        const nextStatus = Number(change.newValue);
+        if (nextStatus === AudienceStatus.HELD) {
+          await this.dispatchHeld(id, entity, event);
+        } else if (nextStatus === AudienceStatus.CANCELLED) {
+          await this.dispatchCancelled(id, entity, event);
+        }
       }
     }
 
@@ -166,6 +171,49 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
         audience.postponed_to
           ? `Reportée au ${formatDate(audience.postponed_to)}`
           : `Audience modifiée le ${formatDate(audience.audience_date)}`,
+      link: `/audiences/${audience.id}`,
+      audience: {
+        client: {
+          user_id: (dossier?.client as any)?.user_id,
+          email: (dossier?.client as any)?.email,
+          notify: notifyClient,
+        },
+        lawyer_id: dossier?.lawyer_id ?? null,
+        collaborator_ids: (dossier?.collaborators ?? [])
+          .map((c: any) => c.user_id ?? c.user?.id)
+          .filter(Boolean),
+      },
+      entity: { type: 'audience', id: audience.id },
+      emailContext: buildEntityMailContext({
+        dossier,
+        resourceType: 'audience',
+        resource: audience as any,
+      }),
+    });
+  }
+
+  private async dispatchCancelled(
+    id: number,
+    entity: Partial<Audience>,
+    event: UpdateEvent<Audience>,
+  ): Promise<void> {
+    const audience = await this.load(id, event).catch(() => null);
+    if (!audience) return;
+    const dossier: any = audience.dossier;
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity as any,
+      audience as any,
+    );
+
+    this.logger.log(
+      `Audience annulee | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'}`,
+    );
+
+    await this.notify({
+      event: NotifiableEvent.AUDIENCE_CANCELLED,
+      title: `Audience annulee - dossier ${dossier?.dossier_number ?? ''}`,
+      content: `L'audience du ${formatDate(audience.audience_date)} a ete annulee.`,
       link: `/audiences/${audience.id}`,
       audience: {
         client: {

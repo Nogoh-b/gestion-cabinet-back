@@ -1,24 +1,29 @@
 import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+
 import { RapportsService } from '../services/rapports.service';
 
 @ApiTags('comptabilite-rapports')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('comptabilite/rapports')
 export class RapportsController {
   constructor(private readonly service: RapportsService) {}
 
   @Get('balance')
-  @ApiOperation({ summary: 'Balance des comptes (soldes débit/crédit par compte)' })
+  @RequirePermissions('view_accounting_reports')
+  @ApiOperation({ summary: 'Balance des comptes' })
   @ApiQuery({ name: 'exerciceId', required: false })
   getBalance(@Query('exerciceId') exerciceId?: number) {
     return this.service.getBalance(exerciceId ? +exerciceId : undefined);
   }
 
   @Get('grand-livre/:compteId')
-  @ApiOperation({ summary: "Grand livre d'un compte (tous les mouvements)" })
+  @RequirePermissions('view_accounting_reports')
+  @ApiOperation({ summary: "Grand livre d'un compte" })
   @ApiQuery({ name: 'exerciceId', required: false })
   getGrandLivre(
     @Param('compteId', ParseIntPipe) compteId: number,
@@ -28,14 +33,16 @@ export class RapportsController {
   }
 
   @Get('resultat')
-  @ApiOperation({ summary: 'Compte de résultat (charges vs produits)' })
+  @RequirePermissions('view_accounting_reports')
+  @ApiOperation({ summary: 'Compte de resultat' })
   @ApiQuery({ name: 'exerciceId', required: false })
   getResultat(@Query('exerciceId') exerciceId?: number) {
     return this.service.getResultat(exerciceId ? +exerciceId : undefined);
   }
 
   @Get('tva')
-  @ApiOperation({ summary: 'État de TVA (collectée vs déductible)' })
+  @RequirePermissions('view_accounting_reports')
+  @ApiOperation({ summary: 'Etat de TVA' })
   @ApiQuery({ name: 'exerciceId', required: false })
   @ApiQuery({ name: 'mois', required: false, description: 'Format YYYY-MM' })
   getTva(

@@ -6,6 +6,8 @@ import { Notification } from './entities/notification.entity';
 import { UserNotification } from './entities/user-notification.entity';
 import { CreateNotificationDto, CreateBulkNotificationDto } from './dto/create-notification.dto';
 import { plainToInstance } from 'class-transformer';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { User } from '../iam/user/entities/user.entity';
 import { NotificationResponseDto } from './dto/notification-response.dto';
 import { DossiersService } from '../dossiers/dossiers.service';
@@ -267,6 +269,8 @@ export class NotificationService {
       .leftJoinAndSelect('userNotification.notification', 'notification')
       .where('userNotification.user_id = :userId', { userId })
       .orderBy('userNotification.created_at', 'DESC');
+    // Isolation multi-tenant.
+    addTenantCondition(queryBuilder, 'userNotification');
 
     if (unreadOnly) {
       queryBuilder.andWhere('userNotification.is_read = :isRead', { isRead: false });
@@ -461,6 +465,8 @@ export class NotificationService {
       .createQueryBuilder()
       .delete()
       .where('id NOT IN (SELECT DISTINCT notification_id FROM user_notifications)')
+      // Isolation multi-tenant (ne supprimer que les orphelins du cabinet courant).
+      .andWhere('tenant_id = :tenantId', { tenantId: getCurrentTenantId() })
       .execute();
   }
 
@@ -469,15 +475,17 @@ export class NotificationService {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const stats = await this.userNotificationRepository
+    const statsQB = this.userNotificationRepository
       .createQueryBuilder('userNotification')
       .leftJoin('userNotification.notification', 'notification')
       .select('notification.type', 'type')
       .addSelect('COUNT(userNotification.id)', 'count')
       .where('userNotification.user_id = :userId', { userId })
       .andWhere('userNotification.created_at >= :startDate', { startDate })
-      .groupBy('notification.type')
-      .getRawMany();
+      .groupBy('notification.type');
+    // Isolation multi-tenant.
+    addTenantCondition(statsQB, 'userNotification');
+    const stats = await statsQB.getRawMany();
 
     const total = stats.reduce((acc, curr) => acc + parseInt(curr.count), 0);
     const unread = await this.countUnread(userId);
