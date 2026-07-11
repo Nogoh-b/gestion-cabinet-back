@@ -14,9 +14,21 @@ import { SwaggerModule } from '@nestjs/swagger';
 
 
 
+
+
+
+
+
+
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
+
+
+
+
+
+
 
 
 
@@ -139,8 +151,8 @@ async function bootstrap() {
   // cela exposerait l'API à des requêtes authentifiées depuis n'importe quel site.
   const corsOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-    : ['http://localhost:3000'];
-  if (process.env.NODE_ENV === 'production' && corsOrigins.includes('*')) {
+    : ['*'];   
+  if (process.env.NODE_ENV === 'production' && corsOrigins.includes('*')) { 
     console.warn(
       '⚠️  [SECURITE] CORS_ORIGINS contient "*" en production — configuration dangereuse. ' +
         'Définissez une liste explicite d\'origines.',

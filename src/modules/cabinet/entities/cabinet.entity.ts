@@ -119,10 +119,10 @@ export class Cabinet {
   theme_name: 'ocean' | 'silver' | 'yellow' | 'forest' | 'sunset' | 'rose';
 
   /** Polices configurables (clés de FONTS côté front). */
-  @Column({ length: 50, default: 'inter', name: 'font_ui' })
+  @Column({ length: 50, default: 'outfit', name: 'font_ui' })
   font_ui: string;
 
-  @Column({ length: 50, default: 'inter', name: 'font_heading' })
+  @Column({ length: 50, default: 'outfit', name: 'font_heading' })
   font_heading: string;
 
   @Column({ length: 50, default: 'jetbrains_mono', name: 'font_mono' })

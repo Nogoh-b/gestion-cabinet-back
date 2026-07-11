@@ -11,7 +11,7 @@ import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert, AfterLoad, Index } from 'typeorm';
 
 import { Step, StepStatus } from './step.entity';
 
@@ -40,6 +40,10 @@ export enum DossierOutcome {
 }
 
 @Entity('dossiers')
+// Unicité du numéro de dossier PAR cabinet (multi-tenant), pas globale :
+// deux cabinets peuvent tous deux avoir "DOS-2026-0001". La génération du
+// numéro (generateDossierNumber) est déjà scopée par tenant_id.
+@Index('UQ_dossiers_tenant_dossier_number', ['tenant_id', 'dossier_number'], { unique: true })
 @BusinessTable({
   label: 'Dossiers contentieux',
   description: 'Gestion complète des dossiers juridiques du cabinet. Les statuts sont stockés en codes numériques BD; utiliser status=8 pour clôturé, status=9 pour archivé, status=10 pour abandonné.',
@@ -66,7 +70,7 @@ export class Dossier extends BaseEntity {
   })
   id: number;
 
-  @Column({ name: 'dossier_number', length: 50, unique: true, nullable: false })
+  @Column({ name: 'dossier_number', length: 50, nullable: false })
   @BusinessColumn({
     label: 'Numéro de dossier',
     description: 'Numéro unique d\'identification du dossier (format: ANN/XXX/YY).L\'identifiant unique d\'un dossier est "dossier_number" (jamais "id" pour la recherche). Il doit etre utiliser pour la recherche ( par le bot ) pas id',

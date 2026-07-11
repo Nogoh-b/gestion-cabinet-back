@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-07-03T11:52:46.389Z",
+  "generatedAt": "2026-07-05T04:20:07.275Z",
   "total": 253,
-  "protectedCount": 158,
-  "unprotectedCount": 95,
+  "protectedCount": 173,
+  "unprotectedCount": 80,
   "unprotected": [
     {
       "file": "app.controller.ts",
@@ -162,37 +162,19 @@
     },
     {
       "file": "modules\\chat\\services\\chat\\chat.service.ts",
-      "line": 471,
-      "text": ".createQueryBuilder('conversation')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\chat\\services\\chat\\chat.service.ts",
-      "line": 498,
-      "text": ".createQueryBuilder('message')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\chat\\services\\chat\\chat.service.ts",
-      "line": 594,
-      "text": ".createQueryBuilder('conversation')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\chat\\services\\chat\\chat.service.ts",
-      "line": 668,
+      "line": 676,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
     {
       "file": "modules\\chat\\services\\chat\\chat.service.ts",
-      "line": 715,
+      "line": 725,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
     {
       "file": "modules\\chat\\services\\chat\\chat.service.ts",
-      "line": 743,
+      "line": 753,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
@@ -306,26 +288,8 @@
     },
     {
       "file": "modules\\facture\\subscribers\\facture.subscriber.ts",
-      "line": 191,
+      "line": 196,
       "text": "await (event?.manager ?? this.dataSource.manager).query(",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\finding\\finding.service.ts",
-      "line": 262,
-      "text": ".createQueryBuilder('finding')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\finding\\finding.service.ts",
-      "line": 282,
-      "text": ".createQueryBuilder('finding')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\finding\\finding.service.ts",
-      "line": 302,
-      "text": ".createQueryBuilder('finding')",
       "protectedByHelper": false
     },
     {
@@ -377,42 +341,6 @@
       "protectedByHelper": false
     },
     {
-      "file": "modules\\notification\\notification.service.ts",
-      "line": 266,
-      "text": ".createQueryBuilder('userNotification')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\notification\\notification.service.ts",
-      "line": 461,
-      "text": ".createQueryBuilder()",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\notification\\notification.service.ts",
-      "line": 473,
-      "text": ".createQueryBuilder('userNotification')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\paiement\\paiement.service.ts",
-      "line": 193,
-      "text": ".createQueryBuilder('paiement')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\paiement\\paiement.service.ts",
-      "line": 236,
-      "text": ".createQueryBuilder('paiement')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\paiement\\paiement.service.ts",
-      "line": 246,
-      "text": ".createQueryBuilder('paiement')",
-      "protectedByHelper": false
-    },
-    {
       "file": "modules\\partner\\partner.service.ts",
       "line": 70,
       "text": "const qb = this.partnerRepository.createQueryBuilder('partnr')",
@@ -444,37 +372,37 @@
     },
     {
       "file": "modules\\procedure\\services\\procedure-instance.service.ts",
-      "line": 316,
+      "line": 318,
       "text": ".createQueryBuilder(ProcedureInstance, 'instance')",
       "protectedByHelper": false
     },
     {
       "file": "modules\\procedure\\services\\procedure-instance.service.ts",
-      "line": 372,
+      "line": 376,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
     {
       "file": "modules\\procedure\\services\\procedure-instance.service.ts",
-      "line": 431,
+      "line": 437,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
     {
       "file": "modules\\procedure\\services\\procedure-instance.service.ts",
-      "line": 1460,
+      "line": 1466,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
     {
       "file": "modules\\procedure\\services\\procedure-instance.service.ts",
-      "line": 1544,
+      "line": 1550,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
     {
       "file": "modules\\procedure\\services\\procedure-instance.service.ts",
-      "line": 1551,
+      "line": 1557,
       "text": ".createQueryBuilder()",
       "protectedByHelper": false
     },
@@ -494,24 +422,6 @@
       "file": "modules\\procedure\\write\\sub-stage-write.handler.ts",
       "line": 84,
       "text": ".createQueryBuilder('ss')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\procedures\\procedure-stats.service.ts",
-      "line": 23,
-      "text": ".createQueryBuilder('p')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\procedures\\procedure-stats.service.ts",
-      "line": 50,
-      "text": ".createQueryBuilder('p')",
-      "protectedByHelper": false
-    },
-    {
-      "file": "modules\\procedures\\procedures.service.ts",
-      "line": 417,
-      "text": ".createQueryBuilder('procedure_type')",
       "protectedByHelper": false
     },
     {

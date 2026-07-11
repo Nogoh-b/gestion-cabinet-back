@@ -101,6 +101,10 @@ interface AiRequestMetrics {
   models: Set<string>;
   cacheHit: boolean;
   status: 'started' | 'success' | 'error';
+  /** Override de réflexion (thinking) appliqué aux appels quality/streaming de
+   *  CETTE requête. Porté par l'AsyncLocalStorage des métriques (actif pendant
+   *  toute la requête), lu par invokeModel/streamModel. */
+  reasoningKwargs?: Record<string, unknown>;
 }
 
 
@@ -236,11 +240,31 @@ export class AiDatabaseService implements OnModuleInit {
     metrics.outputChars += text.length;
   }
 
+  /** Override de réflexion de la requête courante — appliqué uniquement aux
+   *  profils "pro" (quality/streaming). Le profil `fast` (deepseek-chat, sans
+   *  réflexion) n'est jamais impacté pour éviter un paramètre non supporté. */
+  private reasoningOverrideFor(profile: AiModelProfile): Record<string, unknown> | undefined {
+    if (profile === 'fast') return undefined;
+    return this.metricsStorage.getStore()?.reasoningKwargs;
+  }
+
+  /**
+   * Profil utilisé pour les réponses TEXTE pures (conseil, conversation) qui
+   * n'ont besoin ni de SQL ni de réflexion profonde. Défaut `fast`
+   * (deepseek-chat) → réponses quasi instantanées. Réglable via
+   * `AI_TEXT_ANSWER_PROFILE=streaming` pour repasser sur le modèle pro si l'on
+   * privilégie la profondeur à la vitesse.
+   */
+  private textAnswerProfile(): AiModelProfile {
+    const p = process.env.AI_TEXT_ANSWER_PROFILE;
+    return p === 'streaming' || p === 'quality' ? p : 'fast';
+  }
+
   private async invokeModel(profile: AiModelProfile, input: unknown, maxTokens?: number): Promise<any> {
     this.recordLlmCall(profile, input);
     const modelName = this.aiModelRouter.getModelName(profile);
     this.logger.log(`🤖 [LLM] invoke → profil=${profile} modele=${modelName} maxTokens=${maxTokens ?? '(defaut)'}`);
-    const response = await this.aiModelRouter.invoke(profile, input, maxTokens);
+    const response = await this.aiModelRouter.invoke(profile, input, maxTokens, this.reasoningOverrideFor(profile));
     this.recordOutput(this.extractLlmText(response));
     return response;
   }
@@ -249,7 +273,24 @@ export class AiDatabaseService implements OnModuleInit {
     this.recordLlmCall(profile, input);
     const modelName = this.aiModelRouter.getModelName(profile);
     this.logger.log(`🤖 [LLM] stream → profil=${profile} modele=${modelName} maxTokens=${maxTokens ?? '(defaut)'}`);
-    return this.aiModelRouter.stream(profile, input, maxTokens);
+    return this.aiModelRouter.stream(profile, input, maxTokens, this.reasoningOverrideFor(profile));
+  }
+
+  /**
+   * Équivalent de `invokeModel` mais consomme le modèle en streaming et
+   * accumule le texte final. Utilisé pour la génération SQL : la connexion
+   * n'est plus un seul long blocage, et les tokens de réflexion (jetés par
+   * `extractChunkText`) ne sont pas accumulés. Retour compatible avec
+   * `extractLlmText` (forme `{ content }`), le parsing en aval est inchangé.
+   */
+  private async invokeModelViaStream(profile: AiModelProfile, input: unknown, maxTokens?: number): Promise<{ content: string }> {
+    const stream = await this.streamModel(profile, input, maxTokens);
+    let fullText = '';
+    for await (const chunk of stream) {
+      fullText += this.extractChunkText(chunk);
+    }
+    this.recordOutput(fullText);
+    return { content: fullText };
   }
 
   private trackExternalLlmCall = (info: { profile: AiModelProfile; input: unknown; modelName?: string }) => {
@@ -463,7 +504,9 @@ export class AiDatabaseService implements OnModuleInit {
       }
     }
 
-    const response = await this.invokeModel('quality', messages, 1200);
+    // Génération SQL en streaming : évite un blocage unique et n'accumule pas
+    // les tokens de réflexion. Le parsing du SQL en aval reste identique.
+    const response = await this.invokeModelViaStream('quality', messages, 1200);
     const content = this.extractLlmText(response);
     this.logger.log(`Reponse SQL brute (200 chars): ${content.substring(0, 200)}`);
 
@@ -1881,7 +1924,8 @@ Règles :
     let fullText = '';
 
     try {
-      const stream = await this.streamModel('streaming', messages, this.MAX_TOKENS);
+      // Conseil = réponse texte pure → modèle rapide par défaut (pas de réflexion pro).
+      const stream = await this.streamModel(this.textAnswerProfile(), messages, this.MAX_TOKENS);
       for await (const chunk of stream) {
         const text = this.extractChunkText(chunk);
         if (text) {
@@ -2463,6 +2507,11 @@ ${lines.join('\n')}
     return 'auto';
   }
 
+  private normalizeReasoningLevel(level?: string): 'fast' | 'balanced' | 'precise' {
+    if (level === 'balanced' || level === 'precise') return level;
+    return 'fast';
+  }
+
   /**
    * Petit extrait de l'historique récent, formaté en texte, pour aider la
    * détection WRITE à résoudre les références implicites ("la", "le",
@@ -2987,14 +3036,23 @@ ${blocks.join('\n\n')}
     const userId = this.getUserId(user);
     const tLog = (label: string) => this.logger.log(`🕐 [STREAM] ${label} @ +${Date.now() - startTime}ms`);
 
-    /** sendEvent avec délai : chaque status est visible ~200ms avant le suivant */
-    const emit = async (event: string, data: any, delayMs = 200) => {
+    /** sendEvent avec petit délai de rythme : chaque status reste lisible sans
+     *  peser sur la latence (le front a déjà son propre typewriter). */
+    const emit = async (event: string, data: any, delayMs = 60) => {
       sendEvent(event, data);
       if (event === 'status') await this.sleep(delayMs);
     };
 
     try {
       tLog('service entré');
+
+      // Niveau de réflexion demandé (front) → override thinking pour les appels
+      // "pro" (quality/streaming) de cette requête, porté par l'ALS des métriques.
+      const reasoningLevel = this.normalizeReasoningLevel(dto.reasoningLevel);
+      const reasoningKwargs = this.aiModelRouter.reasoningKwargs(reasoningLevel);
+      const metricsStore = this.metricsStorage.getStore();
+      if (metricsStore) metricsStore.reasoningKwargs = reasoningKwargs;
+      if (reasoningKwargs) tLog(`réflexion=${reasoningLevel} → ${JSON.stringify(reasoningKwargs)}`);
 
       // ── 0. Reprise d'un plan WRITE en attente d'identifiant ─────────────────
       // (ex: "marque-la comme reportée" → entityId manquant → on a demandé
@@ -3197,7 +3255,6 @@ ${blocks.join('\n\n')}
         );
       }
       sendEvent('intent', { type: intentResult.type, plan: intentResult.writePlan });
-      await this.sleep(150);
 
       // Mode écriture forcé mais génération du plan impossible : message honnête,
       // JAMAIS de repli silencieux vers la branche READ (qui produirait des refus
@@ -4333,7 +4390,8 @@ RÉPONSE (en langage naturel):`;
     this.logger.log(`🌊 [CONV STREAM] Démarrage llm.stream() pour réponse conversationnelle`);
 
     try {
-      const stream = await this.streamModel('streaming', [
+      // Réponse conversationnelle = texte pur → modèle rapide par défaut.
+      const stream = await this.streamModel(this.textAnswerProfile(), [
         { role: 'system', content: systemPrompt },
         ...history.slice(-8).map(m => ({ role: m.role, content: m.content })),
         { role: 'user',   content: question },

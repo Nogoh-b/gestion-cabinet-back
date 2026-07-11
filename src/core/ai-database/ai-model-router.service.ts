@@ -26,8 +26,12 @@ export class AiModelRouterService {
     this.getModel('streaming', 1800);
   }
 
-  getModel(profile: AiModelProfile, maxTokens?: number): ChatOpenAI {
-    const config = this.getProfileConfig(profile, maxTokens);
+  getModel(
+    profile: AiModelProfile,
+    maxTokens?: number,
+    modelKwargsOverride?: Record<string, unknown>,
+  ): ChatOpenAI {
+    const config = this.getProfileConfig(profile, maxTokens, modelKwargsOverride);
     const cacheKey = [
       profile,
       config.model,
@@ -71,12 +75,43 @@ export class AiModelRouterService {
     return this.getProfileConfig(profile).model;
   }
 
-  async invoke(profile: AiModelProfile, input: unknown, maxTokens?: number) {
-    return this.getModel(profile, maxTokens).invoke(input as any);
+  async invoke(
+    profile: AiModelProfile,
+    input: unknown,
+    maxTokens?: number,
+    modelKwargsOverride?: Record<string, unknown>,
+  ) {
+    return this.getModel(profile, maxTokens, modelKwargsOverride).invoke(input as any);
   }
 
-  async stream(profile: AiModelProfile, input: unknown, maxTokens?: number) {
-    return this.getModel(profile, maxTokens).stream(input as any);
+  async stream(
+    profile: AiModelProfile,
+    input: unknown,
+    maxTokens?: number,
+    modelKwargsOverride?: Record<string, unknown>,
+  ) {
+    return this.getModel(profile, maxTokens, modelKwargsOverride).stream(input as any);
+  }
+
+  /**
+   * Construit les `modelKwargs` de contrôle de la réflexion (« thinking ») du
+   * modèle, selon un niveau demandé. Le CONTENU exact est piloté par les
+   * variables d'env `AI_REASONING_KWARGS_FAST|BALANCED|PRECISE` (JSON brut),
+   * pour s'adapter au paramètre réel du fournisseur sans redéploiement :
+   *   AI_REASONING_KWARGS_FAST={"reasoning_effort":"low"}
+   *   AI_REASONING_KWARGS_FAST={"enable_thinking":false}   // variante on/off
+   * Non renseigné → aucun override (comportement historique).
+   */
+  reasoningKwargs(level: 'fast' | 'balanced' | 'precise'): Record<string, unknown> | undefined {
+    const raw = process.env[`AI_REASONING_KWARGS_${level.toUpperCase()}`];
+    if (!raw) return undefined;
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+      this.logger.warn(`AI_REASONING_KWARGS_${level.toUpperCase()} invalide: JSON attendu`);
+      return undefined;
+    }
   }
 
   estimateTokens(input: unknown): number {
@@ -84,7 +119,11 @@ export class AiModelRouterService {
     return Math.ceil(text.length / 4);
   }
 
-  private getProfileConfig(profile: AiModelProfile, maxTokens?: number): ModelProfileConfig {
+  private getProfileConfig(
+    profile: AiModelProfile,
+    maxTokens?: number,
+    modelKwargsOverride?: Record<string, unknown>,
+  ): ModelProfileConfig {
     const model = profile === 'fast'
       ? process.env.AI_FAST_MODEL || process.env.AI_MODEL || 'deepseek-v4-flash'
       : profile === 'streaming'
@@ -110,8 +149,19 @@ export class AiModelRouterService {
       temperature: this.getProfileNumber(profile, 'TEMPERATURE', Number(process.env.AI_TEMPERATURE || 0)),
       apiKey: this.getApiKey(profile),
       baseURL: this.getBaseUrl(profile),
-      modelKwargs: this.getModelKwargs(profile),
+      modelKwargs: this.mergeModelKwargs(this.getModelKwargs(profile), modelKwargsOverride),
     };
+  }
+
+  /** Fusionne les modelKwargs d'env avec un override par requête (override gagne).
+   *  Renvoie `undefined` si le résultat est vide, pour ne pas polluer la cacheKey. */
+  private mergeModelKwargs(
+    base: Record<string, unknown> | undefined,
+    override: Record<string, unknown> | undefined,
+  ): Record<string, unknown> | undefined {
+    if (!base && !override) return undefined;
+    const merged = { ...(base ?? {}), ...(override ?? {}) };
+    return Object.keys(merged).length > 0 ? merged : undefined;
   }
 
   private getApiKey(profile: AiModelProfile): string | undefined {

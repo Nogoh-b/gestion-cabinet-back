@@ -90,6 +90,17 @@ export class AskQuestionDto {
 
   @ApiProperty({
     required: false,
+    description:
+      "Niveau de réflexion du modèle. 'fast' = moins de réflexion (plus rapide), 'precise' = réflexion complète.",
+    enum: ['fast', 'balanced', 'precise'],
+    default: 'fast',
+  })
+  @IsOptional()
+  @IsIn(['fast', 'balanced', 'precise'])
+  reasoningLevel?: 'fast' | 'balanced' | 'precise';
+
+  @ApiProperty({
+    required: false,
     description: 'IDs de documents systeme a lire/analyser (array JSON ou liste separee par virgules en multipart).',
   })
   @IsOptional()
