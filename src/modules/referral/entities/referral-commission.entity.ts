@@ -99,7 +99,7 @@ export class ReferralCommission extends TenantEntity {
   @Column({ type: 'enum', enum: CommissionStatus, default: CommissionStatus.CALCULATED })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Calculée, approuvée, payée, annulée',
+    description: "BD: 'calculated'=Calculée, 'approved'=Approuvée, 'paid'=Payée, 'cancelled'=Annulée.",
     importance: 'high',
     group: 'statut',
   })

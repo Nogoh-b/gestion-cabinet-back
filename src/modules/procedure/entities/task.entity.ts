@@ -88,7 +88,7 @@ export class Task extends BaseEntity {
   @Column({ type: 'enum', enum: TaskStatus, default: TaskStatus.PENDING })
   @BusinessColumn({
     label: 'Statut',
-    description: 'pending (En attente), in_progress (En cours), completed (Terminée), cancelled (Annulée)',
+    description: "BD: 'pending'=En attente, 'in_progress'=En cours, 'completed'=Terminée, 'overdue'=En retard.",
     importance: 'critical',
     group: 'état',
   })

@@ -76,7 +76,7 @@ export class ExpenseLine extends TenantEntity {
   @Column({ type: 'enum', enum: ExpenseCategory })
   @BusinessColumn({
     label: 'Catégorie',
-    description: 'Transport, hébergement, repas, huissier, frais de justice, fournitures, autre',
+    description: "BD: 'transport', 'accommodation', 'meal', 'bailiff', 'court_fees', 'office_supplies', 'other'.",
     importance: 'high',
     group: 'identification',
   })
@@ -118,7 +118,7 @@ export class ExpenseLine extends TenantEntity {
   @Column({ type: 'tinyint', default: 0, name: 'is_rebillable' })
   @BusinessColumn({
     label: 'Refacturable au client',
-    description: 'True = peut être refacturé au client du dossier',
+    description: 'BD: 1=Refacturable au client, 0=Non refacturable.',
     importance: 'medium',
     group: 'financier',
   })

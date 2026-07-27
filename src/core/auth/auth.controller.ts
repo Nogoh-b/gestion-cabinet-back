@@ -43,6 +43,33 @@ export class AuthController {
     return this.authService.login(req.user);
   }
 
+  /** 2e étape MFA : vérifie l'OTP de connexion et émet le token. */
+  @Public()
+  @Post('verify-mfa')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Vérifier le code de connexion (MFA)' })
+  async verifyMfa(@Body() body: { email: string; otp: string }) {
+    return this.authService.verifyMfa(body?.email, body?.otp);
+  }
+
+  /** Active la double authentification pour le compte courant. */
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/enable')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Activer la double authentification (OTP e-mail)' })
+  async enableMfa(@Request() req) {
+    return this.authService.setMfa(req.user.userId ?? req.user.id, true);
+  }
+
+  /** Désactive la double authentification pour le compte courant. */
+  @UseGuards(JwtAuthGuard)
+  @Post('mfa/disable')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Désactiver la double authentification' })
+  async disableMfa(@Request() req) {
+    return this.authService.setMfa(req.user.userId ?? req.user.id, false);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   @ApiBearerAuth('access_token')

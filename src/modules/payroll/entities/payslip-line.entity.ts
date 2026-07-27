@@ -55,7 +55,7 @@ export class PayslipLine extends TenantEntity {
   @Column({ type: 'enum', enum: PayslipLineType, name: 'line_type' })
   @BusinessColumn({
     label: 'Type de ligne',
-    description: 'Salaire de base, prime, commission interne, retenue, avantage, heure supplémentaire',
+    description: "BD: 'base_salary', 'bonus', 'internal_commission', 'deduction', 'advance_recovery', 'benefit', 'overtime'.",
     importance: 'high',
     group: 'identification',
   })
@@ -85,7 +85,7 @@ export class PayslipLine extends TenantEntity {
   @Column({ type: 'tinyint', default: 1, name: 'is_taxable' })
   @BusinessColumn({
     label: 'Imposable',
-    description: 'True = soumis à l\'impôt, False = non imposable',
+    description: 'BD: 1=Imposable, 0=Non imposable.',
     importance: 'medium',
     group: 'financier',
   })

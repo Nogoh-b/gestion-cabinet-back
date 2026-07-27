@@ -135,4 +135,21 @@ export class CreatePlanDto {
   @IsBoolean()
   @IsOptional()
   is_active?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Essai activé pour ce plan' })
+  @IsBoolean()
+  @IsOptional()
+  trial_enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 14, description: 'Durée de l\'essai en jours (si trial_enabled)' })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  trial_days?: number;
+
+  @ApiPropertyOptional({ example: 12, description: 'Mois d\'engagement après l\'essai (0 = aucun)' })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  min_commitment_months?: number;
 }

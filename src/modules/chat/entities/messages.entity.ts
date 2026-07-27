@@ -6,6 +6,7 @@ import { Conversation } from './conversation.entity';
 import { Expose } from 'class-transformer';
 import { MessageRead } from './message-read.entity';
 import { Attachment } from './attachment.entity';
+import { ChatReferenceDto } from '../dto/create-conversation.dto';
 
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 @Entity()
@@ -35,6 +36,9 @@ export class Message extends BaseEntity{
 
   @Column({ default: false })
   hasAttachments: boolean; // Pour faciliter les recherches
+
+  @Column({ type: 'json', nullable: true })
+  references?: ChatReferenceDto[];
 
 
   @OneToMany(() => MessageRead, read => read.message)

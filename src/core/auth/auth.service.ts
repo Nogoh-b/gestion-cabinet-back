@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
+import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
 import { MailService } from '../shared/emails/emails.service';
 import { MailTemplateService } from '../../modules/mail-template/mail-template.service';
 import { AuthTokenService } from './auth-token.service';
@@ -37,6 +38,24 @@ export class AuthService {
     private tenantContext: TenantContext,
     private mailTemplateService: MailTemplateService,
   ) {}
+
+  /**
+   * Rejette un employé désactivé (Inactif=0) ou suspendu (-1).
+   * Vérification effectuée aux moments clés : connexion et rafraîchissement de
+   * token (un employé désactivé en cours de session perd l'accès au refresh).
+   */
+  private assertEmployeeActive(employee: any): void {
+    const status: number | undefined =
+      employee?.status ?? employee?.employee?.status;
+    if (
+      status === EmployeeStatus.INACTIVE ||
+      status === EmployeeStatus.SUSPENDED
+    ) {
+      throw new ForbiddenException(
+        'Compte collaborateur inactif ou suspendu. Contactez votre administrateur.',
+      );
+    }
+  }
 
   /**
    * Valide les identifiants ET vérifie l'appartenance au cabinet.
@@ -118,6 +137,65 @@ export class AuthService {
   }
 
   async login(data: any) {
+    // Double authentification : si activée, on n'émet pas le token tout de
+    // suite — on envoie un OTP par e-mail et on renvoie un « challenge ».
+    if (data?.mfa_enabled) {
+      await this.sendMfaOtp(data.email, data.first_name || data.username);
+      return {
+        mfa_required: true,
+        email: data.email,
+        message: 'Code de vérification envoyé par e-mail.',
+      };
+    }
+    return this.issueSession(data);
+  }
+
+  /** Envoie l'OTP de connexion (réutilise l'infrastructure OTP existante). */
+  private async sendMfaOtp(email: string, name?: string): Promise<void> {
+    const { otp } = await this.authTokenService.createOTP(email, 'mfa');
+    try {
+      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
+        firstName: name || 'Utilisateur',
+        otpCode: otp,
+        expiryMinutes: 10,
+      });
+      await this.mailService.sendDirect({
+        to: email,
+        subject: rendered.subject || 'Code de connexion',
+        html: rendered.html,
+      });
+    } catch {
+      await this.mailService.sendDirect({
+        to: email,
+        subject: 'Code de connexion',
+        html: `<p>Votre code de connexion : <b>${otp}</b> (valable 10 minutes).</p>`,
+      });
+    }
+  }
+
+  /** Vérifie l'OTP de connexion et émet le token (2e étape du MFA). */
+  async verifyMfa(email: string, otp: string) {
+    const { isValid } = await this.authTokenService.verifyOTP(email, otp, 'mfa');
+    if (!isValid) {
+      throw new UnauthorizedException('Code invalide ou expiré');
+    }
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable');
+    }
+    (user as any)._resolvedTenantId =
+      (user as any).tenant_id ?? this.tenantContext.getTenantId();
+    return this.issueSession(user);
+  }
+
+  /** Active/désactive le MFA pour un utilisateur. */
+  async setMfa(userId: number, enabled: boolean): Promise<{ mfa_enabled: boolean }> {
+    await this.usersService.update(userId, { mfa_enabled: enabled } as any);
+    return { mfa_enabled: enabled };
+  }
+
+  /** Émet la session (token + user + permissions). */
+  private async issueSession(data: any) {
     // data EST l'entité User issue de validateUser() — data.role est déjà là.
     // On évite les doublons : findOne(userId) x2 + findByEmail(employee) x2.
     const role: string | null = data.role ?? null;
@@ -131,6 +209,8 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Utilisateur inexistant');
     }
+    // Refuser la connexion d'un collaborateur désactivé/suspendu.
+    this.assertEmployeeActive(user);
     const permissions = (permissionObjects ?? []).map((p: any) => p.code);
 
     // Priorité pour le tenantId du JWT :
@@ -421,9 +501,13 @@ export class AuthService {
   async refreshTokens(userId: number, refreshToken: string) {
     const user = await this.usersService.findOne(userId);
     if (!user || !user.refreshToken) throw new ForbiddenException();
-    
+
     const tokensMatch = await bcrypt.compare(refreshToken, user.refreshToken);
     if (!tokensMatch) throw new ForbiddenException('Invalid refresh token');
+
+    // Refuser le rafraîchissement si le collaborateur a été désactivé/suspendu
+    // depuis l'émission du token (User.employee est chargé en eager).
+    this.assertEmployeeActive(user);
 
     const tokens = await this.generateTokens(user);
     return tokens;

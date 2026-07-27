@@ -38,7 +38,7 @@ export class TransitionWriteHandler extends BaseWriteHandler {
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       fromStageId: { description: 'ID de l\'étape source (UUID). Peut fournir "fromStage".', required: true },
       toStageId: { description: 'ID de l\'étape destination (UUID). Peut fournir "toStage".', required: true },
-      type: { description: 'manual (défaut) ou automatic', example: 'manual' },
+      type: { description: "BD: 'manual' ou 'automatic'.", example: 'manual' },
       label: { description: 'Libellé affiché', example: 'Passer à l\'instruction' },
       isDefault: { description: 'Transition par défaut (défaut: false)' },
       requiresDecision: { description: 'Nécessite une décision explicite (défaut: true)' },

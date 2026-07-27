@@ -80,7 +80,7 @@ export class Finding extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Sévérité',
-    description: 'critical = Critique (bloquant), high = Élevé, medium = Moyen, low = Faible, info = Information',
+    description: "BD: 'critical'=Critique, 'high'=Élevé, 'medium'=Moyen, 'low'=Faible, 'info'=Information.",
     example: 'critical, high, medium, low, info',
     importance: 'critical',
     group: 'priorité'
@@ -94,7 +94,7 @@ export class Finding extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Statut',
-    description: 'identified = Identifié, in_analysis = En analyse, validated = Validé, resolved = Résolu, waived = Accepté par le client',
+    description: "BD: 'identified'=Identifié, 'in_analysis'=En analyse, 'validated'=Validé, 'resolved'=Résolu, 'waived'=Accepté.",
     importance: 'critical',
     group: 'état'
   })
@@ -107,7 +107,7 @@ export class Finding extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Catégorie',
-    description: 'corporate (Sociétés), contract (Contrats), labor (Social), tax (Fiscal), ip (PI), litigation (Contentieux), real_estate (Immobilier), regulatory (Réglementaire), compliance (Conformité), financial (Financier)',
+    description: "BD: 'corporate', 'contract', 'labor', 'tax', 'ip', 'litigation', 'real_estate', 'regulatory', 'compliance', 'financial', 'other'.",
     importance: 'high',
     group: 'classification'
   })

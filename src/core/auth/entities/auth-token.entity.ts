@@ -14,7 +14,7 @@ export class AuthToken {
   otp: string;
 
   @Column()
-  type: 'reset_password' | 'set_password';
+  type: 'reset_password' | 'set_password' | 'mfa';
 
   @Column({ type: 'timestamp' })
   expiresAt: Date;

@@ -77,7 +77,7 @@ export class ProcedureInstance extends TenantEntity {
   @Column({ type: 'enum', enum: InstanceStatus, default: InstanceStatus.ACTIVE })
   @BusinessColumn({
     label: 'Statut',
-    description: 'active (En cours), suspended (Suspendue), closed (Fermée), abandoned (Abandonnée), completed (Terminée), paused (En pause), in_progress (En progression)',
+    description: "BD: 'active'=En cours, 'suspended'=Suspendue, 'closed'=Fermée, 'abandoned'=Abandonnée, 'completed'=Terminée, 'paused'=En pause, 'in_progress'=En progression.",
     importance: 'critical',
     group: 'état'
   })

@@ -4,6 +4,7 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
@@ -56,6 +57,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { helpers } from './utils/helper-template-maill';
 import { ProcedureModule } from './modules/procedure/procedure.module';
 import { AiDatabaseModule } from './core/ai-database/ai-database.module';
+import { AiDatabaseProjectModule } from './config/ai-database/ai-database-project.module';
 import { ReferralModule } from './modules/referral/referral.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
@@ -65,7 +67,14 @@ import { PdfTemplatesModule } from './modules/pdf-templates/pdf-templates.module
 import { MailTemplateModule } from './modules/mail-template/mail-template.module';
 import { TemplateBlocksModule } from './modules/template-blocks/template-blocks.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { SuspendedCabinetGuard } from './core/common/guards/suspended-cabinet.guard';
+import { ReminderSchedulerModule } from './core/scheduler/reminder.scheduler.module';
+import { BackupModule } from './modules/backup/backup.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { ExportModule } from './modules/export/export.module';
 
 
 
@@ -89,6 +98,7 @@ dotenv.config();
     OnboardingModule,
 
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     ComptabiliteModule,
 
     // 2. Modules indépendants
@@ -195,18 +205,30 @@ dotenv.config();
     StatsModule,
     DashboardModule,
     ProcedureModule,
+    AiDatabaseProjectModule,
     AiDatabaseModule,
     ReferralModule,
     PayrollModule,
     SupplierModule,
     SettingsModule,
     PlansModule,
+    SubscriptionsModule,
     PdfTemplatesModule,
     MailTemplateModule,
     TemplateBlocksModule,
+    ReminderSchedulerModule,
+    BackupModule,
+    ReportsModule,
+    ExportModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: SuspendedCabinetGuard,
+    },
+  ],
   exports: [MailerModule],
 })
 export class AppModule implements NestModule {

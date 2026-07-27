@@ -45,7 +45,7 @@ export class CompteComptable extends TenantEntity {
   @Column({ type: 'enum', enum: TypeCompte })
   @BusinessColumn({
     label: 'Type de compte',
-    description: 'ACTIF, PASSIF, CHARGE ou PRODUIT',
+    description: "BD: 'ACTIF', 'PASSIF', 'CHARGE', 'PRODUIT'.",
     importance: 'high',
     group: 'classification',
   })
@@ -54,7 +54,7 @@ export class CompteComptable extends TenantEntity {
   @Column({ type: 'int' })
   @BusinessColumn({
     label: 'Classe',
-    description: 'Classe comptable SYSCOHADA (1 à 8)',
+    description: 'BD: 1=Classe 1, 2=Classe 2, 3=Classe 3, 4=Classe 4, 5=Classe 5, 6=Classe 6, 7=Classe 7, 8=Classe 8.',
     example: '4 = comptes de tiers, 6 = charges, 7 = produits',
     importance: 'high',
     group: 'classification',

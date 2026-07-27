@@ -11,6 +11,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 import { CreateMailDto } from './dto/create-mail.dto';
+import { SmtpService } from './smtp.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 
 
@@ -26,7 +28,30 @@ export class MailService {
     @InjectRepository(Dossier)
     private dossierRepository: Repository<Dossier>,
     private mailerService: MailerService,
+    private smtpService: SmtpService,
   ) {}
+
+  /**
+   * Envoie via le SMTP propre au cabinet courant s'il est configuré (HTML
+   * inline), sinon via le SMTP par défaut (MailerService). Repli automatique en
+   * cas d'erreur de résolution du transport cabinet.
+   */
+  private async dispatch(mailOptions: any): Promise<void> {
+    if (!mailOptions.template) {
+      try {
+        const t = await this.smtpService.getTenantTransport(getCurrentTenantId());
+        if (t) {
+          await t.transport.sendMail({ ...mailOptions, from: mailOptions.from ?? t.from });
+          return;
+        }
+      } catch (e: any) {
+        this.logger.warn(
+          `[SMTP cabinet] indisponible, repli sur SMTP par défaut: ${e?.message ?? e}`,
+        );
+      }
+    }
+    await this.mailerService.sendMail(mailOptions);
+  }
 
   /**
    * Crée un email en base (programmé ou immédiat)
@@ -105,8 +130,8 @@ export class MailService {
         (mailOptions as any).layout   = false;
       }
 
-      // Envoyer
-      await this.mailerService.sendMail(mailOptions);
+      // Envoyer (SMTP cabinet si configuré, sinon défaut)
+      await this.dispatch(mailOptions);
 
       // Mettre à jour le statut
       mail.status = MailStatus.SENT;
@@ -187,8 +212,8 @@ export class MailService {
       (mailOptions as any).context = {};
     }
 
-    // Envoyer
-    await this.mailerService.sendMail(mailOptions);
+    // Envoyer (SMTP cabinet si configuré, sinon défaut)
+    await this.dispatch(mailOptions);
     this.logger.log(`Email direct envoyé à ${to}`);
   }
 

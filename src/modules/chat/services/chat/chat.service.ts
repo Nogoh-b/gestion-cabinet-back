@@ -10,7 +10,7 @@ import { BadRequestException, forwardRef, Injectable, NotFoundException } from '
 import { InjectRepository } from '@nestjs/typeorm';
 
 
-import { CreateConversationDto, SendMessageDto, CreateGroupDto } from '../../dto/create-conversation.dto';
+import { CreateConversationDto, SendMessageDto, CreateGroupDto, ChatReferenceDto } from '../../dto/create-conversation.dto';
 import { MessageResponseDto } from '../../dto/message-response.dto';
 import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
@@ -43,6 +43,60 @@ export class ChatService {
 
   ) {
     console.log(forwardRef)
+  }
+
+  private sanitizeReferences(references?: ChatReferenceDto[]): ChatReferenceDto[] {
+    if (!Array.isArray(references)) return [];
+
+    const cleanText = (value: unknown): string => String(value ?? '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const allowedMetaKeys = new Set(['reference', 'numero', 'email', 'phone', 'date']);
+    const allowedTypes = new Set([
+      'client',
+      'customer',
+      'dossier',
+      'employee',
+      'collaborateur',
+      'procedure',
+      'diligence',
+      'audience',
+      'facture',
+      'document',
+      'fournisseur',
+      'supplier',
+      'apporteur',
+      'referrer',
+    ]);
+    return references
+      .filter(ref => ref && ref.type && allowedTypes.has(String(ref.type).toLowerCase()) && ref.id !== undefined && ref.id !== null && ref.label)
+      .slice(0, 10)
+      .map(ref => {
+        const type = String(ref.type).toLowerCase();
+        const meta: NonNullable<ChatReferenceDto['meta']> = {};
+        if (ref.meta && typeof ref.meta === 'object') {
+          for (const [key, value] of Object.entries(ref.meta)) {
+            if (!allowedMetaKeys.has(key) || value === undefined || value === null) continue;
+            meta[key as keyof NonNullable<ChatReferenceDto['meta']>] = cleanText(value).slice(0, 200);
+          }
+        }
+
+        const clean: ChatReferenceDto = {
+          type: type.slice(0, 50),
+          id: typeof ref.id === 'number' ? ref.id : String(ref.id).slice(0, 80),
+          label: cleanText(ref.label).slice(0, 200),
+        };
+
+        if (ref.href && String(ref.href).startsWith('/')) clean.href = String(ref.href).slice(0, 500);
+        if (Object.keys(meta).length) clean.meta = meta;
+        return clean;
+      });
   }
 
   async createConversation(dto: CreateConversationDto, creatorId: number): Promise<Conversation> {
@@ -79,6 +133,7 @@ export class ChatService {
   }
 
   async sendMessage(dto: SendMessageDto, senderId: number): Promise<any> {
+      const references = this.sanitizeReferences(dto.references);
       const conversation = await this.conversationRepository.findOne({
           where: { id: dto.conversationId },
           relations: ['participants', 'participants.user'],
@@ -95,9 +150,10 @@ export class ChatService {
       }
 
       const message = this.messageRepository.create({
-          content: dto.content,
+          content: dto.content ?? '',
           sender,
           conversation,
+          references,
       });
 
       const savedMessage = await this.messageRepository.save(message);
@@ -106,10 +162,11 @@ export class ChatService {
       await this.conversationRepository.update(dto.conversationId, {
           lastMessageAt: new Date(),
           lastMessageData: {  // ← Utiliser lastMessageData, pas lastMessage
-              content: dto.content,
+              content: dto.content ?? '',
               createdAt: new Date().toISOString(),
               senderId: senderId,
-              senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur'
+              senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
+              referencesCount: references.length,
           }
       });
 
@@ -140,6 +197,7 @@ export class ChatService {
     senderId: number, 
     files: Express.Multer.File[]
   ): Promise<MessageResponseDto> {
+    const references = this.sanitizeReferences(dto.references);
     // Validation de base
     if (!dto.content && files.length === 0) {
       throw new BadRequestException('Un message doit avoir du contenu ou des pièces jointes');
@@ -172,10 +230,11 @@ export class ChatService {
 
     // 5. Création du message
     const message = this.messageRepository.create({
-      content: dto.content ,
+      content: dto.content ?? '',
       sender,
       conversation,
       hasAttachments: uploadedAttachments.length > 0,
+      references,
     });
 
     const savedMessage = await this.messageRepository.save(message);
@@ -198,6 +257,7 @@ export class ChatService {
       createdAt: new Date().toISOString(),
       senderId: senderId,
       senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
+      referencesCount: references.length,
     };
 
     if (uploadedAttachments.length > 0) {
@@ -236,7 +296,8 @@ export class ChatService {
     senderId: number, 
   ): Promise<MessageResponseDto> {
     // Validation de base
-    const attachmentIds = dto.attachmentIds
+    const attachmentIds = dto.attachmentIds ?? [];
+    const references = this.sanitizeReferences(dto.references);
     if (!dto.content && attachmentIds.length === 0) {
       throw new BadRequestException('Un message doit avoir du contenu ou des pièces jointes');
     }
@@ -280,10 +341,11 @@ export class ChatService {
 
     // 4. Création du message
     const message = this.messageRepository.create({
-      content: dto.content,
+      content: dto.content ?? '',
       sender,
       conversation,
       hasAttachments: attachments.length > 0,
+      references,
     });
 
     const savedMessage = await this.messageRepository.save(message);
@@ -307,6 +369,7 @@ export class ChatService {
       createdAt: new Date().toISOString(),
       senderId: senderId,
       senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
+      referencesCount: references.length,
     };
 
     if (attachments.length > 0) {
@@ -496,7 +559,8 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
           hasAttachments: hasAttachments,
           attachmentsCount: attachments.length,
           attachmentsTypes: attachmentsTypes,
-          attachmentIds: attachmentIds
+          attachmentIds: attachmentIds,
+          referencesCount: lastMsg.references?.length || 0,
         }
       });
     }

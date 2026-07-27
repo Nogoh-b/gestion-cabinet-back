@@ -10,6 +10,7 @@ import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -32,7 +33,7 @@ export class AiDatabaseController {
   ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
@@ -66,9 +67,10 @@ export class AiDatabaseController {
   async askQuestion(
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
+    @Req() req,
     @UploadedFile() file?: Express.Multer.File
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto, user.id, file);
+    return this.aiDbService.analyzeQuestion(dto, user, file, req?.aiRequestLogId);
   }
 
 
@@ -90,7 +92,7 @@ export class AiDatabaseController {
    *   done          → fin du flux
    */
   @Post('ask/stream')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
@@ -151,8 +153,9 @@ export class AiDatabaseController {
     const tenantId: number = (user?.tenantId as number) ?? getCurrentTenantId();
 
     try {
+      sendEvent('status', { message: 'Connexion IA etablie...' });
       await this.tenantContext.run(tenantId, () =>
-        this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent),
+        this.aiDbService.analyzeQuestionStream(dto, user, file, sendEvent, (res.req as any)?.aiRequestLogId),
       );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });
@@ -172,7 +175,7 @@ export class AiDatabaseController {
     @Body('pendingIntent') pendingIntent: WritePlan,
     @CurrentUser() user
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.confirmWrite(pendingIntent, user.id);
+    return this.aiDbService.confirmWrite(pendingIntent, user);
   }
 
   // ── Résolution d'ambiguïté ───────────────────────────────────────────────────
@@ -218,7 +221,7 @@ export class AiDatabaseController {
       operationIndex,
       fieldName,
       resolvedId,
-      user.id,
+      user,
       conversationId,
       customValue,
       entity,
@@ -228,8 +231,8 @@ export class AiDatabaseController {
   @Post('execute')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exécute une requête SQL (SELECT uniquement)' })
-  async executeCustomQuery(@Body('sql') sqlQuery: string) {
-    return this.aiDbService.executeQuery(sqlQuery);
+  async executeCustomQuery(@Body('sql') sqlQuery: string, @CurrentUser() user) {
+    return this.aiDbService.executeQuery(sqlQuery, user);
   }
 
   @Get('metrics')

@@ -52,6 +52,7 @@ export class Conversation extends BaseEntity {
     attachmentsCount?: number;
     attachmentsTypes?: string[];
     attachmentIds?: number[];
+    referencesCount?: number;
   };
 
   // ✅ GARDER LE GETTER POUR LA COMPATIBILITÉ

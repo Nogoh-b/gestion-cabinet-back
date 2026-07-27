@@ -11,9 +11,13 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
 
 
+
+
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
+
+
 
 // seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
 // import { seedDatabase } from './main.seeder';
@@ -102,10 +106,14 @@ async function bootstrap() {
     ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
     : true; // reflète l'origine de la requête en l'absence de config
   app.enableCors({
-    origin: corsOrigins,
+    origin: '*', 
     credentials: true,
   });
-
+// app.enableCors({
+//   origin: 'http://localhost:3000', // ou ton origine exacte
+//   methods: 'GET,POST,OPTIONS',     // méthodes autorisées
+//   allowedHeaders: 'Content-Type',  // en-têtes autorisés
+// });
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath('/admin/queues');
   app.use('/admin/queues', serverAdapter.getRouter());

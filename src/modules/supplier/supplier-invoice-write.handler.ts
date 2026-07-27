@@ -55,11 +55,11 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
         example: '20.00',
       },
       status: {
-        description: 'received, approved, paid, cancelled, disputed',
+        description: "BD: 'received', 'approved', 'paid', 'cancelled', 'disputed'.",
         example: 'received',
       },
       payment_method: {
-        description: 'ESPECES, CHEQUE, VIREMENT, CARTE_BANCAIRE, PRELEVEMENT, MOBILE_MONEY',
+        description: "BD: 'ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE_BANCAIRE', 'PRELEVEMENT', 'MOBILE_MONEY'.",
         example: 'VIREMENT',
       },
     };

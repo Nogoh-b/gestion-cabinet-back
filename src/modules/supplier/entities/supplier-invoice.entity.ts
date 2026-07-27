@@ -155,7 +155,7 @@ export class SupplierInvoice extends TenantEntity {
   @Column({ type: 'enum', enum: SupplierInvoiceStatus, default: SupplierInvoiceStatus.RECEIVED })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Reçue, approuvée, payée, annulée, contestée',
+    description: "BD: 'received'=Reçue, 'approved'=Approuvée, 'paid'=Payée, 'cancelled'=Annulée, 'disputed'=Contestée.",
     importance: 'high',
     group: 'statut',
   })
@@ -174,7 +174,7 @@ export class SupplierInvoice extends TenantEntity {
   @Column({ type: 'enum', enum: PaymentMethod, nullable: true, name: 'payment_method' })
   @BusinessColumn({
     label: 'Mode de paiement',
-    description: 'Espèces, chèque, virement, carte bancaire, prélèvement, mobile money',
+    description: "BD: 'ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE_BANCAIRE', 'PRELEVEMENT', 'MOBILE_MONEY'.",
     importance: 'medium',
     group: 'financier',
   })

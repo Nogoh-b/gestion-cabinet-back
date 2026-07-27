@@ -19,14 +19,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(req: Request, payload: any) {
     const jwtTenantId: number      = payload.tenantId ?? 1;
     const resolvedTenantId: number = (req as any)['resolvedTenantId'] ?? 1;
+    const permissions: string[]    = payload.permissions ?? [];
+    const isSuperAdmin             = permissions.includes('SUPER_ADMIN');
 
     // ── Validation cross-tenant ──────────────────────────────────────────────
-    // Si l'URL pointe vers le cabinet B mais le JWT appartient au cabinet A,
-    // on rejette la requête pour bloquer les accès inter-cabinets.
-    // On n'applique pas si l'un des deux est le tenant par défaut (1)
-    // pour rester compatible avec les scripts/tests sans tenant.
+    // Le cross-tenant (URL pointant vers le cabinet B alors que le JWT
+    // appartient au cabinet A) n'est autorisé qu'aux porteurs de la permission
+    // SUPER_ADMIN. Pour tout autre utilisateur, dès qu'une requête cible un
+    // cabinet RÉSOLU (resolvedTenantId !== 1) différent de celui du JWT, on
+    // refuse — y compris un JWT tenant=1 qui tenterait d'atteindre un cabinet.
+    // Quand aucun cabinet n'est résolu (pas de x-tenant-code), on reste
+    // permissif et on fait confiance au tenant du JWT (scripts/appels internes).
     if (
-      jwtTenantId !== 1 &&
+      !isSuperAdmin &&
       resolvedTenantId !== 1 &&
       jwtTenantId !== resolvedTenantId
     ) {

@@ -139,6 +139,33 @@ export class PlanQuotaService {
     }
   }
 
+  // ── Vérifie le quota de stockage (octets) et lève si dépassé ─────────────
+  // `currentBytes` = volume déjà stocké par le cabinet ; `additionalBytes` =
+  // taille du fichier qu'on s'apprête à ajouter. Le calcul de `currentBytes`
+  // est laissé à l'appelant (qui dispose du repo documents), comme pour
+  // checkLimit. -1 = illimité.
+
+  async checkStorageLimit(
+    cabinetId: number,
+    currentBytes: number,
+    additionalBytes: number,
+  ): Promise<void> {
+    const plan = await this.getCabinetPlan(cabinetId);
+    if (!plan) return; // aucun plan → pas de limite
+
+    const maxGb = plan.max_storage_gb;
+    if (maxGb === null || maxGb === undefined || maxGb === -1) return; // illimité
+
+    const maxBytes = maxGb * 1024 * 1024 * 1024;
+    if (currentBytes + additionalBytes > maxBytes) {
+      const usedGb = (currentBytes / (1024 * 1024 * 1024)).toFixed(2);
+      throw new ForbiddenException(
+        `Espace de stockage insuffisant (${usedGb} Go / ${maxGb} Go utilisés). ` +
+        `Veuillez libérer de l'espace ou mettre à niveau votre plan "${plan.name}".`,
+      );
+    }
+  }
+
   // ── Vérifie qu'un module est activé sur le plan du cabinet ───────────────
 
   async isModuleEnabled(cabinetId: number, module: PlanModule): Promise<boolean> {

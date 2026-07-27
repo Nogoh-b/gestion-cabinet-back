@@ -42,7 +42,7 @@ export enum DossierOutcome {
 @Entity('dossiers')
 @BusinessTable({
   label: 'Dossiers contentieux',
-  description: 'Gestion complète des dossiers juridiques du cabinet. Un dossier représente une affaire confiée par un client, suivie par un avocat référent, avec des étapes procédurales, des audiences, des documents et des facturations.',
+  description: 'Gestion complète des dossiers juridiques du cabinet. Les statuts sont stockés en codes numériques BD; utiliser status=8 pour clôturé, status=9 pour archivé, status=10 pour abandonné.',
   icon: '⚖️',
   category: 'dossier',
   ignored : false
@@ -98,7 +98,7 @@ export class Dossier extends BaseEntity {
   @Column({ name: 'danger_level', type: 'enum', enum: DangerLevel, default: DangerLevel.Normal })
   @BusinessColumn({
     label: "Niveau d'urgence",
-    description: '0 = Faible, 1 = Normal, 2 = Élevé, 3 = Critique',
+    description: 'BD: 0=Faible, 1=Normal, 2=Eleve, 3=Critique. En SQL utiliser le nombre.',
     example: '2 = Élevé',
     importance: 'high',
     group: 'priorité'
@@ -198,7 +198,8 @@ export class Dossier extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Statut du dossier',
-    description: '0=Ouvert, 1=Analyse préliminaire, 2=Phase amiable/transaction, 3=Mise en contentieux, 4=Jugement rendu, 5=Appel interjeté, 6=Pouvoi en cassation, 7=Phase d\'exécution, 8=Dossier abandonné, 9=Clôturé, 10=Archivé',
+    description: 'BD: 0=OPEN/ouvert, 1=PRELIMINARY_ANALYSIS/analyse, 2=AMICABLE/amiable, 3=LITIGATION/contentieux, 4=JUDGMENT/jugement, 5=APPEAL/appel, 6=CASSATION, 7=EXECUTION, 8=CLOSED/clôturé, 9=ARCHIVED/archivé, 10=ABANDONED/abandonné.',
+    example: 'status = 8 pour les dossiers clôturés',
     importance: 'critical',
     group: 'état'
   })
@@ -415,7 +416,7 @@ export class Dossier extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Décision du client',
-    description: "Choice du client: 'transaction', 'contentieux', 'abandon'",
+    description: "BD: 'transaction', 'contentieux', 'abandon'.",
     importance: 'critical',
     group: 'décision'
   })
@@ -429,7 +430,7 @@ export class Dossier extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Recommandation du cabinet',
-    description: "Conseil donné au client: 'transaction', 'present_options', 'procedure'",
+    description: "BD: 'transaction', 'present_options', 'procedure'.",
     importance: 'high',
     group: 'conseil'
   })
@@ -496,7 +497,7 @@ export class Dossier extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Type de décision actuelle',
-    description: "'FIRST_INSTANCE', 'APPEAL' ou 'CASSATION'",
+    description: "BD: 'FIRST_INSTANCE', 'APPEAL', 'CASSATION'.",
     importance: 'high',
     group: 'état'
   })
@@ -571,7 +572,7 @@ export class Dossier extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Satisfaction client',
-    description: "Niveau de satisfaction: 'very_satisfied', 'satisfied', 'neutral', 'dissatisfied', 'very_dissatisfied'",
+    description: "BD: 'very_satisfied', 'satisfied', 'neutral', 'dissatisfied', 'very_dissatisfied'.",
     importance: 'high',
     group: 'relation client'
   })

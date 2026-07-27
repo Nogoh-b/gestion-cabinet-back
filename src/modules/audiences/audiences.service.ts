@@ -27,6 +27,8 @@ import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, AudienceType1, } from './entities/audience.entity';
+import { PlanQuotaService } from '../plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 
 
@@ -46,12 +48,10 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     private readonly documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => StepsService))
     private stepsService: StepsService,
+    private readonly planQuotaService: PlanQuotaService,
     protected readonly emailsService?: MailService, // Optionnel
-    
   ) {
     super(repository, paginationService, emailsService);
-    console.log(forwardRef)
-
   }
 
   /**
@@ -77,8 +77,13 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    * ➕ Création d'une audience
    */
   async create(dto: CreateAudienceDto): Promise<AudienceResponseDto | Audience | null> {
-    console.log('-------dto ', dto);
-    
+    // ── Vérification quota plan (audiences) ────────────────────────────────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      const currentCount = await this.repository.count();
+      await this.planQuotaService.checkLimit(tenantId, 'audiences', currentCount);
+    }
+
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
 

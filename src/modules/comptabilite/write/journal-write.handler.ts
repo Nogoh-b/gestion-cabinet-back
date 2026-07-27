@@ -34,7 +34,7 @@ export class JournalWriteHandler extends BaseWriteHandler {
       code: { description: 'Code court du journal (obligatoire)', example: 'VTE', required: true },
       libelle: { description: 'Libellé du journal (obligatoire)', example: 'Journal des ventes', required: true },
       typeJournal: { description: 'VENTES, ACHATS, CAISSE, BANQUE ou OD (obligatoire)', required: true },
-      actif: { description: '1=Actif (par défaut), 0=Inactif' },
+      actif: { description: 'BD: 1=Actif (par défaut), 0=Inactif.' },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

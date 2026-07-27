@@ -9,6 +9,9 @@ import { CreateExpenseReportDto } from './dto/create-expense-report.dto';
 import { UpdateExpenseReportDto } from './dto/update-expense-report.dto';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { User } from '../iam/user/entities/user.entity';
+import { PlanQuotaService } from '../plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 @Injectable()
 export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
@@ -21,11 +24,27 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
     @InjectRepository(User)
     private userRepo: Repository<User>,
     private readonly eventEmitter: EventEmitter2,
+    private readonly planQuotaService: PlanQuotaService,
   ) {
     super(repository, paginationService);
   }
 
   async create(dto: CreateExpenseReportDto): Promise<ExpenseReport> {
+    // ── Le module Dépenses doit être inclus dans le plan + quota mensuel ─────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      await this.planQuotaService.checkModuleEnabled(tenantId, 'expenses');
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      let qb = this.repository
+        .createQueryBuilder('e')
+        .where('e.created_at >= :start', { start: monthStart });
+      qb = addTenantCondition(qb, 'e');
+      const currentCount = await qb.getCount();
+      await this.planQuotaService.checkLimit(tenantId, 'expenses', currentCount);
+    }
+
     const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
     if (!employee) throw new NotFoundException('Employé non trouvé');
     const entity = this.repository.create(dto);
