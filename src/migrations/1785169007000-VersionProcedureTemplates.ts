@@ -103,8 +103,7 @@ export class VersionProcedureTemplates1785169007000
               allowHearings: !!config.allowHearings,
               documentTypesAllowed:
                 this.parseJson(config.documentTypesAllowed) ?? [],
-              diligenceConfig:
-                this.parseJson(config.diligenceConfig) ?? null,
+              diligenceConfig: this.parseJson(config.diligenceConfig) ?? null,
               hearingConfig: this.parseJson(config.hearingConfig) ?? null,
               invoiceConfig: this.parseJson(config.invoiceConfig) ?? null,
             }
@@ -182,16 +181,13 @@ export class VersionProcedureTemplates1785169007000
     `);
     await queryRunner.query(`
       ALTER TABLE procedure_instances
-        MODIFY status ENUM(
-          'active','suspended','closed','abandoned','completed','paused','in_progress',
-          'ACTIVE','COMPLETED','CANCELLED'
-        ) NOT NULL DEFAULT 'active'
+        MODIFY status VARCHAR(32) NOT NULL DEFAULT 'active'
     `);
     await queryRunner.query(`
       UPDATE procedure_instances
       SET status = CASE
-        WHEN status IN ('completed','closed','COMPLETED') THEN 'COMPLETED'
-        WHEN status IN ('abandoned','cancelled','CANCELLED') THEN 'CANCELLED'
+        WHEN LOWER(status) IN ('completed','closed') THEN 'COMPLETED'
+        WHEN LOWER(status) IN ('abandoned','cancelled') THEN 'CANCELLED'
         ELSE 'ACTIVE'
       END
     `);
@@ -204,10 +200,7 @@ export class VersionProcedureTemplates1785169007000
   async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE procedure_instances
-        MODIFY status ENUM(
-          'active','suspended','closed','abandoned','completed','paused','in_progress',
-          'ACTIVE','COMPLETED','CANCELLED'
-        ) NOT NULL DEFAULT 'ACTIVE'
+        MODIFY status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE'
     `);
     await queryRunner.query(`
       UPDATE procedure_instances
