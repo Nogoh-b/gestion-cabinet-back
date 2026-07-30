@@ -165,6 +165,13 @@ for (const script of [
   }
 }
 
+const typeormScript = packageJson.scripts?.typeorm ?? '';
+for (const preload of ['ts-node/register', 'tsconfig-paths/register']) {
+  if (!typeormScript.includes(preload)) {
+    fail(`Le script TypeORM doit précharger ${preload}`);
+  }
+}
+
 const ciWorkflow = await readFile(
   join(root, '.github', 'workflows', 'ci.yml'),
   'utf8',
