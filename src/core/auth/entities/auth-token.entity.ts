@@ -10,7 +10,7 @@ export class AuthToken {
   @Index()
   email: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   otp: string | null;
 
   @Column()
@@ -28,7 +28,7 @@ export class AuthToken {
   @Column({ name: 'last_attempt_at', type: 'datetime', nullable: true })
   lastAttemptAt: Date | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   token: string | null;
 
   @CreateDateColumn()

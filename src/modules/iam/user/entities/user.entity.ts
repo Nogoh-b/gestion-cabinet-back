@@ -77,7 +77,7 @@ export class User extends BaseEntity {
   })
   fcmToken: string;
 
-  @Column({ length: 200, nullable: true })
+  @Column({ type: 'varchar', length: 200, nullable: true })
   refreshToken: string | null;
 
   /** Double authentification (OTP e-mail) activée pour ce compte. */

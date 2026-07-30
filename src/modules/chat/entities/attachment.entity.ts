@@ -41,23 +41,23 @@ export class Attachment extends BaseEntity {
   })
   fileType: AttachmentType;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   mimeType: string | null; // Type MIME original
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   @Exclude()
   cloudinaryPublicId: string | null; // Si vous utilisez Cloudinary
-  @Column({ name: 'fileUrl', nullable: true })
+  @Column({ name: 'fileUrl', type: 'varchar', nullable: true })
   @Exclude()
   legacyFileUrl: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   @Exclude()
   thumbnailPath: string | null;
 
 
 
-  @Column({ name: 'thumbnailUrl', nullable: true })
+  @Column({ name: 'thumbnailUrl', type: 'varchar', nullable: true })
   @Exclude()
   legacyThumbnailUrl: string | null; // Pour les images/vidéos
 
@@ -76,17 +76,32 @@ export class Attachment extends BaseEntity {
   @Column({ name: 'uploaded_by_id', type: 'int', nullable: true })
   uploadedById: number | null;
 
-  @Column({ name: 'storage_key', length: 512, nullable: true })
+  @Column({
+    name: 'storage_key',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   @Exclude()
   storageKey: string | null;
 
   @Column({ name: 'sha256', type: 'char', length: 64, nullable: true })
   sha256: string | null;
 
-  @Column({ name: 'original_name', length: 255, nullable: true })
+  @Column({
+    name: 'original_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   originalName: string | null;
 
-  @Column({ name: 'detected_mime', length: 255, nullable: true })
+  @Column({
+    name: 'detected_mime',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
   detectedMime: string | null;
 
   @Column({

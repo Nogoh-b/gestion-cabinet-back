@@ -94,7 +94,7 @@ export class Dossier extends BaseEntity {
   })
   object: string;
 
-  @Column({ nullable: true, default: 1 })
+  @Column({ type: 'int', nullable: true, default: 1 })
   @BusinessColumn({
     label: 'Juridiction',
     description: 'Identifiant de la juridiction saisie (tribunal compétent)',
@@ -518,7 +518,7 @@ export class Dossier extends BaseEntity {
   @JoinColumn({ name: 'procedureInstanceId' })
   procedureInstance: ProcedureInstance;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   procedureInstanceId: string | null;
 
   // ==================== GETTERS MÉTIER ====================

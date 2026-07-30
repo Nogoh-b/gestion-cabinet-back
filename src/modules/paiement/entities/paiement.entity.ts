@@ -161,16 +161,31 @@ export class Paiement extends TenantEntity {
   })
   preuvePaiement: string;
 
-  @Column({ name: 'preuve_original_name', nullable: true, length: 255 })
+  @Column({
+    name: 'preuve_original_name',
+    type: 'varchar',
+    nullable: true,
+    length: 255,
+  })
   preuveOriginalName: string | null;
 
-  @Column({ name: 'preuve_mime_type', nullable: true, length: 120 })
+  @Column({
+    name: 'preuve_mime_type',
+    type: 'varchar',
+    nullable: true,
+    length: 120,
+  })
   preuveMimeType: string | null;
 
   @Column({ name: 'preuve_size', type: 'bigint', nullable: true })
   preuveSize: string | null;
 
-  @Column({ name: 'preuve_sha256', nullable: true, length: 64 })
+  @Column({
+    name: 'preuve_sha256',
+    type: 'char',
+    nullable: true,
+    length: 64,
+  })
   preuveSha256: string | null;
 
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const failures = [];
@@ -105,6 +106,71 @@ for (const file of sourceFiles) {
   if (/\bALTER\s+TABLE\b/i.test(executableSource)) {
     fail(`DDL d'exécution interdit hors migration dans ${label}`);
   }
+}
+
+for (const file of sourceFiles.filter((path) => path.endsWith('.entity.ts'))) {
+  const source = await readFile(file, 'utf8');
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
+  const visit = (node) => {
+    if (
+      ts.isPropertyDeclaration(node) &&
+      node.type &&
+      ts.isUnionTypeNode(node.type)
+    ) {
+      const includesNull = node.type.types.some(
+        (typeNode) =>
+          typeNode.kind === ts.SyntaxKind.NullKeyword ||
+          (ts.isLiteralTypeNode(typeNode) &&
+            typeNode.literal.kind === ts.SyntaxKind.NullKeyword),
+      );
+
+      if (includesNull) {
+        for (const decorator of ts.getDecorators(node) ?? []) {
+          const expression = decorator.expression;
+          if (
+            !ts.isCallExpression(expression) ||
+            !ts.isIdentifier(expression.expression) ||
+            expression.expression.text !== 'Column'
+          ) {
+            continue;
+          }
+
+          const options = expression.arguments.find((argument) =>
+            ts.isObjectLiteralExpression(argument),
+          );
+          const hasExplicitType =
+            options &&
+            options.properties.some(
+              (property) =>
+                property.name &&
+                (property.name.text ?? property.name.escapedText) === 'type',
+            );
+
+          if (!hasExplicitType) {
+            const position = sourceFile.getLineAndCharacterOfPosition(
+              node.getStart(sourceFile),
+            );
+            fail(
+              `Type SQL explicite requis pour l'union nullable ${relative(
+                root,
+                file,
+              )}:${position.line + 1}`,
+            );
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
 }
 
 const dossierEnum = await readFile(

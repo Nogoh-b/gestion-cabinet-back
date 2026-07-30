@@ -59,6 +59,11 @@ export class OutboxEvent extends TenantEntity {
   @Column({ name: 'locked_at', type: 'datetime', nullable: true })
   lockedAt: Date | null;
 
-  @Column({ name: 'locked_by', length: 120, nullable: true })
+  @Column({
+    name: 'locked_by',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
   lockedBy: string | null;
 }
