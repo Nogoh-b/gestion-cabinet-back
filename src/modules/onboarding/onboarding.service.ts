@@ -179,7 +179,19 @@ export class OnboardingService {
           permissions: [],
           tenantId:    cabinet.id,
         };
-        const access_token = this.jwtService.sign(payload);
+        const refreshSecret = process.env.JWT_REFRESH_SECRET;
+        if (!refreshSecret) {
+          throw new Error('JWT_REFRESH_SECRET est obligatoire');
+        }
+        const [access_token, refresh_token] = await Promise.all([
+          this.jwtService.signAsync(payload, { expiresIn: '15m' }),
+          this.jwtService.signAsync(payload, {
+            secret: refreshSecret,
+            expiresIn: '7d',
+          }),
+        ]);
+        savedUser.refreshToken = await bcrypt.hash(refresh_token, 10);
+        await this.userRepo.save(savedUser);
 
         // ── 4. URL d'accès ───────────────────────────────────────────────
         const tenant_url = this.cabinetService.getCabinetUrl(cabinet);
@@ -214,6 +226,7 @@ export class OnboardingService {
             last_name:  savedUser.last_name,
           },
           access_token,
+          refresh_token,
           tenant_url,
         };
       });

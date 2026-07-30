@@ -2,10 +2,10 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class LoginResponseDto {
   @ApiProperty({
-    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-    description: 'JWT Access Token'
+    example: true,
+    description: 'La session a été créée dans des cookies HttpOnly'
   })
-  access_token: string;
+  authenticated: boolean;
 
   @ApiProperty({
     example: {

@@ -14,15 +14,15 @@ export const dataSource = new DataSource({
   port: parseInt(process.env.DB_PORT || '3306'),
   username: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'cabinet_avocats_cameroun',
+  database: process.env.DB_NAME || 'core',
   entities: [
     join(__dirname, 'modules', '**', '*.entity.{ts,js}'),
     join(__dirname, '**', '*.entity.{ts,js}')
   ],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
   migrationsTableName: 'migrations',
-  synchronize: process.env.NODE_ENV === 'development',
-  logging: true,
+  synchronize: false,
+  logging: ['error'],
   // Options spécifiques MySQL pour le Cameroun
   extra: {
     charset: 'utf8mb4',
@@ -34,12 +34,11 @@ export const dataSource = new DataSource({
 export async function testConnection() {
   try {
     await dataSource.initialize();
-    console.log('✅ Connexion à la base de données établie avec succès');
-    console.log(`📊 Base de données: ${dataSource.options.database}`);
+    console.info('[database] connection-established');
     // console.log(`🏠 Hôte: ${dataSource.options.host}`);
     return true;
-  } catch (error) {
-    console.error('❌ Erreur de connexion à la base de données:', error);
+  } catch {
+    console.error('[database] connection-failed');
     return false;
   }
 }

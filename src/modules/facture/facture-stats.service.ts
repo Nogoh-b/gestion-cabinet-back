@@ -6,7 +6,7 @@ import { Facture } from './entities/facture.entity';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
 import { FactureStatsDto } from './dto/facture-stats.dto';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
-import { StatutFacture } from './dto/create-facture.dto';
+import { InvoiceNature, StatutFacture } from './dto/create-facture.dto';
 import { StatutPaiement } from '../paiement/dto/create-paiement.dto';
 
 @Injectable()
@@ -84,7 +84,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalHT(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantHT)', 'total');
+      .select(this.netRecognizedExpression('facture.montantHT'), 'total')
+      .setParameters(this.financialStatusParameters());
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -93,7 +94,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalTTC(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantTTC)', 'total');
+      .select(this.netRecognizedExpression('facture.montantTTC'), 'total')
+      .setParameters(this.financialStatusParameters());
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -102,8 +104,16 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalPaid(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantTTC)', 'total')
-      .where('facture.status = :status', { status: StatutFacture.PAYEE });
+      .innerJoin(
+        'facture.paiements',
+        'payment',
+        'payment.status = :validatedPayment',
+        { validatedPayment: StatutPaiement.VALIDE },
+      )
+      .select('COALESCE(SUM(payment.montant), 0)', 'total')
+      .where('facture.nature != :creditNote', {
+        creditNote: InvoiceNature.CREDIT_NOTE,
+      });
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -112,11 +122,43 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalUnpaid(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .leftJoinAndSelect('facture.paiements', 'paiement', 'paiement.status = :valide', { 
-        valide: StatutPaiement.VALIDE 
+      .select(
+        `COALESCE(SUM(GREATEST(
+          facture.montantTTC
+          - COALESCE((
+              SELECT SUM(payment_amount.montant)
+              FROM paiements payment_amount
+              WHERE payment_amount.facture_id = facture.id
+                AND payment_amount.tenant_id = facture.tenant_id
+                AND payment_amount.status = :validatedPayment
+                AND payment_amount.deleted_at IS NULL
+            ), 0)
+          - COALESCE((
+              SELECT SUM(credit_amount.montant_ttc)
+              FROM factures credit_amount
+              WHERE credit_amount.original_invoice_id = facture.id
+                AND credit_amount.tenant_id = facture.tenant_id
+                AND credit_amount.nature = :creditNote
+                AND credit_amount.status = :validated
+                AND credit_amount.deleted_at IS NULL
+            ), 0),
+          0
+        )), 0)`,
+        'total',
+      )
+      .where('facture.status IN (:...receivableStatuses)', {
+        receivableStatuses: [
+          StatutFacture.VALIDEE,
+          StatutFacture.PARTIELLEMENT_PAYEE,
+        ],
       })
-      .select('SUM(facture.montantTTC - COALESCE(paiement.montant, 0))', 'total')
-      .where('facture.status != :status', { status: StatutFacture.PAYEE });
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: InvoiceNature.CREDIT_NOTE,
+      })
+      .setParameters({
+        validatedPayment: StatutPaiement.VALIDE,
+        validated: StatutFacture.VALIDEE,
+      });
     
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
@@ -126,7 +168,10 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getPaidCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .where('facture.status = :status', { status: StatutFacture.PAYEE });
+      .where('facture.status = :status', { status: StatutFacture.PAYEE })
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: InvoiceNature.CREDIT_NOTE,
+      });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
   }
@@ -134,8 +179,15 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getUnpaidCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .where('facture.status != :status', { status: StatutFacture.PAYEE })
-      .andWhere('facture.status != :brouillon', { brouillon: StatutFacture.BROUILLON });
+      .where('facture.status IN (:...statuses)', {
+        statuses: [
+          StatutFacture.VALIDEE,
+          StatutFacture.PARTIELLEMENT_PAYEE,
+        ],
+      })
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: InvoiceNature.CREDIT_NOTE,
+      });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
   }
@@ -145,8 +197,15 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .where('facture.dateEcheance < :now', { now })
-      .andWhere('facture.status != :status', { status: StatutFacture.PAYEE })
-      .andWhere('facture.status != :brouillon', { brouillon: StatutFacture.BROUILLON });
+      .andWhere('facture.status IN (:...statuses)', {
+        statuses: [
+          StatutFacture.VALIDEE,
+          StatutFacture.PARTIELLEMENT_PAYEE,
+        ],
+      })
+      .andWhere('facture.nature != :creditNote', {
+        creditNote: InvoiceNature.CREDIT_NOTE,
+      });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
   }
@@ -170,8 +229,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       [StatutFacture.ENVOYEE]: 'Envoyée',
       [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
       [StatutFacture.PAYEE]: 'Payée',
-      [StatutFacture.IMPAYEE]: 'Impayée',
       [StatutFacture.ANNULEE]: 'Annulée',
+      [StatutFacture.VALIDEE]: 'Validée',
     };
 
     const statusColors = {
@@ -179,8 +238,8 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       [StatutFacture.ENVOYEE]: '#3b82f6',
       [StatutFacture.PARTIELLEMENT_PAYEE]: '#f59e0b',
       [StatutFacture.PAYEE]: '#10b981',
-      [StatutFacture.IMPAYEE]: '#ef4444',
       [StatutFacture.ANNULEE]: '#6b7280',
+      [StatutFacture.VALIDEE]: '#8b5cf6',
     };
 
     return results.map(r => ({
@@ -340,8 +399,15 @@ export class FactureStatsService extends BaseStatsService<Facture> {
               'paiement.montant',
           ])
           .where('facture.dateEcheance < :now', { now })
-          .andWhere('facture.status != :status', { status: StatutFacture.PAYEE })
-          .andWhere('facture.status != :brouillon', { brouillon: StatutFacture.BROUILLON });
+          .andWhere('facture.status IN (:...statuses)', {
+              statuses: [
+                StatutFacture.VALIDEE,
+                StatutFacture.PARTIELLEMENT_PAYEE,
+              ],
+          })
+          .andWhere('facture.nature != :creditNote', {
+              creditNote: InvoiceNature.CREDIT_NOTE,
+          });
 
       this.applyFilters(query, filters, 'facture');
 
@@ -404,11 +470,14 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
       .select("DATE_FORMAT(facture.dateFacture, '%Y-%m')", 'month')
-      .addSelect('SUM(facture.montantHT)', 'totalHT')
-      .addSelect('SUM(facture.montantTTC)', 'totalTTC')
+      .addSelect(this.netRecognizedExpression('facture.montantHT'), 'totalHT')
+      .addSelect(this.netRecognizedExpression('facture.montantTTC'), 'totalTTC')
       .addSelect('SUM(CASE WHEN facture.status = :paid THEN facture.montantTTC ELSE 0 END)', 'totalPaid')
       .addSelect('COUNT(*)', 'count')
-      .setParameter('paid', StatutFacture.PAYEE)
+      .setParameters({
+        ...this.financialStatusParameters(),
+        paid: StatutFacture.PAYEE,
+      })
       .where('facture.dateFacture BETWEEN :start AND :end', { start: startDate, end: endDate })
       .groupBy("DATE_FORMAT(facture.dateFacture, '%Y-%m')")
       .orderBy('month', 'ASC');
@@ -451,8 +520,21 @@ export class FactureStatsService extends BaseStatsService<Facture> {
           .leftJoinAndSelect('facture.paiements', 'paiement', 'paiement.status = :valide', {
               valide: StatutPaiement.VALIDE
           })
-          .where('facture.status != :status', { status: StatutFacture.PAYEE })
-          .andWhere('facture.status != :brouillon', { brouillon: StatutFacture.BROUILLON })
+          .leftJoinAndSelect(
+              'facture.creditNotes',
+              'creditNote',
+              'creditNote.status = :validatedCredit',
+              { validatedCredit: StatutFacture.VALIDEE },
+          )
+          .where('facture.status IN (:...statuses)', {
+              statuses: [
+                StatutFacture.VALIDEE,
+                StatutFacture.PARTIELLEMENT_PAYEE,
+              ],
+          })
+          .andWhere('facture.nature != :creditNature', {
+              creditNature: InvoiceNature.CREDIT_NOTE,
+          })
           .orderBy('facture.dateEcheance', 'ASC')
           .limit(20);
 
@@ -462,7 +544,14 @@ export class FactureStatsService extends BaseStatsService<Facture> {
 
       return results.map(f => {
           const montantPaye = f.paiements?.reduce((sum, p) => sum + Number(p.montant), 0) || 0;
-          const resteAPayer = f.montantTTC - montantPaye;
+          const montantAvoir = f.creditNotes?.reduce(
+              (sum, credit) => sum + Number(credit.montantTTC),
+              0,
+          ) || 0;
+          const resteAPayer = Math.max(
+              0,
+              Number(f.montantTTC) - montantPaye - montantAvoir,
+          );
           
           // Convertir la date en objet Date
           const dateEcheance = f.dateEcheance instanceof Date 
@@ -485,5 +574,27 @@ export class FactureStatsService extends BaseStatsService<Facture> {
               joursRetard,
           };
       });
+  }
+
+  private netRecognizedExpression(column: string): string {
+    return `COALESCE(SUM(
+      CASE
+        WHEN facture.nature = :creditNote AND facture.status = :validated
+          THEN -${column}
+        WHEN facture.nature != :creditNote
+          AND facture.status IN (:validated, :partial, :paid)
+          THEN ${column}
+        ELSE 0
+      END
+    ), 0)`;
+  }
+
+  private financialStatusParameters(): Record<string, unknown> {
+    return {
+      creditNote: InvoiceNature.CREDIT_NOTE,
+      validated: StatutFacture.VALIDEE,
+      partial: StatutFacture.PARTIELLEMENT_PAYEE,
+      paid: StatutFacture.PAYEE,
+    };
   }
 }

@@ -80,7 +80,10 @@ export class NotificationDispatcher {
    * persistance. Pas de transaction : le métier est déjà commité, on déclenche
    * les effets de bord.
    */
-  async dispatch(payload: DispatchPayload): Promise<void> {
+  async dispatch(
+    payload: DispatchPayload,
+    options: { throwOnError?: boolean } = {},
+  ): Promise<void> {
     this.logger.log(
       `🚀 dispatch(${payload.event}) début | title="${payload.title}" | entity=${payload.entity?.type}#${payload.entity?.id}`,
     );
@@ -123,8 +126,8 @@ export class NotificationDispatcher {
 
       if (dedupedInAppRecipients.length > 0) {
         this.logger.log(`  ├─ [3/5] createBulk in-app → ${dedupedInAppRecipients.length} destinataire(s) : [${dedupedInAppRecipients.join(', ')}]`);
-        await this.notificationService
-          .createBulk(
+        try {
+          await this.notificationService.createBulk(
             {
               user_ids: dedupedInAppRecipients,
               type: payload.event as any,
@@ -138,11 +141,15 @@ export class NotificationDispatcher {
               priority: 'NORMAL',
             },
             payload.audience.lawyer_id ?? 1,
-          )
-          .then(() => this.logger.log(`  │  ✅ createBulk in-app OK`))
-          .catch((err) =>
-            this.logger.error(`  │  ❌ In-app createBulk a échoué : ${err.message}`, err.stack),
           );
+          this.logger.log(`  │  ✅ createBulk in-app OK`);
+        } catch (err) {
+          this.logger.error(
+            `  │  ❌ In-app createBulk a échoué : ${(err as Error).message}`,
+            (err as Error).stack,
+          );
+          if (options.throwOnError) throw err;
+        }
       } else {
         this.logger.log(`  ├─ [3/5] in-app → aucun destinataire (préférences ou pas de cible)`);
       }
@@ -154,7 +161,11 @@ export class NotificationDispatcher {
 
       if (emailEmployeeIds.length > 0) {
         this.logger.log(`  ├─ [4/5] sendEmailsTo employés → ${emailEmployeeIds.length} utilisateur(s) : [${emailEmployeeIds.join(', ')}]`);
-        await this.sendEmailsTo(emailEmployeeIds, payload);
+        await this.sendEmailsTo(
+          emailEmployeeIds,
+          payload,
+          options.throwOnError,
+        );
       } else {
         this.logger.log(`  ├─ [4/5] emails employés → aucun (préférences ou pas de cible)`);
       }
@@ -166,7 +177,11 @@ export class NotificationDispatcher {
           this.logger.log(`  ├─ [5/5] email client → désactivé par préférences utilisateur`);
         } else {
           this.logger.log(`  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`);
-          await this.sendClientEmail(client, payload);
+          await this.sendClientEmail(
+            client,
+            payload,
+            options.throwOnError,
+          );
         }
       } else {
         this.logger.log(`  ├─ [5/5] email client → non notifié (notify_client=false ou absent)`);
@@ -179,7 +194,12 @@ export class NotificationDispatcher {
         `dispatch(${payload.event}) a échoué silencieusement : ${(err as Error).message}`,
         (err as Error).stack,
       );
+      if (options.throwOnError) throw err;
     }
+  }
+
+  async dispatchStrict(payload: DispatchPayload): Promise<void> {
+    return this.dispatch(payload, { throwOnError: true });
   }
 
   // ── Résolution des templates mail ──────────────────────────────────────────
@@ -353,7 +373,11 @@ export class NotificationDispatcher {
     return map.get(client.user_id) ?? { in_app: true, email: true };
   }
 
-  private async sendEmailsTo(userIds: number[], payload: DispatchPayload): Promise<void> {
+  private async sendEmailsTo(
+    userIds: number[],
+    payload: DispatchPayload,
+    throwOnError = false,
+  ): Promise<void> {
     const users = await this.userRepo.find({
       where: userIds.map((id) => ({ id })),
       select: ['id', 'email', 'first_name', 'last_name'],
@@ -374,28 +398,28 @@ export class NotificationDispatcher {
       `  │  envoi mail employés → subject="${subject}" | recipients=[${recipients.join(', ')}]`,
     );
 
-    await this.mailService
-      .sendDirect({
+    try {
+      await this.mailService.sendDirect({
         to: recipients,
         subject,
         html,
-      })
-      .then(() =>
-        this.logger.log(
-          `  │  ✅ mails employés envoyés | count=${recipients.length}`,
-        ),
-      )
-      .catch((err) =>
-        this.logger.error(
-          `sendEmailsTo([${recipients.join(',')}]) a échoué : ${err.message}`,
-          err.stack,
-        ),
+      });
+      this.logger.log(
+        `  │  ✅ mails employés envoyés | count=${recipients.length}`,
       );
+    } catch (err) {
+      this.logger.error(
+        `sendEmailsTo([${recipients.join(',')}]) a échoué : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      if (throwOnError) throw err;
+    }
   }
 
   private async sendClientEmail(
     client: NonNullable<DispatchAudience['client']>,
     payload: DispatchPayload,
+    throwOnError = false,
   ): Promise<void> {
     let to = client.email;
     if (!to && client.user_id) {
@@ -419,21 +443,20 @@ export class NotificationDispatcher {
     const { subject, html } = await this.renderEmail(payload, 'client');
     this.logger.log(`  │  envoi mail client → subject="${subject}" | to=${to}`);
 
-    await this.mailService
-      .sendDirect({
+    try {
+      await this.mailService.sendDirect({
         to,
         subject,
         html,
-      })
-      .then(() =>
-        this.logger.log(`  │  ✅ mail client envoyé → ${to}`),
-      )
-      .catch((err) =>
-        this.logger.error(
-          `sendClientEmail(${to}) a échoué : ${err.message}`,
-          err.stack,
-        ),
+      });
+      this.logger.log(`  │  ✅ mail client envoyé → ${to}`);
+    } catch (err) {
+      this.logger.error(
+        `sendClientEmail(${to}) a échoué : ${(err as Error).message}`,
+        (err as Error).stack,
       );
+      if (throwOnError) throw err;
+    }
   }
 
   private describeAudience(audience: DispatchAudience): string {

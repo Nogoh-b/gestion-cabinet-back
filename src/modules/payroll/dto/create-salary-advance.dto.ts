@@ -1,44 +1,36 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsDateString,
   IsInt,
   IsNotEmpty,
-  IsOptional,
   IsNumber,
-  Min,
+  IsOptional,
   IsString,
-  IsEnum,
-  IsDateString,
+  MaxLength,
+  Min,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { SalaryAdvanceStatus } from '../entities/salary-advance.entity';
 
 export class CreateSalaryAdvanceDto {
-  @ApiProperty({ example: 5, description: 'ID du collaborateur bénéficiaire' })
+  @ApiProperty({ example: 5 })
   @IsInt()
   @IsNotEmpty()
   employee_id: number;
 
-  @ApiProperty({ example: 150000, description: "Montant de l'avance accordée" })
-  @IsNumber()
-  @Min(0)
-  @IsNotEmpty()
+  @ApiProperty({ example: 150000 })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   amount: number;
 
-  @ApiPropertyOptional({ example: '2026-06-15', description: "Date d'octroi (défaut: aujourd'hui)" })
+  @ApiPropertyOptional({ example: '2026-06-15' })
   @IsDateString()
   @IsOptional()
   date_granted?: string;
 
   @ApiPropertyOptional({
-    enum: SalaryAdvanceStatus,
-    example: SalaryAdvanceStatus.PENDING,
-    description: "Statut souhaité. 'paid' déclenche immédiatement l'écriture comptable (425/512).",
+    example: 'Avance exceptionnelle pour rentrée scolaire',
   })
-  @IsEnum(SalaryAdvanceStatus)
-  @IsOptional()
-  status?: SalaryAdvanceStatus;
-
-  @ApiPropertyOptional({ example: 'Avance exceptionnelle — rentrée scolaire' })
   @IsString()
+  @MaxLength(1000)
   @IsOptional()
   reason?: string;
 }

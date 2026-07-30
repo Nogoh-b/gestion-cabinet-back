@@ -3,9 +3,11 @@ import { DocumentBuilder } from '@nestjs/swagger';
 
 
 export const swaggerConfig = new DocumentBuilder()
-  .setTitle('Core Banking API')
-  .setDescription('API pour le système bancaire central')
-  .setVersion('1.0')
+  .setTitle('KabySoft Cabinet API')
+  .setDescription(
+    'API de gestion juridique, procédurale et comptable multi-cabinets',
+  )
+  .setVersion('3.0')
   .addBearerAuth()
   // En-tête multi-tenant : permet de tester avec différents cabinets
   // Valeur = code du cabinet (ex: "demo", "test-cabinet")
@@ -16,7 +18,7 @@ export const swaggerConfig = new DocumentBuilder()
       in: 'header',
       name: 'x-tenant-code',
       description:
-        'Code du cabinet (ex: m9d2hpar). Si non renseigné → tenant_id=1 par défaut.',
+        'Code du cabinet (ex: m9d2hpar). Obligatoire hors routes globales.',
     },
     'x-tenant-code',
   )

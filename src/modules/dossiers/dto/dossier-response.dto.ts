@@ -1,6 +1,6 @@
 // src/modules/dossiers/dto/dossier-response.dto.ts
 import { Expose, Transform } from "class-transformer";
-import { ClientDecision, DossierStatus, RecommendationType } from "src/core/enums/dossier-status.enum";
+import { DossierStatus } from "src/core/enums/dossier-status.enum";
 import { AudienceStatus } from "src/modules/audiences/entities/audience.entity";
 import { Diligence } from "src/modules/diligence/entities/diligence.entity";
 import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
@@ -58,7 +58,7 @@ export class DossierResponseDto {
   @Expose()
   description?: string;
 
-  @ApiProperty({ example: DossierStatus.LITIGATION, enum: DossierStatus })
+  @ApiProperty({ example: DossierStatus.ACTIVE, enum: DossierStatus })
   @Expose()
   status: DossierStatus;
 
@@ -94,116 +94,25 @@ export class DossierResponseDto {
   @Expose()
   success_probability?: number;
 
-  @ApiProperty({
-    example: [
-      { event: "Première audience", date: "2025-03-12", completed: false },
-    ],
-  })
-  @Expose()
-  key_dates?: { event: string; date: string; completed: boolean }[];
-
-  @ApiProperty({ example: "Préparer conclusions avant audience du 12/03" })
-  @Expose()
-  next_steps?: string;
-
   @ApiProperty({ example: "Décision favorable au client", required: false })
   @Expose()
   final_decision?: string;
 
-  @ApiProperty({ example: true })
-  @Expose()
-  appeal_possibility: boolean;
-
-  @ApiProperty({ example: "2025-12-01", required: false })
-  @Expose()
-  appeal_deadline?: Date;
-
   // Ajouts prioritaires recommandés
-
-@Expose()
-@ApiProperty({ enum: ClientDecision, required: false })
-client_decision?: ClientDecision;
-
-@Expose()
-@ApiProperty({ enum: RecommendationType, required: false })
-recommendation?: RecommendationType;
-
-@Expose()
-@ApiProperty({ required: false })
-analysis_date?: Date;
-
-@Expose()
-@ApiProperty({ required: false })
-analysis_notes?: string;
-
-@Expose()
-@ApiProperty({ required: false })
-first_instance_decision?: string;
-
-@Expose()
-@ApiProperty({ required: false })
-appeal_decision?: string;
-
-@Expose()
-@ApiProperty({ required: false })
-current_decision_type?: 'FIRST_INSTANCE' | 'APPEAL' | 'CASSATION' | null;
-
-@Expose()
-@ApiProperty({ required: false })
-appeal_filed: boolean;
-
-@Expose()
-@ApiProperty({ required: false })
-cassation_possibility: boolean;
-
-@Expose()
-@ApiProperty({ required: false })
-cassation_deadline?: Date;
-
-@Expose()
-@ApiProperty({ required: false })
-cassation_filed: boolean;
-
-@Expose()
-@ApiProperty({ required: false })
-currentStep: any;
-
-@Expose()
-@ApiProperty({ required: false })
-execution_date?: Date;
-
-@Expose()
-@ApiProperty({ required: false })
-remand_jurisdiction?: string;
 
 @Expose()
 @ApiProperty({ required: false })
 procedureInstance?: any;
 
-// Dans DossierResponseDto
-
 @Expose()
 @ApiProperty({
-  description: "Résumé des étapes du dossier",
-  example: {
-    current_step_title: "Phase contentieuse",
-    current_step_type: "contentious",
-    current_step_status: 0,
-    total_steps: 5,
-    completed_steps: 2,
-    progress: 40
-  },
+  description: 'Projection procédurale calculée depuis l’instance',
   nullable: true
 })
-@Transform(({ obj }: { obj: Dossier }) => obj.stepsSummary ?? null)
-steps_summary: {
-  current_step_title?: string;
-  current_step_type?: string;
-  current_step_status?: number;
-  total_steps: number;
-  completed_steps: number;
-  progress: number;
-} | null;
+@Transform(({ obj }: { obj: Dossier & { procedure_summary?: unknown } }) =>
+  obj.procedure_summary ?? null,
+)
+procedure_summary: unknown | null;
 
   @ApiProperty({ example: "2025-01-15T08:00:00Z" })
   @Expose()

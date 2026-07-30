@@ -24,12 +24,9 @@ import { IamModule } from '../iam/iam.module';
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { SuppliersController } from './supplier.controller';
 import { SuppliersService } from './supplier.service';
-import { SupplierInvoiceWriteHandler } from './supplier-invoice-write.handler';
-import { ExpenseReportWriteHandler } from './expense-report-write.handler';
-import { ExpenseLineWriteHandler } from './expense-line-write.handler';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
+import { DocumentsModule } from '../documents/documents.module';
+import { SupplierEvidenceStorageService } from './supplier-evidence-storage.service';
 
 @Module({
   imports: [
@@ -42,8 +39,8 @@ import { PlansModule } from '../plans/plans.module';
     AgenciesModule,
     IamModule,
     DossiersModule,
-    AiDatabaseModule,
     PlansModule,
+    DocumentsModule,
   ],
   controllers: [
     SuppliersController,
@@ -57,9 +54,7 @@ import { PlansModule } from '../plans/plans.module';
     SupplierInvoicesService,
     ExpenseReportsService,
     ExpenseLinesService,
-    SupplierInvoiceWriteHandler,
-    ExpenseReportWriteHandler,
-    ExpenseLineWriteHandler,
+    SupplierEvidenceStorageService,
   ],
   exports: [
     SuppliersService,
@@ -68,17 +63,4 @@ import { PlansModule } from '../plans/plans.module';
     ExpenseLinesService,
   ],
 })
-export class SupplierModule {
-  constructor(
-    private readonly registry: WriteHandlerRegistry,
-    private readonly supplierInvoiceWriteHandler: SupplierInvoiceWriteHandler,
-    private readonly expenseReportWriteHandler: ExpenseReportWriteHandler,
-    private readonly expenseLineWriteHandler: ExpenseLineWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.registry.register(this.supplierInvoiceWriteHandler);
-    this.registry.register(this.expenseReportWriteHandler);
-    this.registry.register(this.expenseLineWriteHandler);
-  }
-}
+export class SupplierModule {}

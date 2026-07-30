@@ -20,11 +20,11 @@ export class Notification extends TenantEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'int', name: 'user_id' })
+  @Column({ type: 'int', name: 'user_id', nullable: true })
   @Index()
-  user_id: number;
+  user_id: number | null;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'user_id' })
   user: User;
 

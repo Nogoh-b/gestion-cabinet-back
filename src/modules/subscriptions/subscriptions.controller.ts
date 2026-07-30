@@ -7,8 +7,14 @@ import {
   Request,
   UseGuards,
   BadRequestException,
+  Headers,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { Public } from 'src/core/decorators/public.decorator';
+import { AllowSuspendedCabinet } from 'src/core/decorators/allow-suspended-cabinet.decorator';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { SubscriptionsService } from './subscriptions.service';
@@ -17,7 +23,7 @@ import { ChangeSubscriptionDto } from './dto/change-subscription.dto';
 @ApiTags('Subscriptions')
 @Controller('subscriptions')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SubscriptionsController {
   constructor(private readonly service: SubscriptionsService) {}
 
@@ -44,7 +50,8 @@ export class SubscriptionsController {
   }
 
   /** Abonnement courant du cabinet + décompte (jours restants). */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Get('/current')
   @ApiOperation({ summary: 'Abonnement courant du cabinet (avec décompte)' })
   getCurrent(@Request() req: any) {
@@ -52,7 +59,8 @@ export class SubscriptionsController {
   }
 
   /** Historique de facturation (échéances + paiements). */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Get('/payments')
   @ApiOperation({ summary: 'Historique de facturation du cabinet' })
   listPayments(@Request() req: any) {
@@ -60,7 +68,8 @@ export class SubscriptionsController {
   }
 
   /** Change le plan et/ou le cycle (mensuel ↔ annuel). */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Patch('/change')
   @ApiOperation({ summary: 'Changer de plan et/ou de cycle de facturation' })
   change(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
@@ -71,7 +80,8 @@ export class SubscriptionsController {
   }
 
   /** Renouvelle l'abonnement échu et réactive le cabinet. */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Patch('/renew')
   @ApiOperation({ summary: "Renouveler l'abonnement (réactive le cabinet)" })
   renew(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
@@ -81,7 +91,8 @@ export class SubscriptionsController {
   // ── Paiement (passerelle) ───────────────────────────────────────────────────
 
   /** Initie une session de paiement pour l'échéance en attente (retourne l'URL). */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Post('/pay')
   @ApiOperation({ summary: "Initier le paiement de l'échéance en attente" })
   pay(@Request() req: any) {
@@ -96,12 +107,21 @@ export class SubscriptionsController {
   @Public()
   @Post('/payments/webhook')
   @ApiOperation({ summary: 'Webhook passerelle (confirmation de paiement)' })
-  webhook(@Body() dto: { reference?: string; status?: 'paid' | 'failed' }) {
-    return this.service.handleWebhook(dto?.reference ?? '', dto?.status ?? 'paid');
+  webhook(
+    @Body() dto: { reference?: string; status?: 'paid' | 'failed' },
+    @Headers('x-webhook-id') eventId?: string,
+    @Headers('x-webhook-timestamp') timestamp?: string,
+    @Headers('x-webhook-signature') signature?: string,
+  ) {
+    const reference = dto?.reference ?? '';
+    const status = dto?.status ?? 'paid';
+    this.verifyWebhookSignature(reference, status, eventId, timestamp, signature);
+    return this.service.handleWebhook(reference, eventId!, status);
   }
 
   /** [TEST] Simule un encaissement réussi (passerelle de test uniquement). */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Post('/payments/simulate')
   @ApiOperation({ summary: '[TEST] Simuler un paiement réussi' })
   simulate(@Request() req: any, @Body() dto: { payment_id?: number }) {
@@ -114,7 +134,8 @@ export class SubscriptionsController {
   // assertDev() côté service.
 
   /** [DEV] Force la date de fin à now + days (négatif = passé). */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Patch('/dev/set-ends-in')
   @ApiOperation({ summary: '[DEV] Définir la date de fin à N jours' })
   devSetEndsIn(@Request() req: any, @Body() dto: { days?: number }) {
@@ -122,7 +143,8 @@ export class SubscriptionsController {
   }
 
   /** [DEV] Termine l'essai en cours → bascule en période payante. */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Patch('/dev/end-trial-now')
   @ApiOperation({ summary: "[DEV] Terminer l'essai (passage en payant)" })
   devEndTrialNow(@Request() req: any) {
@@ -130,7 +152,8 @@ export class SubscriptionsController {
   }
 
   /** [DEV] Expire immédiatement l'abonnement (suspend le cabinet). */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Patch('/dev/expire-now')
   @ApiOperation({ summary: '[DEV] Expirer immédiatement' })
   devExpireNow(@Request() req: any) {
@@ -138,10 +161,44 @@ export class SubscriptionsController {
   }
 
   /** [DEV] Recrée un essai neuf pour le plan courant. */
-  @Public()
+  @AllowSuspendedCabinet()
+  @RequirePermissions('manage_subscription')
   @Patch('/dev/reset-trial')
   @ApiOperation({ summary: '[DEV] Réinitialiser un essai' })
   devResetTrial(@Request() req: any) {
     return this.service.devResetTrial(this.tenantOf(req));
+  }
+
+  private verifyWebhookSignature(
+    reference: string,
+    status: 'paid' | 'failed',
+    eventId?: string,
+    timestamp?: string,
+    signature?: string,
+  ): void {
+    const secret = process.env.SUBSCRIPTION_WEBHOOK_SECRET;
+    if (!secret || !eventId || !timestamp || !signature) {
+      throw new UnauthorizedException('Signature du webhook manquante');
+    }
+
+    const timestampSeconds = Number(timestamp);
+    if (
+      !Number.isFinite(timestampSeconds) ||
+      Math.abs(Date.now() / 1000 - timestampSeconds) > 300
+    ) {
+      throw new UnauthorizedException('Webhook expiré');
+    }
+
+    const normalizedSignature = signature.replace(/^sha256=/i, '');
+    if (!/^[a-f0-9]{64}$/i.test(normalizedSignature)) {
+      throw new UnauthorizedException('Signature du webhook invalide');
+    }
+
+    const payload = `${timestamp}.${eventId}.${reference}.${status}`;
+    const expected = createHmac('sha256', secret).update(payload).digest();
+    const received = Buffer.from(normalizedSignature, 'hex');
+    if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
+      throw new UnauthorizedException('Signature du webhook invalide');
+    }
   }
 }

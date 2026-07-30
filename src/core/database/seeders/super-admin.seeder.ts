@@ -3,7 +3,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
 import { Permission } from 'src/modules/iam/permission/entities/permission.entity';
 import { RolePermission } from 'src/modules/iam/role-permission/entities/role-permission.entity';
 import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
@@ -93,11 +92,17 @@ export class SuperAdminSeeder {
 
     if (!superAdminUser) {
       // Create SUPER_ADMIN user
-      const hashedPassword = await bcrypt.hash('Admin@1234', 10); // Use a strong default password
+      const email = process.env.SEED_SUPER_ADMIN_EMAIL?.trim();
+      const password = process.env.SEED_SUPER_ADMIN_PASSWORD;
+      if (!email || !password || password.length < 14) {
+        throw new Error(
+          'SEED_SUPER_ADMIN_EMAIL et SEED_SUPER_ADMIN_PASSWORD (14 caracteres minimum) sont obligatoires.',
+        );
+      }
       let dto = new CreateUserDto();
-      dto.email = 'admin@gmail.com'
+      dto.email = email;
       // dto.username = superAdminUsername
-      dto.password = 'Admin@1234'
+      dto.password = password;
       //dto.branch_id = -1
       // dto.hire_date = new Date()
       superAdminUser = await this.employeeService.createEmployee(dto, false)

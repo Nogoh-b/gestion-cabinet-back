@@ -40,7 +40,7 @@ export class CreatePayslipLineDto {
     example: 4500.0,
     description: 'Montant',
   })
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsNotEmpty()
   amount: number;
 

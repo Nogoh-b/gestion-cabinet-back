@@ -102,7 +102,7 @@ export class InvoiceTypeStatsService {
       [StatutFacture.ENVOYEE]: 'Envoyée',
       [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
       [StatutFacture.PAYEE]: 'Payée',
-      [StatutFacture.IMPAYEE]: 'Impayée',
+      [StatutFacture.VALIDEE]: 'Validée',
       [StatutFacture.ANNULEE]: 'Annulée',
     };
 
@@ -111,7 +111,7 @@ export class InvoiceTypeStatsService {
       [StatutFacture.ENVOYEE]: '#3b82f6',
       [StatutFacture.PARTIELLEMENT_PAYEE]: '#f59e0b',
       [StatutFacture.PAYEE]: '#10b981',
-      [StatutFacture.IMPAYEE]: '#ef4444',
+      [StatutFacture.VALIDEE]: '#8b5cf6',
       [StatutFacture.ANNULEE]: '#6b7280',
     };
 

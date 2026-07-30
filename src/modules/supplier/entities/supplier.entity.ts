@@ -5,6 +5,7 @@ import {
     ManyToOne,
     JoinColumn,
     OneToMany,
+    Index,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
@@ -24,6 +25,9 @@ export enum SupplierCategory {
 }
 
 @Entity('supplier')
+@Index('UQ_suppliers_tenant_code', ['tenant_id', 'supplier_code'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Fournisseurs',
   description: 'Répertoire des fournisseurs du cabinet (internet, électricité, fournitures, huissiers, logiciels, loyer, etc.).',
@@ -41,7 +45,7 @@ export class Supplier extends TenantEntity {
   })
   id: number;
 
-  @Column({ type: 'varchar', length: 50, unique: true, name: 'supplier_code' })
+  @Column({ type: 'varchar', length: 50, name: 'supplier_code' })
   @BusinessColumn({
     label: 'Code fournisseur',
     description: 'Code unique (format: SUP-XXX)',

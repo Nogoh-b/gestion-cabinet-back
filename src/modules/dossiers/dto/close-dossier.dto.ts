@@ -7,6 +7,7 @@ import {
   IsDateString,
   Min,
   IsBoolean,
+  IsNotEmpty,
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -24,9 +25,9 @@ export class CloseDossierDto {
   @Type(() => Date)
   outcome_date?: Date;
 
-  @IsOptional()
   @IsString()
-  outcome_notes?: string;
+  @IsNotEmpty()
+  outcome_notes: string;
 
   @IsOptional()
   @IsNumber()
@@ -41,16 +42,6 @@ export class CloseDossierDto {
   @IsOptional()
   @IsString()
   final_decision_text?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  appeal_possibility?: boolean;
-
-  @ValidateIf(o => o.appeal_possibility === true)
-  @IsDateString()
-  @Type(() => Date)
-  @IsOptional()
-  appeal_deadline?: string;
 
   @ValidateIf(o => o.outcome === DossierOutcome.SETTLED)
   @IsNumber()
@@ -70,4 +61,13 @@ export class CloseDossierDto {
   @IsOptional()
   @IsBoolean()
   send_report_to_client?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+
+  @ValidateIf((dto) => dto.force === true)
+  @IsString()
+  @IsNotEmpty()
+  override_reason?: string;
 }

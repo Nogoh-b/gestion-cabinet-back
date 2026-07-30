@@ -1,22 +1,41 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { Response } from 'express';
 import { Archiver, ZipArchive } from 'archiver';
-import { createWriteStream, existsSync, mkdirSync, statSync } from 'fs';
-import { basename, extname, isAbsolute, join } from 'path';
+import { createReadStream, existsSync, statSync } from 'fs';
+import {
+  basename,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from 'path';
+import { createHash, randomUUID } from 'crypto';
 
-import { UPLOAD_DOCS_PATH, UPLOAD_PATH } from 'src/core/common/constants/constants';
+import { AuditService } from 'src/core/audit/audit.service';
+import {
+  ResourceActor,
+  ResourcePolicyService,
+} from 'src/core/resource-policy.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
+import {
+  DocumentVersion,
+  DocumentVersionStatus,
+} from '../documents/document-customer/entities/document-version.entity';
 import { Facture } from '../facture/entities/facture.entity';
 import { Paiement } from '../paiement/entities/paiement.entity';
 import { Audience, AudienceStatus, AudienceType1 } from '../audiences/entities/audience.entity';
 import { Diligence, DiligenceStatus, DiligenceType } from '../diligence/entities/diligence.entity';
-import { Step, StepStatus, StepType } from '../dossiers/entities/step.entity';
-
-/** Dossier de stockage des exports ZIP sur le serveur. */
-const EXPORT_PATH = join(UPLOAD_PATH, 'exports');
+import { StageVisit } from '../procedure/entities/stage-visit.entity';
 
 function sanitize(s: any): string {
   return String(s ?? '')
@@ -62,22 +81,6 @@ const AUDIENCE_TYPE_LABELS: Record<number, string> = {
   [AudienceType1.CONCILIATION]: 'Conciliation',
 };
 
-const STEP_STATUS_LABELS: Record<number, string> = {
-  [StepStatus.PENDING]: 'En attente',
-  [StepStatus.IN_PROGRESS]: 'En cours',
-  [StepStatus.COMPLETED]: 'Terminé',
-  [StepStatus.CANCELLED]: 'Annulé',
-};
-
-const STEP_TYPE_LABELS: Record<string, string> = {
-  [StepType.OPENING]: 'Ouverture',
-  [StepType.AMIABLE]: 'Amiable',
-  [StepType.CONTENTIOUS]: 'Contentieux',
-  [StepType.DECISION]: 'Décision',
-  [StepType.APPEAL]: 'Appel',
-  [StepType.CLOSURE]: 'Clôture',
-};
-
 const AUDIENCE_STATUS_LABELS: Record<number, string> = {
   [AudienceStatus.SCHEDULED]: 'Programmée',
   [AudienceStatus.HELD]: 'Tenue',
@@ -85,9 +88,28 @@ const AUDIENCE_STATUS_LABELS: Record<number, string> = {
   [AudienceStatus.CANCELLED]: 'Annulée',
 };
 
+interface ExportAuditContext {
+  ip?: string | null;
+  userAgent?: string | null;
+  requestId?: string | null;
+}
+
+interface ExportManifestEntry {
+  path: string;
+  sha256: string;
+  size: number;
+  kind: 'generated' | 'document';
+  resourceId?: string | number;
+  versionId?: string;
+}
+
 @Injectable()
 export class DossierExportService {
   private readonly logger = new Logger(DossierExportService.name);
+  private readonly privateStorageRoot = resolve(
+    process.env.PRIVATE_STORAGE_ROOT ??
+      join(process.cwd(), 'storage', 'private'),
+  );
 
   constructor(
     @InjectRepository(Dossier) private readonly dossierRepo: Repository<Dossier>,
@@ -96,36 +118,75 @@ export class DossierExportService {
     @InjectRepository(Paiement) private readonly paiementRepo: Repository<Paiement>,
     @InjectRepository(Audience) private readonly audienceRepo: Repository<Audience>,
     @InjectRepository(Diligence) private readonly diligenceRepo: Repository<Diligence>,
-    @InjectRepository(Step) private readonly stepRepo: Repository<Step>,
+    @InjectRepository(StageVisit) private readonly stageVisitRepo: Repository<StageVisit>,
+    private readonly dataSource: DataSource,
+    private readonly resourcePolicy: ResourcePolicyService,
+    private readonly auditService: AuditService,
   ) {}
 
   /** Résout le chemin physique d'un document à partir de file_path. */
-  private resolvePath(filePath?: string | null): string | null {
-    if (!filePath) return null;
-    const candidates = [
-      isAbsolute(filePath) ? filePath : null,
-      join(UPLOAD_DOCS_PATH, filePath),
-      join(UPLOAD_PATH, filePath),
-      filePath,
-    ].filter(Boolean) as string[];
-    for (const c of candidates) {
-      try { if (existsSync(c) && statSync(c).isFile()) return c; } catch { /* ignore */ }
+  private resolveVersionPath(storageKey?: string | null): string | null {
+    if (
+      !storageKey ||
+      isAbsolute(storageKey) ||
+      storageKey.includes('..')
+    ) {
+      return null;
     }
-    return null;
+    const candidate = resolve(this.privateStorageRoot, storageKey);
+    const child = relative(this.privateStorageRoot, candidate);
+    if (
+      !child ||
+      child.startsWith('..') ||
+      isAbsolute(child)
+    ) {
+      return null;
+    }
+    try {
+      return existsSync(candidate) && statSync(candidate).isFile()
+        ? candidate
+        : null;
+    } catch {
+      return null;
+    }
   }
 
-  /** Garantit que le dossier d'export existe. */
-  private ensureExportDir(): void {
-    if (!existsSync(EXPORT_PATH)) {
-      mkdirSync(EXPORT_PATH, { recursive: true });
+  /** Stream un ZIP sans en conserver de copie dans un répertoire public. */
+  async streamZip(
+    res: Response,
+    ids: number[],
+    actor: ResourceActor,
+    auditContext: ExportAuditContext = {},
+  ): Promise<void> {
+    const uniqueIds = Array.from(new Set(ids));
+    if (
+      uniqueIds.length === 0 ||
+      uniqueIds.length > 25 ||
+      uniqueIds.some(
+        (id) => !Number.isInteger(id) || id <= 0,
+      )
+    ) {
+      throw new BadRequestException(
+        'La demande doit contenir entre 1 et 25 dossiers valides',
+      );
     }
-  }
-
-  /** Stream un ZIP contenant un ou plusieurs dossiers vers la réponse HTTP
-   *  ET sauvegarde une copie sur le serveur dans uploads/exports/. */
-  async streamZip(res: Response, ids: number[]): Promise<void> {
-    this.ensureExportDir();
-
+    await Promise.all(
+      uniqueIds.map((id) =>
+        this.resourcePolicy.assertDossierAccess(
+          id,
+          actor,
+          'read',
+        ),
+      ),
+    );
+    const exportId = randomUUID();
+    await this.auditExport(
+      uniqueIds,
+      actor,
+      exportId,
+      'dossier.export.requested',
+      auditContext,
+    );
     const archive: Archiver = new ZipArchive({ zlib: { level: 9 } });
     archive.on('warning', (e) => this.logger.warn(`[Export] ${e.message}`));
     archive.on('error', (e) => {
@@ -135,64 +196,110 @@ export class DossierExportService {
     });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = ids.length === 1
-      ? `dossier-${ids[0]}_${timestamp}.zip`
+    const filename = uniqueIds.length === 1
+      ? `dossier-${uniqueIds[0]}_${timestamp}.zip`
       : `dossiers-export_${timestamp}.zip`;
-
-    // Sauvegarde locale sur le serveur
-    const serverPath = join(EXPORT_PATH, filename);
-    const fileStream = createWriteStream(serverPath);
-    archive.pipe(fileStream);
 
     // Stream vers le client HTTP
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     archive.pipe(res);
 
     let added = 0;
-    for (const id of ids) {
-      added += (await this.addDossier(archive, id)) ? 1 : 0;
+    for (const id of uniqueIds) {
+      added += (await this.addDossier(
+        archive,
+        id,
+        exportId,
+        actor,
+      ))
+        ? 1
+        : 0;
     }
     if (added === 0) {
       archive.append('Aucun dossier accessible pour cet export.', { name: 'README.txt' });
     }
     await archive.finalize();
+    await this.auditExport(
+      uniqueIds,
+      actor,
+      exportId,
+      'dossier.export.completed',
+      auditContext,
+    );
 
-    this.logger.log(`[Export] ZIP sauvegardé → ${serverPath} (${added} dossier(s))`);
+    this.logger.log(`[Export] ZIP diffusé sans copie serveur (${added} dossier(s))`);
   }
 
   /** Ajoute un dossier complet (métadonnées + documents + factures + paiements + audiences + diligences). */
-  private async addDossier(archive: Archiver, id: number): Promise<boolean> {
+  private async addDossier(
+    archive: Archiver,
+    id: number,
+    exportId: string,
+    actor: ResourceActor,
+  ): Promise<boolean> {
+    const tenantId = getCurrentTenantId();
     const dossier = await this.dossierRepo.findOne({
-      where: { id },
+      where: { id, tenant_id: tenantId },
       relations: ['client', 'lawyer', 'procedure_type'],
     });
-    if (!dossier) return false;
+    if (!dossier) {
+      throw new NotFoundException('Dossier introuvable');
+    }
 
     const folder = `Dossier_${sanitize(dossier.dossier_number || id)}`;
+    const manifest: ExportManifestEntry[] = [];
 
     // ── Charger toutes les données liées ──
-    const docs = await this.docRepo.find({ where: { dossier_id: id } as any });
-    const factures = await this.factureRepo.find({ where: { dossier_id: id } as any });
+    const docs = await this.docRepo.find({
+      where: { dossier_id: id, tenant_id: tenantId } as any,
+      relations: ['currentVersion'],
+    });
+    const factures = await this.factureRepo.find({
+      where: { dossier_id: id, tenant_id: tenantId } as any,
+    });
     const factureIds = factures.map((f) => f.id);
     const paiements = factureIds.length
-      ? await this.paiementRepo.find({ where: { factureId: In(factureIds) } as any })
+      ? await this.paiementRepo.find({
+          where: {
+            factureId: In(factureIds),
+            tenant_id: tenantId,
+          } as any,
+        })
       : [];
     const audiences = await this.audienceRepo.find({
-      where: { dossier_id: id } as any,
+      where: { dossier_id: id, tenant_id: tenantId } as any,
       relations: ['jurisdiction'],
       order: { audience_date: 'ASC' } as any,
     });
     const diligences = await this.diligenceRepo.find({
-      where: { dossier_id: id } as any,
+      where: { dossier_id: id, tenant_id: tenantId } as any,
       relations: ['assigned_lawyer'],
       order: { deadline: 'ASC' } as any,
     });
-    const steps = await this.stepRepo.find({
-      where: { dossier_id: id } as any,
-      relations: ['documents', 'diligences', 'audiences', 'factures'],
-      order: { id: 'ASC' } as any,
-    });
+    const stageVisits = dossier.procedureInstanceId
+      ? await this.stageVisitRepo.find({
+          where: {
+            instanceId: dossier.procedureInstanceId,
+            tenant_id: tenantId,
+          },
+          relations: [
+            'stage',
+            'subStageVisits',
+            'subStageVisits.subStage',
+            'documents',
+            'diligences',
+            'audiences',
+            'factures',
+          ],
+          order: { enteredAt: 'ASC' },
+        })
+      : [];
 
     // ── 1. Métadonnées JSON ──
     const clientName = (dossier as any).client?.full_name ?? dossier.client_id;
@@ -217,9 +324,16 @@ export class DossierExportService {
         paiements: paiements.length,
         audiences: audiences.length,
         diligences: diligences.length,
+        procedure_stage_visits: stageVisits.length,
       },
+      procedure_instance_id: dossier.procedureInstanceId,
     };
-    archive.append(JSON.stringify(meta, null, 2), { name: `${folder}/dossier.json` });
+    this.appendText(
+      archive,
+      `${folder}/dossier.json`,
+      JSON.stringify(meta, null, 2),
+      manifest,
+    );
 
     // ── 2. Résumé enrichi ──
     const totalFacture = factures.reduce((s, f) => s + Number((f as any).total_amount ?? (f as any).amount ?? 0), 0);
@@ -307,23 +421,33 @@ export class DossierExportService {
       });
     }
 
-    // Workflow / Procédure (étapes + ressources par étape)
-    if (steps.length) {
+    // Procédure : historique réel de l'instance issue du template versionné.
+    if (stageVisits.length) {
       lines.push('', '── WORKFLOW / PROCÉDURE ──');
-      steps.forEach((s: any, i) => {
-        const typeLabel = STEP_TYPE_LABELS[s.type] ?? s.type ?? '—';
-        const statusLabel = STEP_STATUS_LABELS[s.status] ?? String(s.status);
-        lines.push(`  ┌─ Étape ${i + 1} : ${s.title ?? typeLabel}  [${statusLabel}]`);
-        lines.push(`  │  Type        : ${typeLabel}`);
-        if (s.scheduledDate) lines.push(`  │  Planifiée   : ${fmtDate(s.scheduledDate)}`);
-        if (s.completedDate) lines.push(`  │  Terminée    : ${fmtDate(s.completedDate)}`);
-        if (s.description) lines.push(`  │  Description : ${s.description.slice(0, 200)}`);
+      stageVisits.forEach((visit, i) => {
+        const statusLabel = visit.exitedAt ? 'Terminée' : 'En cours';
+        lines.push(
+          `  ┌─ Visite ${i + 1} : ${visit.stage?.name ?? `Étape #${visit.stageId}`} [${statusLabel}]`,
+        );
+        lines.push(`  │  Numéro      : ${visit.visitNumber}`);
+        lines.push(`  │  Entrée      : ${fmtDate(visit.enteredAt)}`);
+        if (visit.exitedAt) lines.push(`  │  Sortie      : ${fmtDate(visit.exitedAt)}`);
+        if (visit.stage?.description) {
+          lines.push(`  │  Description : ${visit.stage.description.slice(0, 200)}`);
+        }
+        const subStages = visit.subStageVisits ?? [];
+        if (subStages.length) {
+          lines.push(`  │  Sous-étapes (${subStages.length}) :`);
+          subStages.forEach((subVisit: any) => {
+            const subStatus = subVisit.completedAt ? 'Terminée' : 'En cours';
+            lines.push(`  │     - ${subVisit.subStage?.name ?? subVisit.subStageId} [${subStatus}]`);
+          });
+        }
 
-        // Ressources rattachées à cette étape
-        const stepDocs = s.documents ?? [];
-        const stepAud = s.audiences ?? [];
-        const stepDil = s.diligences ?? [];
-        const stepFac = s.factures ?? [];
+        const stepDocs = visit.documents ?? [];
+        const stepAud = visit.audiences ?? [];
+        const stepDil = visit.diligences ?? [];
+        const stepFac = visit.factures ?? [];
 
         if (stepDocs.length) {
           lines.push(`  │  📄 Documents (${stepDocs.length}) :`);
@@ -355,6 +479,13 @@ export class DossierExportService {
       });
     }
 
+    this.appendText(
+      archive,
+      `${folder}/procedure-stage-visits.json`,
+      this.safeJson(stageVisits),
+      manifest,
+    );
+
     lines.push(
       '',
       '═══════════════════════════════════════════════════════',
@@ -362,64 +493,240 @@ export class DossierExportService {
       '═══════════════════════════════════════════════════════',
     );
 
-    archive.append(lines.join('\n'), { name: `${folder}/resume.txt` });
+    this.appendText(
+      archive,
+      `${folder}/resume.txt`,
+      lines.join('\n'),
+      manifest,
+    );
 
     // ── 3. Documents (fichiers réels) ──
     const used = new Set<string>();
     const missing: string[] = [];
     for (const d of docs) {
-      const abs = this.resolvePath(d.file_path);
-      if (!abs) { missing.push(d.name || `document #${d.id}`); continue; }
-      const ext = extname(abs) || extname(basename(d.file_path || '')) || '';
-      let name = sanitize(d.name || basename(abs)) + (ext && !d.name?.endsWith(ext) ? ext : '');
+      const version = d.currentVersion as DocumentVersion | null;
+      if (
+        !version ||
+        version.status !== DocumentVersionStatus.ACCEPTED
+      ) {
+        missing.push(
+          `${d.name || `document #${d.id}`} — aucune version acceptée`,
+        );
+        continue;
+      }
+      const abs = this.resolveVersionPath(version.storageKey);
+      if (!abs) {
+        missing.push(
+          `${d.name || `document #${d.id}`} — fichier privé introuvable`,
+        );
+        continue;
+      }
+      const actualHash = await this.hashFile(abs);
+      if (actualHash !== version.sha256) {
+        throw new BadRequestException(
+          `Intégrité invalide pour le document ${d.id}, export interrompu`,
+        );
+      }
+      const ext =
+        extname(version.originalName) || extname(abs) || '';
+      let name =
+        sanitize(d.name || basename(version.originalName)) +
+        (ext && !d.name?.endsWith(ext) ? ext : '');
       if (used.has(name)) name = `${d.id}_${name}`;
       used.add(name);
-      archive.file(abs, { name: `${folder}/documents/${name}` });
+      const archivePath = `${folder}/documents/${name}`;
+      archive.file(abs, { name: archivePath });
+      manifest.push({
+        path: archivePath,
+        sha256: actualHash,
+        size: statSync(abs).size,
+        kind: 'document',
+        resourceId: d.id,
+        versionId: version.id,
+      });
     }
     if (missing.length) {
-      archive.append(missing.join('\n'), { name: `${folder}/documents/_fichiers_manquants.txt` });
+      this.appendText(
+        archive,
+        `${folder}/documents/_fichiers_manquants.txt`,
+        missing.join('\n'),
+        manifest,
+      );
     }
 
     // ── 4. Factures (CSV + JSON) ──
-    archive.append(toCsv(factures), { name: `${folder}/factures.csv` });
-    archive.append(JSON.stringify(factures, null, 2), { name: `${folder}/factures.json` });
+    this.appendText(
+      archive,
+      `${folder}/factures.csv`,
+      toCsv(factures),
+      manifest,
+    );
+    this.appendText(
+      archive,
+      `${folder}/factures.json`,
+      this.safeJson(factures),
+      manifest,
+    );
 
     // ── 5. Paiements (CSV + JSON) ──
-    archive.append(toCsv(paiements), { name: `${folder}/paiements.csv` });
-    archive.append(JSON.stringify(paiements, null, 2), { name: `${folder}/paiements.json` });
+    this.appendText(
+      archive,
+      `${folder}/paiements.csv`,
+      toCsv(paiements),
+      manifest,
+    );
+    this.appendText(
+      archive,
+      `${folder}/paiements.json`,
+      this.safeJson(paiements),
+      manifest,
+    );
 
     // ── 6. Audiences (CSV + JSON) ──
-    archive.append(toCsv(audiences.map((a: any) => ({
-      id: a.id,
-      date: fmtDate(a.audience_date),
-      heure: a.audience_time,
-      type: AUDIENCE_TYPE_LABELS[a.type] ?? a.type,
-      statut: AUDIENCE_STATUS_LABELS[a.status] ?? a.status,
-      juridiction: a.jurisdiction?.name ?? a.jurisdiction_id,
-      salle: a.room,
-      decision: a.decision,
-      notes: a.notes,
-    }))), { name: `${folder}/audiences.csv` });
-    archive.append(JSON.stringify(audiences, null, 2), { name: `${folder}/audiences.json` });
+    this.appendText(
+      archive,
+      `${folder}/audiences.csv`,
+      toCsv(
+        audiences.map((a: any) => ({
+          id: a.id,
+          date: fmtDate(a.audience_date),
+          heure: a.audience_time,
+          type: AUDIENCE_TYPE_LABELS[a.type] ?? a.type,
+          statut: AUDIENCE_STATUS_LABELS[a.status] ?? a.status,
+          juridiction:
+            a.jurisdiction?.name ?? a.jurisdiction_id,
+          salle: a.room,
+          decision: a.decision,
+          notes: a.notes,
+        })),
+      ),
+      manifest,
+    );
+    this.appendText(
+      archive,
+      `${folder}/audiences.json`,
+      this.safeJson(audiences),
+      manifest,
+    );
 
     // ── 7. Diligences (CSV + JSON) ──
-    archive.append(toCsv(diligences.map((d: any) => ({
-      id: d.id,
-      titre: d.title,
-      type: d.type,
-      statut: d.status,
-      echeance: fmtDate(d.deadline),
-      completion: fmtDate(d.completion_date),
-      avocat: d.assigned_lawyer?.full_name ?? d.assigned_lawyer_id,
-      heures_budget: d.budget_hours,
-      heures_reelles: d.actual_hours,
-      perimetre: d.scope,
-      constats: d.findings_summary,
-      recommandations: d.recommendations,
-      confidentiel: d.confidential ? 'Oui' : 'Non',
-    }))), { name: `${folder}/diligences.csv` });
-    archive.append(JSON.stringify(diligences, null, 2), { name: `${folder}/diligences.json` });
+    this.appendText(
+      archive,
+      `${folder}/diligences.csv`,
+      toCsv(
+        diligences.map((d: any) => ({
+          id: d.id,
+          titre: d.title,
+          type: d.type,
+          statut: d.status,
+          echeance: fmtDate(d.deadline),
+          completion: fmtDate(d.completion_date),
+          avocat:
+            d.assigned_lawyer?.full_name ??
+            d.assigned_lawyer_id,
+          heures_budget: d.budget_hours,
+          heures_reelles: d.actual_hours,
+          perimetre: d.scope,
+          constats: d.findings_summary,
+          recommandations: d.recommendations,
+          confidentiel: d.confidential ? 'Oui' : 'Non',
+        })),
+      ),
+      manifest,
+    );
+    this.appendText(
+      archive,
+      `${folder}/diligences.json`,
+      this.safeJson(diligences),
+      manifest,
+    );
 
+    const manifestDocument = {
+      schema_version: 1,
+      export_id: exportId,
+      tenant_id: tenantId,
+      actor_id: Number(actor.userId ?? actor.id),
+      dossier_id: dossier.id,
+      dossier_number: dossier.dossier_number,
+      generated_at: new Date().toISOString(),
+      delivery: 'protected_http_stream',
+      server_copy_retained: false,
+      entries: manifest,
+    };
+    archive.append(
+      Buffer.from(
+        JSON.stringify(manifestDocument, null, 2),
+        'utf8',
+      ),
+      { name: `${folder}/manifest.json` },
+    );
     return true;
+  }
+
+  private appendText(
+    archive: Archiver,
+    path: string,
+    value: string,
+    manifest: ExportManifestEntry[],
+  ): void {
+    const content = Buffer.from(value, 'utf8');
+    manifest.push({
+      path,
+      sha256: createHash('sha256').update(content).digest('hex'),
+      size: content.length,
+      kind: 'generated',
+    });
+    archive.append(content, { name: path });
+  }
+
+  private async hashFile(path: string): Promise<string> {
+    const hash = createHash('sha256');
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      const input = createReadStream(path);
+      input.on('data', (chunk) => hash.update(chunk));
+      input.on('error', rejectPromise);
+      input.on('end', resolvePromise);
+    });
+    return hash.digest('hex');
+  }
+
+  private safeJson(value: unknown): string {
+    const forbidden =
+      /password|secret|token|authorization|cookie|file_path|file_url|storage_key|storageKey|preuve_paiement|tenant_id|deleted_at/i;
+    return JSON.stringify(
+      value,
+      (key, child) => (forbidden.test(key) ? undefined : child),
+      2,
+    );
+  }
+
+  private async auditExport(
+    dossierIds: number[],
+    actor: ResourceActor,
+    exportId: string,
+    action: string,
+    context: ExportAuditContext,
+  ): Promise<void> {
+    const actorId = Number(actor.userId ?? actor.id);
+    await this.dataSource.transaction(async (manager) => {
+      for (const dossierId of dossierIds) {
+        await this.auditService.append(manager, {
+          actorId,
+          action,
+          resourceType: 'dossier_export',
+          resourceId: exportId,
+          dossierId,
+          afterState: {
+            exportId,
+            dossierId,
+            delivery: 'protected_http_stream',
+            serverCopyRetained: false,
+          },
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          requestId: context.requestId ?? null,
+        });
+      }
+    });
   }
 }

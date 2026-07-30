@@ -1,19 +1,16 @@
+import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
+import { DataSource, InsertEvent } from 'typeorm';
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
-import { DataSource, InsertEvent } from 'typeorm';
-import { Injectable } from '@nestjs/common';
-
-import { DocumentCustomer } from '../entities/document-customer.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
+import { DocumentCustomer } from '../entities/document-customer.entity';
 
 /**
- * Subscriber métier pour les documents clients.
- *
- * Événement émis :
- *  - DOCUMENT_UPLOADED → quand un document est attaché à un dossier
- *    Le client est notifié uniquement si la case est cochée
- *    (sinon le document peut être un brouillon interne).
+ * Les notifications documentaires sont consommées après commit depuis
+ * l'outbox. Le hook TypeORM reste volontairement sans effet afin qu'aucun
+ * envoi réseau ne dépende de la transaction métier.
  */
 @Injectable()
 export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCustomer> {
@@ -29,28 +26,33 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
   }
 
   protected async onAfterCreate(
-    entity: DocumentCustomer,
-    event: InsertEvent<DocumentCustomer>,
+    _entity: DocumentCustomer,
+    _event: InsertEvent<DocumentCustomer>,
   ): Promise<void> {
-    // Recharger pour récupérer dossier + client + lawyer
-    const doc = await this.load(entity.id, event).catch(() => null);
+    // Effet différé : outbox.document.version.created.
+  }
+
+  @OnEvent('outbox.document.version.created')
+  async handleDocumentCreatedOutbox(payload: {
+    documentId: number;
+    initialVersion?: boolean;
+    notifyClient?: boolean;
+  }): Promise<void> {
+    if (payload.initialVersion !== true) return;
+    const doc = await this.load(Number(payload.documentId)).catch(() => null);
     if (!doc) return;
 
     const dossier: any = doc.dossier;
     const client: any = dossier?.client ?? doc.customer;
-    const notifyClient = this.resolveTransientBoolean('notify_client', entity, doc as any);
+    const notifyClient = payload.notifyClient === true;
 
-    this.logger.log(
-      `📢 Document uploadé | id=${doc.id} | name="${doc.name}" | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${notifyClient}`,
-    );
-
-    await this.notify({
+    await this.notificationDispatcher.dispatchStrict({
       event: NotifiableEvent.DOCUMENT_UPLOADED,
       title: `Nouveau document — ${doc.name}`,
       content: dossier
         ? `Document ajouté au dossier ${dossier.dossier_number}`
-        : `Nouveau document partagé`,
-      link: dossier ? `/dossiers/${dossier.id}/documents` : `/documents`,
+        : 'Nouveau document partagé',
+      link: dossier ? `/dossiers/${dossier.id}/documents` : '/documents',
       audience: {
         client: {
           user_id: client?.user_id,
@@ -72,8 +74,12 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
     id: number,
     event?: InsertEvent<DocumentCustomer>,
   ): Promise<DocumentCustomer | null> {
-    return this.loadEntity<DocumentCustomer>(id, {
-      relations: ['dossier', 'dossier.client', 'customer'],
-    }, event);
+    return this.loadEntity<DocumentCustomer>(
+      id,
+      {
+        relations: ['dossier', 'dossier.client', 'customer'],
+      },
+      event,
+    );
   }
 }

@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Supplier } from './supplier.entity';
@@ -29,6 +30,11 @@ export enum PaymentMethod {
 }
 
 @Entity('supplier_invoice')
+@Index(
+  'UQ_supplier_invoice_tenant_supplier_number',
+  ['tenant_id', 'supplier_id', 'invoice_number'],
+  { unique: true },
+)
 @BusinessTable({
   label: 'Factures fournisseurs',
   description: 'Factures reçues des fournisseurs (charges de fonctionnement).',
@@ -108,7 +114,7 @@ export class SupplierInvoice extends TenantEntity {
   })
   due_date: Date;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_ht' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount_ht' })
   @BusinessColumn({
     label: 'Montant HT',
     description: 'Montant hors taxes',
@@ -130,7 +136,7 @@ export class SupplierInvoice extends TenantEntity {
   })
   tax_rate: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_tva' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount_tva' })
   @BusinessColumn({
     label: 'Montant TVA',
     description: 'Montant de la TVA',
@@ -141,7 +147,7 @@ export class SupplierInvoice extends TenantEntity {
   })
   amount_tva: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_ttc' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount_ttc' })
   @BusinessColumn({
     label: 'Montant TTC',
     description: 'Montant total TTC',
@@ -180,6 +186,36 @@ export class SupplierInvoice extends TenantEntity {
   })
   payment_method: PaymentMethod;
 
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'payment_reference',
+  })
+  payment_reference: string | null;
+
+  @Column({ type: 'int', nullable: true, name: 'approved_by_id' })
+  approved_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approved_by_id' })
+  approved_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'approved_at',
+  })
+  approved_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'paid_by_id' })
+  paid_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'paid_by_id' })
+  paid_by: User | null;
+
   @Column({ type: 'varchar', length: 500, nullable: true, name: 'attachment_url' })
   @BusinessColumn({
     label: 'Pièce jointe',
@@ -187,7 +223,19 @@ export class SupplierInvoice extends TenantEntity {
     importance: 'medium',
     group: 'document',
   })
-  attachment_url: string;
+  attachment_url: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  attachment_original_name: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  attachment_mime_type: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  attachment_size: string | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  attachment_sha256: string | null;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({

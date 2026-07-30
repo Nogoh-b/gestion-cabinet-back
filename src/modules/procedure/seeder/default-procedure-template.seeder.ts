@@ -6,6 +6,8 @@ import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
 import { Transition } from '../entities/transition.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
+import { randomUUID } from 'crypto';
+import { ProcedureTemplateLifecycle } from '../entities/procedure-template.entity';
 
 /**
  * Nom canonique du template par défaut.
@@ -111,12 +113,16 @@ export default class DefaultProcedureTemplateSeeder implements Seeder {
     // ── Création du template ─────────────────────────────────────────────────
     const template = await templateRepo.save(
       templateRepo.create({
+        familyId: randomUUID(),
         name: DEFAULT_PROCEDURE_TEMPLATE_NAME,
         description:
           'Template générique 5 étapes utilisé quand le sous-type de procédure n\'a pas de template propre. ' +
           'Toutes les transitions sont permises.',
         version: 1,
-        isActive: true,
+        lifecycleStatus: ProcedureTemplateLifecycle.DRAFT,
+        publishedAt: null,
+        retiredAt: null,
+        contentHash: null,
       }),
     );
     console.log(`✅ Template par défaut créé (ID: ${template.id})`);
@@ -188,7 +194,7 @@ export default class DefaultProcedureTemplateSeeder implements Seeder {
       `  🔄 ${transitionCount} transitions créées ` +
       `(${savedStages.length} stages → toutes les combinaisons permises)`,
     );
-    console.log(`\n🎉 Template par défaut prêt à l'emploi : "${DEFAULT_PROCEDURE_TEMPLATE_NAME}"`);
+    console.log(`\n🎉 Brouillon générique créé : "${DEFAULT_PROCEDURE_TEMPLATE_NAME}"`);
 
     return template;
   }

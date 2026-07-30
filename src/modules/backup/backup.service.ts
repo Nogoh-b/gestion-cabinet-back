@@ -1,12 +1,39 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { execFile, spawn } from 'child_process';
+import {
+  closeSync,
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from 'fs';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+} from 'crypto';
+import { basename, join } from 'path';
+import { Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { promisify } from 'util';
-import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
-import { join, basename } from 'path';
+import { DataSource } from 'typeorm';
 
 const execFileAsync = promisify(execFile);
+const MAGIC = Buffer.from('KABYBK1');
+const IV_LENGTH = 12;
+const TAG_LENGTH = 16;
 
 export interface BackupFile {
   name: string;
@@ -14,204 +41,346 @@ export interface BackupFile {
   created_at: string;
 }
 
-/** Portée d'une opération de sauvegarde. */
 export interface BackupScope {
-  /** true = super-admin (toute la base) ; false = un seul cabinet. */
   full: boolean;
-  /** Cabinet concerné quand full=false. */
   tenantId?: number;
 }
 
 /**
- * Sauvegarde / restauration via mysqldump / mysql.
+ * Service d'exploitation hors HTTP.
  *
- *  - SUPER_ADMIN  → export de TOUTE la base.
- *  - Admin cabinet → export des SEULES données du cabinet (toutes les tables
- *    portant une colonne `tenant_id`, filtrées sur `tenant_id = <cabinet>`).
- *
- * Le mot de passe transite par MYSQL_PWD (jamais en argument CLI).
+ * Les fichiers sont chiffrés en AES-256-GCM et la restauration exige un mode
+ * maintenance explicite. Le module n'expose volontairement aucun contrôleur.
  */
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
-  private readonly dir = process.env.BACKUP_DIR || join(process.cwd(), 'backups');
+  private readonly dir =
+    process.env.BACKUP_DIR || join(process.cwd(), 'backups-private');
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  private cfg() {
+  async create(scope: BackupScope = { full: true }): Promise<BackupFile> {
+    this.ensureDirectory();
+    const config = this.databaseConfig();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const prefix = scope.full
+      ? 'backup-full-'
+      : `backup-cab${this.requiredTenantId(scope)}-`;
+    const name = `${prefix}${timestamp}.sql.enc`;
+    const encryptedPath = join(this.dir, name);
+    const temporarySql = join(
+      this.dir,
+      `.${name}.${process.pid}.temporary.sql`,
+    );
+    const args = [
+      '-h',
+      config.host,
+      '-P',
+      config.port,
+      '-u',
+      config.user,
+      '--single-transaction',
+    ];
+    if (scope.full) {
+      args.push('--routines', '--result-file', temporarySql, config.name);
+    } else {
+      const tables = await this.tenantTables();
+      if (tables.length === 0) {
+        throw new BadRequestException('Aucune table de cabinet à sauvegarder');
+      }
+      args.push(
+        `--where=tenant_id=${scope.tenantId}`,
+        '--result-file',
+        temporarySql,
+        config.name,
+        ...tables,
+      );
+    }
+
+    try {
+      await execFileAsync(this.resolveBinary('mysqldump'), args, {
+        env: { ...process.env, MYSQL_PWD: config.password },
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      await this.encryptFile(temporarySql, encryptedPath);
+    } catch (error: any) {
+      if (existsSync(encryptedPath)) unlinkSync(encryptedPath);
+      const hint = /ENOENT/.test(String(error?.message))
+        ? ' Configurez MYSQLDUMP_PATH.'
+        : '';
+      throw new BadRequestException(
+        `Échec de la sauvegarde: ${error?.message ?? error}.${hint}`,
+      );
+    } finally {
+      if (existsSync(temporarySql)) unlinkSync(temporarySql);
+    }
+
+    const stats = statSync(encryptedPath);
+    this.logger.log(`Sauvegarde chiffrée créée: ${name}`);
+    return {
+      name,
+      size: stats.size,
+      created_at: stats.mtime.toISOString(),
+    };
+  }
+
+  list(scope: BackupScope = { full: true }): BackupFile[] {
+    this.ensureDirectory();
+    const prefix = scope.full
+      ? 'backup-full-'
+      : `backup-cab${this.requiredTenantId(scope)}-`;
+    return readdirSync(this.dir)
+      .filter(
+        (name) =>
+          name.endsWith('.sql.enc') &&
+          (scope.full ? name.startsWith(prefix) : name.startsWith(prefix)),
+      )
+      .map((name) => {
+        const stats = statSync(join(this.dir, name));
+        return {
+          name,
+          size: stats.size,
+          created_at: stats.mtime.toISOString(),
+        };
+      })
+      .sort((left, right) =>
+        left.created_at < right.created_at ? 1 : -1,
+      );
+  }
+
+  /**
+   * Restaure une sauvegarde complète. Cette méthode est destinée au script
+   * `backup:restore` exécuté pendant une fenêtre de maintenance.
+   */
+  async restoreInMaintenance(name: string): Promise<{ success: true }> {
+    if (process.env.MAINTENANCE_MODE !== 'true') {
+      throw new ForbiddenException(
+        'La restauration exige MAINTENANCE_MODE=true',
+      );
+    }
+    if (!basename(name).startsWith('backup-full-')) {
+      throw new ForbiddenException(
+        'Seule une sauvegarde complète peut restaurer la base',
+      );
+    }
+    const encryptedPath = this.safePath(name);
+    if (!existsSync(encryptedPath)) {
+      throw new NotFoundException('Sauvegarde introuvable');
+    }
+    const temporarySql = join(
+      this.dir,
+      `.restore-${process.pid}-${Date.now()}.temporary.sql`,
+    );
+    const config = this.databaseConfig();
+    try {
+      await this.decryptFile(encryptedPath, temporarySql);
+      await new Promise<void>((resolve, reject) => {
+        const processHandle = spawn(
+          this.resolveBinary('mysql'),
+          [
+            '-h',
+            config.host,
+            '-P',
+            config.port,
+            '-u',
+            config.user,
+            config.name,
+          ],
+          { env: { ...process.env, MYSQL_PWD: config.password } },
+        );
+        createReadStream(temporarySql).pipe(processHandle.stdin);
+        let standardError = '';
+        processHandle.stderr.on(
+          'data',
+          (data) => (standardError += data.toString()),
+        );
+        processHandle.on('error', reject);
+        processHandle.on('close', (code) =>
+          code === 0
+            ? resolve()
+            : reject(
+                new Error(standardError || `mysql a retourné ${code}`),
+              ),
+        );
+      });
+    } catch (error: any) {
+      throw new BadRequestException(
+        `Échec de la restauration: ${error?.message ?? error}`,
+      );
+    } finally {
+      if (existsSync(temporarySql)) unlinkSync(temporarySql);
+    }
+    this.logger.warn(`Base restaurée depuis ${name}`);
+    return { success: true };
+  }
+
+  /** Vérifie l'authenticité sans modifier la base. */
+  async verify(name: string): Promise<{ valid: true; bytes: number }> {
+    this.ensureDirectory();
+    const encryptedPath = this.safePath(name);
+    if (!existsSync(encryptedPath)) {
+      throw new NotFoundException('Sauvegarde introuvable');
+    }
+    const temporarySql = join(
+      this.dir,
+      `.verify-${process.pid}-${Date.now()}.temporary.sql`,
+    );
+    try {
+      await this.decryptFile(encryptedPath, temporarySql);
+      const stats = statSync(temporarySql);
+      const descriptor = openSync(temporarySql, 'r');
+      const sampleBuffer = Buffer.alloc(Math.min(stats.size, 64 * 1024));
+      try {
+        readSync(descriptor, sampleBuffer, 0, sampleBuffer.length, 0);
+      } finally {
+        closeSync(descriptor);
+      }
+      if (
+        !/-- MySQL dump|CREATE TABLE|INSERT INTO/i.test(
+          sampleBuffer.toString('utf8'),
+        )
+      ) {
+        throw new BadRequestException(
+          'Le contenu déchiffré ne ressemble pas à une sauvegarde SQL',
+        );
+      }
+      return { valid: true, bytes: stats.size };
+    } finally {
+      if (existsSync(temporarySql)) unlinkSync(temporarySql);
+    }
+  }
+
+  private databaseConfig() {
     return {
       host: process.env.DB_HOST || 'localhost',
       port: process.env.DB_PORT || '3306',
       user: process.env.DB_USER || 'root',
-      pass: process.env.DB_PASSWORD || '',
+      password: process.env.DB_PASSWORD || '',
       name: process.env.DB_NAME || 'core',
     };
   }
 
-  /**
-   * Résout le chemin du binaire mysqldump / mysql.
-   * Priorité : variable d'env (MYSQLDUMP_PATH / MYSQL_PATH) → emplacements
-   * usuels (XAMPP, WAMP, Laragon, MySQL/MariaDB Server) → PATH système.
-   */
-  private resolveBin(bin: 'mysqldump' | 'mysql'): string {
-    const envPath = bin === 'mysqldump' ? process.env.MYSQLDUMP_PATH : process.env.MYSQL_PATH;
-    if (envPath && existsSync(envPath)) return envPath;
-
-    const win = process.platform === 'win32';
-    const exe = win ? `${bin}.exe` : bin;
-    const candidates: string[] = [];
-
-    if (win) {
-      candidates.push(
-        `C:\\xampp\\mysql\\bin\\${exe}`,
-        `C:\\laragon\\bin\\mysql\\mysql-8.0.30-winx64\\bin\\${exe}`,
-      );
-      // Scan dynamique de Program Files (MySQL/MariaDB versionnés) et WAMP.
-      for (const root of [
-        'C:\\Program Files\\MySQL',
-        'C:\\Program Files\\MariaDB',
-        'C:\\Program Files (x86)\\MySQL',
-        'C:\\wamp64\\bin\\mysql',
-        'C:\\wamp\\bin\\mysql',
-        'C:\\laragon\\bin\\mysql',
-      ]) {
-        try {
-          for (const sub of readdirSync(root)) {
-            candidates.push(join(root, sub, 'bin', exe));
-          }
-        } catch {
-          /* dossier absent */
-        }
-      }
-    } else {
-      candidates.push(`/usr/bin/${bin}`, `/usr/local/bin/${bin}`, `/opt/homebrew/bin/${bin}`);
+  private requiredTenantId(scope: BackupScope): number {
+    const tenantId = Number(scope.tenantId);
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new BadRequestException('Cabinet de sauvegarde invalide');
     }
-
-    for (const c of candidates) {
-      if (existsSync(c)) return c;
-    }
-    return bin; // dernier recours : PATH système
+    return tenantId;
   }
 
-  private ensureDir(): void {
-    if (!existsSync(this.dir)) mkdirSync(this.dir, { recursive: true });
+  private ensureDirectory(): void {
+    if (!existsSync(this.dir)) {
+      mkdirSync(this.dir, { recursive: true, mode: 0o700 });
+    }
   }
 
   private safePath(name: string): string {
-    const base = basename(name);
-    if (!/^[\w.\-]+\.sql$/.test(base)) {
+    const safeName = basename(name);
+    if (!/^[\w.-]+\.sql\.enc$/.test(safeName) || safeName !== name) {
       throw new BadRequestException('Nom de sauvegarde invalide');
     }
-    return join(this.dir, base);
+    return join(this.dir, safeName);
   }
 
-  /** Préfixe de fichier selon la portée (sert au filtrage par cabinet). */
-  private prefix(scope: BackupScope): string {
-    return scope.full ? 'backup-full-' : `backup-cab${scope.tenantId}-`;
-  }
-
-  /** Vérifie qu'un fichier appartient bien à la portée demandée. */
-  private assertOwnership(name: string, scope: BackupScope): void {
-    if (scope.full) return; // super-admin voit tout
-    if (!basename(name).startsWith(this.prefix(scope))) {
-      throw new ForbiddenException('Sauvegarde non accessible pour ce cabinet');
+  private encryptionKey(): Buffer {
+    const raw = process.env.BACKUP_ENCRYPTION_KEY ?? '';
+    const key = /^[a-f0-9]{64}$/i.test(raw)
+      ? Buffer.from(raw, 'hex')
+      : Buffer.from(raw, 'base64');
+    if (key.length !== 32) {
+      throw new Error(
+        'BACKUP_ENCRYPTION_KEY doit contenir 32 octets (hex ou base64)',
+      );
     }
+    return key;
   }
 
-  /** Tables portant une colonne tenant_id (= données propres aux cabinets). */
   private async tenantTables(): Promise<string[]> {
-    const rows: Array<{ t: string }> = await this.dataSource.query(
-      `SELECT TABLE_NAME AS t FROM INFORMATION_SCHEMA.COLUMNS
+    const rows: Array<{ tableName: string }> = await this.dataSource.query(
+      `SELECT TABLE_NAME AS tableName
+       FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = ? AND COLUMN_NAME = 'tenant_id'`,
-      [this.cfg().name],
+      [this.databaseConfig().name],
     );
-    return rows.map((r) => r.t).filter(Boolean);
+    return rows.map((row) => row.tableName).filter(Boolean);
   }
 
-  list(scope: BackupScope): BackupFile[] {
-    this.ensureDir();
-    const prefix = this.prefix(scope);
-    return readdirSync(this.dir)
-      .filter((f) => f.endsWith('.sql') && (scope.full || f.startsWith(prefix)))
-      .map((name) => {
-        const st = statSync(join(this.dir, name));
-        return { name, size: st.size, created_at: st.mtime.toISOString() };
-      })
-      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  private resolveBinary(binary: 'mysqldump' | 'mysql'): string {
+    const configured =
+      binary === 'mysqldump'
+        ? process.env.MYSQLDUMP_PATH
+        : process.env.MYSQL_PATH;
+    if (configured) return configured;
+    if (process.platform !== 'win32') return binary;
+    const executable = `${binary}.exe`;
+    const candidates = [
+      `C:\\xampp\\mysql\\bin\\${executable}`,
+      `C:\\laragon\\bin\\mysql\\mysql-8.0.30-winx64\\bin\\${executable}`,
+    ];
+    return candidates.find(existsSync) ?? executable;
   }
 
-  async create(scope: BackupScope): Promise<BackupFile> {
-    this.ensureDir();
-    const c = this.cfg();
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const name = `${this.prefix(scope)}${stamp}.sql`;
-    const file = join(this.dir, name);
-
-    const args = ['-h', c.host, '-P', c.port, '-u', c.user, '--single-transaction'];
-    if (scope.full) {
-      args.push('--routines', '--result-file', file, c.name);
-    } else {
-      if (!scope.tenantId) throw new BadRequestException('Cabinet non résolu');
-      const tables = await this.tenantTables();
-      if (!tables.length) {
-        throw new BadRequestException('Aucune donnée de cabinet à exporter');
-      }
-      // --where s'applique à toutes les tables listées (toutes ont tenant_id).
-      args.push(`--where=tenant_id=${scope.tenantId}`, '--result-file', file, c.name, ...tables);
-    }
-
-    try {
-      await execFileAsync(this.resolveBin('mysqldump'), args, {
-        env: { ...process.env, MYSQL_PWD: c.pass },
-        maxBuffer: 1024 * 1024 * 64,
-      });
-    } catch (e: any) {
-      this.logger.error(`[Backup] mysqldump échec: ${e?.message ?? e}`);
-      const hint = /ENOENT/.test(String(e?.message))
-        ? " — binaire 'mysqldump' introuvable. Renseignez MYSQLDUMP_PATH dans le .env (ex: C:\\xampp\\mysql\\bin\\mysqldump.exe)."
-        : '';
-      throw new BadRequestException(`Échec de la sauvegarde : ${e?.message ?? e}${hint}`);
-    }
-    const st = statSync(file);
-    this.logger.log(
-      `[Backup] créé: ${name} (${st.size} o, ${scope.full ? 'complet' : `cabinet ${scope.tenantId}`})`,
-    );
-    return { name, size: st.size, created_at: st.mtime.toISOString() };
-  }
-
-  streamFor(name: string, scope: BackupScope) {
-    this.assertOwnership(name, scope);
-    const path = this.safePath(name);
-    if (!existsSync(path)) throw new NotFoundException('Sauvegarde introuvable');
-    return { stream: createReadStream(path), name: basename(path) };
-  }
-
-  remove(name: string, scope: BackupScope): void {
-    this.assertOwnership(name, scope);
-    const path = this.safePath(name);
-    if (!existsSync(path)) throw new NotFoundException('Sauvegarde introuvable');
-    unlinkSync(path);
-  }
-
-  /** Restauration de la base entière (SUPER_ADMIN uniquement, géré au contrôleur). */
-  async restore(name: string): Promise<{ success: boolean }> {
-    const path = this.safePath(name);
-    if (!existsSync(path)) throw new NotFoundException('Sauvegarde introuvable');
-    const c = this.cfg();
-    await new Promise<void>((resolve, reject) => {
-      const proc = spawn(this.resolveBin('mysql'), ['-h', c.host, '-P', c.port, '-u', c.user, c.name], {
-        env: { ...process.env, MYSQL_PWD: c.pass },
-      });
-      createReadStream(path).pipe(proc.stdin);
-      let err = '';
-      proc.stderr.on('data', (d) => (err += d.toString()));
-      proc.on('error', reject);
-      proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err || `mysql code ${code}`))));
-    }).catch((e) => {
-      this.logger.error(`[Backup] restore échec: ${e?.message ?? e}`);
-      throw new BadRequestException(`Échec de la restauration : ${e?.message ?? e}`);
+  private async encryptFile(input: string, output: string): Promise<void> {
+    const iv = randomBytes(IV_LENGTH);
+    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey(), iv);
+    const encryption = new Transform({
+      transform(chunk, _encoding, callback) {
+        try {
+          callback(null, cipher.update(chunk));
+        } catch (error) {
+          callback(error as Error);
+        }
+      },
+      flush(callback) {
+        try {
+          this.push(cipher.final());
+          this.push(cipher.getAuthTag());
+          callback();
+        } catch (error) {
+          callback(error as Error);
+        }
+      },
     });
-    this.logger.warn(`[Backup] restauration effectuée depuis ${name}`);
-    return { success: true };
+    const destination = createWriteStream(output, {
+      flags: 'wx',
+      mode: 0o600,
+    });
+    destination.write(Buffer.concat([MAGIC, iv]));
+    await pipeline(createReadStream(input), encryption, destination);
+  }
+
+  private async decryptFile(input: string, output: string): Promise<void> {
+    const size = statSync(input).size;
+    const headerLength = MAGIC.length + IV_LENGTH;
+    if (size <= headerLength + TAG_LENGTH) {
+      throw new BadRequestException('Sauvegarde chiffrée invalide');
+    }
+    const descriptor = openSync(input, 'r');
+    const header = Buffer.alloc(headerLength);
+    const tag = Buffer.alloc(TAG_LENGTH);
+    try {
+      readSync(descriptor, header, 0, header.length, 0);
+      readSync(descriptor, tag, 0, tag.length, size - TAG_LENGTH);
+    } finally {
+      closeSync(descriptor);
+    }
+    if (!header.subarray(0, MAGIC.length).equals(MAGIC)) {
+      throw new BadRequestException('Format de sauvegarde inconnu');
+    }
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      this.encryptionKey(),
+      header.subarray(MAGIC.length),
+    );
+    decipher.setAuthTag(tag);
+    await pipeline(
+      createReadStream(input, {
+        start: headerLength,
+        end: size - TAG_LENGTH - 1,
+      }),
+      decipher,
+      createWriteStream(output, { flags: 'wx', mode: 0o600 }),
+    );
   }
 }

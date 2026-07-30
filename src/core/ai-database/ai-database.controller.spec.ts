@@ -1,20 +1,43 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { AiDatabaseController } from './ai-database.controller';
-import { AiDatabaseService } from './ai-database.service';
 
-describe('AiDatabaseController', () => {
-  let controller: AiDatabaseController;
+describe('AiDatabaseController - lecture seule', () => {
+  const aiDbService = {
+    analyzeQuestion: jest.fn(),
+  };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [AiDatabaseController],
-      providers: [AiDatabaseService],
-    }).compile();
+  const controller = new AiDatabaseController(
+    aiDbService as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
 
-    controller = module.get<AiDatabaseController>(AiDatabaseController);
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
+  it("force une demande d'écriture en analyse sans mutation", async () => {
+    aiDbService.analyzeQuestion.mockResolvedValue({
+      success: true,
+      analysis: 'résultat',
+    });
+    const dto = {
+      question: 'Crée un dossier',
+      intentMode: 'write',
+      analyzeOnly: false,
+    } as any;
+    const user = { id: 42, tenantId: 7 };
+    const request = { aiRequestLogId: 'log-1' };
+
+    await controller.askQuestion(dto, user, request);
+
+    expect(dto.intentMode).toBe('read');
+    expect(dto.analyzeOnly).toBe(true);
+    expect(aiDbService.analyzeQuestion).toHaveBeenCalledWith(
+      dto,
+      user,
+      undefined,
+      'log-1',
+    );
   });
 });

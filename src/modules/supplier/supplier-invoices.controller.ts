@@ -8,7 +8,13 @@ import {
   Delete,
   UseGuards,
   Query,
+  ParseIntPipe,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
@@ -19,18 +25,33 @@ import { UpdateSupplierInvoiceDto } from './dto/update-supplier-invoice.dto';
 import { SupplierInvoiceSearchDto } from './dto/supplier-invoice-search.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SupplierInvoice } from './entities/supplier-invoice.entity';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { PaySupplierInvoiceDto } from './dto/pay-supplier-invoice.dto';
+import { plainToInstance } from 'class-transformer';
+import { SupplierInvoiceResponseDto } from './dto/supplier-invoice-response.dto';
 
 @Controller('supplier-invoices')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SupplierInvoicesController {
   constructor(private readonly service: SupplierInvoicesService) {}
 
+  private response(
+    value: object | object[],
+  ): SupplierInvoiceResponseDto | SupplierInvoiceResponseDto[] {
+    return plainToInstance(SupplierInvoiceResponseDto, value, {
+      excludeExtraneousValues: true,
+      enableImplicitConversion: true,
+    });
+  }
+
   @Post()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('create_supplier_invoice')
   @ApiOperation({ summary: 'Enregistrer une facture fournisseur' })
-  create(@Body() dto: CreateSupplierInvoiceDto) {
-    return this.service.create(dto);
+  async create(@Body() dto: CreateSupplierInvoiceDto, @CurrentUser() user: any) {
+    return this.response(await this.service.create(dto, {
+      userId: Number(user?.userId ?? user?.id),
+    }));
   }
 
   @Get('/search')
@@ -45,63 +66,120 @@ export class SupplierInvoicesController {
     @Query() searchParams?: SupplierInvoiceSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(
+    const result = await this.service.searchWithTransformer(
       searchParams as any,
-      SupplierInvoice,
+      SupplierInvoiceResponseDto,
       paginationParams,
     );
+    return {
+      ...result,
+      data: this.response(result.data),
+    };
   }
 
   @Get('/supplier/:supplierId')
   @RequirePermissions('view_supplier_invoices')
   @ApiOperation({ summary: 'Factures d\'un fournisseur' })
-  findBySupplier(@Param('supplierId') supplierId: string) {
-    return this.service.findBySupplier(+supplierId);
+  async findBySupplier(
+    @Param('supplierId', ParseIntPipe) supplierId: number,
+  ) {
+    return this.response(await this.service.findBySupplier(supplierId));
   }
 
   @Get()
   @RequirePermissions('view_supplier_invoices')
   @ApiOperation({ summary: 'Lister toutes les factures fournisseurs' })
-  findAll() {
-    return this.service.findAll();
+  async findAll() {
+    return this.response(await this.service.findAll());
   }
 
   @Get(':id')
   @RequirePermissions('view_supplier_invoices')
   @ApiOperation({ summary: 'Détail d\'une facture fournisseur' })
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(+id);
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.response(await this.service.findOne(id));
   }
 
-  @Patch(':id/approve')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Post(':id/attachment')
   @RequirePermissions('edit_supplier_invoice')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  async attachEvidence(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: any,
+  ) {
+    return this.response(
+      await this.service.attachEvidence(id, file, {
+        userId: Number(user?.userId ?? user?.id),
+      }),
+    );
+  }
+
+  @Get(':id/attachment')
+  @RequirePermissions('view_supplier_invoices')
+  async downloadEvidence(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @Res() response: Response,
+  ) {
+    const evidence = await this.service.getEvidence(id, {
+      userId: Number(user?.userId ?? user?.id),
+    });
+    response.setHeader('Content-Type', evidence.mimeType);
+    response.setHeader('Content-Length', String(evidence.buffer.length));
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-SHA256', evidence.sha256);
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(evidence.filename)}`,
+    );
+    response.send(evidence.buffer);
+  }
+
+  @Post(':id/approve')
+  @RequirePermissions('validate_supplier_invoice')
   @ApiOperation({ summary: 'Approuver une facture fournisseur' })
-  approve(@Param('id') id: string) {
-    return this.service.approve(+id);
+  async approve(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.response(await this.service.approve(id, {
+      userId: Number(user?.userId ?? user?.id),
+    }));
   }
 
-  @Patch(':id/pay')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('edit_supplier_invoice')
+  @Post(':id/pay')
+  @RequirePermissions('pay_supplier_invoice')
   @ApiOperation({ summary: 'Marquer une facture fournisseur comme payée' })
-  pay(@Param('id') id: string) {
-    return this.service.markAsPaid(+id);
+  async pay(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PaySupplierInvoiceDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.response(await this.service.markAsPaid(id, dto, {
+      userId: Number(user?.userId ?? user?.id),
+    }));
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_supplier_invoice')
   @ApiOperation({ summary: 'Modifier une facture fournisseur' })
-  update(@Param('id') id: string, @Body() dto: UpdateSupplierInvoiceDto) {
-    return this.service.update(+id, dto);
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateSupplierInvoiceDto,
+  ) {
+    return this.response(await this.service.update(id, dto));
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('delete_supplier_invoice')
   @ApiOperation({ summary: 'Supprimer une facture fournisseur' })
-  remove(@Param('id') id: string) {
-    return this.service.remove(+id);
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove();
   }
 }

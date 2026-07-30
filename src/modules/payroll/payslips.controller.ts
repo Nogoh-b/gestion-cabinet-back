@@ -1,31 +1,38 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
-  UseGuards,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
+import { CreatePayslipDto } from './dto/create-payslip.dto';
+import { PayPayslipDto } from './dto/pay-payslip.dto';
+import {
+  PayslipListResponseDto,
+  PayslipResponseDto,
+} from './dto/payslip-response.dto';
+import { PayslipSearchDto } from './dto/payslip-search.dto';
+import { RevertPayslipDto } from './dto/revert-payslip.dto';
+import { UpdatePayslipDto } from './dto/update-payslip.dto';
 import { PayslipsService } from './payslips.service';
 import { PayrollGenerationService } from './services/payroll-generation.service';
 import { PayrollStatsService } from './services/payroll-stats.service';
-import { CreatePayslipDto } from './dto/create-payslip.dto';
-import { UpdatePayslipDto } from './dto/update-payslip.dto';
-import { PayslipSearchDto } from './dto/payslip-search.dto';
-import { Payslip } from './entities/payslip.entity';
-import { PayslipListResponseDto, PayslipResponseDto } from './dto/payslip-response.dto';
-import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 @Controller('payslips')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PayslipsController {
   constructor(
     private readonly service: PayslipsService,
@@ -33,40 +40,79 @@ export class PayslipsController {
     private readonly stats: PayrollStatsService,
   ) {}
 
+  private actor(user: any) {
+    return {
+      userId: Number(user?.userId ?? user?.id),
+      role: user?.role,
+    };
+  }
+
+  private detail(value: object | object[]) {
+    return plainToInstance(PayslipResponseDto, value, {
+      excludeExtraneousValues: true,
+      enableImplicitConversion: true,
+    });
+  }
+
+  private list(value: object | object[]) {
+    return plainToInstance(PayslipListResponseDto, value, {
+      excludeExtraneousValues: true,
+      enableImplicitConversion: true,
+    });
+  }
+
   @Post()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('generate_payslip')
-  @ApiOperation({ summary: 'Créer une fiche de paie' })
-  create(@Body() dto: CreatePayslipDto) {
-    return this.service.create(dto);
+  @ApiOperation({ summary: 'Préparer un bulletin en brouillon' })
+  async create(
+    @Body() dto: CreatePayslipDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.detail(await this.service.create(dto, this.actor(user)));
+  }
+
+  @Get('/me')
+  @RequirePermissions('view_own_payslip')
+  @ApiOperation({ summary: 'Consulter uniquement mes bulletins payés' })
+  async findOwn(@CurrentUser() user: any) {
+    return this.list(await this.service.findOwn(this.actor(user)));
+  }
+
+  @Get('/me/:id')
+  @RequirePermissions('view_own_payslip')
+  @ApiOperation({ summary: 'Consulter un de mes bulletins payés' })
+  async findOwnOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.detail(
+      await this.service.findOwnOne(id, this.actor(user)),
+    );
   }
 
   @Get('/search')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Rechercher les fiches de paie' })
-  @ApiResponse({ status: 200, description: 'Liste des fiches de paie', type: [Payslip] })
+  @ApiOperation({ summary: 'Rechercher les bulletins (administration RH)' })
   async search(
     @Query() searchParams?: PayslipSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(
+    const result = await this.service.searchWithTransformer(
       searchParams as any,
       PayslipListResponseDto,
       paginationParams,
     );
+    return { ...result, data: this.list(result.data) };
   }
 
   @Get('/stats')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Masse salariale : vue d\'ensemble (option: ?periodId=)' })
+  @ApiOperation({ summary: 'Vue d’ensemble de la masse salariale' })
   overview(@Query('periodId') periodId?: string) {
     return this.stats.overview(periodId ? +periodId : undefined);
   }
 
   @Get('/stats/by-period')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Masse salariale agrégée par période' })
   statsByPeriod() {
@@ -74,88 +120,106 @@ export class PayslipsController {
   }
 
   @Get('/period/:periodId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Fiches de paie d\'une période' })
-  findByPeriod(@Param('periodId') periodId: string) {
-    return this.service.findByPeriod(+periodId);
+  @ApiOperation({ summary: 'Bulletins d’une période' })
+  async findByPeriod(
+    @Param('periodId', ParseIntPipe) periodId: number,
+  ) {
+    return this.list(await this.service.findByPeriod(periodId));
   }
 
   @Get('/employee/:employeeId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Fiches de paie d\'un employé' })
-  findByEmployee(@Param('employeeId') employeeId: string) {
-    return this.service.findByEmployee(+employeeId);
+  @ApiOperation({ summary: 'Bulletins d’un collaborateur (administration RH)' })
+  async findByEmployee(
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+  ) {
+    return this.list(await this.service.findByEmployee(employeeId));
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Lister toutes les fiches de paie' })
-  findAll() {
-    return this.service.findAll();
+  @ApiOperation({ summary: 'Lister les bulletins (administration RH)' })
+  async findAll() {
+    return this.list(await this.service.findAll());
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Détail d\'une fiche de paie' })
-  async findOne(@Param('id') id: string) {
-    const payslip = await this.service.findOne(+id);
-    return plainToInstance(PayslipResponseDto, payslip, { excludeExtraneousValues: true });
+  @ApiOperation({ summary: 'Détail d’un bulletin (administration RH)' })
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.detail(await this.service.findOne(id));
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Modifier une fiche de paie (brouillon uniquement)' })
-  update(@Param('id') id: string, @Body() dto: UpdatePayslipDto) {
-    return this.service.update(+id, dto);
+  @ApiOperation({ summary: 'Modifier un bulletin brouillon' })
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePayslipDto,
+  ) {
+    return this.detail(await this.service.update(id, dto));
   }
 
-  // ── Cycle de vie ───────────────────────────────────────────────────────────
-
   @Post(':id/validate')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Valider une fiche (fige les montants)' })
-  validate(@Param('id') id: string) {
-    return this.service.validate(+id);
+  @RequirePermissions('validate_payslip')
+  @ApiOperation({ summary: 'Valider et figer un bulletin' })
+  async validate(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.detail(
+      await this.service.validate(id, this.actor(user)),
+    );
   }
 
   @Post(':id/pay')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Marquer une fiche validée comme payée' })
-  pay(@Param('id') id: string) {
-    return this.service.pay(+id);
+  @RequirePermissions('pay_payslip')
+  @ApiOperation({ summary: 'Payer un bulletin validé' })
+  async pay(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PayPayslipDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.detail(
+      await this.service.pay(id, dto, this.actor(user)),
+    );
   }
 
   @Post(':id/revert')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Repasser une fiche validée en brouillon' })
-  revert(@Param('id') id: string) {
-    return this.service.revertToDraft(+id);
+  @RequirePermissions('validate_payslip')
+  @ApiOperation({ summary: 'Rouvrir un bulletin validé avec justification' })
+  async revert(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RevertPayslipDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.detail(
+      await this.service.revertToDraft(
+        id,
+        dto.reason,
+        this.actor(user),
+      ),
+    );
   }
 
   @Post(':id/commissions')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Générer les commissions internes depuis les dossiers' })
+  @ApiOperation({ summary: 'Générer les commissions internes' })
   generateCommissions(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body() body: { rate?: number },
   ) {
-    return this.generation.generateCommissions(+id, body?.rate ?? 10);
+    return this.generation.generateCommissions(id, body?.rate ?? 10);
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Supprimer une fiche de paie (sauf payée)' })
-  remove(@Param('id') id: string) {
-    return this.service.remove(+id);
+  @ApiOperation({ summary: 'Supprimer un bulletin brouillon' })
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.service.remove(id, this.actor(user));
   }
 }

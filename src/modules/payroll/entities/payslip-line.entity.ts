@@ -71,7 +71,7 @@ export class PayslipLine extends TenantEntity {
   })
   label: string;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
     label: 'Montant',
     description: 'Montant de la ligne (positif = gain, négatif = retenue)',

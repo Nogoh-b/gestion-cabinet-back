@@ -12,13 +12,14 @@ import { GenericWriteService } from './generic-write.service';
 import { IntentDetectionService } from './intent-detection.service';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { EntityResolverService } from './write/entity-resolver.service';
-import { AutoHandlerFactory } from './write/auto-handler-factory.service';
 import { AiDatabasePermissionService } from './ai-database-permission.service';
 import { IamModule } from 'src/modules/iam/iam.module';
 import { PlansModule } from 'src/modules/plans/plans.module';
 import { AiRequestLog } from './entities/ai-request-log.entity';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
+import { AiFeatureGuard } from './guards/ai-feature.guard';
 import { AiModelRouterService } from './ai-model-router.service';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
 
 @Module({
   imports: [
@@ -41,10 +42,11 @@ import { AiModelRouterService } from './ai-model-router.service';
     WriteHandlerRegistry,
     IntentDetectionService,
     EntityResolverService,
-    AutoHandlerFactory,
     AiDatabasePermissionService,
     AiModelRouterService,
     AiQuotaGuard,
+    AiFeatureGuard,
+    PermissionsGuard,
   ],
   exports: [
     AiDatabaseService,

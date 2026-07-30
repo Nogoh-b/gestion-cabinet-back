@@ -530,15 +530,19 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
     const allDiligences = await this.diligenceRepository
       .createQueryBuilder('diligence')
       .leftJoinAndSelect('diligence.findings', 'finding')
-      .where('diligence.status = :completed', { completed: DiligenceStatus.COMPLETED })
-      .getMany();
+      .where('diligence.status = :completed', { completed: DiligenceStatus.COMPLETED });
+    this.applyFilters(allDiligences, filters, 'diligence');
+    const filteredDiligences = await allDiligences.getMany();
 
     let totalProgress = 0;
-    allDiligences.forEach(d => {
+    filteredDiligences.forEach(d => {
       const progress = this.calculateProgress(d.findings);
       totalProgress += progress;
     });
-    const avgProgress = allDiligences.length > 0 ? totalProgress / allDiligences.length : 0;
+    const avgProgress =
+      filteredDiligences.length > 0
+        ? totalProgress / filteredDiligences.length
+        : 0;
 
     const totalCompleted = parseInt(result.total || 0);
     const onTime = parseInt(result.onTime || 0);

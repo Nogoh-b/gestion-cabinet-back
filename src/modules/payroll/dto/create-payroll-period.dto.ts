@@ -3,50 +3,29 @@ import {
   IsNotEmpty,
   IsOptional,
   IsDateString,
-  IsEnum,
   IsInt,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PayrollPeriodStatus } from '../entities/payroll-period.entity';
 
 export class CreatePayrollPeriodDto {
-  @ApiProperty({
-    example: 'Paie Mars 2026',
-    description: 'Libellé de la période de paie',
-  })
+  @ApiProperty({ example: 'Paie Mars 2026' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   label: string;
 
-  @ApiProperty({
-    example: '2026-03-01',
-    description: 'Date de début de la période',
-  })
+  @ApiProperty({ example: '2026-03-01' })
   @IsDateString()
   @IsNotEmpty()
   start_date: Date;
 
-  @ApiProperty({
-    example: '2026-03-31',
-    description: 'Date de fin de la période',
-  })
+  @ApiProperty({ example: '2026-03-31' })
   @IsDateString()
   @IsNotEmpty()
   end_date: Date;
 
-  @ApiPropertyOptional({
-    enum: PayrollPeriodStatus,
-    example: PayrollPeriodStatus.DRAFT,
-    description: 'Statut initial',
-  })
-  @IsEnum(PayrollPeriodStatus)
-  @IsOptional()
-  status?: PayrollPeriodStatus;
-
-  @ApiPropertyOptional({
-    example: 2,
-    description: 'ID de l\'agence concernée',
-  })
+  @ApiPropertyOptional({ example: 2 })
   @IsInt()
   @IsOptional()
   branch_id?: number;

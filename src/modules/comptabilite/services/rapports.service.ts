@@ -1,11 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CompteComptable } from '../entities/compte.entity';
 import { Ecriture } from '../entities/ecriture.entity';
 import { ExerciceComptable } from '../entities/exercice.entity';
 import { LigneEcriture } from '../entities/ligne-ecriture.entity';
-import { ClasseCompte, StatutExercice, TypeCompte } from '../enums/comptabilite.enums';
+import {
+  ClasseCompte,
+  StatutEcriture,
+  StatutExercice,
+} from '../enums/comptabilite.enums';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 @Injectable()
 export class RapportsService {
@@ -31,18 +36,30 @@ export class RapportsService {
       .addSelect('SUM(l.credit)', 'totalCredit')
       .innerJoin('l.ecriture', 'e')
       .where('e.exercice_id = :eid', { eid: exercice.id })
+      .andWhere('e.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('e.status IN (:...entryStatuses)', {
+        entryStatuses: [
+          StatutEcriture.POSTED,
+          StatutEcriture.REVERSED,
+        ],
+      })
       .groupBy('l.compte_id');
 
     const rows = await qb.getRawMany();
 
-    const comptes = await this.compteRepo.find({ order: { numero: 'ASC' } });
+    const comptes = await this.compteRepo.find({
+      where: { tenant_id: getCurrentTenantId() },
+      order: { numero: 'ASC' },
+    });
     const soldesMap = new Map(rows.map(r => [Number(r.compte_id), r]));
 
     return comptes
       .map(c => {
         const row          = soldesMap.get(c.id) ?? { totalDebit: 0, totalCredit: 0 };
-        const totalDebit   = Number(row.totalDebit)  ?? 0;
-        const totalCredit  = Number(row.totalCredit) ?? 0;
+        const totalDebit   = Number(row.totalDebit ?? 0);
+        const totalCredit  = Number(row.totalCredit ?? 0);
         const soldeDebit   = Math.max(totalDebit - totalCredit, 0);
         const soldeCredit  = Math.max(totalCredit - totalDebit, 0);
         return { compte: c, totalDebit, totalCredit, soldeDebit, soldeCredit };
@@ -53,15 +70,36 @@ export class RapportsService {
   // ── Grand livre d'un compte ──────────────────────────────────────────────────
   async getGrandLivre(compteId: number, exerciceId?: number): Promise<any> {
     const exercice = await this.resolveExercice(exerciceId);
-    const compte   = await this.compteRepo.findOne({ where: { id: compteId } });
-
-    const lignes = await this.ligneRepo.find({
-      where: { compte_id: compteId },
-      relations: ['ecriture', 'ecriture.journal'],
-      order: { ecriture: { dateEcriture: 'ASC' } },
+    const compte = await this.compteRepo.findOne({
+      where: {
+        id: compteId,
+        tenant_id: getCurrentTenantId(),
+      },
     });
+    if (!compte) {
+      throw new NotFoundException(`Compte ${compteId} introuvable`);
+    }
 
-    const lignesFiltrees = lignes.filter(l => l.ecriture?.exercice_id === exercice.id);
+    const lignesFiltrees = await this.ligneRepo
+      .createQueryBuilder('l')
+      .innerJoinAndSelect('l.ecriture', 'e')
+      .leftJoinAndSelect('e.journal', 'journal')
+      .where('l.compte_id = :compteId', { compteId })
+      .andWhere('e.exercice_id = :exerciceId', {
+        exerciceId: exercice.id,
+      })
+      .andWhere('e.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('e.status IN (:...entryStatuses)', {
+        entryStatuses: [
+          StatutEcriture.POSTED,
+          StatutEcriture.REVERSED,
+        ],
+      })
+      .orderBy('e.date_ecriture', 'ASC')
+      .addOrderBy('e.id', 'ASC')
+      .getMany();
 
     let solde = 0;
     const mouvements = lignesFiltrees.map(l => {
@@ -94,6 +132,18 @@ export class RapportsService {
       .innerJoin('l.compte', 'c')
       .innerJoin('l.ecriture', 'e')
       .where('e.exercice_id = :eid', { eid: exercice.id })
+      .andWhere('e.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('c.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('e.status IN (:...entryStatuses)', {
+        entryStatuses: [
+          StatutEcriture.POSTED,
+          StatutEcriture.REVERSED,
+        ],
+      })
       .andWhere('c.classe IN (:...classes)', { classes: [ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7] })
       .groupBy('c.id')
       .orderBy('c.numero', 'ASC');
@@ -126,6 +176,18 @@ export class RapportsService {
       .innerJoin('l.compte', 'c')
       .innerJoin('l.ecriture', 'e')
       .where('e.exercice_id = :eid', { eid: exercice.id })
+      .andWhere('e.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('c.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('e.status IN (:...entryStatuses)', {
+        entryStatuses: [
+          StatutEcriture.POSTED,
+          StatutEcriture.REVERSED,
+        ],
+      })
       .andWhere("c.numero LIKE '445%'")
       .groupBy('c.id')
       .orderBy('c.numero', 'ASC');
@@ -145,8 +207,16 @@ export class RapportsService {
 
   private async resolveExercice(id?: number): Promise<ExerciceComptable> {
     const ex = id
-      ? await this.exerciceRepo.findOne({ where: { id } })
-      : await this.exerciceRepo.findOne({ where: { statut: StatutExercice.OUVERT }, order: { annee: 'DESC' } });
+      ? await this.exerciceRepo.findOne({
+          where: { id, tenant_id: getCurrentTenantId() },
+        })
+      : await this.exerciceRepo.findOne({
+          where: {
+            tenant_id: getCurrentTenantId(),
+            statut: StatutExercice.OUVERT,
+          },
+          order: { annee: 'DESC' },
+        });
     if (!ex) throw new Error('Aucun exercice comptable trouvé');
     return ex;
   }

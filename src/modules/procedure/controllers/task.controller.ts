@@ -6,38 +6,95 @@ import {
   Put,
   Delete,
   Body,
-  Param, Req
+  Param,
+  ParseEnumPipe,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { TaskService } from '../services/task.service';
 import { CreateTaskDto } from '../dto/create-task.dto';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { ResourcePolicyService } from 'src/core/resource-policy.service';
+import { TaskStatus } from '../entities/enums/instance-status.enum';
+import { ApiBearerAuth } from '@nestjs/swagger';
 
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('tasks')
 export class TaskController {
-  constructor(private readonly taskService: TaskService) {}
+  constructor(
+    private readonly taskService: TaskService,
+    private readonly resourcePolicy: ResourcePolicyService,
+  ) {}
 
   @Post('instances/:instanceId')
-  async create(@Param('instanceId') instanceId: string, @Body() dto: CreateTaskDto) {
+  @RequirePermissions('apply_procedure_transition')
+  async create(
+    @Param('instanceId') instanceId: string,
+    @Body() dto: CreateTaskDto,
+    @Req() req: any,
+  ) {
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      instanceId,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
     return this.taskService.create(instanceId, dto);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.taskService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: any) {
+    const task = await this.taskService.findOne(id);
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      task.instanceId,
+      req.user,
+    );
+    return task;
   }
 
   @Put(':id/complete')
+  @RequirePermissions('apply_procedure_transition')
   async complete(@Param('id') id: string, @Req() req: any) {
-    const userId = req.user?.id || 'system';
-    return this.taskService.complete(id, userId);
+    const task = await this.taskService.findOne(id);
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      task.instanceId,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    return this.taskService.complete(id, String(req.user.id));
   }
 
   @Put(':id/status')
-  async updateStatus(@Param('id') id: string, @Body('status') status: any) {
-    return this.taskService.updateStatus(id, status);
+  @RequirePermissions('apply_procedure_transition')
+  async updateStatus(
+    @Param('id') id: string,
+    @Body('status', new ParseEnumPipe(TaskStatus)) status: TaskStatus,
+    @Req() req: any,
+  ) {
+    const task = await this.taskService.findOne(id);
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      task.instanceId,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    return this.taskService.updateStatus(id, status, String(req.user.id));
   }
 
   @Delete(':id')
-  async delete(@Param('id') id: string) {
-    return this.taskService.delete(id);
+  @RequirePermissions('apply_procedure_transition')
+  async delete(@Param('id') id: string, @Req() req: any) {
+    const task = await this.taskService.findOne(id);
+    await this.resourcePolicy.assertProcedureInstanceAccess(
+      task.instanceId,
+      req.user,
+      'write',
+      'apply_procedure_transition',
+    );
+    return this.taskService.delete(id, String(req.user.id));
   }
 }

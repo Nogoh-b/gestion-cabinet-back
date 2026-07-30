@@ -1,246 +1,386 @@
-// src/modules/audiences/audience-decision.service.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, EntityManager } from 'typeorm';
-import { Audience, AudienceStatus } from './entities/audience.entity';
-import { DecisionAudienceDto, AddDecisionResponseDto } from './dto/decision-audience.dto';
-import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
-import { DossiersService } from '../dossiers/dossiers.service';
-import { plainToInstance } from 'class-transformer';
+import { createHash } from 'crypto';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import { AuditService } from 'src/core/audit/audit.service';
+import { OutboxService } from 'src/core/outbox/outbox.service';
+import { ResourceActor } from 'src/core/resource-policy.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
+import {
+  AddDecisionResponseDto,
+  DecisionAudienceDto,
+} from './dto/decision-audience.dto';
+import {
+  Audience,
+  AudienceRecordStatus,
+  AudienceStatus,
+} from './entities/audience.entity';
 
 @Injectable()
 export class AudienceDecisionService {
   constructor(
     @InjectRepository(Audience)
     private readonly audienceRepository: Repository<Audience>,
-    private readonly documentCustomerService: DocumentCustomerService,
-    private readonly dossierService: DossiersService,
+    private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
+    private readonly outboxService: OutboxService,
   ) {}
 
-  /**
-   * Ajouter une décision à une audience
-   */
   async addDecision(
     audienceId: number,
     decisionDto: DecisionAudienceDto,
-    entityManager?: EntityManager,
+    actor: ResourceActor,
   ): Promise<AddDecisionResponseDto> {
-    const repo = entityManager 
-      ? entityManager.getRepository(Audience) 
-      : this.audienceRepository;
-
-    const audience = await repo.findOne({
-      where: { id: audienceId },
-      relations: ['dossier', 'decision_documents'],
-    });
-
-    if (!audience) {
-      throw new NotFoundException(`Audience avec ID ${audienceId} non trouvée`);
-    }
-
-    // Vérifier que l'audience a bien eu lieu
-    if (audience.status !== AudienceStatus.HELD) {
-      throw new BadRequestException(
-        `Impossible d'ajouter une décision car l'audience n'est pas encore tenue. Statut actuel: ${audience.status}`
-      );
-    }
-
-    // Mettre à jour les champs de décision (tous optionnels)
-    const notes = decisionDto.decision_notes ?? decisionDto.notes;
-    if (decisionDto.decision !== undefined)      audience.decision_text    = decisionDto.decision;
-    if (decisionDto.outcome !== undefined)       audience.decision_outcome = decisionDto.outcome;
-    if (decisionDto.decision_date !== undefined) audience.decision_date    = decisionDto.decision_date;
-    if (notes !== undefined)                     audience.decision_notes   = notes;
-
-    // Gérer les documents de décision
-    if (decisionDto.document_decision_ids && decisionDto.document_decision_ids.length > 0) {
-      const documents = await this.documentCustomerService.findByIds(
-        decisionDto.document_decision_ids
-      );
-      audience.decision_documents = documents;
-      console.log(documents.map(doc => doc.id) ,  ' ', decisionDto.document_decision_ids );
-    }
-
-    // Mettre à jour le statut de l'audience si nécessaire
-    audience.status = AudienceStatus.HELD;
-    if (decisionDto.outcome) {
-      audience.outcome = decisionDto.outcome;
-    }
-
-    const savedAudience = await repo.save(audience);
-
-    // Mettre à jour le dossier en fonction de la décision
-    await this.updateDossierBasedOnDecision(savedAudience);
-
-    return plainToInstance(AddDecisionResponseDto, {
-      id: savedAudience.id,
-      decision: savedAudience.decision_text,
-      outcome: savedAudience.decision_outcome,
-      decision_date: savedAudience.decision_date,
-      documents: savedAudience.decision_documents,
-    });
+    return this.saveDecision(audienceId, decisionDto, actor);
   }
 
-  /**
-   * Mettre à jour le dossier en fonction de la décision
-   */
-  private async updateDossierBasedOnDecision(audience: Audience): Promise<void> {
-    const dossier = audience.dossier;
-    if (!dossier) return;
-
-    // Logique basée sur l'issue de la décision
-    // switch (audience.decision_outcome) {
-    //   case 'favorable':
-    //     // Décision favorable au client
-    //     if (dossier.status === DossierStatus.LITIGATION) {
-    //       await this.dossierService.updateStatus(
-    //         dossier.id,
-    //         DossierStatus.CLOSED_FAVORABLE
-    //       );
-    //     }
-    //     break;
-
-    //   case 'unfavorable':
-    //     // Décision défavorable - possibilité d'appel
-    //     if (dossier.status === DossierStatus.LITIGATION) {
-    //       // Vérifier les délais d'appel
-    //       const decisionDate = audience.decision_date;
-    //       const today = new Date();
-    //       const daysSinceDecision = Math.floor(
-    //         (today.getTime() - decisionDate.getTime()) / (1000 * 60 * 60 * 24)
-    //       );
-
-    //       if (daysSinceDecision <= 30) {
-    //         // Dans les délais d'appel
-    //         await this.dossierService.updateStatus(
-    //           dossier.id,
-    //           DossierStatus.APPEAL_POSSIBLE
-    //         );
-    //       } else {
-    //         await this.dossierService.updateStatus(
-    //           dossier.id,
-    //           DossierStatus.CLOSED_UNFAVORABLE
-    //         );
-    //       }
-    //     }
-    //     break;
-
-    //   case 'partial':
-    //     // Décision partiellement favorable
-    //     if (dossier.status === DossierStatus.LITIGATION) {
-    //       await this.dossierService.updateStatus(
-    //         dossier.id,
-    //         DossierStatus.PARTIAL_FAVORABLE
-    //       );
-    //     }
-    //     break;
-
-    //   default:
-    //     // Aucun changement automatique
-    //     break;
-    // }
-  }
-
-  /**
-   * Modifier une décision existante
-   */
   async updateDecision(
     audienceId: number,
     decisionDto: DecisionAudienceDto,
+    actor: ResourceActor,
   ): Promise<AddDecisionResponseDto> {
-    const audience = await this.audienceRepository.findOne({
-      where: { id: audienceId },
-      relations: ['decision_documents', 'dossier'],
-    });
-
-    if (!audience) {
-      throw new NotFoundException(`Audience avec ID ${audienceId} non trouvée`);
-    }
-
-    // Mise à jour des champs
-    if (decisionDto.decision) {
-      audience.decision_text = decisionDto.decision;
-    }
-    if (decisionDto.outcome) {
-      audience.decision_outcome = decisionDto.outcome;
-      audience.outcome = decisionDto.outcome;
-    }
-    if (decisionDto.decision_date) {
-      audience.decision_date = decisionDto.decision_date;
-    }
-    const notes = decisionDto.decision_notes ?? decisionDto.notes;
-    if (notes) {
-      audience.decision_notes = notes;
-    }
-
-    // Gérer l'ajout de nouveaux documents
-    if (decisionDto.document_decision_ids && decisionDto.document_decision_ids.length > 0) {
-      const newDocuments = await this.documentCustomerService.findByIds(
-        decisionDto.document_decision_ids
-      );
-      audience.decision_documents = [
-        ...(audience.decision_documents || []),
-        ...newDocuments,
-      ];
-    }
-
-    const savedAudience = await this.audienceRepository.save(audience);
-
-    return plainToInstance(AddDecisionResponseDto, {
-      id: savedAudience.id,
-      decision: savedAudience.decision_text,
-      outcome: savedAudience.decision_outcome,
-      decision_date: savedAudience.decision_date,
-      documents: savedAudience.decision_documents,
-    });
+    return this.saveDecision(audienceId, decisionDto, actor);
   }
 
-  /**
-   * Récupérer la décision d'une audience
-   */
-  async getDecision(audienceId: number): Promise<any> {
-    const audience = await this.audienceRepository.findOne({
-      where: { id: audienceId },
-      relations: ['decision_documents', 'decision_documents.document_type', 'dossier'],
-    });
-
-    if (!audience) {
-      throw new NotFoundException(`Audience avec ID ${audienceId} non trouvée`);
-    }
-
-    return {
-      id: audience.id,
-      decision_text: audience.decision_text,
-      decision_outcome: audience.decision_outcome,
-      decision_date: audience.decision_date,
-      decision_notes: audience.decision_notes,
-      documents: audience.decision_documents,
-      dossier: audience.dossier,
-      audience_date: audience.audience_date,
-      status: audience.status,
-    };
-  }
-
-  /**
-   * Supprimer un document de la décision
-   */
-  async removeDecisionDocument(
+  private async saveDecision(
     audienceId: number,
-    documentId: number,
-  ): Promise<void> {
+    decisionDto: DecisionAudienceDto,
+    actor: ResourceActor,
+  ): Promise<AddDecisionResponseDto> {
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const audience = await manager.findOne(Audience, {
+        where: { id: audienceId },
+        relations: ['decision_documents'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!audience) {
+        throw new NotFoundException(
+          `Audience avec ID ${audienceId} non trouvée`,
+        );
+      }
+      if (audience.status !== AudienceStatus.HELD) {
+        throw new BadRequestException(
+          `La décision ne peut être rédigée qu'après la tenue de l'audience`,
+        );
+      }
+
+      const previousStatus = audience.decision_record_status;
+      const previousVersion = audience.decision_record_version;
+      if (previousStatus === AudienceRecordStatus.SEALED) {
+        if (!decisionDto.amendment_reason?.trim()) {
+          throw new BadRequestException(
+            'Une correction après scellement exige un motif d’amendement',
+          );
+        }
+        await this.archiveSealedDecision(
+          manager,
+          audience,
+          decisionDto.amendment_reason,
+          actor,
+        );
+        audience.decision_record_version += 1;
+        audience.decision_record_status = AudienceRecordStatus.DRAFT;
+        audience.decision_record_hash = null;
+        audience.decision_sealed_at = null;
+      } else if (previousStatus === AudienceRecordStatus.VALIDATED) {
+        audience.decision_record_status = AudienceRecordStatus.DRAFT;
+      }
+
+      if (decisionDto.decision !== undefined) {
+        audience.decision_text = decisionDto.decision;
+      }
+      if (decisionDto.outcome !== undefined) {
+        audience.decision_outcome = decisionDto.outcome;
+        audience.outcome = decisionDto.outcome;
+      }
+      if (decisionDto.decision_date !== undefined) {
+        audience.decision_date = decisionDto.decision_date;
+      }
+      const notes = decisionDto.decision_notes ?? decisionDto.notes;
+      if (notes !== undefined) audience.decision_notes = notes;
+
+      if (decisionDto.document_decision_ids !== undefined) {
+        const documents = await manager
+          .getRepository(DocumentCustomer)
+          .findByIds(decisionDto.document_decision_ids);
+        this.assertDocumentsBelongToDossier(
+          documents,
+          decisionDto.document_decision_ids,
+          Number(audience.dossier_id),
+        );
+        audience.decision_documents = documents;
+      }
+
+      const saved = await manager.save(audience);
+      await this.auditService.append(manager, {
+        actorId: actor.userId ?? actor.id,
+        action: 'audience.decision.draft_saved',
+        resourceType: 'Audience',
+        resourceId: audience.id,
+        dossierId: Number(audience.dossier_id),
+        beforeState: {
+          status: previousStatus,
+          version: previousVersion,
+        },
+        afterState: {
+          status: saved.decision_record_status,
+          version: saved.decision_record_version,
+        },
+        justification: decisionDto.amendment_reason ?? null,
+      });
+      return this.toResponse(saved);
+    });
+  }
+
+  async validateDecision(
+    audienceId: number,
+    actor: ResourceActor,
+  ): Promise<AddDecisionResponseDto> {
+    return this.changeDecisionStatus(
+      audienceId,
+      actor,
+      AudienceRecordStatus.DRAFT,
+      AudienceRecordStatus.VALIDATED,
+    );
+  }
+
+  async sealDecision(
+    audienceId: number,
+    actor: ResourceActor,
+  ): Promise<AddDecisionResponseDto> {
+    return this.changeDecisionStatus(
+      audienceId,
+      actor,
+      AudienceRecordStatus.VALIDATED,
+      AudienceRecordStatus.SEALED,
+    );
+  }
+
+  private async changeDecisionStatus(
+    audienceId: number,
+    actor: ResourceActor,
+    expected: AudienceRecordStatus,
+    target: AudienceRecordStatus,
+  ): Promise<AddDecisionResponseDto> {
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const audience = await manager.findOne(Audience, {
+        where: { id: audienceId },
+        relations: ['decision_documents'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!audience) {
+        throw new NotFoundException(
+          `Audience avec ID ${audienceId} non trouvée`,
+        );
+      }
+      if (audience.decision_record_status !== expected) {
+        throw new BadRequestException(
+          `La décision doit être ${expected} avant le passage à ${target}`,
+        );
+      }
+      if (!audience.decision_text?.trim() || !audience.decision_date) {
+        throw new BadRequestException(
+          'Le texte et la date de la décision sont obligatoires',
+        );
+      }
+
+      audience.decision_record_status = target;
+      if (target === AudienceRecordStatus.SEALED) {
+        audience.decision_record_hash = this.hashDecision(audience);
+        audience.decision_sealed_at = new Date();
+      }
+      const saved = await manager.save(audience);
+
+      if (target === AudienceRecordStatus.SEALED) {
+        await this.outboxService.enqueue(manager, {
+          eventType: 'audience.decision.sealed',
+          aggregateType: 'Audience',
+          aggregateId: audience.id,
+          idempotencyKey:
+            `audience-decision-sealed:${audience.id}:` +
+            `${audience.decision_record_version}:${audience.decision_record_hash}`,
+          payload: {
+            audienceId: audience.id,
+            dossierId: Number(audience.dossier_id),
+            procedureInstanceId: audience.procedure_instance_id ?? null,
+            decisionVersion: audience.decision_record_version,
+            decisionHash: audience.decision_record_hash,
+            decisionOutcome: audience.decision_outcome ?? null,
+          },
+        });
+      }
+      await this.auditService.append(manager, {
+        actorId: actor.userId ?? actor.id,
+        action:
+          target === AudienceRecordStatus.SEALED
+            ? 'audience.decision.sealed'
+            : 'audience.decision.validated',
+        resourceType: 'Audience',
+        resourceId: audience.id,
+        dossierId: Number(audience.dossier_id),
+        afterState: {
+          status: target,
+          version: audience.decision_record_version,
+          hash: audience.decision_record_hash,
+        },
+      });
+      return this.toResponse(saved);
+    });
+  }
+
+  async getDecision(audienceId: number): Promise<Record<string, any>> {
     const audience = await this.audienceRepository.findOne({
       where: { id: audienceId },
       relations: ['decision_documents'],
     });
-
     if (!audience) {
-      throw new NotFoundException(`Audience avec ID ${audienceId} non trouvée`);
+      throw new NotFoundException(
+        `Audience avec ID ${audienceId} non trouvée`,
+      );
     }
+    return {
+      ...this.toResponse(audience),
+      decision_text: audience.decision_text,
+      decision_outcome: audience.decision_outcome,
+      decision_notes: audience.decision_notes,
+      record_status: audience.decision_record_status,
+      record_version: audience.decision_record_version,
+      record_hash: audience.decision_record_hash,
+      sealed_at: audience.decision_sealed_at,
+      audience_status: audience.status,
+    };
+  }
 
-    audience.decision_documents = audience.decision_documents.filter(
-      (doc) => doc.id !== documentId
+  async removeDecisionDocument(
+    audienceId: number,
+    documentId: number,
+    actor: ResourceActor,
+  ): Promise<void> {
+    await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const audience = await manager.findOne(Audience, {
+        where: { id: audienceId },
+        relations: ['decision_documents'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!audience) {
+        throw new NotFoundException(
+          `Audience avec ID ${audienceId} non trouvée`,
+        );
+      }
+      if (audience.decision_record_status !== AudienceRecordStatus.DRAFT) {
+        throw new BadRequestException(
+          'Les pièces ne sont modifiables que sur une décision en brouillon',
+        );
+      }
+      const before = audience.decision_documents?.map((doc) => doc.id) ?? [];
+      audience.decision_documents = (audience.decision_documents ?? []).filter(
+        (document) => document.id !== documentId,
+      );
+      await manager.save(audience);
+      await this.auditService.append(manager, {
+        actorId: actor.userId ?? actor.id,
+        action: 'audience.decision.document_removed',
+        resourceType: 'Audience',
+        resourceId: audience.id,
+        dossierId: Number(audience.dossier_id),
+        beforeState: { documentIds: before },
+        afterState: {
+          documentIds: audience.decision_documents.map((doc) => doc.id),
+        },
+      });
+    });
+  }
+
+  private assertDocumentsBelongToDossier(
+    documents: DocumentCustomer[],
+    requestedIds: number[],
+    dossierId: number,
+  ): void {
+    const foundIds = new Set(documents.map((document) => Number(document.id)));
+    const missingIds = requestedIds.filter((id) => !foundIds.has(Number(id)));
+    if (missingIds.length) {
+      throw new NotFoundException(
+        `Documents introuvables: ${missingIds.join(', ')}`,
+      );
+    }
+    const foreignIds = documents
+      .filter((document) => Number(document.dossier_id) !== dossierId)
+      .map((document) => document.id);
+    if (foreignIds.length) {
+      throw new BadRequestException(
+        `Les documents ${foreignIds.join(', ')} n'appartiennent pas au dossier`,
+      );
+    }
+  }
+
+  private hashDecision(audience: Audience): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          content: audience.decision_text,
+          date: audience.decision_date,
+          outcome: audience.decision_outcome,
+          notes: audience.decision_notes,
+          documentIds: (audience.decision_documents ?? [])
+            .map((document) => document.id)
+            .sort((left, right) => left - right),
+          version: audience.decision_record_version,
+        }),
+      )
+      .digest('hex');
+  }
+
+  private async archiveSealedDecision(
+    manager: EntityManager,
+    audience: Audience,
+    amendmentReason: string,
+    actor: ResourceActor,
+  ): Promise<void> {
+    await manager.query(
+      `INSERT INTO audience_record_revisions
+         (tenant_id, audience_id, record_type, version, record_status,
+          content, content_hash, amendment_reason, amended_by, created_at)
+       VALUES (?, ?, 'DECISION', ?, 'SEALED', ?, ?, ?, ?, UTC_TIMESTAMP(6))`,
+      [
+        getCurrentTenantId(),
+        audience.id,
+        audience.decision_record_version,
+        JSON.stringify({
+          content: audience.decision_text,
+          date: audience.decision_date,
+          outcome: audience.decision_outcome,
+          notes: audience.decision_notes,
+          documentIds: (audience.decision_documents ?? [])
+            .map((document) => document.id)
+            .sort((left, right) => left - right),
+        }),
+        audience.decision_record_hash,
+        amendmentReason,
+        String(actor.userId ?? actor.id),
+      ],
     );
+  }
 
-    await this.audienceRepository.save(audience);
+  private toResponse(audience: Audience): AddDecisionResponseDto {
+    return {
+      id: audience.id,
+      decision: audience.decision_text,
+      outcome: audience.decision_outcome,
+      decision_date: audience.decision_date,
+      record_status: audience.decision_record_status,
+      record_version: audience.decision_record_version,
+      record_hash: audience.decision_record_hash,
+      sealed_at: audience.decision_sealed_at,
+      documents: (audience.decision_documents ?? []).map((document) => ({
+        id: document.id,
+        name: document.name,
+        current_version_id: document.currentVersionId ?? null,
+      })),
+    };
   }
 }

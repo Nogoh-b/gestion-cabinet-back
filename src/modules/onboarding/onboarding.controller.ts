@@ -1,8 +1,18 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Res,
+} from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from 'src/core/decorators/public.decorator';
 import { OnboardingService } from './onboarding.service';
 import { OnboardingDto } from './onboarding.dto';
+import { setSessionCookies } from 'src/core/auth/session-cookie.util';
 
 /**
  * Toutes les routes de ce controller sont publiques (pas d'authentification).
@@ -22,8 +32,23 @@ export class OnboardingController {
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Créer un nouveau cabinet (plan trial)' })
-  register(@Body() dto: OnboardingDto) {
-    return this.service.register(dto);
+  async register(
+    @Body() dto: OnboardingDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.service.register(dto);
+    if (result?.access_token && result?.refresh_token) {
+      setSessionCookies(response, {
+        accessToken: result.access_token,
+        refreshToken: result.refresh_token,
+      });
+    }
+    const {
+      access_token: _accessToken,
+      refresh_token: _refreshToken,
+      ...body
+    } = result;
+    return body;
   }
 
   /**

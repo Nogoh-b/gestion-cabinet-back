@@ -429,17 +429,81 @@ export class SubscriptionsService {
     return sub;
   }
 
-  /** Webhook passerelle : confirme/échoue un paiement via sa référence. */
-  async handleWebhook(reference: string, status: 'paid' | 'failed' = 'paid'): Promise<void> {
+  /** Webhook passerelle signé et idempotent, identifié par un événement unique. */
+  async handleWebhook(
+    reference: string,
+    eventId: string,
+    status: 'paid' | 'failed' = 'paid',
+  ): Promise<void> {
     if (!reference) throw new BadRequestException('Référence manquante');
-    const payment = await this.payRepo.findOne({ where: { reference } });
-    if (!payment) throw new NotFoundException('Paiement introuvable');
-    if (status === 'failed') {
-      payment.status = 'failed';
-      await this.payRepo.save(payment);
-      return;
-    }
-    await this.confirmPayment(payment);
+    if (!eventId) throw new BadRequestException('Identifiant d’événement manquant');
+    await this.dataSource.transaction('SERIALIZABLE', async manager => {
+      const insertion = await manager.query(
+        `INSERT IGNORE INTO subscription_webhook_events
+           (event_id, payment_reference, payment_status, received_at)
+         VALUES (?, ?, ?, UTC_TIMESTAMP(6))`,
+        [eventId, reference, status],
+      );
+      const affectedRows = Number(
+        insertion?.affectedRows ?? insertion?.[0]?.affectedRows ?? 0,
+      );
+      if (affectedRows === 0) return;
+
+      const paymentRepository = manager.getRepository(SubscriptionPayment);
+      const subscriptionRepository = manager.getRepository(Subscription);
+      const cabinetRepository = manager.getRepository(Cabinet);
+      const payment = await paymentRepository
+        .createQueryBuilder('payment')
+        .setLock('pessimistic_write')
+        .where('payment.reference = :reference', { reference })
+        .getOne();
+      if (!payment) throw new NotFoundException('Paiement introuvable');
+
+      payment.last_webhook_event_id = eventId;
+      payment.last_webhook_at = new Date();
+      if (payment.status !== 'paid') {
+        if (status === 'failed') {
+          payment.status = 'failed';
+        } else {
+          payment.status = 'paid';
+          payment.paid_at = new Date();
+          payment.method = payment.method ?? this.gateway.providerName;
+        }
+      }
+      await paymentRepository.save(payment);
+
+      if (status === 'paid') {
+        const subscription = await subscriptionRepository
+          .createQueryBuilder('subscription')
+          .setLock('pessimistic_write')
+          .where('subscription.id = :id', { id: payment.subscription_id })
+          .getOne();
+        if (subscription && subscription.status !== 'cancelled') {
+          if (subscription.status === 'pending_payment') {
+            subscription.status = subscription.is_trial ? 'trial' : 'active';
+          }
+          await subscriptionRepository.save(subscription);
+          const cabinet = await cabinetRepository
+            .createQueryBuilder('cabinet')
+            .setLock('pessimistic_write')
+            .where('cabinet.id = :id', { id: subscription.cabinet_id })
+            .getOne();
+          if (cabinet) {
+            cabinet.status = subscription.is_trial ? 'trial' : 'active';
+            cabinet.trial_ends_at = subscription.ends_at;
+            cabinet.plan_id = subscription.plan_id || cabinet.plan_id;
+            await cabinetRepository.save(cabinet);
+          }
+        }
+      }
+
+      await manager.query(
+        `UPDATE subscription_webhook_events
+         SET payment_id = ?, processed_at = UTC_TIMESTAMP(6)
+         WHERE event_id = ?`,
+        [payment.id, eventId],
+      );
+    });
   }
 
   /**
@@ -447,6 +511,9 @@ export class SubscriptionsService {
    * Disponible uniquement avec la passerelle de test.
    */
   async simulatePayment(cabinetId: number, paymentId?: number): Promise<CurrentSubscription> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Simulation indisponible en production');
+    }
     if (!this.gateway.isTest) {
       throw new ForbiddenException('Simulation indisponible : passerelle réelle active');
     }

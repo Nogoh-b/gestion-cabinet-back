@@ -1,8 +1,9 @@
 // src/chat/services/chat.service.ts
 import { plainToInstance } from 'class-transformer';
+import { createHash } from 'crypto';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { In, Repository } from 'typeorm';
-import { BadRequestException, forwardRef, Injectable, NotFoundException } from '@nestjs/common';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
 
 
@@ -16,9 +17,17 @@ import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
 import { MessageRead } from '../../entities/message-read.entity';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
-import { Attachment } from '../../entities/attachment.entity';
-import { FilesUtil } from 'src/core/shared/utils/file.util';
-import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import {
+  Attachment,
+  AttachmentType,
+  ChatAttachmentSecurityStatus,
+} from '../../entities/attachment.entity';
+import {
+  ChatAttachmentStorageService,
+  StoredChatAttachment,
+} from './chat-attachment-storage.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { AuditService } from 'src/core/audit/audit.service';
 
 
 
@@ -40,9 +49,28 @@ export class ChatService {
     private userRepository: Repository<Employee>,
     @InjectRepository(Attachment)
     private attachmentRepository: Repository<Attachment>,
+    private readonly attachmentStorage: ChatAttachmentStorageService,
+    private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
+  ) {}
 
-  ) {
-    console.log(forwardRef)
+  private async getParticipantConversation(
+    conversationId: number,
+    userId: number,
+  ): Promise<Conversation> {
+    const id = Number(conversationId);
+    const actorId = Number(userId);
+    if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(actorId) || actorId <= 0) {
+      throw new NotFoundException('Conversation non trouvée');
+    }
+    const conversation = await this.conversationRepository.findOne({
+      where: { id, tenant_id: getCurrentTenantId() },
+      relations: ['participants', 'participants.user', 'dossier'],
+    });
+    if (!conversation?.participants?.some(participant => participant.id === actorId)) {
+      throw new NotFoundException('Conversation non trouvée');
+    }
+    return conversation;
   }
 
   private sanitizeReferences(references?: ChatReferenceDto[]): ChatReferenceDto[] {
@@ -100,12 +128,16 @@ export class ChatService {
   }
 
   async createConversation(dto: CreateConversationDto, creatorId: number): Promise<Conversation> {
-    const ids = [...dto.participantIds , creatorId]
-    console.log('Creating conversation with DTO:', dto, 'and creatorId:', [...dto.participantIds , creatorId]);
-    const participants = await this.userRepository.findByIds(ids);
+    const ids = [...new Set([...(dto.participantIds ?? []).map(Number), Number(creatorId)])];
+    const participants = await this.userRepository.find({
+      where: {
+        id: In(ids),
+        tenant_id: getCurrentTenantId(),
+      },
+    });
     
     if (participants.length !== ids.length) {
-      // throw new NotFoundException('Certains utilisateurs n\'existent pas');
+      throw new NotFoundException('Un ou plusieurs participants sont introuvables');
     }
 
     const conversation = this.conversationRepository.create({
@@ -118,8 +150,16 @@ export class ChatService {
   }
 
   async createGroup(dto: CreateGroupDto, creatorId: number): Promise<Conversation> {
-    const creator = await this.userRepository.findOne({ where: { id: creatorId } });
-    const participants = await this.userRepository.findByIds([creatorId, ...dto.participantIds]);
+    const ids = [...new Set([Number(creatorId), ...(dto.participantIds ?? []).map(Number)])];
+    const participants = await this.userRepository.find({
+      where: {
+        id: In(ids),
+        tenant_id: getCurrentTenantId(),
+      },
+    });
+    if (participants.length !== ids.length) {
+      throw new NotFoundException('Un ou plusieurs participants sont introuvables');
+    }
     
     const conversation = this.conversationRepository.create({
       name: dto.name,
@@ -133,62 +173,7 @@ export class ChatService {
   }
 
   async sendMessage(dto: SendMessageDto, senderId: number): Promise<any> {
-      const references = this.sanitizeReferences(dto.references);
-      const conversation = await this.conversationRepository.findOne({
-          where: { id: dto.conversationId },
-          relations: ['participants', 'participants.user'],
-      });
-
-      if (!conversation) {
-          throw new NotFoundException('Conversation non trouvée');
-      }
-
-      const sender = await this.userService.findOne(senderId);
-
-      if (!sender) {
-          throw new NotFoundException(`Utilisateur avec l'ID ${senderId} non trouvé`);
-      }
-
-      const message = this.messageRepository.create({
-          content: dto.content ?? '',
-          sender,
-          conversation,
-          references,
-      });
-
-      const savedMessage = await this.messageRepository.save(message);
-
-      // ✅ METTRE À JOUR lastMessageData (la vraie colonne)
-      await this.conversationRepository.update(dto.conversationId, {
-          lastMessageAt: new Date(),
-          lastMessageData: {  // ← Utiliser lastMessageData, pas lastMessage
-              content: dto.content ?? '',
-              createdAt: new Date().toISOString(),
-              senderId: senderId,
-              senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
-              referencesCount: references.length,
-          }
-      });
-
-      const finalMessage = await this.messageRepository.findOne({
-          where: { id: savedMessage.id },
-          relations: ['sender', 'sender.user', 'conversation', 'reads'],
-      });
-
-      if (!finalMessage) {
-          throw new NotFoundException('Le message enregistré est introuvable');
-      }
-
-      const reads = conversation.participants.map(p => ({
-          message: savedMessage,
-          reader: p,
-          isRead: p.id === senderId,
-          isReceive: p.id === senderId,
-      }));
-
-      await this.messageReadRepository.save(reads);
-
-      return plainToInstance(MessageResponseDto, finalMessage);
+    return this.sendMessageWithAttachments(dto, senderId, []);
   }
 
 
@@ -204,14 +189,10 @@ export class ChatService {
     }
 
     // 1. Récupération et validation de la conversation
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: dto.conversationId },
-      relations: ['participants', 'participants.user'],
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation non trouvée');
-    }
+    const conversation = await this.getParticipantConversation(
+      dto.conversationId,
+      senderId,
+    );
 
     // 2. Validation de l'expéditeur
     const sender = await this.userService.findOne(senderId);
@@ -219,75 +200,102 @@ export class ChatService {
       throw new NotFoundException(`Utilisateur avec l'ID ${senderId} non trouvé`);
     }
 
-    // 3. Validation des fichiers
-    // const validatedFiles = await this.validateFiles(files);
-    
-    // 4. Upload des fichiers
-    const uploadedAttachments = await FilesUtil.uploadFiles(files, UPLOAD_DOCS_PATH, 'docType.mimetype', {
-            maxSizeKB: 300, // 3MB
-            quality: 70,
-          });
-
-    // 5. Création du message
-    const message = this.messageRepository.create({
-      content: dto.content ?? '',
-      sender,
-      conversation,
-      hasAttachments: uploadedAttachments.length > 0,
-      references,
-    });
-
-    const savedMessage = await this.messageRepository.save(message);
-
-    // 6. Création des attachments liés au message
-    if (uploadedAttachments.length > 0) {
-      const attachments = uploadedAttachments.map(fileInfo => 
-        this.attachmentRepository.create({
-          ...fileInfo,
-          message: savedMessage,
-        })
+    // 3. Analyse antivirus obligatoire et stockage privé.
+    const uploadedAttachments: StoredChatAttachment[] = [];
+    try {
+      for (const file of files) {
+        uploadedAttachments.push(await this.attachmentStorage.store(file));
+      }
+    } catch (error) {
+      await Promise.all(
+        uploadedAttachments.map(item =>
+          this.attachmentStorage.remove(item.storageKey).catch(() => undefined),
+        ),
       );
-      await this.attachmentRepository.save(attachments);
-      savedMessage.attachments = attachments;
+      throw error;
     }
 
-    // 7. Mise à jour de la conversation
-    const lastMessageData: any = {
-      content: dto.content || (files.length > 0 ? '📎 Pièce jointe' : ''),
-      createdAt: new Date().toISOString(),
-      senderId: senderId,
-      senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
-      referencesCount: references.length,
-    };
+    const tenantId = getCurrentTenantId();
+    try {
+      return await this.dataSource.transaction(async manager => {
+        const messageRepository = manager.getRepository(Message);
+        const attachmentRepository = manager.getRepository(Attachment);
+        const conversationRepository = manager.getRepository(Conversation);
+        const messageReadRepository = manager.getRepository(MessageRead);
+        const message = messageRepository.create({
+          content: dto.content ?? '',
+          sender,
+          conversation,
+          hasAttachments: uploadedAttachments.length > 0,
+          references,
+          tenant_id: tenantId,
+        });
+        const savedMessage = await messageRepository.save(message);
+        const attachments = uploadedAttachments.map(fileInfo =>
+          attachmentRepository.create({
+            ...fileInfo,
+            fileType: fileInfo.fileType as AttachmentType,
+            securityStatus: ChatAttachmentSecurityStatus.CLEAN,
+            conversationId: conversation.id,
+            uploadedById: senderId,
+            message: savedMessage,
+            tenant_id: tenantId,
+          }),
+        );
+        if (attachments.length) {
+          await attachmentRepository.save(attachments);
+        }
+        savedMessage.attachments = attachments;
 
-    if (uploadedAttachments.length > 0) {
-      lastMessageData.hasAttachments = true;
-      lastMessageData.attachmentsCount = uploadedAttachments.length;
-      lastMessageData.attachmentsTypes = [...new Set(uploadedAttachments.map(a => a.fileMimeType))];
+        const lastMessageData: any = {
+          content: dto.content || (files.length > 0 ? '📎 Pièce jointe' : ''),
+          createdAt: new Date().toISOString(),
+          senderId,
+          senderName:
+            sender.user?.full_name ||
+            sender.user?.username ||
+            'Utilisateur',
+          referencesCount: references.length,
+          hasAttachments: attachments.length > 0,
+          attachmentsCount: attachments.length,
+          attachmentsTypes: [
+            ...new Set(uploadedAttachments.map(item => item.mimeType)),
+          ],
+        };
+        await conversationRepository.update(
+          { id: conversation.id, tenant_id: tenantId },
+          { lastMessageAt: new Date(), lastMessageData },
+        );
+        const reads = conversation.participants.map(participant =>
+          messageReadRepository.create({
+            message: savedMessage,
+            reader: participant,
+            isRead: participant.id === senderId,
+            isReceive: participant.id === senderId,
+            tenant_id: tenantId,
+          }),
+        );
+        await messageReadRepository.save(reads);
+        const finalMessage = await messageRepository.findOne({
+          where: { id: savedMessage.id, tenant_id: tenantId },
+          relations: [
+            'sender',
+            'sender.user',
+            'conversation',
+            'reads',
+            'attachments',
+          ],
+        });
+        return plainToInstance(MessageResponseDto, finalMessage);
+      });
+    } catch (error) {
+      await Promise.all(
+        uploadedAttachments.map(item =>
+          this.attachmentStorage.remove(item.storageKey).catch(() => undefined),
+        ),
+      );
+      throw error;
     }
-
-    await this.conversationRepository.update(dto.conversationId, {
-      lastMessageAt: new Date(),
-      lastMessageData: lastMessageData,
-    });
-
-    // 8. Création des entrées de lecture
-    const reads = conversation.participants.map(p => ({
-      message: savedMessage,
-      reader: p,
-      isRead: p.id === senderId,
-      isReceive: p.id === senderId,
-    }));
-
-    await this.messageReadRepository.save(reads);
-
-    // 9. Récupération du message final avec toutes ses relations
-    const finalMessage = await this.messageRepository.findOne({
-      where: { id: savedMessage.id },
-      relations: ['sender', 'sender.user', 'conversation', 'reads', 'attachments'],
-    });
-
-    return plainToInstance(MessageResponseDto, finalMessage);
   }
 
 
@@ -303,14 +311,10 @@ export class ChatService {
     }
 
     // 1. Récupération et validation de la conversation
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: dto.conversationId },
-      relations: ['participants', 'participants.user'],
-    });
-
-    if (!conversation) {
-      throw new NotFoundException('Conversation non trouvée');
-    }
+    const conversation = await this.getParticipantConversation(
+      dto.conversationId,
+      senderId,
+    );
 
     // 2. Validation de l'expéditeur
     const sender = await this.userService.findOne(senderId);
@@ -321,102 +325,134 @@ export class ChatService {
     // 3. Récupération des attachments existants par leurs IDs
     let attachments: Attachment[] = [];
     if (attachmentIds.length > 0) {
-      attachments = await this.attachmentRepository.findByIds(attachmentIds);
+      const uniqueAttachmentIds = [...new Set(attachmentIds.map(Number))];
+      attachments = await this.attachmentRepository.find({
+        where: {
+          id: In(uniqueAttachmentIds),
+          tenant_id: getCurrentTenantId(),
+          conversationId: conversation.id,
+          uploadedById: senderId,
+          message: IsNull(),
+        },
+      });
       
       // Vérifier que tous les IDs sont valides
-      if (attachments.length !== attachmentIds.length) {
-        const foundIds = attachments.map(a => a.id);
-        const missingIds = attachmentIds.filter(id => !foundIds.includes(id));
-        throw new NotFoundException(`Attachments non trouvés: ${missingIds.join(', ')}`);
-      }
-
-      console.log(attachments)
-
-      // Optionnel: Vérifier que les attachments n'appartiennent pas déjà à un message
-      const alreadyLinked = attachments.some(a => a.message !== null && a.message !== undefined );
-      if (alreadyLinked) {
-        throw new BadRequestException('Certains attachments sont déjà liés à un message');
+      if (attachments.length !== uniqueAttachmentIds.length) {
+        throw new NotFoundException('Une ou plusieurs pièces jointes sont introuvables');
       }
     }
 
-    // 4. Création du message
-    const message = this.messageRepository.create({
-      content: dto.content ?? '',
-      sender,
-      conversation,
-      hasAttachments: attachments.length > 0,
-      references,
-    });
+    const tenantId = getCurrentTenantId();
+    return this.dataSource.transaction(async manager => {
+      const messageRepository = manager.getRepository(Message);
+      const attachmentRepository = manager.getRepository(Attachment);
+      const conversationRepository = manager.getRepository(Conversation);
+      const messageReadRepository = manager.getRepository(MessageRead);
+      const message = messageRepository.create({
+        content: dto.content ?? '',
+        sender,
+        conversation,
+        hasAttachments: attachments.length > 0,
+        references,
+        tenant_id: tenantId,
+      });
+      const savedMessage = await messageRepository.save(message);
 
-    const savedMessage = await this.messageRepository.save(message);
-
-    // 5. Liaison des attachments au message
-    if (attachments.length > 0) {
-      // Mettre à jour chaque attachment avec le message
-      await Promise.all(attachments.map(attachment => 
-        this.attachmentRepository.update(attachment.id, {
-          message: savedMessage
-        })
-      ));
-      
-      // Mettre à jour la relation pour le retour
+      for (const attachment of attachments) {
+        const claim = await attachmentRepository
+          .createQueryBuilder()
+          .update(Attachment)
+          .set({ message: savedMessage })
+          .where('id = :id', { id: attachment.id })
+          .andWhere('tenant_id = :tenantId', { tenantId })
+          .andWhere('conversation_id = :conversationId', {
+            conversationId: conversation.id,
+          })
+          .andWhere('uploaded_by_id = :senderId', { senderId })
+          .andWhere('messageId IS NULL')
+          .execute();
+        if (claim.affected !== 1) {
+          throw new NotFoundException(
+            'Une ou plusieurs pièces jointes sont introuvables',
+          );
+        }
+        attachment.message = savedMessage;
+      }
       savedMessage.attachments = attachments;
-    }
 
-    // 6. Mise à jour de la conversation
-    const lastMessageData: any = {
-      content: dto.content || (attachmentIds.length > 0 ? '📎 Pièce jointe' : ''),
-      createdAt: new Date().toISOString(),
-      senderId: senderId,
-      senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
-      referencesCount: references.length,
-    };
+      const lastMessageData: any = {
+        content:
+          dto.content || (attachmentIds.length > 0 ? '📎 Pièce jointe' : ''),
+        createdAt: new Date().toISOString(),
+        senderId,
+        senderName:
+          sender.user?.full_name ||
+          sender.user?.username ||
+          'Utilisateur',
+        referencesCount: references.length,
+      };
+      if (attachments.length > 0) {
+        lastMessageData.hasAttachments = true;
+        lastMessageData.attachmentsCount = attachments.length;
+        lastMessageData.attachmentsTypes = [
+          ...new Set(attachments.map(attachment => attachment.mimeType)),
+        ];
+        lastMessageData.attachmentIds = attachments.map(
+          attachment => attachment.id,
+        );
+      }
+      await conversationRepository.update(
+        { id: conversation.id, tenant_id: tenantId },
+        { lastMessageAt: new Date(), lastMessageData },
+      );
 
-    if (attachments.length > 0) {
-      lastMessageData.hasAttachments = true;
-      lastMessageData.attachmentsCount = attachments.length;
-      lastMessageData.attachmentsTypes = [...new Set(attachments.map(a => a.mimeType))];
-      lastMessageData.attachmentIds = attachmentIds; // Optionnel: stocker les IDs
-    }
+      const reads = conversation.participants.map(participant =>
+        messageReadRepository.create({
+          message: savedMessage,
+          reader: participant,
+          isRead: participant.id === senderId,
+          isReceive: participant.id === senderId,
+          tenant_id: tenantId,
+        }),
+      );
+      await messageReadRepository.save(reads);
 
-    await this.conversationRepository.update(dto.conversationId, {
-      lastMessageAt: new Date(),
-      lastMessageData: lastMessageData,
+      const finalMessage = await messageRepository.findOne({
+        where: { id: savedMessage.id, tenant_id: tenantId },
+        relations: [
+          'sender',
+          'sender.user',
+          'conversation',
+          'reads',
+          'attachments',
+        ],
+      });
+      return plainToInstance(MessageResponseDto, finalMessage);
     });
-
-    // 7. Création des entrées de lecture
-    const reads = conversation.participants.map(p => ({
-      message: savedMessage,
-      reader: p,
-      isRead: p.id === senderId,
-      isReceive: p.id === senderId,
-    }));
-
-    await this.messageReadRepository.save(reads);
-
-    // 8. Récupération du message final avec toutes ses relations
-    const finalMessage = await this.messageRepository.findOne({
-      where: { id: savedMessage.id },
-      relations: ['sender', 'sender.user', 'conversation', 'reads', 'attachments'],
-    });
-
-    return plainToInstance(MessageResponseDto, finalMessage);
   }
 
   async uploadAttachments(
-    senderId: number, 
+    senderId: number,
+    conversationId: number,
     files: Express.Multer.File[]
   ): Promise<number[]> {
-
-    const uploadedAttachments = await FilesUtil.uploadFiles(
-      files,
-      UPLOAD_DOCS_PATH,
-      'docType.mimetype',
-      {
-        maxSizeKB: 300,
-        quality: 70,
-      }
+    const conversation = await this.getParticipantConversation(
+      conversationId,
+      senderId,
     );
+    const uploadedAttachments: StoredChatAttachment[] = [];
+    try {
+      for (const file of files) {
+        uploadedAttachments.push(await this.attachmentStorage.store(file));
+      }
+    } catch (error) {
+      await Promise.all(
+        uploadedAttachments.map(item =>
+          this.attachmentStorage.remove(item.storageKey).catch(() => undefined),
+        ),
+      );
+      throw error;
+    }
 
     if (!uploadedAttachments.length) {
       return [];
@@ -426,14 +462,96 @@ export class ChatService {
     const attachments = uploadedAttachments.map(fileInfo =>
       this.attachmentRepository.create({
         ...fileInfo,
+        fileType: fileInfo.fileType as AttachmentType,
+        securityStatus: ChatAttachmentSecurityStatus.CLEAN,
+        conversationId: conversation.id,
+        uploadedById: senderId,
       })
     );
 
     // ⚠️ save retourne les entités AVEC leurs ids
-    const savedAttachments = await this.attachmentRepository.save(attachments);
+    let savedAttachments: Attachment[];
+    try {
+      savedAttachments = await this.attachmentRepository.save(attachments);
+    } catch (error) {
+      await Promise.all(
+        uploadedAttachments.map(item =>
+          this.attachmentStorage.remove(item.storageKey).catch(() => undefined),
+        ),
+      );
+      throw error;
+    }
 
     // ✅ extraire les ids
     return savedAttachments.map(att => att.id);
+  }
+
+  async downloadAttachment(
+    attachmentId: number,
+    userId: number,
+    context: {
+      ip?: string | null;
+      userAgent?: string | null;
+      requestId?: string | null;
+    } = {},
+  ): Promise<{
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+  }> {
+    const attachment = await this.attachmentRepository.findOne({
+      where: {
+        id: Number(attachmentId),
+        tenant_id: getCurrentTenantId(),
+      },
+    });
+    if (
+      !attachment?.storageKey ||
+      !attachment.conversationId ||
+      attachment.securityStatus !== ChatAttachmentSecurityStatus.CLEAN
+    ) {
+      throw new NotFoundException('Pièce jointe introuvable');
+    }
+    const conversation = await this.getParticipantConversation(
+      attachment.conversationId,
+      userId,
+    );
+    const buffer = await this.attachmentStorage
+      .read(attachment.storageKey)
+      .catch(() => {
+        throw new NotFoundException('Pièce jointe introuvable');
+      });
+    const hash = createHash('sha256').update(buffer).digest('hex');
+    if (!attachment.sha256 || hash !== attachment.sha256) {
+      buffer.fill(0);
+      throw new BadRequestException(
+        'Intégrité de la pièce jointe impossible à vérifier.',
+      );
+    }
+
+    await this.dataSource.transaction(manager =>
+      this.auditService.append(manager, {
+        actorId: userId,
+        action: 'chat.attachment.downloaded',
+        resourceType: 'Attachment',
+        resourceId: attachment.id,
+        dossierId: (conversation as any).dossier?.id ?? null,
+        afterState: {
+          conversationId: conversation.id,
+          sha256: attachment.sha256,
+          size: attachment.fileSize,
+        },
+        ip: context.ip ?? null,
+        userAgent: context.userAgent ?? null,
+        requestId: context.requestId ?? null,
+      }),
+    );
+
+    return {
+      buffer,
+      fileName: attachment.originalName || attachment.fileName,
+      mimeType: attachment.detectedMime || attachment.mimeType || 'application/octet-stream',
+    };
   }
   
 
@@ -467,6 +585,7 @@ export class ChatService {
 
 
 async getUserConversations(userId: number): Promise<Conversation[]> {
+  const tenantId = getCurrentTenantId();
   const conversations = await this.conversationRepository
     .createQueryBuilder('conversation')
     .leftJoinAndSelect('conversation.participants', 'participant')
@@ -481,6 +600,7 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
         .andWhere('read.isRead = :isRead', { isRead: false })
     )
     .where('EXISTS (SELECT 1 FROM conversation_participants_employee cp WHERE cp.conversationId = conversation.id AND cp.employeeId = :userId)', { userId })
+    .andWhere('conversation.tenant_id = :tenantId', { tenantId })
     .orderBy('conversation.lastMessageAt', 'DESC')
     .getMany();
 
@@ -509,6 +629,7 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
       'user.username'
     ])
     .where('message.conversationId IN (:...ids)', { ids: conversationIds })
+    .andWhere('message.tenant_id = :tenantId', { tenantId })
     .andWhere(qb => {
       const subQuery = qb.subQuery()
         .select('MAX(m.createdAt)')
@@ -572,178 +693,136 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
     excludeExtraneousValues: false,
   });
 }
-  async getConversationMessages(conversationId: number, userId: number): Promise<Message[]> {
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: conversationId },
-      relations: ['participants', 'attachments'],
-    });
-
-    if (!conversation || !conversation.participants.some(p => p.id === userId)) {
-      throw new NotFoundException('Conversation non trouvée');
-    }
-
-    return await this.messageRepository.find({
-      where: { conversation: { id: conversationId } },
-      relations: ['sender'],
+  async getConversationMessages(
+    conversationId: number,
+    userId: number,
+  ): Promise<Message[]> {
+    await this.getParticipantConversation(conversationId, userId);
+    return this.messageRepository.find({
+      where: {
+        conversation: { id: conversationId },
+        tenant_id: getCurrentTenantId(),
+      },
+      relations: [
+        'sender',
+        'sender.user',
+        'attachments',
+        'reads',
+        'reads.reader',
+      ],
       order: { createdAt: 'ASC' },
     });
   }
 
-async getConversation(conversationId: number, userId?: number) {
-  const conversation = await this.conversationRepository
-    .createQueryBuilder('conversation')
-    .leftJoinAndSelect('conversation.participants', 'participant')
-    .leftJoinAndSelect('participant.user', 'user')
-    .leftJoinAndSelect('conversation.messages', 'message')
-    .leftJoinAndSelect('message.sender', 'sender')
-    .leftJoinAndSelect('message.attachments', 'attachments')
-    .leftJoinAndSelect('message.reads', 'reads')
-    .leftJoinAndSelect('reads.reader', 'reader')
-    .leftJoinAndSelect('sender.user', 'senderUser')
-    .addSelect(['reads.id', 'reads.isRead', 'reads.readAt', 'reader.id'])
-    .where('conversation.id = :id', { id: conversationId })
-    .getOne();
-
-  if (
-    !conversation ||
-    !conversation.participants.some(p => p.id === userId)
-  ) {
-    throw new NotFoundException('Conversation non trouvée');
-  }
-
-    // Transformer pour que reader soit directement l'ID
-  if (conversation.messages) {
-    conversation.messages.forEach(message => {
-      if (message.reads) {
-        message.reads = message.reads.map(read => ({
-          ...read,
-          reader: read.reader?.id
-        })) as any; // 👈 Force le type
-      }
-    });
-  }
-
-  return plainToInstance(Conversation, conversation, {
-    excludeExtraneousValues: false,
-  });
-}
-
-  async getParticipantIdsExcluding(conversationId: number, excludeUserId: number): Promise<number[]> {
-    const conversation = await this.conversationRepository.findOne({
-      where: { id: conversationId },
-      relations: ['participants'],
-    });
+  async getConversation(conversationId: number, userId: number) {
+    await this.getParticipantConversation(conversationId, userId);
+    const tenantId = getCurrentTenantId();
+    const conversation = await this.conversationRepository
+      .createQueryBuilder('conversation')
+      .leftJoinAndSelect('conversation.participants', 'participant')
+      .leftJoinAndSelect('participant.user', 'user')
+      .leftJoinAndSelect('conversation.messages', 'message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.attachments', 'attachments')
+      .leftJoinAndSelect('message.reads', 'reads')
+      .leftJoinAndSelect('reads.reader', 'reader')
+      .leftJoinAndSelect('sender.user', 'senderUser')
+      .addSelect(['reads.id', 'reads.isRead', 'reads.readAt', 'reader.id'])
+      .where('conversation.id = :id', { id: conversationId })
+      .andWhere('conversation.tenant_id = :tenantId', { tenantId })
+      .getOne();
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation avec l'ID ${conversationId} non trouvée`);
+      throw new NotFoundException('Conversation non trouvée');
     }
 
+    if (conversation.messages) {
+      conversation.messages.forEach(message => {
+        if (message.reads) {
+          message.reads = message.reads.map(read => ({
+            ...read,
+            reader: read.reader?.id,
+          })) as any;
+        }
+      });
+    }
+
+    return plainToInstance(Conversation, conversation, {
+      excludeExtraneousValues: false,
+    });
+  }
+
+  async getParticipantIdsExcluding(
+    conversationId: number,
+    requesterId: number,
+  ): Promise<number[]> {
+    const conversation = await this.getParticipantConversation(
+      conversationId,
+      requesterId,
+    );
     return conversation.participants
-      .filter(participant => participant.id !== excludeUserId)
+      .filter(participant => participant.id !== requesterId)
       .map(participant => participant.id);
   }
 
-  // for one user, mark all messages as read in a conversation
-  async markMessagesAsRead(conversationId: number, userId: number): Promise<any> {
-    const messages = await this.messageRepository.find({
-      where: { conversation: { id: conversationId } },
-      select: ['id']
-    });
-
-    const messageIds = messages.map(m => m.id);
-    if (messageIds.length === 0) return;
-
-    // 1️⃣ count BEFORE
-    const before = await this.messageReadRepository.count({
-      where: {
-        isRead: false,
-        message: { id: In(messageIds) }
-      }
-    });
-
-    if (before === 0) return; // rien à changer → inutile d’update
-
-    // 2️⃣ update
-    await this.messageReadRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        isRead: true,
-        readAt: new Date(),
-      })
-      .where('readerId = :userId', { userId })
-      .andWhere('isRead = false')
-      .andWhere('messageId IN (:...messageIds)', { messageIds })
-      .execute();
-
-    // 3️⃣ count AFTER
-    const after = await this.messageReadRepository.count({
-      where: {
-        isRead: false,
-        message: { id: In(messageIds) }
-      }
-    });
-
-    // 4️⃣ compare
-    if (after < before) {
-      // this.chatGateway.emitMessagesRead(conversationId, userId);
-    }
-    return messageIds[0]
-  }
-  // for one user, mark all messages as read in a conversation
-  async markMessagesAsReceive(conversationId: number, userId: number): Promise<any> {
-    const messages = await this.messageRepository.find({
-      where: { conversation: { id: conversationId } },
-      select: ['id']
-    });
-
-    const messageIds = messages.map(m => m.id);
-    if (messageIds.length === 0) return;
-
-    // 1️⃣ count BEFORE
-    const before = await this.messageReadRepository.count({
-      where: {
-        isReceive: false,
-        message: { id: In(messageIds) }
-      }
-    });
-
-    if (before === 0) return; // rien à changer → inutile d’update
-
-    // 2️⃣ update
-    await this.messageReadRepository
-      .createQueryBuilder()
-      .update()
-      .set({
-        isReceive: true,
-        readAt: new Date(),
-      })
-      .where('readerId = :userId', { userId })
-      .andWhere('isReceive = false')
-      .andWhere('messageId IN (:...messageIds)', { messageIds })
-      .execute();
-
-    // 3️⃣ count AFTER
-    const after = await this.messageReadRepository.count({
-      where: {
-        isReceive: false,
-        message: { id: In(messageIds) }
-      }
-    });
-
-    // 4️⃣ compare
-    if (after < before) {
-      // this.chatGateway.emitMessagesRead(conversationId, userId);
-    }
-    return messageIds[0]
+  async markMessagesAsRead(
+    conversationId: number,
+    userId: number,
+  ): Promise<number | undefined> {
+    return this.updateMessageReceipt(conversationId, userId, 'read');
   }
 
-async setReceiveMessagesWithCount(userId: number): Promise<{ updated: number }> {
+  async markMessagesAsReceive(
+    conversationId: number,
+    userId: number,
+  ): Promise<number | undefined> {
+    return this.updateMessageReceipt(conversationId, userId, 'receive');
+  }
+
+  private async updateMessageReceipt(
+    conversationId: number,
+    userId: number,
+    kind: 'read' | 'receive',
+  ): Promise<number | undefined> {
+    await this.getParticipantConversation(conversationId, userId);
+    const tenantId = getCurrentTenantId();
+    const messages = await this.messageRepository.find({
+      where: {
+        conversation: { id: conversationId },
+        tenant_id: tenantId,
+      },
+      select: ['id'],
+      order: { createdAt: 'DESC' },
+    });
+    const messageIds = messages.map(message => message.id);
+    if (!messageIds.length) return undefined;
+
+    const update = this.messageReadRepository
+      .createQueryBuilder()
+      .update(MessageRead)
+      .set(
+        kind === 'read'
+          ? { isRead: true, readAt: new Date() }
+          : { isReceive: true },
+      )
+      .where('readerId = :userId', { userId })
+      .andWhere('tenant_id = :tenantId', { tenantId })
+      .andWhere(`${kind === 'read' ? 'isRead' : 'isReceive'} = false`)
+      .andWhere('messageId IN (:...messageIds)', { messageIds });
+    await update.execute();
+    return messageIds[0];
+  }
+
+  async setReceiveMessagesWithCount(
+    userId: number,
+  ): Promise<{ updated: number }> {
+    const tenantId = getCurrentTenantId();
     const result = await this.messageReadRepository
       .createQueryBuilder()
       .update(MessageRead)
       .set({ isReceive: true })
-      .where('reader.id = :userId', { userId })
+      .where('readerId = :userId', { userId })
+      .andWhere('tenant_id = :tenantId', { tenantId })
       .andWhere('isReceive = :isReceive', { isReceive: false })
       .execute();
 

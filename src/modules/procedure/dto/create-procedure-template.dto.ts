@@ -1,9 +1,60 @@
 // dto/create-procedure-template.dto.ts
-import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsObject, IsNumber } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+  IsObject,
+  IsNumber,
+  IsEnum,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
+import { ProcedureRequirementType } from '../interfaces/procedure-requirement.interface';
+
+export class ProcedureRequirementDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsEnum(ProcedureRequirementType)
+  type: ProcedureRequirementType;
+
+  @IsOptional()
+  @IsString()
+  label?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  documentTypeId?: number;
+
+  @IsOptional()
+  @IsString()
+  taskId?: string;
+
+  @IsOptional()
+  @IsString()
+  field?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  approvalCount?: number;
+
+  @IsOptional()
+  @IsString()
+  approvalRole?: string;
+}
 
 // DTO pour les sous-stages
 export class CreateSubStageDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @IsString()
   name: string;
 
@@ -14,6 +65,12 @@ export class CreateSubStageDto {
   @IsOptional()
   @IsBoolean()
   isMandatory?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProcedureRequirementDto)
+  requirements?: ProcedureRequirementDto[];
 }
 
 // DTO pour les stages

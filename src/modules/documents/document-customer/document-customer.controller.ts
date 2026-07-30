@@ -1,378 +1,253 @@
-import { plainToInstance } from 'class-transformer';
-import { Response } from 'express';
-import * as fs from 'fs';
-import * as path from 'path';
-import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
-
-import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
-
-import { CurrentUser } from 'src/core/decorators/current-user.decorator';
-
-import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-
-import { validateDto } from 'src/core/shared/pipes/validate-dto';
-import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-
-
-
-import { User } from 'src/modules/iam/user/entities/user.entity';
-
-
 import {
-  Controller,
-  Post,
   Body,
+  Controller,
   Get,
   Param,
-  Patch,
-  UseInterceptors,
-  UploadedFile,
-  BadRequestException,
-  UploadedFiles,
-  UseGuards,
-  Query,
   ParseIntPipe,
+  Post,
+  Req,
   Res,
-  NotFoundException,
   StreamableFile,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
-
-
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiConsumes,
-  ApiBody,
   ApiBearerAuth,
-  ApiParam,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
 } from '@nestjs/swagger';
-
-
-import { DocumentCustomerService } from './document-customer.service';
-import { DocumentStatsService } from './document-stats.service';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { ResourcePolicyService } from 'src/core/resource-policy.service';
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
-import { KycSyncDto } from './dto/create-document-from-coti.dto';
-import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
-import { SearchDocumentCustomerDto } from './dto/document-customer-search.dto';
-import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
+import {
+  RejectDocumentVersionDto,
+  RevokeDocumentVersionDto,
+  ValidateDocumentVersionDto,
+} from './dto/review-document-version.dto';
+import { DocumentVersionService } from './document-version.service';
+import { Response } from 'express';
 
-
-
-
-
-
-
-
-
-
-
-@ApiTags('Customer Documents')
-@ApiConsumes('multipart/form-data')
-@Controller('documents')
+@ApiTags('Documents')
 @ApiBearerAuth()
+@Controller('documents')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DocumentCustomerController {
-  constructor(private readonly service: DocumentCustomerService, private readonly statsService: DocumentStatsService) {}
+  constructor(
+    private readonly versionService: DocumentVersionService,
+    private readonly resourcePolicy: ResourcePolicyService,
+  ) {}
 
-
-  @Get('stats')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @Get()
   @RequirePermissions('view_documents')
-  async getStats(
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('dossierId') dossierId?: number,
-  ): Promise<any> {
-    return this.statsService.getStats({
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-      dossierId: dossierId ? +dossierId : undefined,
-    });
+  async findAll(@Req() req: any) {
+    const dossierIds = await this.resourcePolicy.getAccessibleDossierIds(req.user);
+    const documents = await this.versionService.listDocuments(dossierIds);
+    const visible: typeof documents = [];
+    for (const document of documents) {
+      if (
+        await this.resourcePolicy.canAccessDossierResource(
+          document.dossier_id!,
+          req.user,
+          'view_documents',
+          document.is_confidential ? 1 : 0,
+        )
+      ) {
+        visible.push(document);
+      }
+    }
+    return visible;
   }
 
-  @Get('stats/:id')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
+  @Get(':id')
   @RequirePermissions('view_documents')
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'un document spécifique' })
-  @ApiParam({ name: 'id', description: 'ID du document' })
-  async getStatsForDocument(
+  async findOne(
     @Param('id', ParseIntPipe) id: number,
-  ): Promise<any> {
-    return this.statsService.getStats({ documentId: id });
-  }
-
-  @Get('pending')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
-  @RequirePermissions('view_documents')
-  async getPendingDocuments() {
-    const stats = await this.statsService.getStats({});
-    return (stats as any).pendingDocuments;
-  }
-
-  @Get('storage')
-  // @Roles(UserRole.ADMIN)
-  @RequirePermissions('view_documents')
-  async getStorageStats() {
-    const stats = await this.statsService.getStats({});
-    return (stats as any).storageStats;
-  }
-
-  @Get('get/:id')
-  @RequirePermissions('view_documents')
-  @ApiOperation({ summary: 'Récupérer un document client par ID' })
-  @ApiResponse({ status: 200, type: DocumentCustomerResponseDto })
-  async findOne(@Param('id') id: number): Promise<DocumentCustomerResponseDto> {
-    return this.service.findOne(id);
-  }
-
-  @Get('search')
-  @RequirePermissions('view_documents')
-  @ApiOperation({ summary: 'Recherche texte avec relations' })
-  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [DocumentCustomerResponseDto]  })
-  async search(
-
-    @Query() searchParams?: SearchDocumentCustomerDto,
-    @Query() paginationParams?: PaginationParamsDto,
+    @Req() req: any,
   ) {
-    return this.service.searchWithTransformer(searchParams as SearchCriteria, DocumentCustomerResponseDto , paginationParams);
-  }
-  @Patch(':id')
-  @UseInterceptors(FileInterceptor('file', {
-    limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB
-    },
-  }))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Mettre à jour un document',
-    type: UpdateDocumentCustomerDto,
-  })
-  @ApiOperation({ summary: 'Mettre à jour un document client' })
-  @ApiResponse({ status: 200, description: 'Document mis à jour', type: DocumentCustomerResponseDto })
-  @RequirePermissions('upload_document')
-  async update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateDocumentCustomerDto,
-    @CurrentUser() user: User,
-    @UploadedFile() file?: Express.Multer.File,
-  ) {
-    return this.service.update(id, { ...dto, file }, user?.id);
+    return this.assertDocumentAccess(
+      id,
+      req.user,
+      'read',
+      'view_documents',
+    );
   }
 
   @Post()
-  @UseInterceptors(FileInterceptor('file', {
-    limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB
-    },
-  }))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Upload document',
-    type: CreateDocumentCustomerDto,
-  })
-  
-  @ApiResponse({ status: 201, description: 'Document créé' })
   @RequirePermissions('upload_document')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: CreateDocumentCustomerDto })
+  @ApiOperation({
+    summary:
+      'Créer une fiche documentaire et sa version 1 en stockage privé',
+  })
   async create(
     @Body() dto: CreateDocumentCustomerDto,
-    @CurrentUser() user: User,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
   ) {
-    return this.service.create({ ...dto, file }, user? user.id : 1);
+    await this.resourcePolicy.assertDossierAccess(
+      Number(dto.dossier_id),
+      req.user,
+      'write',
+      'upload_document',
+      dto.is_confidential ? 1 : 0,
+    );
+    return this.versionService.createDocument(dto, file, req.user.id);
   }
 
-
-  @Post('/add-document/by-code')
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Upload document',
-    type: CreateDocumentCustomerDto,
-  })
-  
-  @ApiResponse({ status: 201, description: 'Document créé' })
+  @Post(':id/versions')
   @RequirePermissions('upload_document')
-  async createByCode(
-    @Param('code') code: string,
-    @CurrentUser() user: User,
-    @Body() dto: CreateDocumentCustomerDto,
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 50 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  async addVersion(
+    @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
   ) {
-    const customer  = await this.service.findCustomerByCode(code)
-    return this.create( dto, user, file);
+    await this.assertDocumentAccess(id, req.user, 'write', 'upload_document');
+    return this.versionService.addVersion(id, file, req.user.id);
   }
 
-  @Get('/validate-document/:document_id')
-  @ApiResponse({ status: 201, description: 'Document créé' })
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Get(':id/versions')
+  @RequirePermissions('view_documents')
+  async listVersions(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: any,
+  ) {
+    await this.assertDocumentAccess(id, req.user, 'read', 'view_documents');
+    return this.versionService.listVersions(id);
+  }
+
+  @Get(':id/versions/:versionId/content')
+  @RequirePermissions('view_documents')
+  async getContent(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId') versionId: string,
+    @Req() req: any,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    await this.assertDocumentAccess(id, req.user, 'read', 'view_documents');
+    const { version, buffer } = await this.versionService.readContent(
+      id,
+      versionId,
+      req.user.id,
+      {
+        ip: req.ip,
+        userAgent: req.headers?.['user-agent'] ?? null,
+        requestId: req.headers?.['x-request-id'] ?? null,
+      },
+    );
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(buffer, {
+      type: version.detectedMime,
+      disposition: `attachment; filename="${this.safeHeaderFilename(
+        version.originalName,
+      )}"`,
+      length: buffer.length,
+    });
+  }
+
+  @Post(':id/versions/:versionId/validate')
   @RequirePermissions('validate_document')
   async validate(
-    @Param('customer_id') customer_id: number,
-
-    @Param('document_id') document_id: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId') versionId: string,
+    @Body() dto: ValidateDocumentVersionDto,
+    @Req() req: any,
   ) {
-    return this.service.validate(document_id);
+    await this.assertDocumentAccess(
+      id,
+      req.user,
+      'write',
+      'validate_document',
+    );
+    return this.versionService.validate(id, versionId, dto, req.user.id);
   }
 
-  @Get('/refuse-document/:document_id')
-  @ApiResponse({ status: 201, description: 'Document créé' })
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Post(':id/versions/:versionId/scan')
+  @RequirePermissions('validate_document')
+  async rescan(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId') versionId: string,
+    @Req() req: any,
+  ) {
+    await this.assertDocumentAccess(
+      id,
+      req.user,
+      'write',
+      'validate_document',
+    );
+    return this.versionService.rescan(id, versionId, req.user.id);
+  }
+
+  @Post(':id/versions/:versionId/reject')
   @RequirePermissions('reject_document')
-  async refuse(@Param('document_id') document_id: number) {
-    return this.service.refuse(document_id);
-  }
-
-  @Post('/add-documents')
-  @UseInterceptors(AnyFilesInterceptor())
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    description: 'Upload document',
-    type: CreateDocumentCustomerDto,
-  })
-  @ApiResponse({ status: 201, description: 'Document créé' })
-  // @RequirePermissions('VERIFY_CUSTOMER_KYC')
-  async createMany(
-    @Param('customer_id') customer_id: number,
-    @Body() dto: { documents: CreateDocumentCustomerDto[] },
-    @UploadedFiles() files: Express.Multer.File[],
+  async reject(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId') versionId: string,
+    @Body() dto: RejectDocumentVersionDto,
+    @Req() req: any,
   ) {
-    if (dto.documents.length !== files.length) {
-      throw new BadRequestException(
-        'Mismatch between files and documents metadata.',
-      );
-    }
-    const documentsWithFiles = dto.documents.map((doc, index) => ({
-      ...doc,
-      customer_id,
-      file: files[index],
-    }));
-    const docs: DocumentCustomerResponseDto[] = [];
-    for (const document of documentsWithFiles) {
-      document.customer_id = customer_id;
-      await validateDto(CreateDocumentCustomerDto, document);
-      docs.push(await this.service.create(document));
-    }
-
-    return docs;
+    await this.assertDocumentAccess(
+      id,
+      req.user,
+      'write',
+      'reject_document',
+    );
+    return this.versionService.reject(id, versionId, dto, req.user.id);
   }
 
-  @Get()
-  @ApiOperation({ summary: "Lister les documents d'un client" })
-  @RequirePermissions('view_documents')
-  async findAll(    @Query() searchParams?: SearchDocumentCustomerDto,
-    @Query() paginationParams?: PaginationParamsDto, @Param('customer_id') customer_id?: number) {
-    return plainToInstance(DocumentCustomerResponseDto,this.service.findAllV1())
-    // return plainToInstance(DocumentCustomerResponseDto,this.service.findByCustomer(customer_id));
-  }
-  @Post('sync-kyc')
-  @ApiOperation({ summary: 'Réceptionne les codes clients à synchroniser' })
-  @ApiBody({ type: KycSyncDto })
-  async sync(
-    @Param('customer_id') customer_id: number = 1,
-    @Body() dto: KycSyncDto,
+  @Post(':id/versions/:versionId/revoke')
+  @RequirePermissions('validate_document')
+  async revoke(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('versionId') versionId: string,
+    @Body() dto: RevokeDocumentVersionDto,
+    @Req() req: any,
   ) {
-    // traite comme tu veux dans le service
-    return this.service.sync(dto);
+    await this.assertDocumentAccess(
+      id,
+      req.user,
+      'write',
+      'validate_document',
+    );
+    return this.versionService.revoke(id, versionId, dto, req.user.id);
   }
 
-// Dans votre controller (par exemple document-customer.controller.ts)
-@Get(':id/stream')
-@UseGuards(JwtAuthGuard)
-async streamDocument(
-  @Param('id') id: string,
-): Promise<StreamableFile> {
-  const document = await this.service.findOne(+id);
-
-  if (!document) {
-    throw new NotFoundException('Document non trouvé');
+  private async assertDocumentAccess(
+    documentId: number,
+    actor: any,
+    mode: 'read' | 'write',
+    permission: string,
+  ) {
+    const document = await this.versionService.getDocument(documentId);
+    await this.resourcePolicy.assertDossierAccess(
+      document.dossier_id!,
+      actor,
+      mode,
+      permission,
+      document.is_confidential ? 1 : 0,
+    );
+    return document;
   }
 
-  // Type MIME : on garde le mimetype complet stocké (ex: application/pdf),
-  // sinon on le déduit de l'extension.
-  const nameForExt = (document as any).original_name || document.name || document.file_path || '';
-  const ext = nameForExt.split('.').pop()?.toLowerCase() || '';
-  const mimeType =
-    document.file_mimetype && document.file_mimetype.includes('/')
-      ? document.file_mimetype
-      : this.service.getMimeType(ext);
-
-  // "inline" = visualisation dans le navigateur, pas de téléchargement.
-  // On renvoie un StreamableFile basé sur un Buffer (longueur connue →
-  // Content-Length défini) : indispensable pour que le proxy/rewrite Next
-  // relaie correctement la réponse au lieu de la réduire à un 204.
-  const opts = {
-    type: mimeType,
-    disposition: `inline; filename="${(document as any).original_name || document.name || 'document'}"`,
-  };
-
-  // 1) Fichier local → on lit les octets et on les renvoie.
-  //    On NE redirige JAMAIS vers l'URL statique : cela déclencherait une
-  //    requête cross-origin sans en-tête CORS côté navigateur.
-  if (document.file_path) {
-    const filePath = document.file_path.replace(/\//g, path.sep).replace(/\\/g, path.sep);
-    if (fs.existsSync(filePath)) {
-      return new StreamableFile(fs.readFileSync(filePath), opts);
-    }
+  private safeHeaderFilename(value: string): string {
+    return value.replace(/[\r\n"]/g, '_').slice(0, 180);
   }
-
-  // 2) Fichier distant → on le récupère côté serveur et on renvoie les octets
-  //    (toujours aucune redirection visible par le navigateur).
-  if (document.file_url && document.file_url.startsWith('http')) {
-    const upstream = await fetch(document.file_url);
-    if (!upstream.ok) {
-      throw new NotFoundException('Fichier distant inaccessible');
-    }
-    return new StreamableFile(Buffer.from(await upstream.arrayBuffer()), opts);
-  }
-
-  throw new NotFoundException('Fichier non trouvé');
-}
-
-// Alternative plus simple - Endpoint pour obtenir l'URL de stream
-@Get(':id/stream-url')
-@UseGuards(JwtAuthGuard)
-async getStreamUrl(
-  @Param('id') id: string,
-  @CurrentUser() user: User,
-) {
-  // Vérifier les permissions
-  // await this.service.verifyAccess(id, user.id);
-  
-  // Retourner l'URL de stream (qui sera interceptée par le frontend)
-  return { 
-    url: `/api/document-customer/${id}/stream`,
-    fileUrl: `/api/document-customer/${id}/raw`
-  };
-}
-
-// Endpoint direct pour servir le fichier raw
-@Get(':id/raw')
-@UseGuards(JwtAuthGuard)
-async getRawFile(
-  @Param('id') id: string,
-  @CurrentUser() user: User,
-  @Res() res: Response,
-) {
-  const document = await this.service.findOne(+id);
-  
-  if (!document || !document.file_url) {
-    throw new NotFoundException('Document non trouvé');
-  }
-  
-  // Si vous avez déjà un file_url accessible publiquement
-  return res.redirect(document.file_url);
-}
-
-@Get(':id/base64')
-@UseGuards(JwtAuthGuard)
-@ApiOperation({ summary: 'Récupérer un document au format base64' })
-@ApiParam({ name: 'id', description: 'ID du document' })
-@ApiResponse({ status: 200, description: 'Document encodé en base64' })
-async getBase64(
-  @Param('id', ParseIntPipe) id: number,
-) {
-  return this.service.getBase64(id);
-}
 }

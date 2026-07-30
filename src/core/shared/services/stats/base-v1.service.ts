@@ -19,6 +19,15 @@ export abstract class BaseStatsService<T extends ObjectLiteral> {
     addTenantCondition(query, alias);
 
     if (!filters) return query;
+    if (Array.isArray(filters.dossierIds)) {
+      if (filters.dossierIds.length === 0) {
+        query.andWhere('1 = 0');
+      } else {
+        query.andWhere(`${alias}.dossier_id IN (:...accessibleDossierIds)`, {
+          accessibleDossierIds: filters.dossierIds,
+        });
+      }
+    }
     const fieldToUseForDate = filters.fieldToUseForDate ?? 'created_at'
     if (filters.startDate) {
       query.andWhere(`${alias}.${fieldToUseForDate} >= :startDate`, { startDate: filters.startDate });

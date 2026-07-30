@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as nodemailer from 'nodemailer';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { decryptSmtpConfig } from './smtp-config.crypto';
 
 export interface SmtpConfig {
   host?: string;
@@ -42,8 +43,16 @@ export class SmtpService {
     cabinetId: number,
   ): Promise<{ transport: nodemailer.Transporter; from?: string } | null> {
     if (!cabinetId) return null;
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
-    const cfg = (cabinet?.smtp_config ?? null) as SmtpConfig | null;
+    const cabinet = await this.cabinetRepo
+      .createQueryBuilder('cabinet')
+      .addSelect('cabinet.smtp_config_encrypted')
+      .where('cabinet.id = :cabinetId', { cabinetId })
+      .getOne();
+    const cfg = cabinet?.smtp_config_encrypted
+      ? decryptSmtpConfig<SmtpConfig & Record<string, unknown>>(
+          cabinet.smtp_config_encrypted,
+        )
+      : (cabinet?.smtp_config ?? null) as SmtpConfig | null;
     const transport = this.buildTransport(cfg);
     if (!transport) return null;
     return { transport, from: cfg?.from ?? cfg?.user };

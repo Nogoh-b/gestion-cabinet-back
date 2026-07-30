@@ -23,6 +23,7 @@ import { Plan } from './entities/plan.entity';
 
 @ApiTags('Plans')
 @Controller('plans')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PlansController {
   constructor(

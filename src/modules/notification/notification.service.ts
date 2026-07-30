@@ -1,5 +1,5 @@
 // src/modules/notification/notification.service.ts
-import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, LessThan, DataSource } from 'typeorm';
 import { Notification } from './entities/notification.entity';
@@ -12,6 +12,7 @@ import { DossiersService } from '../dossiers/dossiers.service';
 import { UsersService } from '../iam/user/user.service';
 import { NotificationType } from './enum/notification-type.enum';
 import { MainGateway } from 'src/core/shared/services/socket/main.gateway';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 @Injectable()
 export class NotificationService {
@@ -35,7 +36,26 @@ export class NotificationService {
   ) {}
 
   // Créer une notification pour un utilisateur
-  async create(createNotificationDto: CreateNotificationDto): Promise<NotificationResponseDto> {
+  async create(
+    createNotificationDto: CreateNotificationDto,
+    senderId: number,
+  ): Promise<NotificationResponseDto> {
+    const [notification] = await this.createBulk(
+      {
+        user_ids: [createNotificationDto.user_id],
+        type: createNotificationDto.type,
+        title: createNotificationDto.title,
+        content: createNotificationDto.content,
+        data: createNotificationDto.data,
+        link: createNotificationDto.link,
+        priority: createNotificationDto.priority,
+        actions: createNotificationDto.actions,
+        image_url: createNotificationDto.image_url,
+      },
+      senderId,
+    );
+    return notification;
+    /*
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -113,11 +133,34 @@ export class NotificationService {
       throw error;
     } finally {
       await queryRunner.release();
-    }
+    }*/
   }
 
   // Créer une notification pour plusieurs utilisateurs (version optimisée)
   async createBulk(createBulkDto: CreateBulkNotificationDto, senderId: number): Promise<NotificationResponseDto[]> {
+    const tenantId = getCurrentTenantId();
+    const recipientIds = [
+      ...new Set((createBulkDto.user_ids ?? []).map(Number)),
+    ].filter(id => Number.isInteger(id) && id > 0);
+    if (!recipientIds.length) {
+      throw new BadRequestException('Au moins un destinataire est requis');
+    }
+    const recipients = await this.userRepository.find({
+      where: { id: In(recipientIds), tenant_id: tenantId },
+      select: ['id'],
+    });
+    if (recipients.length !== recipientIds.length) {
+      throw new NotFoundException(
+        'Un ou plusieurs destinataires sont introuvables',
+      );
+    }
+    const actor = Number.isInteger(Number(senderId)) && Number(senderId) > 0
+      ? await this.userRepository.findOne({
+          where: { id: Number(senderId), tenant_id: tenantId },
+          select: ['id'],
+        })
+      : null;
+    createBulkDto = { ...createBulkDto, user_ids: recipientIds };
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -136,7 +179,7 @@ export class NotificationService {
         priority: (createBulkDto.priority ?? 'NORMAL') as Notification['priority'],
         image_url: createBulkDto.image_url,
         actions: createBulkDto.actions ?? [],
-        user_id: senderId
+        user_id: actor?.id ?? null
       });
       const savedNotification = await queryRunner.manager.save(notification);
       this.logger.log(
@@ -248,7 +291,7 @@ export class NotificationService {
         priority: group.dto.priority,
         actions: group.dto.actions,
         image_url: group.dto.image_url
-      }, 1);
+      }, group.userIds[0]);
       results.push(...bulkResult);
     }
 

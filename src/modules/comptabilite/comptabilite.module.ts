@@ -31,15 +31,6 @@ import { ExercicesController }      from './controllers/exercices.controller';
 import { RapportsController }       from './controllers/rapports.controller';
 import { SynchronisationController }from './controllers/synchronisation.controller';
 
-// Write handlers IA Database — permettent à l'IA de créer/modifier les
-// entités comptables (plan comptable, journaux, exercices, écritures).
-import { CompteWriteHandler }   from './write/compte-write.handler';
-import { JournalWriteHandler }  from './write/journal-write.handler';
-import { ExerciceWriteHandler } from './write/exercice-write.handler';
-import { EcritureWriteHandler } from './write/ecriture-write.handler';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { AiDatabaseModule }     from 'src/core/ai-database/ai-database.module';
-
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -56,7 +47,6 @@ import { AiDatabaseModule }     from 'src/core/ai-database/ai-database.module';
       ExpenseReport,
       Payslip,
     ]),
-    AiDatabaseModule,
   ],
   controllers: [
     EcrituresController,
@@ -74,26 +64,7 @@ import { AiDatabaseModule }     from 'src/core/ai-database/ai-database.module';
     SynchronisationService,
     InitialisationComptableService,
     ComptabiliteEventBridge,
-    CompteWriteHandler,
-    JournalWriteHandler,
-    ExerciceWriteHandler,
-    EcritureWriteHandler,
   ],
   exports: [EcrituresService],
 })
-export class ComptabiliteModule {
-  constructor(
-    private readonly registry: WriteHandlerRegistry,
-    private readonly compteHandler: CompteWriteHandler,
-    private readonly journalHandler: JournalWriteHandler,
-    private readonly exerciceHandler: ExerciceWriteHandler,
-    private readonly ecritureHandler: EcritureWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.registry.register(this.compteHandler);
-    this.registry.register(this.journalHandler);
-    this.registry.register(this.exerciceHandler);
-    this.registry.register(this.ecritureHandler);
-  }
-}
+export class ComptabiliteModule {}

@@ -33,10 +33,16 @@ export class PaginationServiceV1 {
     relations: string[] = [],
     additionalOptions: FindManyOptions<T> = {}
   ): Promise<PaginatedResult<T>> {
-    const page = Number(paginationParams.page) ?? 1;
-    const limit = Number(paginationParams.limit) ?? 10;
-    
-    console.log('Pagination params:', page, '*', limit);
+    const requestedPage = Number(paginationParams.page);
+    const requestedLimit = Number(paginationParams.limit);
+    const page =
+      Number.isInteger(requestedPage) && requestedPage > 0
+        ? requestedPage
+        : 1;
+    const limit =
+      Number.isInteger(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 100)
+        : 10;
     
     // Construire l'ordre en prenant en compte les relations
     const order = this.buildOrderFromParams(paginationParams, additionalOptions.order);

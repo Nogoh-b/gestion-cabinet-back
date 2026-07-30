@@ -46,6 +46,7 @@ import { PermissionSeeder } from './auth/seeders/permission.seeder';
 import { RoleSeeder } from './auth/seeders/role.seeder';
 import { JwtStrategy } from './auth/strategies/jwt.strategy';
 import { LocalStrategy } from './auth/strategies/local.strategy';
+import { RefreshStrategy } from './auth/strategies/refresh.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
@@ -56,7 +57,6 @@ import { CoreNotificationsModule } from './notifications/core-notifications.modu
 import { OtpController } from './shared/controlers/otp.controller';
 import { EmailsModule } from './shared/emails/emails.module';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
-import { QueryLoggingInterceptor } from './shared/interceptors/query-logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 import { EmailService } from './shared/services/email/email.service copy';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
@@ -69,6 +69,13 @@ import { TenantRepositoryPatch } from './tenant/tenant-repository.patch';
 import { TenantResolverMiddleware } from './tenant/tenant-resolver.middleware';
 import { TenantContext } from './tenant/tenant.context';
 import { TenantInterceptor } from './tenant/tenant.interceptor';
+import { OutboxModule } from './outbox/outbox.module';
+import { AuditEvent } from './audit/audit-event.entity';
+import { AuditService } from './audit/audit.service';
+import { ResourcePolicyService } from './resource-policy.service';
+import { CookieOriginGuard } from './common/guards/cookie-origin.guard';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { DossierMember } from 'src/modules/dossiers/entities/dossier-member.entity';
 
 
 
@@ -119,9 +126,21 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
       }),
       inject: [ConfigService],
     }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secretKey', // à stocker en variable d’environnement
-      signOptions: { expiresIn: '30d' },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('JWT_SECRET est obligatoire');
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '1h') as any,
+          },
+        };
+      },
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -139,6 +158,9 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
       Customer,
       OtpOnlineLink,
       AuthToken,
+      AuditEvent,
+      Dossier,
+      DossierMember,
     ]),
     PassportModule,
     ChatModule,
@@ -148,11 +170,13 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     // SeedersModule,
     ScheduleModule.forRoot(), AiDatabaseModule, PlansModule,
     CoreNotificationsModule,
+    OutboxModule,
   ],
   controllers: [AuthController, OtpController],
   providers: [
     AuthService,
     LocalStrategy,
+    RefreshStrategy,
     PermissionSeeder,
     RoleSeeder,
     JwtStrategy,
@@ -165,9 +189,9 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     PermissionsGuard,
     PublicGuard,
     { provide: APP_GUARD, useClass: PublicGuard },
+    { provide: APP_GUARD, useClass: CookieOriginGuard },
     { provide: APP_FILTER, useClass: TypeOrmExceptionFilter },
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
-    { provide: 'APP_INTERCEPTOR', useClass: QueryLoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
     InitService,
     KeyGeneratorService,
@@ -181,6 +205,8 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     TenantContext,
     TenantRepositoryPatch,
     TenantResolverMiddleware,
+    AuditService,
+    ResourcePolicyService,
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
     TypeOrmModule
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
@@ -210,6 +236,8 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     MainGateway,
     TenantContext,
     CoreNotificationsModule,
+    AuditService,
+    ResourcePolicyService,
   ],
 })
 export class CoreModule {}

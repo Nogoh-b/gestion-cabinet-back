@@ -54,6 +54,18 @@ export class ProcedureInstance extends TenantEntity {
   })
   templateId: string;
 
+  @Column({ name: 'template_family_id', type: 'uuid' })
+  templateFamilyId: string;
+
+  @Column({ name: 'template_version_id', type: 'uuid' })
+  templateVersionId: string;
+
+  @Column({ name: 'template_snapshot', type: 'json' })
+  templateSnapshot: Record<string, any>;
+
+  @Column({ name: 'template_snapshot_hash', type: 'char', length: 64 })
+  templateSnapshotHash: string;
+
   @ManyToOne(() => ProcedureTemplate)
   @JoinColumn({ name: 'templateId' })
   @BusinessColumn({
@@ -450,12 +462,8 @@ export class ProcedureInstance extends TenantEntity {
   get status_label(): string {
     const labels = {
       [InstanceStatus.ACTIVE]: 'Active',
-      [InstanceStatus.SUSPENDED]: 'Suspendue',
-      [InstanceStatus.CLOSED]: 'Fermée',
-      [InstanceStatus.ABANDONED]: 'Abandonnée',
       [InstanceStatus.COMPLETED]: 'Terminée',
-      [InstanceStatus.PAUSED]: 'En pause',
-      [InstanceStatus.IN_PROGRESS]: 'En progression'
+      [InstanceStatus.CANCELLED]: 'Annulée',
     };
     return labels[this.status] || this.status;
   }

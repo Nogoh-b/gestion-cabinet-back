@@ -29,6 +29,12 @@ export enum StatutExercice {
   CLOTURE = 'CLOTURE',
 }
 
+export enum StatutEcriture {
+  DRAFT = 'DRAFT',
+  POSTED = 'POSTED',
+  REVERSED = 'REVERSED',
+}
+
 export enum SourceModule {
   FACTURE             = 'facture',
   PAIEMENT            = 'paiement',

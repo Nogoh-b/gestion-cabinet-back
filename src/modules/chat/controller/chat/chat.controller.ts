@@ -10,6 +10,9 @@ import {
   UseInterceptors,
   UploadedFiles,
   UseGuards,
+  Res,
+  StreamableFile,
+  ParseIntPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,6 +32,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { Response } from 'express';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -155,7 +159,9 @@ export class ChatController {
     },
   })
   @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
-  @UseInterceptors(FilesInterceptor('attachments', 10)) // Max 10 fichiers
+  @UseInterceptors(FilesInterceptor('attachments', 10, {
+    limits: { fileSize: 10 * 1024 * 1024, files: 10 },
+  }))
   async sendMessageWithFiles(
     @Body() dto: SendMessageDto,
     @CurrentUser() user: User,
@@ -189,6 +195,7 @@ export class ChatController {
     schema: {
       type: 'object',
       properties: {
+        conversationId: { type: 'number' },
         attachments: {
           type: 'array',
           items: {
@@ -200,16 +207,51 @@ export class ChatController {
     },
   })
   @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
-  @UseInterceptors(FilesInterceptor('attachments', 10)) // Max 10 fichiers
+  @UseInterceptors(FilesInterceptor('attachments', 10, {
+    limits: { fileSize: 10 * 1024 * 1024, files: 10 },
+  }))
   
   async uploadFiles(
     @Request() req,
+    @Body('conversationId') conversationId: string,
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
     return this.chatService.uploadAttachments(
       req.user.id,
+      Number(conversationId),
       files || []
     );
+  }
+
+  @Get('attachments/:id/content')
+  @ApiOperation({ summary: 'Télécharger une pièce jointe autorisée du chat' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Contenu privé de la pièce jointe' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Pièce jointe introuvable ou inaccessible' })
+  async downloadAttachment(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<StreamableFile> {
+    const attachment = await this.chatService.downloadAttachment(
+      id,
+      req.user.id,
+      {
+        ip: req.ip ?? req.socket?.remoteAddress ?? null,
+        userAgent: req.headers?.['user-agent'] ?? null,
+        requestId:
+          req.headers?.['x-request-id'] ??
+          req.headers?.['x-correlation-id'] ??
+          null,
+      },
+    );
+    response.setHeader('Content-Type', attachment.mimeType);
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
+    );
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(attachment.buffer);
   }
 
 

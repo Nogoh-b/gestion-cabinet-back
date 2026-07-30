@@ -2,14 +2,23 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { ACCESS_COOKIE, readCookie } from '../session-cookie.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(configService: ConfigService) {
+    const secret = configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('JWT_SECRET est obligatoire');
+    }
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (request: Request) => readCookie(request, ACCESS_COOKIE),
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'secretKey',
+      secretOrKey: secret,
       // passReqToCallback: true → validate() reçoit la requête en 1er argument,
       // ce qui permet de croiser jwt.tenantId avec req['resolvedTenantId'].
       passReqToCallback: true,
@@ -17,10 +26,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(req: Request, payload: any) {
-    const jwtTenantId: number      = payload.tenantId ?? 1;
-    const resolvedTenantId: number = (req as any)['resolvedTenantId'] ?? 1;
+    const jwtTenantId = Number(payload.tenantId);
+    const resolvedTenantId = (req as any)['resolvedTenantId'] as number | undefined;
     const permissions: string[]    = payload.permissions ?? [];
     const isSuperAdmin             = permissions.includes('SUPER_ADMIN');
+
+    if (!Number.isInteger(jwtTenantId) || jwtTenantId <= 0) {
+      throw new UnauthorizedException('Jeton sans cabinet valide');
+    }
 
     // ── Validation cross-tenant ──────────────────────────────────────────────
     // Le cross-tenant (URL pointant vers le cabinet B alors que le JWT
@@ -32,7 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // permissif et on fait confiance au tenant du JWT (scripts/appels internes).
     if (
       !isSuperAdmin &&
-      resolvedTenantId !== 1 &&
+      resolvedTenantId !== undefined &&
       jwtTenantId !== resolvedTenantId
     ) {
       throw new UnauthorizedException(
@@ -48,7 +61,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role:        payload.role,
       permissions: payload.permissions ?? [],
       customerId:  payload.customerId  ?? null,
-      tenantId:    jwtTenantId,
+      tenantId:    isSuperAdmin && resolvedTenantId ? resolvedTenantId : jwtTenantId,
     };
   }
 }

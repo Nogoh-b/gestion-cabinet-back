@@ -2,8 +2,10 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
-import { Controller, Get, Post, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseIntPipe, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 
 import { CreateInvoiceTypeDto } from './dto/create-invoice-type.dto';
 import { InvoiceTypeResponseDto } from './dto/invoice-type-response.dto';
@@ -17,6 +19,7 @@ import { InvoiceTypeStatsDto } from './dto/invoice-type-stats.dto';
 @ApiTags('Invoice Types')
 @ApiBearerAuth()
 @Controller('invoice-types')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class InvoiceTypeController {
   constructor(private readonly service: InvoiceTypeService,
   private readonly statsService: InvoiceTypeStatsService) {}

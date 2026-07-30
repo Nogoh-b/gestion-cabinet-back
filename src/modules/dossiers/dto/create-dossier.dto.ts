@@ -13,6 +13,7 @@ import {
   ValidateIf,
   IsEnum
 } from 'class-validator';
+import { ConflictCheckStatus } from '../entities/dossier.entity';
 import { PriorityLevel } from 'src/core/enums/dossier-status.enum';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -391,6 +392,26 @@ export class CreateDossierDto {
   @IsOptional()
   @IsBoolean()
   notify_client?: boolean = false;
+
+  @ApiPropertyOptional({ enum: ConflictCheckStatus })
+  @IsOptional()
+  @IsEnum(ConflictCheckStatus)
+  conflict_check_status?: ConflictCheckStatus;
+
+  @ApiPropertyOptional({ description: 'Justification du contrôle de conflit' })
+  @IsOptional()
+  @IsString()
+  conflict_check_notes?: string;
+
+  @ApiPropertyOptional({ description: 'Identifiant du mandat ou de la lettre d’engagement' })
+  @IsOptional()
+  @IsNumber()
+  engagement_document_id?: number;
+
+  @ApiPropertyOptional({ description: 'Conditions financières validées' })
+  @IsOptional()
+  @IsBoolean()
+  financial_terms_confirmed?: boolean;
 
   // Validation conditionnelle
   @ValidateIf(o => o.billing_type === 'hourly' || o.billing_type === 'mixed')

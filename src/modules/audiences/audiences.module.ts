@@ -14,37 +14,54 @@ import { AudienceStatsService } from './audience-stats.service';
 import { JurisdictionModule } from '../jurisdiction/jurisdiction.module';
 import { AudienceSubscriber } from './suscribers/audiences.suscribers';
 import { AudienceDecisionService } from './audience-decision.service';
-import { AudienceWriteHandler } from './audience-write.handler';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
+import { ProcedureModule } from '../procedure/procedure.module';
+import { LegalDeadlineRule } from './entities/legal-deadline-rule.entity';
+import { LegalDeadline } from './entities/legal-deadline.entity';
+import {
+  LegalDeadlineController,
+  LegalDeadlineRuleController,
+} from './legal-deadline.controller';
+import { LegalDeadlineRuleService } from './legal-deadline-rule.service';
+import { LegalDeadlineService } from './legal-deadline.service';
+import { LegalDeadlineExpiryListener } from './legal-deadline-expiry.listener';
+import { LegalDeadlineWarningListener } from './legal-deadline-warning.listener';
 
 
 
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Audience]),
+    TypeOrmModule.forFeature([Audience, LegalDeadlineRule, LegalDeadline]),
     CustomerModule,
     AudienceTypeModule,
     JurisdictionModule,
     DocumentsModule,
     forwardRef(() => DossiersModule),
-    AiDatabaseModule,
+    forwardRef(() => ProcedureModule),
     PlansModule,
   ],
-  controllers: [AudiencesController],
-  providers: [AudiencesService, AudienceSubscriber, AudienceStatsService, AudienceDecisionService, AudienceWriteHandler],
-  exports: [AudiencesService, AudienceStatsService]
+  controllers: [
+    AudiencesController,
+    LegalDeadlineRuleController,
+    LegalDeadlineController,
+  ],
+  providers: [
+    AudiencesService,
+    AudienceSubscriber,
+    AudienceStatsService,
+    AudienceDecisionService,
+    LegalDeadlineRuleService,
+    LegalDeadlineService,
+    LegalDeadlineExpiryListener,
+    LegalDeadlineWarningListener,
+  ],
+  exports: [
+    AudiencesService,
+    AudienceStatsService,
+    LegalDeadlineRuleService,
+    LegalDeadlineService,
+  ]
 
 })
-export class AudiencesModule {
-  constructor(
-    private readonly registry: WriteHandlerRegistry,
-    private readonly handler: AudienceWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.registry.register(this.handler);
-  }
-}
+export class AudiencesModule {}

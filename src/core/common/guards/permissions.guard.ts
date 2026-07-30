@@ -11,14 +11,15 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredPermissions = this.reflector.get<string[]>(
+    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
       PERMISSIONS_KEY,
-      context.getHandler(),
+      [context.getHandler(), context.getClass()],
     );
 
     if (!requiredPermissions) return true;
 
     const { user } = context.switchToHttp().getRequest();
+    if (!user) return false;
 
     // Bypass admin : le rôle admin a accès à toutes les routes sans vérification
     if (user.role === 'admin') return true;
@@ -27,7 +28,7 @@ export class PermissionsGuard implements CanActivate {
     // Priorité 2 : fallback DB pour les tokens émis avant la migration
     const userPermissionCodes: string[] = Array.isArray(user.permissions)
       ? user.permissions
-      : (await this.userService.getUserPermissions(user.userId)).map((p: any) => p.code);
+      : (await this.userService.getUserPermissions(user.userId ?? user.id)).map((p: any) => p.code);
 
     return (
       userPermissionCodes.includes('SUPER_ADMIN') ||

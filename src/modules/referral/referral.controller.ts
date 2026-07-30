@@ -21,6 +21,7 @@ import { Referrer } from './entities/referral.entity';
 import { UpdateReferrerDto } from './dto/update-referral.dto';
 
 @Controller('referrers')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class ReferrersController {
   constructor(private readonly service: ReferrersService) {}

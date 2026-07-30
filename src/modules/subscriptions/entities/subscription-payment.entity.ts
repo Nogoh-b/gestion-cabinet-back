@@ -85,6 +85,19 @@ export class SubscriptionPayment {
   @Column({ type: 'varchar', length: 512, nullable: true, name: 'checkout_url' })
   checkout_url: string | null;
 
+  /** Dernier événement de webhook traité pour garantir l'idempotence. */
+  @Column({
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+    unique: true,
+    name: 'last_webhook_event_id',
+  })
+  last_webhook_event_id: string | null;
+
+  @Column({ type: 'datetime', nullable: true, name: 'last_webhook_at' })
+  last_webhook_at: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;
 

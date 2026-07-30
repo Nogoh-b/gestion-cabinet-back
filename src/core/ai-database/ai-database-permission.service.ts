@@ -20,6 +20,34 @@ type AiUserLike = AiUserContext | string | number | undefined | null;
 
 const SUPER_ADMIN = 'SUPER_ADMIN';
 
+/**
+ * Tables contenant des secrets, des identites, des journaux probatoires ou
+ * l'infrastructure interne de l'assistant. Elles ne sont jamais exposees a une
+ * requete SQL generee par l'IA, y compris pour un administrateur.
+ */
+const AI_DENIED_TABLES = new Set([
+  'user',
+  'users',
+  'user_role',
+  'user_role_assignment',
+  'role_permission',
+  'permission',
+  'auth_tokens',
+  'otp_codes',
+  'otp_online_link',
+  'audit_events',
+  'audit_chain_heads',
+  'outbox_events',
+  'outbox_delivery_attempts',
+  'activities_user',
+  'conversations_bot',
+  'conversation_messages',
+  'ai_request_log',
+]);
+
+const AI_DENIED_COLUMN_PATTERN =
+  /\b(?:password(?:_hash)?|refresh_?token|access_?token|fcm_?token|mfa_?secret|otp(?:_code|_secret)?|api_?key|private_?key|secret|token)\b/i;
+
 const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
   // Dossiers
   dossiers: {
@@ -402,6 +430,17 @@ export class AiDatabasePermissionService {
   }
 
   async assertCanReadSql(user: AiUserLike, sqlQuery: string): Promise<void> {
+    const inspectableSql = this.cleanSqlForInspection(sqlQuery);
+    const sensitiveColumn = inspectableSql.match(AI_DENIED_COLUMN_PATTERN)?.[0];
+    if (sensitiveColumn) {
+      this.logger.warn(
+        `Acces IA refuse: user=${this.getUserDebugId(user)} | colonne sensible ${sensitiveColumn}`,
+      );
+      throw new ForbiddenException(
+        'Cette demande IA vise une donnee authentification ou un secret.',
+      );
+    }
+
     const tables = this.extractTablesFromSql(sqlQuery);
     await this.assertCanReadTables(user, tables);
   }
@@ -417,9 +456,7 @@ export class AiDatabasePermissionService {
 
   extractTablesFromSql(sqlQuery: string): string[] {
     const tables = new Set<string>();
-    const cleaned = sqlQuery
-      .replace(/--.*$/gm, ' ')
-      .replace(/\/\*[\s\S]*?\*\//g, ' ');
+    const cleaned = this.cleanSqlForInspection(sqlQuery);
 
     const tableRegex = /\b(?:FROM|JOIN)\s+`?([a-zA-Z_][\w]*)`?(?:\s+`?[a-zA-Z_][\w]*`?)?/gi;
     let match: RegExpExecArray | null;
@@ -431,16 +468,43 @@ export class AiDatabasePermissionService {
     return Array.from(tables);
   }
 
+  filterAllowedTables(tables: string[]): string[] {
+    return this.normalizeTables(tables)
+      .filter((table) => !AI_DENIED_TABLES.has(table));
+  }
+
+  isTableAllowed(table: string): boolean {
+    const normalized = this.normalizeTableName(table);
+    return !!normalized && !AI_DENIED_TABLES.has(normalized);
+  }
+
+  isColumnAllowed(column: string): boolean {
+    const normalized = String(column ?? '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .toLowerCase();
+    return !!normalized && !AI_DENIED_COLUMN_PATTERN.test(normalized);
+  }
+
   private async assertAllowed(
     user: AiUserLike,
     requirements: Array<{ table: string; operation: AiDatabaseOperation }>,
   ): Promise<void> {
+    const normalizedRequirements = this.normalizeRequirements(requirements);
+    const denied = normalizedRequirements.filter(({ table }) => AI_DENIED_TABLES.has(table));
+    if (denied.length > 0) {
+      const tables = denied.map(({ table }) => table).join(', ');
+      this.logger.warn(`Acces IA refuse: user=${this.getUserDebugId(user)} | tables protegees ${tables}`);
+      throw new ForbiddenException(
+        'Cette demande IA vise une table interne ou une donnee authentification.',
+      );
+    }
+
     if (this.isAdmin(user)) return;
 
     const permissions = await this.getUserPermissionCodes(user);
     if (permissions.has(SUPER_ADMIN)) return;
 
-    const missing = this.normalizeRequirements(requirements)
+    const missing = normalizedRequirements
       .map((requirement) => {
         const permission = this.resolvePermission(requirement.table, requirement.operation);
         return { ...requirement, permission };
@@ -490,6 +554,15 @@ export class AiDatabasePermissionService {
   private normalizeTableName(table: string | undefined | null): string | null {
     if (!table || typeof table !== 'string') return null;
     return table.replace(/`/g, '').trim().toLowerCase();
+  }
+
+  private cleanSqlForInspection(sqlQuery: string): string {
+    return String(sqlQuery ?? '')
+      .replace(/--.*$/gm, ' ')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      // Les valeurs litterales ne doivent pas provoquer de faux positif
+      // ("document nomme token", par exemple). Les identifiants restent visibles.
+      .replace(/'(?:''|\\.|[^'])*'/g, ' ');
   }
 
   private resolvePermission(table: string, operation: AiDatabaseOperation): string | null {

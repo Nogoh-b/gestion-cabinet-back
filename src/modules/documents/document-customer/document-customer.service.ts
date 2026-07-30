@@ -210,9 +210,11 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     createDto: CreateDocumentCustomerDto & { file: Express.Multer.File },
     uploadedByUserId?: number 
   ): Promise<DocumentCustomerResponseDto | any> {
+    this.rejectLegacyOperation(
+      'Création documentaire historique désactivée : utiliser POST /documents.',
+    );
     const {
       document_type_id,
-      customer_id,
       category_id,
       dossier_id,
       loan_id,
@@ -244,7 +246,10 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
 
 
       // 5. Vérification des documents similaires existants
-      const hasSimilarDocs = await this.checkSimilarDocuments(document_type_id, customer_id);
+      const hasSimilarDocs = await this.checkSimilarDocuments(
+        document_type_id,
+        dossier.client.id,
+      );
       if (hasSimilarDocs && strict) {
         // throw new ConflictException(`Un document de ce type a déjà été soumis ou validé`);
       }
@@ -367,6 +372,11 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     updateDto: UpdateDocumentCustomerDto & { file?: Express.Multer.File },
     userId?: number,
   ): Promise<DocumentCustomerResponseDto> {
+    if (updateDto.file) {
+      throw new BadRequestException(
+        'Le binaire se modifie uniquement par une nouvelle version documentaire.',
+      );
+    }
     const existing = await this.docRepository.findOne({
       where: { id },
       relations: ['customer', 'document_type', 'dossier', 'category'],
@@ -427,18 +437,6 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     }
 
     // 4. Si customer_id change, valider le nouveau client
-    if (updateDto.customer_id && updateDto.customer_id !== existing.customer_id) {
-      const customer = await this.validateCustomer(
-        updateDto.customer_id,
-        existing.document_type_id ?? 0,
-        true,
-      );
-      if (customer) {
-        existing.customer = customer;
-        existing.customer_id = customer.id;
-      }
-    }
-
     // 5. Si category_id change, valider la nouvelle catégorie
     if (updateDto.category_id && updateDto.category_id !== existing.category_id) {
       const category = await this.documentCategoryService.findOne(updateDto.category_id);
@@ -453,7 +451,6 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     if (updateDto.description !== undefined) existing.description = updateDto.description;
     if (updateDto.required_for_hearing !== undefined) existing.required_for_hearing = updateDto.required_for_hearing;
     if (updateDto.is_confidential !== undefined) existing.is_confidential = updateDto.is_confidential;
-    if (updateDto.status !== undefined) existing.status = updateDto.status;
     if (updateDto.metadata !== undefined) {
       try {
         existing.metadata = typeof updateDto.metadata === 'string'
@@ -699,7 +696,6 @@ async linkDocumentsToSubStage(
 
     const document = this.docRepository.create(documentData);
     // Champ transient consommé par le DocumentCustomerSubscriber.
-    (document as any).notify_client = !!(documentData as any).notify_client;
     return this.docRepository.save(document);
   }
 
@@ -774,6 +770,9 @@ async linkDocumentsToSubStage(
 
 
   async validate(document_id: number): Promise<DocumentCustomer | any> {
+    this.rejectLegacyOperation(
+      'Validation historique désactivée : utiliser la commande validate de la version courante.',
+    );
     const doc = await this.docRepository.findOne({
       where :{ id: document_id },
       relations: ['customer'] },
@@ -805,6 +804,9 @@ async linkDocumentsToSubStage(
 
 
   async refuse(document_id: number): Promise<DocumentCustomer | null> {
+    this.rejectLegacyOperation(
+      'Refus historique désactivé : utiliser la commande reject de la version courante.',
+    );
     const doc = await this.docRepository.findOne({
       where :{ id: document_id },
       relations: ['customer'] },
@@ -845,6 +847,9 @@ async linkDocumentsToSubStage(
 
 
     async getDocumentStream(id: any, userId: any): Promise<{ stream: fs.ReadStream; mimeType: string; fileName: string }> {
+    this.rejectLegacyOperation(
+      'Lecture historique désactivée : utiliser la route protégée de contenu versionné.',
+    );
     const document = await this.findOne(id);
     
     // const uploadPath = this.configService.get('UPLOAD_PATH', './uploads');
@@ -878,6 +883,9 @@ async linkDocumentsToSubStage(
    * Returns the base64 encoded content of a document file.
    */
   async getBase64(id: number): Promise<{ base64: string; mimeType: string; fileName: string; fileSize?: number }> {
+    this.rejectLegacyOperation(
+      'Export base64 historique désactivé : utiliser la route protégée de contenu versionné.',
+    );
     const document = await this.findOne(id);
 
     if (!document || !document.file_path) {
@@ -897,6 +905,10 @@ async linkDocumentsToSubStage(
     const fileName = document.original_name || path.basename(filePath);
 
     return { base64, mimeType, fileName, fileSize: document.file_size ?? 0 };
+  }
+
+  private rejectLegacyOperation(message: string): void {
+    throw new BadRequestException(message);
   }
 
   

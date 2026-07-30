@@ -82,7 +82,7 @@ export class ExpenseLine extends TenantEntity {
   })
   category: ExpenseCategory;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_ht' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount_ht' })
   @BusinessColumn({
     label: 'Montant HT',
     description: 'Montant hors taxes',
@@ -104,7 +104,7 @@ export class ExpenseLine extends TenantEntity {
   })
   tax_rate: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_ttc' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount_ttc' })
   @BusinessColumn({
     label: 'Montant TTC',
     description: 'Montant total TTC',
@@ -151,5 +151,17 @@ export class ExpenseLine extends TenantEntity {
     importance: 'medium',
     group: 'document',
   })
-  attachment_url: string;
+  attachment_url: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  attachment_original_name: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  attachment_mime_type: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  attachment_size: string | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  attachment_sha256: string | null;
 }

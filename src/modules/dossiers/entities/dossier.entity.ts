@@ -1,6 +1,6 @@
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
-import { ClientDecision, DossierStatus, RecommendationType } from 'src/core/enums/dossier-status.enum';
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
 import { Conversation } from 'src/modules/chat/entities/conversation.entity';
@@ -11,9 +11,9 @@ import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert, AfterLoad } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, AfterLoad, Unique } from 'typeorm';
 
-import { Step, StepStatus } from './step.entity';
+import { DossierMember } from './dossier-member.entity';
 
 
 export enum DangerLevel {
@@ -39,10 +39,18 @@ export enum DossierOutcome {
   ABANDONED = 'abandoned'
 }
 
+export enum ConflictCheckStatus {
+  PENDING = 'PENDING',
+  CLEARED = 'CLEARED',
+  WAIVED = 'WAIVED',
+  BLOCKED = 'BLOCKED',
+}
+
 @Entity('dossiers')
+@Unique(['tenant_id', 'dossier_number'])
 @BusinessTable({
   label: 'Dossiers contentieux',
-  description: 'Gestion complète des dossiers juridiques du cabinet. Les statuts sont stockés en codes numériques BD; utiliser status=8 pour clôturé, status=9 pour archivé, status=10 pour abandonné.',
+  description: 'Gestion des dossiers juridiques. Le statut décrit uniquement le cycle de vie administratif ; le déroulement procédural provient de l’instance.',
   icon: '⚖️',
   category: 'dossier',
   ignored : false
@@ -66,7 +74,7 @@ export class Dossier extends BaseEntity {
   })
   id: number;
 
-  @Column({ name: 'dossier_number', length: 50, unique: true, nullable: false })
+  @Column({ name: 'dossier_number', length: 50, nullable: false })
   @BusinessColumn({
     label: 'Numéro de dossier',
     description: 'Numéro unique d\'identification du dossier (format: ANN/XXX/YY).L\'identifiant unique d\'un dossier est "dossier_number" (jamais "id" pour la recherche). Il doit etre utiliser pour la recherche ( par le bot ) pas id',
@@ -173,15 +181,6 @@ export class Dossier extends BaseEntity {
   })
   description: string;
 
-  @Column({ type: 'boolean', default: false })
-  @BusinessColumn({
-    label: 'Archivé',
-    description: 'True = dossier archivé (plus actif), False = dossier actif',
-    importance: 'low',
-    group: 'état'
-  })
-  is_archived?: boolean;
-
   @Column({ name: 'initial_request', type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Demande initiale',
@@ -194,16 +193,33 @@ export class Dossier extends BaseEntity {
   @Column({ 
     type: 'enum', 
     enum: DossierStatus, 
-    default: DossierStatus.OPEN 
+    default: DossierStatus.DRAFT,
   })
   @BusinessColumn({
     label: 'Statut du dossier',
-    description: 'BD: 0=OPEN/ouvert, 1=PRELIMINARY_ANALYSIS/analyse, 2=AMICABLE/amiable, 3=LITIGATION/contentieux, 4=JUDGMENT/jugement, 5=APPEAL/appel, 6=CASSATION, 7=EXECUTION, 8=CLOSED/clôturé, 9=ARCHIVED/archivé, 10=ABANDONED/abandonné.',
-    example: 'status = 8 pour les dossiers clôturés',
+    description: 'Cycle administratif : DRAFT, ACTIVE, CLOSED ou ARCHIVED.',
+    example: 'ACTIVE',
     importance: 'critical',
     group: 'état'
   })
   status: DossierStatus;
+
+  @Column({
+    name: 'conflict_check_status',
+    type: 'enum',
+    enum: ConflictCheckStatus,
+    default: ConflictCheckStatus.PENDING,
+  })
+  conflict_check_status: ConflictCheckStatus;
+
+  @Column({ name: 'conflict_check_notes', type: 'text', nullable: true })
+  conflict_check_notes?: string | null;
+
+  @Column({ name: 'engagement_document_id', type: 'int', nullable: true })
+  engagement_document_id?: number | null;
+
+  @Column({ name: 'financial_terms_confirmed', type: 'boolean', default: false })
+  financial_terms_confirmed: boolean;
 
   @Column({ name: 'opening_date', type: 'date', nullable: false })
   @BusinessColumn({
@@ -223,7 +239,7 @@ export class Dossier extends BaseEntity {
     importance: 'high',
     group: 'dates'
   })
-  closing_date: Date;
+  closing_date: Date | null;
 
   @Column({ name: 'estimated_duration', type: 'int', nullable: true })
   @BusinessColumn({
@@ -286,28 +302,6 @@ export class Dossier extends BaseEntity {
   })
   success_probability: number;
 
-  @Column({ name: 'key_dates', type: 'json', nullable: true })
-  @BusinessColumn({
-    label: 'Dates clés',
-    description: 'Liste des événements importants avec leurs dates',
-    importance: 'medium',
-    group: 'dates'
-  })
-  key_dates: {
-    event: string;
-    date: string;
-    completed: boolean;
-  }[];
-
-  @Column({ name: 'next_steps', type: 'text', nullable: true })
-  @BusinessColumn({
-    label: 'Prochaines étapes',
-    description: 'Description des actions à venir sur le dossier',
-    importance: 'high',
-    group: 'planification'
-  })
-  next_steps: string;
-
   @Column({ name: 'conversation_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Conversation associée',
@@ -325,52 +319,6 @@ export class Dossier extends BaseEntity {
     group: 'résultat'
   })
   final_decision: string | null;
-
-  @Column({ name: 'appeal_decision', type: 'text', nullable: true })
-  @BusinessColumn({
-    label: 'Décision en appel',
-    description: 'Décision rendue par la cour d\'appel',
-    importance: 'high',
-    group: 'résultat'
-  })
-  appeal_decision: string | null;  
-
-  @Column({ name: 'remand_jurisdiction', type: 'text', nullable: true })
-  @BusinessColumn({
-    label: 'Juridiction de renvoi',
-    description: 'Juridiction saisie après cassation',
-    importance: 'medium',
-    group: 'localisation'
-  })
-  remand_jurisdiction: string | null;
-
-  @Column({ name: 'first_instance_decision', type: 'text', nullable: true })
-  @BusinessColumn({
-    label: 'Décision première instance',
-    description: 'Décision rendue en première instance',
-    importance: 'high',
-    group: 'résultat'
-  })
-  first_instance_decision: string | null;
-
-  @Column({ name: 'appeal_possibility', type: 'boolean', default: false })
-  @BusinessColumn({
-    label: 'Possibilité d\'appel',
-    description: 'True = le jugement peut faire l\'objet d\'un appel',
-    importance: 'high',
-    group: 'voies de recours'
-  })
-  appeal_possibility: boolean;
-
-  @Column({ name: 'appeal_deadline', type: 'date', nullable: true })
-  @BusinessColumn({
-    label: 'Date limite appel',
-    description: 'Dernier jour pour interjeter appel',
-    format: 'date',
-    importance: 'high',
-    group: 'voies de recours'
-  })
-  appeal_deadline: Date | null;
 
     @Column({ name: 'client_id', type: 'int', nullable: false })
   @BusinessColumn({
@@ -407,142 +355,6 @@ export class Dossier extends BaseEntity {
     group: 'procédure'
   })
   procedure_subtype_id: number;
-
-  @Column({ 
-    name: 'client_decision', 
-    type: 'enum', 
-    enum: ClientDecision, 
-    nullable: true 
-  })
-  @BusinessColumn({
-    label: 'Décision du client',
-    description: "BD: 'transaction', 'contentieux', 'abandon'.",
-    importance: 'critical',
-    group: 'décision'
-  })
-  client_decision: ClientDecision;
-
-  @Column({ 
-    name: 'recommendation', 
-    type: 'enum', 
-    enum: RecommendationType, 
-    nullable: true 
-  })
-  @BusinessColumn({
-    label: 'Recommandation du cabinet',
-    description: "BD: 'transaction', 'present_options', 'procedure'.",
-    importance: 'high',
-    group: 'conseil'
-  })
-  recommendation: RecommendationType;
-
-  @Column({ 
-    name: 'analysis_date', 
-    type: 'date', 
-    nullable: true 
-  })
-  @BusinessColumn({
-    label: "Date d'analyse",
-    description: 'Date de réalisation de l\'analyse préliminaire',
-    format: 'date',
-    importance: 'medium',
-    group: 'dates'
-  })
-  analysis_date: Date;
-
-  @Column({ 
-    name: 'analysis_notes', 
-    type: 'text', 
-    nullable: true 
-  })
-  @BusinessColumn({
-    label: "Notes d'analyse",
-    description: 'Commentaires détaillés de l\'analyse préliminaire',
-    importance: 'high',
-    group: 'analyse'
-  })
-  analysis_notes: string;
-
-  @Column({ 
-    name: 'appeal_filed', 
-    type: 'boolean', 
-    default: false 
-  })
-  @BusinessColumn({
-    label: 'Appel interjeté',
-    description: 'True = un appel a été déposé',
-    importance: 'high',
-    group: 'voies de recours'
-  })
-  appeal_filed: boolean;
-
-  @Column({ 
-    name: 'cassation_possibility', 
-    type: 'boolean', 
-    default: false 
-  })
-  @BusinessColumn({
-    label: 'Possibilité de cassation',
-    description: 'True = un pourvoi en cassation peut être formé',
-    importance: 'medium',
-    group: 'voies de recours'
-  })
-  cassation_possibility: boolean;
-
-  @Column({ 
-    name: 'current_decision_type', 
-    type: 'enum', 
-    enum: ['FIRST_INSTANCE', 'APPEAL', 'CASSATION'],
-    nullable: true 
-  })
-  @BusinessColumn({
-    label: 'Type de décision actuelle',
-    description: "BD: 'FIRST_INSTANCE', 'APPEAL', 'CASSATION'.",
-    importance: 'high',
-    group: 'état'
-  })
-  current_decision_type?: 'FIRST_INSTANCE' | 'APPEAL' | 'CASSATION' | null;
-
-  @Column({ 
-    name: 'cassation_deadline', 
-    type: 'date', 
-    nullable: true 
-  })
-  @BusinessColumn({
-    label: 'Date limite cassation',
-    description: 'Dernier jour pour former un pourvoi en cassation',
-    format: 'date',
-    importance: 'high',
-    group: 'voies de recours'
-  })
-  cassation_deadline: Date | null;
-
-  @Column({ 
-    name: 'cassation_filed', 
-    type: 'boolean', 
-    default: false 
-  })
-  @BusinessColumn({
-    label: 'Cassation déposée',
-    description: 'True = un pourvoi en cassation a été déposé',
-    importance: 'high',
-    group: 'voies de recours'
-  })
-  cassation_filed: boolean;
-
-  @Column({ 
-    name: 'execution_date', 
-    type: 'date', 
-    nullable: true 
-  })
-  @BusinessColumn({
-    label: "Date d'exécution",
-    description: 'Date de mise en œuvre de la décision judiciaire',
-    format: 'date',
-    importance: 'medium',
-    group: 'dates'
-  })
-  execution_date: Date;
 
   @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
   @BusinessColumn({
@@ -699,25 +511,17 @@ export class Dossier extends BaseEntity {
   })
   collaborators: Employee[];
 
+  @OneToMany(() => DossierMember, (member) => member.dossier)
+  members: DossierMember[];
+
   @OneToOne(() => ProcedureInstance)
   @JoinColumn({ name: 'procedureInstanceId' })
   procedureInstance: ProcedureInstance;
 
   @Column({ nullable: true })
-  procedureInstanceId: string;
-
-  @OneToMany(() => Step, step => step.dossier)
-  steps: Step[];
+  procedureInstanceId: string | null;
 
   // ==================== GETTERS MÉTIER ====================
-
-  // Méthode utilitaire pour récupérer l'étape courante
-  getCurrentStep(): Step | null {
-    if (!this.steps) return null;
-    return this.steps.find(step => 
-      step.status === StepStatus.IN_PROGRESS
-    ) || null;
-  }
 
   // Getters
   get is_closed(): boolean {
@@ -729,7 +533,7 @@ export class Dossier extends BaseEntity {
   // }
 
   get is_active(): boolean {
-    return !this.is_closed && !this.is_archived;
+    return this.status === DossierStatus.ACTIVE;
   }
 
   get procedure_hierarchy(): string {
@@ -766,116 +570,13 @@ export class Dossier extends BaseEntity {
     return this.audiences?.length || 0;
   }
 
-  performPreliminaryAnalysis(successProbability: number, dangerLevel: DangerLevel, notes: string): void {
-    this.success_probability = successProbability;
-    this.danger_level = dangerLevel;
-    this.analysis_notes = notes;
-    this.analysis_date = new Date();
-    this.status = DossierStatus.PRELIMINARY_ANALYSIS;
-    
-    // Générer la recommandation
-    this.recommendation = this.generateRecommendation();
-  }
-
-  // Générer la recommandation basée sur les critères
-  private generateRecommendation(): RecommendationType {
-    if (this.success_probability < 30) {
-      return RecommendationType.TRANSACTION;
-    } else if (this.success_probability >= 30 && this.success_probability <= 70) {
-      return RecommendationType.PRESENT_OPTIONS;
-    } else {
-      return RecommendationType.PROCEDURE;
-    }
-  }
-
-  // Choisir la décision du client
-  chooseClientDecision(decision: ClientDecision): void {
-    this.client_decision = decision;
-    
-    switch (decision) {
-      case ClientDecision.TRANSACTION:
-        this.status = DossierStatus.AMICABLE;
-        break;
-      case ClientDecision.CONTENTIEUX:
-        this.status = DossierStatus.LITIGATION;
-        break;
-      case ClientDecision.ABANDON:
-        this.status = DossierStatus.ABANDONED;
-        this.closing_date = new Date();
-        break;
-    }
-  }
-
-  // Enregistrer le jugement
-  registerJudgment(decision: string, isSatisfied: boolean): void {
-    this.final_decision = decision;
-    this.status = DossierStatus.JUDGMENT;
-    
-    if (!isSatisfied) {
-      this.appeal_possibility = true;
-      // Calculer la date limite d'appel (généralement 1 mois)
-      const appealDeadline = new Date();
-      appealDeadline.setMonth(appealDeadline.getMonth() + 1);
-      this.appeal_deadline = appealDeadline;
-    }
-  }
-
-  // Interjeter appel
-  fileAppeal(): void {
-    if (!this.appeal_possibility && this.status !== DossierStatus.JUDGMENT) {
-      throw new Error('L\'appel n\'est pas possible pour ce dossier');
-    }
-    
-    this.status = DossierStatus.APPEAL;
-    this.appeal_filed = true;
-  }
-
-  // Former pourvoi en cassation
-  fileCassation(): void {
-    if (this.status !== DossierStatus.APPEAL) {
-      throw new Error('La cassation n\'est possible qu\'après un appel');
-    }
-    
-    this.status = DossierStatus.CASSATION;
-    this.cassation_filed = true;
-  }
-
-  // Exécuter la décision
-  executeDecision(): void {
-    if (this.status !== DossierStatus.JUDGMENT && this.status !== DossierStatus.APPEAL && this.status !== DossierStatus.CASSATION) {
-      throw new Error('Aucune décision à exécuter');
-    }
-    
-    this.status = DossierStatus.EXECUTION;
-    this.execution_date = new Date();
-  }
-
-  // Clôturer le dossier
-  close(): void {
-    if (this.status !== DossierStatus.EXECUTION && 
-        this.status !== DossierStatus.AMICABLE && 
-        this.status !== DossierStatus.ABANDONED) {
-      throw new Error('Le dossier ne peut pas être clôturé dans son état actuel');
-    }
-    
-    this.status = DossierStatus.CLOSED;
-    this.closing_date = new Date();
-  }
-
-  // Override de la méthode change_status existante
+  // Transition du seul cycle de vie administratif.
   change_status(new_status: DossierStatus): void {
     const allowed_transitions: Record<DossierStatus, DossierStatus[]> = {
-      [DossierStatus.PRELIMINARY_ANALYSIS]: [DossierStatus.AMICABLE, DossierStatus.LITIGATION, DossierStatus.ABANDONED],
-      [DossierStatus.AMICABLE]: [DossierStatus.CLOSED],
-      [DossierStatus.LITIGATION]: [DossierStatus.JUDGMENT, DossierStatus.CLOSED],
-      [DossierStatus.JUDGMENT]: [DossierStatus.APPEAL, DossierStatus.EXECUTION, DossierStatus.CLOSED],
-      [DossierStatus.APPEAL]: [DossierStatus.JUDGMENT, DossierStatus.CASSATION, DossierStatus.CLOSED],
-      [DossierStatus.CASSATION]: [DossierStatus.JUDGMENT, DossierStatus.CLOSED],
-      [DossierStatus.EXECUTION]: [DossierStatus.CLOSED],
-      [DossierStatus.CLOSED]: [DossierStatus.ARCHIVED],
+      [DossierStatus.DRAFT]: [DossierStatus.ACTIVE],
+      [DossierStatus.ACTIVE]: [DossierStatus.CLOSED],
+      [DossierStatus.CLOSED]: [DossierStatus.ACTIVE, DossierStatus.ARCHIVED],
       [DossierStatus.ARCHIVED]: [],
-      [DossierStatus.OPEN]: [DossierStatus.PRELIMINARY_ANALYSIS],
-      [DossierStatus.ABANDONED]: [DossierStatus.CLOSED],
     };
 
     const current_transitions: DossierStatus[] = allowed_transitions[this.status] || [];
@@ -919,71 +620,6 @@ export class Dossier extends BaseEntity {
 
   // Dans class Dossier
 
-/**
- * Étape actuellement en cours (la première trouvée avec status IN_PROGRESS)
- */
-get currentStep(): Step | null {
-  if (!this.steps || this.steps.length === 0) return null;
-  
-  // On prend généralement la plus récente en IN_PROGRESS
-  // ou la première selon ton workflow
-  return this.steps
-    .filter(s => s.status === StepStatus.IN_PROGRESS)
-    .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())[0] || null;
-}
-
-/**
- * Nombre total d'étapes
- */
-get stepCount(): number {
-  return this.steps?.length || 0;
-}
-
-/**
- * Nombre d'étapes terminées ou annulées
- */
-get completedStepCount(): number {
-  if (!this.steps) return 0;
-  return this.steps.filter(s => 
-    s.status === StepStatus.COMPLETED || 
-    s.status === StepStatus.CANCELLED
-  ).length;
-}
-
-/**
- * Pourcentage global d'avancement (basé sur les étapes terminées)
- */
-get stepsProgress(): number {
-  const total = this.stepCount;
-  if (total === 0) return 0;
-  
-  const completed = this.completedStepCount;
-  return Math.round((completed / total) * 100);
-}
-
-/**
- * Résumé structuré des étapes (prêt pour le DTO)
- */
-get stepsSummary(): {
-  current_step_title?: string;
-  current_step_type?: string;
-  current_step_status?: number;
-  total_steps: number;
-  completed_steps: number;
-  progress: number;
-} {
-  const current = this.currentStep;
-
-  return {
-    current_step_title: current?.title,
-    current_step_type: current?.type,
-    current_step_status: current?.status,
-    total_steps: this.stepCount,
-    completed_steps: this.completedStepCount,
-    progress: this.stepsProgress,
-  };
-}
-
 // Dans la classe Dossier
 get is_won(): boolean {
   return this.outcome === DossierOutcome.WON;
@@ -1005,11 +641,7 @@ setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
   if (notes) this.outcome_notes = notes;
   if (damages) this.damages_awarded = damages;
   
-  // Si le dossier est gagné ou perdu, on peut le clôturer
-  if (outcome === DossierOutcome.WON || outcome === DossierOutcome.LOST) {
-    this.status = DossierStatus.CLOSED;
-    this.closing_date = new Date();
-  }
+  // La clôture reste une commande explicite, soumise aux préconditions métier.
 }
 
   /**
@@ -1027,8 +659,4 @@ setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
     }
   }
 
-  @BeforeInsert()
-  beforeCreate() {
-    this.is_archived = this.is_archived ?? false;
-  }
 }

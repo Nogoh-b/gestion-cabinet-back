@@ -1,10 +1,14 @@
 // services/workflow.service.ts
 import * as jsonLogic from 'json-logic-js';
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { ApplyTransitionDto } from '../dto/create-procedure-instance.dto copy';
+import { ApplyTransitionDto } from '../dto/apply-transition.dto';
 import { Decision } from '../entities/decision.entity';
 import { EventType, TransitionType } from '../entities/enums/instance-status.enum';
 import { HistoryEntry } from '../entities/history-entry.entity';
@@ -66,26 +70,12 @@ export class WorkflowService {
     dto: ApplyTransitionDto,
     userId: string,
   ): Promise<TransitionResult> {
-    const transition = await this.transitionRepository.findOne({
-      where: { id: dto.transitionId },
-      relations: ['fromStage', 'toStage'],
-    });
-
-    if (!transition) {
-      throw new NotFoundException('Transition not found');
-    }
-
-    if (transition.type !== TransitionType.MANUAL) {
-      throw new BadRequestException('This transition cannot be applied manually');
-    }
-
-    const instance = await this.getInstanceWithRelations(instanceId);
-
-    if (instance.currentStageId !== transition.fromStageId) {
-      throw new BadRequestException('Invalid transition for current stage');
-    }
-
-    return this.executeTransition(instance, transition, userId, dto?.comment);
+    void instanceId;
+    void dto;
+    void userId;
+    throw new ForbiddenException(
+      "Les transitions sont exclusivement appliquées par ProcedureInstanceService",
+    );
   }
 
 
@@ -185,6 +175,15 @@ export class WorkflowService {
         if (!condition) return true;
         
         try {
+        const parsedCondition =
+          typeof condition === 'string' ? JSON.parse(condition) : condition;
+        if (
+          !parsedCondition ||
+          typeof parsedCondition !== 'object' ||
+          Array.isArray(parsedCondition)
+        ) {
+          return false;
+        }
         // Préparer les variables pour jsonLogic
         const vars: any = {};
         
@@ -212,22 +211,24 @@ export class WorkflowService {
         
         // Vérifier si jsonLogic est défini
         if (!jsonLogic || typeof jsonLogic.apply !== 'function') {
-            console.warn('jsonLogic not properly loaded, returning true for condition');
-            return true;
+            console.warn('jsonLogic indisponible, condition refusée');
+            return false;
         }
         
         // Utiliser json-logic-js pour évaluer
-        return jsonLogic.apply(condition, vars);
-        } catch (error) {
-        console.error('Error evaluating condition:', error);
-        console.error('Condition:', JSON.stringify(condition));
-        console.error('Context:', JSON.stringify(context));
-        return false;
+        return jsonLogic.apply(parsedCondition, vars) === true;
+        } catch {
+          return false;
         }
     }
 
     // Exemple de méthode de migration (à appeler une seule fois)
 async migrateToStageVisits() {
+  throw new ForbiddenException(
+    'La réparation des visites doit être exécutée par une migration versionnée',
+  );
+
+  /* istanbul ignore next -- branche historique neutralisée */
   const instances = await this.instanceRepository.find({
     relations: ['template', 'template.stages', 'template.stages.subStages']
   });
@@ -258,6 +259,16 @@ async triggerAutomaticTransitions(
   queryRunner?: any,
   userId?: string
 ): Promise<TransitionResult[]> {
+  void instance;
+  void eventType;
+  void eventData;
+  void queryRunner;
+  void userId;
+  throw new ForbiddenException(
+    "Les transitions automatiques sont exclusivement appliquées par ProcedureInstanceService",
+  );
+
+  /* istanbul ignore next -- branche historique neutralisée */
   const results: TransitionResult[] = [];
 
   const automaticTransitions = await this.transitionRepository.find({

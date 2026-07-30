@@ -6,6 +6,7 @@
 // Ce guard doit être appliqué APRÈS JwtAuthGuard (qui vérifie l'auth) et
 // APRES le TenantResolverMiddleware (qui résout resolvedTenantId).
 import { IS_PUBLIC_KEY } from 'src/core/decorators/public.decorator';
+import { ALLOW_SUSPENDED_CABINET_KEY } from 'src/core/decorators/allow-suspended-cabinet.decorator';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { SubscriptionsService } from 'src/modules/subscriptions/subscriptions.service';
 import { Repository } from 'typeorm';
@@ -35,6 +36,12 @@ export class SuspendedCabinetGuard implements CanActivate {
       context.getClass(),
     ]);
     if (isPublic) return true;
+
+    const allowSuspended = this.reflector.getAllAndOverride<boolean>(
+      ALLOW_SUSPENDED_CABINET_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (allowSuspended) return true;
 
     // 2. Récupérer l'ID du tenant (cabinet)
     const req = context.switchToHttp().getRequest();

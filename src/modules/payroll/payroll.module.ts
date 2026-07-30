@@ -8,6 +8,7 @@ import { Payslip } from './entities/payslip.entity';
 import { PayslipLine } from './entities/payslip-line.entity';
 import { PayrollContribution } from './entities/payroll-contribution.entity';
 import { SalaryAdvance } from './entities/salary-advance.entity';
+import { User } from '../iam/user/entities/user.entity';
 
 // Services
 import { PayrollPeriodsService } from './payroll-periods.service';
@@ -30,11 +31,6 @@ import { SalaryAdvancesController } from './salary-advances.controller';
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { AgenciesModule } from '../agencies/agencies.module';
 import { PlansModule } from '../plans/plans.module';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { PayrollPeriodWriteHandler } from './payroll-period-write.handler';
-import { PayslipWriteHandler } from './payslip-write.handler';
-import { PayslipLineWriteHandler } from './payslip-line-write.handler';
 
 @Module({
   imports: [
@@ -44,11 +40,11 @@ import { PayslipLineWriteHandler } from './payslip-line-write.handler';
       PayslipLine,
       PayrollContribution,
       SalaryAdvance,
+      User,
     ]),
     AgenciesModule,
     DossiersModule,
     PlansModule,
-    AiDatabaseModule,
   ],
   controllers: [
     PayrollPeriodsController,
@@ -67,9 +63,6 @@ import { PayslipLineWriteHandler } from './payslip-line-write.handler';
     PayrollCalculatorService,
     PayrollGenerationService,
     PayrollStatsService,
-    PayrollPeriodWriteHandler,
-    PayslipWriteHandler,
-    PayslipLineWriteHandler,
   ],
   exports: [
     PayrollPeriodsService,
@@ -82,17 +75,4 @@ import { PayslipLineWriteHandler } from './payslip-line-write.handler';
     PayrollStatsService,
   ],
 })
-export class PayrollModule {
-  constructor(
-    private readonly registry: WriteHandlerRegistry,
-    private readonly periodHandler: PayrollPeriodWriteHandler,
-    private readonly payslipHandler: PayslipWriteHandler,
-    private readonly lineHandler: PayslipLineWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.registry.register(this.periodHandler);
-    this.registry.register(this.payslipHandler);
-    this.registry.register(this.lineHandler);
-  }
-}
+export class PayrollModule {}

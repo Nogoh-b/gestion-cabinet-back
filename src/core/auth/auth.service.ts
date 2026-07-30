@@ -1,6 +1,10 @@
 // src/modules/auth/auth.service.ts
 import * as bcrypt from 'bcrypt';
-import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import {
+  TenantContext,
+  getCurrentTenantId,
+  hasActiveTenant,
+} from 'src/core/tenant/tenant.context';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
 
@@ -23,6 +27,8 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { DataSource } from 'typeorm';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 
 
 @Injectable()
@@ -37,6 +43,7 @@ export class AuthService {
     private authTokenService: AuthTokenService,
     private tenantContext: TenantContext,
     private mailTemplateService: MailTemplateService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -66,7 +73,7 @@ export class AuthService {
    *                  Indépendant d'AsyncLocalStorage (qui ne se propage pas toujours à travers
    *                  l'infrastructure Passport/NestJS au niveau des guards).
    */
-  async validateUser(username: string, pass: string, tenantId = 1): Promise<any> {
+  async validateUser(username: string, pass: string, tenantId: number): Promise<any> {
     this.logger.debug(`[validateUser] email="${username}" tenantId=${tenantId}`);
 
     // ── 1. Recherche de l'utilisateur (User est global, sans tenant_id) ────
@@ -89,33 +96,30 @@ export class AuthService {
 
     // ── 3. Vérification d'appartenance au cabinet ───────────────────────────
     // User n'a pas de tenant_id → on vérifie + récupère le tenant via Employee.
-    let resolvedTenantId = tenantId;
+    if (!Number.isInteger(tenantId) || tenantId <= 0) {
+      throw new UnauthorizedException('Code cabinet obligatoire');
+    }
 
-    if (tenantId && tenantId !== 1) {
-      let employee: any = null;
-      await this.tenantContext.run(tenantId, async () => {
-        try {
-          employee = await this.employeeService.findByEmail(username, false);
-        } catch {
-          employee = null;
-        }
-      });
-
-      if (!employee) {
-        this.logger.warn(
-          `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
-          `absent du cabinet tenant_id=${tenantId}`,
-        );
-        throw new UnauthorizedException('Identifiants invalides Aucun employé trouvé pour ce cabinet');
+    let employee: any = null;
+    await this.tenantContext.run(tenantId, async () => {
+      try {
+        employee = await this.employeeService.findByEmail(username, false);
+      } catch {
+        employee = null;
       }
+    });
 
-      // tenant_id de l'employee (source de vérité pour le JWT)
-      resolvedTenantId = (employee as any).tenant_id ?? tenantId;
+    if (!employee || Number(employee.tenant_id) !== tenantId) {
+      this.logger.warn(
+        `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
+        `absent du cabinet tenant_id=${tenantId}`,
+      );
+      throw new UnauthorizedException('Identifiants invalides pour ce cabinet');
     }
 
     const { password, ...result } = user;
     // Attacher le tenantId résolu pour que login() puisse l'injecter dans le JWT
-    (result as any)._resolvedTenantId = resolvedTenantId;
+    (result as any)._resolvedTenantId = tenantId;
     return result;
   }
 
@@ -175,7 +179,12 @@ export class AuthService {
 
   /** Vérifie l'OTP de connexion et émet le token (2e étape du MFA). */
   async verifyMfa(email: string, otp: string) {
-    const { isValid } = await this.authTokenService.verifyOTP(email, otp, 'mfa');
+    const { isValid } = await this.authTokenService.verifyOTP(
+      email,
+      otp,
+      'mfa',
+      false,
+    );
     if (!isValid) {
       throw new UnauthorizedException('Code invalide ou expiré');
     }
@@ -190,8 +199,49 @@ export class AuthService {
 
   /** Active/désactive le MFA pour un utilisateur. */
   async setMfa(userId: number, enabled: boolean): Promise<{ mfa_enabled: boolean }> {
+    if (!enabled) {
+      throw new BadRequestException(
+        'La désactivation exige une vérification récente',
+      );
+    }
     await this.usersService.update(userId, { mfa_enabled: enabled } as any);
     return { mfa_enabled: enabled };
+  }
+
+  async requestMfaDisable(userId: number): Promise<{ sent: true }> {
+    const user = await this.usersService.findOne(userId);
+    if (!user?.email || !(user as any).mfa_enabled) {
+      throw new BadRequestException('La double authentification n’est pas active');
+    }
+    await this.sendMfaOtp(
+      user.email,
+      (user as any).first_name || user.username,
+    );
+    return { sent: true };
+  }
+
+  async disableMfa(
+    userId: number,
+    otp: string,
+  ): Promise<{ mfa_enabled: false }> {
+    const user = await this.usersService.findOne(userId);
+    if (!user?.email || !(user as any).mfa_enabled) {
+      throw new BadRequestException('La double authentification n’est pas active');
+    }
+    if (!/^\d{6}$/.test(String(otp ?? ''))) {
+      throw new BadRequestException('Code de confirmation invalide');
+    }
+    const verification = await this.authTokenService.verifyOTP(
+      user.email,
+      otp,
+      'mfa',
+      false,
+    );
+    if (!verification.isValid) {
+      throw new UnauthorizedException('Code invalide ou expiré');
+    }
+    await this.usersService.update(userId, { mfa_enabled: false } as any);
+    return { mfa_enabled: false };
   }
 
   /** Émet la session (token + user + permissions). */
@@ -218,11 +268,18 @@ export class AuthService {
     //  2. getCurrentTenantId()  (contexte AsyncLocalStorage posé par TenantInterceptor)
     //  3. tenant_id de l'employee (entity TypeORM si disponible)
     //  4. Fallback 1
-    const tenantId: number =
+    const contextualTenantId = hasActiveTenant()
+      ? getCurrentTenantId()
+      : undefined;
+    const tenantId =
       (data as any)._resolvedTenantId
-      ?? getCurrentTenantId()
+      ?? contextualTenantId
       ?? (user as any).tenant_id
-      ?? 1;
+      ?? null;
+
+    if (!tenantId) {
+      throw new UnauthorizedException('Session sans cabinet valide');
+    }
 
     this.logger.log(`[login] email="${data.email}" → JWT tenantId=${tenantId}`);
 
@@ -239,9 +296,11 @@ export class AuthService {
     // (User.role = "admin"|"secretaire"|…) pour que le frontend n'affiche pas
     // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile. 
     const userWithRole = role ? { ...user, role } : user;
+    const tokens = await this.generateTokens(data, payload);
 
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
       user: userWithRole,
       permissions,
     };
@@ -319,8 +378,19 @@ export class AuthService {
   /**
    * Réinitialiser le mot de passe (après vérification OTP)
    */
-  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ success: boolean; message: string; data?: any }> {
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{
+    success: boolean;
+    message: string;
+    access_token?: string;
+    refresh_token?: string;
+    data?: any;
+  }> {
     const { token, password, confirmPassword } = resetPasswordDto;
+    if (!token) {
+      throw new BadRequestException(
+        'Session de réinitialisation absente ou expirée',
+      );
+    }
 
     // Vérifier que les mots de passe correspondent
     if (password !== confirmPassword) {
@@ -397,13 +467,14 @@ export class AuthService {
       tenantId: (employee as any)?.tenant_id ?? userTenantId,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokens = await this.generateTokens(user, payload);
 
     return {
       success: true,
       message: 'Mot de passe réinitialisé avec succès',
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
       data: {
-        access_token: accessToken,
         user: employee || user,
         permissions,
       },
@@ -413,7 +484,13 @@ export class AuthService {
   /**
    * Créer un mot de passe (invitation)
    */
-  async setPassword(setPasswordDto: SetPasswordDto): Promise<{ success: boolean; message: string; data?: any }> {
+  async setPassword(setPasswordDto: SetPasswordDto): Promise<{
+    success: boolean;
+    message: string;
+    access_token?: string;
+    refresh_token?: string;
+    data?: any;
+  }> {
     const { token, password, confirmPassword } = setPasswordDto;
 
     // Vérifier que les mots de passe correspondent
@@ -468,7 +545,7 @@ export class AuthService {
       tenantId: (employee as any)?.tenant_id ?? userTenantId,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const tokens = await this.generateTokens(user, payload);
 
     // Email de bienvenue — template DB `account_opening` en priorité, repli fichier.
     const spFirstName = user.first_name || user.username || 'Utilisateur';
@@ -490,42 +567,80 @@ export class AuthService {
     return {
       success: true,
       message: 'Mot de passe créé avec succès',
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
       data: {
-        access_token: accessToken,
         user: employee || user,
         permissions,
       },
     };
   }
 
-  async refreshTokens(userId: number, refreshToken: string) {
-    const user = await this.usersService.findOne(userId);
-    if (!user || !user.refreshToken) throw new ForbiddenException();
+  async refreshTokens(
+    userId: number,
+    refreshToken: string,
+    tenantId: number,
+  ) {
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const repository = manager.getRepository(User);
+      const user = await repository.findOne({
+        where: { id: userId, tenant_id: tenantId },
+        relations: ['employee', 'customer'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user?.refreshToken) throw new ForbiddenException();
 
-    const tokensMatch = await bcrypt.compare(refreshToken, user.refreshToken);
-    if (!tokensMatch) throw new ForbiddenException('Invalid refresh token');
-
-    // Refuser le rafraîchissement si le collaborateur a été désactivé/suspendu
-    // depuis l'émission du token (User.employee est chargé en eager).
-    this.assertEmployeeActive(user);
-
-    const tokens = await this.generateTokens(user);
-    return tokens;
+      const tokensMatch = await bcrypt.compare(refreshToken, user.refreshToken);
+      if (!tokensMatch) {
+        user.refreshToken = null;
+        await repository.save(user);
+        throw new ForbiddenException('Réutilisation de jeton détectée');
+      }
+      this.assertEmployeeActive(user);
+      const permissions = (
+        await this.usersService.getPermissionsByRoleCode(user.role)
+      ).map((permission: any) => permission.code);
+      const payload: JwtPayload = {
+        sub: user.id,
+        username: user.email ?? user.username,
+        role: user.role,
+        permissions,
+        customerId: user.customer?.id ?? null,
+        tenantId,
+      };
+      const refreshSecret = process.env.JWT_REFRESH_SECRET;
+      if (!refreshSecret) {
+        throw new Error('JWT_REFRESH_SECRET est obligatoire');
+      }
+      const [accessToken, nextRefreshToken] = await Promise.all([
+        this.jwtService.signAsync(payload, { expiresIn: '15m' }),
+        this.jwtService.signAsync(payload, {
+          secret: refreshSecret,
+          expiresIn: '7d',
+        }),
+      ]);
+      user.refreshToken = await bcrypt.hash(nextRefreshToken, 10);
+      await repository.save(user);
+      return { accessToken, refreshToken: nextRefreshToken };
+    });
   }
 
-  private async generateTokens(user: any) {
-    const payload: JwtPayload = { 
-      sub: user.id,
-      username: user.username,
-    };
+  async logout(userId: number): Promise<void> {
+    await this.usersService.updateRefreshToken(userId, undefined);
+  }
+
+  private async generateTokens(user: any, payload: JwtPayload) {
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!refreshSecret) {
+      throw new Error('JWT_REFRESH_SECRET est obligatoire');
+    }
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_SECRET,
         expiresIn: '15m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: refreshSecret,
         expiresIn: '7d',
       }),
     ]);

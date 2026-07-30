@@ -1,12 +1,66 @@
 import { Repository, FindManyOptions, FindOneOptions, SaveOptions, In } from 'typeorm';
 import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 
 
 
 
 import { getCurrentTenantId, hasActiveTenant } from './tenant.context';
 import { isSharedEntity } from './tenant.decorator';
+
+export function buildTenantMutationCriteria(
+  criteria: any,
+  tenantId: number,
+): any {
+  if (Array.isArray(criteria)) {
+    const ids = criteria.map(value =>
+      value && typeof value === 'object' ? value.id : value,
+    );
+    return { id: In(ids), tenant_id: tenantId };
+  }
+  if (typeof criteria === 'number' || typeof criteria === 'string') {
+    return { id: criteria, tenant_id: tenantId };
+  }
+  return { ...(criteria ?? {}), tenant_id: tenantId };
+}
+
+export async function protectTenantSave(
+  repository: Repository<any>,
+  originalFindOne: typeof Repository.prototype.findOne,
+  entity: any,
+  tenantId: number,
+): Promise<void> {
+  const entities = Array.isArray(entity) ? entity : [entity];
+  for (const item of entities) {
+    if (!item || typeof item !== 'object') continue;
+    if (
+      item.tenant_id !== undefined &&
+      item.tenant_id !== null &&
+      Number(item.tenant_id) !== tenantId
+    ) {
+      throw new NotFoundException('Ressource introuvable');
+    }
+    const idMap = repository.metadata.getEntityIdMap(item);
+    const hasCompleteId =
+      idMap &&
+      Object.values(idMap).length > 0 &&
+      Object.values(idMap).every(value => value !== null && value !== undefined);
+    if (hasCompleteId) {
+      const existing = await originalFindOne.call(repository, {
+        where: idMap,
+      } as any);
+      if (existing && Number((existing as any).tenant_id) !== tenantId) {
+        throw new NotFoundException('Ressource introuvable');
+      }
+    }
+    item.tenant_id = tenantId;
+  }
+}
 
 
 /**
@@ -135,14 +189,10 @@ export class TenantRepositoryPatch implements OnModuleInit {
     // @BeforeInsert sur TenantEntity gère le tenant_id pour les nouvelles entités.
     // Pour save() sur des entités existantes (UPDATE), on s'assure que
     // tenant_id n'est pas écrasé par une valeur étrangère.
-    Repository.prototype.save = function (entity: any, options?: SaveOptions) {
+    Repository.prototype.save = async function (entity: any, options?: SaveOptions) {
       if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
         const tenantId = getCurrentTenantId();
-        if (Array.isArray(entity)) {
-          entity.forEach(e => { e.tenant_id = tenantId; });
-        } else {
-          entity.tenant_id = tenantId;
-        }
+        await protectTenantSave(this, orig.findOne, entity, tenantId);
       }
       return orig.save.call(this, entity, options);
     };
@@ -157,11 +207,7 @@ export class TenantRepositoryPatch implements OnModuleInit {
         // Empêche d'écraser le tenant_id dans les données mises à jour
         const { tenant_id: _ignored, ...safePartial } = partialEntity ?? {};
         // Ajoute le filtre tenant dans le criteria
-        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-          ? { id: criteria, tenant_id: tenantId }
-          : Array.isArray(criteria)
-            ? criteria // tableau d'IDs — TypeORM gère comme IN(ids), pas de mélange avec obj
-            : { ...criteria, tenant_id: tenantId };
+        const safeCriteria = buildTenantMutationCriteria(criteria, tenantId);
         return orig.update.call(this, safeCriteria, safePartial);
       }
       return orig.update.call(this, criteria, partialEntity);
@@ -172,11 +218,7 @@ export class TenantRepositoryPatch implements OnModuleInit {
     (Repository.prototype as any).delete = function (criteria: any) {
       if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
         const tenantId = getCurrentTenantId();
-        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-          ? { id: criteria, tenant_id: tenantId }
-          : Array.isArray(criteria)
-            ? criteria
-            : { ...criteria, tenant_id: tenantId };
+        const safeCriteria = buildTenantMutationCriteria(criteria, tenantId);
         return orig.delete.call(this, safeCriteria);
       }
       return orig.delete.call(this, criteria);
@@ -186,11 +228,7 @@ export class TenantRepositoryPatch implements OnModuleInit {
     (Repository.prototype as any).softDelete = function (criteria: any) {
       if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
         const tenantId = getCurrentTenantId();
-        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-          ? { id: criteria, tenant_id: tenantId }
-          : Array.isArray(criteria)
-            ? criteria
-            : { ...criteria, tenant_id: tenantId };
+        const safeCriteria = buildTenantMutationCriteria(criteria, tenantId);
         return orig.softDelete.call(this, safeCriteria);
       }
       return orig.softDelete.call(this, criteria);
@@ -200,11 +238,7 @@ export class TenantRepositoryPatch implements OnModuleInit {
       (Repository.prototype as any).restore = function (criteria: any) {
         if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
           const tenantId = getCurrentTenantId();
-          const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-            ? { id: criteria, tenant_id: tenantId }
-            : Array.isArray(criteria)
-              ? criteria
-              : { ...criteria, tenant_id: tenantId };
+          const safeCriteria = buildTenantMutationCriteria(criteria, tenantId);
           return orig.restore.call(this, safeCriteria);
         }
         return orig.restore.call(this, criteria);

@@ -10,7 +10,7 @@ import {
   IsBoolean
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { FindingSeverity, FindingCategory, FindingStatus } from '../entities/finding.entity';
+import { FindingSeverity, FindingCategory } from '../entities/finding.entity';
 
 export class CreateFindingDto {
   @ApiProperty({
@@ -64,14 +64,6 @@ export class CreateFindingDto {
   category: FindingCategory;
 
   @ApiPropertyOptional({
-    example: 42,
-    description: "ID de l'avocat qui a créé le finding",
-  })
-  @IsInt()
-  @IsOptional()
-  created_by_id?: number;
-
-  @ApiPropertyOptional({
     example: 'Cette clause pourrait empêcher l\'acquisition car elle limite trop la liberté du dirigeant',
     description: "Impact potentiel sur l'opération",
   })
@@ -96,14 +88,6 @@ export class CreateFindingDto {
   legal_basis?: string;
 
   @ApiPropertyOptional({
-    example: FindingStatus.IDENTIFIED,
-    description: "Base légale / jurisprudence",
-  })
-  @IsString()
-  @IsOptional()
-  status?: FindingStatus;
-
-  @ApiPropertyOptional({
     example: 150000,
     description: "Montant estimé du risque (en euros)",
   })
@@ -126,4 +110,12 @@ export class CreateFindingDto {
   @IsBoolean()
   @IsOptional()
   confidential?: boolean;
+
+  @ApiPropertyOptional({
+    description: "Demander une notification client après traitement durable",
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  notify_client?: boolean;
 }

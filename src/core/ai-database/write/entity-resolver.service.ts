@@ -850,7 +850,9 @@ export class EntityResolverService {
           const isSystem = ['id', 'created_at', 'updated_at', 'deleted_at', 'password', 'token', 'secret'].includes(dbName);
           if (isText && !isSystem && !col.isPrimary) {
             fields[col.propertyName] = text.trim();
-            this.logger.debug(`📝 Fallback: champ "${col.propertyName}" ← "${text}"`);
+            this.logger.debug(
+              `Fallback applique au champ ${col.propertyName}`,
+            );
             break;
           }
         }

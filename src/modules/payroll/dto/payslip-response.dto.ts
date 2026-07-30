@@ -1,6 +1,9 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { PayslipStatus } from '../entities/payslip.entity';
+import {
+  PayslipPaymentMethod,
+  PayslipStatus,
+} from '../entities/payslip.entity';
 import { PayslipLineType } from '../entities/payslip-line.entity';
 
 export class PayslipLineResponseDto {
@@ -71,6 +74,30 @@ export class PayslipResponseDto {
   @ApiProperty({ example: '2026-04-01', required: false })
   @Expose()
   payment_date: Date;
+
+  @ApiProperty({ enum: PayslipPaymentMethod, required: false })
+  @Expose()
+  payment_method: PayslipPaymentMethod | null;
+
+  @ApiProperty({ example: 'VIR-PAIE-2026-04-001', required: false })
+  @Expose()
+  payment_reference: string | null;
+
+  @ApiProperty({ example: '2026-04-29T15:00:00.000Z', required: false })
+  @Expose()
+  validated_at: Date | null;
+
+  @ApiProperty({ example: 12, required: false })
+  @Expose()
+  prepared_by_id: number | null;
+
+  @ApiProperty({ example: 18, required: false })
+  @Expose()
+  validated_by_id: number | null;
+
+  @ApiProperty({ example: 23, required: false })
+  @Expose()
+  paid_by_id: number | null;
 
   // Relations
   @ApiProperty({
@@ -200,6 +227,10 @@ export class PayslipListResponseDto {
   @ApiProperty({ example: '2026-04-01', required: false })
   @Expose()
   payment_date: Date;
+
+  @ApiProperty({ enum: PayslipPaymentMethod, required: false })
+  @Expose()
+  payment_method: PayslipPaymentMethod | null;
 
   @ApiProperty({ example: 1300.0 })
   @Expose()

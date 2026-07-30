@@ -22,6 +22,7 @@ import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service'
 
 
 @Controller('countries')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class CountriesController {
   constructor(private readonly service: CountriesService) {}

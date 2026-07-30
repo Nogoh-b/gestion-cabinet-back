@@ -1,10 +1,19 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { ClasseCompte, TypeCompte } from '../enums/comptabilite.enums';
 import { LigneEcriture } from './ligne-ecriture.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('comptes_comptables')
+@Index('UQ_accounts_tenant_number', ['tenant_id', 'numero'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Comptes comptables',
   description: 'Plan comptable du cabinet (SYSCOHADA). Chaque compte a un numéro, un libellé et une classe (1 à 8) et sert à enregistrer les écritures comptables (débit/crédit).',

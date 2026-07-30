@@ -1,6 +1,6 @@
 // generic-write.service.ts
 import { DataSource, QueryRunner } from "typeorm";
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 
 import { WriteOperation, WritePlan } from "./dto/analysis-response.dto";
@@ -32,6 +32,11 @@ export class GenericWriteService {
   // ─────────────────────────────────────────────────────────────────────────────
 
   async executePlan(writePlan: WritePlan, userId: string): Promise<WriteResult[]> {
+    throw new ForbiddenException(
+      "L'IA ne peut pas écrire dans la base de données. Toute mutation exige une commande métier validée par un utilisateur.",
+    );
+
+    /* istanbul ignore next -- code historique conservé temporairement pour reprise contrôlée */
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
@@ -89,7 +94,7 @@ export class GenericWriteService {
         if (result.entityId && result.data) {
           // Par tempId (résolution {{tempId.field}})
           if (operation.tempId) {
-            createdEntities.set(operation.tempId, result.data);
+            createdEntities.set(operation.tempId as string, result.data);
             this.logger.log(`🔗 Référence stockée: ${operation.tempId} → ID ${result.entityId}`);
           }
           // Par nom de table (auto-injection FK)

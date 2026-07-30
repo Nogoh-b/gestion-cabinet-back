@@ -1,22 +1,21 @@
+import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, InsertEvent, Repository } from 'typeorm';
+
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
-import { DataSource, InsertEvent, Repository } from 'typeorm';
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-
-import { Paiement } from '../entities/paiement.entity';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { StatutPaiement } from '../dto/create-paiement.dto';
+import { Paiement } from '../entities/paiement.entity';
 
 /**
- * Subscriber métier pour les paiements.
- *
- * Événements émis :
- *  - PAIEMENT_RECEIVED → quand un paiement est enregistré
- *    Le client reçoit un reçu si `notify_client=true` ; l'avocat du dossier
- *    et les admins sont notifiés selon leurs préférences.
+ * Les reçus ne partent plus depuis afterInsert : la création produit un
+ * paiement EN_ATTENTE. L'outbox déclenche la notification uniquement après
+ * validation transactionnelle, et conserve ainsi la possibilité de reprise.
  */
 @Injectable()
 export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
@@ -25,13 +24,10 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     notificationDispatcher: NotificationDispatcher,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
+    @InjectRepository(Paiement)
+    private readonly paiementRepo: Repository<Paiement>,
   ) {
     super(dataSource, notificationDispatcher);
-  }
-
-  private async getCurrencySymbol(): Promise<string> {
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } }).catch(() => null);
-    return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 
   listenTo() {
@@ -39,22 +35,30 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
   }
 
   protected async onAfterCreate(
-    entity: Paiement,
-    event: InsertEvent<Paiement>,
+    _entity: Paiement,
+    _event: InsertEvent<Paiement>,
   ): Promise<void> {
-    // Recharger avec la facture + dossier + client pour résoudre l'audience
-    const paiement = await this.load(entity.id as any, event);
-    if (!paiement?.facture) return;
+    // Intentionnellement vide : payment.validated est l'unique déclencheur.
+  }
+
+  @OnEvent('outbox.payment.validated', { async: true })
+  async onPaymentValidated(payload: any): Promise<void> {
+    const paiement = await this.paiementRepo.findOne({
+      where: {
+        id: String(payload.paymentId),
+        tenant_id: Number(payload.tenantId ?? getCurrentTenantId()),
+        status: StatutPaiement.VALIDE,
+      },
+      relations: ['facture', 'facture.client', 'facture.dossier'],
+    });
+    if (!paiement?.facture) {
+      throw new Error(
+        `Paiement validé ${payload.paymentId} introuvable pour notification`,
+      );
+    }
     const facture: any = paiement.facture;
-    const notifyClient = this.resolveTransientBoolean('notify_client', entity, paiement as any);
-
     const currencySymbol = await this.getCurrencySymbol();
-
-    this.logger.log(
-      `📢 Paiement reçu | id=${paiement.id} | montant=${formatMoney(paiement.montant, currencySymbol)} | facture=${facture.numero} | notify_client=${notifyClient}`,
-    );
-
-    await this.notify({
+    await this.notificationDispatcher.dispatchStrict({
       event: NotifiableEvent.PAIEMENT_RECEIVED,
       title: `Paiement reçu pour la facture ${facture.numero}`,
       content:
@@ -65,7 +69,7 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
         client: {
           user_id: facture.client?.user_id,
           email: facture.client?.email,
-          notify: notifyClient,
+          notify: paiement.notifyClientRequested,
         },
         lawyer_id: facture.dossier?.lawyer_id ?? null,
       },
@@ -78,26 +82,24 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     });
   }
 
-  private load(
-    id: string | number,
-    event?: InsertEvent<Paiement>,
-  ): Promise<Paiement | null> {
-    return this.loadEntity<Paiement>(id, {
-      relations: ['facture', 'facture.client', 'facture.dossier'],
-    }, event);
+  private async getCurrencySymbol(): Promise<string> {
+    const cabinet = await this.cabinetRepo
+      .findOne({ where: { id: getCurrentTenantId() } })
+      .catch(() => null);
+    return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 }
 
-function formatMoney(v: any, currencySymbol = 'XAF'): string {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return String(v ?? '');
-  return `${n.toLocaleString('fr-FR')} ${currencySymbol}`;
+function formatMoney(value: any, currencySymbol: string): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return String(value ?? '');
+  return `${amount.toLocaleString('fr-FR')} ${currencySymbol}`;
 }
 
-function formatDate(v: any): string {
-  if (!v) return '';
-  const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime())
-    ? String(v)
-    : d.toLocaleDateString('fr-FR');
+function formatDate(value: any): string {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleDateString('fr-FR');
 }

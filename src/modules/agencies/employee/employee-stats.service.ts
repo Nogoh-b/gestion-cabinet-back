@@ -210,27 +210,21 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       }));
 
     // Répartition par statut
-    const byStatusMap = new Map<number, number>();
+    const byStatusMap = new Map<DossierStatus, number>();
     dossiersFiltres.forEach(d => {
       byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
     });
 
     const statusLabels = {
-      [DossierStatus.OPEN]: 'Ouvert',
-      [DossierStatus.AMICABLE]: 'Amiable',
-      [DossierStatus.LITIGATION]: 'Contentieux',
-      // [DossierStatus.DECISION]: 'Décision',
-      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.DRAFT]: 'Brouillon',
+      [DossierStatus.ACTIVE]: 'Actif',
       [DossierStatus.CLOSED]: 'Clôturé',
       [DossierStatus.ARCHIVED]: 'Archivé',
     };
 
     const statusColors = {
-      [DossierStatus.OPEN]: '#3b82f6',
-      [DossierStatus.AMICABLE]: '#10b981',
-      [DossierStatus.LITIGATION]: '#f59e0b',
-      // [DossierStatus.DECISION]: '#8b5cf6',
-      [DossierStatus.APPEAL]: '#ef4444',
+      [DossierStatus.DRAFT]: '#94a3b8',
+      [DossierStatus.ACTIVE]: '#3b82f6',
       [DossierStatus.CLOSED]: '#6b7280',
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };
@@ -821,7 +815,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const globalQuery = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoin('employee.managed_dossiers', 'dossier')
-      .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed', { closed: 5 })
+      .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed', {
+        closed: DossierStatus.CLOSED,
+      })
       .leftJoin('employee.managed_dossiers', 'audienceDossier')
       .leftJoin('audienceDossier.audiences', 'audience')
       .leftJoin('employee.assigned_diligences', 'diligence')
@@ -857,7 +853,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       )
       .leftJoin('employee.managed_dossiers', 'dossier')
       .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed')
-      .setParameter('closed', 5)
+      .setParameter('closed', DossierStatus.CLOSED)
       .groupBy('employee.position');
 
     this.applyFilters(byPositionQuery, filters, 'employee');
@@ -949,7 +945,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .addSelect('AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))', 'avgCompletionTime')
       .addSelect('COUNT(DISTINCT audience.id)', 'audienceCount')
       .addSelect('COUNT(DISTINCT diligence.id)', 'diligenceCount')
-      .setParameter('closed', 5)
+      .setParameter('closed', DossierStatus.CLOSED)
       .groupBy('employee.id, user.first_name, user.last_name, employee.position, branch.name')
       .orderBy('completedDossiers', 'DESC')
       .limit(10);

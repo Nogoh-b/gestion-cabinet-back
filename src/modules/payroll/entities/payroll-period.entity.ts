@@ -10,6 +10,7 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Payslip } from './payslip.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 
 export enum PayrollPeriodStatus {
   DRAFT = 'draft',
@@ -85,7 +86,7 @@ export class PayrollPeriod extends TenantEntity {
     group: 'relation',
     ignored: true,
   })
-  branch_id: number;
+  branch_id: number | null;
 
   @ManyToOne(() => Branch, { nullable: true })
   @JoinColumn({ name: 'branch_id' })
@@ -95,9 +96,39 @@ export class PayrollPeriod extends TenantEntity {
     importance: 'medium',
     group: 'relation',
   })
-  branch: Branch;
+  branch: Branch | null;
 
   @OneToMany(() => Payslip, (payslip) => payslip.period)
   payslips: Payslip[];
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'closed_at',
+  })
+  closed_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'closed_by_id' })
+  closed_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'closed_by_id' })
+  closed_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'paid_at',
+  })
+  paid_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'paid_by_id' })
+  paid_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'paid_by_id' })
+  paid_by: User | null;
 
 }

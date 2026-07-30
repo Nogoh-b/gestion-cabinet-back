@@ -1,14 +1,24 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { Payslip, PayslipStatus } from '../entities/payslip.entity';
 import { PayslipLine, PayslipLineType } from '../entities/payslip-line.entity';
 import { PayrollPeriod } from '../entities/payroll-period.entity';
-import { PayrollContribution } from '../entities/payroll-contribution.entity';
+import {
+  PayrollContribution,
+  PayrollContributionStatus,
+} from '../entities/payroll-contribution.entity';
 import { SalaryAdvance, SalaryAdvanceStatus } from '../entities/salary-advance.entity';
 import { Employee } from '../../agencies/employee/entities/employee.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { PayrollCalculatorService } from './payroll-calculator.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { User } from '../../iam/user/entities/user.entity';
 
 export interface GenerationResult {
   period_id: number;
@@ -43,18 +53,37 @@ export class PayrollGenerationService {
     @InjectRepository(SalaryAdvance) private readonly advanceRepo: Repository<SalaryAdvance>,
     @InjectRepository(Employee) private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Dossier) private readonly dossierRepo: Repository<Dossier>,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly calculator: PayrollCalculatorService,
   ) {}
 
-  async generateForPeriod(periodId: number, branchId?: number): Promise<GenerationResult> {
-    const period = await this.periodRepo.findOne({ where: { id: periodId } });
+  async generateForPeriod(
+    periodId: number,
+    actorId: number,
+    branchId?: number,
+  ): Promise<GenerationResult> {
+    const tenantId = getCurrentTenantId();
+    if (!Number.isInteger(actorId) || actorId <= 0) {
+      throw new ForbiddenException('Acteur authentifié obligatoire');
+    }
+    const actor = await this.userRepo.findOne({
+      where: { id: actorId, tenant_id: tenantId },
+    });
+    if (!actor) throw new ForbiddenException('Utilisateur introuvable');
+    const period = await this.periodRepo.findOne({
+      where: { id: periodId, tenant_id: tenantId },
+    });
     if (!period) throw new NotFoundException('Période de paie non trouvée');
     if (period.status !== 'draft') {
       throw new NotFoundException('La génération n\'est possible que sur une période en brouillon.');
     }
 
-    const employees = await this.employeeRepo.find();
-    const contributions = await this.contributionRepo.find({ where: { is_active: true } });
+    const employees = await this.employeeRepo.find({
+      where: { tenant_id: tenantId },
+    });
+    const contributions = await this.findApplicableContributions(
+      period.end_date,
+    );
 
     const result: GenerationResult = {
       period_id: periodId,
@@ -77,7 +106,11 @@ export class PayrollGenerationService {
       }
 
       const existing = await this.payslipRepo.findOne({
-        where: { employee_id: emp.id, period_id: periodId },
+        where: {
+          employee_id: emp.id,
+          period_id: periodId,
+          tenant_id: tenantId,
+        },
       });
       if (existing) {
         result.skipped_existing++;
@@ -91,11 +124,19 @@ export class PayrollGenerationService {
           gross_amount: salary,
           net_amount: salary,
           status: PayslipStatus.DRAFT,
+          prepared_by_id: actor.id,
+          tenant_id: tenantId,
         }),
       );
 
       // Génère la ligne de salaire de base + les cotisations et recalcule les totaux
-      await this.applyBaseSalaryLines(payslip.id, salary, period.label, contributions);
+      await this.applyBaseSalaryLines(
+        payslip.id,
+        salary,
+        period.label,
+        contributions,
+        period.end_date,
+      );
 
       result.created++;
       result.payslip_ids.push(payslip.id);
@@ -122,9 +163,14 @@ export class PayrollGenerationService {
     baseSalary: number,
     periodLabel: string,
     contributions?: PayrollContribution[],
+    effectiveAt?: Date,
   ): Promise<{ gross: number; net: number; totalEmployer: number }> {
     const base = Number(baseSalary) || 0;
-    const contribs = contributions ?? (await this.contributionRepo.find({ where: { is_active: true } }));
+    const contribs =
+      contributions ??
+      (await this.findApplicableContributions(
+        effectiveAt ?? new Date(),
+      ));
 
     // Ligne salaire de base
     await this.lineRepo.save(
@@ -166,6 +212,20 @@ export class PayrollGenerationService {
       gross_amount: finalTotals.gross_amount,
       net_amount: finalTotals.net_amount,
       total_employer_charges: contrib.totalEmployer,
+      contribution_snapshot: contribs.map((item) => ({
+          id: item.id,
+          code: item.code,
+          version: item.version,
+          label: item.label,
+          rate: Number(item.rate),
+          base_type: item.base_type,
+          payer: item.payer,
+          ceiling:
+            item.ceiling == null ? null : Number(item.ceiling),
+          account_number: item.account_number,
+          valid_from: item.valid_from,
+          valid_until: item.valid_until,
+        })) as any,
     });
 
     return { gross: finalTotals.gross_amount, net: finalTotals.net_amount, totalEmployer: contrib.totalEmployer };
@@ -182,11 +242,17 @@ export class PayrollGenerationService {
    * point irréversible du cycle de vie.
    */
   async applyAdvanceRecovery(payslipId: number): Promise<number> {
-    const payslip = await this.payslipRepo.findOne({ where: { id: payslipId } });
+    const payslip = await this.payslipRepo.findOne({
+      where: { id: payslipId, tenant_id: getCurrentTenantId() },
+    });
     if (!payslip) return 0;
 
     const advances = await this.advanceRepo.find({
-      where: { employee_id: payslip.employee_id, status: SalaryAdvanceStatus.PAID },
+      where: {
+        employee_id: payslip.employee_id,
+        status: SalaryAdvanceStatus.PAID,
+        tenant_id: getCurrentTenantId(),
+      },
       order: { id: 'ASC' },
     });
     const totalOutstanding = advances.reduce(
@@ -227,7 +293,7 @@ export class PayrollGenerationService {
    */
   async generateCommissions(payslipId: number, ratePercent: number): Promise<PayslipLine[]> {
     const payslip = await this.payslipRepo.findOne({
-      where: { id: payslipId },
+      where: { id: payslipId, tenant_id: getCurrentTenantId() },
       relations: ['period'],
     });
     if (!payslip) throw new NotFoundException('Fiche de paie non trouvée');
@@ -237,7 +303,10 @@ export class PayrollGenerationService {
 
     // Dossiers du collaborateur ayant des honoraires, sur la période.
     const dossiers = await this.dossierRepo.find({
-      where: { deleted_at: IsNull() } as any,
+      where: {
+        deleted_at: IsNull(),
+        tenant_id: getCurrentTenantId(),
+      } as any,
       relations: [],
     });
 
@@ -273,5 +342,28 @@ export class PayrollGenerationService {
       await this.payslipRepo.save(payslip);
     }
     return created;
+  }
+
+  private findApplicableContributions(
+    effectiveAt: Date,
+  ): Promise<PayrollContribution[]> {
+    return this.contributionRepo
+      .createQueryBuilder('contribution')
+      .where('contribution.tenant_id = :tenantId', {
+        tenantId: getCurrentTenantId(),
+      })
+      .andWhere('contribution.status = :status', {
+        status: PayrollContributionStatus.PUBLISHED,
+      })
+      .andWhere('contribution.valid_from <= :effectiveAt', {
+        effectiveAt,
+      })
+      .andWhere(
+        '(contribution.valid_until IS NULL OR contribution.valid_until >= :effectiveAt)',
+        { effectiveAt },
+      )
+      .orderBy('contribution.sort_order', 'ASC')
+      .addOrderBy('contribution.code', 'ASC')
+      .getMany();
   }
 }

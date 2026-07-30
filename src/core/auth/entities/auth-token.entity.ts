@@ -11,7 +11,7 @@ export class AuthToken {
   email: string;
 
   @Column({ nullable: true })
-  otp: string;
+  otp: string | null;
 
   @Column()
   type: 'reset_password' | 'set_password' | 'mfa';
@@ -22,8 +22,14 @@ export class AuthToken {
   @Column({ default: false })
   isUsed: boolean;
 
+  @Column({ name: 'failed_attempts', type: 'int', default: 0 })
+  failedAttempts: number;
+
+  @Column({ name: 'last_attempt_at', type: 'datetime', nullable: true })
+  lastAttemptAt: Date | null;
+
   @Column({ nullable: true })
-  token: string;
+  token: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

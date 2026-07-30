@@ -1,7 +1,7 @@
 // src/paiement/dto/paiement-response.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
 import { ModePaiement, StatutPaiement } from './create-paiement.dto';
-import { Transform, Type } from 'class-transformer';
+import { Expose, Transform, Type } from 'class-transformer';
 
 // DTO pour le client simplifié (imbriqué dans facture)
 class ClientPaiementDto {
@@ -80,14 +80,36 @@ export class PaiementResponseDto {
   titulaire: string;
 
   @ApiProperty({ enum: StatutPaiement, description: 'Statut du paiement' })
-  @Transform(({ obj }) => obj.status)
-  statut: StatutPaiement;
+  status: StatutPaiement;
+
+  @ApiProperty({
+    enum: StatutPaiement,
+    description: 'Alias de compatibilité du statut du paiement',
+  })
+  @Expose()
+  get statut(): StatutPaiement {
+    return this.status;
+  }
 
   @ApiProperty({ description: 'Notes' })
   notes: string;
 
-  @ApiProperty({ description: 'Preuve de paiement' })
-  preuvePaiement: string;
+  @ApiProperty({ description: 'Indique si une preuve privée est disponible' })
+  @Transform(({ obj }) => Boolean(obj.preuvePaiement))
+  hasPreuve: boolean;
+
+  @ApiProperty({ description: 'Nom original de la preuve', nullable: true })
+  preuveOriginalName: string | null;
+
+  @ApiProperty({ description: 'Type MIME de la preuve', nullable: true })
+  preuveMimeType: string | null;
+
+  @ApiProperty({ description: 'Taille de la preuve en octets', nullable: true })
+  @Transform(({ value }) => (value == null ? null : Number(value)))
+  preuveSize: number | null;
+
+  @ApiProperty({ description: 'Empreinte SHA-256 de la preuve', nullable: true })
+  preuveSha256: string | null;
 
   @ApiProperty({ description: 'Date de création' })
   created_at: Date;

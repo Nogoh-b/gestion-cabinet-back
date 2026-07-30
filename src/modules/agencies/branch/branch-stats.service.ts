@@ -243,27 +243,21 @@ export class BranchStatsService {
     const total = dossiersFiltres.length;
 
     // Stats par statut
-    const byStatusMap = new Map<number, number>();
+    const byStatusMap = new Map<DossierStatus, number>();
     dossiersFiltres.forEach(d => {
       byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
     });
 
     const statusLabels = {
-      [DossierStatus.OPEN]: 'Ouvert',
-      [DossierStatus.AMICABLE]: 'Amiable',
-      [DossierStatus.LITIGATION]: 'Contentieux',
-      // [DossierStatus.DECISION]: 'Décision',
-      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.DRAFT]: 'Brouillon',
+      [DossierStatus.ACTIVE]: 'Actif',
       [DossierStatus.CLOSED]: 'Clôturé',
       [DossierStatus.ARCHIVED]: 'Archivé',
     };
 
     const statusColors = {
-      [DossierStatus.OPEN]: '#3b82f6',
-      [DossierStatus.AMICABLE]: '#10b981',
-      [DossierStatus.LITIGATION]: '#f59e0b',
-      // [DossierStatus.DECISION]: '#8b5cf6',
-      [DossierStatus.APPEAL]: '#ef4444',
+      [DossierStatus.DRAFT]: '#94a3b8',
+      [DossierStatus.ACTIVE]: '#3b82f6',
       [DossierStatus.CLOSED]: '#6b7280',
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };

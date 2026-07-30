@@ -2,6 +2,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Index,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
@@ -10,6 +11,7 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Paiement } from 'src/modules/paiement/entities/paiement.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 
 export enum CommissionStatus {
   CALCULATED = 'calculated',
@@ -18,7 +20,25 @@ export enum CommissionStatus {
   CANCELLED = 'cancelled',
 }
 
+export enum CommissionPaymentMethod {
+  BANK_TRANSFER = 'bank_transfer',
+  CASH = 'cash',
+  MOBILE_MONEY = 'mobile_money',
+  CHECK = 'check',
+  OTHER = 'other',
+}
+
 @Entity('referral_commission')
+@Index(
+  'UQ_referral_commission_tenant_facture',
+  ['tenant_id', 'dossier_referral_id', 'facture_id'],
+  { unique: true },
+)
+@Index(
+  'UQ_referral_commission_tenant_paiement',
+  ['tenant_id', 'paiement_id'],
+  { unique: true },
+)
 @BusinessTable({
   label: 'Commissions d\'apporteur',
   description: 'Commissions calculées, éditées et payées aux apporteurs.',
@@ -60,7 +80,7 @@ export class ReferralCommission extends TenantEntity {
   // doit être varchar(36), pas int, sinon la valeur UUID est coercée et la
   // contrainte FK échoue.
   @Column({ type: 'varchar', length: 36, nullable: true, name: 'facture_id' })
-  facture_id: string;
+  facture_id: string | null;
 
   @ManyToOne(() => Facture, { nullable: true })
   @JoinColumn({ name: 'facture_id' })
@@ -70,11 +90,11 @@ export class ReferralCommission extends TenantEntity {
     importance: 'medium',
     group: 'relation',
   })
-  facture: Facture;
+  facture: Facture | null;
 
   // ⚠️ Paiement.id est également un UUID → varchar(36).
   @Column({ type: 'varchar', length: 36, nullable: true, name: 'paiement_id' })
-  paiement_id: string;
+  paiement_id: string | null;
 
   @ManyToOne(() => Paiement, { nullable: true })
   @JoinColumn({ name: 'paiement_id' })
@@ -84,9 +104,9 @@ export class ReferralCommission extends TenantEntity {
     importance: 'medium',
     group: 'relation',
   })
-  paiement: Paiement;
+  paiement: Paiement | null;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
     label: 'Montant de la commission',
     description: 'Montant calculé ou payé',
@@ -115,7 +135,7 @@ export class ReferralCommission extends TenantEntity {
   })
   calculation_date: Date;
 
-  @Column({ type: 'date', nullable: true, name: 'payment_date' })
+  @Column({ type: 'datetime', precision: 6, nullable: true, name: 'payment_date' })
   @BusinessColumn({
     label: 'Date de paiement',
     description: 'Date de paiement effectif',
@@ -123,7 +143,15 @@ export class ReferralCommission extends TenantEntity {
     importance: 'medium',
     group: 'dates',
   })
-  payment_date: Date;
+  payment_date: Date | null;
+
+  @Column({
+    type: 'enum',
+    enum: CommissionPaymentMethod,
+    nullable: true,
+    name: 'payment_method',
+  })
+  payment_method: CommissionPaymentMethod | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true, name: 'payment_reference' })
   @BusinessColumn({
@@ -132,7 +160,7 @@ export class ReferralCommission extends TenantEntity {
     importance: 'medium',
     group: 'financier',
   })
-  payment_reference: string;
+  payment_reference: string | null;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
@@ -141,6 +169,53 @@ export class ReferralCommission extends TenantEntity {
     importance: 'low',
     group: 'audit',
   })
-  notes: string;
+  notes: string | null;
+
+  @Column({ type: 'int', nullable: true, name: 'calculated_by_id' })
+  calculated_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'calculated_by_id' })
+  calculated_by: User | null;
+
+  @Column({ type: 'int', nullable: true, name: 'approved_by_id' })
+  approved_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'approved_by_id' })
+  approved_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'approved_at',
+  })
+  approved_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'paid_by_id' })
+  paid_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'paid_by_id' })
+  paid_by: User | null;
+
+  @Column({ type: 'int', nullable: true, name: 'cancelled_by_id' })
+  cancelled_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'cancelled_by_id' })
+  cancelled_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'cancelled_at',
+  })
+  cancelled_at: Date | null;
+
+  @Column({ type: 'text', nullable: true, name: 'cancellation_reason' })
+  cancellation_reason: string | null;
 
 }

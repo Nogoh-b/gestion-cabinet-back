@@ -40,6 +40,7 @@ export class PermissionSeeder {
       { code: 'confirm_audience',        description: 'Confirmer une audience' },
       { code: 'postpone_audience',       description: 'Reporter une audience' },
       { code: 'mark_audience_held',      description: 'Marquer une audience comme tenue' },
+      { code: 'schedule_audience_under_48h', description: 'Créer ou reporter une audience à moins de 48 heures avec motif' },
 
       // ===================================================================
       // CABINET — FACTURES & FINANCES
@@ -120,6 +121,11 @@ export class PermissionSeeder {
       { code: 'manage_roles',            description: 'Gérer les rôles et permissions' },
       { code: 'view_audit_logs',         description: 'Voir les logs d\'audit' },
       { code: 'manage_settings',         description: 'Gérer les paramètres du cabinet' },
+      { code: 'manage_subscription',     description: 'Gérer l\'abonnement du cabinet' },
+      { code: 'override_dossier_closure', description: 'Déroger aux préconditions de clôture d\'un dossier' },
+      { code: 'manage_procedure_templates', description: 'Créer, publier et retirer les versions de templates procéduraux' },
+      { code: 'apply_procedure_transition', description: 'Appliquer une transition sur une instance procédurale autorisée' },
+      { code: 'approve_procedure_requirement', description: 'Approuver une exigence procédurale sur une instance autorisée' },
 
       // ===================================================================
       // CABINET — COMMUNICATIONS
@@ -128,6 +134,8 @@ export class PermissionSeeder {
       { code: 'send_message',            description: 'Envoyer un message' },
       { code: 'delete_message',          description: 'Supprimer un message' },
       { code: 'view_all_messages',       description: 'Voir tous les messages du cabinet' },
+      { code: 'send_notification',       description: 'Envoyer une notification à des membres du cabinet' },
+      { code: 'broadcast_notification',  description: 'Diffuser une notification à tout le cabinet' },
 
       // ===================================================================
       // CABINET — RAPPORTS & STATISTIQUES
@@ -154,6 +162,7 @@ export class PermissionSeeder {
       { code: 'edit_referral_commission',    description: 'Modifier une commission d\'apporteur' },
       { code: 'validate_referral_commission', description: 'Valider une commission d\'apporteur' },
       { code: 'pay_referral_commission',     description: 'Payer une commission d\'apporteur' },
+      { code: 'use_ai_assistant',            description: 'Utiliser l’assistant IA en lecture seule' },
 
       // ===================================================================
       // CABINET — PAIE (PAYROLL)
@@ -164,8 +173,12 @@ export class PermissionSeeder {
       { code: 'edit_payroll_period',     description: 'Modifier une période de paie' },
       { code: 'close_payroll_period',    description: 'Clôturer une période de paie' },
       { code: 'view_payslips',           description: 'Voir les bulletins de paie' },
+      { code: 'view_own_payslip',        description: 'Voir uniquement ses propres bulletins payés' },
       { code: 'generate_payslip',        description: 'Générer un bulletin de paie' },
       { code: 'edit_payslip',            description: 'Modifier un bulletin de paie' },
+      { code: 'validate_payslip',        description: 'Valider et figer un bulletin de paie' },
+      { code: 'pay_payslip',             description: 'Enregistrer le paiement d’un bulletin de paie' },
+      { code: 'manage_payroll_rates',    description: 'Créer, publier et retirer les versions de barèmes de paie' },
       { code: 'download_payslip',        description: 'Télécharger un bulletin de paie' },
       { code: 'email_payslip',           description: 'Envoyer un bulletin de paie par email' },
 

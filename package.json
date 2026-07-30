@@ -13,8 +13,11 @@
     "start:deve": "nest start --watch --port 3004",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main.js",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit --incremental false --pretty false",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:ci": "jest --runInBand --silent --testTimeout=30000",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -26,7 +29,17 @@
     "seed:migrate": "ts-node scripts/seed-with-migration.ts",
     "migration:generate": "npm run typeorm migration:generate -- -d src/data-source.ts",
     "migration:run": "npm run typeorm migration:run -- -d src/data-source.ts",
-    "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts"
+    "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts",
+    "migration:bootstrap": "node scripts/bootstrap-empty-database.mjs",
+    "migration:verify": "node scripts/verify-live-schema.mjs",
+    "migration:verify-data": "node scripts/verify-migrated-data.mjs",
+    "verify:architecture": "node scripts/verify-architecture.mjs",
+    "openapi:generate": "node scripts/generate-openapi-static.mjs",
+    "openapi:check": "node scripts/generate-openapi-static.mjs --check",
+    "backup:encrypt-legacy": "node scripts/encrypt-legacy-backups.mjs"
+    ,"backup:create": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts create"
+    ,"backup:verify": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts verify"
+    ,"backup:restore": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts restore"
   },
   "dependencies": {
     "@bull-board/api": "^6.10.1",
@@ -164,7 +177,12 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "<rootDir>/../tsconfig.spec.json"
+        }
+      ]
     },
     "moduleNameMapper": {
       "^src/(.*)$": "<rootDir>/$1"

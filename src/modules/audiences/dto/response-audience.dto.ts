@@ -11,7 +11,11 @@ import { Jurisdiction } from "src/modules/jurisdiction/entities/jurisdiction.ent
 
 import { ApiProperty } from "@nestjs/swagger";
 
-import { AudienceStatus, AudienceType1 } from "../entities/audience.entity";
+import {
+  AudienceRecordStatus,
+  AudienceStatus,
+  AudienceType1,
+} from "../entities/audience.entity";
 
 
 
@@ -34,6 +38,14 @@ export class AudienceResponseDto {
   @ApiProperty({ example: "14:30" })
   @Expose()
   audience_time: string;
+
+  @ApiProperty({ example: '2026-08-03T08:00:00.000Z' })
+  @Expose()
+  starts_at_utc: Date;
+
+  @ApiProperty({ example: 'Africa/Ndjamena' })
+  @Expose()
+  timezone: string;
   @Expose()  
   decision_text: string;
 
@@ -47,7 +59,26 @@ export class AudienceResponseDto {
   decision_notes: string;
 
   @Expose()
+  @Transform(({ obj }) =>
+    (obj.decision_documents ?? []).map((document: any) => ({
+      id: document.id,
+      name: document.name,
+      current_version_id: document.currentVersionId ?? null,
+    })),
+  )
   decision_documents: any[];
+
+  @Expose()
+  decision_record_status: AudienceRecordStatus;
+
+  @Expose()
+  decision_record_version: number;
+
+  @Expose()
+  decision_record_hash: string | null;
+
+  @Expose()
+  decision_sealed_at: Date | null;
 
   // ── Rapport d'audience (procès-verbal) ──────────────────────────────────
   @Expose()
@@ -60,13 +91,25 @@ export class AudienceResponseDto {
   report_author_id: string;
 
   @Expose()
+  report_record_status: AudienceRecordStatus;
+
+  @Expose()
+  report_record_version: number;
+
+  @Expose()
+  report_record_hash: string | null;
+
+  @Expose()
+  report_sealed_at: Date | null;
+
+  @Expose()
   @Transform(({ obj }) => {
     if (!obj.report_documents) return [];
     return obj.report_documents.map((doc: any) => ({
       id: doc.id,
       name: doc.name,
-      file_url: doc.file_url,
       file_mimetype: doc.file_mimetype,
+      current_version_id: doc.currentVersionId ?? null,
     }));
   })
   report_documents: any[];
@@ -249,7 +292,7 @@ export class AudienceResponseDto {
       name: doc.name,
       document_type: doc.document_type,
       category: doc.category,
-      file_url: doc.file_url,
+      current_version_id: doc.currentVersionId ?? null,
       status: doc.status,
       file_mimetype: doc.file_mimetype
     }));
@@ -258,7 +301,7 @@ export class AudienceResponseDto {
     id: number;
     name: string;
     document_type: string;
-    file_url?: string;
+    current_version_id?: string | null;
     file_mimetype?: string;
   }>;
 
@@ -270,7 +313,9 @@ export class AudienceResponseDto {
   @Expose()
   @Transform(({ obj }) => {
     const today = new Date();
-    const audienceDateTime = new Date(`${obj.audience_date}T${obj.audience_time}`);
+    const audienceDateTime = obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`);
     return audienceDateTime < today;
   })
   is_past: boolean;
@@ -279,7 +324,9 @@ export class AudienceResponseDto {
   @Expose()
   @Transform(({ obj }) => {
     const today = new Date();
-    const audienceDateTime = new Date(`${obj.audience_date}T${obj.audience_time}`);
+    const audienceDateTime = obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`);
     return audienceDateTime > today;
   })
   is_upcoming: boolean;
@@ -295,14 +342,20 @@ export class AudienceResponseDto {
 
   @ApiProperty({ example: "2024-12-15T14:30:00.000Z" })
   @Expose()
-  @Transform(({ obj }) => new Date(`${obj.audience_date}T${obj.audience_time}`))
+  @Transform(({ obj }) =>
+    obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`),
+  )
   full_datetime: Date;
 
   @ApiProperty({ example: true })
   @Expose()
   @Transform(({ obj }) => {
     if (obj.reminder_sent || obj.is_past) return false;
-    const audienceDateTime = new Date(`${obj.audience_date}T${obj.audience_time}`);
+    const audienceDateTime = obj.starts_at_utc
+      ? new Date(obj.starts_at_utc)
+      : new Date(`${obj.audience_date}T${obj.audience_time}`);
     const now = new Date();
     const diffHours = (audienceDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     return diffHours <= 48;

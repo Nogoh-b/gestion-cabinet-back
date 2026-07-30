@@ -135,7 +135,7 @@ export class IntentDetectionService {
       const response = await planner.invoke(input);
       const content = response.content as string;
       
-      this.logger.debug(`📥 Réponse LLM: ${content.substring(0, 500)}...`);
+      this.logger.debug('Reponse LLM de detection recue');
       
       const result = this.parseResponse(content);
       
@@ -194,8 +194,13 @@ export class IntentDetectionService {
     // Mots interrogatifs génériques (nombre, total, statut) suivis d'un ?
     const readQuestionPattern = /\b(nombre|total|statut)\b.*\?/;
 
-    if ((readVerbPattern.test(normalized) || readQuestionPattern.test(normalized))
-        && this.domainKeywordsRegex.test(normalized)) {
+    if (
+      readVerbPattern.test(normalized) ||
+      (
+        readQuestionPattern.test(normalized) &&
+        this.domainKeywordsRegex.test(normalized)
+      )
+    ) {
       return 'READ';
     }
 
@@ -513,7 +518,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
 
     for (const keyword of strongWriteKeywords) {
       if (normalized.includes(keyword)) {
-        this.logger.debug(`🔍 Mot-clé WRITE détecté: "${keyword}" dans "${normalized.substring(0, 60)}..."`);
+        this.logger.debug(`Mot-cle WRITE detecte: ${keyword}`);
         return true;
       }
     }

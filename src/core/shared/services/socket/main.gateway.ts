@@ -15,10 +15,29 @@ import { ChatService } from 'src/modules/chat/services/chat/chat.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { NotificationResponseDto } from 'src/modules/notification/dto/notification-response.dto';
 import { UsersService } from 'src/modules/iam/user/user.service';
+import { JwtService } from '@nestjs/jwt';
+import { OnEvent } from '@nestjs/event-emitter';
+import { WsException } from '@nestjs/websockets';
+import { ResourcePolicyService } from 'src/core/resource-policy.service';
+import { TenantContext } from 'src/core/tenant/tenant.context';
+import {
+  ACCESS_COOKIE,
+  readCookie,
+} from 'src/core/auth/session-cookie.util';
+
+const websocketOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin:
+      websocketOrigins.length > 0
+        ? websocketOrigins
+        : process.env.NODE_ENV === 'production'
+          ? false
+          : ['http://localhost:3000', 'http://127.0.0.1:3000'],
     credentials: true,
   },
   // PAS DE NAMESPACE - utilise le namespace par défaut
@@ -36,17 +55,40 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private userRooms: Map<number, Set<string>> = new Map();
 
   async handleConnection(client: Socket) {
-    const userId = client.handshake.auth.userId;
-    
-    this.logger.log(`🟢 Connexion - User: ${userId}, Socket: ${client.id}`);
+    const authorization = client.handshake.headers.authorization;
+    const token =
+      readCookie(client.request as any, ACCESS_COOKIE) ||
+      client.handshake.auth?.token ||
+      (authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined);
 
-    if (!userId) {
-      this.logger.warn('Connexion refusée: userId manquant');
+    if (!token) {
+      this.logger.warn('Connexion refusée: jeton manquant');
       client.disconnect();
       return;
     }
 
     try {
+      const payload = await this.jwtService.verifyAsync(token);
+      const userId = Number(payload?.sub);
+      const tenantId = Number(payload?.tenantId);
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new Error('Identité invalide');
+      }
+      if (!Number.isInteger(tenantId) || tenantId <= 0) {
+        throw new Error('Contexte cabinet invalide');
+      }
+      await this.tenantContext.run(tenantId, () =>
+        this.userService.findOne(userId),
+      );
+      client.data.user = {
+        id: userId,
+        tenantId,
+        role: payload.role,
+        permissions: payload.permissions ?? [],
+        customerId: payload.customerId ?? null,
+      };
+      this.logger.log(`🟢 Connexion authentifiée - User: ${userId}, Socket: ${client.id}`);
+
       // Enregistrer la connexion
       this.addConnection(userId, client);
 
@@ -54,10 +96,15 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const userRoom = `user_${userId}`;
       await client.join(userRoom);
       this.addUserRoom(userId, userRoom);
-      this.userService.update(userId,{is_online : true})
-      this.chatService.setReceiveMessagesWithCount(userId)
+      await this.tenantContext.run(tenantId, async () => {
+        await this.userService.update(userId, { is_online: true });
+        await this.chatService.setReceiveMessagesWithCount(userId);
+      });
       // Envoyer les notifications non lues (comportement de NotificationGateway)
-      const unreadNotifications = await this.getUnreadNotifications(userId);
+      const unreadNotifications = await this.tenantContext.run(
+        tenantId,
+        () => this.getUnreadNotifications(userId),
+      );
       if (unreadNotifications.length > 0) {
         client.emit('unread_notifications', {
           count: unreadNotifications.length,
@@ -102,7 +149,12 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
           timestamp: new Date().toISOString(),
           lastSeen
         });
-        this.userService.update(userId,{is_online : false, lastSeen})
+        const tenantId = Number(client.data?.user?.tenantId);
+        if (Number.isInteger(tenantId) && tenantId > 0) {
+          await this.tenantContext.run(tenantId, () =>
+            this.userService.update(userId, { is_online: false, lastSeen }),
+          );
+        }
         
         // this.server.emit('userOffline', { userId, lastSeen });
       }
@@ -118,13 +170,11 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: any, // SendMessageDto
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    const room = data.room;
+    const room = String(data?.room ?? '');
+    if (!userId) throw new WsException('Socket non authentifié');
+    await this.assertSocketRoomAccess(client, room);
     await client.join(room);
     this.addUserRoom(userId, room);
-    if(data.join_parent){
-      await client.join(room.split('_')[0]);
-      this.addUserRoom(userId, room.split('_')[0]);
-    }
     client.emit('joined_room', { room });
     this.logger.log(`📌 User ${userId} rejoint la room ${room}`);
 
@@ -157,13 +207,19 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: any, // SendMessageDto
   ) {
     try {
-      const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
+      const userId = this.requireSocketActor(client).id;
       this.logger.log(`📨 sendMessage reçu de user ${userId}:`, data);
 
-      // Appeler votre service chat existant
-      const message = await this.chatService.sendMessageWithExistingAttachments(data, userId);
-      // const message = await this.chatService.sendMessage(data, userId);
-      const idsParticipants = await this.chatService.getParticipantIdsExcluding(data.conversationId, userId)
+      const { message, idsParticipants } = await this.runForSocket(
+        client,
+        async () => {
+          const message = await this.chatService
+            .sendMessageWithExistingAttachments(data, userId);
+          const idsParticipants = await this.chatService
+            .getParticipantIdsExcluding(data.conversationId, userId);
+          return { message, idsParticipants };
+        },
+      );
  
       idsParticipants.forEach(participantId => {
         this.server.to(`user_${participantId}`).emit('new_message', {
@@ -202,7 +258,7 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('typing')
-  handleTyping(
+  async handleTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: {
       conversationId: number;
@@ -212,19 +268,20 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     },
   ) {
     try {
-      const userId = this.getUserIdBySocketId(client.id);
-      if (!userId) return;
+      const userId = this.requireSocketActor(client).id;
+      const room = `conversation_${Number(data.conversationId)}`;
+      await this.assertSocketRoomAccess(client, room);
 
       this.logger.debug(
-        `⌨️ typing user ${userId} in ${data.room}: ${data.isTyping}`,
+        `⌨️ typing user ${userId} in ${room}: ${data.isTyping}`,
       );
 
       // broadcast à la room SAUF l'émetteur
-      client.broadcast.to(data.room).emit('typing', {
+      client.broadcast.to(room).emit('typing', {
         userId,
         conversationId: data.conversationId,
         isTyping: data.isTyping,
-        room: data.room,
+        room,
         userName: data.userName // Vous pouvez remplacer par le nom réel de l'utilisateur si disponible
       });
 
@@ -259,6 +316,48 @@ async handleSendNotification(
     save_to_db?: boolean; // Optionnel: sauvegarder en base
   }
 ) {
+  const actor = this.requireSocketActor(client);
+  this.assertSocketPermission(client, 'send_notification');
+  return this.runForSocket(client, async () => {
+    if (!Array.isArray(data.user_ids) || !data.user_ids.length) {
+      throw new WsException('La liste des destinataires est requise');
+    }
+    if (!data.type || !data.title) {
+      throw new WsException('Le type et le titre sont requis');
+    }
+    let targetUserIds = [...new Set(data.user_ids.map(Number))];
+    if (data.exclude_current_user) {
+      targetUserIds = targetUserIds.filter(id => id !== actor.id);
+    }
+    if (!targetUserIds.length) {
+      client.emit('notification_sent', { success: true, count: 0 });
+      return { success: true, count: 0 };
+    }
+    const notifications = await this.notificationService.createBulk(
+      {
+        user_ids: targetUserIds,
+        type: data.type as NotificationType,
+        title: data.title,
+        content: data.content,
+        data: data.data,
+        link: data.link,
+        priority: data.priority || 'MEDIUM',
+        actions: data.actions || [],
+        image_url: data.image_url,
+      },
+      actor.id,
+    );
+    client.emit('notification_sent', {
+      success: true,
+      count: targetUserIds.length,
+      saved: notifications.length,
+    });
+    return {
+      success: true,
+      count: targetUserIds.length,
+      saved: notifications.length,
+    };
+  });
   try {
     const senderId = this.getUserIdBySocketId(client.id);
     // this.logger.log(`🔔 send_notification reçu de user ${senderId}:`, {
@@ -420,6 +519,62 @@ async handleBroadcastNotification(
     exclude_current_user?: boolean; // Exclure l'envoyeur
   }
 ) {
+  const actor = this.requireSocketActor(client);
+  this.assertSocketPermission(client, 'broadcast_notification');
+  return this.runForSocket(client, async () => {
+    if (!data.type || !data.title) {
+      throw new WsException('Le type et le titre sont requis');
+    }
+    let targetUsers = await this.notificationService.findAllUser();
+    if (data.roles?.length) {
+      const allowedRoles = new Set(data.roles.map(role => role.toLowerCase()));
+      targetUsers = targetUsers.filter(user => {
+        const role = String(
+          (user as any).role?.code ??
+          (user as any).role ??
+          (user as any).userRole?.code ??
+          '',
+        ).toLowerCase();
+        return allowedRoles.has(role);
+      });
+    }
+    const excluded = new Set((data.exclude_user_ids ?? []).map(Number));
+    if (data.exclude_current_user) excluded.add(actor.id);
+    const targetUserIds = targetUsers
+      .map(user => Number(user.id))
+      .filter(id => Number.isInteger(id) && id > 0 && !excluded.has(id));
+    if (!targetUserIds.length) {
+      client.emit('notification_sent', { success: true, count: 0 });
+      return { success: true, count: 0 };
+    }
+    const notifications = await this.notificationService.createBulk(
+      {
+        user_ids: targetUserIds,
+        type: data.type as NotificationType,
+        title: data.title,
+        content: data.content,
+        data: {
+          ...data.data,
+          broadcast: true,
+        },
+        link: data.link,
+        priority: data.priority || 'MEDIUM',
+        actions: data.actions || [],
+        image_url: data.image_url,
+      },
+      actor.id,
+    );
+    client.emit('notification_sent', {
+      success: true,
+      count: targetUserIds.length,
+      saved: notifications.length,
+    });
+    return {
+      success: true,
+      count: targetUserIds.length,
+      saved: notifications.length,
+    };
+  });
   try {
     const senderId = this.getUserIdBySocketId(client.id);
     // this.logger.log(`📢 broadcast_notification reçu de user ${senderId}:`, data);
@@ -597,12 +752,19 @@ private getUserSockets(userId: number): string[] {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: number , roomName: string},
   ) {
-    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    
-    const lastMessageId = await this.chatService.markMessagesAsRead(data.conversationId, userId);
+    const userId = this.requireSocketActor(client).id;
+    const roomName = `conversation_${Number(data.conversationId)}`;
+    const lastMessageId = await this.runForSocket(client, () =>
+      this.chatService.markMessagesAsRead(data.conversationId, userId),
+    );
 
-    client.broadcast.to(data.roomName).emit('messagesReaded', { room: data.roomName, conversationId: data.conversationId, lastMessageId, userId });
-    this.logger.log(`📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`);
+    client.broadcast.to(roomName).emit('messagesReaded', {
+      room: roomName,
+      conversationId: data.conversationId,
+      lastMessageId,
+      userId,
+    });
+    this.logger.log(`📌 Socket ${userId} a lu les messages de la conversation ${roomName}`);
 
   }
 
@@ -611,28 +773,34 @@ private getUserSockets(userId: number): string[] {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: number , roomName: string},
   ) {
-    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    
-    const lastMessageId = await this.chatService.markMessagesAsReceive(data.conversationId, userId);
-
-    const idsParticipants = await this.chatService.getParticipantIdsExcluding(data.conversationId, userId)
+    const userId = this.requireSocketActor(client).id;
+    const roomName = `conversation_${Number(data.conversationId)}`;
+    const { lastMessageId, idsParticipants } = await this.runForSocket(
+      client,
+      async () => ({
+        lastMessageId: await this.chatService
+          .markMessagesAsReceive(data.conversationId, userId),
+        idsParticipants: await this.chatService
+          .getParticipantIdsExcluding(data.conversationId, userId),
+      }),
+    );
  
     idsParticipants.forEach(participantId => {
-      this.logger.log(`📌 Envoi messagesReceived a  ${participantId} a lu les message de la conversation  ${data.roomName}`);
+      this.logger.log(`📌 Envoi messagesReceived à ${participantId} pour ${roomName}`);
 
       this.server.to(`user_${participantId}`).emit('new_message', {
         type: 'messagesReceived',
         conversationId: data.conversationId,
         lastMessageId,
-        room: data.roomName, // ✅ Ajouter la room
+        room: roomName,
         userId
       });
     });
 
-    client.broadcast.to(data.roomName).emit('messagesReceived', 
-      { room: data.roomName, conversationId: data.conversationId, lastMessageId, userId }
+    client.broadcast.to(roomName).emit('messagesReceived',
+      { room: roomName, conversationId: data.conversationId, lastMessageId, userId }
     );
-    this.logger.log(`📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`);
+    this.logger.log(`📌 Socket ${userId} a reçu les messages de la conversation ${roomName}`);
 
   }
 
@@ -653,13 +821,11 @@ private getUserSockets(userId: number): string[] {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { conversationId: number, lastReadMessageId?: number },
   ) {
-    const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    
-    // Marquer comme lu en DB
-    await this.chatService.markMessagesAsRead(data.conversationId, userId);
-    
-    // Notifier les autres participants
-    const conversation = await this.chatService.getConversation(data.conversationId, userId);
+    const userId = this.requireSocketActor(client).id;
+    const conversation = await this.runForSocket(client, async () => {
+      await this.chatService.markMessagesAsRead(data.conversationId, userId);
+      return this.chatService.getConversation(data.conversationId, userId);
+    });
     const participantIds = conversation.participants.map(p => p.id);
     
     participantIds.forEach(participantId => {
@@ -683,12 +849,17 @@ private getUserSockets(userId: number): string[] {
 
   // ========== ÉVÉNEMENTS NOTIFICATION ==========
   @SubscribeMessage('subscribe_to_dossier')
-  handleSubscribeToDossier(
+  async handleSubscribeToDossier(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { dossierId: number }
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    const room = `dossier_${data.dossierId}`;
+    const dossierId = Number(data?.dossierId);
+    if (!userId || !Number.isInteger(dossierId) || dossierId <= 0) {
+      throw new WsException('Dossier ou socket invalide');
+    }
+    await this.assertSocketDossierAccess(client, dossierId);
+    const room = `dossier_${dossierId}`;
     
     client.join(room);
     this.addUserRoom(userId, room);
@@ -815,6 +986,24 @@ private getUserSockets(userId: number): string[] {
   }
 
   // ========== MÉTHODES SPÉCIFIQUES POUR NOTIFICATIONS ==========
+  @OnEvent('outbox.dossier.member.revoked')
+  async handleDossierMemberRevoked(payload: any): Promise<void> {
+    await this.evictDossierAccess(payload);
+  }
+
+  @OnEvent('outbox.dossier.members.synchronized')
+  async handleDossierMembersSynchronized(payload: any): Promise<void> {
+    const changes = Array.isArray(payload?.changes) ? payload.changes : [];
+    for (const change of changes) {
+      if (change?.action === 'REVOKED') {
+        await this.evictDossierAccess({
+          ...payload,
+          userId: Number(change.userId),
+        });
+      }
+    }
+  }
+
   async sendNewMessageNotification(conversationId: number, message: any, recipientIds: number[]) {
     const notification = {
       type: NotificationType.MESSAGE,
@@ -898,6 +1087,44 @@ private getUserSockets(userId: number): string[] {
     return this.socketToUser.get(socketId);
   }
 
+  private requireSocketActor(client: Socket): {
+    id: number;
+    tenantId: number;
+  } {
+    const id = Number(client.data?.user?.id);
+    const tenantId = Number(client.data?.user?.tenantId);
+    if (
+      !Number.isInteger(id) ||
+      id <= 0 ||
+      !Number.isInteger(tenantId) ||
+      tenantId <= 0
+    ) {
+      throw new WsException('Socket non authentifié');
+    }
+    return { id, tenantId };
+  }
+
+  private assertSocketPermission(client: Socket, permission: string): void {
+    const actor = client.data?.user;
+    const permissions = Array.isArray(actor?.permissions)
+      ? actor.permissions.map(String)
+      : [];
+    if (
+      !permissions.includes(permission) &&
+      !permissions.includes('SUPER_ADMIN')
+    ) {
+      throw new WsException('Permission temps réel insuffisante');
+    }
+  }
+
+  private runForSocket<T>(
+    client: Socket,
+    action: () => T,
+  ): T {
+    const actor = this.requireSocketActor(client);
+    return this.tenantContext.run(actor.tenantId, action);
+  }
+
   private isUserOnline(userId: number): boolean {
     return this.userSockets.has(userId) && (this.userSockets.get(userId)?.size ?? 0) > 0;
   }
@@ -908,6 +1135,75 @@ private getUserSockets(userId: number): string[] {
   }
 
   // ========== INJECTION DES SERVICES ==========
+  private async assertSocketRoomAccess(
+    client: Socket,
+    room: string,
+  ): Promise<void> {
+    const conversationMatch = /^conversation_(\d+)$/.exec(room);
+    if (conversationMatch) {
+      const userId = Number(client.data?.user?.id);
+      await this.tenantContext.run(
+        Number(client.data?.user?.tenantId),
+        () => this.chatService.getConversation(Number(conversationMatch[1]), userId),
+      );
+      return;
+    }
+    const dossierMatch = /^dossier_(\d+)$/.exec(room);
+    if (dossierMatch) {
+      await this.assertSocketDossierAccess(client, Number(dossierMatch[1]));
+      return;
+    }
+    throw new WsException('Salle temps réel non autorisée');
+  }
+
+  private async assertSocketDossierAccess(
+    client: Socket,
+    dossierId: number,
+  ): Promise<void> {
+    const actor = client.data?.user;
+    if (!actor || !Number.isInteger(Number(actor.tenantId))) {
+      throw new WsException('Contexte cabinet invalide');
+    }
+    try {
+      await this.tenantContext.run(Number(actor.tenantId), () =>
+        this.resourcePolicy.assertDossierAccess(dossierId, actor, 'read'),
+      );
+    } catch {
+      throw new WsException('Accès au dossier refusé');
+    }
+  }
+
+  private async evictDossierAccess(payload: any): Promise<void> {
+    const userId = Number(payload?.userId);
+    const dossierId = Number(payload?.dossierId);
+    const tenantId = Number(payload?.tenantId);
+    if (
+      !Number.isInteger(userId) ||
+      !Number.isInteger(dossierId) ||
+      !Number.isInteger(tenantId)
+    ) {
+      throw new Error('Événement de révocation temps réel invalide');
+    }
+    const rooms = [`dossier_${dossierId}`];
+    const conversationId = Number(payload?.conversationId);
+    if (Number.isInteger(conversationId) && conversationId > 0) {
+      rooms.push(`conversation_${conversationId}`);
+    }
+    const socketIds = [...(this.userSockets.get(userId) ?? [])];
+    for (const socketId of socketIds) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (!socket || Number(socket.data?.user?.tenantId) !== tenantId) continue;
+      for (const room of rooms) {
+        await socket.leave(room);
+        this.userRooms.get(userId)?.delete(room);
+      }
+      socket.emit('dossier_access_revoked', {
+        dossierId,
+        eventId: payload.eventId,
+      });
+    }
+  }
+
   constructor(
     @Inject(forwardRef(() => ChatService))
     private chatService: ChatService,
@@ -915,6 +1211,9 @@ private getUserSockets(userId: number): string[] {
     // pour pousser les notifs temps réel après create / createBulk.
     @Inject(forwardRef(() => NotificationService))
     private notificationService: NotificationService,
-    private userService: UsersService
+    private userService: UsersService,
+    private jwtService: JwtService,
+    private readonly resourcePolicy: ResourcePolicyService,
+    private readonly tenantContext: TenantContext,
   ) {}
 }

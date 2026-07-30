@@ -1,6 +1,7 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { SalaryAdvanceStatus } from '../entities/salary-advance.entity';
+import { PayslipPaymentMethod } from '../entities/payslip.entity';
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Demandée',
@@ -46,6 +47,34 @@ export class SalaryAdvanceResponseDto {
   @ApiProperty({ example: '2026-06-16', required: false })
   @Expose()
   payment_date: Date;
+
+  @ApiProperty({ enum: PayslipPaymentMethod, required: false })
+  @Expose()
+  payment_method: PayslipPaymentMethod | null;
+
+  @ApiProperty({ example: 'VIR-AVANCE-2026-001', required: false })
+  @Expose()
+  payment_reference: string | null;
+
+  @ApiProperty({ example: 10, required: false })
+  @Expose()
+  requested_by_id: number | null;
+
+  @ApiProperty({ example: 11, required: false })
+  @Expose()
+  approved_by_id: number | null;
+
+  @ApiProperty({ example: '2026-06-15T10:00:00.000Z', required: false })
+  @Expose()
+  approved_at: Date | null;
+
+  @ApiProperty({ example: 12, required: false })
+  @Expose()
+  paid_by_id: number | null;
+
+  @ApiProperty({ required: false })
+  @Expose()
+  cancellation_reason: string | null;
 
   @ApiProperty({ example: 'Avance exceptionnelle' })
   @Expose()

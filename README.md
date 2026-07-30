@@ -25,6 +25,35 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Configuration de sécurité
+
+Avant une mise en production, configurer au minimum :
+
+- `CORS_ORIGINS` avec les seules origines HTTPS autorisées ;
+- `MICROSERVICE_HOST` avec une interface interne explicite, jamais `0.0.0.0`
+  ni `::` ;
+- des valeurs distinctes pour `JWT_SECRET` et `JWT_REFRESH_SECRET` ;
+- `SETTINGS_ENCRYPTION_KEY` avec 32 octets encodés en hex, base64 ou UTF-8 ;
+- `SUBSCRIPTION_WEBHOOK_SECRET` pour signer les webhooks.
+
+Une clé de chiffrement des paramètres peut être générée ainsi :
+
+```powershell
+node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+La migration `1785169034000-EncryptCabinetSmtpConfig` chiffre les anciennes
+configurations SMTP en AES-256-GCM puis efface leur valeur claire. Elle échoue
+si une configuration claire existe sans `SETTINGS_ENCRYPTION_KEY`.
+
+L'assistant IA exige `AI_ENABLED=true`, un administrateur et la permission
+`use_ai_assistant`. Le frontend exige en plus
+`NEXT_PUBLIC_AI_ENABLED=true`.
+
+Les utilisateurs de démonstration ne sont créés que si
+`ALLOW_DEMO_USER_SEED=true`, uniquement hors production, avec des mots de passe
+fournis par variables d'environnement et longs d'au moins 14 caractères.
+
 ## Project setup
 
 ```bash
