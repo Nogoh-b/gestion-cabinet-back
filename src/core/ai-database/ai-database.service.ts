@@ -4467,10 +4467,22 @@ RÉPONSE (en langage naturel):`;
    * pour matcher "documents" → "document", "dossiers" → "dossier", etc.
    */
   private stemKeyword(word: string): string {
-    const w = word.toLowerCase();
+    const w = this.stripAccents(word.toLowerCase());
     if (w.endsWith('s') && w.length > 3) return w.slice(0, -1);
     if (w.endsWith('x') && w.length > 3) return w.slice(0, -1);
     return w;
+  }
+
+  /**
+   * Minuscule + suppression des accents (é→e, à→a…).
+   * Indispensable pour un matching FR robuste : sans ça, "l'étape" ou
+   * "sous-étapes" tapés par l'utilisateur ne retrouvent pas les libellés
+   * "Étapes"/"Sous-étapes" et les tables workflow ne sont jamais incluses
+   * dans le schéma envoyé au LLM.
+   */
+  private stripAccents(s: string): string {
+    // ̀-ͯ = bloc des diacritiques combinants isolés par NFD.
+    return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 
   /**
@@ -4544,6 +4556,9 @@ RÉPONSE (en langage naturel):`;
     }
 
     const referenceTables = this.getReferenceTableHints(references);
+    // La normalisation retire les accents et découpe aussi les apostrophes,
+    // traits d'union et autres séparateurs. Ainsi « l'étape » et
+    // « sous-étapes » produisent bien les mots-clés « etape »/« etapes ».
     const normalizedQuestion = this.normalizeForKeywordMatch(question);
     const keywords = normalizedQuestion.split(/\s+/).filter(Boolean);
     const visibleTables = this.getAiVisibleTables();
@@ -4599,7 +4614,7 @@ RÉPONSE (en langage naturel):`;
         }
         
         // 3. Label metier (ex: "Documents clients" → "documents")
-        const businessWords = businessName.split(/[\s_]+/).filter(Boolean);
+        const businessWords = businessName.split(/[\s_'’\-]+/).filter(Boolean);
         const businessStems = businessWords.map(w => this.stemKeyword(w));
         
         const labelWordMatch = businessWords.some(w => w === keyword || w === stem);
