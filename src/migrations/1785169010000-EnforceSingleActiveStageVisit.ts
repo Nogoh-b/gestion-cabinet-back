@@ -45,11 +45,17 @@ export class EnforceSingleActiveStageVisit1785169010000
 
     await queryRunner.query(`
       ALTER TABLE stage_visits
-        ADD COLUMN active_instance_id CHAR(36)
+        ADD COLUMN active_instance_id VARCHAR(255)
           GENERATED ALWAYS AS (
             CASE WHEN exitedAt IS NULL THEN instanceId ELSE NULL END
-          ) STORED,
-        ADD UNIQUE KEY uq_stage_visit_active_instance (active_instance_id),
+          ) VIRTUAL
+    `);
+    await queryRunner.query(`
+      ALTER TABLE stage_visits
+        ADD UNIQUE KEY uq_stage_visit_active_instance (active_instance_id)
+    `);
+    await queryRunner.query(`
+      ALTER TABLE stage_visits
         ADD UNIQUE KEY uq_stage_visit_number (tenant_id, instanceId, stageId, visitNumber)
     `);
   }

@@ -314,6 +314,41 @@ for (const command of [
     fail(`Porte CI de migration manquante : ${command}`);
   }
 }
+for (const marker of [
+  'image: mysql:${{ matrix.mysql_version }}',
+  "'8.0'",
+  "'8.4'",
+]) {
+  if (!ciWorkflow.includes(marker)) {
+    fail(`Certification CI MySQL manquante : ${marker}`);
+  }
+}
+if (/\bmariadb\b/i.test(ciWorkflow)) {
+  fail('La certification CI doit utiliser MySQL, moteur cible du projet');
+}
+
+const activeStageVisitMigration = await readFile(
+  join(
+    root,
+    'src',
+    'migrations',
+    '1785169010000-EnforceSingleActiveStageVisit.ts',
+  ),
+  'utf8',
+);
+if (
+  !activeStageVisitMigration.includes('GENERATED ALWAYS AS') ||
+  !activeStageVisitMigration.includes(') VIRTUAL')
+) {
+  fail(
+    'La contrainte de visite active doit utiliser une colonne calculée virtuelle compatible MySQL',
+  );
+}
+if (/\)\s+STORED\b/i.test(activeStageVisitMigration)) {
+  fail(
+    'Une colonne calculée STORED ne peut pas dépendre de la clé étrangère instanceId en cascade sous MySQL',
+  );
+}
 
 const dataVerifier = await readFile(
   join(root, 'scripts', 'verify-migrated-data.mjs'),
