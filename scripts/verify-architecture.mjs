@@ -260,6 +260,7 @@ for (const script of [
   'migration:run',
   'migration:verify',
   'migration:verify-data',
+  'outbox:verify-claim',
   'secrets:bootstrap',
 ]) {
   if (!packageJson.scripts?.[script]) {
@@ -284,6 +285,37 @@ if (/console\.(?:log|info)\s*\(\s*secret\b/.test(localSecretsBootstrap)) {
   fail('Le générateur local ne doit jamais afficher le secret');
 }
 
+const outboxWorker = await readFile(
+  join(root, 'src', 'core', 'outbox', 'outbox-worker.service.ts'),
+  'utf8',
+);
+for (const marker of [
+  'UPDATE outbox_events',
+  'locked_by = ?',
+  'ORDER BY created_at ASC, id ASC',
+]) {
+  if (!outboxWorker.includes(marker)) {
+    fail(`Réclamation atomique outbox manquante : ${marker}`);
+  }
+}
+if (/\bSKIP\s+LOCKED\b/i.test(outboxWorker)) {
+  fail(
+    'Le worker outbox doit rester compatible avec le serveur MariaDB 10.4 actuellement exploité',
+  );
+}
+const outboxClaimVerifier = await readFile(
+  join(root, 'scripts', 'verify-outbox-claim-compatibility.ts'),
+  'utf8',
+);
+for (const marker of [
+  'CREATE TEMPORARY TABLE outbox_events',
+  'outboxClaimSql()',
+  'result.affectedRows !== 2',
+]) {
+  if (!outboxClaimVerifier.includes(marker)) {
+    fail(`Preuve de compatibilité outbox manquante : ${marker}`);
+  }
+}
 const rehearsalScript = await readFile(
   join(root, 'scripts', 'migration-rehearsal.ts'),
   'utf8',
@@ -322,6 +354,9 @@ const ciWorkflow = await readFile(
   join(root, '.github', 'workflows', 'ci.yml'),
   'utf8',
 );
+if (!ciWorkflow.includes('npm run outbox:verify-claim')) {
+  fail('La CI doit vérifier la syntaxe de réclamation outbox');
+}
 for (const command of [
   'npm run migration:bootstrap',
   'npm run migration:run',

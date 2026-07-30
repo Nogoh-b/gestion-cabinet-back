@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { hostname } from 'os';
 import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
-import { DataSource, In } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { runWithTenantContext } from '../tenant/tenant.context';
 import {
   OutboxDeliveryAttempt,
@@ -14,6 +14,34 @@ import { OutboxEventDispatcher } from './outbox-event.dispatcher';
 const BATCH_SIZE = 25;
 const MAX_ATTEMPTS = 8;
 const STALE_LOCK_MINUTES = 10;
+
+export function outboxClaimSql(): string {
+  return `UPDATE outbox_events
+             SET status = 'PROCESSING',
+                 attempts = attempts + 1,
+                 locked_at = UTC_TIMESTAMP(),
+                 locked_by = ?,
+                 last_error = NULL
+           WHERE deleted_at IS NULL
+             AND (
+               (
+                 status IN ('PENDING', 'FAILED')
+                 AND (
+                   next_attempt_at IS NULL
+                   OR next_attempt_at <= UTC_TIMESTAMP()
+                 )
+               )
+               OR (
+                 status = 'PROCESSING'
+                 AND locked_at < DATE_SUB(
+                   UTC_TIMESTAMP(),
+                   INTERVAL ${STALE_LOCK_MINUTES} MINUTE
+                 )
+               )
+             )
+           ORDER BY created_at ASC, id ASC
+           LIMIT ${BATCH_SIZE}`;
+}
 
 @Injectable()
 export class OutboxWorkerService {
@@ -46,47 +74,18 @@ export class OutboxWorkerService {
 
   async claimBatch(): Promise<OutboxEvent[]> {
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
-      const candidates = await manager.query(
-        `SELECT id
-         FROM outbox_events
-         WHERE deleted_at IS NULL
-           AND (
-             (
-               status IN ('PENDING', 'FAILED')
-               AND (next_attempt_at IS NULL OR next_attempt_at <= UTC_TIMESTAMP())
-             )
-             OR (
-               status = 'PROCESSING'
-               AND locked_at < DATE_SUB(
-                 UTC_TIMESTAMP(),
-                 INTERVAL ${STALE_LOCK_MINUTES} MINUTE
-               )
-             )
-           )
-         ORDER BY created_at ASC
-         LIMIT ${BATCH_SIZE}
-         FOR UPDATE SKIP LOCKED`,
-      );
-      const ids = candidates.map((row: any) => String(row.id));
-      if (ids.length === 0) return [];
-
-      await manager
-        .createQueryBuilder()
-        .update(OutboxEvent)
-        .set({
-          status: OutboxEventStatus.PROCESSING,
-          attempts: () => 'attempts + 1',
-          lockedAt: () => 'UTC_TIMESTAMP()',
-          lockedBy: this.workerId,
-          lastError: null,
-        })
-        .where({ id: In(ids) })
-        .execute();
+      const claimToken = randomUUID();
+      await manager.query(outboxClaimSql(), [claimToken]);
 
       const events = await manager.getRepository(OutboxEvent).find({
-        where: { id: In(ids), lockedBy: this.workerId },
+        where: {
+          status: OutboxEventStatus.PROCESSING,
+          lockedBy: claimToken,
+        },
         order: { created_at: 'ASC' },
       });
+      if (events.length === 0) return [];
+
       const attemptsRepository = manager.getRepository(OutboxDeliveryAttempt);
       await attemptsRepository.save(
         events.map((event) =>
@@ -134,7 +133,9 @@ export class OutboxWorkerService {
         .andWhere('status = :status', {
           status: OutboxEventStatus.PROCESSING,
         })
-        .andWhere('locked_by = :workerId', { workerId: this.workerId })
+        .andWhere('locked_by = :claimToken', {
+          claimToken: event.lockedBy,
+        })
         .execute();
       if (result.affected !== 1) {
         throw new Error(`Verrou outbox perdu pour ${event.id}`);
@@ -175,7 +176,9 @@ export class OutboxWorkerService {
         .andWhere('status = :status', {
           status: OutboxEventStatus.PROCESSING,
         })
-        .andWhere('locked_by = :workerId', { workerId: this.workerId })
+        .andWhere('locked_by = :claimToken', {
+          claimToken: event.lockedBy,
+        })
         .execute();
       await manager.getRepository(OutboxDeliveryAttempt).update(
         { eventId: event.id, attemptNumber: event.attempts },
