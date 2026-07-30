@@ -538,8 +538,14 @@ for (const marker of [
     fail(`Certification CI MySQL manquante : ${marker}`);
   }
 }
-if (/\bmariadb\b/i.test(ciWorkflow)) {
-  fail('La certification CI doit utiliser MySQL, moteur cible du projet');
+for (const marker of [
+  'migrations-mariadb-10.4',
+  'image: mariadb:10.4',
+  'MARIADB_ROOT_PASSWORD',
+]) {
+  if (!ciWorkflow.includes(marker)) {
+    fail(`Certification CI MariaDB manquante : ${marker}`);
+  }
 }
 
 const activeStageVisitMigration = await readFile(
