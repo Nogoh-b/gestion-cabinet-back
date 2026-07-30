@@ -149,8 +149,6 @@ export class ProcedureInstanceService {
       title: dto.title,
       status: InstanceStatus.ACTIVE,
       currentStageId: firstStageId,
-      completedSubStages: [],
-      cycleUsageCount: {},
     });
     await manager.save(instance);
 
@@ -158,8 +156,6 @@ export class ProcedureInstanceService {
       instanceId: instance.id,
       stageId: firstStageId,
       visitNumber: 1,
-      completedSubStages: [],
-      subStageMetadata: {},
       enteredAt: new Date(),
       subStageVisits: [],
     });
@@ -878,6 +874,33 @@ private async executeTransitionSimple(
   }
 }
 
+private async getCycleUsageCounts(
+  manager: EntityManager,
+  instanceId: string,
+  cycleIds?: string[],
+): Promise<Record<string, number>> {
+  if (cycleIds?.length === 0) return {};
+  const query = manager
+    .getRepository(HistoryEntry)
+    .createQueryBuilder('history')
+    .select('history.cycleId', 'cycleId')
+    .addSelect('COUNT(history.id)', 'usageCount')
+    .where('history.instanceId = :instanceId', { instanceId })
+    .andWhere('history.eventType = :eventType', {
+      eventType: EventType.CYCLE_APPLIED,
+    })
+    .andWhere('history.cycleId IS NOT NULL');
+  if (cycleIds) {
+    query.andWhere('history.cycleId IN (:...cycleIds)', { cycleIds });
+  }
+  const rows = await query
+    .groupBy('history.cycleId')
+    .getRawMany<{ cycleId: string; usageCount: string }>();
+  return Object.fromEntries(
+    rows.map((row) => [row.cycleId, Number(row.usageCount)]),
+  );
+}
+
 private async applyCycleTransaction(
   instanceId: string,
   cycleId: string,
@@ -917,7 +940,12 @@ private async applyCycleTransaction(
         "Le cycle n'appartient pas à la version ou à l'étape courante",
       );
     }
-    const usedCount = Number(instance.cycleUsageCount?.[cycleId] ?? 0);
+    const usageCounts = await this.getCycleUsageCounts(
+      queryRunner.manager,
+      instanceId,
+      [cycleId],
+    );
+    const usedCount = usageCounts[cycleId] ?? 0;
     if (!cycle.maxLoops || usedCount >= cycle.maxLoops) {
       throw new BadRequestException(
         `Nombre maximal de boucles atteint (${cycle.maxLoops})`,
@@ -968,10 +996,6 @@ private async applyCycleTransaction(
     currentVisit.exitedAt = new Date();
     await queryRunner.manager.save(currentVisit);
     instance.currentStageId = cycle.toStageId;
-    instance.cycleUsageCount = {
-      ...(instance.cycleUsageCount ?? {}),
-      [cycleId]: usedCount + 1,
-    };
     await queryRunner.manager.save(instance);
     const visitNumber =
       (await queryRunner.manager.count(StageVisit, {
@@ -982,8 +1006,6 @@ private async applyCycleTransaction(
         instanceId,
         stageId: cycle.toStageId,
         visitNumber,
-        completedSubStages: [],
-        subStageMetadata: {},
         enteredAt: new Date(),
         subStageVisits: [],
       }),
@@ -1012,6 +1034,7 @@ private async applyCycleTransaction(
         instanceId,
         eventType: EventType.CYCLE_APPLIED,
         stageId: cycle.toStageId,
+        cycleId,
         userId,
         metadata: {
           cycleId,
@@ -1093,11 +1116,16 @@ private generateUuid(): string {
         templateId: instance.templateVersionId,
       },
     });
+    const usageCounts = await this.getCycleUsageCounts(
+      this.dataSource.manager,
+      instanceId,
+      cycles.map((cycle) => cycle.id),
+    );
     
     const available: Cycle[] = [];
     for (const cycle of cycles) {
       // Vérifier le nombre maximum de retours
-      const usedCount = (instance.cycleUsageCount?.[cycle.id] || 0);
+      const usedCount = usageCounts[cycle.id] ?? 0;
       if (cycle.maxLoops && usedCount >= cycle.maxLoops) {
         continue;
       }
@@ -1105,10 +1133,9 @@ private generateUuid(): string {
       // Vérifier la condition
       if (cycle.condition) {
         const context = {
-          instance: { 
-            data: {}, 
-            completedSubStages: instance.completedSubStages 
-          },
+          instance,
+          stage: currentStage,
+          stageVisit: currentStageVisit,
         };
         const shouldApply = await this.workflowService.evaluateCondition(
           cycle.condition, 
@@ -1240,9 +1267,6 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
 
       if (!instance) throw new NotFoundException(`Instance with ID ${id} not found`);
 
-      if (!instance.completedSubStages) instance.completedSubStages = [];
-      if (!instance.cycleUsageCount) instance.cycleUsageCount = {};
-
       return instance;
     }
 
@@ -1312,6 +1336,10 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
 
     const mapped = await this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template, currentVisit);
     const completedSubStageIds = instance.completedSubStageIds;
+    const cycleUsageCounts = await this.getCycleUsageCounts(
+      this.dataSource.manager,
+      instance.id,
+    );
 
     return {
       procedureSummary: {
@@ -1345,7 +1373,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
       availableCycles,
       completedSubStageIds,
       completedSubStages: completedSubStageIds,
-      cycleUsageCount: instance.cycleUsageCount,
+      cycleUsageCounts,
       totalSubStagesCount: instance.totalSubStagesCount,
       totalMandatorySubStagesCount: instance.totalMandatorySubStagesCount,
       completedSubStagesCount: instance.completedSubStagesCount,
@@ -1798,8 +1826,6 @@ async startSubStage(
           instanceId: instance.id,
           stageId: transition.toStageId,
           visitNumber,
-          completedSubStages: [],
-          subStageMetadata: {},
           enteredAt: new Date(),
           subStageVisits: [],
         }),
@@ -2147,8 +2173,6 @@ private async executeTransitionWithQueryRunner(
       instanceId: instance.id,
       stageId: transition.toStageId,
       visitNumber,
-      completedSubStages: [],
-      subStageMetadata: {},
       enteredAt: new Date(),
       subStageVisits: [],
     }),

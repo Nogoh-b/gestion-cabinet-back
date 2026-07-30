@@ -61,3 +61,38 @@ jobs:
       - run: npm run migration:run
       - run: npm run migration:verify
       - run: npm run migration:verify-data
+
+  migrations-mariadb:
+    name: migrations-mariadb-10.4
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: kabysoft_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -uroot -proot --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: kabysoft_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run outbox:verify-claim
+      - run: npm run migration:bootstrap
+      - run: npm run migration:run
+      - run: npm run migration:verify
+      - run: npm run migration:verify-data

@@ -38,4 +38,43 @@ describe('WorkflowService — conditions restrictives', () => {
       ),
     ).resolves.toBe(true);
   });
+
+  it('alimente les alias de condition depuis les visites uniquement', async () => {
+    await expect(
+      service.evaluateCondition(
+        {
+          in: [
+            'sub-stage-1',
+            { var: 'instance.completedSubStages' },
+          ],
+        },
+        {
+          instance: {
+            completedSubStages: ['legacy-instance'],
+          },
+          stageVisit: {
+            subStageVisits: [
+              { subStageId: 'sub-stage-1', isCompleted: true },
+            ],
+          },
+        },
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      service.evaluateCondition(
+        {
+          in: [
+            'legacy-instance',
+            { var: 'instance.completedSubStages' },
+          ],
+        },
+        {
+          instance: {
+            completedSubStages: ['legacy-instance'],
+          },
+          stageVisit: { subStageVisits: [] },
+        },
+      ),
+    ).resolves.toBe(false);
+  });
 });

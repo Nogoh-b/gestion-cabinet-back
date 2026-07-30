@@ -168,6 +168,50 @@ try {
   );
 
   await count(
+    'Reprises des anciens états procéduraux en attente',
+    `SELECT COUNT(*) AS total
+       FROM procedure_legacy_migration_issues
+      WHERE resolution_status = 'PENDING'`,
+  );
+  await count(
+    'Comptages de cycle sans cycle canonique de la version',
+    `SELECT COUNT(*) AS total
+       FROM history_entries h
+       LEFT JOIN procedure_instances pi
+         ON pi.id = h.instanceId
+        AND pi.tenant_id = h.tenant_id
+       LEFT JOIN cycles c
+         ON c.id = h.cycleId
+        AND c.templateId = pi.template_version_id
+        AND c.tenant_id = h.tenant_id
+      WHERE h.eventType = 'cycle_applied'
+        AND (h.cycleId IS NULL OR pi.id IS NULL OR c.id IS NULL)`,
+  );
+  await count(
+    'Sous-visites procédurales dupliquées',
+    `SELECT COUNT(*) AS total
+       FROM (
+         SELECT tenant_id, stageVisitId, subStageId
+           FROM sub_stage_visits
+          GROUP BY tenant_id, stageVisitId, subStageId
+         HAVING COUNT(*) > 1
+       ) duplicate_sub_stage_visits`,
+  );
+  await count(
+    'Sous-visites inter-cabinets ou étrangères à leur étape',
+    `SELECT COUNT(*) AS total
+       FROM sub_stage_visits ssv
+       LEFT JOIN stage_visits sv
+         ON sv.id = ssv.stageVisitId
+        AND sv.tenant_id = ssv.tenant_id
+       LEFT JOIN sub_stages ss
+         ON ss.id = ssv.subStageId
+        AND ss.tenant_id = ssv.tenant_id
+        AND ss.stageId = sv.stageId
+      WHERE sv.id IS NULL OR ss.id IS NULL`,
+  );
+
+  await count(
     'Documents sans version courante privée cohérente',
     `SELECT COUNT(*) AS total
        FROM document_customer d

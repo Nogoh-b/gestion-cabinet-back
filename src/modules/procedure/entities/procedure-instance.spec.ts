@@ -8,7 +8,6 @@ describe('ProcedureInstance — projections calculées', () => {
       {
         stageId: 'stage-1',
         visitNumber: 1,
-        completedSubStages: ['legacy-visit'],
         subStageVisits: [
           { subStageId: 'sub-stage-1', isCompleted: true },
           { subStageId: 'sub-stage-2', isCompleted: false },
@@ -16,10 +15,7 @@ describe('ProcedureInstance — projections calculées', () => {
       } as any,
     ];
 
-    expect(instance.completedSubStageIds).toEqual([
-      'legacy-visit',
-      'sub-stage-1',
-    ]);
+    expect(instance.completedSubStageIds).toEqual(['sub-stage-1']);
     expect(instance.completedSubStageIds).not.toContain('legacy-instance');
   });
 

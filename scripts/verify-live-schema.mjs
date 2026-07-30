@@ -61,6 +61,15 @@ function assertColumns(tableColumns, table, expected) {
   }
 }
 
+function assertForbiddenColumns(tableColumns, table, forbidden) {
+  const columns = tableColumns.get(table) ?? new Set();
+  for (const column of forbidden) {
+    if (columns.has(column)) {
+      fail(`Colonne historique encore prÃ©sente : ${table}.${column}`);
+    }
+  }
+}
+
 function enumValues(columnType) {
   return Array.from(String(columnType).matchAll(/'([^']*)'/g))
     .map((match) => match[1])
@@ -133,6 +142,8 @@ try {
     'document_versions',
     'procedure_templates',
     'procedure_instances',
+    'procedure_legacy_state_archive',
+    'procedure_legacy_migration_issues',
     'supplier_evidence_migration_issues',
     'dossier_lifecycle_migration_audit',
     'procedure_repair_issues',
@@ -208,6 +219,34 @@ try {
     'template_snapshot_hash',
     'status',
   ]);
+  assertForbiddenColumns(tableColumns, 'procedure_instances', [
+    'completedSubStages',
+    'cycleUsageCount',
+    'subStageMetadata',
+  ]);
+  assertForbiddenColumns(tableColumns, 'stage_visits', [
+    'completedSubStages',
+    'subStageMetadata',
+  ]);
+  assertColumns(tableColumns, 'history_entries', ['cycleId']);
+  assertColumns(tableColumns, 'procedure_legacy_state_archive', [
+    'tenant_id',
+    'source_type',
+    'source_id',
+    'payload',
+    'payload_hash',
+    'archived_at',
+  ]);
+  assertColumns(tableColumns, 'procedure_legacy_migration_issues', [
+    'issue_key',
+    'issue_type',
+    'tenant_id',
+    'instance_id',
+    'resolution_status',
+    'resolved_by_id',
+    'resolution_note',
+    'resolved_at',
+  ]);
   for (const table of ['supplier_invoice', 'expense_line']) {
     assertColumns(tableColumns, table, [
       'tenant_id',
@@ -264,6 +303,27 @@ try {
     );
   }
 
+  const [indexRows] = await connection.query(
+    `SELECT TABLE_NAME AS table_name,
+            INDEX_NAME AS index_name,
+            NON_UNIQUE AS non_unique
+       FROM information_schema.statistics
+      WHERE table_schema = ?`,
+    [database],
+  );
+  const uniqueSubStageVisit = indexRows.some(
+    (row) =>
+      String(row.table_name) === 'sub_stage_visits' &&
+      String(row.index_name) ===
+        'uq_sub_stage_visit_per_stage_visit' &&
+      Number(row.non_unique) === 0,
+  );
+  if (!uniqueSubStageVisit) {
+    fail(
+      'Contrainte unique manquante sur les sous-visites procÃ©durales',
+    );
+  }
+
   const [triggerRows] = await connection.query(
     `SELECT TRIGGER_NAME AS trigger_name
        FROM information_schema.triggers
@@ -278,6 +338,8 @@ try {
     'trg_audit_events_no_delete',
     'trg_document_version_immutable',
     'trg_document_version_protected_delete',
+    'trg_procedure_legacy_archive_no_update',
+    'trg_procedure_legacy_archive_no_delete',
   ]) {
     if (!triggers.has(trigger)) fail(`Trigger probatoire manquant : ${trigger}`);
   }

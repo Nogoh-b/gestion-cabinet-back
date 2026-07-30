@@ -184,13 +184,38 @@ export class WorkflowService {
         ) {
           return false;
         }
-        // Préparer les variables pour jsonLogic
+        const completedFromVisit = Array.isArray(
+          context.stageVisit?.subStageVisits,
+        )
+          ? context.stageVisit.subStageVisits
+              .filter((visit: any) => visit?.isCompleted === true)
+              .map((visit: any) => visit.subStageId)
+          : [];
+        const completedSubStageIds = [
+          ...new Set(
+            [
+              ...(Array.isArray(context.completedSubStageIds)
+                ? context.completedSubStageIds
+                : []),
+              ...(Array.isArray(context.instance?.completedSubStageIds)
+                ? context.instance.completedSubStageIds
+                : []),
+              ...completedFromVisit,
+            ].filter(
+              (value): value is string =>
+                typeof value === 'string' && value.length > 0,
+            ),
+          ),
+        ];
         const vars: any = {};
-        
+
         if (context.instance) {
             vars['instance'] = {
             data: context.instance.data,
-            completedSubStages: context.instance.completedSubStages,
+            completedSubStageIds,
+            // Alias de langage de condition conservé pour les templates
+            // publiés, alimenté uniquement par la projection canonique.
+            completedSubStages: completedSubStageIds,
             };
         }
         
@@ -199,7 +224,11 @@ export class WorkflowService {
         }  
 
         if (context.stageVisit) {
-            vars['stageVisit'] = context.stageVisit;
+            vars['stageVisit'] = {
+              ...context.stageVisit,
+              completedSubStageIds: completedFromVisit,
+              completedSubStages: completedFromVisit,
+            };
         }
         
         if (context.stage) {

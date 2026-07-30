@@ -288,6 +288,110 @@ if (
   fail("L'entité d'instance ne doit jamais valider une condition par défaut");
 }
 
+const stageVisitEntity = await readFile(
+  join(
+    root,
+    'src',
+    'modules',
+    'procedure',
+    'entities',
+    'stage-visit.entity.ts',
+  ),
+  'utf8',
+);
+function hasLegacyProcedureColumn(source, property) {
+  return new RegExp(
+    `@Column\\([\\s\\S]{0,300}?\\)\\s*${property}\\s*[?!]?:`,
+  ).test(source);
+}
+for (const property of [
+  'completedSubStages',
+  'cycleUsageCount',
+  'subStageMetadata',
+]) {
+  if (hasLegacyProcedureColumn(procedureInstanceEntity, property)) {
+    fail(`Colonne procÃ©durale historique encore mappÃ©e : ${property}`);
+  }
+}
+for (const property of ['completedSubStages', 'subStageMetadata']) {
+  if (hasLegacyProcedureColumn(stageVisitEntity, property)) {
+    fail(`Colonne de visite historique encore mappÃ©e : ${property}`);
+  }
+}
+
+const procedureInstanceService = await readFile(
+  join(
+    root,
+    'src',
+    'modules',
+    'procedure',
+    'services',
+    'procedure-instance.service.ts',
+  ),
+  'utf8',
+);
+for (const marker of [
+  'private async getCycleUsageCounts(',
+  "history.eventType = :eventType",
+  'cycleUsageCounts,',
+]) {
+  if (!procedureInstanceService.includes(marker)) {
+    fail(`Comptage canonique des cycles incomplet : ${marker}`);
+  }
+}
+const workflowStatusStart = procedureInstanceService.indexOf(
+  'async getWorkflowStatus(',
+);
+const workflowStatusEnd = procedureInstanceService.indexOf(
+  'async getStageVisitHistory(',
+  workflowStatusStart,
+);
+const workflowStatusSource = procedureInstanceService.slice(
+  workflowStatusStart,
+  workflowStatusEnd,
+);
+if (/\bcycleUsageCount\s*[,}]/.test(workflowStatusSource)) {
+  fail(
+    "L'API workflow ne doit pas republier le compteur historique de l'instance",
+  );
+}
+
+const migrateLegacyProcedureState = await readFile(
+  join(
+    migrationDirectory,
+    '1785169045000-MigrateLegacyProcedureInstanceState.ts',
+  ),
+  'utf8',
+);
+for (const marker of [
+  'procedure_legacy_state_archive',
+  'procedure_legacy_migration_issues',
+  'payload_hash',
+  'ADD COLUMN cycleId',
+  'migrateCycleCounters',
+]) {
+  if (!migrateLegacyProcedureState.includes(marker)) {
+    fail(`Reprise des Ã©tats procÃ©duraux incomplÃ¨te : ${marker}`);
+  }
+}
+const retireLegacyProcedureState = await readFile(
+  join(
+    migrationDirectory,
+    '1785169046000-RetireLegacyProcedureInstanceState.ts',
+  ),
+  'utf8',
+);
+for (const marker of [
+  "resolution_status = 'PENDING'",
+  'procedure_legacy_state_archive',
+  'uq_sub_stage_visit_per_stage_visit',
+  'DROP COLUMN cycleUsageCount',
+]) {
+  if (!retireLegacyProcedureState.includes(marker)) {
+    fail(`Retrait des Ã©tats procÃ©duraux non certifiÃ© : ${marker}`);
+  }
+}
+
 const instanceMapper = await readFile(
   join(
     root,

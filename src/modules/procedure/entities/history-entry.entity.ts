@@ -43,6 +43,16 @@ export class HistoryEntry extends BaseEntity {
   @BusinessColumn({ label: 'Sous-étape', description: 'Sous-étape concernée', importance: 'medium', group: 'relation', ignored: true })
   subStageId: string | null;
 
+  @Column({ name: 'cycleId', type: 'varchar', length: 36, nullable: true })
+  @BusinessColumn({
+    label: 'Cycle',
+    description: 'Cycle procédural appliqué, pour le décompte append-only',
+    importance: 'medium',
+    group: 'relation',
+    ignored: true,
+  })
+  cycleId: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   @BusinessColumn({ label: 'Utilisateur', description: 'Utilisateur à l\'origine', importance: 'medium', group: 'audit' })
   userId: string | null;

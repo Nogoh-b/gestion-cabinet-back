@@ -124,35 +124,14 @@ export class ProcedureInstance extends TenantEntity {
   @OneToMany(() => Task, (task) => task.instance, { cascade: true })
   tasks: Task[];
 
-  @Column({ type: 'simple-json', nullable: true })
-  @BusinessColumn({
-    label: 'Sous-étapes complétées (déprécié)',
-    description: 'Ancien champ. Utiliser stageVisits à la place.',
-    importance: 'low',
-    group: 'technique',
-    ignored: true
-  })
-  completedSubStages: string[];
-
-  @Column({ type: 'simple-json', nullable: true })
-  @BusinessColumn({
-    label: 'Compteurs cycles (déprécié)',
-    description: 'Ancien champ. Utiliser stageVisits à la place.',
-    importance: 'low',
-    group: 'technique',
-    ignored: true
-  })
-  cycleUsageCount: Record<string, number>;
-
-  @Column({ type: 'simple-json', nullable: true })
-  @BusinessColumn({
-    label: 'Métadonnées sous-étapes (déprécié)',
-    description: 'Ancien champ. Utiliser stageVisits à la place.',
-    importance: 'low',
-    group: 'technique',
-    ignored: true
-  })
-  subStageMetadata: Record<string, any>;
+  /**
+   * Compatibilité TypeScript temporaire pour les branches historiques
+   * neutralisées. Ces propriétés ne sont plus des colonnes TypeORM et ne
+   * constituent jamais une source de vérité.
+   */
+  completedSubStages?: string[];
+  cycleUsageCount?: Record<string, number>;
+  subStageMetadata?: Record<string, any>;
 
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
@@ -578,9 +557,6 @@ export class ProcedureInstance extends TenantEntity {
           }
         }
       }
-      if (visit.completedSubStages) {
-        visit.completedSubStages.forEach(id => completed.add(id));
-      }
     }
     return completed;
   }
@@ -595,9 +571,6 @@ export class ProcedureInstance extends TenantEntity {
               completed.add(subVisit.subStageId);
             }
           }
-        }
-        if (visit.completedSubStages) {
-          visit.completedSubStages.forEach(id => completed.add(id));
         }
       }
     }
@@ -620,9 +593,6 @@ export class ProcedureInstance extends TenantEntity {
   afterLoad() {
     if (!this.stageVisits) {
       this.stageVisits = [];
-    }
-    if (this.completedSubStages && this.completedSubStages.length > 0 && this.stageVisits.length === 0) {
-      console.warn(`Instance ${this.id}: Anciens champs détectés, migration recommandée`);
     }
   }
 
