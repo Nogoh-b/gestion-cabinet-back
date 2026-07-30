@@ -107,7 +107,7 @@ try {
   }
 
   const [tableRows] = await connection.query(
-    `SELECT table_name
+    `SELECT TABLE_NAME AS table_name
        FROM information_schema.tables
       WHERE table_schema = ?`,
     [database],
@@ -144,7 +144,9 @@ try {
   }
 
   const [columnRows] = await connection.query(
-    `SELECT table_name, column_name, column_type
+    `SELECT TABLE_NAME AS table_name,
+            COLUMN_NAME AS column_name,
+            COLUMN_TYPE AS column_type
        FROM information_schema.columns
       WHERE table_schema = ?`,
     [database],
@@ -263,7 +265,7 @@ try {
   }
 
   const [triggerRows] = await connection.query(
-    `SELECT trigger_name
+    `SELECT TRIGGER_NAME AS trigger_name
        FROM information_schema.triggers
       WHERE trigger_schema = ?`,
     [database],

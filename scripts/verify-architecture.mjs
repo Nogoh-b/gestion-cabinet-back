@@ -350,6 +350,23 @@ if (/\)\s+STORED\b/i.test(activeStageVisitMigration)) {
   );
 }
 
+const liveSchemaVerifier = await readFile(
+  join(root, 'scripts', 'verify-live-schema.mjs'),
+  'utf8',
+);
+for (const alias of [
+  'TABLE_NAME AS table_name',
+  'COLUMN_NAME AS column_name',
+  'COLUMN_TYPE AS column_type',
+  'TRIGGER_NAME AS trigger_name',
+]) {
+  if (!liveSchemaVerifier.includes(alias)) {
+    fail(
+      `Alias information_schema compatible MySQL manquant : ${alias}`,
+    );
+  }
+}
+
 const dataVerifier = await readFile(
   join(root, 'scripts', 'verify-migrated-data.mjs'),
   'utf8',
