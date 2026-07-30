@@ -81,6 +81,40 @@ if (createTableCount !== 71) {
   fail(`Le schéma de référence doit contenir 71 tables (${createTableCount})`);
 }
 
+const bootstrapPath = join(root, 'scripts', 'bootstrap-empty-database.mjs');
+const bootstrap = await readFile(bootstrapPath, 'utf8');
+if (/\blegacyCutoff\b/.test(bootstrap)) {
+  fail(
+    'Le bootstrap ne doit pas rapprocher les migrations par seuil chronologique',
+  );
+}
+const reconciledBlock = bootstrap.match(
+  /const\s+baselineReconciledMigrationTimestamps\s*=\s*new Set\(\[([\s\S]*?)\]\);/,
+);
+if (!reconciledBlock) {
+  fail(
+    'Le bootstrap doit déclarer explicitement les migrations représentées par le baseline',
+  );
+} else {
+  const configuredTimestamps = [
+    ...reconciledBlock[1].matchAll(/\b[\d_]{13,}\b/g),
+  ].map(([value]) => Number(value.replaceAll('_', '')));
+  const expectedTimestamps = [
+    1779107127070, 1779200000000, 1779300000000, 1779400000000,
+    1779500000000, 1779600000000, 1781600000000, 1782000002000,
+    1782000004000, 1782000005000, 1782100000000, 1782100001000,
+    1782100002000, 1782200000000,
+  ];
+  if (
+    configuredTimestamps.length !== expectedTimestamps.length ||
+    configuredTimestamps.some(
+      (timestamp, index) => timestamp !== expectedTimestamps[index],
+    )
+  ) {
+    fail('La liste des migrations rapprochées du baseline est inattendue');
+  }
+}
+
 const migrationPathFragment = join('src', 'migrations');
 const sourceFiles = (await walk(join(root, 'src'))).filter(
   (file) =>

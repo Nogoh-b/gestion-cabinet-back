@@ -37,10 +37,10 @@
     "verify:architecture": "node scripts/verify-architecture.mjs",
     "openapi:generate": "node scripts/generate-openapi-static.mjs",
     "openapi:check": "node scripts/generate-openapi-static.mjs --check",
-    "backup:encrypt-legacy": "node scripts/encrypt-legacy-backups.mjs"
-    ,"backup:create": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts create"
-    ,"backup:verify": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts verify"
-    ,"backup:restore": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts restore"
+    "backup:encrypt-legacy": "node scripts/encrypt-legacy-backups.mjs",
+    "backup:create": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts create",
+    "backup:verify": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts verify",
+    "backup:restore": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts restore"
   },
   "dependencies": {
     "@bull-board/api": "^6.10.1",
@@ -189,6 +189,5 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
-  },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  }
 }

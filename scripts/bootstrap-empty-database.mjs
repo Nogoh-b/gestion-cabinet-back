@@ -13,7 +13,27 @@ const baselinePath = join(
   'legacy-schema-2026-06-26.sql',
 );
 const migrationsDirectory = join(root, 'src', 'migrations');
-const legacyCutoff = 1_782_494_311_000;
+// The baseline is an exact, hashed legacy snapshot. Only migrations whose
+// effects are already present (or whose legacy tables are intentionally
+// absent) may be reconciled here. A chronological cutoff is unsafe because
+// the subscription migrations below predate features already present in the
+// snapshot while their tables are not part of it.
+const baselineReconciledMigrationTimestamps = new Set([
+  1_779_107_127_070,
+  1_779_200_000_000,
+  1_779_300_000_000,
+  1_779_400_000_000,
+  1_779_500_000_000,
+  1_779_600_000_000,
+  1_781_600_000_000,
+  1_782_000_002_000,
+  1_782_000_004_000,
+  1_782_000_005_000,
+  1_782_100_000_000,
+  1_782_100_001_000,
+  1_782_100_002_000,
+  1_782_200_000_000,
+]);
 const expectedBaselineHash =
   '92f7786974c9a531cdbd7b21c756413c084661566fdcec9485c0caf9632d9890';
 
@@ -113,7 +133,21 @@ try {
       };
       }),
     )
-  ).filter(({ timestamp }) => timestamp <= legacyCutoff);
+  ).filter(({ timestamp }) =>
+    baselineReconciledMigrationTimestamps.has(timestamp),
+  );
+
+  const reconciledTimestamps = new Set(
+    representedMigrations.map(({ timestamp }) => timestamp),
+  );
+  const missingReconciliations = [
+    ...baselineReconciledMigrationTimestamps,
+  ].filter((timestamp) => !reconciledTimestamps.has(timestamp));
+  if (missingReconciliations.length > 0) {
+    throw new Error(
+      `Migrations historiques introuvables : ${missingReconciliations.join(', ')}`,
+    );
+  }
 
   for (const migration of representedMigrations) {
     await connection.execute(
