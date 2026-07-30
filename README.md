@@ -42,6 +42,18 @@ Une clé de chiffrement des paramètres peut être générée ainsi :
 node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
+Pour une installation locale, initialiser le secret de renouvellement manquant
+sans l'afficher dans le terminal :
+
+```powershell
+npm run secrets:bootstrap
+```
+
+La commande est idempotente : elle ne remplace jamais un
+`JWT_REFRESH_SECRET` déjà configuré. Le fichier `.env` reste exclu de Git.
+En production, les secrets doivent être injectés par le gestionnaire de secrets
+de l'environnement et cette commande ne doit pas être utilisée.
+
 La migration `1785169034000-EncryptCabinetSmtpConfig` chiffre les anciennes
 configurations SMTP en AES-256-GCM puis efface leur valeur claire. Elle échoue
 si une configuration claire existe sans `SETTINGS_ENCRYPTION_KEY`.

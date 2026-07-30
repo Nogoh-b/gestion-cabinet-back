@@ -35,6 +35,7 @@
     "migration:rehearse": "ts-node -r tsconfig-paths/register scripts/migration-rehearsal.ts",
     "migration:verify": "node scripts/verify-live-schema.mjs",
     "migration:verify-data": "node scripts/verify-migrated-data.mjs",
+    "secrets:bootstrap": "node scripts/bootstrap-local-secrets.mjs",
     "verify:architecture": "node scripts/verify-architecture.mjs",
     "openapi:generate": "node scripts/generate-openapi-static.mjs",
     "openapi:check": "node scripts/generate-openapi-static.mjs --check",

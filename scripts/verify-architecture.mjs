@@ -260,10 +260,28 @@ for (const script of [
   'migration:run',
   'migration:verify',
   'migration:verify-data',
+  'secrets:bootstrap',
 ]) {
   if (!packageJson.scripts?.[script]) {
     fail(`Script de certification manquant : ${script}`);
   }
+}
+
+const localSecretsBootstrap = await readFile(
+  join(root, 'scripts', 'bootstrap-local-secrets.mjs'),
+  'utf8',
+);
+for (const marker of [
+  'randomBytes(SECRET_BYTES)',
+  'JWT_REFRESH_SECRET',
+  'aucune modification',
+]) {
+  if (!localSecretsBootstrap.includes(marker)) {
+    fail(`Garde-fou de secret local manquant : ${marker}`);
+  }
+}
+if (/console\.(?:log|info)\s*\(\s*secret\b/.test(localSecretsBootstrap)) {
+  fail('Le générateur local ne doit jamais afficher le secret');
 }
 
 const rehearsalScript = await readFile(
