@@ -1,8 +1,7 @@
 // procedure/services/instance-sub-stage.service.ts
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ProcedureInstance } from '../entities/procedure-instance.entity';
 import { ProcedureTemplate } from '../entities/procedure-template.entity';
-import { Stage } from '../entities/stage.entity';
 import { StageVisit } from '../entities/stage-visit.entity';
 import { MappedInstance, MappedStage, MappedSubStage, StageStatus, SubStageStatus } from '../entities/type/instance-status.enum';
 
@@ -18,13 +17,26 @@ async mapInstanceWithCurrentTemplate(
   currentTemplate: ProcedureTemplate,
   currentStageVisit: StageVisit,
 ): Promise<MappedInstance> {
-
-  // Map pour accéder rapidement aux SubStageVisit
-  const subStageVisitsMap = new Map(
-    currentStageVisit.subStageVisits.map((v) => [v.subStageId, v])
-  );
+  const visits =
+    instance.stageVisits?.length > 0
+      ? instance.stageVisits
+      : [currentStageVisit];
+  const latestVisitByStage = new Map<string, StageVisit>();
+  for (const visit of visits) {
+    const latest = latestVisitByStage.get(visit.stageId);
+    if (!latest || visit.visitNumber > latest.visitNumber) {
+      latestVisitByStage.set(visit.stageId, visit);
+    }
+  }
 
   const mappedStages: MappedStage[] = currentTemplate.stages.map((stage) => {
+    const stageVisit = latestVisitByStage.get(stage.id);
+    const subStageVisitsMap = new Map(
+      (stageVisit?.subStageVisits ?? []).map((visit) => [
+        visit.subStageId,
+        visit,
+      ]),
+    );
     const mappedSubStages: MappedSubStage[] = stage.subStages.map((subStage) => {
       const subVisit = subStageVisitsMap.get(subStage.id);
       const metadata = subVisit?.metadata || {};
@@ -59,7 +71,7 @@ async mapInstanceWithCurrentTemplate(
       stage.id,
       mappedSubStages,
       instance.currentStageId,
-      currentTemplate.stages
+      stageVisit,
     );
 
     return {
@@ -76,8 +88,12 @@ async mapInstanceWithCurrentTemplate(
     };
   });
 
-  const currentStage = mappedStages.find((s) => s.id === instance.currentStageId) 
-    || mappedStages[mappedStages.length - 1];
+  const currentStage = mappedStages.find((s) => s.id === instance.currentStageId);
+  if (!currentStage) {
+    throw new BadRequestException(
+      "L'étape courante n'appartient pas à la version du template",
+    );
+  }
 
   return {
     instance,
@@ -130,7 +146,7 @@ private calculateStageStatus(
   stageId: string,
   mappedSubStages: MappedSubStage[],
   currentStageId: string,
-  templateStages: Stage[]
+  stageVisit?: StageVisit,
 ): StageStatus {
   if (stageId === currentStageId) {
     return 'current';
@@ -140,7 +156,10 @@ private calculateStageStatus(
   const allMandatoryCompleted = mandatorySubStages.length === 0 ||
     mandatorySubStages.every((ss) => ss.status === 'completed');
 
-  if (allMandatoryCompleted && mandatorySubStages.length > 0) {
+  if (
+    allMandatoryCompleted &&
+    (mandatorySubStages.length > 0 || Boolean(stageVisit?.exitedAt))
+  ) {
     return 'completed';
   }
 

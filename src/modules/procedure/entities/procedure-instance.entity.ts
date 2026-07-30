@@ -217,6 +217,18 @@ export class ProcedureInstance extends TenantEntity {
 
   @Expose()
   @BusinessColumn({
+    label: 'Identifiants des sous-étapes complétées',
+    description:
+      'Projection calculée exclusivement depuis les visites d’étapes et de sous-étapes',
+    importance: 'high',
+    group: 'statistiques',
+  })
+  get completedSubStageIds(): string[] {
+    return [...this.getAllCompletedSubStageIds()].sort();
+  }
+
+  @Expose()
+  @BusinessColumn({
     label: 'Sous-étapes obligatoires complétées',
     description: 'Nombre de sous-étapes obligatoires déjà terminées',
     importance: 'high',
@@ -589,9 +601,6 @@ export class ProcedureInstance extends TenantEntity {
         }
       }
     }
-    if (this.completedSubStages) {
-      this.completedSubStages.forEach(id => completed.add(id));
-    }
     return completed;
   }
 
@@ -634,35 +643,33 @@ export class ProcedureInstance extends TenantEntity {
     const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
     const currentStageOrder = this.currentStage.order;
     const maxOrder = Math.max(...sortedStages.map(s => s.order));
-    const lastStageByOrder = sortedStages.find(s => s.order === maxOrder);
-
     // Critère 1: Ordre maximum
     if (currentStageOrder === maxOrder) {
       return { isLast: true, reason: 'Ordre maximum atteint', confidence: 'high' };
     }
 
     // Critère 2: Pas de transitions sortantes
-    const hasOutgoingTransitions = this.template.transitions?.some(
+    const outgoingTransitions = this.template.transitions?.filter(
       t => t.fromStageId === this.currentStageId
-    ) ?? false;
+    ) ?? [];
 
-    console.log(this.template.transitions.length, hasOutgoingTransitions);
-
-    if (!hasOutgoingTransitions) {
+    if (outgoingTransitions.length === 0) {
       return { isLast: true, reason: 'Aucune transition sortante définie', confidence: 'high' };
     }
 
-    // Critère 3: Vérifier les transitions disponibles
-    const availableTransitions = this.template.transitions?.filter(
-      t => t.fromStageId === this.currentStageId && (!t.condition || this.evaluateCondition(t.condition))
-    ) ?? [];
-
-    if (availableTransitions.length === 0) {
-      return { isLast: true, reason: 'Aucune transition disponible actuellement', confidence: 'medium' };
+    // Une entité ne possède pas le contexte métier nécessaire pour évaluer
+    // une condition. Cette responsabilité reste exclusivement dans
+    // WorkflowService, qui échoue de manière restrictive.
+    if (outgoingTransitions.every((transition) => transition.condition)) {
+      return {
+        isLast: false,
+        reason: 'Transitions conditionnelles à évaluer par le moteur de workflow',
+        confidence: 'low',
+      };
     }
 
     // Critère 4: Toutes les transitions mènent à des étapes déjà visitées
-    const allTransitionsToVisitedStages = availableTransitions.every(t => {
+    const allTransitionsToVisitedStages = outgoingTransitions.every(t => {
       const hasVisited = this.stageVisits?.some(v => v.stageId === t.toStageId);
       const toStage = this.template.stages?.find(s => s.id === t.toStageId);
       // Si c'est une étape avec ordre inférieur, on considère qu'on peut y retourner
@@ -693,13 +700,5 @@ export class ProcedureInstance extends TenantEntity {
     }
 
     return { isLast: false, reason: 'Des transitions vers de nouvelles étapes existent', confidence: 'high' };
-  }
- /**
-   * Évalue une condition (à implémenter selon vos besoins)
-   */
-  private evaluateCondition(condition: string): boolean {
-    // TODO: Implémenter l'évaluation des conditions
-    // Exemple: condition peut être "stage.completedSubStages.includes('xxx')"
-    return true;
   }
 }

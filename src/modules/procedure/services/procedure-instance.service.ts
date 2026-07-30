@@ -1311,6 +1311,7 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
       );
 
     const mapped = await this.instanceMapper.mapInstanceWithCurrentTemplate(instance, instance.template, currentVisit);
+    const completedSubStageIds = instance.completedSubStageIds;
 
     return {
       procedureSummary: {
@@ -1330,6 +1331,10 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
       instance: {   
         ...mapped.instance,
         currentStage: mapped.currentStage,  // Remplacer par le stage mappé
+        completedSubStageIds,
+        // Adaptateur de lecture temporaire : cette valeur n'est jamais
+        // persistée et provient exclusivement des visites.
+        completedSubStages: completedSubStageIds,
         },
       currentVisitNumber: currentVisit.visitNumber,
       stages: mapped.stages,
@@ -1338,7 +1343,8 @@ async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
       progress: mapped.progress,
       availableTransitions,
       availableCycles,
-      completedSubStages: instance.completedSubStages,
+      completedSubStageIds,
+      completedSubStages: completedSubStageIds,
       cycleUsageCount: instance.cycleUsageCount,
       totalSubStagesCount: instance.totalSubStagesCount,
       totalMandatorySubStagesCount: instance.totalMandatorySubStagesCount,

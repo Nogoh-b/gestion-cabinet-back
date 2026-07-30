@@ -251,6 +251,64 @@ for (const path of dossierContractFiles) {
   }
 }
 
+const procedureInstanceEntity = await readFile(
+  join(
+    root,
+    'src',
+    'modules',
+    'procedure',
+    'entities',
+    'procedure-instance.entity.ts',
+  ),
+  'utf8',
+);
+for (const marker of [
+  'get completedSubStageIds(): string[]',
+  'this.getAllCompletedSubStageIds()',
+  'Transitions conditionnelles à évaluer par le moteur de workflow',
+]) {
+  if (!procedureInstanceEntity.includes(marker)) {
+    fail(`Projection procédurale canonique manquante : ${marker}`);
+  }
+}
+if (
+  /this\.completedSubStages\.forEach\s*\(\s*id\s*=>\s*completed\.add/.test(
+    procedureInstanceEntity,
+  )
+) {
+  fail(
+    "La progression ne doit jamais se replier sur completedSubStages de l'instance",
+  );
+}
+if (
+  /private\s+evaluateCondition[\s\S]*?return\s+true\s*;/.test(
+    procedureInstanceEntity,
+  )
+) {
+  fail("L'entité d'instance ne doit jamais valider une condition par défaut");
+}
+
+const instanceMapper = await readFile(
+  join(
+    root,
+    'src',
+    'modules',
+    'procedure',
+    'services',
+    'instance-sub-stage.service.ts',
+  ),
+  'utf8',
+);
+for (const marker of [
+  'latestVisitByStage',
+  'stageVisit?.subStageVisits ?? []',
+  "L'étape courante n'appartient pas à la version du template",
+]) {
+  if (!instanceMapper.includes(marker)) {
+    fail(`Mapping des visites procédurales incomplet : ${marker}`);
+  }
+}
+
 const packageJson = JSON.parse(
   await readFile(join(root, 'package.json'), 'utf8'),
 );
