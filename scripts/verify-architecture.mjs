@@ -350,6 +350,25 @@ if (/\)\s+STORED\b/i.test(activeStageVisitMigration)) {
   );
 }
 
+const mysqlCollationMigration = await readFile(
+  join(
+    root,
+    'src',
+    'migrations',
+    '1785168999000-AlignMySqlDatabaseCollation.ts',
+  ),
+  'utf8',
+);
+for (const marker of [
+  'utf8mb4_general_ci',
+  'schema_collation_migration_audit',
+  'ALTER DATABASE',
+]) {
+  if (!mysqlCollationMigration.includes(marker)) {
+    fail(`Garde-fou de collation MySQL manquant : ${marker}`);
+  }
+}
+
 const liveSchemaVerifier = await readFile(
   join(root, 'scripts', 'verify-live-schema.mjs'),
   'utf8',

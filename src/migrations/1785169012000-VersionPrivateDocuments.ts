@@ -40,6 +40,8 @@ export class VersionPrivateDocuments1785169012000
         KEY idx_document_hash (tenant_id, sha256),
         KEY idx_document_review (tenant_id, status, antivirus_status)
       ) ENGINE=InnoDB
+        DEFAULT CHARACTER SET utf8mb4
+        COLLATE utf8mb4_general_ci
     `);
     if (
       !(await queryRunner.hasColumn('document_customer', 'current_version_id'))
@@ -67,6 +69,8 @@ export class VersionPrivateDocuments1785169012000
         UNIQUE KEY uq_document_migration_issue
           (tenant_id, document_id, issue_code)
       ) ENGINE=InnoDB
+        DEFAULT CHARACTER SET utf8mb4
+        COLLATE utf8mb4_general_ci
     `);
 
     const documents: Array<{
