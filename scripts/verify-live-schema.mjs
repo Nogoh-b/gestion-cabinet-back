@@ -114,6 +114,18 @@ try {
   );
   const tables = new Set(tableRows.map((row) => String(row.table_name)));
   for (const table of [
+    'plans',
+    'cabinets',
+    'country',
+    'region',
+    'division',
+    'districts',
+    'location_city',
+    'auth_tokens',
+    'otp_codes',
+    'otp_online_link',
+    'type_customer_document_type',
+    'lignes_ecriture_comptable',
     'audit_events',
     'outbox_events',
     'outbox_delivery_attempts',
