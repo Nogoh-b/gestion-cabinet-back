@@ -1,10 +1,11 @@
 import { getMetadataArgsStorage } from 'typeorm';
+import * as migrateLegacyProcedureState from './migrations/1785169045000-MigrateLegacyProcedureInstanceState';
 import {
   legacyObject,
   legacyStringList,
   parseLegacyJson,
   selectUnambiguousVisit,
-} from './migrations/1785169045000-MigrateLegacyProcedureInstanceState';
+} from './migrations/support/legacy-procedure-state';
 import { RetireLegacyProcedureInstanceState1785169046000 } from './migrations/1785169046000-RetireLegacyProcedureInstanceState';
 import { HistoryEntry } from './modules/procedure/entities/history-entry.entity';
 import { ProcedureInstance } from './modules/procedure/entities/procedure-instance.entity';
@@ -20,6 +21,12 @@ function declaredColumns(
 }
 
 describe('retrait des états procéduraux historiques', () => {
+  it('n’expose à TypeORM que la classe de migration racine', () => {
+    expect(Object.keys(migrateLegacyProcedureState)).toEqual([
+      'MigrateLegacyProcedureInstanceState1785169045000',
+    ]);
+  });
+
   it('normalise les charges JSON historiques sans inventer de valeur', () => {
     expect(parseLegacyJson('["sub-1","sub-2"]')).toEqual([
       'sub-1',

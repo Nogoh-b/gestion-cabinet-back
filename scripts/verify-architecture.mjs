@@ -58,6 +58,15 @@ for (const file of migrationFiles) {
   ]) {
     if (!marker.test(source)) fail(`Migration incomplète : ${file}`);
   }
+  if (
+    /^\s*export\s+(?:async\s+)?(?:function|const|let|var|enum|\{)/m.test(
+      source,
+    )
+  ) {
+    fail(
+      `Export runtime interdit dans une migration TypeORM racine : ${file}`,
+    );
+  }
 }
 
 const baselinePath = join(
