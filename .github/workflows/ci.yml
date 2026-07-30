@@ -22,17 +22,24 @@ jobs:
       - run: npm run test:ci
 
   migrations-empty-database:
+    name: migrations-mysql-${{ matrix.mysql_version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql_version:
+          - '8.0'
+          - '8.4'
     services:
-      mariadb:
-        image: mariadb:10.11
+      mysql:
+        image: mysql:${{ matrix.mysql_version }}
         env:
-          MARIADB_ROOT_PASSWORD: root
-          MARIADB_DATABASE: kabysoft_ci
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: kabysoft_ci
         ports:
           - 3306:3306
         options: >-
-          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-cmd "mysqladmin ping -h localhost -uroot -proot --silent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
