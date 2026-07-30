@@ -42,13 +42,42 @@ ne constitue pas une preuve de reprise.
 ## 3. Répétition sur copie anonymisée
 
 Configurer `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` et `DB_NAME` vers la
-copie anonymisée, puis exécuter :
+copie anonymisée. Le nom de la base doit signaler explicitement qu’il s’agit
+d’une cible `anon`, `rehearsal`, `recette`, `preprod`, `staging`, `test` ou
+`qa`.
+
+Effectuer d’abord le préflight strictement en lecture seule :
+
+```powershell
+$env:MIGRATION_REHEARSAL_CONFIRMATION='ANONYMIZED_COPY_ONLY'
+npm run migration:rehearse
+```
+
+Le préflight refuse notamment :
+
+- `NODE_ENV=production` ;
+- un nom de base ambigu ou contenant `prod`, `production` ou `live` ;
+- une cible distante sans `MIGRATION_REHEARSAL_ALLOW_REMOTE=true` ;
+- une base vide ;
+- un historique de migrations non rapproché.
+
+Après vérification du rapport privé créé sous
+`artifacts-private/migration-rehearsal`, autoriser explicitement les écritures :
+
+```powershell
+npm run migration:rehearse -- --execute
+```
+
+Cette commande enchaîne :
 
 ```powershell
 npm run migration:run
 npm run migration:verify
 npm run migration:verify-data
 ```
+
+Les rapports JSON et Markdown ne contiennent ni mot de passe ni données
+métier et restent exclus de Git.
 
 La dernière commande doit rester en échec tant qu’une anomalie bloquante est
 présente. Elle contrôle notamment :

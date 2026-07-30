@@ -73,4 +73,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 uploads/
 /backups/*.sql
 /backups-private/
+/artifacts-private/
 ecosystem.config.js

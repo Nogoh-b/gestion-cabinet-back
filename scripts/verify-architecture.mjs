@@ -256,12 +256,40 @@ const packageJson = JSON.parse(
 );
 for (const script of [
   'migration:bootstrap',
+  'migration:rehearse',
   'migration:run',
   'migration:verify',
   'migration:verify-data',
 ]) {
   if (!packageJson.scripts?.[script]) {
     fail(`Script de certification manquant : ${script}`);
+  }
+}
+
+const rehearsalScript = await readFile(
+  join(root, 'scripts', 'migration-rehearsal.ts'),
+  'utf8',
+);
+const rehearsalSafety = await readFile(
+  join(
+    root,
+    'src',
+    'core',
+    'config',
+    'migration-rehearsal-safety.ts',
+  ),
+  'utf8',
+);
+const rehearsalSources = `${rehearsalScript}\n${rehearsalSafety}`;
+for (const marker of [
+  'ANONYMIZED_COPY_ONLY',
+  '--execute',
+  'historicalReconciliationReady',
+  'migration:verify-data',
+  'artifacts-private',
+]) {
+  if (!rehearsalSources.includes(marker)) {
+    fail(`Garde-fou de répétition manquant : ${marker}`);
   }
 }
 

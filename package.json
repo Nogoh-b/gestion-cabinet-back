@@ -32,6 +32,7 @@
     "migration:run": "npm run typeorm migration:run -- -d src/data-source.ts",
     "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts",
     "migration:bootstrap": "node scripts/bootstrap-empty-database.mjs",
+    "migration:rehearse": "ts-node -r tsconfig-paths/register scripts/migration-rehearsal.ts",
     "migration:verify": "node scripts/verify-live-schema.mjs",
     "migration:verify-data": "node scripts/verify-migrated-data.mjs",
     "verify:architecture": "node scripts/verify-architecture.mjs",
