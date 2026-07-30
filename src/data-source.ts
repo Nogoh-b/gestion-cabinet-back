@@ -8,7 +8,7 @@ import { DataSource } from 'typeorm';
 config();
 
 // Configuration TypeORM pour le Cameroun
-export const dataSource = new DataSource({
+const dataSource = new DataSource({
   type: 'mysql',
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '3306'),
