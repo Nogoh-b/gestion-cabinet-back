@@ -170,6 +170,11 @@ try {
     tableColumns.set(table, columns);
   }
 
+  assertColumns(tableColumns, 'plans', [
+    'trial_enabled',
+    'trial_days',
+    'min_commitment_months',
+  ]);
   assertColumns(tableColumns, 'audit_events', [
     'tenant_id',
     'actor_id',

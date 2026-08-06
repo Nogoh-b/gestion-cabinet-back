@@ -32,6 +32,7 @@ import {
 } from './dto/review-document-version.dto';
 import { DocumentVersionService } from './document-version.service';
 import { Response } from 'express';
+import { DocumentStatsService } from './document-stats.service';
 
 @ApiTags('Documents')
 @ApiBearerAuth()
@@ -41,6 +42,7 @@ export class DocumentCustomerController {
   constructor(
     private readonly versionService: DocumentVersionService,
     private readonly resourcePolicy: ResourcePolicyService,
+    private readonly statsService: DocumentStatsService,
   ) {}
 
   @Get()
@@ -62,6 +64,16 @@ export class DocumentCustomerController {
       }
     }
     return visible;
+  }
+
+  @Get('stats')
+  @RequirePermissions('view_documents')
+  async stats(@Req() req: any) {
+    const dossierIds = await this.resourcePolicy.getAccessibleDossierIds(req.user);
+    return this.statsService.getStats({
+      ...req.query,
+      dossierIds,
+    });
   }
 
   @Get(':id')

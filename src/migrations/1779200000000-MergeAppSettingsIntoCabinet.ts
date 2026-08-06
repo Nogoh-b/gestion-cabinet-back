@@ -49,45 +49,153 @@ export class MergeAppSettingsIntoCabinet1779200000000
       }
     }
 
-    // 2. Logo en LONGTEXT
-    await queryRunner.query(`ALTER TABLE cabinets MODIFY logo_url LONGTEXT NULL`);
+    // 2. Logo en LONGTEXT. Certaines bases créées avec `synchronize:true`
+    // possèdent déjà les colonnes binaires `logo` / `logo_mime`, sans avoir
+    // connu l'ancienne colonne texte `logo_url`.
+    if (await queryRunner.hasColumn('cabinets', 'logo_url')) {
+      await queryRunner.query(
+        `ALTER TABLE cabinets MODIFY logo_url LONGTEXT NULL`,
+      );
+    } else {
+      await queryRunner.query(
+        `ALTER TABLE cabinets ADD COLUMN logo_url LONGTEXT NULL`,
+      );
+    }
 
-    // 3. Recopie depuis app_settings (si la table existe encore)
-    const hasAppSettings = await queryRunner.hasTable('app_settings');
-    if (hasAppSettings) {
+    // 3. Recopie depuis app_settings (si la table existe encore). Les versions
+    // historiques de cette table n'ont pas toutes les mêmes colonnes : on ne
+    // sélectionne que celles qui existent réellement dans la base migrée.
+    const appSettingsTable = await queryRunner.getTable('app_settings');
+    if (appSettingsTable) {
+      const sourceColumns = new Set(
+        appSettingsTable.columns.map((column) => column.name),
+      );
+      if (!sourceColumns.has('cabinet_id')) {
+        throw new Error(
+          'Impossible de fusionner app_settings sans la colonne cabinet_id',
+        );
+      }
+
+      const mappings: { source: string; assignment: string }[] = [
+        {
+          source: 'cabinet_name',
+          assignment:
+            "c.name = COALESCE(NULLIF(NULLIF(a.cabinet_name, ''), 'MonCabinet'), c.name)",
+        },
+        {
+          source: 'cabinet_logo',
+          assignment:
+            "c.logo_url = COALESCE(NULLIF(a.cabinet_logo, ''), c.logo_url)",
+        },
+        {
+          source: 'cabinet_address',
+          assignment:
+            "c.address = COALESCE(NULLIF(a.cabinet_address, ''), c.address)",
+        },
+        {
+          source: 'cabinet_email',
+          assignment:
+            "c.contact_email = COALESCE(NULLIF(a.cabinet_email, ''), c.contact_email)",
+        },
+        {
+          source: 'cabinet_phone',
+          assignment:
+            "c.contact_phone = COALESCE(NULLIF(a.cabinet_phone, ''), c.contact_phone)",
+        },
+        {
+          source: 'cabinet_website',
+          assignment:
+            "c.website = COALESCE(NULLIF(a.cabinet_website, ''), c.website)",
+        },
+        {
+          source: 'cabinet_slogan',
+          assignment:
+            "c.slogan = COALESCE(NULLIF(a.cabinet_slogan, ''), c.slogan)",
+        },
+        { source: 'theme_name', assignment: 'c.theme_name = a.theme_name' },
+        { source: 'font_ui', assignment: 'c.font_ui = a.font_ui' },
+        {
+          source: 'font_heading',
+          assignment: 'c.font_heading = a.font_heading',
+        },
+        { source: 'font_mono', assignment: 'c.font_mono = a.font_mono' },
+        {
+          source: 'cabinet_rccm',
+          assignment: "c.rccm = NULLIF(a.cabinet_rccm, '')",
+        },
+        {
+          source: 'cabinet_nina',
+          assignment: "c.nina = NULLIF(a.cabinet_nina, '')",
+        },
+        {
+          source: 'cabinet_bank_account',
+          assignment: "c.bank_account = NULLIF(a.cabinet_bank_account, '')",
+        },
+        { source: 'app_locale', assignment: 'c.app_locale = a.app_locale' },
+        { source: 'date_format', assignment: 'c.date_format = a.date_format' },
+        { source: 'currency', assignment: 'c.currency = a.currency' },
+        {
+          source: 'invoice_prefix',
+          assignment: 'c.invoice_prefix = a.invoice_prefix',
+        },
+        {
+          source: 'invoice_padding',
+          assignment: 'c.invoice_padding = a.invoice_padding',
+        },
+        {
+          source: 'invoice_numbering_strategy',
+          assignment:
+            'c.invoice_numbering_strategy = a.invoice_numbering_strategy',
+        },
+        {
+          source: 'dossier_prefix',
+          assignment: 'c.dossier_prefix = a.dossier_prefix',
+        },
+        {
+          source: 'working_hours_start',
+          assignment: 'c.working_hours_start = a.working_hours_start',
+        },
+        {
+          source: 'working_hours_end',
+          assignment: 'c.working_hours_end = a.working_hours_end',
+        },
+        {
+          source: 'notification_email',
+          assignment: 'c.notification_email = a.notification_email',
+        },
+        {
+          source: 'notification_sms',
+          assignment: 'c.notification_sms = a.notification_sms',
+        },
+        { source: 'smtp_config', assignment: 'c.smtp_config = a.smtp_config' },
+        {
+          source: 'payslip_template',
+          assignment: 'c.payslip_template = a.payslip_template',
+        },
+        {
+          source: 'invoice_template',
+          assignment: 'c.invoice_template = a.invoice_template',
+        },
+        {
+          source: 'dossier_template',
+          assignment: 'c.dossier_template = a.dossier_template',
+        },
+      ];
+      const assignments = mappings
+        .filter(({ source }) => sourceColumns.has(source))
+        .map(({ assignment }) => assignment);
+
+      if (assignments.length === 0) {
+        throw new Error(
+          'Impossible de fusionner app_settings sans colonne de configuration reconnue',
+        );
+      }
+
       await queryRunner.query(`
         UPDATE cabinets c
         JOIN app_settings a ON a.cabinet_id = c.id
         SET
-          c.name        = COALESCE(NULLIF(NULLIF(a.cabinet_name, ''), 'MonCabinet'), c.name),
-          c.logo_url    = COALESCE(NULLIF(a.cabinet_logo, ''), c.logo_url),
-          c.address     = COALESCE(NULLIF(a.cabinet_address, ''), c.address),
-          c.contact_email = COALESCE(NULLIF(a.cabinet_email, ''), c.contact_email),
-          c.contact_phone = COALESCE(NULLIF(a.cabinet_phone, ''), c.contact_phone),
-          c.website     = COALESCE(NULLIF(a.cabinet_website, ''), c.website),
-          c.slogan      = COALESCE(NULLIF(a.cabinet_slogan, ''), c.slogan),
-          c.theme_name  = a.theme_name,
-          c.font_ui     = a.font_ui,
-          c.font_heading = a.font_heading,
-          c.font_mono   = a.font_mono,
-          c.rccm        = NULLIF(a.cabinet_rccm, ''),
-          c.nina        = NULLIF(a.cabinet_nina, ''),
-          c.bank_account = NULLIF(a.cabinet_bank_account, ''),
-          c.app_locale  = a.app_locale,
-          c.date_format = a.date_format,
-          c.currency    = a.currency,
-          c.invoice_prefix = a.invoice_prefix,
-          c.invoice_padding = a.invoice_padding,
-          c.invoice_numbering_strategy = a.invoice_numbering_strategy,
-          c.dossier_prefix = a.dossier_prefix,
-          c.working_hours_start = a.working_hours_start,
-          c.working_hours_end   = a.working_hours_end,
-          c.notification_email  = a.notification_email,
-          c.notification_sms    = a.notification_sms,
-          c.smtp_config = a.smtp_config,
-          c.payslip_template = a.payslip_template,
-          c.invoice_template = a.invoice_template,
-          c.dossier_template = a.dossier_template
+          ${assignments.join(',\n          ')}
       `);
 
       // 4. Suppression de l'ancienne table

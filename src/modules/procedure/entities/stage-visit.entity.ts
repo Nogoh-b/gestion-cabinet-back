@@ -53,9 +53,6 @@ export class StageVisit extends BaseEntity {
   @BusinessColumn({ label: 'N° de visite', description: 'Numéro de visite (1=première)', importance: 'medium', group: 'suivi' })
   visitNumber: number;
 
-  /** @deprecated Colonne retirée après reprise vers SubStageVisit. */
-  completedSubStages?: string[];
-
   @OneToMany(() => SubStageVisit, (subVisit) => subVisit.stageVisit, { cascade: true })
   subStageVisits: SubStageVisit[];
 
@@ -65,9 +62,6 @@ export class StageVisit extends BaseEntity {
   @ManyToOne(() => SubStageVisit, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'currentSubStageVisitId' })
   currentSubStageVisit?: SubStageVisit | null;
-
-  /** @deprecated Colonne retirée après reprise vers SubStageVisit.metadata. */
-  subStageMetadata?: Record<string, any>;
 
   @CreateDateColumn()
   enteredAt: Date;

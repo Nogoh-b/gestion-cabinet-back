@@ -1,14 +1,7 @@
 import { WorkflowService } from './workflow.service';
 
 describe('WorkflowService — conditions restrictives', () => {
-  const service = new WorkflowService(
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-  );
+  const service = new WorkflowService();
 
   it('accepte uniquement l’absence de condition par défaut', async () => {
     await expect(service.evaluateCondition(null, {})).resolves.toBe(true);

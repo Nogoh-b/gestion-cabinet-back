@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
 import * as express from 'express';
 import { DataSource } from 'typeorm';
-import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
+import { ClassSerializerInterceptor } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
 
 import { Transport } from '@nestjs/microservices';
@@ -14,8 +14,10 @@ import { SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
+import { isCorsOriginAllowed } from './core/config/cors-origin';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
 import { assertSafeMicroserviceBindHost } from './core/config/runtime-security';
+import { RequestValidationPipe } from './core/shared/pipes/request-validation.pipe';
 
 
 
@@ -34,14 +36,7 @@ async function bootstrap() {
   });
   app.use(express.json({ limit: '15mb' }));
   app.use(express.urlencoded({ limit: '15mb', extended: true }));
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
+  app.useGlobalPipes(new RequestValidationPipe());
 
   // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement
@@ -100,7 +95,19 @@ async function bootstrap() {
     ? corsOrigins
     : ['http://localhost:3000', 'http://127.0.0.1:3000'];
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (
+        isCorsOriginAllowed(
+          origin,
+          allowedOrigins,
+          process.env.NODE_ENV === 'production',
+        )
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origine CORS non autorisée'), false);
+    },
     credentials: true,
   });
 

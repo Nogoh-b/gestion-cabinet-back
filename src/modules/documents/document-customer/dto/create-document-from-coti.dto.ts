@@ -57,13 +57,16 @@ export class CreateDocumentFromCotiDto {
   @IsDate()
   date_expired?: Date;
 
-  document_type_id? : number
+  @IsOptional()
+  @IsInt()
+  document_type_id?: number;
 
   @ApiProperty({
     required: false,
     type: 'string',
     format: 'binary',
   })
+  @IsOptional()
   file?: Express.Multer.File;
 }
 

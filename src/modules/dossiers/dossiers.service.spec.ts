@@ -49,6 +49,23 @@ describe('DossiersService - modèle administratif', () => {
     expect(service).toBeDefined();
   });
 
+  it('utilise la version publiée du parent quand le sous-type pointe vers un brouillon', () => {
+    const draft = {
+      id: 'draft-template',
+      lifecycleStatus: ProcedureTemplateLifecycle.DRAFT,
+      contentHash: null,
+    };
+    const published = {
+      id: 'published-template',
+      lifecycleStatus: ProcedureTemplateLifecycle.PUBLISHED,
+      contentHash: 'a'.repeat(64),
+    };
+
+    expect(
+      (service as any).resolvePublishedProcedureTemplate(draft, published),
+    ).toBe(published);
+  });
+
   it("n'expose aucun champ de phase dans la recherche dossier", () => {
     const options = (service as any).getDefaultSearchOptions();
     const fields = [

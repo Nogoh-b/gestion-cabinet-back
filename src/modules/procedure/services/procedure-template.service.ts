@@ -2,7 +2,7 @@
 import { Repository, DataSource } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import * as jsonLogic from 'json-logic-js';
 
 import { CreateProcedureTemplateDto } from '../dto/create-procedure-template.dto';
@@ -21,6 +21,11 @@ import {
   ProcedureRequirement,
   ProcedureRequirementType,
 } from '../interfaces/procedure-requirement.interface';
+import {
+  buildProcedureTemplateSnapshot,
+  hashProcedureTemplateSnapshot,
+} from '../utils/procedure-template-versioning.util';
+import { ProcedureType } from '../../procedures/entities/procedure.entity';
 
 
 @Injectable()
@@ -172,6 +177,19 @@ export class ProcedureTemplateService {
             await queryRunner.manager.save(cycle);
           }
         }
+      }
+
+      if (dto.procedure_type_id !== undefined) {
+        const procedureType = await queryRunner.manager.findOne(ProcedureType, {
+          where: { id: dto.procedure_type_id },
+        });
+        if (!procedureType) {
+          throw new NotFoundException(
+            `Type de procédure ${dto.procedure_type_id} non trouvé`,
+          );
+        }
+        procedureType.procedure_template_id = template.id;
+        await queryRunner.manager.save(procedureType);
       }
 
       await queryRunner.commitTransaction();
@@ -690,6 +708,31 @@ private async updateTransitions(
     });
   }
 
+  async findByProcedureTypeId(
+    procedureTypeId: number,
+  ): Promise<ProcedureTemplate | null> {
+    const procedureType = await this.dataSource
+      .getRepository(ProcedureType)
+      .findOne({
+        where: { id: procedureTypeId },
+        relations: [
+          'procedure_template',
+          'parent',
+          'parent.procedure_template',
+        ],
+      });
+    if (!procedureType) {
+      throw new NotFoundException(
+        `Type de procédure ${procedureTypeId} non trouvé`,
+      );
+    }
+    const template =
+      procedureType.procedure_template ??
+      procedureType.parent?.procedure_template ??
+      null;
+    return template ? this.findOne(template.id) : null;
+  }
+
   async duplicate(id: string, newName: string): Promise<ProcedureTemplate> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -862,6 +905,22 @@ private async updateTransitions(
       locked.publishedAt = new Date();
       locked.retiredAt = null;
       await manager.save(locked);
+
+      const familyVersions = await manager.find(ProcedureTemplate, {
+        where: { familyId: locked.familyId },
+        select: { id: true },
+      });
+      const familyVersionIds = familyVersions.map((version) => version.id);
+      if (familyVersionIds.length > 0) {
+        await manager
+          .createQueryBuilder()
+          .update(ProcedureType)
+          .set({ procedure_template_id: locked.id })
+          .where('procedure_template_id IN (:...familyVersionIds)', {
+            familyVersionIds,
+          })
+          .execute();
+      }
     });
     return this.findOne(id);
   }
@@ -910,83 +969,11 @@ private async updateTransitions(
   }
 
   buildSnapshot(template: ProcedureTemplate): Record<string, any> {
-    const stages = [...(template.stages ?? [])]
-      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-      .map((stage) => ({
-        id: stage.id,
-        name: stage.name,
-        description: stage.description ?? null,
-        order: stage.order,
-        canBeSkipped: stage.canBeSkipped,
-        canBeReentered: stage.canBeReentered,
-        config: stage.config
-          ? {
-              allowDocuments: stage.config.allowDocuments,
-              allowDiligences: stage.config.allowDiligences,
-              allowInvoices: stage.config.allowInvoices,
-              allowHearings: stage.config.allowHearings,
-              documentTypesAllowed:
-                this.deserializeJson(stage.config.documentTypesAllowed) ?? [],
-              diligenceConfig:
-                this.deserializeJson(stage.config.diligenceConfig) ?? null,
-              hearingConfig:
-                this.deserializeJson(stage.config.hearingConfig) ?? null,
-              invoiceConfig:
-                this.deserializeJson(stage.config.invoiceConfig) ?? null,
-            }
-          : null,
-        subStages: [...(stage.subStages ?? [])]
-          .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-          .map((subStage) => ({
-            id: subStage.id,
-            name: subStage.name,
-            description: subStage.description ?? null,
-            order: subStage.order,
-            isMandatory: subStage.isMandatory,
-            requirements: this.cloneRequirements(subStage.requirements),
-          })),
-      }));
-
-    return {
-      familyId: template.familyId,
-      versionId: template.id,
-      version: template.version,
-      name: template.name,
-      description: template.description ?? null,
-      stages,
-      transitions: [...(template.transitions ?? [])]
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .map((transition) => ({
-          id: transition.id,
-          fromStageId: transition.fromStageId,
-          toStageId: transition.toStageId,
-          type: transition.type,
-          label: transition.label ?? null,
-          condition: this.parseJsonValue(transition.condition),
-          triggerEvent: transition.triggerEvent ?? null,
-          triggerCondition: this.parseJsonValue(transition.triggerCondition),
-          isDefault: transition.isDefault,
-          requiresDecision: transition.requiresDecision,
-          requiresValidation: transition.requiresValidation,
-          onTransition: this.parseJsonValue(transition.onTransition),
-        })),
-      cycles: [...(template.cycles ?? [])]
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .map((cycle) => ({
-          id: cycle.id,
-          fromStageId: cycle.fromStageId,
-          toStageId: cycle.toStageId,
-          label: cycle.label ?? null,
-          condition: this.parseJsonValue(cycle.condition),
-          maxLoops: cycle.maxLoops,
-        })),
-    };
+    return buildProcedureTemplateSnapshot(template);
   }
 
   hashSnapshot(snapshot: Record<string, any>): string {
-    return createHash('sha256')
-      .update(JSON.stringify(snapshot))
-      .digest('hex');
+    return hashProcedureTemplateSnapshot(snapshot);
   }
 
   private validateGraph(template: ProcedureTemplate): void {

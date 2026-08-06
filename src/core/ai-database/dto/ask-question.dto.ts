@@ -3,6 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class AskQuestionDto {
 
+  @IsOptional()
+  @IsString()
   conversationId?: string;  // Optionnel : si non fourni, on crée une nouvelle conversation
   @ApiProperty({ 
     description: 'Question en langage naturel sur votre base de données',
@@ -23,7 +25,8 @@ export class AskQuestionDto {
   @IsString({ each: true })
   specificTables?: string[];
 
-  analyzeOnly = true
+  @IsBoolean()
+  analyzeOnly = true;
 
   @ApiProperty({ 
     description: 'Mode verbose pour voir les étapes intermédiaires',

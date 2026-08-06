@@ -1,8 +1,7 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { EventType, TaskStatus } from '../entities/enums/instance-status.enum';
 import { ProcedureTaskSubscriber } from '../subscribers/procedure-task.subscriber';
 import { TaskService } from './task.service';
-import { WorkflowService } from './workflow.service';
 
 describe('TaskService - commande procédurale durable', () => {
   const task = {
@@ -91,26 +90,5 @@ describe('ProcedureTaskSubscriber', () => {
       },
       '42',
     );
-  });
-});
-
-describe('WorkflowService - ancien moteur neutralisé', () => {
-  it('refuse toute application directe de transition', async () => {
-    const workflow = new WorkflowService(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-    );
-
-    await expect(
-      workflow.applyManualTransition(
-        'instance-1',
-        { transitionId: 'transition-1' } as any,
-        '42',
-      ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

@@ -1,5 +1,6 @@
 import {
   Injectable, Logger, ConflictException, InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -21,6 +22,13 @@ import { OnboardingDto } from './onboarding.dto';
 import { JwtPayload } from 'src/core/auth/interfaces/jwt-payload.interface';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { MailTemplateService } from '../mail-template/mail-template.service';
+
+const LEGACY_PLAN_CODE_ALIASES: Record<string, string> = {
+  starter: 'avocat',
+  pro: 'cabinet',
+  business: 'firme',
+  enterprise: 'firme',
+};
 
 @Injectable()
 export class OnboardingService {
@@ -81,9 +89,19 @@ export class OnboardingService {
     if (existing) throw new ConflictException('Un compte avec cet email existe déjà');
 
     // ── 1. Résoudre le plan choisi (ou 'free' par défaut) ─────────────
-    const planCode = dto.plan_code ?? 'free';
-    const selectedPlan = await this.plansService.findByCode(planCode)
-      .catch(() => null);
+    const requestedPlanCode = dto.plan_code?.trim().toLowerCase() || 'free';
+    let selectedPlan = await this.plansService.findByCode(requestedPlanCode);
+    if (!selectedPlan && LEGACY_PLAN_CODE_ALIASES[requestedPlanCode]) {
+      selectedPlan = await this.plansService.findByCode(
+        LEGACY_PLAN_CODE_ALIASES[requestedPlanCode],
+      );
+    }
+    if (!selectedPlan || !selectedPlan.is_active) {
+      throw new BadRequestException(
+        `Le plan "${requestedPlanCode}" est introuvable ou indisponible`,
+      );
+    }
+    const planCode = selectedPlan.code;
 
     // ── 2. Créer le cabinet (pas encore de tenant context) ────────────────
     const cabinet = this.cabinetRepo.create({
@@ -91,14 +109,14 @@ export class OnboardingService {
       name:         dto.cabinet_name.trim(),
       status:       'trial',
       plan:         planCode as CabinetPlan,
-      plan_id:      selectedPlan?.id ?? null,
+      plan_id:      selectedPlan.id,
       routing_mode: dto.routing_mode ?? 'path',
-      trial_ends_at: selectedPlan?.trial_enabled
+      trial_ends_at: selectedPlan.trial_enabled
         ? this.trialEnd(selectedPlan.trial_days)
         : null,
     });
     await this.cabinetRepo.save(cabinet);
-    this.logger.log(`[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan?.id ?? 'none'}`);
+    this.logger.log(`[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan.id}`);
 
     // ── 2. Tout le reste dans le contexte du nouveau tenant ───────────────
     try {
@@ -158,7 +176,7 @@ export class OnboardingService {
         // Plan gratuit → accès direct.
         const subscription = await this.subscriptionsService.createForCabinet(
           cabinet.id,
-          selectedPlan?.id ?? null,
+          selectedPlan.id,
           dto.billing_cycle ?? 'monthly',
           { gateAllPaid: true },
         );

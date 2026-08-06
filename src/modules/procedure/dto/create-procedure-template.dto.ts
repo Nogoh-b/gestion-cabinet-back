@@ -212,6 +212,11 @@ export class CreateProcedureTemplateDto {
   description?: string;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  procedure_type_id?: number;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateStageDto)

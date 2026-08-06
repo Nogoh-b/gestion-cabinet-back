@@ -1,5 +1,5 @@
 // src/modules/procedures/seeder/procedure-template.seeder.ts
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull, Not } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 import {
   ProcedureTemplate,
@@ -8,11 +8,10 @@ import {
 import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
 import { Transition } from '../entities/transition.entity';
-import { Cycle } from '../entities/cycle.entity';
-import { StageConfig } from '../entities/stage-config.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
+import { publishSeededProcedureTemplate } from './procedure-template-seeder.utils';
 
 export default class ProcedureTemplateSeeder implements Seeder {
   public async run(
@@ -20,11 +19,6 @@ export default class ProcedureTemplateSeeder implements Seeder {
     factoryManager: SeederFactoryManager
   ): Promise<any> {
     const templateRepository = dataSource.getRepository(ProcedureTemplate);
-    const stageRepository = dataSource.getRepository(Stage);
-    const subStageRepository = dataSource.getRepository(SubStage);
-    const transitionRepository = dataSource.getRepository(Transition);
-    const cycleRepository = dataSource.getRepository(Cycle);
-    const configRepository = dataSource.getRepository(StageConfig);
     const procedureTypeRepository = dataSource.getRepository(ProcedureType);
 
     // Récupérer tous les sous-types de procédure existants (codes)
@@ -1120,6 +1114,11 @@ export default class ProcedureTemplateSeeder implements Seeder {
     const createdTemplates: ProcedureTemplate[] = [];
 
     for (const templateData of templatesData) {
+      const finalizedTemplate = await dataSource.transaction(async (manager) => {
+      const templateRepository = manager.getRepository(ProcedureTemplate);
+      const stageRepository = manager.getRepository(Stage);
+      const subStageRepository = manager.getRepository(SubStage);
+      const transitionRepository = manager.getRepository(Transition);
       // Vérifier si le template existe déjà (per-tenant exact match)
       let savedTemplate = await findOneForTenant(templateRepository, 'name', templateData.name);
       if (savedTemplate) {
@@ -1150,6 +1149,8 @@ export default class ProcedureTemplateSeeder implements Seeder {
           }
           console.log(`  ⚠️ Stages manquants: ${missingStages.join(', ')} - Mise à jour nécessaire`);
           // On va recréer le template pour avoir la structure complète
+          // La FK transitions.templateId n'a pas de suppression en cascade.
+          await manager.delete(Transition, { templateId: savedTemplate.id });
           await templateRepository.remove(savedTemplate);
           savedTemplate = null;
         } else {
@@ -1171,17 +1172,6 @@ export default class ProcedureTemplateSeeder implements Seeder {
         });
         savedTemplate = await templateRepository.save(template);
         console.log(`✅ Template créé: ${savedTemplate.name}`);
-
-        // 🔗 LIER LE TEMPLATE AU PROCEDURE_TYPE
-        const procedureType = procedureTypeMap.get(templateData.procedureTypeCode);
-        if (procedureType) {
-          await procedureTypeRepository.update(procedureType.id, {
-            procedure_template_id: savedTemplate.id
-          });
-          console.log(`  🔗 Template lié à: ${procedureType.name} (${procedureType.code})`);
-        } else {
-          console.log(`  ⚠️ ProcedureType non trouvé pour le code: ${templateData.procedureTypeCode}`);
-        }
 
         // Créer les stages
         const stages: Stage[] = [];
@@ -1278,30 +1268,29 @@ export default class ProcedureTemplateSeeder implements Seeder {
         }
       }
 
-      if (
-        savedTemplate.lifecycleStatus === ProcedureTemplateLifecycle.DRAFT
-      ) {
-        const publishable = await templateRepository.findOneOrFail({
-          where: { id: savedTemplate.id },
-          relations: [
-            'stages',
-            'stages.subStages',
-            'stages.config',
-            'transitions',
-            'cycles',
-          ],
+      const procedureType = procedureTypeMap.get(templateData.procedureTypeCode);
+      savedTemplate = await publishSeededProcedureTemplate(
+        manager,
+        savedTemplate!.id,
+      );
+      if (procedureType) {
+        await manager.update(ProcedureType, procedureType.id, {
+          procedure_template_id: savedTemplate.id,
         });
-        this.assertPublishableGraph(publishable);
-        const snapshot = this.buildSnapshot(publishable);
-        publishable.contentHash = createHash('sha256')
-          .update(JSON.stringify(snapshot))
-          .digest('hex');
-        publishable.lifecycleStatus = ProcedureTemplateLifecycle.PUBLISHED;
-        publishable.publishedAt = new Date();
-        savedTemplate = await templateRepository.save(publishable);
       }
+      if (procedureType) {
+        console.log(
+          `  🔗 Version publiée liée à: ${procedureType.name} (${procedureType.code})`,
+        );
+      } else {
+        console.log(
+          `  ⚠️ ProcedureType non trouvé pour le code: ${templateData.procedureTypeCode}`,
+        );
+      }
+      return savedTemplate;
+      });
 
-      createdTemplates.push(savedTemplate);
+      createdTemplates.push(finalizedTemplate);
     }
 
     console.log(`\n🎉 ${createdTemplates.length} templates traités avec succès !`);
@@ -1310,7 +1299,7 @@ export default class ProcedureTemplateSeeder implements Seeder {
     
     // Vérification finale des liaisons
     const linkedProcedureTypes = await procedureTypeRepository.find({
-      where: { procedure_template_id: { $not: null } as any }
+      where: { procedure_template_id: Not(IsNull()) }
     });
     console.log(`\n🔗 ${linkedProcedureTypes.length} ProcedureTypes ont un template lié`);
     
@@ -1335,131 +1324,4 @@ export default class ProcedureTemplateSeeder implements Seeder {
     return createdTemplates;
   }
 
-  private assertPublishableGraph(template: ProcedureTemplate): void {
-    const stages = template.stages ?? [];
-    const transitions = template.transitions ?? [];
-    if (stages.length === 0) {
-      throw new Error(`Template sans étape : ${template.name}`);
-    }
-    const ids = new Set(stages.map((stage) => stage.id));
-    const incoming = new Map(stages.map((stage) => [stage.id, 0]));
-    const outgoing = new Map(stages.map((stage) => [stage.id, [] as string[]]));
-    for (const transition of transitions) {
-      if (
-        !ids.has(transition.fromStageId) ||
-        !ids.has(transition.toStageId) ||
-        transition.fromStageId === transition.toStageId
-      ) {
-        throw new Error(`Transition invalide dans ${template.name}`);
-      }
-      incoming.set(
-        transition.toStageId,
-        (incoming.get(transition.toStageId) ?? 0) + 1,
-      );
-      outgoing.get(transition.fromStageId)!.push(transition.toStageId);
-    }
-    const starts = stages.filter((stage) => incoming.get(stage.id) === 0);
-    const ends = stages.filter(
-      (stage) => (outgoing.get(stage.id)?.length ?? 0) === 0,
-    );
-    if (starts.length !== 1 || ends.length === 0) {
-      throw new Error(`Graphe non publiable : ${template.name}`);
-    }
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
-    const walk = (stageId: string): void => {
-      if (visiting.has(stageId)) {
-        throw new Error(
-          `Cycle ordinaire non borné dans le template ${template.name}`,
-        );
-      }
-      if (visited.has(stageId)) return;
-      visiting.add(stageId);
-      for (const target of outgoing.get(stageId) ?? []) walk(target);
-      visiting.delete(stageId);
-      visited.add(stageId);
-    };
-    walk(starts[0].id);
-    if (visited.size !== stages.length) {
-      throw new Error(`Étape inaccessible dans le template ${template.name}`);
-    }
-  }
-
-  private buildSnapshot(template: ProcedureTemplate): Record<string, any> {
-    const parse = (value: any): any => {
-      if (value === null || value === undefined || value === '') return null;
-      if (typeof value !== 'string') return value;
-      try {
-        return JSON.parse(value);
-      } catch {
-        return null;
-      }
-    };
-    return {
-      familyId: template.familyId,
-      versionId: template.id,
-      version: template.version,
-      name: template.name,
-      description: template.description ?? null,
-      stages: [...(template.stages ?? [])]
-        .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-        .map((stage) => ({
-          id: stage.id,
-          name: stage.name,
-          description: stage.description ?? null,
-          order: stage.order,
-          canBeSkipped: stage.canBeSkipped,
-          canBeReentered: stage.canBeReentered,
-          config: stage.config
-            ? {
-                allowDocuments: stage.config.allowDocuments,
-                allowDiligences: stage.config.allowDiligences,
-                allowInvoices: stage.config.allowInvoices,
-                allowHearings: stage.config.allowHearings,
-                documentTypesAllowed:
-                  parse(stage.config.documentTypesAllowed) ?? [],
-                diligenceConfig: parse(stage.config.diligenceConfig),
-                hearingConfig: parse(stage.config.hearingConfig),
-                invoiceConfig: parse(stage.config.invoiceConfig),
-              }
-            : null,
-          subStages: [...(stage.subStages ?? [])]
-            .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-            .map((subStage) => ({
-              id: subStage.id,
-              name: subStage.name,
-              description: subStage.description ?? null,
-              order: subStage.order,
-              isMandatory: subStage.isMandatory,
-              requirements: subStage.requirements ?? [],
-            })),
-        })),
-      transitions: [...(template.transitions ?? [])]
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .map((transition) => ({
-          id: transition.id,
-          fromStageId: transition.fromStageId,
-          toStageId: transition.toStageId,
-          type: transition.type,
-          label: transition.label ?? null,
-          condition: parse(transition.condition),
-          triggerEvent: transition.triggerEvent ?? null,
-          triggerCondition: parse(transition.triggerCondition),
-          isDefault: transition.isDefault,
-          requiresDecision: transition.requiresDecision,
-          requiresValidation: transition.requiresValidation,
-          onTransition: parse(transition.onTransition),
-        })),
-      cycles: [...(template.cycles ?? [])]
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .map((cycle) => ({
-          id: cycle.id,
-          fromStageId: cycle.fromStageId,
-          toStageId: cycle.toStageId,
-          label: cycle.label ?? null,
-          condition: parse(cycle.condition),
-          maxLoops: cycle.maxLoops,
-        })),
-    };
-  }
 }

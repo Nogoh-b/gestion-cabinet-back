@@ -24,20 +24,30 @@ import {
   ACCESS_COOKIE,
   readCookie,
 } from 'src/core/auth/session-cookie.util';
+import { isCorsOriginAllowed } from 'src/core/config/cors-origin';
 
-const websocketOrigins = (process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+function allowWebsocketOrigin(
+  origin: string | undefined,
+  callback: (error: Error | null, allowed?: boolean) => void,
+): void {
+  const configuredOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((configuredOrigin) => configuredOrigin.trim())
+    .filter(Boolean);
+  const allowed = isCorsOriginAllowed(
+    origin,
+    configuredOrigins,
+    process.env.NODE_ENV === 'production',
+  );
+  callback(
+    allowed ? null : new Error('Origine WebSocket non autorisée'),
+    allowed,
+  );
+}
 
 @WebSocketGateway({
   cors: {
-    origin:
-      websocketOrigins.length > 0
-        ? websocketOrigins
-        : process.env.NODE_ENV === 'production'
-          ? false
-          : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: allowWebsocketOrigin,
     credentials: true,
   },
   // PAS DE NAMESPACE - utilise le namespace par défaut

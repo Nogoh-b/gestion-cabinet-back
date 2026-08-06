@@ -71,12 +71,15 @@ import { CreateDossierDto, UploadDocumentToSubStageDto } from './dto/create-doss
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
-import { ConflictCheckStatus, DangerLevel, Dossier, DossierOutcome } from './entities/dossier.entity';
+import { DangerLevel, Dossier, DossierOutcome } from './entities/dossier.entity';
 import {
   DossierMember,
   DossierMemberRole,
 } from './entities/dossier-member.entity';
-import { ProcedureTemplateLifecycle } from '../procedure/entities/procedure-template.entity';
+import {
+  ProcedureTemplate,
+  ProcedureTemplateLifecycle,
+} from '../procedure/entities/procedure-template.entity';
 import { AuditService } from 'src/core/audit/audit.service';
 import { OutboxService } from 'src/core/outbox/outbox.service';
 import { createHash } from 'crypto';
@@ -131,6 +134,18 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 
   ) {
     super(dossierRepository, paginationService, emailsService);
+  }
+
+  private resolvePublishedProcedureTemplate(
+    ...templates: Array<ProcedureTemplate | null | undefined>
+  ): ProcedureTemplate | null {
+    return (
+      templates.find(
+        (template) =>
+          template?.lifecycleStatus === ProcedureTemplateLifecycle.PUBLISHED &&
+          Boolean(template.contentHash),
+      ) ?? null
+    );
   }
  
   
@@ -244,8 +259,14 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     const [client, lawyer, procedureType, procedureSubtype] = await Promise.all([
       this.clientRepository.findOne({ where: { id: Number(createDossierDto.client_id) } }),
       this.userRepository.findOne({ where: { id: createDossierDto.lawyer_id }, relations: ['user'] }),
-      this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_type_id } }),
-      this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_subtype_id }, relations: ['procedure_template'] }),
+      this.procedureTypeRepository.findOne({
+        where: { id: createDossierDto.procedure_type_id },
+        relations: ['procedure_template'],
+      }),
+      this.procedureTypeRepository.findOne({
+        where: { id: createDossierDto.procedure_subtype_id },
+        relations: ['procedure_template', 'parent', 'parent.procedure_template'],
+      }),
     ]);
 
     if (!client) {
@@ -274,8 +295,9 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 
     // const procedureInstance = await this.procedureInstanceService.create(procedureInstanceDTO, createdBy.id.toString())
 
+    const { notes: _notes, mode: _mode, ...writableDossierData } = createDossierDto;
     const dossier = this.dossierRepository.create({
-      ...createDossierDto,
+      ...writableDossierData,
       dossier_number: dossierNumber,
       client,
       lawyer,
@@ -307,6 +329,23 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     // (le subscriber écrasait ensuite le lien).
     const savedDossier = await this.dataSource.transaction(async (manager) => {
       const saved = await manager.save(dossier);
+      // Un template peut être porté par le sous-type ou hérité du type parent.
+      const template = this.resolvePublishedProcedureTemplate(
+        procedureSubtype.procedure_template,
+        procedureType.procedure_template,
+      );
+      if (template) {
+        const instance = await this.procedureInstanceService.create(
+          {
+            templateId: template.id,
+            title: `Procédure - ${saved.dossier_number}`,
+          },
+          String((createdBy as any)?.id ?? 'system'),
+          manager,
+        );
+        saved.procedureInstanceId = instance.id;
+        await manager.save(saved);
+      }
       const memberRepository = manager.getRepository(DossierMember);
       const initialMembers = new Map<
         number,
@@ -776,36 +815,22 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
 
         const subtype = await manager.findOne(ProcedureType, {
           where: { id: dossier.procedure_subtype_id },
-          relations: ['procedure_template'],
+          relations: ['procedure_template', 'parent', 'parent.procedure_template'],
         });
-        const template = subtype?.procedure_template;
+        const template = this.resolvePublishedProcedureTemplate(
+          subtype?.procedure_template,
+          subtype?.parent?.procedure_template,
+        );
         const missing: string[] = [];
         if (!dossier.client_id) missing.push('client');
-        if (!dossier.opposing_party_name?.trim()) missing.push('partie adverse');
+        // Les informations de partie adverse sont facultatives à l'activation.
         if (!dossier.lawyer_id) missing.push('avocat responsable');
         if (!dossier.jurisdiction_id) missing.push('juridiction');
         if (!dossier.procedure_type_id || !dossier.procedure_subtype_id) {
           missing.push('type de procédure');
         }
-        if (
-          !template?.id ||
-          template.lifecycleStatus !== ProcedureTemplateLifecycle.PUBLISHED ||
-          !template.contentHash
-        ) {
+        if (!template) {
           missing.push('version publiée et intègre du template');
-        }
-        if (
-          ![ConflictCheckStatus.CLEARED, ConflictCheckStatus.WAIVED].includes(
-            dossier.conflict_check_status,
-          )
-        ) {
-          missing.push('contrôle de conflit validé');
-        }
-        if (!dossier.engagement_document_id) {
-          missing.push('mandat ou lettre d’engagement');
-        }
-        if (!dossier.financial_terms_confirmed) {
-          missing.push('conditions financières');
         }
         if (missing.length > 0) {
           throw new BadRequestException({
@@ -814,7 +839,9 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
           });
         }
 
-        const instance = await this.procedureInstanceService.create(
+        const instance = dossier.procedureInstanceId
+          ? await manager.findOneByOrFail(ProcedureInstance, { id: dossier.procedureInstanceId })
+          : await this.procedureInstanceService.create(
           {
             templateId: template!.id,
             title: `Procédure - ${dossier.dossier_number}`,

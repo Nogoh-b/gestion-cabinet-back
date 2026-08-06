@@ -62,6 +62,18 @@ export class DossierResponseDto {
   @Expose()
   status: DossierStatus;
 
+  @Expose()
+  conflict_check_status?: 'PENDING' | 'CLEARED' | 'WAIVED' | 'BLOCKED';
+
+  @Expose()
+  conflict_check_notes?: string | null;
+
+  @Expose()
+  engagement_document_id?: number | null;
+
+  @Expose()
+  financial_terms_confirmed?: boolean;
+
   @ApiProperty({ example: "2025-01-15" })
   @Expose()
   opening_date: Date;

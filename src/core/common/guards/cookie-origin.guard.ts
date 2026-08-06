@@ -9,18 +9,15 @@ import {
   readCookie,
   REFRESH_COOKIE,
 } from '../../auth/session-cookie.util';
+import { isCorsOriginAllowed } from '../../config/cors-origin';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-function normalizedOrigins(): Set<string> {
-  const configured = (process.env.CORS_ORIGINS ?? '')
+function configuredOrigins(): string[] {
+  return (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
-  if (process.env.NODE_ENV !== 'production') {
-    configured.push('http://localhost:3000', 'http://127.0.0.1:3000');
-  }
-  return new Set(configured);
 }
 
 /**
@@ -40,7 +37,14 @@ export class CookieOriginGuard implements CanActivate {
     if (!hasSessionCookie) return true;
 
     const origin = String(request.headers.origin ?? '').replace(/\/$/, '');
-    if (!origin || !normalizedOrigins().has(origin)) {
+    if (
+      !origin ||
+      !isCorsOriginAllowed(
+        origin,
+        configuredOrigins(),
+        process.env.NODE_ENV === 'production',
+      )
+    ) {
       throw new ForbiddenException(
         'Origine refusée pour une mutation authentifiée',
       );

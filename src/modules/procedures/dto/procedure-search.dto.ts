@@ -65,6 +65,7 @@ export class ProcedureSearchDto extends PaginationParamsDto {
     description: 'Filtrer par statut actif',
     example: true
   })
+  @IsOptional()
   @Transform(({ value }) => {
     if (value === 'true' || value === '1' || value === true) return 1;
     if (value === 'false' || value === '0' || value === false) return 0;
@@ -138,12 +139,4 @@ export class ProcedureSearchDto extends PaginationParamsDto {
   @IsString()
   sort_by?: string = 'name';
 
-  @ApiPropertyOptional({
-    description: 'Sort order',
-    example: 'ASC',
-    enum: ['ASC', 'DESC']
-  })
-  @IsOptional()
-  @IsString()
-  sort_order?: 'ASC' | 'DESC' = 'ASC';
 }

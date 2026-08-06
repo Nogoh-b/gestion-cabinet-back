@@ -104,7 +104,11 @@ export class CreateDocumentCustomerDto {
   strict?: boolean = true;
 
   @ApiProperty({ type: 'string', format: 'binary', description: 'Fichier à uploader' })
-  file: Express.Multer.File;
+  // Le fichier est extrait par Multer via @UploadedFile(). Ce décorateur sert
+  // uniquement à rendre la propriété compatible avec le whitelist strict du
+  // DTO généré pour le multipart ; l'absence réelle est contrôlée au service.
+  @IsOptional()
+  file?: Express.Multer.File;
 
   /** Transient — case « Notifier le client » du modal. */
   @ApiPropertyOptional({

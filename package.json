@@ -26,6 +26,7 @@
     "typeorm": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration": "ts-node migration-cli.ts migrate generate",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
+    "procedure-templates:repair": "ts-node -r tsconfig-paths/register scripts/repair-procedure-templates.ts",
     "mig:run": "npm run migration:run",
     "seed:migrate": "ts-node scripts/seed-with-migration.ts",
     "migration:generate": "npm run typeorm migration:generate -- -d src/data-source.ts",

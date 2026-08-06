@@ -1,6 +1,7 @@
 // src/modules/audiences/dto/create-audience.dto.ts
 import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 
 
@@ -21,7 +22,7 @@ export class CreateAudienceDto {
   })
   @IsDateString()
   @IsOptional()
-  audience_date?: Date;
+  audience_date?: string;
 
   @ApiProperty({
     example: '09:00:00',
@@ -116,9 +117,15 @@ export class CreateAudienceDto {
     example: 'Identifiants des documents',
     required: false,
   })
+  @Transform(({ value }) => {
+    if (value === '' || value == null) return undefined;
+    if (Array.isArray(value)) return value.map(Number);
+    return String(value).split(',').map((item) => Number(item.trim()));
+  })
   @IsArray()
   @IsOptional()
-  document_ids: number[]; // Liste des destinataires principaux
+  @IsInt({ each: true })
+  document_ids?: number[]; // Liste des destinataires principaux
 
 
   @ApiProperty({
@@ -127,7 +134,7 @@ export class CreateAudienceDto {
   })
   @IsDateString()
   @IsOptional()
-  postponed_to?: Date;
+  postponed_to?: string;
 
   @ApiProperty({ required: false, description: 'ID UUID de la visite d\'étape courante (optionnel — priorité sur la détection automatique)' })
   @IsUUID()

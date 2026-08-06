@@ -27,7 +27,7 @@ import {
 import { DocumentType } from 'src/modules/documents/document-type/entities/document-type.entity';
 
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, DeepPartial, Repository } from 'typeorm';
 import {
   BadRequestException,
   ConflictException,
@@ -172,6 +172,19 @@ export class CustomersService extends BaseServiceV1<Customer> {
 
     return await this.dataSource.transaction(async (manager) => {
       console.log(createCustomerDto)
+      const writableCustomerData: any = { ...createCustomerDto };
+      for (const readOnlyField of [
+        'communications',
+        'documents',
+        'document_count',
+        'communication_count',
+        'civilite',
+        'dossiers_en_cours',
+        'chiffre_affaires',
+        'solde_en_cours',
+      ]) {
+        delete writableCustomerData[readOnlyField];
+      }
 
       // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
       // if (existing) throw new ConflictException('Numero deja attribué à un compte');
@@ -198,11 +211,11 @@ export class CustomersService extends BaseServiceV1<Customer> {
       }
 
       const customer = this.customerRepository.create({
-        ...createCustomerDto,
+        ...writableCustomerData,
         first_name: createCustomerDto.first_name ?? createCustomerDto.first_name,
         type_customer,
         location_city,
-      });
+      } as DeepPartial<Customer>);
       customer.status = CustomerStatus.INACTIVE;
       customer.customer_code = '_';
       const savedClient = await manager.save(customer);
@@ -384,6 +397,18 @@ async update(
 
   // Gestion des relations et transformations
   const updateData: any = { ...dto };
+  for (const readOnlyField of [
+    'communications',
+    'documents',
+    'document_count',
+    'communication_count',
+    'civilite',
+    'dossiers_en_cours',
+    'chiffre_affaires',
+    'solde_en_cours',
+  ]) {
+    delete updateData[readOnlyField];
+  }
 
   // Mettre à jour la ville de localisation si fournie
   if (dto.location_city_id) {

@@ -1,9 +1,8 @@
 import { ProcedureInstance } from './procedure-instance.entity';
 
 describe('ProcedureInstance — projections calculées', () => {
-  it('ignore la projection historique portée par l’instance', () => {
+  it('calcule les complétions exclusivement depuis les visites', () => {
     const instance = new ProcedureInstance();
-    instance.completedSubStages = ['legacy-instance'];
     instance.stageVisits = [
       {
         stageId: 'stage-1',

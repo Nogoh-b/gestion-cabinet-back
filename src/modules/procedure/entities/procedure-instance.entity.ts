@@ -124,15 +124,6 @@ export class ProcedureInstance extends TenantEntity {
   @OneToMany(() => Task, (task) => task.instance, { cascade: true })
   tasks: Task[];
 
-  /**
-   * Compatibilité TypeScript temporaire pour les branches historiques
-   * neutralisées. Ces propriétés ne sont plus des colonnes TypeORM et ne
-   * constituent jamais une source de vérité.
-   */
-  completedSubStages?: string[];
-  cycleUsageCount?: Record<string, number>;
-  subStageMetadata?: Record<string, any>;
-
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
   @OneToMany(() => StageVisit, (visit) => visit.instance, { cascade: true })

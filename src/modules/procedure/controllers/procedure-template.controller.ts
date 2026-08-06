@@ -9,6 +9,7 @@ import {
   Param,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ProcedureTemplateService } from '../services/procedure-template.service';
 import { CreateProcedureTemplateDto } from '../dto/create-procedure-template.dto';
@@ -28,7 +29,17 @@ export class ProcedureTemplateController {
   }
 
   @Get()
-  async findAll(@Query('activeOnly') activeOnly?: string) {
+  async findAll(
+    @Query('activeOnly') activeOnly?: string,
+    @Query('procedure_type_id') procedureTypeId?: string,
+  ) {
+    if (procedureTypeId !== undefined) {
+      const parsedProcedureTypeId = Number(procedureTypeId);
+      if (!Number.isInteger(parsedProcedureTypeId) || parsedProcedureTypeId < 1) {
+        throw new BadRequestException('procedure_type_id doit être un entier positif');
+      }
+      return this.templateService.findByProcedureTypeId(parsedProcedureTypeId);
+    }
     return this.templateService.findAll(
       activeOnly === undefined ? undefined : activeOnly === 'true',
     );

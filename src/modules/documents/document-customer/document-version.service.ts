@@ -64,7 +64,6 @@ export class DocumentVersionService {
       return await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
         const dossier = await manager.findOne(Dossier, {
           where: { id: Number(dto.dossier_id), tenant_id: tenantId },
-          lock: { mode: 'pessimistic_read' },
         });
         if (!dossier) throw new NotFoundException('Dossier introuvable');
         const documentType = await manager.findOne(DocumentType, {
@@ -667,20 +666,30 @@ export class DocumentVersionService {
           "La sous-étape n'appartient pas à l'instance et à l'étape indiquées",
         );
       }
-      subStageVisit.documents = this.appendDocument(
-        subStageVisit.documents,
-        document,
-      );
-      await manager.save(subStageVisit);
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into('sub_stage_visit_documents')
+        .values({
+          document_id: document.id,
+          sub_stage_visit_id: subStageVisit.id,
+        })
+        .orIgnore()
+        .execute();
       stageVisit = stageVisit ?? subStageVisit.stageVisit;
     }
 
     if (stageVisit) {
-      stageVisit.documents = this.appendDocument(
-        stageVisit.documents,
-        document,
-      );
-      await manager.save(stageVisit);
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into('stage_visit_documents')
+        .values({
+          document_id: document.id,
+          stageVisit_id: stageVisit.id,
+        })
+        .orIgnore()
+        .execute();
     }
   }
 
