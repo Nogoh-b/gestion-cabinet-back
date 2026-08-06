@@ -12,7 +12,7 @@ import {
   Min
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DiligenceType, DiligencePriority, DiligenceStatus } from '../entities/diligence.entity';
+import { DiligenceType, DiligencePriority } from '../entities/diligence.entity';
 
 export class CreateDiligenceDto {
   @ApiProperty({
@@ -73,16 +73,6 @@ export class CreateDiligenceDto {
   @IsNotEmpty()
   start_date: Date;
 
-  
-    @ApiPropertyOptional({
-      example: DiligenceStatus.DRAFT,
-      description: "Base légale / jurisprudence",
-    })
-    @IsString()
-    @IsOptional()
-    status?: DiligenceStatus;
-  
-
   @ApiProperty({
     example: '2026-04-15',
     description: "Date limite de remise du rapport",
@@ -134,4 +124,12 @@ export class CreateDiligenceDto {
   @IsBoolean()
   @IsOptional()
   notify_client?: boolean;
+
+  @ApiPropertyOptional({
+    description: "Restreindre la diligence aux membres habilités du dossier",
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  confidential?: boolean;
 }

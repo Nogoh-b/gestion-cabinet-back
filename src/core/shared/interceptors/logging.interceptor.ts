@@ -1,24 +1,36 @@
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  Logger,
+  NestInterceptor,
+} from '@nestjs/common';
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
-
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  private readonly logger = new Logger(LoggingInterceptor.name);
+
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<unknown> {
     const request = context.switchToHttp().getRequest();
-    console.log(`Requête reçue : ${request.method} ${request.url}`);
+    const path = String(
+      request.originalUrl ?? request.url ?? '/',
+    ).split('?')[0];
+    const method = String(request.method ?? 'UNKNOWN');
+    this.logger.log(`${method} ${path}`);
 
     return next.handle().pipe(
-      tap(() => console.log(`← Réponse envoyée pour ${request.url}`)),
-      catchError(err => {
-        // ici on loggue la stack complète ou juste le message
-        console.error(
-          `‼ Erreur sur ${request.method} ${request.url} :`,
-          err.name,
-          err.message
+      tap(() => this.logger.log(`${method} ${path} termine`)),
+      catchError((error) => {
+        const status = Number(
+          error?.status ?? error?.statusCode ?? 500,
         );
-        return throwError(() => err);
+        this.logger.error(`${method} ${path} echec HTTP ${status}`);
+        return throwError(() => error);
       }),
     );
   }

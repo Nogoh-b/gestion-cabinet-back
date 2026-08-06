@@ -1,4 +1,6 @@
-import { PartialType } from '@nestjs/swagger';
+import { OmitType, PartialType } from '@nestjs/swagger';
 import { CreatePayslipLineDto } from './create-payslip-line.dto';
 
-export class UpdatePayslipLineDto extends PartialType(CreatePayslipLineDto) {}
+export class UpdatePayslipLineDto extends PartialType(
+  OmitType(CreatePayslipLineDto, ['payslip_id'] as const),
+) {}

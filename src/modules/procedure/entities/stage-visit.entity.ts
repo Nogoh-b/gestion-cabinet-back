@@ -53,9 +53,6 @@ export class StageVisit extends BaseEntity {
   @BusinessColumn({ label: 'N° de visite', description: 'Numéro de visite (1=première)', importance: 'medium', group: 'suivi' })
   visitNumber: number;
 
-  @Column({ type: 'json', nullable: true })
-  completedSubStages: string[];
-
   @OneToMany(() => SubStageVisit, (subVisit) => subVisit.stageVisit, { cascade: true })
   subStageVisits: SubStageVisit[];
 
@@ -65,9 +62,6 @@ export class StageVisit extends BaseEntity {
   @ManyToOne(() => SubStageVisit, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'currentSubStageVisitId' })
   currentSubStageVisit?: SubStageVisit | null;
-
-  @Column({ type: 'json', nullable: true })
-  subStageMetadata: Record<string, any>;
 
   @CreateDateColumn()
   enteredAt: Date;

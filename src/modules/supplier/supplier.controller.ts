@@ -21,6 +21,7 @@ import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SuppliersService } from './supplier.service';
 
 @Controller('suppliers')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class SuppliersController {
   constructor(private readonly service: SuppliersService) {}

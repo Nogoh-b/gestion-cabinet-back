@@ -21,6 +21,8 @@ import { UpdateBranchDto } from './dto/update-branch.dto';
 import { Branch } from './entities/branch.entity';
 import { BranchResponseDto } from './dto/response-branch.dto';
 import { plainToInstance } from 'class-transformer';
+import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 
 
@@ -37,8 +39,8 @@ export class BranchService  extends BaseServiceV1<Branch> {
     private branchRepository: Repository<Branch>,
     private locationCityService: LocationCitiesService,
     private employeeService: EmployeeService,
-    protected readonly paginationService: PaginationServiceV1,) {
-    console.log(forwardRef);
+    protected readonly paginationService: PaginationServiceV1,
+    private readonly planQuotaService: PlanQuotaService,) {
         super(branchRepository, paginationService);
   }
 
@@ -90,6 +92,13 @@ export class BranchService  extends BaseServiceV1<Branch> {
 
   // Branches
   async createBranch(dto: CreateBranchDto): Promise<Branch> {
+    // ── Vérification quota plan (agences) ──────────────────────────────────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      const currentCount = await this.branchRepository.count();
+      await this.planQuotaService.checkLimit(tenantId, 'branches', currentCount);
+    }
+
     // Vérification de l'existence de la ville
     const city = await this.locationCityService.findOne(dto.location_city_id);
 

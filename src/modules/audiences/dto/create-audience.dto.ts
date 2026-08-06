@@ -1,6 +1,7 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 
 
@@ -20,22 +21,48 @@ export class CreateAudienceDto {
     description: "Date prévue pour l'audience",
   })
   @IsDateString()
-  @IsNotEmpty()
-  audience_date: Date;
+  @IsOptional()
+  audience_date?: string;
 
   @ApiProperty({
     example: '09:00:00',
     description: "Heure prévue pour l'audience",
   })
+  @Matches(/^\d{2}:\d{2}(?::\d{2})?$/)
+  @IsOptional()
+  audience_time?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-08-03T08:00:00Z',
+    description: "Instant canonique UTC du début de l'audience",
+  })
   @IsDateString()
-  @IsNotEmpty()
-  audience_time: string;
+  @IsOptional()
+  starts_at_utc?: string;
+
+  @ApiPropertyOptional({
+    example: 'Africa/Ndjamena',
+    description: "Fuseau horaire IANA d'affichage et de calcul",
+    default: 'Africa/Ndjamena',
+  })
+  @IsString()
+  @IsOptional()
+  timezone?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Motif obligatoire lorsque la création intervient moins de 48 heures avant le début',
+  })
+  @IsString()
+  @IsOptional()
+  late_scheduling_reason?: string;
 
   @ApiProperty({
     example: 60,
     description: "Durée prévue pour l'audience en minutes",
   })
   @IsInt()
+  @Min(1)
   duration_minutes: number;
 
   @ApiProperty({
@@ -90,9 +117,15 @@ export class CreateAudienceDto {
     example: 'Identifiants des documents',
     required: false,
   })
+  @Transform(({ value }) => {
+    if (value === '' || value == null) return undefined;
+    if (Array.isArray(value)) return value.map(Number);
+    return String(value).split(',').map((item) => Number(item.trim()));
+  })
   @IsArray()
   @IsOptional()
-  document_ids: number[]; // Liste des destinataires principaux
+  @IsInt({ each: true })
+  document_ids?: number[]; // Liste des destinataires principaux
 
 
   @ApiProperty({
@@ -101,7 +134,7 @@ export class CreateAudienceDto {
   })
   @IsDateString()
   @IsOptional()
-  postponed_to?: Date;
+  postponed_to?: string;
 
   @ApiProperty({ required: false, description: 'ID UUID de la visite d\'étape courante (optionnel — priorité sur la détection automatique)' })
   @IsUUID()

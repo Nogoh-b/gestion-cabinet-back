@@ -14,6 +14,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 
 @ApiTags('resource-type')
 @Controller('resource-type')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class RessourceTypeController {
   constructor(private readonly service: RessourceTypeService) {}

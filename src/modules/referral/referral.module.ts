@@ -20,10 +20,8 @@ import { CustomerModule } from '../customer/customer.module';
 import { DossiersModule } from '../dossiers/dossiers.module';
 import { ReferrersService } from './referral.service';
 import { ReferrersController } from './referral.controller';
-import { DossierReferralWriteHandler } from './dossier-referral-write.handler';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { ReferralCommissionListener } from './referral-commission.listener';
+import { User } from '../iam/user/entities/user.entity';
 
 @Module({
   imports: [
@@ -31,13 +29,13 @@ import { ReferralCommissionListener } from './referral-commission.listener';
       Referrer,
       DossierReferral,
       ReferralCommission,
+      User,
     ]),
     AgenciesModule,
     CustomerModule,
     DossiersModule,
     FactureModule,
     PaiementModule,
-    AiDatabaseModule,
   ],
   controllers: [
     DossierReferralsController,
@@ -48,7 +46,6 @@ import { ReferralCommissionListener } from './referral-commission.listener';
     DossierReferralsService,
     ReferralCommissionsService,
     ReferrersService,
-    DossierReferralWriteHandler,
     ReferralCommissionListener,
   ],
   exports: [
@@ -57,13 +54,4 @@ import { ReferralCommissionListener } from './referral-commission.listener';
     ReferrersService,
   ],
 })
-export class ReferralModule {
-  constructor(
-    private readonly registry: WriteHandlerRegistry,
-    private readonly handler: DossierReferralWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.registry.register(this.handler);
-  }
-}
+export class ReferralModule {}

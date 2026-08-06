@@ -92,6 +92,17 @@ export class Plan {
   @Column({ type: 'tinyint', default: 1, name: 'is_active' })
   is_active: boolean;
 
+  // ── Essai configurable ──────────────────────────────────────────────────
+
+  @Column({ type: 'tinyint', default: 0, name: 'trial_enabled' })
+  trial_enabled: boolean;
+
+  @Column({ type: 'int', default: 30, name: 'trial_days' })
+  trial_days: number;
+
+  @Column({ type: 'int', default: 0, name: 'min_commitment_months' })
+  min_commitment_months: number;
+
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;
 

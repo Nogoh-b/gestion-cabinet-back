@@ -1,7 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as express from 'express';
 import { DataSource } from 'typeorm';
-import { ExpressAdapter } from '@bull-board/express';
 import { ClassSerializerInterceptor } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
 
@@ -11,9 +10,16 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
 
 
+
+
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
+import { isCorsOriginAllowed } from './core/config/cors-origin';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
+import { assertSafeMicroserviceBindHost } from './core/config/runtime-security';
+import { RequestValidationPipe } from './core/shared/pipes/request-validation.pipe';
+
+
 
 // seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
 // import { seedDatabase } from './main.seeder';
@@ -22,30 +28,7 @@ import LocationSeeder from './modules/geography/seeder/location.seeder';
 
 dotenv.config();
 
-async function fixRowFormat() {
-  const mysql = await import('mysql2/promise');
-  const conn = await mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '3306', 10),
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'core_banking',
-  });
-  try {
-    await conn.execute('ALTER TABLE notifications ROW_FORMAT=DYNAMIC');
-    console.log('✅ notifications ROW_FORMAT=DYNAMIC applied');
-  } catch (err: any) {
-    // Already DYNAMIC, or table doesn't exist yet — both are fine
-    if (!err.message?.includes('already') && !err.message?.includes("doesn't exist")) {
-      console.warn('ROW_FORMAT fix skipped:', err.message);
-    }
-  } finally {
-    await conn.end();
-  }
-}
-
 async function bootstrap() {
-  await fixRowFormat();
   // bodyParser:false → on remplace le parser par défaut (limite 100kb) par le nôtre
   // avec une limite large, pour accepter les logos envoyés en data-URI base64.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -53,6 +36,7 @@ async function bootstrap() {
   });
   app.use(express.json({ limit: '15mb' }));
   app.use(express.urlencoded({ limit: '15mb', extended: true }));
+  app.useGlobalPipes(new RequestValidationPipe());
 
   // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement
@@ -64,10 +48,12 @@ async function bootstrap() {
   });
 
   // Microservice TCP attaché à la MÊME instance NestJS (pas de second graph DI)
+  const microserviceHost = process.env.MICROSERVICE_HOST || '127.0.0.1';
+  assertSafeMicroserviceBindHost(microserviceHost);
   app.connectMicroservice({
     transport: Transport.TCP,
     options: {
-      host: process.env.MICROSERVICE_HOST || '0.0.0.0',
+      host: microserviceHost,
       port: parseInt(process.env.MICROSERVICE_PORT || '2999', 10),
     },
   });
@@ -98,17 +84,32 @@ async function bootstrap() {
   }
 
   // CORS : liste explicite (origin '*' + credentials est rejeté par le navigateur)
-  const corsOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
-    : true; // reflète l'origine de la requête en l'absence de config
+  const corsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (process.env.NODE_ENV === 'production' && corsOrigins.length === 0) {
+    throw new Error('CORS_ORIGINS doit être configuré explicitement en production');
+  }
+  const allowedOrigins = corsOrigins.length
+    ? corsOrigins
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'];
   app.enableCors({
-    origin: corsOrigins,
+    origin: (origin, callback) => {
+      if (
+        isCorsOriginAllowed(
+          origin,
+          allowedOrigins,
+          process.env.NODE_ENV === 'production',
+        )
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origine CORS non autorisée'), false);
+    },
     credentials: true,
   });
-
-  const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath('/admin/queues');
-  app.use('/admin/queues', serverAdapter.getRouter());
 
   const port = parseInt(process.env.PORT || '3004', 10);
   await app.startAllMicroservices();

@@ -1,155 +1,218 @@
-// src/modules/auth/auth-token.service.ts
-import { Injectable } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import {
+  DataSource,
+  LessThan,
+  MoreThan,
+  Repository,
+} from 'typeorm';
+import { randomBytes, randomInt, timingSafeEqual, createHash } from 'crypto';
+import * as bcrypt from 'bcrypt';
 import { AuthToken } from './entities/auth-token.entity';
-import * as crypto from 'crypto';
+
+export type AuthTokenType = 'reset_password' | 'set_password' | 'mfa';
+
+const OTP_EXPIRY_MINUTES = 10;
+const OTP_COOLDOWN_MS = 60_000;
+const OTP_MAX_PER_HOUR = 5;
+const OTP_MAX_FAILURES = 5;
 
 @Injectable()
 export class AuthTokenService {
   constructor(
     @InjectRepository(AuthToken)
-    private authTokenRepository: Repository<AuthToken>,
+    private readonly authTokenRepository: Repository<AuthToken>,
+    private readonly dataSource: DataSource,
   ) {}
 
-  /**
-   * Générer un OTP à 6 chiffres
-   */
   generateOTP(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1_000_000).toString();
   }
 
-  /**
-   * Générer un token sécurisé
-   */
   generateToken(): string {
-    return crypto.randomBytes(32).toString('hex');
+    return randomBytes(32).toString('hex');
   }
 
-  /**
-   * Créer un OTP pour réinitialisation
-   */
-  async createOTP(email: string, type: 'reset_password' | 'set_password'): Promise<{ otp: string; expiresAt: Date }> {
-    // Supprimer les anciens tokens non utilisés
-    await this.authTokenRepository.delete({
-      email,
-      type,
-      isUsed: false,
-    });
+  async createOTP(
+    email: string,
+    type: AuthTokenType,
+  ): Promise<{ otp: string; expiresAt: Date }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [recentCount, latest] = await Promise.all([
+      this.authTokenRepository.count({
+        where: {
+          email: normalizedEmail,
+          type,
+          createdAt: MoreThan(oneHourAgo),
+        },
+      }),
+      this.authTokenRepository.findOne({
+        where: { email: normalizedEmail, type },
+        order: { createdAt: 'DESC' },
+      }),
+    ]);
+    if (recentCount >= OTP_MAX_PER_HOUR) {
+      throw new HttpException(
+        'Trop de codes demandés. Réessayez dans une heure.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (
+      latest?.createdAt &&
+      Date.now() - latest.createdAt.getTime() < OTP_COOLDOWN_MS
+    ) {
+      throw new HttpException(
+        'Un code vient déjà d’être envoyé. Patientez une minute.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
 
+    await this.authTokenRepository.update(
+      { email: normalizedEmail, type, isUsed: false },
+      { isUsed: true },
+    );
     const otp = this.generateOTP();
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 10); // Expire dans 10 minutes
-
-    const authToken = this.authTokenRepository.create({
-      email,
-      otp,
-      type,
-      expiresAt,
-      isUsed: false,
-    });
-
-    await this.authTokenRepository.save(authToken);
-
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60_000);
+    await this.authTokenRepository.save(
+      this.authTokenRepository.create({
+        email: normalizedEmail,
+        otp: await bcrypt.hash(otp, 10),
+        type,
+        expiresAt,
+        isUsed: false,
+        failedAttempts: 0,
+        lastAttemptAt: null,
+        token: null,
+      }),
+    );
     return { otp, expiresAt };
   }
 
-  /**
-   * Créer un token pour réinitialisation (après vérification OTP)
-   */
-  async createResetToken(email: string, type: 'reset_password' | 'set_password'): Promise<string> {
+  async createResetToken(
+    email: string,
+    type: AuthTokenType,
+  ): Promise<string> {
     const token = this.generateToken();
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 15); // Token expire dans 15 minutes
-
-    const authToken = this.authTokenRepository.create({
-      email,
-      token,
-      type,
-      expiresAt,
-      isUsed: false,
-    });
-
-    await this.authTokenRepository.save(authToken);
-
+    await this.authTokenRepository.save(
+      this.authTokenRepository.create({
+        email: email.trim().toLowerCase(),
+        token: this.hashToken(token),
+        type,
+        expiresAt: new Date(Date.now() + 15 * 60_000),
+        isUsed: false,
+        failedAttempts: 0,
+        lastAttemptAt: null,
+        otp: null,
+      }),
+    );
     return token;
   }
 
-  /**
-   * Vérifier l'OTP
-   */
-  async verifyOTP(email: string, otp: string, type: 'reset_password' | 'set_password'): Promise<{ isValid: boolean; token?: string }> {
-    const authToken = await this.authTokenRepository.findOne({
-      where: {
-        email,
-        otp,
-        type,
-        isUsed: false,
+  async verifyOTP(
+    email: string,
+    otp: string,
+    type: AuthTokenType,
+    issueContinuation = true,
+  ): Promise<{ isValid: boolean; token?: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const isValid = await this.dataSource.transaction(
+      'SERIALIZABLE',
+      async (manager) => {
+        const repository = manager.getRepository(AuthToken);
+        const record = await repository.findOne({
+          where: {
+            email: normalizedEmail,
+            type,
+            isUsed: false,
+          },
+          order: { createdAt: 'DESC' },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!record || !record.otp) return false;
+        if (
+          record.expiresAt < new Date() ||
+          record.failedAttempts >= OTP_MAX_FAILURES
+        ) {
+          record.isUsed = true;
+          await repository.save(record);
+          return false;
+        }
+
+        const matches = await this.matchesOtp(otp, record.otp);
+        record.lastAttemptAt = new Date();
+        if (!matches) {
+          record.failedAttempts += 1;
+          if (record.failedAttempts >= OTP_MAX_FAILURES) record.isUsed = true;
+          await repository.save(record);
+          return false;
+        }
+        record.isUsed = true;
+        await repository.save(record);
+        return true;
       },
-    });
-
-    if (!authToken) {
-      return { isValid: false };
-    }
-
-    // Vérifier l'expiration
-    if (new Date() > authToken.expiresAt) {
-      await this.authTokenRepository.delete(authToken.id);
-      return { isValid: false };
-    }
-
-    // Marquer l'OTP comme utilisé
-    authToken.isUsed = true;
-    await this.authTokenRepository.save(authToken);
-
-    // Créer un token pour la prochaine étape
-    const token = await this.createResetToken(email, type);
-
-    return { isValid: true, token };
+    );
+    if (!isValid) return { isValid: false };
+    if (!issueContinuation) return { isValid: true };
+    return {
+      isValid: true,
+      token: await this.createResetToken(normalizedEmail, type),
+    };
   }
 
-  /**
-   * Vérifier le token de réinitialisation
-   */
-  async verifyResetToken(token: string, type: 'reset_password' | 'set_password'): Promise<{ isValid: boolean; email?: string }> {
-    const authToken = await this.authTokenRepository.findOne({
-      where: {
-        token,
-        type,
-        isUsed: false,
-      },
-    });
-
-    if (!authToken) {
+  async verifyResetToken(
+    token: string,
+    type: AuthTokenType,
+  ): Promise<{ isValid: boolean; email?: string }> {
+    const digest = this.hashToken(token);
+    const record =
+      (await this.authTokenRepository.findOne({
+        where: { token: digest, type, isUsed: false },
+      })) ??
+      // Compatibilité de reprise pour les jetons historiques en clair.
+      (await this.authTokenRepository.findOne({
+        where: { token, type, isUsed: false },
+      }));
+    if (!record) return { isValid: false };
+    if (record.expiresAt < new Date()) {
+      record.isUsed = true;
+      await this.authTokenRepository.save(record);
       return { isValid: false };
     }
-
-    // Vérifier l'expiration
-    if (new Date() > authToken.expiresAt) {
-      await this.authTokenRepository.delete(authToken.id);
-      return { isValid: false };
-    }
-
-    return { isValid: true, email: authToken.email };
+    return { isValid: true, email: record.email };
   }
 
-  /**
-   * Marquer un token comme utilisé
-   */
   async markTokenAsUsed(token: string): Promise<void> {
-    const authToken = await this.authTokenRepository.findOne({ where: { token } });
-    if (authToken) {
-      authToken.isUsed = true;
-      await this.authTokenRepository.save(authToken);
-    }
+    const digest = this.hashToken(token);
+    const record =
+      (await this.authTokenRepository.findOne({ where: { token: digest } })) ??
+      (await this.authTokenRepository.findOne({ where: { token } }));
+    if (!record) return;
+    record.isUsed = true;
+    await this.authTokenRepository.save(record);
   }
 
-  /**
-   * Nettoyer les tokens expirés (Cron job)
-   */
   async cleanupExpiredTokens(): Promise<void> {
     await this.authTokenRepository.delete({
       expiresAt: LessThan(new Date()),
     });
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private async matchesOtp(candidate: string, stored: string): Promise<boolean> {
+    if (stored.startsWith('$2')) return bcrypt.compare(candidate, stored);
+    const candidateBuffer = Buffer.from(candidate);
+    const storedBuffer = Buffer.from(stored);
+    return (
+      candidateBuffer.length === storedBuffer.length &&
+      timingSafeEqual(candidateBuffer, storedBuffer)
+    );
   }
 }

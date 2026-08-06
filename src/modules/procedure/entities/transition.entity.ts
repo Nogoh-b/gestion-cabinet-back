@@ -72,7 +72,7 @@ export class Transition extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Type',
-    description: 'automatic (Automatique) ou manual (Manuelle)',
+    description: "BD: 'automatic'=Automatique, 'manual'=Manuelle.",
     importance: 'high',
     group: 'règles',
   })

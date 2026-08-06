@@ -76,13 +76,13 @@ export class ExpenseLine extends TenantEntity {
   @Column({ type: 'enum', enum: ExpenseCategory })
   @BusinessColumn({
     label: 'Catégorie',
-    description: 'Transport, hébergement, repas, huissier, frais de justice, fournitures, autre',
+    description: "BD: 'transport', 'accommodation', 'meal', 'bailiff', 'court_fees', 'office_supplies', 'other'.",
     importance: 'high',
     group: 'identification',
   })
   category: ExpenseCategory;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_ht' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount_ht' })
   @BusinessColumn({
     label: 'Montant HT',
     description: 'Montant hors taxes',
@@ -104,7 +104,7 @@ export class ExpenseLine extends TenantEntity {
   })
   tax_rate: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_ttc' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'amount_ttc' })
   @BusinessColumn({
     label: 'Montant TTC',
     description: 'Montant total TTC',
@@ -118,7 +118,7 @@ export class ExpenseLine extends TenantEntity {
   @Column({ type: 'tinyint', default: 0, name: 'is_rebillable' })
   @BusinessColumn({
     label: 'Refacturable au client',
-    description: 'True = peut être refacturé au client du dossier',
+    description: 'BD: 1=Refacturable au client, 0=Non refacturable.',
     importance: 'medium',
     group: 'financier',
   })
@@ -151,5 +151,17 @@ export class ExpenseLine extends TenantEntity {
     importance: 'medium',
     group: 'document',
   })
-  attachment_url: string;
+  attachment_url: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  attachment_original_name: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  attachment_mime_type: string | null;
+
+  @Column({ type: 'bigint', nullable: true })
+  attachment_size: string | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  attachment_sha256: string | null;
 }

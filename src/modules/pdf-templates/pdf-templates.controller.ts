@@ -22,6 +22,7 @@ import { PdfTemplatesService } from './pdf-templates.service';
 
 @ApiTags('PDF Templates')
 @Controller('pdf-templates')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class PdfTemplatesController {
   constructor(private readonly service: PdfTemplatesService) {}

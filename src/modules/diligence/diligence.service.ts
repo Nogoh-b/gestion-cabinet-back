@@ -2,7 +2,14 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-import { LessThan, MoreThan, Repository, In } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  LessThan,
+  MoreThan,
+  Repository,
+  In,
+} from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -11,14 +18,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
-import { FindingsService } from '../finding/finding.service';
 import { User } from '../iam/user/entities/user.entity';
 import { UsersService } from '../iam/user/user.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
+import { StageVisit } from '../procedure/entities/stage-visit.entity';
+import { SubStageVisit } from '../procedure/entities/sub-stage-visit.entity';
+import { DossierMember } from '../dossiers/entities/dossier-member.entity';
 import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 import { Diligence, DiligenceStatus, DiligencePriority } from './entities/diligence.entity';
+import { AuditService } from 'src/core/audit/audit.service';
+import { OutboxService } from 'src/core/outbox/outbox.service';
 
 
 
@@ -36,13 +47,13 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     private readonly dossierService: DossiersService,
     private readonly usersService: UsersService,
     private readonly documentCustomerService: DocumentCustomerService,
-    @Inject(forwardRef(() => FindingsService))
-    private readonly findingsService: FindingsService,
+    private readonly dataSource: DataSource,
+    private readonly auditService: AuditService,
+    private readonly outboxService: OutboxService,
     // @Inject(forwardRef(() => StepsService))
     // private stepsService: StepsService,
     
   ) {
-    console.log(forwardRef)
     super(repository, paginationService);
   }
 
@@ -61,8 +72,10 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
   /**
    * ➕ Création d'une diligence
    */
-  async create(dto: CreateDiligenceDto): Promise<DiligenceResponseDto> {
-    console.log('Création de diligence avec les données suivantes:', dto);
+  async create(
+    dto: CreateDiligenceDto,
+    actorId: number,
+  ): Promise<DiligenceResponseDto> {
     // Vérifier que le dossier existe
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     if (!dossier) {
@@ -103,6 +116,15 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     if (!stageVisitId && procedureInstance?.currentVisit) {
       stageVisitId = procedureInstance.currentVisit.id ?? undefined;
     }
+    const procedureInstanceId =
+      procedureInstance?.id ?? dossier.procedureInstanceId ?? undefined;
+    const visitBinding = await this.resolveProcedureVisitBinding(
+      procedureInstanceId,
+      stageVisitId,
+      subStageVisitId,
+    );
+    stageVisitId = visitBinding.stageVisitId;
+    subStageVisitId = visitBinding.subStageVisitId;
 
     // Création de l'entité
     const diligence = this.repository.create({
@@ -118,31 +140,56 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       dossier: { id: dossier.id },
       assigned_lawyer: dto.assigned_lawyer_id ? { id: dto.assigned_lawyer_id } : undefined,
       status: DiligenceStatus.DRAFT,
+      confidential: dto.confidential ?? true,
       sub_stage_visit_id: subStageVisitId,
       stageVisit_id: stageVisitId,
-      procedure_instance_id: procedureInstance?.id,
+      procedure_instance_id: procedureInstanceId,
     });
-    // Champ transient consommé par le DiligenceSubscriber.
-    (diligence as any).notify_client = !!dto.notify_client;
-    console.log('Diligence créée avec les données suivantes:', diligence);
-
-      // Récupérer l'étape courante
-    // const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
-    
-    // // Lier la diligence à l'étape (Many-to-One)
-    // if (currentStep) {
-    //   await this.stepsService.syncActionWithStep('diligence', diligence.id, currentStep.id);
-    // }
-    
-
-    return plainToInstance(DiligenceResponseDto,await this.repository.save(diligence));
+    return this.dataSource.transaction(async (manager) => {
+      if (dto.assigned_lawyer_id) {
+        await this.assertActiveDossierMember(
+          manager,
+          dto.dossier_id,
+          dto.assigned_lawyer_id,
+        );
+      }
+      const saved = await manager.save(diligence);
+      const audit = await this.auditService.append(manager, {
+        actorId,
+        action: 'diligence.created',
+        resourceType: 'Diligence',
+        resourceId: saved.id,
+        dossierId: dto.dossier_id,
+        afterState: {
+          status: saved.status,
+          title: saved.title,
+          assignedLawyerId: saved.assigned_lawyer_id,
+          deadline: saved.deadline,
+        },
+      });
+      await this.outboxService.enqueue(manager, {
+        eventType: 'diligence.created',
+        aggregateType: 'Diligence',
+        aggregateId: saved.id,
+        idempotencyKey: `diligence-created:${audit.id}`,
+        payload: {
+          diligenceId: saved.id,
+          dossierId: dto.dossier_id,
+          actorId,
+          notifyClient: dto.notify_client === true,
+        },
+      });
+      return plainToInstance(DiligenceResponseDto, saved);
+    });
   }
 
   /**
    * 📄 Récupération de toutes les diligences
    */
-  async findAll(): Promise<Diligence[]> {
+  async findAll(dossierIds?: number[]): Promise<Diligence[]> {
+    if (dossierIds && dossierIds.length === 0) return [];
     return this.repository.find({
+      where: dossierIds ? { dossier_id: In(dossierIds) } : undefined,
       relations: ['dossier', 'dossier.client', 'assigned_lawyer', 'findings'],
       order: { deadline: 'ASC', created_at: 'DESC' },
     });
@@ -164,178 +211,433 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     return plainToInstance(DiligenceResponseDto, diligence);
   }
 
-  /**
-   * ✏️ Mise à jour d'une diligence
-   */
-  async update(id: number, dto: UpdateDiligenceDto): Promise<Diligence> {
-
-    console.log(id ,  ' ', dto)
+  async getAccessScope(
+    id: number,
+  ): Promise<{ dossierId: number; confidentialityLevel: number }> {
     const diligence = await this.repository.findOne({
       where: { id },
-      relations: ['dossier', 'assigned_lawyer'],
+      select: ['id', 'dossier_id', 'confidential'],
     });
-
     if (!diligence) {
       throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
     }
+    return {
+      dossierId: diligence.dossier_id,
+      confidentialityLevel: 1,
+    };
+  }
 
-    // Vérifications des relations si modifiées
-    if (dto.dossier_id && dto.dossier_id !== diligence.dossier?.id) {
-      const dossier = await this.dossierService.findOne(dto.dossier_id);
-      if (!dossier) {
-        throw new NotFoundException(`Dossier avec ID ${dto.dossier_id} non trouvé`);
+  /**
+   * ✏️ Mise à jour d'une diligence
+   */
+  async update(
+    id: number,
+    dto: UpdateDiligenceDto,
+    actorId: number,
+  ): Promise<Diligence> {
+    let assignedLawyerId: number | undefined;
+    if (dto.assigned_lawyer_id !== undefined) {
+      const lawyer = await this.usersService.findOne(dto.assigned_lawyer_id);
+      if (!lawyer) {
+        throw new NotFoundException(
+          `Avocat avec ID ${dto.assigned_lawyer_id} non trouvé`,
+        );
       }
-      diligence.dossier = dossier;
+      assignedLawyerId = dto.assigned_lawyer_id;
     }
 
-    if (dto.assigned_lawyer_id && dto.assigned_lawyer_id !== diligence.assigned_lawyer?.id) {
-      if (dto.assigned_lawyer_id) {
-        const lawyer = await this.usersService.findOne(dto.assigned_lawyer_id);
-        if (!lawyer) {
-          throw new NotFoundException(`Avocat avec ID ${dto.assigned_lawyer_id} non trouvé`);
-        }
-        diligence.assigned_lawyer = (lawyer as any) as User;
-      } else {
-        diligence.assigned_lawyer = null as any;
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const diligence = await manager.getRepository(Diligence).findOne({
+        where: { id },
+        relations: ['assigned_lawyer'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!diligence) {
+        throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
       }
-    }
+      if (
+        [DiligenceStatus.COMPLETED, DiligenceStatus.CANCELLED].includes(
+          diligence.status,
+        )
+      ) {
+        throw new BadRequestException(
+          'Une diligence dans un état terminal ne peut plus être modifiée',
+        );
+      }
+      if (assignedLawyerId) {
+        await this.assertActiveDossierMember(
+          manager,
+          diligence.dossier_id,
+          assignedLawyerId,
+        );
+      }
 
-    // Validation des dates si modifiées
-    if (dto.start_date || dto.deadline) {
-      const startDate = dto.start_date ? new Date(dto.start_date) : diligence.start_date;
-      const deadline = dto.deadline ? new Date(dto.deadline) : diligence.deadline;
-      
+      const startDate = dto.start_date
+        ? new Date(dto.start_date)
+        : diligence.start_date;
+      const deadline = dto.deadline
+        ? new Date(dto.deadline)
+        : diligence.deadline;
       if (deadline <= startDate) {
-        throw new BadRequestException('La date limite doit être postérieure à la date de début');
+        throw new BadRequestException(
+          'La date limite doit être postérieure à la date de début',
+        );
       }
-    }
 
-    // Mise à jour des champs simples
-    Object.assign(diligence, {
-      title: dto.title ?? diligence.title,
-      description: dto.description ?? diligence.description,
-      type: dto.type ?? diligence.type,
-      priority: dto.priority ?? diligence.priority,
-      start_date: dto.start_date ? new Date(dto.start_date) : diligence.start_date,
-      deadline: dto.deadline ? new Date(dto.deadline) : diligence.deadline,
-      budget_hours: dto.budget_hours ?? diligence.budget_hours,
-      scope: dto.scope ?? diligence.scope,
-      client_reference: dto.client_reference ?? diligence.client_reference,
-      status : dto.status ?? diligence.status
+      const beforeState = this.auditState(diligence);
+      Object.assign(diligence, {
+        title: dto.title ?? diligence.title,
+        description: dto.description ?? diligence.description,
+        type: dto.type ?? diligence.type,
+        priority: dto.priority ?? diligence.priority,
+        start_date: startDate,
+        deadline,
+        budget_hours: dto.budget_hours ?? diligence.budget_hours,
+        scope: dto.scope ?? diligence.scope,
+        client_reference:
+          dto.client_reference ?? diligence.client_reference,
+        confidential: dto.confidential ?? diligence.confidential,
+      });
+      if (assignedLawyerId) {
+        diligence.assigned_lawyer = {
+          id: assignedLawyerId,
+        } as User;
+        diligence.assigned_lawyer_id = assignedLawyerId;
+      }
+
+      const saved = await manager.save(diligence);
+      const audit = await this.auditService.append(manager, {
+        actorId,
+        action: 'diligence.updated',
+        resourceType: 'Diligence',
+        resourceId: saved.id,
+        dossierId: saved.dossier_id,
+        beforeState,
+        afterState: this.auditState(saved),
+      });
+      await this.enqueueDiligenceEvent(
+        manager,
+        audit.id,
+        'diligence.updated',
+        saved,
+        actorId,
+      );
+      return saved;
     });
-    if (dto.notify_client !== undefined) {
-      (diligence as any).notify_client = !!dto.notify_client;
-    }
-
-    return this.repository.save(diligence);
   }
 
   /**
    * ❌ Suppression d'une diligence
    */
-  async remove(id: number): Promise<void> {
-    const diligence = await this.repository.findOne({
-      where: { id },
-      relations: ['findings'],
+  async remove(id: number, actorId: number): Promise<void> {
+    await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const diligence = await manager.getRepository(Diligence).findOne({
+        where: { id },
+        relations: ['findings'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!diligence) {
+        throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
+      }
+      if (diligence.status !== DiligenceStatus.DRAFT) {
+        throw new BadRequestException(
+          'Seule une diligence brouillon peut être supprimée',
+        );
+      }
+      if (diligence.findings?.length) {
+        throw new BadRequestException(
+          'La diligence contient des constats et ne peut pas être supprimée',
+        );
+      }
+
+      const beforeState = this.auditState(diligence);
+      await manager.remove(diligence);
+      const audit = await this.auditService.append(manager, {
+        actorId,
+        action: 'diligence.deleted',
+        resourceType: 'Diligence',
+        resourceId: id,
+        dossierId: diligence.dossier_id,
+        beforeState,
+      });
+      await this.enqueueDiligenceEvent(
+        manager,
+        audit.id,
+        'diligence.deleted',
+        diligence,
+        actorId,
+      );
     });
-
-    if (!diligence) {
-      throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
-    }
-
-    // Supprimer d'abord les findings associés (ou laisser le cascade gérer)
-    if (diligence.findings && diligence.findings.length > 0) {
-      await this.findingsService.removeMany(diligence.findings.map(f => f.id));
-    }
-
-    await this.repository.remove(diligence);
   }
 
   /**
    * ✅ Marquer une diligence comme terminée
    */
-  async complete(id: number, recommendations?: string): Promise<Diligence> {
-    const diligence = await this.findOne(id);
-    const diligenceEntity = plainToInstance(Diligence, diligence);
-    
-    diligenceEntity.complete(recommendations);
-    return this.repository.save(diligenceEntity);
+  async complete(
+    id: number,
+    recommendations: string | undefined,
+    actorId: number,
+  ): Promise<Diligence> {
+    return this.transition(
+      id,
+      actorId,
+      'diligence.completed',
+      (diligence) => {
+        if (diligence.status !== DiligenceStatus.REVIEW) {
+          throw new BadRequestException(
+            'La diligence doit être en relecture avant sa clôture',
+          );
+        }
+        const blockingCritical = (diligence.findings ?? []).filter(
+          (finding) =>
+            finding.severity === 'critical' &&
+            !['resolved', 'waived'].includes(finding.status),
+        );
+        if (blockingCritical.length > 0) {
+          throw new BadRequestException(
+            'Les constats critiques doivent être résolus ou acceptés avant la clôture',
+          );
+        }
+        diligence.complete(recommendations);
+      },
+    );
+  }
+
+  async start(id: number, actorId: number): Promise<Diligence> {
+    return this.transition(
+      id,
+      actorId,
+      'diligence.started',
+      (diligence) => {
+        if (diligence.status !== DiligenceStatus.DRAFT) {
+          throw new BadRequestException(
+            'Seule une diligence brouillon peut être démarrée',
+          );
+        }
+        diligence.status = DiligenceStatus.IN_PROGRESS;
+      },
+    );
+  }
+
+  async submitForReview(id: number, actorId: number): Promise<Diligence> {
+    return this.transition(
+      id,
+      actorId,
+      'diligence.review_submitted',
+      (diligence) => {
+        if (diligence.status !== DiligenceStatus.IN_PROGRESS) {
+          throw new BadRequestException(
+            'Seule une diligence en cours peut être soumise en relecture',
+          );
+        }
+        diligence.status = DiligenceStatus.REVIEW;
+      },
+    );
   }
 
   /**
    * 🚫 Annuler une diligence
    */
-  async cancel(id: number, reason?: string): Promise<Diligence> {
-    const diligence = await this.findOne(id);
-    const diligenceEntity = plainToInstance(Diligence, diligence);
-    
-    diligenceEntity.cancel(reason);
-    return this.repository.save(diligenceEntity);
+  async cancel(
+    id: number,
+    reason: string | undefined,
+    actorId: number,
+  ): Promise<Diligence> {
+    if (!reason?.trim() || reason.trim().length < 10) {
+      throw new BadRequestException(
+        'Un motif d’annulation d’au moins 10 caractères est obligatoire',
+      );
+    }
+    const justification = reason.trim();
+    return this.transition(
+      id,
+      actorId,
+      'diligence.cancelled',
+      (diligence) => {
+        if (
+          [DiligenceStatus.COMPLETED, DiligenceStatus.CANCELLED].includes(
+            diligence.status,
+          )
+        ) {
+          throw new BadRequestException(
+            'La diligence est déjà dans un état terminal',
+          );
+        }
+        diligence.cancel(justification);
+      },
+      justification,
+    );
   }
 
   /**
    * 📊 Générer le rapport final
    */
-  async generateReport(id: number): Promise<Diligence> {
-    const diligence = await this.repository.findOne({
-      where: { id },
-      relations: ['findings', 'dossier', 'dossier.client', 'assigned_lawyer'],
+  async generateReport(id: number, actorId: number): Promise<Diligence> {
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const diligence = await manager.getRepository(Diligence).findOne({
+        where: { id },
+        relations: [
+          'findings',
+          'dossier',
+          'dossier.client',
+          'assigned_lawyer',
+        ],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!diligence) {
+        throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
+      }
+      if (
+        ![DiligenceStatus.REVIEW, DiligenceStatus.COMPLETED].includes(
+          diligence.status,
+        )
+      ) {
+        throw new BadRequestException(
+          'Le rapport ne peut être préparé qu’en relecture ou après clôture',
+        );
+      }
+
+      const findingsBySeverity = {
+        critical: diligence.findings.filter(
+          (finding) => finding.severity === 'critical',
+        ).length,
+        high: diligence.findings.filter(
+          (finding) => finding.severity === 'high',
+        ).length,
+        medium: diligence.findings.filter(
+          (finding) => finding.severity === 'medium',
+        ).length,
+        low: diligence.findings.filter(
+          (finding) => finding.severity === 'low',
+        ).length,
+      };
+      const beforeState = this.auditState(diligence);
+      diligence.findings_summary = [
+        'Résumé de l’audit :',
+        `- ${findingsBySeverity.critical} anomalies critiques`,
+        `- ${findingsBySeverity.high} anomalies haute priorité`,
+        `- ${findingsBySeverity.medium} anomalies moyenne priorité`,
+        `- ${findingsBySeverity.low} anomalies faible priorité`,
+      ].join('\n');
+      diligence.report_generated = true;
+      // Aucun chemin public fictif : le worker produit ensuite une version
+      // documentaire privée à partir de l'événement durable.
+      diligence.report_url = null as any;
+
+      const saved = await manager.save(diligence);
+      const audit = await this.auditService.append(manager, {
+        actorId,
+        action: 'diligence.report_prepared',
+        resourceType: 'Diligence',
+        resourceId: saved.id,
+        dossierId: saved.dossier_id,
+        beforeState,
+        afterState: this.auditState(saved),
+      });
+      await this.enqueueDiligenceEvent(
+        manager,
+        audit.id,
+        'diligence.report_prepared',
+        saved,
+        actorId,
+      );
+      return saved;
     });
-
-    if (!diligence) {
-      throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
-    }
-
-    // Générer un résumé des findings par sévérité
-    const findingsBySeverity = {
-      critical: diligence.findings.filter(f => f.severity === 'critical').length,
-      high: diligence.findings.filter(f => f.severity === 'high').length,
-      medium: diligence.findings.filter(f => f.severity === 'medium').length,
-      low: diligence.findings.filter(f => f.severity === 'low').length,
-    };
-
-    diligence.findings_summary = `Résumé de l'audit: 
-      - ${findingsBySeverity.critical} anomalies critiques
-      - ${findingsBySeverity.high} anomalies haute priorité
-      - ${findingsBySeverity.medium} anomalies moyenne priorité
-      - ${findingsBySeverity.low} anomalies faible priorité
-    `;
-
-    diligence.report_generated = true;
-    diligence.report_url = `/reports/diligence-${id}.pdf`; // À implémenter avec un vrai service de génération PDF
-
-    return this.repository.save(diligence);
   }
 
   /**
    * 📄 Ajouter des documents à la diligence
    */
-  async addDocumentsToDiligence(diligenceId: number, documentIds: number[]) {
-    const diligence = await this.repository.findOne({
-      where: { id: diligenceId },
-      relations: ['documents'],
-    });
-
-    if (!diligence) {
-      throw new NotFoundException('Diligence non trouvée');
+  async addDocumentsToDiligence(
+    diligenceId: number,
+    documentIds: number[],
+    actorId: number,
+  ) {
+    const normalizedIds = [
+      ...new Set((documentIds ?? []).map(Number).filter(Number.isInteger)),
+    ];
+    if (normalizedIds.length === 0) {
+      throw new BadRequestException(
+        'Au moins un identifiant de document est obligatoire',
+      );
+    }
+    const documents =
+      await this.documentCustomerService.findByIds(normalizedIds);
+    if (documents.length !== normalizedIds.length) {
+      throw new BadRequestException(
+        'Un ou plusieurs documents sont introuvables dans le cabinet',
+      );
     }
 
-    const documents = await this.documentCustomerService.findByIds(documentIds);
-    diligence.documents = [...(diligence.documents || []), ...documents];
-    
-    return await this.repository.save(diligence);
+    return this.dataSource.transaction('SERIALIZABLE', async (manager) => {
+      const diligence = await manager.getRepository(Diligence).findOne({
+        where: { id: diligenceId },
+        relations: ['documents'],
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!diligence) {
+        throw new NotFoundException('Diligence non trouvée');
+      }
+      if (
+        documents.some(
+          (document: any) =>
+            Number(document.dossier_id) !== Number(diligence.dossier_id),
+        )
+      ) {
+        throw new BadRequestException(
+          'Tous les documents doivent appartenir au dossier de la diligence',
+        );
+      }
+
+      const beforeIds = (diligence.documents ?? []).map((document) =>
+        Number(document.id),
+      );
+      const byId = new Map(
+        [...(diligence.documents ?? []), ...documents].map((document: any) => [
+          Number(document.id),
+          document,
+        ]),
+      );
+      diligence.documents = [...byId.values()];
+      const saved = await manager.save(diligence);
+      const audit = await this.auditService.append(manager, {
+        actorId,
+        action: 'diligence.documents_attached',
+        resourceType: 'Diligence',
+        resourceId: saved.id,
+        dossierId: saved.dossier_id,
+        beforeState: { documentIds: beforeIds },
+        afterState: {
+          documentIds: saved.documents.map((document) => Number(document.id)),
+        },
+      });
+      await this.enqueueDiligenceEvent(
+        manager,
+        audit.id,
+        'diligence.documents_attached',
+        saved,
+        actorId,
+        { documentIds: normalizedIds },
+      );
+      return saved;
+    });
   }
 
   /**
    * ⏰ Récupérer les diligences avec échéances proches
    */
-  async findUpcomingDeadlines(days: number = 7): Promise<Diligence[]> {
+  async findUpcomingDeadlines(
+    days: number = 7,
+    dossierIds?: number[],
+  ): Promise<Diligence[]> {
+    if (dossierIds && dossierIds.length === 0) return [];
     const today = new Date();
     const futureDate = new Date();
     futureDate.setDate(today.getDate() + days);
 
     return this.repository.find({
       where: {
+        ...(dossierIds ? { dossier_id: In(dossierIds) } : {}),
         deadline: MoreThan(today),
         status: In([DiligenceStatus.DRAFT, DiligenceStatus.IN_PROGRESS, DiligenceStatus.REVIEW]),
       },
@@ -347,11 +649,13 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
   /**
    * ⚠️ Récupérer les diligences en retard
    */
-  async findOverdue(): Promise<Diligence[]> {
+  async findOverdue(dossierIds?: number[]): Promise<Diligence[]> {
+    if (dossierIds && dossierIds.length === 0) return [];
     const today = new Date();
 
     return this.repository.find({
       where: {
+        ...(dossierIds ? { dossier_id: In(dossierIds) } : {}),
         deadline: LessThan(today),
         status: In([DiligenceStatus.DRAFT, DiligenceStatus.IN_PROGRESS, DiligenceStatus.REVIEW]),
       },
@@ -388,6 +692,166 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
     return result;
   }
 
+  private async resolveProcedureVisitBinding(
+    procedureInstanceId: string | undefined,
+    stageVisitId: string | undefined,
+    subStageVisitId: string | undefined,
+  ): Promise<{
+    stageVisitId: string | undefined;
+    subStageVisitId: string | undefined;
+  }> {
+    if (!stageVisitId && !subStageVisitId) {
+      return { stageVisitId, subStageVisitId };
+    }
+    if (!procedureInstanceId) {
+      throw new BadRequestException(
+        'Une visite procédurale ne peut être liée qu’à un dossier disposant d’une instance',
+      );
+    }
 
+    let resolvedStageVisitId = stageVisitId;
+    if (subStageVisitId) {
+      const subStageVisit = await this.dataSource
+        .getRepository(SubStageVisit)
+        .findOne({ where: { id: subStageVisitId } });
+      if (!subStageVisit) {
+        throw new BadRequestException(
+          'La visite de sous-étape indiquée est introuvable',
+        );
+      }
+      if (
+        resolvedStageVisitId &&
+        resolvedStageVisitId !== subStageVisit.stageVisitId
+      ) {
+        throw new BadRequestException(
+          'La visite de sous-étape n’appartient pas à la visite d’étape indiquée',
+        );
+      }
+      resolvedStageVisitId = subStageVisit.stageVisitId;
+    }
 
+    const stageVisit = await this.dataSource
+      .getRepository(StageVisit)
+      .findOne({ where: { id: resolvedStageVisitId! } });
+    if (
+      !stageVisit ||
+      stageVisit.instanceId !== String(procedureInstanceId)
+    ) {
+      throw new BadRequestException(
+        'La visite procédurale n’appartient pas à l’instance du dossier',
+      );
+    }
+    return {
+      stageVisitId: stageVisit.id,
+      subStageVisitId,
+    };
+  }
+
+  private async assertActiveDossierMember(
+    manager: EntityManager,
+    dossierId: number,
+    userId: number,
+  ): Promise<void> {
+    const member = await manager.getRepository(DossierMember).findOne({
+      where: {
+        dossierId,
+        userId,
+      },
+    });
+    const now = new Date();
+    if (
+      !member ||
+      member.revokedAt ||
+      member.validFrom > now ||
+      (member.validUntil && member.validUntil <= now)
+    ) {
+      throw new BadRequestException(
+        'L’avocat assigné doit être un membre actif du dossier',
+      );
+    }
+  }
+
+  private transition(
+    id: number,
+    actorId: number,
+    action: string,
+    mutate: (diligence: Diligence) => void,
+    justification?: string,
+  ): Promise<Diligence> {
+    return this.dataSource.transaction(
+      'SERIALIZABLE',
+      async (manager: EntityManager) => {
+        const diligence = await manager.getRepository(Diligence).findOne({
+          where: { id },
+          relations: ['findings'],
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!diligence) {
+          throw new NotFoundException(
+            `Diligence avec ID ${id} introuvable`,
+          );
+        }
+
+        const beforeState = this.auditState(diligence);
+        mutate(diligence);
+        const saved = await manager.save(diligence);
+        const audit = await this.auditService.append(manager, {
+          actorId,
+          action,
+          resourceType: 'Diligence',
+          resourceId: saved.id,
+          dossierId: saved.dossier_id,
+          beforeState,
+          afterState: this.auditState(saved),
+          justification,
+        });
+        await this.enqueueDiligenceEvent(
+          manager,
+          audit.id,
+          action,
+          saved,
+          actorId,
+          justification ? { justification } : undefined,
+        );
+        return saved;
+      },
+    );
+  }
+
+  private enqueueDiligenceEvent(
+    manager: EntityManager,
+    auditId: string,
+    eventType: string,
+    diligence: Diligence,
+    actorId: number,
+    extraPayload: Record<string, any> = {},
+  ) {
+    return this.outboxService.enqueue(manager, {
+      eventType,
+      aggregateType: 'Diligence',
+      aggregateId: diligence.id,
+      idempotencyKey: `${eventType}:${auditId}`,
+      payload: {
+        diligenceId: diligence.id,
+        dossierId: diligence.dossier_id,
+        actorId,
+        status: diligence.status,
+        ...extraPayload,
+      },
+    });
+  }
+
+  private auditState(diligence: Diligence): Record<string, any> {
+    return {
+      status: diligence.status,
+      title: diligence.title,
+      type: diligence.type,
+      priority: diligence.priority,
+      assignedLawyerId: diligence.assigned_lawyer_id ?? null,
+      startDate: diligence.start_date ?? null,
+      deadline: diligence.deadline ?? null,
+      completionDate: diligence.completion_date ?? null,
+      reportGenerated: diligence.report_generated === true,
+    };
+  }
 }

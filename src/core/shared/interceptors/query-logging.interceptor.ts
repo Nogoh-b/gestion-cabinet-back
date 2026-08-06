@@ -1,44 +1,43 @@
 import { Logger, QueryRunner } from 'typeorm';
 
-
+/**
+ * Logger TypeORM minimal, conservé pour les outils de maintenance éventuels.
+ * Il ne journalise jamais le SQL ni ses paramètres.
+ */
 export class QueryLoggingInterceptor implements Logger {
-  logQuery(query: string, parameters?: any[], queryRunner?: QueryRunner) {
-    const isReadQuery = this.isReadOperation(query);
-    console.log(`📊 ${isReadQuery ? 'READ' : 'WRITE'} Query: ${query}`);
-    if (parameters && parameters.length) {
-      console.log(`   Parameters: ${JSON.stringify(parameters)}`);
-    }
+  logQuery(query: string): void {
+    console.log(`DB ${this.operation(query)}`);
   }
 
-  logQueryError(error: string, query: string, parameters?: any[], queryRunner?: QueryRunner) {
-    console.error(`❌ Query Error: ${error}`);
-    console.error(`   Query: ${query}`);
+  logQueryError(_error: string, query: string): void {
+    console.error(`DB ${this.operation(query)} echec`);
   }
 
-  logQuerySlow(time: number, query: string, parameters?: any[], queryRunner?: QueryRunner) {
-    console.warn(`🐌 Slow Query (${time}ms): ${query}`);
+  logQuerySlow(time: number, query: string): void {
+    console.warn(`DB ${this.operation(query)} lent (${time}ms)`);
   }
 
-  logSchemaBuild(message: string, queryRunner?: QueryRunner) {
-    console.log(`🏗️ Schema: ${message}`);
+  logSchemaBuild(_message: string, _queryRunner?: QueryRunner): void {
+    console.log('DB schema en cours');
   }
 
-  logMigration(message: string, queryRunner?: QueryRunner) {
-    console.log(`🚚 Migration: ${message}`);
+  logMigration(_message: string, _queryRunner?: QueryRunner): void {
+    console.log('DB migration en cours');
   }
 
-  log(level: 'log' | 'info' | 'warn', message: any, queryRunner?: QueryRunner) {
-    console.log(`📝 ${level}: ${message}`);
+  log(
+    level: 'log' | 'info' | 'warn',
+    _message: unknown,
+    _queryRunner?: QueryRunner,
+  ): void {
+    console.log(`DB ${level}`);
   }
 
-  private isReadOperation(query: string): boolean {
-    const normalizedQuery = query.trim().toUpperCase();
-    return (
-      normalizedQuery.startsWith('SELECT') ||
-      normalizedQuery.startsWith('WITH') ||
-      normalizedQuery.startsWith('SHOW') ||
-      normalizedQuery.startsWith('DESCRIBE') ||
-      normalizedQuery.startsWith('EXPLAIN')
-    );
+  private operation(query: string): string {
+    const operation = String(query ?? '')
+      .trim()
+      .split(/\s+/, 1)[0]
+      ?.toUpperCase();
+    return /^[A-Z]+$/.test(operation) ? operation : 'QUERY';
   }
 }

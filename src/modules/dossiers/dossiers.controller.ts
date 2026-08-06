@@ -22,10 +22,9 @@ import {
   ParseIntPipe,
   UseInterceptors,
   UploadedFile,
-  UploadedFiles,
   Request
 } from '@nestjs/common';
-import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 
 
@@ -41,13 +40,10 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery, ApiParam, 
 
 
 import { User } from '../iam/user/entities/user.entity';
-import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
 import { DossierStatsService } from './dossier-stats.service';
 import { DossiersService } from './dossiers.service';
-import { ChangeStatusDto } from './dto/change-status.dto';
 import { CloseDossierDto } from './dto/close-dossier.dto';
-import { CreateDossierDto, LinkDocumentsToSubStageDto, UploadDocumentToSubStageDto } from './dto/create-dossier.dto';
-import { PreliminaryAnalysisDto } from './dto/dossier-analysis.dto';
+import { CreateDossierDto, UploadDocumentToSubStageDto } from './dto/create-dossier.dto';
 import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { DossierStatsDto } from './dto/dossier-stats.dto';
@@ -142,7 +138,6 @@ export class DossiersController {
     @CurrentUser() user: User
   )/*: Promise<DossierResponseDto | any>*/ {
     // return user;
-    console.log(createDossierDto)
     return this.dossiersService.create(createDossierDto, user);
   }
   @Get('summary')
@@ -244,22 +239,7 @@ export class DossiersController {
     @Body() updateDossierDto: UpdateDossierDto,
     @CurrentUser() user: User
   ): Promise<DossierResponseDto | any> {
-    console.log(updateDossierDto)
     return this.dossiersService.update(+id, updateDossierDto, user);
-  }
-
-  @Patch(':id/status')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
-  @RequirePermissions('edit_dossier')
-  @ApiOperation({ summary: 'Changer le statut d\'un dossier' })
-  @ApiResponse({ status: 200, description: 'Statut mis à jour', type: DossierResponseDto })
-  @ApiResponse({ status: 400, description: 'Transition de statut non autorisée' })
-  changeStatus(
-    @Param('id', ParseIntPipe) id: string,
-    @Body() changeStatusDto: ChangeStatusDto,
-    @CurrentUser() user: User
-  ): Promise<DossierResponseDto> {
-    return this.dossiersService.changeStatus(+id, changeStatusDto, user);
   }
 
   @Post(':id/archive')
@@ -273,6 +253,26 @@ export class DossiersController {
     @CurrentUser() user: User
   ): Promise<DossierResponseDto> {
     return this.dossiersService.archive(+id, user);
+  }
+
+  @Post(':id/activate')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Activer un dossier et créer son instance procédurale' })
+  activate(
+    @Param('id', ParseIntPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<DossierResponseDto> {
+    return this.dossiersService.activate(+id, user);
+  }
+
+  @Post(':id/reopen')
+  @RequirePermissions('edit_dossier')
+  @ApiOperation({ summary: 'Rouvrir administrativement un dossier clôturé' })
+  reopen(
+    @Param('id', ParseIntPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<DossierResponseDto> {
+    return this.dossiersService.reopen(+id, user);
   }
   
 
@@ -327,22 +327,9 @@ export class DossiersController {
     /**
    * Lier des documents existants à une sous-étape de procédure
    */
-  @Post('link/documents/to/substage')
-  @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Lier des documents à une sous-étape de procédure' })
   @ApiResponse({ status: 200, description: 'Documents liés avec succès' })
   @ApiResponse({ status: 404, description: 'Sous-étape ou dossier non trouvé' })
-  @ApiBody({ type: LinkDocumentsToSubStageDto })
-  async linkDocumentsToSubStage(
-    @Body() dto: LinkDocumentsToSubStageDto,
-    @CurrentUser() user: User,
-  ) {
-    return this.dossiersService.linkDocumentsToSubStage(
-      dto.document_ids,
-      dto.dossier_id,
-      user.id
-    );
-  }
 
   /**
    * Ajouter un collaborateur (Employee) à un dossier.
@@ -394,80 +381,10 @@ export class DossiersController {
     return this.dossiersService.syncCollaborators(id, body?.employee_ids ?? [], user);
   }
 
-    @Post(':id/transitions/:transitionId/apply')
-    @RequirePermissions('edit_dossier')
-    @UseInterceptors(FilesInterceptor('files', 10))
-    async applyTransition1(
-      @Param('id') id: string,
-      @Param('transitionId') transitionId: string,
-      @Body() dto: ApplyTransitionDto,
-      @UploadedFiles() files: Express.Multer.File[],
-      @Request() req: any,
-    ) {
-      const userId = req.user?.id || 'system';
-      
       // Gérer les fichiers uploadés
-      let fileIds: number[] = [];
-      if (files && files.length > 0) {
         // Uploader les fichiers et récupérer leurs IDs
         // fileIds = await this.uploadService.uploadFiles(files);
-      }
-      
-      await this.dossiersService.applyTransition(
-        id,
-        transitionId,
-        userId,
-        dto,
-        // fileIds,
-        dto.comment,
-      );
 
-      return this.dossiersService.findOneByInstance(id)
-    }
-
-
-
-   @Post(':id/analysis')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async performAnalysis(
-      @Param('id') id: string,
-      @Body() dto: PreliminaryAnalysisDto,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.performPreliminaryAnalysis(
-        +id,
-        dto.successProbability,
-        dto.danger_level,
-        dto.notes,
-        user
-      );
-    }
-  
-
-
-
-  
-    @Post(':id/appeal')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async fileAppeal(
-      @Param('id') id: string,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.fileAppeal(+id, user);
-    }
-  
-    @Post(':id/cassation')
-    @Roles(UserRole.AVOCAT, UserRole.ADMIN)
-    @RequirePermissions('edit_dossier')
-    async fileCassation(
-      @Param('id') id: string,
-      @CurrentUser() user: User
-    ) {
-      return this.dossiersService.fileCassation(+id, user);
-    }
-  
 
   // Dans dossiers.controller.ts
   @Post(':id/close')

@@ -69,7 +69,8 @@ export class ComptabilisationService {
       libelle:      `Annulation facture ${facture.numero}`,
       codeJournal:  TypeJournal.VENTES,
       sourceModule: SourceModule.FACTURE,
-      sourceId:     String(facture.id),
+      sourceId:     `reversal:${facture.id}`,
+      idempotencyKey: `invoice-reversal:${facture.id}`,
       lignes: [
         { numeroCompte: '411', debit: 0,   credit: ttc, libelle: `Extourne client — ${facture.numero}` },
         { numeroCompte: '706', debit: ht,  credit: 0,   libelle: `Extourne honoraires — ${facture.numero}` },
@@ -216,6 +217,201 @@ export class ComptabilisationService {
     }, true);
   }
 
+  async comptabiliserAvoir(credit: any): Promise<Ecriture | null> {
+    const sourceId = `credit-note:${credit.id}`;
+    if (
+      await this.existe(
+        SourceModule.FACTURE,
+        sourceId,
+        TypeJournal.VENTES,
+      )
+    ) {
+      return null;
+    }
+    const ht = Number(credit.montantHT) || 0;
+    const tva = Number(credit.montantTVA) || 0;
+    const ttc = ht + tva;
+    return this.ecritures.creer(
+      {
+        dateEcriture: credit.dateFacture,
+        libelle:
+          `Avoir ${credit.numero} sur facture ` +
+          `${credit.originalInvoiceNumber ?? credit.originalInvoiceId}`,
+        codeJournal: TypeJournal.VENTES,
+        sourceModule: SourceModule.FACTURE,
+        sourceId,
+        idempotencyKey: `credit-note:${credit.id}`,
+        lignes: [
+          {
+            numeroCompte: '706',
+            debit: ht,
+            credit: 0,
+            libelle: `Réduction honoraires — ${credit.numero}`,
+          },
+          {
+            numeroCompte: '445',
+            debit: tva,
+            credit: 0,
+            libelle: `Réduction TVA — ${credit.numero}`,
+          },
+          {
+            numeroCompte: '411',
+            debit: 0,
+            credit: ttc,
+            libelle: `Avoir client — ${credit.numero}`,
+          },
+        ],
+      },
+      true,
+    );
+  }
+
+  /**
+   * Solde la seule créance restante. Le traitement fiscal d'une créance
+   * irrécouvrable dépendant du justificatif et de la juridiction, l'événement
+   * conserve la qualification choisie et utilise une charge exceptionnelle
+   * distincte de l'abandon commercial.
+   */
+  async comptabiliserAbandonCreance(invoice: any): Promise<Ecriture | null> {
+    const remaining = Math.round(Number(invoice.remainingAmount) * 100) / 100;
+    if (!Number.isFinite(remaining) || remaining <= 0) return null;
+    const sourceId = invoice.badDebt
+      ? `bad-debt:${invoice.invoiceId}`
+      : `waiver:${invoice.invoiceId}`;
+    if (
+      await this.existe(
+        SourceModule.FACTURE,
+        sourceId,
+        TypeJournal.VENTES,
+      )
+    ) {
+      return null;
+    }
+    const lines = invoice.badDebt
+      ? [
+          {
+            numeroCompte: '671',
+            debit: remaining,
+            credit: 0,
+            libelle: `Créance irrécouvrable — ${invoice.numero}`,
+          },
+          {
+            numeroCompte: '411',
+            debit: 0,
+            credit: remaining,
+            libelle: `Apurement client — ${invoice.numero}`,
+          },
+        ]
+      : this.waiverLines(invoice, remaining);
+    return this.ecritures.creer(
+      {
+        dateEcriture: new Date().toISOString(),
+        libelle: invoice.badDebt
+          ? `Créance irrécouvrable — ${invoice.numero}`
+          : `Abandon de créance — ${invoice.numero}`,
+        codeJournal: TypeJournal.VENTES,
+        sourceModule: SourceModule.FACTURE,
+        sourceId,
+        idempotencyKey: sourceId,
+        lignes: lines,
+      },
+      true,
+    );
+  }
+
+  private waiverLines(invoice: any, remaining: number): any[] {
+    const total = Number(invoice.montantTTC);
+    const ht = Number(invoice.montantHT);
+    if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(ht)) {
+      return [
+        {
+          numeroCompte: '706',
+          debit: remaining,
+          credit: 0,
+          libelle: `Abandon commercial — ${invoice.numero}`,
+        },
+        {
+          numeroCompte: '411',
+          debit: 0,
+          credit: remaining,
+          libelle: `Apurement client — ${invoice.numero}`,
+        },
+      ];
+    }
+    const htReduction = Math.round((remaining * ht * 100) / total) / 100;
+    const vatReduction = Math.round((remaining - htReduction) * 100) / 100;
+    const lines: any[] = [
+      {
+        numeroCompte: '706',
+        debit: htReduction,
+        credit: 0,
+        libelle: `Abandon honoraires — ${invoice.numero}`,
+      },
+    ];
+    if (vatReduction > 0) {
+      lines.push({
+        numeroCompte: '445',
+        debit: vatReduction,
+        credit: 0,
+        libelle: `Régularisation TVA — ${invoice.numero}`,
+      });
+    }
+    lines.push({
+      numeroCompte: '411',
+      debit: 0,
+      credit: remaining,
+      libelle: `Apurement client — ${invoice.numero}`,
+    });
+    return lines;
+  }
+
+  /**
+   * Règlement effectif du net salarial, séparé de la constatation de la paie.
+   * Cette écriture solde le compte 421 contre la banque ou la caisse.
+   */
+  async comptabiliserPaiementPaie(
+    payslip: any,
+  ): Promise<Ecriture | null> {
+    const cash = payslip.payment_method === 'cash';
+    const journal = cash ? TypeJournal.CAISSE : TypeJournal.BANQUE;
+    if (
+      await this.existe(SourceModule.PAYSLIP, payslip.id, journal)
+    ) {
+      return null;
+    }
+    const net = Math.round(Number(payslip.net_amount) * 100) / 100;
+    if (!Number.isFinite(net) || net <= 0) return null;
+    const treasuryAccount = cash ? '571' : '512';
+    const employee = payslip.employee?.nom ?? '';
+    return this.ecritures.creer(
+      {
+        dateEcriture:
+          payslip.payment_date ?? new Date().toISOString(),
+        libelle: `Règlement paie — ${employee}`.trim(),
+        codeJournal: journal,
+        sourceModule: SourceModule.PAYSLIP,
+        sourceId: String(payslip.id),
+        lignes: [
+          {
+            numeroCompte: '421',
+            debit: net,
+            credit: 0,
+            libelle: `Net salarial — ${employee}`.trim(),
+          },
+          {
+            numeroCompte: treasuryAccount,
+            debit: 0,
+            credit: net,
+            libelle: payslip.payment_reference
+              ? `Règlement ${payslip.payment_reference}`
+              : 'Règlement salaire',
+          },
+        ],
+      },
+      true,
+    );
+  }
+
   // ── Commissions apporteurs d'affaires ─────────────────────────────────────────
 
   /**
@@ -225,7 +421,9 @@ export class ComptabilisationService {
    * EcrituresService.creer (auto-réparation du plan comptable).
    */
   async comptabiliserCommission(commission: any): Promise<Ecriture | null> {
-    if (await this.existe(SourceModule.REFERRAL_COMMISSION, commission.id, TypeJournal.BANQUE)) return null;
+    const cash = commission.payment_method === 'cash';
+    const journal = cash ? TypeJournal.CAISSE : TypeJournal.BANQUE;
+    if (await this.existe(SourceModule.REFERRAL_COMMISSION, commission.id, journal)) return null;
     const montant = Number(commission.amount) || 0;
     if (montant <= 0) return null;
     const apporteur =
@@ -235,12 +433,19 @@ export class ComptabilisationService {
     return this.ecritures.creer({
       dateEcriture: commission.payment_date ?? new Date().toISOString(),
       libelle:      `Commission apporteur — ${apporteur}`.trim(),
-      codeJournal:  TypeJournal.BANQUE,
+      codeJournal:  journal,
       sourceModule: SourceModule.REFERRAL_COMMISSION,
       sourceId:     String(commission.id),
       lignes: [
         { numeroCompte: '632', debit: montant, credit: 0,       libelle: `Commission apporteur — ${apporteur}`.trim() },
-        { numeroCompte: '512', debit: 0,       credit: montant, libelle: 'Règlement commission apporteur' },
+        {
+          numeroCompte: cash ? '571' : '512',
+          debit: 0,
+          credit: montant,
+          libelle: commission.payment_reference
+            ? `Règlement ${commission.payment_reference}`
+            : 'Règlement commission apporteur',
+        },
       ],
     }, true);
   }
@@ -255,7 +460,9 @@ export class ComptabilisationService {
    * compte 425 est auto-créé pour les plans existants par EcrituresService.creer.
    */
   async comptabiliserAvanceSalaire(advance: any): Promise<Ecriture | null> {
-    if (await this.existe(SourceModule.SALARY_ADVANCE, advance.id, TypeJournal.BANQUE)) return null;
+    const cash = advance.payment_method === 'cash';
+    const journal = cash ? TypeJournal.CAISSE : TypeJournal.BANQUE;
+    if (await this.existe(SourceModule.SALARY_ADVANCE, advance.id, journal)) return null;
     const montant = Number(advance.amount) || 0;
     if (montant <= 0) return null;
     const salarie =
@@ -263,12 +470,19 @@ export class ComptabilisationService {
     return this.ecritures.creer({
       dateEcriture: advance.payment_date ?? advance.date_granted ?? new Date().toISOString(),
       libelle:      `Avance sur salaire — ${salarie}`.trim(),
-      codeJournal:  TypeJournal.BANQUE,
+      codeJournal:  journal,
       sourceModule: SourceModule.SALARY_ADVANCE,
       sourceId:     String(advance.id),
       lignes: [
         { numeroCompte: '425', debit: montant, credit: 0,       libelle: `Avance — ${salarie}`.trim() },
-        { numeroCompte: '512', debit: 0,       credit: montant, libelle: 'Versement avance sur salaire' },
+        {
+          numeroCompte: cash ? '571' : '512',
+          debit: 0,
+          credit: montant,
+          libelle: advance.payment_reference
+            ? `Versement ${advance.payment_reference}`
+            : 'Versement avance sur salaire',
+        },
       ],
     }, true);
   }

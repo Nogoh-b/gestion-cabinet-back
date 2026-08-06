@@ -34,7 +34,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       this.getDistributionByType(filters),
       this.getDistributionByJurisdiction(filters),
       this.getDistributionByDossier(filters),
-      this.getEvolution(filters, 'audience_date'),
+      this.getEvolution(filters, 'starts_at_utc'),
       this.getUpcomingAudiences(filters),
       this.getPastAudiencesStats(filters),  
       this.getMonthlyTrend(filters),
@@ -170,15 +170,15 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       .select([
         'audience.id',
         // 'audience.title',
-        'audience.audience_date',
+        'audience.starts_at_utc',
         'audience.status',
         'jurisdiction.name',
         'dossier.dossier_number',
         'client',
       ])
-      .where('audience.audience_date >= :now', { now: new Date() })
+      .where('audience.starts_at_utc >= :now', { now: new Date() })
       .andWhere('audience.status = :status', { status: AudienceStatus.SCHEDULED })
-      .orderBy('audience.audience_date', 'ASC')
+      .orderBy('audience.starts_at_utc', 'ASC')
       .limit(10);
 
     this.applyFilters(query, filters, 'audience');
@@ -188,7 +188,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     return results.map(a => ({
       id: a.id,
       // title: a.title,
-      date: a.audience_date,
+      date: a.starts_at_utc,
       jurisdiction: a.jurisdiction?.name || 'Inconnue',
       dossierNumber: a.dossier?.dossier_number || 'N/A',
       clientName: a.dossier?.client?.full_name || 'Client inconnu',
@@ -201,10 +201,11 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
         .createQueryBuilder('audience')
         .select('COUNT(*)', 'total')
         .addSelect(
-          "SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)",
+          'SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)',
           'successRate',
         )
-        .where('audience.audience_date < :now', { now: new Date() });
+        .where('audience.starts_at_utc < :now', { now: new Date() })
+        .setParameter('held', AudienceStatus.HELD);
 
       this.applyFilters(query, filters, 'audience');
 
@@ -222,14 +223,24 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
 
     const query = this.audienceRepository
       .createQueryBuilder('audience')
-      .select("DATE_FORMAT(audience.audience_date, '%Y-%m')", 'month')
+      .select("DATE_FORMAT(audience.starts_at_utc, '%Y-%m')", 'month')
       .addSelect(
-        "SUM(CASE WHEN audience.status = 'scheduled' THEN 1 ELSE 0 END)",
+        'SUM(CASE WHEN audience.status = :scheduled THEN 1 ELSE 0 END)',
         'scheduled',
       )
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)", 'held')
-      .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
-      .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m')")
+      .addSelect(
+        'SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END)',
+        'held',
+      )
+      .where('audience.starts_at_utc BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
+      .setParameters({
+        scheduled: AudienceStatus.SCHEDULED,
+        held: AudienceStatus.HELD,
+      })
+      .groupBy("DATE_FORMAT(audience.starts_at_utc, '%Y-%m')")
       .orderBy('month', 'ASC');
 
     this.applyFilters(query, filters, 'audience');
@@ -240,11 +251,11 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
   private async getWeeklyDistribution(filters?: StatsFilterDto): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
-      .select('DAYNAME(audience.audience_date)', 'dayOfWeek')
+      .select('DAYNAME(audience.starts_at_utc)', 'dayOfWeek')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('DAYNAME(audience.audience_date)')
+      .groupBy('DAYNAME(audience.starts_at_utc)')
       .orderBy(
-        "FIELD(DAYNAME(audience.audience_date), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')",
+        "FIELD(DAYNAME(audience.starts_at_utc), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')",
       );
 
     this.applyFilters(query, filters, 'audience');

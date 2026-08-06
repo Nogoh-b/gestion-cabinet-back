@@ -1,14 +1,17 @@
 // src/modules/procedures/seeder/procedure-template.seeder.ts
-import { DataSource } from 'typeorm';
+import { DataSource, IsNull, Not } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
-import { ProcedureTemplate } from '../entities/procedure-template.entity';
+import {
+  ProcedureTemplate,
+  ProcedureTemplateLifecycle,
+} from '../entities/procedure-template.entity';
 import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
 import { Transition } from '../entities/transition.entity';
-import { Cycle } from '../entities/cycle.entity';
-import { StageConfig } from '../entities/stage-config.entity';
 import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
+import { randomUUID } from 'crypto';
+import { publishSeededProcedureTemplate } from './procedure-template-seeder.utils';
 
 export default class ProcedureTemplateSeeder implements Seeder {
   public async run(
@@ -16,11 +19,6 @@ export default class ProcedureTemplateSeeder implements Seeder {
     factoryManager: SeederFactoryManager
   ): Promise<any> {
     const templateRepository = dataSource.getRepository(ProcedureTemplate);
-    const stageRepository = dataSource.getRepository(Stage);
-    const subStageRepository = dataSource.getRepository(SubStage);
-    const transitionRepository = dataSource.getRepository(Transition);
-    const cycleRepository = dataSource.getRepository(Cycle);
-    const configRepository = dataSource.getRepository(StageConfig);
     const procedureTypeRepository = dataSource.getRepository(ProcedureType);
 
     // Récupérer tous les sous-types de procédure existants (codes)
@@ -1116,6 +1114,11 @@ export default class ProcedureTemplateSeeder implements Seeder {
     const createdTemplates: ProcedureTemplate[] = [];
 
     for (const templateData of templatesData) {
+      const finalizedTemplate = await dataSource.transaction(async (manager) => {
+      const templateRepository = manager.getRepository(ProcedureTemplate);
+      const stageRepository = manager.getRepository(Stage);
+      const subStageRepository = manager.getRepository(SubStage);
+      const transitionRepository = manager.getRepository(Transition);
       // Vérifier si le template existe déjà (per-tenant exact match)
       let savedTemplate = await findOneForTenant(templateRepository, 'name', templateData.name);
       if (savedTemplate) {
@@ -1136,8 +1139,18 @@ export default class ProcedureTemplateSeeder implements Seeder {
         const missingStages = Array.from(requiredStageNames).filter(name => !existingStageNames.has(name));
         
         if (missingStages.length > 0) {
+          if (
+            savedTemplate.lifecycleStatus !==
+            ProcedureTemplateLifecycle.DRAFT
+          ) {
+            throw new Error(
+              `Le template publié "${savedTemplate.name}" est incomplet ; créez une nouvelle version au lieu de le modifier`,
+            );
+          }
           console.log(`  ⚠️ Stages manquants: ${missingStages.join(', ')} - Mise à jour nécessaire`);
           // On va recréer le template pour avoir la structure complète
+          // La FK transitions.templateId n'a pas de suppression en cascade.
+          await manager.delete(Transition, { templateId: savedTemplate.id });
           await templateRepository.remove(savedTemplate);
           savedTemplate = null;
         } else {
@@ -1148,23 +1161,17 @@ export default class ProcedureTemplateSeeder implements Seeder {
       // Créer le template seulement s'il n'existe pas ou a été supprimé
       if (!savedTemplate) {
         const template = templateRepository.create({
+          familyId: randomUUID(),
           name: templateData.name,
           description: templateData.description,
-          version: 1
+          version: 1,
+          lifecycleStatus: ProcedureTemplateLifecycle.DRAFT,
+          publishedAt: null,
+          retiredAt: null,
+          contentHash: null,
         });
         savedTemplate = await templateRepository.save(template);
         console.log(`✅ Template créé: ${savedTemplate.name}`);
-
-        // 🔗 LIER LE TEMPLATE AU PROCEDURE_TYPE
-        const procedureType = procedureTypeMap.get(templateData.procedureTypeCode);
-        if (procedureType) {
-          await procedureTypeRepository.update(procedureType.id, {
-            procedure_template_id: savedTemplate.id
-          });
-          console.log(`  🔗 Template lié à: ${procedureType.name} (${procedureType.code})`);
-        } else {
-          console.log(`  ⚠️ ProcedureType non trouvé pour le code: ${templateData.procedureTypeCode}`);
-        }
 
         // Créer les stages
         const stages: Stage[] = [];
@@ -1188,7 +1195,8 @@ export default class ProcedureTemplateSeeder implements Seeder {
                 const subStage = subStageRepository.create({
                   ...subStageData,
                   description: subStageData.name,
-                  stageId: stage.id
+                  stageId: stage.id,
+                  requirements: [],
                 });
                 await subStageRepository.save(subStage);
               }
@@ -1229,7 +1237,9 @@ export default class ProcedureTemplateSeeder implements Seeder {
           }
           
           // Générer et ajouter les transitions manquantes (aller-retour complet)
-          const missingTransitions = generateAllPossibleTransitions(stages, transitionSet);
+          // Le seeder ne fabrique jamais de raccourcis globaux : seules les
+          // transitions explicitement définies par le template font autorité.
+          const missingTransitions: any[] = [];
           for (const transData of missingTransitions) {
             const fromStage = getStageByName(transData.from);
             const toStage = getStageByName(transData.to);
@@ -1258,7 +1268,29 @@ export default class ProcedureTemplateSeeder implements Seeder {
         }
       }
 
-      createdTemplates.push(savedTemplate);
+      const procedureType = procedureTypeMap.get(templateData.procedureTypeCode);
+      savedTemplate = await publishSeededProcedureTemplate(
+        manager,
+        savedTemplate!.id,
+      );
+      if (procedureType) {
+        await manager.update(ProcedureType, procedureType.id, {
+          procedure_template_id: savedTemplate.id,
+        });
+      }
+      if (procedureType) {
+        console.log(
+          `  🔗 Version publiée liée à: ${procedureType.name} (${procedureType.code})`,
+        );
+      } else {
+        console.log(
+          `  ⚠️ ProcedureType non trouvé pour le code: ${templateData.procedureTypeCode}`,
+        );
+      }
+      return savedTemplate;
+      });
+
+      createdTemplates.push(finalizedTemplate);
     }
 
     console.log(`\n🎉 ${createdTemplates.length} templates traités avec succès !`);
@@ -1267,7 +1299,7 @@ export default class ProcedureTemplateSeeder implements Seeder {
     
     // Vérification finale des liaisons
     const linkedProcedureTypes = await procedureTypeRepository.find({
-      where: { procedure_template_id: { $not: null } as any }
+      where: { procedure_template_id: Not(IsNull()) }
     });
     console.log(`\n🔗 ${linkedProcedureTypes.length} ProcedureTypes ont un template lié`);
     
@@ -1291,4 +1323,5 @@ export default class ProcedureTemplateSeeder implements Seeder {
     
     return createdTemplates;
   }
+
 }

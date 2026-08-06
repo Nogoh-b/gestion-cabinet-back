@@ -3,7 +3,6 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { AudienceType } from 'src/modules/audience-type/entities/audience-type.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { Jurisdiction } from 'src/modules/jurisdiction/entities/jurisdiction.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
@@ -25,6 +24,12 @@ export enum AudienceType1 {
   DELIBERATION = 1,
   JUDGMENT = 2,
   CONCILIATION = 3,
+}
+
+export enum AudienceRecordStatus {
+  DRAFT = 'DRAFT',
+  VALIDATED = 'VALIDATED',
+  SEALED = 'SEALED',
 }
 
 @Entity('audiences')
@@ -71,6 +76,30 @@ export class Audience extends BaseEntity {
   })
   audience_time: string;
 
+  @Column({ name: 'starts_at_utc', type: 'datetime', precision: 3 })
+  @BusinessColumn({
+    label: 'Début UTC',
+    description: "Instant canonique de début de l'audience en UTC",
+    format: 'date',
+    importance: 'critical',
+    group: 'dates',
+  })
+  starts_at_utc: Date;
+
+  @Column({
+    name: 'timezone',
+    type: 'varchar',
+    length: 64,
+    default: 'Africa/Ndjamena',
+  })
+  @BusinessColumn({
+    label: 'Fuseau horaire',
+    description: "Fuseau IANA utilisé pour afficher l'audience",
+    importance: 'high',
+    group: 'dates',
+  })
+  timezone: string;
+
   @Column({ nullable: false, default: 1 })
   @BusinessColumn({
     label: 'Juridiction',
@@ -98,7 +127,7 @@ export class Audience extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Type d\'audience',
-    description: '0=Plaidoirie, 1=Délibération, 2=Jugement, 3=Conciliation',
+    description: 'BD: 0=HEARING/Plaidoirie, 1=DELIBERATION, 2=JUDGMENT, 3=CONCILIATION.',
     example: '0 = Audience de plaidoirie',
     importance: 'critical',
     group: 'classification'
@@ -112,7 +141,7 @@ export class Audience extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Statut',
-    description: '0=Programmée, 1=Tenue, 2=Reportée, 3=Annulée',
+    description: 'BD: 0=SCHEDULED/Programmée, 1=HELD/Tenue, 2=POSTPONED/Reportée, 3=CANCELLED/Annulée.',
     importance: 'critical',
     group: 'état'
   })
@@ -126,13 +155,6 @@ export class Audience extends BaseEntity {
     group: 'contenu'
   })
   notes: string;
-
-  @ManyToOne(() => Step, step => step.audiences, { nullable: true })
-  @JoinColumn({ name: 'step_id' })
-  step: Step;
-
-  @Column({ name: 'step_id', type: 'int', nullable: true })
-  step_id: number;
 
   @Column({ name: 'decision', type: 'text', nullable: true })
   @BusinessColumn({
@@ -157,7 +179,7 @@ export class Audience extends BaseEntity {
   reminder_sent: boolean;
 
   @Column({ name: 'reminder_sent_at', type: 'timestamp', nullable: true })
-  reminder_sent_at: Date;
+  reminder_sent_at: Date | null;
 
   @Column({ name: 'duration_minutes', type: 'int', nullable: true })
   @BusinessColumn({
@@ -281,6 +303,23 @@ export class Audience extends BaseEntity {
   })
   decision_notes: string;
 
+  @Column({
+    name: 'decision_record_status',
+    type: 'enum',
+    enum: AudienceRecordStatus,
+    default: AudienceRecordStatus.DRAFT,
+  })
+  decision_record_status: AudienceRecordStatus;
+
+  @Column({ name: 'decision_record_version', type: 'int', default: 1 })
+  decision_record_version: number;
+
+  @Column({ name: 'decision_record_hash', type: 'char', length: 64, nullable: true })
+  decision_record_hash: string | null;
+
+  @Column({ name: 'decision_sealed_at', type: 'datetime', precision: 6, nullable: true })
+  decision_sealed_at: Date | null;
+
   @ManyToMany(() => DocumentCustomer, (document) => document.decision_audiences, {
     cascade: true,
   })
@@ -353,6 +392,23 @@ export class Audience extends BaseEntity {
   })
   report_author_id: string;
 
+  @Column({
+    name: 'report_record_status',
+    type: 'enum',
+    enum: AudienceRecordStatus,
+    default: AudienceRecordStatus.DRAFT,
+  })
+  report_record_status: AudienceRecordStatus;
+
+  @Column({ name: 'report_record_version', type: 'int', default: 1 })
+  report_record_version: number;
+
+  @Column({ name: 'report_record_hash', type: 'char', length: 64, nullable: true })
+  report_record_hash: string | null;
+
+  @Column({ name: 'report_sealed_at', type: 'datetime', precision: 6, nullable: true })
+  report_sealed_at: Date | null;
+
   @ManyToMany(() => DocumentCustomer, { cascade: true })
   @JoinTable({
     name: 'audience_report_documents',
@@ -370,9 +426,7 @@ export class Audience extends BaseEntity {
     group: 'état'
   })
   get is_past(): boolean {
-    const today = new Date();
-    const audienceDateTime = new Date(`${this.audience_date}T${this.audience_time}`);
-    return audienceDateTime < today;
+    return this.full_datetime < new Date();
   }
 
   @BusinessColumn({
@@ -382,9 +436,7 @@ export class Audience extends BaseEntity {
     group: 'état'
   })
   get is_upcoming(): boolean {
-    const today = new Date();
-    const audienceDateTime = new Date(`${this.audience_date}T${this.audience_time}`);
-    return audienceDateTime > today;
+    return this.full_datetime > new Date();
   }
 
   @BusinessColumn({
@@ -394,13 +446,19 @@ export class Audience extends BaseEntity {
     group: 'état'
   })
   get is_today(): boolean {
-    const today = new Date().toDateString();
-    const audienceDate = new Date(this.audience_date).toDateString();
-    return today === audienceDate;
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: this.timezone || 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return formatter.format(new Date()) === formatter.format(this.full_datetime);
   }
 
   get full_datetime(): Date {
-    return new Date(`${this.audience_date}T${this.audience_time}`);
+    return this.starts_at_utc
+      ? new Date(this.starts_at_utc)
+      : new Date(`${this.audience_date}T${this.audience_time}`);
   }
 
   @BusinessColumn({
@@ -413,12 +471,19 @@ export class Audience extends BaseEntity {
     const date = this.display_datetime;
     return date.toLocaleString('fr-FR', {
       dateStyle: 'full',
-      timeStyle: 'short'
+      timeStyle: 'short',
+      timeZone: this.timezone || 'UTC',
     });
   }
 
   get needs_reminder(): boolean {
-    if (this.reminder_sent || this.is_past) return false;
+    if (
+      this.status !== AudienceStatus.SCHEDULED ||
+      this.reminder_sent ||
+      this.is_past
+    ) {
+      return false;
+    }
     const audienceDateTime = this.full_datetime;
     const now = new Date();
     const diffHours = (audienceDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -426,26 +491,23 @@ export class Audience extends BaseEntity {
   }
 
   get display_date(): Date {
-    if (this.status === AudienceStatus.POSTPONED && this.postponed_to) {
-      return this.postponed_to;
-    }
-    return this.audience_date;
+    return this.display_datetime;
   }
 
   get display_time(): string {
-    if (this.status === AudienceStatus.POSTPONED && this.postponed_to) {
-      const hours = this.postponed_to.getHours().toString().padStart(2, '0');
-      const minutes = this.postponed_to.getMinutes().toString().padStart(2, '0');
-      return `${hours}:${minutes}`;
-    }
-    return this.audience_time;
+    return new Intl.DateTimeFormat('fr-FR', {
+      timeZone: this.timezone || 'UTC',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(this.display_datetime);
   }
 
   get display_datetime(): Date {
     if (this.status === AudienceStatus.POSTPONED && this.postponed_to) {
       return this.postponed_to;
     }
-    return new Date(`${this.audience_date}T${this.audience_time}`);
+    return this.full_datetime;
   }
 
   @BusinessColumn({
@@ -490,34 +552,4 @@ export class Audience extends BaseEntity {
     return labels[this.type] || 'Inconnu';
   }
 
-  // ==================== MÉTHODES MÉTIER ====================
-
-  postpone(new_date: Date, new_hour: string, reason?: string): void {
-    this.status = AudienceStatus.POSTPONED;
-    const [hours, minutes] = new_hour.split(':');
-    const newDateTime = new Date(new_date);
-    newDateTime.setHours(parseInt(hours), parseInt(minutes), 0);
-    this.postponed_to = newDateTime;
-    if (reason) {
-      this.notes = `${this.notes || ''}\nReporté: ${reason}`.trim();
-    }
-    this.reminder_sent = false;
-  }
-
-  mark_as_held(decision?: string, outcome?: string): void {
-    this.status = AudienceStatus.HELD;
-    if (decision) {
-      this.decision = decision;
-    }
-    if (outcome) {
-      this.outcome = outcome;
-    }
-  }
-
-  cancel(reason?: string): void {
-    this.status = AudienceStatus.CANCELLED;
-    if (reason) {
-      this.notes = `${this.notes || ''}\nAnnulé: ${reason}`.trim();
-    }
-  }
 }

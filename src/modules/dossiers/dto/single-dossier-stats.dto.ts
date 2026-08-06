@@ -1,4 +1,5 @@
 // src/modules/dossiers/dto/single-dossier-stats.dto.ts
+import { DossierLifecycleStatus } from 'src/core/enums/dossier-status.enum';
 export class SingleDossierStatsDto {
   // Informations générales du dossier
   dossier: {
@@ -7,10 +8,10 @@ export class SingleDossierStatsDto {
     objet: string;
     client: string;
     avocat: string;
-    statut: number;
+    statut: DossierLifecycleStatus;
     niveauDanger: number;
     dateOuverture: Date;
-    dateCloture?: Date;
+    dateCloture?: Date | null;
   };
 
   // Statistiques des documents

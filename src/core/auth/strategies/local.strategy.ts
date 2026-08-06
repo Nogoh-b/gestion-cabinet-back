@@ -19,7 +19,10 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
 
   async validate(req: Request, username: string, password: string): Promise<any> {
     // resolvedTenantId est posé par TenantResolverMiddleware avant les guards
-    const tenantId: number = (req as any)['resolvedTenantId'] ?? 1;
+    const tenantId = (req as any)['resolvedTenantId'] as number | undefined;
+    if (!tenantId) {
+      throw new UnauthorizedException('Le code cabinet est obligatoire');
+    }
     const user = await this.authService.validateUser(username, password, tenantId);
     if (!user) {
       throw new UnauthorizedException('Identifiants invalides (email, mot de passe ou cabinet)');

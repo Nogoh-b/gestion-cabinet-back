@@ -10,6 +10,8 @@ import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { ExpenseLine } from './expense-line.entity';
+import { User } from 'src/modules/iam/user/entities/user.entity';
+import { PaymentMethod } from './supplier-invoice.entity';
 
 export enum ExpenseReportStatus {
   DRAFT = 'draft',
@@ -70,13 +72,13 @@ export class ExpenseReport extends TenantEntity {
   @Column({ type: 'enum', enum: ExpenseReportStatus, default: ExpenseReportStatus.DRAFT })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Brouillon, soumise, approuvée, rejetée, remboursée',
+    description: "BD: 'draft'=Brouillon, 'submitted'=Soumise, 'approved'=Approuvée, 'rejected'=Rejetée, 'reimbursed'=Remboursée.",
     importance: 'high',
     group: 'statut',
   })
   status: ExpenseReportStatus;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, name: 'total_amount' })
+  @Column({ type: 'decimal', precision: 18, scale: 2, name: 'total_amount' })
   @BusinessColumn({
     label: 'Montant total',
     description: 'Somme des lignes de dépenses',
@@ -118,6 +120,29 @@ export class ExpenseReport extends TenantEntity {
   })
   approved_by: Employee;
 
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'approved_at',
+  })
+  approved_at: Date | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'rejected_at',
+  })
+  rejected_at: Date | null;
+
+  @Column({
+    type: 'text',
+    nullable: true,
+    name: 'rejection_reason',
+  })
+  rejection_reason: string | null;
+
   @Column({ type: 'date', nullable: true, name: 'reimbursement_date' })
   @BusinessColumn({
     label: 'Date de remboursement',
@@ -127,6 +152,33 @@ export class ExpenseReport extends TenantEntity {
     group: 'dates',
   })
   reimbursement_date: Date;
+
+  @Column({
+    type: 'enum',
+    enum: PaymentMethod,
+    nullable: true,
+    name: 'reimbursement_method',
+  })
+  reimbursement_method: PaymentMethod | null;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'reimbursement_reference',
+  })
+  reimbursement_reference: string | null;
+
+  @Column({
+    type: 'int',
+    nullable: true,
+    name: 'reimbursed_by_id',
+  })
+  reimbursed_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'reimbursed_by_id' })
+  reimbursed_by: User | null;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({

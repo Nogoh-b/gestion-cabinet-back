@@ -7,9 +7,13 @@ import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
-import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
+import { AnalysisResponseDto } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AiQuotaGuard } from './guards/ai-quota.guard';
+import { AiFeatureGuard } from './guards/ai-feature.guard';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { RequirePermissions } from '../decorators/permissions.decorator';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -18,7 +22,8 @@ import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
-  @UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, AiFeatureGuard)
+@RequirePermissions('use_ai_assistant')
 
 @ApiBearerAuth()
 export class AiDatabaseController {
@@ -32,7 +37,7 @@ export class AiDatabaseController {
   ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
@@ -66,9 +71,12 @@ export class AiDatabaseController {
   async askQuestion(
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
+    @Req() req,
     @UploadedFile() file?: Express.Multer.File
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto, user.id, file);
+    dto.intentMode = 'read';
+    dto.analyzeOnly = true;
+    return this.aiDbService.analyzeQuestion(dto, user, file, req?.aiRequestLogId);
   }
 
 
@@ -90,7 +98,7 @@ export class AiDatabaseController {
    *   done          → fin du flux
    */
   @Post('ask/stream')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
   @UseInterceptors(FileInterceptor('file', {
     storage: memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 },
@@ -113,6 +121,8 @@ export class AiDatabaseController {
     @UploadedFile() file: Express.Multer.File,
     @Res() res: Response,
   ): Promise<void> {
+    dto.intentMode = 'read';
+    dto.analyzeOnly = true;
     const t0 = Date.now();
     this.logger.log(`🕐 [SSE] askStream ENTRÉ à ${new Date().toISOString()}`);
 
@@ -131,10 +141,10 @@ export class AiDatabaseController {
       if (event === 'token') {
         tokenEmitCount++;
         if (tokenEmitCount <= 3 || tokenEmitCount % 20 === 0) {
-          this.logger.debug(`📤 SSE → [token #${tokenEmitCount}] "${(data?.text ?? '').toString().substring(0, 30)}"`);
+          this.logger.debug(`SSE token #${tokenEmitCount}`);
         }
       } else {
-        this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
+        this.logger.debug(`SSE evenement ${event}`);
       }
 
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -151,8 +161,9 @@ export class AiDatabaseController {
     const tenantId: number = (user?.tenantId as number) ?? getCurrentTenantId();
 
     try {
+      sendEvent('status', { message: 'Connexion IA etablie...' });
       await this.tenantContext.run(tenantId, () =>
-        this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent),
+        this.aiDbService.analyzeQuestionStream(dto, user, file, sendEvent, (res.req as any)?.aiRequestLogId),
       );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });
@@ -161,75 +172,6 @@ export class AiDatabaseController {
       sendEvent('done', {});
       res.end();
     }
-  }
-
-  // ── Confirmation write ───────────────────────────────────────────────────────
-
-  @Post('write/confirm')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Confirme une opération d\'écriture' })
-  async confirmWrite(
-    @Body('pendingIntent') pendingIntent: WritePlan,
-    @CurrentUser() user
-  ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.confirmWrite(pendingIntent, user.id);
-  }
-
-  // ── Résolution d'ambiguïté ───────────────────────────────────────────────────
-
-  /**
-   * Reprend l'exécution d'un WritePlan après qu'un utilisateur a choisi
-   * l'entité parmi des candidats ambigus.
-   *
-   * Corps attendu — OPTION A (choix d'un candidat) :
-   * {
-   *   "pendingWritePlan": { ... },          ← plan retourné lors de l'ambiguïté
-   *   "operationIndex":  0,                 ← ambiguityContext.operationIndex
-   *   "fieldName":       "client",          ← ambiguityContext.fieldName
-   *   "resolvedId":      42,                ← ID de l'entité choisie
-   *   "conversationId":  "uuid"             ← optionnel, pour l'historique
-   * }
-   *
-   * Corps attendu — OPTION B (« Autre ») :
-   * {
-   *   "pendingWritePlan": { ... },
-   *   "operationIndex":  0,
-   *   "fieldName":       "jurisdiction",
-   *   "entity":          "jurisdictions",   ← ambiguityContext.entity
-   *   "customValue":     "TGI de Lyon",     ← texte libre saisi par l'utilisateur
-   *   "conversationId":  "uuid"
-   * }
-   */
-  @Post('write/resolve-ambiguity')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reprend un plan d\'écriture après résolution d\'ambiguïté' })
-  async resolveAmbiguity(
-    @Body('pendingWritePlan') pendingWritePlan: WritePlan,
-    @Body('operationIndex') operationIndex: number,
-    @Body('fieldName') fieldName: string,
-    @Body('resolvedId') resolvedId: string | number,
-    @Body('conversationId') conversationId: string,
-    @Body('customValue') customValue: string,
-    @Body('entity') entity: string,
-    @CurrentUser() user,
-  ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.resumeAfterAmbiguity(
-      pendingWritePlan,
-      operationIndex,
-      fieldName,
-      resolvedId,
-      user.id,
-      conversationId,
-      customValue,
-      entity,
-    );
-  }
-
-  @Post('execute')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Exécute une requête SQL (SELECT uniquement)' })
-  async executeCustomQuery(@Body('sql') sqlQuery: string) {
-    return this.aiDbService.executeQuery(sqlQuery);
   }
 
   @Get('metrics')
@@ -271,6 +213,8 @@ export class AiDatabaseController {
 
    @Post('analyze')
   async analyze(@Body() dto: AskQuestionDto, @Req() req) {
+    dto.intentMode = 'read';
+    dto.analyzeOnly = true;
     const userId = req.user?.id || 'anonymous'; // Ton système d'auth
     return this.aiDbService.analyzeQuestion(dto, userId);
   }
@@ -327,12 +271,12 @@ export class AiDatabaseController {
   @Get('visible-tables')
   @ApiOperation({ summary: 'Liste les tables visibles (avec métadonnées)' })
   async getVisibleTables() {
-    const tables = this.schemaMetadata.getAllVisibleTables()
+    const tables = this.aiDbService.getAiVisibleTables();
     return {
-      count: this.schemaMetadata.getVisibleTablesCount(),
+      count: tables.length,
       tables,
       schemaJSON: await this.aiDbService.getCompleteSchemaJson(tables),
-      details: this.schemaMetadata.getAllVisibleTables().map(table => ({
+      details: tables.map(table => ({
         name: table,
         metadata: this.schemaMetadata.getTableMetadataForPrompt(table)
       }))

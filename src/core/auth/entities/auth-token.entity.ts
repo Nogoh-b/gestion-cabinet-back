@@ -10,11 +10,11 @@ export class AuthToken {
   @Index()
   email: string;
 
-  @Column({ nullable: true })
-  otp: string;
+  @Column({ type: 'varchar', nullable: true })
+  otp: string | null;
 
   @Column()
-  type: 'reset_password' | 'set_password';
+  type: 'reset_password' | 'set_password' | 'mfa';
 
   @Column({ type: 'timestamp' })
   expiresAt: Date;
@@ -22,8 +22,14 @@ export class AuthToken {
   @Column({ default: false })
   isUsed: boolean;
 
-  @Column({ nullable: true })
-  token: string;
+  @Column({ name: 'failed_attempts', type: 'int', default: 0 })
+  failedAttempts: number;
+
+  @Column({ name: 'last_attempt_at', type: 'datetime', nullable: true })
+  lastAttemptAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  token: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

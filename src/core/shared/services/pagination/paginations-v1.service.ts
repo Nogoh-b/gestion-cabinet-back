@@ -10,6 +10,10 @@ import {
 import { Injectable } from '@nestjs/common';
 
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
+import {
+  getDefaultSortColumn,
+  isEntityColumnPath,
+} from '../../utils/entity-property-path.util';
 
 
 export interface PaginatedResult<T> {
@@ -33,13 +37,25 @@ export class PaginationServiceV1 {
     relations: string[] = [],
     additionalOptions: FindManyOptions<T> = {}
   ): Promise<PaginatedResult<T>> {
-    const page = Number(paginationParams.page) ?? 1;
-    const limit = Number(paginationParams.limit) ?? 10;
-    
-    console.log('Pagination params:', page, '*', limit);
+    const requestedPage = Number(paginationParams.page);
+    const requestedLimit = Number(paginationParams.limit);
+    const page =
+      Number.isInteger(requestedPage) && requestedPage > 0
+        ? requestedPage
+        : 1;
+    const limit =
+      Number.isInteger(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 100)
+        : 10;
     
     // Construire l'ordre en prenant en compte les relations
-    const order = this.buildOrderFromParams(paginationParams, additionalOptions.order);
+    const order = this.buildOrderFromParams(
+      repository,
+      paginationParams,
+      additionalOptions.order,
+    );
+    const safeAdditionalOptions = { ...additionalOptions };
+    delete safeAdditionalOptions.order;
 
     const [data, total] = await repository.findAndCount({
       where,
@@ -47,7 +63,7 @@ export class PaginationServiceV1 {
       order,
       skip: (page - 1) * limit,
       take: limit,
-      ...additionalOptions
+      ...safeAdditionalOptions,
     });
 
     const totalPages = Math.ceil(total / limit);
@@ -70,20 +86,35 @@ export class PaginationServiceV1 {
   /**
    * Construit l'ordre à partir des paramètres de pagination
    */
-  private buildOrderFromParams<T>(
+  private buildOrderFromParams<T extends ObjectLiteral>(
+    repository: Repository<T>,
     paginationParams: PaginationParamsDto,
     defaultOrder?: FindOptionsOrder<T>
   ): FindOptionsOrder<T> {
-    if (!paginationParams.sort_by) {
-      return defaultOrder || ({ created_at: 'ASC' } as unknown as FindOptionsOrder<T>);
+    const safeSortBy =
+      paginationParams.sort_by &&
+      isEntityColumnPath(repository.metadata, paginationParams.sort_by)
+        ? paginationParams.sort_by
+        : undefined;
+
+    if (!safeSortBy) {
+      if (defaultOrder) {
+        return defaultOrder;
+      }
+
+      const fallbackColumn = getDefaultSortColumn(repository.metadata);
+      return fallbackColumn
+        ? ({
+            [fallbackColumn]: 'ASC',
+          } as FindOptionsOrder<T>)
+        : ({} as FindOptionsOrder<T>);
     }
 
-    const sortBy = paginationParams.sort_by;
     const sortDirection = (paginationParams.sort_direction || 'ASC').toUpperCase();
 
     // Vérifier si le tri concerne une relation (contient un point)
-    if (sortBy.includes('.')) {
-      const parts = sortBy.split('.');
+    if (safeSortBy.includes('.')) {
+      const parts = safeSortBy.split('.');
       
       // Reconstruire l'objet order de manière récursive
       // Ex: 'procedure_subtype.name' -> { procedure_subtype: { name: 'ASC' } }
@@ -102,7 +133,7 @@ export class PaginationServiceV1 {
 
     // Tri simple sur un champ direct
     return {
-      [sortBy]: sortDirection
+      [safeSortBy]: sortDirection
     } as FindOptionsOrder<T>;
   }
 
@@ -120,7 +151,11 @@ export class PaginationServiceV1 {
   ): Promise<PaginatedResult<R>> {
     
     // S'assurer que les relations nécessaires sont incluses pour le tri
-    const finalRelations = this.ensureRelationsForSorting(relations, paginationParams.sort_by);
+    const finalRelations = this.ensureRelationsForSorting(
+      repository,
+      relations,
+      paginationParams.sort_by,
+    );
 
     const result = await this.paginate(
       repository,
@@ -148,11 +183,16 @@ export class PaginationServiceV1 {
   /**
    * S'assure que les relations nécessaires pour le tri sont incluses
    */
-  private ensureRelationsForSorting(
+  private ensureRelationsForSorting<T extends ObjectLiteral>(
+    repository: Repository<T>,
     existingRelations: string[], 
     sortBy?: string
   ): string[] {
-    if (!sortBy || !sortBy.includes('.')) {
+    if (
+      !sortBy ||
+      !sortBy.includes('.') ||
+      !isEntityColumnPath(repository.metadata, sortBy)
+    ) {
       return existingRelations;
     }
 

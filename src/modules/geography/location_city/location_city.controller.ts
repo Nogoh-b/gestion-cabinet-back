@@ -35,6 +35,7 @@ import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 
 @Controller('location-cities')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class LocationCitiesController {
   constructor(private readonly service: LocationCitiesService) {}

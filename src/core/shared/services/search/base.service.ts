@@ -514,9 +514,11 @@ async enhancedSearchv0({
       const operator = exactMatch ? '=' : 'LIKE';
       const condition = `${targetAlias}.${column} ${operator} :term`;
 
-      idx === 0
-        ? br.where(condition, { term: termValue })
-        : br.orWhere(condition, { term: termValue });
+      if (idx === 0) {
+        br.where(condition, { term: termValue });
+      } else {
+        br.orWhere(condition, { term: termValue });
+      }
     });
   }));
 
@@ -648,9 +650,11 @@ async enhancedSearch({
       const operator = exactMatch ? '=' : 'LIKE';
       const condition = `${targetAlias}.${column} ${operator} :term`;
 
-      idx === 0
-        ? br.where(condition, { term: termValue })
-        : br.orWhere(condition, { term: termValue });
+      if (idx === 0) {
+        br.where(condition, { term: termValue });
+      } else {
+        br.orWhere(condition, { term: termValue });
+      }
     });
   }));
 

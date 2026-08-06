@@ -16,10 +16,10 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  it('ne publie pas les anciens endpoints de maintenance', async () => {
     return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+      .post('/test_cron_maintenance')
+      .send({ foo: 'test', accountId: 1 })
+      .expect(404);
   });
 });

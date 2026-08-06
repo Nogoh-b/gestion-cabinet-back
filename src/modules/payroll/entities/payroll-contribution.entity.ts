@@ -1,6 +1,14 @@
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+import { User } from 'src/modules/iam/user/entities/user.entity';
 
 /** Sur quelle assiette le taux s'applique. */
 export enum ContributionBase {
@@ -20,6 +28,12 @@ export enum ContributionPayer {
   EMPLOYER = 'employer',
 }
 
+export enum PayrollContributionStatus {
+  DRAFT = 'draft',
+  PUBLISHED = 'published',
+  RETIRED = 'retired',
+}
+
 /**
  * Barème de cotisation / retenue paramétrable, propre à chaque cabinet (tenant).
  *
@@ -31,6 +45,11 @@ export enum ContributionPayer {
  *    elles DOIVENT être validées par le cabinet avant exploitation réelle.
  */
 @Entity('payroll_contribution')
+@Index('UQ_payroll_contribution_tenant_code_version', [
+  'tenant_id',
+  'code',
+  'version',
+], { unique: true })
 @BusinessTable({
   label: 'Barème de cotisations',
   description: 'Règles de cotisations sociales et retenues fiscales appliquées à la paie (paramétrable par cabinet).',
@@ -58,6 +77,9 @@ export class PayrollContribution extends TenantEntity {
   })
   code: string;
 
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
   @Column({ type: 'varchar', length: 150 })
   @BusinessColumn({
     label: 'Libellé',
@@ -81,7 +103,7 @@ export class PayrollContribution extends TenantEntity {
   @Column({ type: 'enum', enum: ContributionBase, default: ContributionBase.GROSS, name: 'base_type' })
   @BusinessColumn({
     label: 'Assiette',
-    description: 'gross (brut), taxable (imposable) ou fixed (montant fixe)',
+    description: "BD: 'gross'=Brut, 'taxable'=Imposable, 'fixed'=Montant fixe.",
     importance: 'high',
     group: 'financier',
   })
@@ -90,7 +112,7 @@ export class PayrollContribution extends TenantEntity {
   @Column({ type: 'enum', enum: ContributionPayer })
   @BusinessColumn({
     label: 'Supporté par',
-    description: 'employee (retenue salariale) ou employer (charge patronale)',
+    description: "BD: 'employee'=Retenue salariale, 'employer'=Charge patronale.",
     importance: 'high',
     group: 'financier',
   })
@@ -116,7 +138,7 @@ export class PayrollContribution extends TenantEntity {
   })
   account_number: string | null;
 
-  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  @Column({ type: 'boolean', default: false, name: 'is_active' })
   @BusinessColumn({
     label: 'Actif',
     description: 'Cotisation appliquée lors du calcul',
@@ -124,6 +146,52 @@ export class PayrollContribution extends TenantEntity {
     group: 'statut',
   })
   is_active: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: PayrollContributionStatus,
+    default: PayrollContributionStatus.DRAFT,
+  })
+  status: PayrollContributionStatus;
+
+  @Column({ type: 'date', name: 'valid_from' })
+  valid_from: Date;
+
+  @Column({ type: 'date', nullable: true, name: 'valid_until' })
+  valid_until: Date | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'published_at',
+  })
+  published_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'published_by_id' })
+  published_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'published_by_id' })
+  published_by: User | null;
+
+  @Column({
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+    name: 'retired_at',
+  })
+  retired_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'retired_by_id' })
+  retired_by_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'retired_by_id' })
+  retired_by: User | null;
+
+  @Column({ type: 'text', nullable: true, name: 'retirement_reason' })
+  retirement_reason: string | null;
 
   @Column({ type: 'int', default: 100, name: 'sort_order' })
   @BusinessColumn({

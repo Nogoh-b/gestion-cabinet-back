@@ -1,23 +1,29 @@
-// src/modules/diligences/diligences.controller.ts
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { In } from 'typeorm';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { ResourcePolicyService } from 'src/core/resource-policy.service';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  Query,
-  ParseIntPipe,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags, ApiConsumes } from '@nestjs/swagger';
-
-
 import { DiligenceStatsService } from './diligence-stats.service';
 import { DiligencesService } from './diligence.service';
 import { CreateDiligenceDto } from './dto/create-diligence.dto';
@@ -25,174 +31,266 @@ import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { DiligenceSearchDto } from './dto/search-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 
-
-
 @ApiTags('Diligences')
+@ApiBearerAuth()
 @Controller('diligences')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DiligencesController {
-  constructor(private readonly diligencesService: DiligencesService,
-  private readonly statsService: DiligenceStatsService) {}
-
-
-
+  constructor(
+    private readonly diligencesService: DiligencesService,
+    private readonly statsService: DiligenceStatsService,
+    private readonly resourcePolicy: ResourcePolicyService,
+  ) {}
 
   @Get('stats')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
-  @ApiQuery({ name: 'startDate', required: false, type: Date })
-  @ApiQuery({ name: 'endDate', required: false, type: Date })
-  @ApiQuery({ name: 'lawyerId', required: false, type: Number })
-  @ApiQuery({ name: 'dossierId', required: false, type: Number })
-  @ApiOperation({ summary: 'Obtenir les statistiques des diligences' })
+  @RequirePermissions('view_diligences')
+  @ApiOperation({ summary: 'Obtenir les statistiques des diligences accessibles' })
   async getStats(
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('lawyerId') lawyerId?: number,
-    @Query('dossierId') dossierId?: number,
+    @Query('startDate') startDate: string | undefined,
+    @Query('endDate') endDate: string | undefined,
+    @Query('lawyerId') lawyerId: number | undefined,
+    @Query('dossierId') dossierId: number | undefined,
+    @CurrentUser() user: any,
   ): Promise<any> {
+    const dossierIds = await this.accessibleDossierIds(user);
+    if (dossierId && !dossierIds.includes(Number(dossierId))) {
+      await this.resourcePolicy.assertDossierAccess(
+        Number(dossierId),
+        user,
+        'read',
+        'view_diligences',
+        1,
+      );
+    }
     return this.statsService.getStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
-      lawyerId: lawyerId ? +lawyerId : undefined,
-      dossierId: dossierId ? +dossierId : undefined,
+      lawyerId: lawyerId ? Number(lawyerId) : undefined,
+      dossierId: dossierId ? Number(dossierId) : undefined,
+      dossierIds,
     });
   }
 
   @Get('stats/:id')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'une diligence spécifique' })
-  @ApiParam({ name: 'id', description: 'ID de la diligence' })
+  @RequirePermissions('view_diligences')
   async getStatsForDiligence(
     @Param('id', ParseIntPipe) id: number,
-  ): Promise<any> {
+    @CurrentUser() user: any,
+  ) {
+    await this.assertDiligenceAccess(id, user, 'read', 'view_diligences');
     return this.statsService.getStats({ diligenceId: id });
   }
 
   @Get('upcoming')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
-  async getUpcomingDeadlines() {
-    const stats = await this.statsService.getStats({});
+  @RequirePermissions('view_diligences')
+  async getUpcomingDeadlines(@CurrentUser() user: any) {
+    const stats = await this.statsService.getStats({
+      dossierIds: await this.accessibleDossierIds(user),
+    });
     return (stats as any).upcomingDeadlines;
   }
 
-  @Get('overdue')
-  // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
-  async getExpiredDeadlines() {
-    const stats = await this.statsService.getStats({});
-    return (stats as any).expiredDeadlines;
-  }
-
-  
-  @Post()
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiOperation({ summary: 'Créer une nouvelle mission de diligence' })
-  @ApiConsumes('multipart/form-data')
-  @ApiResponse({ status: 201, type: DiligenceResponseDto })
-  async create(
-    @Body() createDiligenceDto: CreateDiligenceDto,
-    @UploadedFile() file?: Express.Multer.File,
+  @Get('upcoming/deadlines')
+  @RequirePermissions('view_diligences')
+  async findUpcomingDeadlines(
+    @Query('days') days: number = 7,
+    @CurrentUser() user: any,
   ) {
-    console.log('Données reçues pour création de diligence:', createDiligenceDto);
-    if (file) {
-      console.log('Fichier reçu:', file.originalname, file.mimetype, file.size);
-    }
-    return await this.diligencesService.create(createDiligenceDto);
+    return this.diligencesService.findUpcomingDeadlines(
+      Number(days) || 7,
+      await this.accessibleDossierIds(user),
+    );
   }
 
-  @Get('/search')
-  @ApiOperation({ summary: 'Rechercher des diligences avec filtres' })
+  @Get('overdue')
+  @RequirePermissions('view_diligences')
+  async findOverdue(@CurrentUser() user: any) {
+    return this.diligencesService.findOverdue(
+      await this.accessibleDossierIds(user),
+    );
+  }
+
+  @Get('search')
+  @RequirePermissions('view_diligences')
   @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
   async search(
-    @Query() searchParams?: DiligenceSearchDto,
-    @Query() paginationParams?: PaginationParamsDto,
+    @Query() searchParams: DiligenceSearchDto,
+    @Query() paginationParams: PaginationParamsDto,
+    @CurrentUser() user: any,
   ) {
-    return await this.diligencesService.searchWithTransformer(
-      searchParams as SearchCriteria,
+    const dossierIds = await this.accessibleDossierIds(user);
+    return this.diligencesService.searchWithTransformer(
+      {
+        ...(searchParams as SearchCriteria),
+        dossier_id: In(dossierIds.length > 0 ? dossierIds : [-1]),
+      },
       DiligenceResponseDto,
       paginationParams,
     );
   }
 
   @Get()
-  @ApiOperation({ summary: 'Lister toutes les diligences' })
-  @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
-  async findAll() {
-    return await this.diligencesService.findAll();
+  @RequirePermissions('view_diligences')
+  async findAll(@CurrentUser() user: any) {
+    return this.diligencesService.findAll(
+      await this.accessibleDossierIds(user),
+    );
+  }
+
+  @Post()
+  @RequirePermissions('create_diligence')
+  async create(
+    @Body() dto: CreateDiligenceDto,
+    @CurrentUser() user: any,
+  ) {
+    await this.resourcePolicy.assertDossierAccess(
+      dto.dossier_id,
+      user,
+      'write',
+      'create_diligence',
+      1,
+    );
+    return this.diligencesService.create(dto, this.actorId(user));
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtenir une diligence par ID' })
-  @ApiResponse({ status: 200, type: DiligenceResponseDto })
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    return await this.diligencesService.findOne(id);
+  @RequirePermissions('view_diligences')
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertDiligenceAccess(id, user, 'read', 'view_diligences');
+    return this.diligencesService.findOne(id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Mettre à jour une diligence' })
-  @ApiResponse({ status: 200, type: DiligenceResponseDto })
+  @RequirePermissions('edit_diligence')
   async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateDiligenceDto: UpdateDiligenceDto,
+    @Body() dto: UpdateDiligenceDto,
+    @CurrentUser() user: any,
   ) {
-    return await this.diligencesService.update(id, updateDiligenceDto);
+    await this.assertDiligenceAccess(id, user, 'write', 'edit_diligence');
+    return this.diligencesService.update(id, dto, this.actorId(user));
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Supprimer une diligence' })
-  @ApiResponse({ status: 200, description: 'Diligence supprimée avec succès' })
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return await this.diligencesService.remove(id);
+  @RequirePermissions('delete_diligence')
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertDiligenceAccess(id, user, 'write', 'delete_diligence');
+    return this.diligencesService.remove(id, this.actorId(user));
+  }
+
+  @Post(':id/start')
+  @RequirePermissions('edit_diligence')
+  async start(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertDiligenceAccess(id, user, 'write', 'edit_diligence');
+    return this.diligencesService.start(id, this.actorId(user));
+  }
+
+  @Post(':id/submit-review')
+  @RequirePermissions('edit_diligence')
+  async submitForReview(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertDiligenceAccess(id, user, 'write', 'edit_diligence');
+    return this.diligencesService.submitForReview(id, this.actorId(user));
   }
 
   @Post(':id/complete')
-  @ApiOperation({ summary: 'Marquer une diligence comme terminée' })
-  @ApiResponse({ status: 200, type: DiligenceResponseDto })
+  @RequirePermissions('complete_diligence')
   async complete(
     @Param('id', ParseIntPipe) id: number,
-    @Body('recommendations') recommendations?: string,
+    @Body('recommendations') recommendations: string | undefined,
+    @CurrentUser() user: any,
   ) {
-    return await this.diligencesService.complete(id, recommendations);
+    await this.assertDiligenceAccess(
+      id,
+      user,
+      'write',
+      'complete_diligence',
+    );
+    return this.diligencesService.complete(
+      id,
+      recommendations,
+      this.actorId(user),
+    );
   }
 
   @Post(':id/cancel')
-  @ApiOperation({ summary: 'Annuler une diligence' })
-  @ApiResponse({ status: 200, type: DiligenceResponseDto })
+  @RequirePermissions('edit_diligence')
   async cancel(
     @Param('id', ParseIntPipe) id: number,
-    @Body('reason') reason?: string,
+    @Body('reason') reason: string | undefined,
+    @CurrentUser() user: any,
   ) {
-    return await this.diligencesService.cancel(id, reason);
+    await this.assertDiligenceAccess(id, user, 'write', 'edit_diligence');
+    return this.diligencesService.cancel(id, reason, this.actorId(user));
   }
 
   @Post(':id/generate-report')
-  @ApiOperation({ summary: 'Générer le rapport final de diligence' })
-  @ApiResponse({ status: 200, type: DiligenceResponseDto })
-  async generateReport(@Param('id', ParseIntPipe) id: number) {
-    return await this.diligencesService.generateReport(id);
+  @RequirePermissions('generate_diligence_report')
+  async generateReport(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    await this.assertDiligenceAccess(
+      id,
+      user,
+      'write',
+      'generate_diligence_report',
+    );
+    return this.diligencesService.generateReport(id, this.actorId(user));
   }
 
   @Post(':id/documents')
-  @ApiOperation({ summary: 'Ajouter des documents à la diligence' })
-  @ApiResponse({ status: 200, type: DiligenceResponseDto })
+  @RequirePermissions('attach_document_to_diligence')
   async addDocuments(
     @Param('id', ParseIntPipe) id: number,
     @Body('documentIds') documentIds: number[],
+    @CurrentUser() user: any,
   ) {
-    return await this.diligencesService.addDocumentsToDiligence(id, documentIds);
+    await this.assertDiligenceAccess(
+      id,
+      user,
+      'write',
+      'attach_document_to_diligence',
+    );
+    return this.diligencesService.addDocumentsToDiligence(
+      id,
+      documentIds,
+      this.actorId(user),
+    );
   }
 
-  @Get('upcoming/deadlines')
-  @ApiOperation({ summary: 'Récupérer les diligences avec échéances proches' })
-  @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
-  async findUpcomingDeadlines(@Query('days') days: number = 7) {
-    return await this.diligencesService.findUpcomingDeadlines(days);
+  private accessibleDossierIds(user: any): Promise<number[]> {
+    return this.resourcePolicy.getAccessibleDossierIdsAtLevel(user, 1);
   }
 
-  @Get('overdue')
-  @ApiOperation({ summary: 'Récupérer les diligences en retard' })
-  @ApiResponse({ status: 200, type: [DiligenceResponseDto] })
-  async findOverdue() {
-    return await this.diligencesService.findOverdue();
+  private actorId(user: any): number {
+    return Number(user?.userId ?? user?.id);
   }
 
-
+  private async assertDiligenceAccess(
+    id: number,
+    user: any,
+    mode: 'read' | 'write',
+    permission: string,
+  ) {
+    const scope = await this.diligencesService.getAccessScope(id);
+    return this.resourcePolicy.assertDossierAccess(
+      scope.dossierId,
+      user,
+      mode,
+      permission,
+      scope.confidentialityLevel,
+    );
+  }
 }

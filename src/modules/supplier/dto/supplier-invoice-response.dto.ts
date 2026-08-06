@@ -7,6 +7,9 @@ export class SupplierInvoiceResponseDto {
   @Expose()
   id: number;
 
+  @Expose()
+  supplier_id: number;
+
   @ApiProperty({ example: 'FAC-2026-0452' })
   @Expose()
   invoice_number: string;
@@ -50,6 +53,67 @@ export class SupplierInvoiceResponseDto {
   @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.VIREMENT, required: false })
   @Expose()
   payment_method: PaymentMethod;
+
+  @Expose()
+  payment_reference: string | null;
+
+  @Expose()
+  approved_by_id: number | null;
+
+  @Expose()
+  approved_at: Date | null;
+
+  @Expose()
+  paid_by_id: number | null;
+
+  @Expose()
+  branch_id: number | null;
+
+  @Expose()
+  created_by_id: number | null;
+
+  @Expose()
+  notes: string | null;
+
+  @Expose()
+  created_at: Date;
+
+  @Expose()
+  updated_at: Date;
+
+  @ApiProperty({
+    example: true,
+    description: 'Indique si un justificatif privé est disponible',
+  })
+  @Expose()
+  @Transform(
+    ({ obj }) => Boolean(obj.attachment_url && obj.attachment_sha256),
+    { toClassOnly: true },
+  )
+  has_attachment: boolean;
+
+  @ApiProperty({ example: 'facture-fournisseur.pdf', required: false })
+  @Expose()
+  attachment_original_name: string | null;
+
+  @ApiProperty({ example: 'application/pdf', required: false })
+  @Expose()
+  attachment_mime_type: string | null;
+
+  @ApiProperty({
+    example: '48231',
+    required: false,
+    description: 'Taille en octets, sérialisée comme chaîne pour préserver le bigint',
+  })
+  @Expose()
+  attachment_size: string | null;
+
+  @ApiProperty({
+    example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+    required: false,
+  })
+  @Expose()
+  attachment_sha256: string | null;
 
   // Relations
   @ApiProperty({

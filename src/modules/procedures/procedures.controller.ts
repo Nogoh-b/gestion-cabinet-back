@@ -21,17 +21,19 @@ import { UpdateProcedureTypeDto } from './dto/update-procedure.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 import { ProcedureStatsService } from './procedure-stats.service';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 @ApiTags('procedures')
 @ApiBearerAuth()
 @Controller('procedures')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ProceduresController {
   constructor(private readonly proceduresService: ProceduresService,
       private readonly statsService: ProcedureStatsService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
-  // @Roles(UserRole.ADMIN)
+  @RequirePermissions('manage_settings')
   @ApiOperation({ summary: 'Créer un nouveau type de procédure' })
   @ApiResponse({ status: 201, description: 'Type de procédure créé', type: ProcedureTypeResponseDto })
   create(@Body() createProcedureTypeDto: CreateProcedureTypeDto): Promise<ProcedureTypeResponseDto> {
@@ -72,8 +74,7 @@ export class ProceduresController {
   
 
   @Post(':id/subtypes')
-  @UseGuards(JwtAuthGuard)
-  // @Roles(UserRole.ADMIN)
+  @RequirePermissions('manage_settings')
   @ApiOperation({ summary: 'Créer un sous-type de procédure' })
   @ApiResponse({ status: 201, description: 'Sous-type créé', type: ProcedureTypeResponseDto })
   createSubtype(
@@ -123,8 +124,7 @@ export class ProceduresController {
   }
 
   @Patch(':id')
-  // @Roles(UserRole.ADMIN)
-  @UseGuards(JwtAuthGuard)
+  @RequirePermissions('manage_settings')
   @ApiOperation({ summary: 'Mettre à jour un type de procédure' })
   @ApiResponse({ status: 200, description: 'Type de procédure mis à jour', type: ProcedureTypeResponseDto })
   update(
@@ -135,8 +135,7 @@ export class ProceduresController {
   }
 
   @Delete(':id')
-  // @Roles(UserRole.ADMIN)
-  @UseGuards(JwtAuthGuard)
+  @RequirePermissions('manage_settings')
   @ApiOperation({ summary: 'Supprimer un type de procédure' })
   @ApiResponse({ status: 200, description: 'Type de procédure supprimé' })
   remove(@Param('id', ParseIntPipe) id: string): Promise<void> {

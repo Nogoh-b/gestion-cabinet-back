@@ -32,6 +32,9 @@ export class CreateEcritureDto {
   @IsOptional() @IsString()
   sourceId?: string;
 
+  @IsOptional() @IsString()
+  idempotencyKey?: string;
+
   @IsArray() @ValidateNested({ each: true }) @Type(() => CreateLigneDto)
   lignes: CreateLigneDto[];
 }

@@ -6,6 +6,9 @@ import { Stage } from '../entities/stage.entity';
 import { SubStage } from '../entities/sub-stage.entity';
 import { Transition } from '../entities/transition.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
+import { randomUUID } from 'crypto';
+import { ProcedureTemplateLifecycle } from '../entities/procedure-template.entity';
+import { publishSeededProcedureTemplate } from './procedure-template-seeder.utils';
 
 /**
  * Nom canonique du template par défaut.
@@ -95,101 +98,106 @@ export default class DefaultProcedureTemplateSeeder implements Seeder {
     dataSource: DataSource,
     _factoryManager: SeederFactoryManager,
   ): Promise<any> {
-    const templateRepo   = dataSource.getRepository(ProcedureTemplate);
-    const stageRepo      = dataSource.getRepository(Stage);
-    const subStageRepo   = dataSource.getRepository(SubStage);
-    const transitionRepo = dataSource.getRepository(Transition);
+    return dataSource.transaction(async (manager) => {
+    const templateRepo = manager.getRepository(ProcedureTemplate);
+    const stageRepo = manager.getRepository(Stage);
+    const subStageRepo = manager.getRepository(SubStage);
+    const transitionRepo = manager.getRepository(Transition);
 
-    // ── Idempotence : ne rien faire si le template existe déjà (per-tenant) ──
-    const existing = await findOneForTenant(templateRepo, 'name', DEFAULT_PROCEDURE_TEMPLATE_NAME);
-
-    if (existing) {
-      console.log(`⏩ Template par défaut déjà présent (ID: ${existing.id}) — aucune modification`);
-      return existing;
-    }
-
-    // ── Création du template ─────────────────────────────────────────────────
-    const template = await templateRepo.save(
-      templateRepo.create({
-        name: DEFAULT_PROCEDURE_TEMPLATE_NAME,
-        description:
-          'Template générique 5 étapes utilisé quand le sous-type de procédure n\'a pas de template propre. ' +
-          'Toutes les transitions sont permises.',
-        version: 1,
-        isActive: true,
-      }),
+    let template = await findOneForTenant(
+      templateRepo,
+      'name',
+      DEFAULT_PROCEDURE_TEMPLATE_NAME,
     );
-    console.log(`✅ Template par défaut créé (ID: ${template.id})`);
 
-    // ── Création des stages et sous-étapes ───────────────────────────────────
-    const savedStages: Stage[] = [];
-
-    for (const stageData of DEFAULT_STAGES) {
-      const stage = await stageRepo.save(
-        stageRepo.create({
-          order:          stageData.order,
-          name:           stageData.name,
-          description:    stageData.name,
-          canBeSkipped:   stageData.canBeSkipped,
-          canBeReentered: stageData.canBeReentered,
-          templateId:     template.id,
+    if (!template) {
+      template = await templateRepo.save(
+        templateRepo.create({
+          familyId: randomUUID(),
+          name: DEFAULT_PROCEDURE_TEMPLATE_NAME,
+          description:
+            'Template générique 5 étapes utilisé quand le sous-type de procédure n\'a pas de template propre. ' +
+            'Toutes les transitions sont permises.',
+          version: 1,
+          lifecycleStatus: ProcedureTemplateLifecycle.DRAFT,
+          publishedAt: null,
+          retiredAt: null,
+          contentHash: null,
         }),
       );
-      savedStages.push(stage);
+      console.log(`✅ Template par défaut créé (ID: ${template.id})`);
 
-      for (const ssData of stageData.subStages) {
-        await subStageRepo.save(
-          subStageRepo.create({
-            order:       ssData.order,
-            name:        ssData.name,
-            description: ssData.name,
-            isMandatory: ssData.isMandatory,
-            stageId:     stage.id,
+      const savedStages: Stage[] = [];
+      for (const stageData of DEFAULT_STAGES) {
+        const stage = await stageRepo.save(
+          stageRepo.create({
+            order: stageData.order,
+            name: stageData.name,
+            description: stageData.name,
+            canBeSkipped: stageData.canBeSkipped,
+            canBeReentered: stageData.canBeReentered,
+            templateId: template.id,
           }),
         );
-      }
-      console.log(`  📍 Stage "${stage.name}" — ${stageData.subStages.length} sous-étape(s)`);
-    }
+        savedStages.push(stage);
 
-    // ── Transitions : toutes les paires possibles (allow everything) ─────────
-    let transitionCount = 0;
-
-    for (let i = 0; i < savedStages.length; i++) {
-      for (let j = 0; j < savedStages.length; j++) {
-        if (i === j) continue;
-
-        const isForward  = j === i + 1;   // transition séquentielle naturelle
-        const isDefault  = isForward;      // seules les transitions "suivant" sont par défaut
-
-        await transitionRepo.save(
-          transitionRepo.create({
-            fromStageId:          savedStages[i].id,
-            toStageId:            savedStages[j].id,
-            type:                 'manual',
-            label:                isForward
-              ? null
-              : `Aller vers ${savedStages[j].name}`,
-            isDefault:            isDefault,
-            requiresDecision:     true,
-            requiresValidation:   false,
-            templateId:           template.id,
-            expectsUserInput:     false,
-            userInputs:           null,
-            preTransitionActions: null,
-            postTransitionActions: null,
-            onTransition:         null,
-          } as any),
+        for (const ssData of stageData.subStages) {
+          await subStageRepo.save(
+            subStageRepo.create({
+              order: ssData.order,
+              name: ssData.name,
+              description: ssData.name,
+              isMandatory: ssData.isMandatory,
+              requirements: [],
+              stageId: stage.id,
+            }),
+          );
+        }
+        console.log(
+          `  📍 Stage "${stage.name}" — ${stageData.subStages.length} sous-étape(s)`,
         );
-        transitionCount++;
       }
+
+      let transitionCount = 0;
+      for (let i = 0; i < savedStages.length; i++) {
+        for (let j = 0; j < savedStages.length; j++) {
+          if (i === j) continue;
+          const isDefault = j === i + 1;
+          await transitionRepo.save(
+            transitionRepo.create({
+              fromStageId: savedStages[i].id,
+              toStageId: savedStages[j].id,
+              type: 'manual',
+              label: isDefault ? null : `Aller vers ${savedStages[j].name}`,
+              isDefault,
+              requiresDecision: true,
+              requiresValidation: false,
+              templateId: template.id,
+              expectsUserInput: false,
+              userInputs: null,
+              preTransitionActions: null,
+              postTransitionActions: null,
+              onTransition: null,
+            } as any),
+          );
+          transitionCount += 1;
+        }
+      }
+      console.log(
+        `  🔄 ${transitionCount} parcours créés avant normalisation des retours bornés`,
+      );
+    } else {
+      console.log(
+        `⏩ Template par défaut déjà présent (ID: ${template.id}) — vérification de la publication`,
+      );
     }
 
-    console.log(
-      `  🔄 ${transitionCount} transitions créées ` +
-      `(${savedStages.length} stages → toutes les combinaisons permises)`,
+    const published = await publishSeededProcedureTemplate(
+      manager,
+      template!.id,
     );
-    console.log(`\n🎉 Template par défaut prêt à l'emploi : "${DEFAULT_PROCEDURE_TEMPLATE_NAME}"`);
-
-    return template;
+    console.log(`🎉 Template générique publié : "${published.name}"`);
+    return published;
+    });
   }
 }

@@ -12,7 +12,7 @@ import { Payslip, PayslipStatus } from 'src/modules/payroll/entities/payslip.ent
 
 import { ComptabilisationService } from './comptabilisation.service';
 import { InitialisationComptableService } from './initialisation.service';
-import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 interface LigneSync { eligibles: number; crees: number; ignores: number; erreurs: number }
 
@@ -53,10 +53,10 @@ export class SynchronisationService {
 
   // Statuts éligibles à la comptabilisation
   private static readonly FACTURE_STATUTS = [
-    StatutFacture.ENVOYEE,
+    StatutFacture.VALIDEE,
     StatutFacture.PARTIELLEMENT_PAYEE,
     StatutFacture.PAYEE,
-    StatutFacture.IMPAYEE,
+    StatutFacture.VALIDEE,
   ];
 
   /**
@@ -125,7 +125,11 @@ export class SynchronisationService {
     for (const row of rows) {
       try {
         const r = await fn(row);
-        r ? crees++ : ignores++;
+        if (r) {
+          crees++;
+        } else {
+          ignores++;
+        }
       } catch (e) {
         erreurs++;
         this.logger.error(`Échec comptabilisation : ${(e as Error).message}`);
@@ -184,7 +188,9 @@ export class SynchronisationService {
     return this.traiter(rows, ps => this.comptabilisation.comptabiliserPaie(ps));
   }
 
-  private withTenant<T extends Record<string, any>>(where: T): T & { tenant_id?: number } {
-    return hasActiveTenant() ? { ...where, tenant_id: getCurrentTenantId() } : where;
+  private withTenant<T extends Record<string, any>>(
+    where: T,
+  ): T & { tenant_id: number } {
+    return { ...where, tenant_id: getCurrentTenantId() };
   }
 }

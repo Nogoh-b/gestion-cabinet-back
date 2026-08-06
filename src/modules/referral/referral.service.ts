@@ -27,14 +27,18 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
   }
 
   async create(dto: CreateReferrerDto): Promise<Referrer> {
+    const tenantId = getCurrentTenantId();
     dto = this.normalizeReferrerDto(dto) as CreateReferrerDto;
     const entity = this.repository.create({
       ...dto,
       status: dto.status ?? true,
+      tenant_id: tenantId,
     });
     
     if (dto.employee_id) {
-      const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
+      const employee = await this.employeeRepo.findOne({
+        where: { id: dto.employee_id, tenant_id: tenantId },
+      });
       if (!employee) {
         throw new NotFoundException(`Employé avec l'ID ${dto.employee_id} non trouvé`);
       }
@@ -42,7 +46,9 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
     }
     
     if (dto.customer_id) {
-      const customer = await this.customerRepo.findOne({ where: { id: dto.customer_id } });
+      const customer = await this.customerRepo.findOne({
+        where: { id: dto.customer_id, tenant_id: tenantId },
+      });
       if (!customer) {
         throw new NotFoundException(`Client avec l'ID ${dto.customer_id} non trouvé`);
       }
@@ -56,12 +62,15 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
   }
 
   findAll(): Promise<Referrer[]> {
-    return this.repository.find({ where: { status: true }, relations: ['employee', 'customer'] });
+    return this.repository.find({
+      where: { status: true, tenant_id: getCurrentTenantId() },
+      relations: ['employee', 'customer'],
+    });
   }
 
   async findOne(id: number): Promise<Referrer> {
     const referrer = await this.repository.findOne({
-      where: { id },
+      where: { id, tenant_id: getCurrentTenantId() },
       relations: ['employee', 'customer', 'dossier_referrals', 'dossier_referrals.commissions'],
     });
     if (!referrer) throw new NotFoundException('Apporteur non trouvé');
@@ -73,7 +82,12 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
     dto = this.normalizeReferrerDto(dto) as UpdateReferrerDto;
     
     if (dto.employee_id) {
-      const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
+      const employee = await this.employeeRepo.findOne({
+        where: {
+          id: dto.employee_id,
+          tenant_id: getCurrentTenantId(),
+        },
+      });
       if (!employee) {
         throw new NotFoundException(`Employé avec l'ID ${dto.employee_id} non trouvé`);
       }
@@ -84,7 +98,12 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
     }
     
     if (dto.customer_id) {
-      const customer = await this.customerRepo.findOne({ where: { id: dto.customer_id } });
+      const customer = await this.customerRepo.findOne({
+        where: {
+          id: dto.customer_id,
+          tenant_id: getCurrentTenantId(),
+        },
+      });
       if (!customer) {
         throw new NotFoundException(`Client avec l'ID ${dto.customer_id} non trouvé`);
       }
@@ -101,7 +120,9 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
   }
 
   async remove(id: number): Promise<void> {
-    await this.repository.delete(id);
+    const referrer = await this.findOne(id);
+    referrer.status = false;
+    await this.repository.save(referrer);
   }
 
   private normalizeReferrerDto(dto: CreateReferrerDto | UpdateReferrerDto): CreateReferrerDto | UpdateReferrerDto {
@@ -142,12 +163,15 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
   }
 
   private async generateReferrerCode(): Promise<string> {
-    const tenantId = getCurrentTenantId() || 1;
-    let sequence = (await this.repository.count()) + 1;
+    const tenantId = getCurrentTenantId();
+    let sequence =
+      (await this.repository.count({ where: { tenant_id: tenantId } })) + 1;
 
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const code = `REF-${tenantId}-${String(sequence).padStart(3, '0')}`;
-      const existing = await this.repository.findOne({ where: { referrer_code: code } });
+      const existing = await this.repository.findOne({
+        where: { referrer_code: code, tenant_id: tenantId },
+      });
       if (!existing) return code;
       sequence += 1;
     }

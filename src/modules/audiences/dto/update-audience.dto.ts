@@ -23,7 +23,12 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   })
   @IsOptional()
   @IsArray()
-  @Transform(({ value }) => value === null ? undefined : value) // Transformer null en undefined
+  @Transform(({ value }) => {
+    if (value === '' || value == null) return undefined;
+    if (Array.isArray(value)) return value.map(Number);
+    return String(value).split(',').map((item) => Number(item.trim()));
+  })
+  @IsInt({ each: true })
   document_ids?: number[];
 
   @ApiProperty({
@@ -42,7 +47,7 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   })
   @IsOptional()
   @IsDateString()
-  audience_date?: Date;
+  audience_date?: string;
 
   @ApiProperty({
     example: '09:00:00',
@@ -116,7 +121,7 @@ export class UpdateAudienceDto extends PartialType(CreateAudienceDto) {
   })
   @IsOptional()
   @IsDateString()
-  postponed_to?: Date;
+  postponed_to?: string;
 
 
   @IsOptional()

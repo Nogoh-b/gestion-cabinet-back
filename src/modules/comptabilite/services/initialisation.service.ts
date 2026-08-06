@@ -6,7 +6,7 @@ import { JournalComptable } from '../entities/journal.entity';
 import { ExerciceComptable } from '../entities/exercice.entity';
 import { StatutExercice } from '../enums/comptabilite.enums';
 import { COMPTES_SYSCOHADA, JOURNAUX_SYSCOHADA } from '../data/syscohada.data';
-import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 /**
  * Initialise le plan comptable d'UN tenant : plan SYSCOHADA, journaux,
@@ -87,7 +87,9 @@ export class InitialisationComptableService {
     return true;
   }
 
-  private withTenant<T extends Record<string, any>>(where: T): T & { tenant_id?: number } {
-    return hasActiveTenant() ? { ...where, tenant_id: getCurrentTenantId() } : where;
+  private withTenant<T extends Record<string, any>>(
+    where: T,
+  ): T & { tenant_id: number } {
+    return { ...where, tenant_id: getCurrentTenantId() };
   }
 }

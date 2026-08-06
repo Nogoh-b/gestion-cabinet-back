@@ -35,13 +35,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .where('dossier.status IN (:...statuses)', {
-        statuses: [
-          DossierStatus.OPEN,
-          DossierStatus.AMICABLE,
-          DossierStatus.LITIGATION,
-          // DossierStatus.DECISION,
-          DossierStatus.APPEAL,
-        ],
+        statuses: [DossierStatus.ACTIVE],
       });
     this.applyFilters(query, filters, 'dossier'); ;
     return query.getCount();
@@ -76,21 +70,15 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
     const statusLabels = {
-      [DossierStatus.OPEN]: 'Ouvert',
-      [DossierStatus.AMICABLE]: 'Amiable',
-      [DossierStatus.LITIGATION]: 'Contentieux',
-      // [DossierStatus.DECISION]: 'Décision',
-      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.DRAFT]: 'Brouillon',
+      [DossierStatus.ACTIVE]: 'Actif',
       [DossierStatus.CLOSED]: 'Clôturé',
       [DossierStatus.ARCHIVED]: 'Archivé',
     };
 
     const statusColors = {
-      [DossierStatus.OPEN]: '#3b82f6',
-      [DossierStatus.AMICABLE]: '#10b981',
-      [DossierStatus.LITIGATION]: '#f59e0b',
-      // [DossierStatus.DECISION]: '#8b5cf6',
-      [DossierStatus.APPEAL]: '#ef4444',
+      [DossierStatus.DRAFT]: '#94a3b8',
+      [DossierStatus.ACTIVE]: '#3b82f6',
       [DossierStatus.CLOSED]: '#6b7280',
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };
@@ -101,7 +89,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       percentage: this.calculatePercentage(parseInt(r.count), total),
       color: statusColors[r.status],
       id: r.status,
-      code: DossierStatus[r.status],
+      code: r.status,
     }));
   }
 
@@ -283,11 +271,8 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     const byStatus = await byStatusQuery.getRawMany();
 
     const statusLabels = {
-      [DossierStatus.OPEN]: 'Ouvert',
-      [DossierStatus.AMICABLE]: 'Amiable',
-      [DossierStatus.LITIGATION]: 'Contentieux',
-      // [DossierStatus.DECISION]: 'Décision',
-      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.DRAFT]: 'Brouillon',
+      [DossierStatus.ACTIVE]: 'Actif',
       [DossierStatus.CLOSED]: 'Clôturé',
       [DossierStatus.ARCHIVED]: 'Archivé',
     };
@@ -434,11 +419,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .leftJoinAndSelect('dossier.lawyer', 'lawyer')
       .leftJoinAndSelect('dossier.audiences', 'audience')
       .where('dossier.status IN (:...activeStatuses)', {
-        activeStatuses: [
-          DossierStatus.OPEN,
-          DossierStatus.AMICABLE,
-          DossierStatus.LITIGATION,
-        ],
+        activeStatuses: [DossierStatus.ACTIVE],
       })
       .andWhere(
         '(dossier.danger_level IN (:...highLevels) OR dossier.priority_level >= :highPriority)',
@@ -712,7 +693,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       [StatutFacture.ENVOYEE]: 'Envoyée',
       [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
       [StatutFacture.PAYEE]: 'Payée',
-      [StatutFacture.IMPAYEE]: 'Impayée',
+      [StatutFacture.VALIDEE]: 'Validée',
       [StatutFacture.ANNULEE]: 'Annulée',
     };
 

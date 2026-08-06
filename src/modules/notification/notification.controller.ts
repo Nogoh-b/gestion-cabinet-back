@@ -20,11 +20,13 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { Roles } from 'src/core/decorators/roles.decorator';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 @ApiTags('notifications')
 @ApiBearerAuth()
 @Controller('notifications')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
@@ -59,14 +61,15 @@ export class NotificationController {
   }
 
   @Post()
-  // @Roles(UserRole.ADMIN)
+  @RequirePermissions('send_notification')
   @ApiOperation({ summary: 'Créer une notification (admin)' })
-  async create(@Body() createNotificationDto: CreateNotificationDto) {
-    return this.notificationService.create(createNotificationDto);
+  async create(@Body() createNotificationDto: CreateNotificationDto, @Request() req) {
+    return this.notificationService.create(createNotificationDto, req.user.id);
   }
 
   @Post('bulk')
   @Roles(UserRole.ADMIN)
+  @RequirePermissions('broadcast_notification')
   @ApiOperation({ summary: 'Créer plusieurs notifications (admin)' })
   async createBulk(@Body() createNotificationDtos: CreateBulkNotificationDto, @Request() req) {
     return this.notificationService.createBulk(createNotificationDtos, req.user.id);

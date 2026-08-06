@@ -32,7 +32,7 @@ export interface WriteIntent {
 
 export interface IntentDetectionResult {
   /** READ = interrogation BD, WRITE = écriture BD, CONVERSATIONAL = réponse directe sans SQL */
-  type: 'READ' | 'WRITE' | 'CONVERSATIONAL';
+  type: 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CONVERSATIONAL' | 'DOCUMENT' | 'TEXT';
   writeIntent?: WriteIntent;
   writePlan?: WritePlan;
   sqlQuery?: string;        // Si READ

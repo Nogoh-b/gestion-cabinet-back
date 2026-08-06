@@ -27,6 +27,7 @@ const ROLES_CONFIG: {
       // Audiences
       'view_audiences', 'create_audience', 'edit_audience', 'delete_audience', 'cancel_audience',
       'export_audience', 'confirm_audience', 'postpone_audience', 'mark_audience_held',
+      'schedule_audience_under_48h',
       // Factures & Finances
       'view_factures', 'create_facture', 'edit_facture', 'delete_facture', 'view_financial_reports', 'manage_payments',
       'archive_facture', 'print_facture', 'email_facture', 'download_facture',
@@ -45,10 +46,15 @@ const ROLES_CONFIG: {
       'attach_document_to_diligence', 'add_diligence_note',
       // Utilisateurs & Administration
       'view_users', 'create_user', 'edit_user', 'delete_user', 'manage_roles', 'view_audit_logs', 'manage_settings',
+      'manage_subscription',
+      'use_ai_assistant',
+      'override_dossier_closure',
+      'manage_procedure_templates', 'apply_procedure_transition', 'approve_procedure_requirement',
       // Modèles PDF
       'view_pdf_templates', 'create_pdf_template', 'edit_pdf_template', 'delete_pdf_template',
       // Communications
       'view_messages', 'send_message', 'delete_message', 'view_all_messages',
+      'send_notification', 'broadcast_notification',
       // Rapports
       'view_reports', 'create_reports', 'export_reports', 'view_dashboard', 'view_analytics',
       // Apporteurs
@@ -58,7 +64,9 @@ const ROLES_CONFIG: {
       'validate_referral_commission', 'pay_referral_commission',
       // Paie
       'view_payroll', 'view_payroll_periods', 'create_payroll_period', 'edit_payroll_period', 'close_payroll_period',
-      'view_payslips', 'generate_payslip', 'edit_payslip', 'download_payslip', 'email_payslip',
+      'view_payslips', 'view_own_payslip', 'generate_payslip', 'edit_payslip',
+      'validate_payslip', 'pay_payslip', 'manage_payroll_rates',
+      'download_payslip', 'email_payslip',
       // Dépenses
       'view_expenses', 'view_suppliers', 'create_supplier', 'edit_supplier', 'delete_supplier',
       'view_supplier_invoices', 'create_supplier_invoice', 'edit_supplier_invoice', 'delete_supplier_invoice',
@@ -79,6 +87,7 @@ const ROLES_CONFIG: {
     permissions: [
       // Dossiers
       'view_dossiers', 'create_dossier', 'edit_dossier', 'assign_dossier', 'view_dossier_confidential',
+      'apply_procedure_transition', 'approve_procedure_requirement',
       // Audiences
       'view_audiences', 'create_audience', 'edit_audience', 'delete_audience', 'cancel_audience',
       'export_audience', 'confirm_audience', 'postpone_audience', 'mark_audience_held',
@@ -101,7 +110,7 @@ const ROLES_CONFIG: {
       // Apporteurs
       'view_referrers', 'view_dossier_referrals', 'create_dossier_referral',
       // Paie (consultation)
-      'view_payroll', 'view_payroll_periods', 'view_payslips', 'download_payslip',
+      'view_payroll', 'view_own_payslip', 'download_payslip',
       // Dépenses (consultation + notes de frais)
       'view_expenses', 'view_suppliers', 'view_supplier_invoices', 'view_expense_reports', 'create_expense_report',
       // Comptabilité (consultation)
@@ -146,7 +155,8 @@ const ROLES_CONFIG: {
       'view_referral_commissions', 'create_referral_commission',
       // Paie (gestion complète)
       'view_payroll', 'view_payroll_periods', 'create_payroll_period', 'edit_payroll_period', 'close_payroll_period',
-      'view_payslips', 'generate_payslip', 'download_payslip', 'email_payslip',
+      'view_payslips', 'view_own_payslip', 'generate_payslip', 'edit_payslip',
+      'pay_payslip', 'download_payslip', 'email_payslip',
       // Dépenses
       'view_expenses', 'view_suppliers', 'create_supplier', 'edit_supplier',
       'view_supplier_invoices', 'create_supplier_invoice', 'edit_supplier_invoice',
@@ -178,6 +188,8 @@ const ROLES_CONFIG: {
       'attach_document_to_diligence',
       // Communications
       'view_messages', 'send_message',
+      // Paie personnelle
+      'view_payroll', 'view_own_payslip', 'download_payslip',
       // Dépenses (lecture)
       'view_expenses', 'view_expense_reports',
     ],
@@ -202,6 +214,8 @@ const ROLES_CONFIG: {
       'add_diligence_note', 'download_diligence_report',
       // Communications
       'view_messages', 'send_message',
+      // Paie personnelle
+      'view_payroll', 'view_own_payslip', 'download_payslip',
     ],
   },
 
@@ -225,8 +239,6 @@ const ROLES_CONFIG: {
       'view_diligences', 'view_diligence_findings', 'download_diligence_report',
       // Communications
       'view_messages', 'send_message',
-      // Paie (consultation propres bulletins)
-      'view_payslips', 'download_payslip',
       // Apporteurs (consultation)
       'view_referral_commissions',
     ],
@@ -234,6 +246,18 @@ const ROLES_CONFIG: {
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+const SECURITY_REQUIRED_PERMISSIONS_BY_ROLE: Record<string, string[]> = {
+  admin: [
+    'manage_procedure_templates',
+    'apply_procedure_transition',
+    'approve_procedure_requirement',
+  ],
+  avocat: [
+    'apply_procedure_transition',
+    'approve_procedure_requirement',
+  ],
+};
 
 @Injectable()
 export class RoleSeeder {
@@ -272,21 +296,29 @@ export class RoleSeeder {
       // 2. N'assigner les permissions par défaut QUE pour les nouveaux rôles.
       //    Pour les rôles existants, les modifications manuelles (via l'UI) sont
       //    la source de vérité — on ne les écrase jamais au redémarrage.
-      if (!isNew) {
+      if (
+        !isNew &&
+        !(SECURITY_REQUIRED_PERMISSIONS_BY_ROLE[config.code]?.length)
+      ) {
         this.logger.log(`Rôle "${config.code}" : déjà existant, permissions non modifiées.`);
         continue;
       }
 
       // 3. Récupérer les permissions du tenant courant (QueryBuilder exact)
+      const permissionCodes = isNew
+        ? config.permissions
+        : SECURITY_REQUIRED_PERMISSIONS_BY_ROLE[config.code];
       const qb = this.permissionRepo.createQueryBuilder('p')
-        .where('p.code IN (:...codes)', { codes: config.permissions });
+        .where('p.code IN (:...codes)', { codes: permissionCodes });
       if (hasActiveTenant()) {
         qb.andWhere('p.tenant_id = :tid', { tid: getCurrentTenantId() });
       }
       const permissions = await qb.getMany();
 
       const foundCodes = permissions.map((p) => p.code);
-      const missingCodes = config.permissions.filter((c) => !foundCodes.includes(c));
+      const missingCodes = permissionCodes.filter(
+        (code) => !foundCodes.includes(code),
+      );
       if (missingCodes.length) {
         this.logger.warn(
           `Rôle "${config.code}" — permissions introuvables en DB : ${missingCodes.join(', ')}`,
@@ -295,13 +327,21 @@ export class RoleSeeder {
 
       // 4. Assigner les permissions par défaut au nouveau rôle
       for (const permission of permissions) {
-        await this.rolePermissionRepo.save(
-          this.rolePermissionRepo.create({
-            role_id: role?.id,
+        const existing = await this.rolePermissionRepo.findOne({
+          where: {
+            role_id: role!.id,
             permission_id: permission.id,
-            status: 1,
-          }),
-        );
+          },
+        });
+        if (!existing) {
+          await this.rolePermissionRepo.save(
+            this.rolePermissionRepo.create({
+              role_id: role!.id,
+              permission_id: permission.id,
+              status: 1,
+            }),
+          );
+        }
       }
 
       this.logger.log(

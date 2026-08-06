@@ -5,6 +5,12 @@ import { Cycle } from './cycle.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
+export enum ProcedureTemplateLifecycle {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+  RETIRED = 'RETIRED',
+}
+
 @Entity('procedure_templates')
 @BusinessTable({
   label: 'Modèles de procédure',
@@ -13,7 +19,7 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   category: 'procedure',
   ignored: false,
 })
-@Unique(['tenant_id', 'name'])
+@Unique(['tenant_id', 'familyId', 'version'])
 export class ProcedureTemplate extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
@@ -24,6 +30,9 @@ export class ProcedureTemplate extends BaseEntity {
     ignored: true,
   })
   id: string;
+
+  @Column({ name: 'family_id', type: 'uuid' })
+  familyId: string;
 
   @Column()
   @BusinessColumn({
@@ -55,14 +64,22 @@ export class ProcedureTemplate extends BaseEntity {
   })
   version: number;
 
-  @Column({ default: true })
-  @BusinessColumn({
-    label: 'Actif',
-    description: 'Indique si le modèle est actif et utilisable',
-    importance: 'medium',
-    group: 'gestion',
+  @Column({
+    name: 'lifecycle_status',
+    type: 'enum',
+    enum: ProcedureTemplateLifecycle,
+    default: ProcedureTemplateLifecycle.DRAFT,
   })
-  isActive: boolean;
+  lifecycleStatus: ProcedureTemplateLifecycle;
+
+  @Column({ name: 'published_at', type: 'datetime', nullable: true })
+  publishedAt: Date | null;
+
+  @Column({ name: 'retired_at', type: 'datetime', nullable: true })
+  retiredAt: Date | null;
+
+  @Column({ name: 'content_hash', type: 'char', length: 64, nullable: true })
+  contentHash: string | null;
 
   @OneToMany(() => Stage, (stage) => stage.template, { cascade: true })
   stages: Stage[];

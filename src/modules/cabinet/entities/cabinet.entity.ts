@@ -1,3 +1,4 @@
+import { Plan } from 'src/modules/plans/entities/plan.entity';
 import {
   Column,
   CreateDateColumn,
@@ -7,8 +8,9 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Plan } from 'src/modules/plans/entities/plan.entity';
+
 import { logoFileToUrl } from '../cabinet-logo.util';
+
 
 export type CabinetStatus = 'active' | 'trial' | 'suspended';
 export type CabinetPlan   =
@@ -52,8 +54,8 @@ export class Cabinet {
   @Column({ default: 'path' })
   routing_mode: 'subdomain' | 'path';
 
-  @Column({ nullable: true })
-  trial_ends_at: Date;
+  @Column({ type: 'datetime', nullable: true })
+  trial_ends_at: Date | null;
 
   // ── Branding / coordonnées (utilisés dans les en-têtes/pieds d'e-mail) ─────
   // NOTE: ces champs constituent la source de configuration UNIQUE du cabinet
@@ -264,6 +266,19 @@ export class Cabinet {
   @Column({ type: 'json', nullable: true, name: 'smtp_config' })
   smtp_config: object | null;
 
+  /**
+   * Enveloppe AES-256-GCM de la configuration SMTP. Non sélectionnée par
+   * défaut afin qu'aucun endpoint générique ne puisse la sérialiser.
+   * `smtp_config` reste temporairement présent pour la reprise des données.
+   */
+  @Column({
+    type: 'longtext',
+    nullable: true,
+    name: 'smtp_config_encrypted',
+    select: false,
+  })
+  smtp_config_encrypted: string | null;
+
   // ── Templates métier (anciennement app_settings) ──────────────────────────
 
   // ── Frais d'ouverture de dossier ──────────────────────────────────────────
@@ -343,10 +358,23 @@ export function parseLogoInput(
  */
 export function serializeCabinet<T extends Partial<Cabinet>>(
   cabinet: T,
-): Omit<T, 'logo' | 'logo_mime' | 'logo_file'> & { logo_url: string | null } {
-  const { logo, logo_mime, logo_file, ...rest } = cabinet as Cabinet;
+): Omit<
+  T,
+  'logo' | 'logo_mime' | 'logo_file' | 'smtp_config' | 'smtp_config_encrypted'
+> & { logo_url: string | null } {
+  const {
+    logo,
+    logo_mime,
+    logo_file,
+    smtp_config: _smtpConfig,
+    smtp_config_encrypted: _smtpConfigEncrypted,
+    ...rest
+  } = cabinet as Cabinet;
   return {
-    ...(rest as Omit<T, 'logo' | 'logo_mime' | 'logo_file'>),
+    ...(rest as Omit<
+      T,
+      'logo' | 'logo_mime' | 'logo_file' | 'smtp_config' | 'smtp_config_encrypted'
+    >),
     logo_url: logoFileToUrl(logo_file) ?? cabinetLogoToDataUri(logo, logo_mime),
   };
 }

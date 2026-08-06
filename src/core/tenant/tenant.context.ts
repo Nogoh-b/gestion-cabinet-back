@@ -16,7 +16,11 @@ const _storage = new AsyncLocalStorage<TenantStore>();
  * Utilisée par TenantRepositoryPatch pour filtrer les requêtes TypeORM.
  */
 export function getCurrentTenantId(): number {
-  return _storage.getStore()?.tenantId ?? 1;
+  const tenantId = _storage.getStore()?.tenantId;
+  if (!tenantId) {
+    throw new Error('Aucun contexte cabinet actif');
+  }
+  return tenantId;
 }
 
 /**
@@ -25,6 +29,17 @@ export function getCurrentTenantId(): number {
  */
 export function hasActiveTenant(): boolean {
   return _storage.getStore() !== undefined;
+}
+
+/** Exécute une tâche technique (worker, scheduler) dans un cabinet explicite. */
+export function runWithTenantContext<T>(
+  tenantId: number,
+  fn: () => T,
+): T {
+  if (!Number.isInteger(tenantId) || tenantId <= 0) {
+    throw new Error('Contexte cabinet technique invalide');
+  }
+  return _storage.run({ tenantId }, fn);
 }
 
 /**
@@ -46,12 +61,16 @@ export class TenantContext {
 
   /** Exécute fn() dans un contexte lié au tenantId donné */
   run<T>(tenantId: number, fn: () => T): T {
-    return this.storage.run({ tenantId }, fn);
+    return runWithTenantContext(tenantId, fn);
   }
 
-  /** Retourne le tenantId du contexte courant (ou 1 par défaut) */
+  /** Retourne le tenantId du contexte courant. Échoue hors contexte. */
   getTenantId(): number {
-    return this.storage.getStore()?.tenantId ?? 1;
+    const tenantId = this.storage.getStore()?.tenantId;
+    if (!tenantId) {
+      throw new Error('Aucun contexte cabinet actif');
+    }
+    return tenantId;
   }
 
   /** Retourne true si un contexte tenant est actif */

@@ -210,27 +210,21 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       }));
 
     // Répartition par statut
-    const byStatusMap = new Map<number, number>();
+    const byStatusMap = new Map<DossierStatus, number>();
     dossiersFiltres.forEach(d => {
       byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
     });
 
     const statusLabels = {
-      [DossierStatus.OPEN]: 'Ouvert',
-      [DossierStatus.AMICABLE]: 'Amiable',
-      [DossierStatus.LITIGATION]: 'Contentieux',
-      // [DossierStatus.DECISION]: 'Décision',
-      [DossierStatus.APPEAL]: 'Recours',
+      [DossierStatus.DRAFT]: 'Brouillon',
+      [DossierStatus.ACTIVE]: 'Actif',
       [DossierStatus.CLOSED]: 'Clôturé',
       [DossierStatus.ARCHIVED]: 'Archivé',
     };
 
     const statusColors = {
-      [DossierStatus.OPEN]: '#3b82f6',
-      [DossierStatus.AMICABLE]: '#10b981',
-      [DossierStatus.LITIGATION]: '#f59e0b',
-      // [DossierStatus.DECISION]: '#8b5cf6',
-      [DossierStatus.APPEAL]: '#ef4444',
+      [DossierStatus.DRAFT]: '#94a3b8',
+      [DossierStatus.ACTIVE]: '#3b82f6',
       [DossierStatus.CLOSED]: '#6b7280',
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };
@@ -396,11 +390,14 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const tempsMoyenTraitement = dossiersAvecDuree > 0 ? Math.round(totalJours / dossiersAvecDuree) : 0;
 
-    // Taux de succès (basé sur les dossiers clos sans contentieux)
-    const dossiersReussis = dossiersClos.filter(d => 
-      d.status === DossierStatus.CLOSED && d.final_decision?.includes('favorable')
+    // Taux de succès — définition canonique (alignée sur les Rapports avancés) :
+    //   gagnés / (gagnés + perdus + transigés), basé sur le champ `outcome`.
+    // Les issues `abandoned`/`unknown` sont exclues (ni gagnées ni perdues).
+    const gagnes = dossiersClos.filter(d => (d as any).outcome === 'won').length;
+    const tranches = dossiersClos.filter(d =>
+      ['won', 'lost', 'settled'].includes((d as any).outcome),
     ).length;
-    const tauxSucces = dossiersClos.length > 0 ? Math.round((dossiersReussis / dossiersClos.length) * 100) : 0;
+    const tauxSucces = tranches > 0 ? Math.round((gagnes / tranches) * 100) : 0;
 
     // Audiences
     const toutesAudiences = dossiers.flatMap(d => d.audiences || []);
@@ -818,7 +815,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const globalQuery = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoin('employee.managed_dossiers', 'dossier')
-      .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed', { closed: 5 })
+      .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed', {
+        closed: DossierStatus.CLOSED,
+      })
       .leftJoin('employee.managed_dossiers', 'audienceDossier')
       .leftJoin('audienceDossier.audiences', 'audience')
       .leftJoin('employee.assigned_diligences', 'diligence')
@@ -845,10 +844,16 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .addSelect('COUNT(DISTINCT employee.id)', 'employeeCount')
       .addSelect('COUNT(DISTINCT dossier.id)', 'totalDossiers')
       .addSelect('AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))', 'avgCompletionTime')
-      .addSelect('SUM(CASE WHEN completedDossier.status = :closed THEN 1 ELSE 0 END) / COUNT(DISTINCT dossier.id) * 100', 'successRate')
+      // Taux de succès canonique : gagnés / (gagnés+perdus+transigés).
+      // COUNT(DISTINCT CASE…) → immunisé contre l'inflation des jointures.
+      .addSelect(
+        "ROUND(COUNT(DISTINCT CASE WHEN dossier.outcome = 'won' THEN dossier.id END) / " +
+          "NULLIF(COUNT(DISTINCT CASE WHEN dossier.outcome IN ('won','lost','settled') THEN dossier.id END),0) * 100, 0)",
+        'successRate',
+      )
       .leftJoin('employee.managed_dossiers', 'dossier')
       .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed')
-      .setParameter('closed', 5)
+      .setParameter('closed', DossierStatus.CLOSED)
       .groupBy('employee.position');
 
     this.applyFilters(byPositionQuery, filters, 'employee');
@@ -935,10 +940,12 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .addSelect('branch.name', 'branch')
       .addSelect('COUNT(DISTINCT dossier.id)', 'dossierCount')
       .addSelect('COUNT(DISTINCT completedDossier.id)', 'completedDossiers')
+      .addSelect("COUNT(DISTINCT CASE WHEN dossier.outcome = 'won' THEN dossier.id END)", 'wonCount')
+      .addSelect("COUNT(DISTINCT CASE WHEN dossier.outcome IN ('won','lost','settled') THEN dossier.id END)", 'decidedCount')
       .addSelect('AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))', 'avgCompletionTime')
       .addSelect('COUNT(DISTINCT audience.id)', 'audienceCount')
       .addSelect('COUNT(DISTINCT diligence.id)', 'diligenceCount')
-      .setParameter('closed', 5)
+      .setParameter('closed', DossierStatus.CLOSED)
       .groupBy('employee.id, user.first_name, user.last_name, employee.position, branch.name')
       .orderBy('completedDossiers', 'DESC')
       .limit(10);
@@ -954,8 +961,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       branch: r.branch,
       dossierCount: parseInt(r.dossierCount || 0),
       completedDossiers: parseInt(r.completedDossiers || 0),
-      successRate: parseInt(r.dossierCount || 0) > 0
-        ? Math.round((parseInt(r.completedDossiers || 0) / parseInt(r.dossierCount || 0)) * 100)
+      // Taux de succès canonique : gagnés / (gagnés+perdus+transigés).
+      successRate: parseInt(r.decidedCount || 0) > 0
+        ? Math.round((parseInt(r.wonCount || 0) / parseInt(r.decidedCount || 0)) * 100)
         : 0,
       averageCompletionTime: Math.round(parseFloat(r.avgCompletionTime || 0)),
       audienceCount: parseInt(r.audienceCount || 0),

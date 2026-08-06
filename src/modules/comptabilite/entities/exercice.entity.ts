@@ -1,10 +1,19 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { StatutExercice } from '../enums/comptabilite.enums';
 import { Ecriture } from './ecriture.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('exercices_comptables')
+@Index('UQ_exercises_tenant_year', ['tenant_id', 'annee'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Exercices comptables',
   description: 'Exercices (années) comptables du cabinet. Un exercice est ouvert ou clôturé ; aucune écriture manuelle ne peut être ajoutée à un exercice clôturé.',
@@ -55,13 +64,18 @@ export class ExerciceComptable extends TenantEntity {
   @Column({ type: 'enum', enum: StatutExercice, default: StatutExercice.OUVERT })
   @BusinessColumn({
     label: 'Statut',
-    description: 'OUVERT ou CLOTURE',
+    description: "BD: 'OUVERT' ou 'CLOTURE'.",
     importance: 'critical',
     group: 'état',
   })
   statut: StatutExercice;
 
-  @Column({ name: 'date_cloture', type: 'date', nullable: true })
+  @Column({
+    name: 'date_cloture',
+    type: 'datetime',
+    precision: 6,
+    nullable: true,
+  })
   @BusinessColumn({
     label: 'Date de clôture',
     description: 'Date à laquelle l\'exercice a été clôturé',
@@ -69,7 +83,26 @@ export class ExerciceComptable extends TenantEntity {
     importance: 'medium',
     group: 'dates',
   })
-  dateCloture: Date;
+  dateCloture: Date | null;
+
+  @Column({ name: 'closing_report', type: 'text', nullable: true })
+  closingReport: string | null;
+
+  @Column({
+    name: 'reconciliation_reference',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  reconciliationReference: string | null;
+
+  @Column({
+    name: 'closed_by',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  closedBy: string | null;
 
   @OneToMany(() => Ecriture, e => e.exercice)
   ecritures: Ecriture[];

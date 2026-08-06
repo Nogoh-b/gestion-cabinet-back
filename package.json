@@ -4,6 +4,7 @@
   "description": "",
   "author": "",
   "private": true,
+  "packageManager": "npm@10.9.8",
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
@@ -13,20 +14,37 @@
     "start:deve": "nest start --watch --port 3004",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main.js",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit --incremental false --pretty false",
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:ci": "jest --runInBand --silent --testTimeout=30000",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "typeorm": "typeorm-ts-node-commonjs",
+    "typeorm": "node -r ts-node/register -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration": "ts-node migration-cli.ts migrate generate",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
-    "mig:run": "npx typeorm migration:run",
+    "procedure-templates:repair": "ts-node -r tsconfig-paths/register scripts/repair-procedure-templates.ts",
+    "mig:run": "npm run migration:run",
     "seed:migrate": "ts-node scripts/seed-with-migration.ts",
     "migration:generate": "npm run typeorm migration:generate -- -d src/data-source.ts",
     "migration:run": "npm run typeorm migration:run -- -d src/data-source.ts",
-    "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts"
+    "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts",
+    "migration:bootstrap": "node scripts/bootstrap-empty-database.mjs",
+    "migration:rehearse": "ts-node -r tsconfig-paths/register scripts/migration-rehearsal.ts",
+    "migration:verify": "node scripts/verify-live-schema.mjs",
+    "migration:verify-data": "node scripts/verify-migrated-data.mjs",
+    "outbox:verify-claim": "ts-node -r tsconfig-paths/register scripts/verify-outbox-claim-compatibility.ts",
+    "secrets:bootstrap": "node scripts/bootstrap-local-secrets.mjs",
+    "verify:architecture": "node scripts/verify-architecture.mjs",
+    "openapi:generate": "node scripts/generate-openapi-static.mjs",
+    "openapi:check": "node scripts/generate-openapi-static.mjs --check",
+    "backup:encrypt-legacy": "node scripts/encrypt-legacy-backups.mjs",
+    "backup:create": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts create",
+    "backup:verify": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts verify",
+    "backup:restore": "ts-node -r tsconfig-paths/register scripts/backup-maintenance.ts restore"
   },
   "dependencies": {
     "@bull-board/api": "^6.10.1",
@@ -35,7 +53,8 @@
     "@iarna/toml": "^2.2.5",
     "@langchain/community": "^1.1.28",
     "@langchain/core": "^1.1.48",
-    "@langchain/openai": "^0.4.9",
+    "@langchain/google-genai": "2.1.31",
+    "@langchain/openai": "1.4.7",
     "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/axios": "^4.0.0",
     "@nestjs/bull": "^11.0.2",
@@ -60,10 +79,12 @@
     "@tiptap/extension-table-header": "^3.24.0",
     "@tiptap/extension-table-row": "^3.24.0",
     "@tiptap/prosemirror-tables": "^1.1.4",
+    "@types/archiver": "^8.0.0",
     "@types/bcrypt": "^5.0.2",
     "@types/passport-http": "^0.3.11",
     "@types/passport-jwt": "^4.0.1",
     "@types/sharp": "^0.31.1",
+    "archiver": "^8.0.0",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
     "bull": "^4.16.5",
@@ -101,7 +122,6 @@
     "rxjs": "^7.8.1",
     "sharp": "^0.34.1",
     "socket.io": "^4.8.1",
-    "sqlite3": "^6.0.1",
     "toml": "^3.0.0",
     "typeorm": "^0.3.25",
     "typeorm-extension": "^3.7.1",
@@ -115,8 +135,6 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
-    "@swc/cli": "^0.8.1",
-    "@swc/core": "^1.10.7",
     "@types/bcrypt": "^5.0.2",
     "@types/bull": "^3.15.9",
     "@types/compression": "^1.8.0",
@@ -131,7 +149,6 @@
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "chokidar": "^4.0.3",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
@@ -145,7 +162,7 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typeorm-ts-node-commonjs": "^0.3.20",
-    "typescript": "^5.7.3",
+    "typescript": "5.8.3",
     "typescript-eslint": "^8.20.0"
   },
   "overrides": {
@@ -161,7 +178,12 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "<rootDir>/../tsconfig.spec.json"
+        }
+      ]
     },
     "moduleNameMapper": {
       "^src/(.*)$": "<rootDir>/$1"
@@ -171,6 +193,5 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
-  },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  }
 }

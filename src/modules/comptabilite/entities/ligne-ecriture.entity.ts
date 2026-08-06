@@ -1,7 +1,16 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { CompteComptable } from './compte.entity';
 import { Ecriture } from './ecriture.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 /**
  * Lignes de débit/crédit d'une écriture comptable.
@@ -14,8 +23,9 @@ import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-meta
  */
 @Entity('lignes_ecriture_comptable')
 @BusinessTable({
-  label: 'Lignes d\'écriture',
-  description: 'Lignes de débit/crédit composant une écriture comptable. Toujours rattachées à une écriture et un compte.',
+  label: "Lignes d'écriture",
+  description:
+    'Lignes de débit/crédit composant une écriture comptable. Toujours rattachées à une écriture et un compte.',
   icon: '➖',
   category: 'finance',
 })
@@ -33,7 +43,7 @@ export class LigneEcriture {
   @Column({ name: 'ecriture_id' })
   ecriture_id: number;
 
-  @ManyToOne(() => Ecriture, e => e.lignes, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Ecriture, (e) => e.lignes, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'ecriture_id' })
   @BusinessColumn({
     label: 'Écriture',
@@ -56,7 +66,7 @@ export class LigneEcriture {
   })
   compte: CompteComptable;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
   @BusinessColumn({
     label: 'Débit',
     description: 'Montant au débit',
@@ -66,7 +76,7 @@ export class LigneEcriture {
   })
   debit: number;
 
-  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
   @BusinessColumn({
     label: 'Crédit',
     description: 'Montant au crédit',
@@ -79,7 +89,8 @@ export class LigneEcriture {
   @Column({ length: 500, nullable: true })
   @BusinessColumn({
     label: 'Libellé',
-    description: 'Libellé spécifique de la ligne (par défaut, celui de l\'écriture)',
+    description:
+      "Libellé spécifique de la ligne (par défaut, celui de l'écriture)",
     importance: 'medium',
     group: 'contenu',
   })

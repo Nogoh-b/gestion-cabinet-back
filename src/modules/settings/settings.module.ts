@@ -6,11 +6,13 @@ import { AppSettingsService } from './services/app-settings.service';
 import { UserSettingsService } from './services/user-settings.service';
 import { AppSettingsController } from './controllers/app-settings.controller';
 import { UserSettingsController } from './controllers/user-settings.controller';
+import { EmailsModule } from 'src/core/shared/emails/emails.module';
 
 @Module({
   imports: [
     // La configuration cabinet vit désormais dans la table `cabinets`.
     TypeOrmModule.forFeature([Cabinet, UserSettings]),
+    EmailsModule,
   ],
   controllers: [AppSettingsController, UserSettingsController],
   providers: [AppSettingsService, UserSettingsService],

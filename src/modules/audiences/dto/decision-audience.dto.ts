@@ -1,6 +1,15 @@
 // src/modules/audiences/dto/decision-audience.dto.ts
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsArray, IsDateString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
+import { AudienceRecordStatus } from '../entities/audience.entity';
 
 export class DecisionAudienceDto {
   @ApiProperty({ description: 'Texte de la décision', required: false })
@@ -16,6 +25,8 @@ export class DecisionAudienceDto {
   @ApiProperty({ description: 'IDs des documents liés à la décision', required: false, type: [Number] })
   @IsOptional()
   @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
   document_decision_ids?: number[];
 
   @ApiProperty({ description: 'Date de la décision', required: false })
@@ -33,6 +44,16 @@ export class DecisionAudienceDto {
   @IsOptional()
   @IsString()
   decision_notes?: string;
+
+  @ApiProperty({
+    description: 'Motif obligatoire pour amender une décision scellée',
+    required: false,
+    minLength: 10,
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  amendment_reason?: string;
 }
 
 export class AddDecisionResponseDto {
@@ -49,5 +70,21 @@ export class AddDecisionResponseDto {
   decision_date: Date;
 
   @ApiProperty()
-  documents: any[];
+  documents: Array<{
+    id: number;
+    name: string;
+    current_version_id: string | null;
+  }>;
+
+  @ApiProperty({ enum: AudienceRecordStatus })
+  record_status: AudienceRecordStatus;
+
+  @ApiProperty()
+  record_version: number;
+
+  @ApiProperty({ nullable: true })
+  record_hash: string | null;
+
+  @ApiProperty({ nullable: true })
+  sealed_at: Date | null;
 }

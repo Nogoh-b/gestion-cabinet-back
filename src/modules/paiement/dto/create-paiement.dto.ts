@@ -1,6 +1,6 @@
 // src/paiement/dto/create-paiement.dto.ts
 import { Type } from 'class-transformer';
-import { IsString, IsNumber, IsOptional, IsDate, IsEnum, IsBoolean } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDate, IsEnum, IsBoolean, IsPositive } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
@@ -35,6 +35,7 @@ export class CreatePaiementDto {
     default: 0,
   })
   @IsNumber()
+  @IsPositive()
   montant: number = 0;
 
   @ApiProperty({
@@ -44,7 +45,7 @@ export class CreatePaiementDto {
     default: ModePaiement.VIREMENT,
   })
   @IsEnum(ModePaiement)
-  modePaiment: ModePaiement = ModePaiement.VIREMENT;
+  modePaiement: ModePaiement = ModePaiement.VIREMENT;
 
   @ApiProperty({
     description: 'Date du paiement',
@@ -101,16 +102,6 @@ export class CreatePaiementDto {
   titulaire?: string = 'John Doe';
 
   @ApiPropertyOptional({
-    enum: StatutPaiement,
-    description: 'Statut du paiement',
-    example: StatutPaiement.EN_ATTENTE,
-    default: StatutPaiement.EN_ATTENTE,
-  })
-  @IsEnum(StatutPaiement)
-  @IsOptional()
-  status?: StatutPaiement ;
-
-  @ApiPropertyOptional({
     description: 'Notes internes ou commentaire du paiement',
     example: 'Acompte sur honoraires',
     default: 'Acompte sur honoraires',
@@ -118,15 +109,6 @@ export class CreatePaiementDto {
   @IsString()
   @IsOptional()
   notes?: string = 'Acompte sur honoraires';
-
-  @ApiPropertyOptional({
-    description: 'Preuve de paiement (URL ou chemin fichier)',
-    example: 'https://cabinetjuridique.com/uploads/preuves/paiement-001.pdf',
-    default: 'https://cabinetjuridique.com/uploads/preuves/paiement-001.pdf',
-  })
-  @IsString()
-  @IsOptional()
-  preuvePaiement?: string = 'https://cabinetjuridique.com/uploads/preuves/paiement-001.pdf';
 
   /**
    * Transient — case « Notifier le client » du modal.

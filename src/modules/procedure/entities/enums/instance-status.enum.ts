@@ -1,12 +1,8 @@
 // enums/instance-status.enum.ts
 export enum InstanceStatus {
-  ACTIVE = 'active',
-  SUSPENDED = 'suspended',
-  CLOSED = 'closed',
-  ABANDONED = 'abandoned',
-  COMPLETED = 'completed',
-  PAUSED = 'paused',
-  IN_PROGRESS = 'in_progress',
+  ACTIVE = 'ACTIVE',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
 // enums/task-status.enum.ts

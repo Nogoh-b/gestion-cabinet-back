@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Query,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
@@ -19,18 +20,32 @@ import { UpdateExpenseReportDto } from './dto/update-expense-report.dto';
 import { ExpenseReport } from './entities/expense-report.entity';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { ExpenseReportSearchDto } from './dto/expense-report-search.dto';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { RejectExpenseReportDto } from './dto/reject-expense-report.dto';
+import { ReimburseExpenseReportDto } from './dto/reimburse-expense-report.dto';
+import { plainToInstance } from 'class-transformer';
+import { ExpenseReportResponseDto } from './dto/expense-report-response.dto';
 
 @Controller('expense-reports')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ExpenseReportsController {
   constructor(private readonly service: ExpenseReportsService) {}
 
+  private response(
+    value: object | object[],
+  ): ExpenseReportResponseDto | ExpenseReportResponseDto[] {
+    return plainToInstance(ExpenseReportResponseDto, value, {
+      excludeExtraneousValues: true,
+      enableImplicitConversion: true,
+    });
+  }
+
   @Post()
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('create_expense_report')
   @ApiOperation({ summary: 'Créer une note de frais' })
-  create(@Body() dto: CreateExpenseReportDto) {
-    return this.service.create(dto);
+  async create(@Body() dto: CreateExpenseReportDto) {
+    return this.response(await this.service.create(dto));
   }
 
   @Get('/search')
@@ -45,75 +60,108 @@ export class ExpenseReportsController {
     @Query() searchParams?: ExpenseReportSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(
+    const result = await this.service.searchWithTransformer(
       searchParams as any,
-      ExpenseReport,
+      ExpenseReportResponseDto,
       paginationParams,
     );
+    return {
+      ...result,
+      data: this.response(result.data),
+    };
   }
 
   @Get('/employee/:employeeId')
   @RequirePermissions('view_expense_reports')
   @ApiOperation({ summary: 'Notes de frais d\'un employé' })
-  findByEmployee(@Param('employeeId') employeeId: string) {
-    return this.service.findByEmployee(+employeeId);
+  async findByEmployee(
+    @Param('employeeId', ParseIntPipe) employeeId: number,
+  ) {
+    return this.response(await this.service.findByEmployee(employeeId));
   }
 
   @Get()
   @RequirePermissions('view_expense_reports')
   @ApiOperation({ summary: 'Lister toutes les notes de frais' })
-  findAll() {
-    return this.service.findAll();
+  async findAll() {
+    return this.response(await this.service.findAll());
   }
 
   @Get(':id')
   @RequirePermissions('view_expense_reports')
   @ApiOperation({ summary: 'Détail d\'une note de frais' })
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(+id);
+  async findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.response(await this.service.findOne(id));
   }
 
-  @Patch(':id/approve')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Post(':id/submit')
+  @RequirePermissions('edit_expense_report')
+  @ApiOperation({ summary: 'Soumettre une note de frais' })
+  async submit(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.response(await this.service.submit(id, {
+      userId: Number(user?.userId ?? user?.id),
+      role: user?.role,
+    }));
+  }
+
+  @Post(':id/approve')
   @RequirePermissions('validate_expense_report')
   @ApiOperation({ summary: 'Approuver une note de frais' })
-  approve(@Param('id') id: string, @Body('userId') userId: number) {
-    return this.service.approve(+id, userId);
+  async approve(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.response(await this.service.approve(id, {
+      userId: Number(user?.userId ?? user?.id),
+      role: user?.role,
+    }));
   }
 
-  @Patch(':id/reject')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Post(':id/reject')
   @RequirePermissions('validate_expense_report')
   @ApiOperation({ summary: 'Rejeter une note de frais' })
-  reject(
-    @Param('id') id: string,
-    @Body('userId') userId: number,
-    @Body('notes') notes: string,
+  async reject(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RejectExpenseReportDto,
+    @CurrentUser() user: any,
   ) {
-    return this.service.reject(+id, userId, notes);
+    return this.response(await this.service.reject(id, dto.raison, {
+      userId: Number(user?.userId ?? user?.id),
+      role: user?.role,
+    }));
   }
 
-  @Patch(':id/reimburse')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Post(':id/reimburse')
   @RequirePermissions('reimburse_expense_report')
   @ApiOperation({ summary: 'Marquer comme remboursée' })
-  markReimbursed(@Param('id') id: string) {
-    return this.service.markReimbursed(+id);
+  async markReimbursed(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReimburseExpenseReportDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.response(await this.service.markReimbursed(id, dto, {
+      userId: Number(user?.userId ?? user?.id),
+      role: user?.role,
+    }));
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_expense_report')
   @ApiOperation({ summary: 'Modifier une note de frais' })
-  update(@Param('id') id: string, @Body() dto: UpdateExpenseReportDto) {
-    return this.service.update(+id, dto);
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateExpenseReportDto,
+  ) {
+    return this.response(await this.service.update(id, dto));
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('delete_expense_report')
   @ApiOperation({ summary: 'Supprimer une note de frais' })
-  remove(@Param('id') id: string) {
-    return this.service.remove(+id);
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.service.remove();
   }
 }

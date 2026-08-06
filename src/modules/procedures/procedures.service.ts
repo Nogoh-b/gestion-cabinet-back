@@ -11,7 +11,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 
 import { Dossier } from '../dossiers/entities/dossier.entity';
-import { ProcedureTemplate } from '../procedure/entities/procedure-template.entity';
+import {
+  ProcedureTemplate,
+  ProcedureTemplateLifecycle,
+} from '../procedure/entities/procedure-template.entity';
 import { ProcedureTemplateService } from '../procedure/services/procedure-template.service';
 import { CreateProcedureTypeDto } from './dto/create-procedure.dto';
 import { ProcedureSearchDto } from './dto/procedure-search.dto';
@@ -66,18 +69,11 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       throw new ConflictException('Un type de procédure avec ce nom existe déjà');
     }
 
-    let template : ProcedureTemplate = new ProcedureTemplate(); 
+    let template: ProcedureTemplate | null = null;
     if(createProcedureTypeDto.procedure_template_id){
-      template = await this.procedureTemplateService.findOne(createProcedureTypeDto.procedure_template_id);
-      if(!template){
-        throw new NotFoundException(`Template de procédure avec ID ${createProcedureTypeDto.procedure_template_id} non trouvé`);
-      }
-    } else {
-      // Créer automatiquement un template avec le même nom et description
-      // template = await this.procedureTemplateService.create({
-      //   name: createProcedureTypeDto.name,
-      //   description: createProcedureTypeDto.description,
-      // });
+      template = await this.findPublishedTemplate(
+        createProcedureTypeDto.procedure_template_id,
+      );
     }
 
     const procedureType = this.procedureTypeRepository.create({
@@ -111,16 +107,9 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
 
     let template : ProcedureTemplate | null = null; 
     if(createProcedureTypeDto.procedure_template_id){
-      template = await this.procedureTemplateService.findOne(createProcedureTypeDto.procedure_template_id);
-      if(!template){
-        throw new NotFoundException(`Template de procédure avec ID ${createProcedureTypeDto.procedure_template_id} non trouvé`);
-      }
-    } else {
-      // Créer automatiquement un template avec le même nom et description
-      // template = await this.procedureTemplateService.create({
-      //   name: createProcedureTypeDto.name,
-      //   description: createProcedureTypeDto.description,
-      // });
+      template = await this.findPublishedTemplate(
+        createProcedureTypeDto.procedure_template_id,
+      );
     }
 
     const subtype = this.procedureTypeRepository.create({
@@ -340,15 +329,9 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
 
   // Gestion du template de procédure
   if (updateProcedureTypeDto.procedure_template_id) {
-    // Vérifier que le template existe
-    const template = await this.procedureTemplateService.findOne(
-      updateProcedureTypeDto.procedure_template_id 
+    const template = await this.findPublishedTemplate(
+      updateProcedureTypeDto.procedure_template_id,
     );
-
-    if (!template) {
-      throw new NotFoundException(`Template de procédure ${updateProcedureTypeDto.procedure_template_id} non trouvé`);
-    }
-
     procedureType.procedure_template = template;
   }
 
@@ -372,6 +355,19 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
   const updatedProcedure = await this.procedureTypeRepository.save(procedureType);
   return this.mapToResponseDto(updatedProcedure);
 }
+
+  private async findPublishedTemplate(id: string): Promise<ProcedureTemplate> {
+    const template = await this.procedureTemplateService.findOne(id);
+    if (
+      template.lifecycleStatus !== ProcedureTemplateLifecycle.PUBLISHED ||
+      !template.contentHash
+    ) {
+      throw new BadRequestException(
+        'Seule une version publiée et intègre peut être associée à une procédure',
+      );
+    }
+    return template;
+  }
 
   async remove(id: number): Promise<void> {
     const procedureType = await this.procedureTypeRepository.findOne({

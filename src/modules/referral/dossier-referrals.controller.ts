@@ -21,6 +21,7 @@ import { DossierReferralSearchDto } from './dto/dossier-referral-search.dto';
 import { UpdateDossierReferralDto } from './dto/update-dossier-referral.dto';
 
 @Controller('dossier-referrals')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class DossierReferralsController {
   constructor(private readonly service: DossierReferralsService) {}

@@ -72,15 +72,6 @@ e
   @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)
-  appeal_possibility?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
   is_active?: boolean;
 
-  @IsOptional()
-  @IsBoolean()
-  @Type(() => Boolean)
-  is_archived?: boolean;
 }

@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class OnboardingDto {
@@ -42,4 +42,12 @@ export class OnboardingDto {
   @IsOptional()
   @IsString()
   plan_code?: string;
+
+  /**
+   * Cycle de facturation choisi : mensuel ou annuel. Défaut : mensuel.
+   */
+  @ApiProperty({ enum: ['monthly', 'yearly'], default: 'monthly', required: false })
+  @IsOptional()
+  @IsIn(['monthly', 'yearly'])
+  billing_cycle?: 'monthly' | 'yearly';
 }

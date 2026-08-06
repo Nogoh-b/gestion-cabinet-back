@@ -5,26 +5,21 @@ import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
 import { User } from '../iam/user/entities/user.entity';
 import { ProcedureType } from '../procedures/entities/procedure.entity';
-import { ProcedureTemplate } from '../procedure/entities/procedure-template.entity';
 import { DossiersController } from './dossiers.controller';
 import { DossiersService } from './dossiers.service';
 import { Dossier } from './entities/dossier.entity';
 import { ChatModule } from '../chat/chat.module';
 import { DossierStatsService } from './dossier-stats.service';
-import { StepsService } from './step.service';
-import { Step } from './entities/step.entity';
 import { AudiencesModule } from '../audiences/audiences.module';
 import { DiligenceModule } from '../diligence/diligence.module';
 import { FactureModule } from '../facture/facture.module';
 import { ProcedureModule } from '../procedure/procedure.module';
-import { DossierWriteHandler } from './dossier-write.handler';
-import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
-import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { DossierSubscriber } from './subscribers/dossier.subscriber';
 import { Conversation } from '../chat/entities/conversation.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { PlansModule } from '../plans/plans.module';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
+import { DossierMember } from './entities/dossier-member.entity';
 
 @Module({
   imports: [
@@ -36,21 +31,11 @@ import { Cabinet } from '../cabinet/entities/cabinet.entity';
     forwardRef(() => FactureModule),
     forwardRef(() => ProcedureModule),
 
-    TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee, Cabinet]),
-    AiDatabaseModule,
+    TypeOrmModule.forFeature([Dossier, DossierMember, User, ProcedureType, Conversation, Employee, Cabinet]),
     PlansModule,
   ],
   controllers: [DossiersController],
-  providers: [DossiersService, DossierStatsService, StepsService, DossierWriteHandler, DossierSubscriber],
-  exports: [DossiersService, DossierStatsService, TypeOrmModule, StepsService],
+  providers: [DossiersService, DossierStatsService, DossierSubscriber],
+  exports: [DossiersService, DossierStatsService, TypeOrmModule],
 })
-export class DossiersModule {
-  constructor(
-    private writeHandlerRegistry: WriteHandlerRegistry,
-    private dossierWriteHandler: DossierWriteHandler,
-  ) {}
-
-  onModuleInit() {
-    this.writeHandlerRegistry.register(this.dossierWriteHandler);
-  }
-}
+export class DossiersModule {}

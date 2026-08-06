@@ -8,19 +8,26 @@ import {
 } from 'typeorm';
 import { Facture } from '../../facture/entities/facture.entity';
 import { ModePaiement, StatutPaiement } from '../dto/create-paiement.dto';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('paiements')
 @BusinessTable({
   label: 'Paiements',
-  description: 'Enregistrement des paiements reçus des clients pour les factures.',
+  description:
+    'Enregistrement des paiements reçus des clients pour les factures. Les colonnes enum numériques modePaiement et status se filtrent avec leurs codes BD.',
   icon: '💳',
-  category: 'finance'
+  category: 'finance',
 })
 export class Paiement extends TenantEntity {
   /** Transient — lu par le PaiementSubscriber pour notifier le client. */
   notify_client?: boolean;
+
+  @Column({ name: 'notify_client_requested', default: false })
+  notifyClientRequested: boolean;
 
   @PrimaryGeneratedColumn('uuid')
   @BusinessColumn({
@@ -28,7 +35,7 @@ export class Paiement extends TenantEntity {
     description: 'Identifiant unique du paiement',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: string;
 
@@ -38,32 +45,33 @@ export class Paiement extends TenantEntity {
     description: 'Identifiant de la facture associée',
     importance: 'critical',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   factureId: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'decimal', precision: 18, scale: 2 })
   @BusinessColumn({
     label: 'Montant',
     description: 'Montant payé',
     unit: '€',
     format: 'currency',
     importance: 'critical',
-    group: 'financier'
+    group: 'financier',
   })
   montant: number;
 
   @Column({
     type: 'enum',
     enum: ModePaiement,
-    default: ModePaiement.ESPECES
+    default: ModePaiement.ESPECES,
   })
   @BusinessColumn({
     label: 'Mode de paiement',
-    description: 'ESPECES, CHEQUE, VIREMENT, CARTE_BANCAIRE, PRELEVEMENT, MOBILE_MONEY',
-    example: 'VIREMENT, CHEQUE, MOBILE_MONEY',
+    description:
+      'BD: 0=VIREMENT, 1=CHEQUE, 2=ESPECES, 3=CARTE, 4=PRELEVEMENT, 5=Mobile, 6=AUTRE. En SQL utiliser le nombre.',
+    example: 'modePaiement = 0 pour virement, 2 pour espèces',
     importance: 'high',
-    group: 'paiement'
+    group: 'paiement',
   })
   modePaiement: ModePaiement;
 
@@ -73,7 +81,7 @@ export class Paiement extends TenantEntity {
     description: 'Date à laquelle le paiement a été effectué',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   datePaiement: Date;
 
@@ -83,16 +91,17 @@ export class Paiement extends TenantEntity {
     description: 'Date de valeur bancaire',
     format: 'date',
     importance: 'medium',
-    group: 'dates'
+    group: 'dates',
   })
   dateValeur: Date;
 
   @Column({ nullable: true })
   @BusinessColumn({
     label: 'Référence',
-    description: 'Référence du paiement (numéro de transaction, virement, etc.)',
+    description:
+      'Référence du paiement (numéro de transaction, virement, etc.)',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   reference: string;
 
@@ -101,7 +110,7 @@ export class Paiement extends TenantEntity {
     label: 'Numéro de chèque',
     description: 'Numéro du chèque (si paiement par chèque)',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   numeroCheque: string;
 
@@ -110,7 +119,7 @@ export class Paiement extends TenantEntity {
     label: 'Banque',
     description: 'Banque émettrice (chèque ou virement)',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   banque: string;
 
@@ -119,7 +128,7 @@ export class Paiement extends TenantEntity {
     label: 'Titulaire',
     description: 'Nom du titulaire du compte/chèque',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   titulaire: string;
 
@@ -128,13 +137,15 @@ export class Paiement extends TenantEntity {
     enum: StatutPaiement,
     // Un paiement est considéré comme validé par défaut (cf. demande métier) :
     // tout paiement enregistré l'est après vérification, donc VALIDE d'office.
-    default: StatutPaiement.VALIDE,
+    default: StatutPaiement.EN_ATTENTE,
   })
   @BusinessColumn({
     label: 'Statut',
-    description: 'EN_ATTENTE, VALIDE, REJETE, ANNULE',
+    description:
+      'BD: 0=EN_ATTENTE, 1=VALIDE, 2=REJETE, 3=ANNULE. En SQL utiliser le nombre.',
+    example: 'status = 1 pour un paiement validé',
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: StatutPaiement;
 
@@ -143,7 +154,7 @@ export class Paiement extends TenantEntity {
     label: 'Notes',
     description: 'Commentaires internes sur le paiement',
     importance: 'low',
-    group: 'interne'
+    group: 'interne',
   })
   notes: string;
 
@@ -153,20 +164,46 @@ export class Paiement extends TenantEntity {
     description: 'Chemin du fichier justificatif',
     importance: 'low',
     group: 'document',
-    ignored: true
+    ignored: true,
   })
   preuvePaiement: string;
 
+  @Column({
+    name: 'preuve_original_name',
+    type: 'varchar',
+    nullable: true,
+    length: 255,
+  })
+  preuveOriginalName: string | null;
+
+  @Column({
+    name: 'preuve_mime_type',
+    type: 'varchar',
+    nullable: true,
+    length: 120,
+  })
+  preuveMimeType: string | null;
+
+  @Column({ name: 'preuve_size', type: 'bigint', nullable: true })
+  preuveSize: string | null;
+
+  @Column({
+    name: 'preuve_sha256',
+    type: 'char',
+    nullable: true,
+    length: 64,
+  })
+  preuveSha256: string | null;
+
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 
-  @ManyToOne(() => Facture, facture => facture.paiements)
+  @ManyToOne(() => Facture, (facture) => facture.paiements)
   @JoinColumn({ name: 'facture_id' })
   @BusinessColumn({
     label: 'Facture',
     description: 'Facture associée à ce paiement',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   facture: Facture;
-
 }

@@ -1,5 +1,5 @@
 // src/modules/procedures/dto/create-procedure-type.dto.ts
-import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsArray, IsNumber } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsArray, IsNumber, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProcedureTypeDto {
@@ -43,7 +43,7 @@ export class CreateProcedureTypeDto {
     description: 'Procedure Template requis pour ce type de procédure',
   })
   @IsOptional()
-  @IsString({ each: true })
+  @IsUUID()
   procedure_template_id?: string;
 
   @ApiPropertyOptional({

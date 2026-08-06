@@ -28,5 +28,7 @@ export class DateRangeDto {
 
 export class StatsFilterDto extends DateRangeDto {
   dossierId?: number; // 👈 Ajouter cette ligne
+  /** Filtre serveur non exposé, injecté après contrôle d'accès par ressource. */
+  dossierIds?: number[];
   [key: string]: any;
 }

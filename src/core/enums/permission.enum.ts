@@ -96,6 +96,8 @@ export enum Permission {
   SEND_MESSAGE              = 'send_message',
   DELETE_MESSAGE            = 'delete_message',
   VIEW_ALL_MESSAGES         = 'view_all_messages',
+  SEND_NOTIFICATION         = 'send_notification',
+  BROADCAST_NOTIFICATION    = 'broadcast_notification',
 
   // ── Rapports & Statistiques ─────────────────────────────────────────────
   VIEW_REPORTS              = 'view_reports',
@@ -103,6 +105,7 @@ export enum Permission {
   EXPORT_REPORTS            = 'export_reports',
   VIEW_DASHBOARD            = 'view_dashboard',
   VIEW_ANALYTICS            = 'view_analytics',
+  USE_AI_ASSISTANT          = 'use_ai_assistant',
 
   // ── Apporteurs ──────────────────────────────────────────────────────────
   VIEW_REFERRERS                = 'view_referrers',
@@ -126,8 +129,12 @@ export enum Permission {
   EDIT_PAYROLL_PERIOD       = 'edit_payroll_period',
   CLOSE_PAYROLL_PERIOD      = 'close_payroll_period',
   VIEW_PAYSLIPS             = 'view_payslips',
+  VIEW_OWN_PAYSLIP          = 'view_own_payslip',
   GENERATE_PAYSLIP          = 'generate_payslip',
   EDIT_PAYSLIP              = 'edit_payslip',
+  VALIDATE_PAYSLIP          = 'validate_payslip',
+  PAY_PAYSLIP               = 'pay_payslip',
+  MANAGE_PAYROLL_RATES      = 'manage_payroll_rates',
   DOWNLOAD_PAYSLIP          = 'download_payslip',
   EMAIL_PAYSLIP             = 'email_payslip',
 

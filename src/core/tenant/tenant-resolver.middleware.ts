@@ -14,7 +14,7 @@ import { TenantContext } from './tenant.context';
  * Résultat : req['resolvedTenantId'] = cabinet.id (ou undefined si non résolu).
  *
  * Le TenantInterceptor complète ensuite :
- *   tenantId = req.user?.tenantId ?? req['resolvedTenantId'] ?? 1
+ *   tenantId = req.user?.tenantId ?? req['resolvedTenantId']; sinon refus.
  */
 @Injectable()
 export class TenantResolverMiddleware implements NestMiddleware {
@@ -30,21 +30,28 @@ export class TenantResolverMiddleware implements NestMiddleware {
 
   async use(req: Request, res: Response, next: NextFunction) {
     const code = this.extractCode(req);
-    let tenantId = 1; // défaut (cabinet système)
 
     if (code) {
+      if (!this.isValidCode(code)) {
+        res.status(400).json({ message: 'Code cabinet invalide' });
+        return;
+      }
       const resolved = await this.resolveCode(code);
       if (resolved) {
-        tenantId = resolved;
-        (req as any)['resolvedTenantId'] = tenantId;
-        this.logger.debug(`[Tenant] code="${code}" → tenant_id=${tenantId}`);
+        (req as any)['resolvedTenantId'] = resolved;
+        this.logger.debug(`[Tenant] code="${code}" → tenant_id=${resolved}`);
+        this.tenantContext.run(resolved, next);
+        return;
       } else {
         this.logger.warn(`[Tenant] code="${code}" non trouvé`);
+        res.status(404).json({ message: 'Cabinet inconnu' });
+        return;
       }
     }
 
-    this.logger.debug(`[Tenant] run() → tenant_id=${tenantId}, calling next() inside ALS context`);
-    this.tenantContext.run(tenantId, next);
+    // Route globale ou authentification qui sera ensuite rattachée au tenant
+    // du JWT. Aucun cabinet implicite n'est injecté.
+    next();
   }
 
   // ── Extraction du code ────────────────────────────────────────────

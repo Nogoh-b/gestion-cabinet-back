@@ -57,8 +57,8 @@ export class SubStageVisit extends BaseEntity {
   @CreateDateColumn()
   startedAt: Date;
 
-  @Column({ nullable: true })
-  completedAt: Date;
+  @Column({ type: 'datetime', nullable: true })
+  completedAt: Date | null;
 
   @ManyToMany(() => DocumentCustomer)
   @JoinTable({

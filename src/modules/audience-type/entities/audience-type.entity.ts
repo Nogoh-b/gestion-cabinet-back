@@ -84,7 +84,7 @@ export class AudienceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Catégorie',
-    description: 'Catégorie procédurale: preliminary (préparatoire), hearing (plaidoirie), judgment (jugement), conciliation (médiation), expertise (expertise), appeal (appel), casation (cassation)',
+    description: "BD: 'preliminary', 'hearing', 'judgment', 'conciliation', 'expertise', 'appeal', 'casation'.",
     example: 'hearing, judgment, appeal',
     importance: 'critical',
     group: 'classification'

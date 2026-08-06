@@ -117,7 +117,7 @@ export class Branch extends BaseEntity {
   @Column({ type: 'tinyint', default: 1 })
   @BusinessColumn({
     label: 'Statut',
-    description: '1 = Actif, 0 = Inactif',
+    description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     example: '1 = Actif',
     importance: 'high',
     group: 'état'

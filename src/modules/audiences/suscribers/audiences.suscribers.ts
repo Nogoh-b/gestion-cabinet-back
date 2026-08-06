@@ -4,6 +4,7 @@ import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 
 import { Audience } from '../entities/audience.entity';
 
@@ -15,7 +16,7 @@ import { Audience } from '../entities/audience.entity';
  *  - AUDIENCE_HELD    → quand status passe à HELD (tenue)
  *  - AUDIENCE_UPDATED → autre changement notable (postponed_to, judge, room)
  *
- * Le service historique conserve son propre `sendEmails()` pour les e-mails
+ * Le service historique refuse désormais `sendEmails()` ; les e-mails
  * « riches » avec pièces jointes ; ce subscriber dispatche les notifications
  * légères (in-app + e-mail récap) via le NotificationDispatcher.
  */
@@ -34,8 +35,9 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
 
   protected async onAfterCreate(
     entity: Audience,
-    event: InsertEvent<Audience>,
+    event?: InsertEvent<Audience>,
   ): Promise<void> {
+    if (event) return;
     const loaded = await this.load(entity.id, event).catch(() => null);
     const audience = loaded ?? entity;
     if (!audience) return;
@@ -79,37 +81,87 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Partial<Audience>,
     event: UpdateEvent<Audience>,
   ): Promise<void> {
-    const id = entity.id ?? (event.databaseEntity as Audience)?.id;
-    if (!id) return;
+    void entity;
+    void event;
+  }
 
-    if (this.hasColumnChanged(event, 'status')) {
-      const change = this.getFieldChanges(event, ['status']).find(
-        (c) => c.field === 'status',
-      );
-      // 1 = HELD selon AudienceStatus (voir audience.entity.ts)
-      if (change && Number(change.newValue) === 1) {
-        await this.dispatchHeld(id, entity, event);
-      }
-    }
+  @OnEvent('outbox.audience.created')
+  async handleAudienceCreated(payload: {
+    audienceId: number;
+    notifyClient?: boolean;
+  }): Promise<void> {
+    const audience = await this.load(Number(payload.audienceId));
+    if (!audience) return;
+    (audience as any).notify_client = payload.notifyClient === true;
+    await this.onAfterCreate(audience);
+  }
 
-    if (this.hasColumnChanged(event, 'postponed_to')) {
-      await this.dispatchUpdated(id, entity, 'Report d’audience', event);
-    }
+  @OnEvent('outbox.audience.held')
+  async handleAudienceHeld(payload: {
+    audienceId: number;
+    notifyClient?: boolean;
+  }): Promise<void> {
+    await this.dispatchHeld(
+      Number(payload.audienceId),
+      payload.notifyClient === true,
+    );
+  }
+
+  @OnEvent('outbox.audience.updated')
+  async handleAudienceUpdated(payload: {
+    audienceId: number;
+    notifyClient?: boolean;
+  }): Promise<void> {
+    await this.dispatchUpdated(
+      Number(payload.audienceId),
+      'Mise à jour d’audience',
+      payload.notifyClient === true,
+    );
+  }
+
+  @OnEvent('outbox.audience.rescheduled')
+  async handleAudienceRescheduled(payload: {
+    audienceId: number;
+    notifyClient?: boolean;
+  }): Promise<void> {
+    await this.dispatchUpdated(
+      Number(payload.audienceId),
+      'Reprogrammation d’audience',
+      payload.notifyClient === true,
+    );
+  }
+
+  @OnEvent('outbox.audience.postponed')
+  async handleAudiencePostponed(payload: {
+    audienceId: number;
+    notifyClient?: boolean;
+  }): Promise<void> {
+    await this.dispatchUpdated(
+      Number(payload.audienceId),
+      'Report d’audience',
+      payload.notifyClient === true,
+    );
+  }
+
+  @OnEvent('outbox.audience.cancelled')
+  async handleAudienceCancelled(payload: {
+    audienceId: number;
+    notifyClient?: boolean;
+  }): Promise<void> {
+    await this.dispatchUpdated(
+      Number(payload.audienceId),
+      'Annulation d’audience',
+      payload.notifyClient === true,
+    );
   }
 
   private async dispatchHeld(
     id: number,
-    entity: Partial<Audience>,
-    event: UpdateEvent<Audience>,
+    notifyClient: boolean,
   ): Promise<void> {
-    const audience = await this.load(id, event).catch(() => null);
+    const audience = await this.load(id).catch(() => null);
     if (!audience) return;
     const dossier: any = audience.dossier;
-    const notifyClient = this.resolveTransientBoolean(
-      'notify_client',
-      entity as any,
-      audience as any,
-    );
 
     this.logger.log(
       `📢 Audience tenue | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'}`,
@@ -142,18 +194,12 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
 
   private async dispatchUpdated(
     id: number,
-    entity: Partial<Audience>,
     reason: string,
-    event: UpdateEvent<Audience>,
+    notifyClient: boolean,
   ): Promise<void> {
-    const audience = await this.load(id, event).catch(() => null);
+    const audience = await this.load(id).catch(() => null);
     if (!audience) return;
     const dossier: any = audience.dossier;
-    const notifyClient = this.resolveTransientBoolean(
-      'notify_client',
-      entity as any,
-      audience as any,
-    );
 
     this.logger.log(
       `📢 Audience modifiée | id=${audience.id} | reason="${reason}" | dossier=${dossier?.dossier_number ?? '?'}`,
