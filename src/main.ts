@@ -151,7 +151,10 @@ async function bootstrap() {
   // cela exposerait l'API à des requêtes authentifiées depuis n'importe quel site.
   const corsOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-    : ['*'];   
+    : [];
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+  const isLocalDevelopmentOrigin = (origin: string): boolean =>
+    isDevelopment && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
   if (process.env.NODE_ENV === 'production' && corsOrigins.includes('*')) { 
     console.warn(
       '⚠️  [SECURITE] CORS_ORIGINS contient "*" en production — configuration dangereuse. ' +
@@ -159,7 +162,17 @@ async function bootstrap() {
     );
   }
   app.enableCors({
-    origin: corsOrigins,
+    origin: (origin, callback) => {
+      // Requests without Origin are server-to-server or same-origin. In local
+      // development, accept localhost on any port; production stays explicit.
+      const isAllowed =
+        !origin ||
+        corsOrigins.includes('*') ||
+        corsOrigins.includes(origin) ||
+        isLocalDevelopmentOrigin(origin);
+
+      callback(null, isAllowed);
+    },
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     // En-têtes autorisés : on accepte les en-têtes standard envoyés par le
