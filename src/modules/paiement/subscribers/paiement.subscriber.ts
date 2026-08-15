@@ -1,14 +1,16 @@
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
-import { DataSource, InsertEvent, Repository } from 'typeorm';
+import { DataSource, InsertEvent, Repository, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { Paiement } from '../entities/paiement.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { StatutPaiement } from '../dto/create-paiement.dto';
 
 /**
  * Subscriber métier pour les paiements.
@@ -23,6 +25,7 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
+    private readonly eventEmitter: EventEmitter2,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
   ) {
@@ -42,17 +45,52 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     entity: Paiement,
     event: InsertEvent<Paiement>,
   ): Promise<void> {
+    await this.dispatchValidatedPayment(entity.id as any, entity, event);
+  }
+
+  protected async onAfterUpdate(
+    entity: Partial<Paiement>,
+    event: UpdateEvent<Paiement>,
+  ): Promise<void> {
+    if (!this.hasColumnChanged(event, 'status')) return;
+
+    const change = this.getFieldChanges(event, ['status']).find(
+      (c) => c.field === 'status',
+    );
+
+    if (
+      !change ||
+      Number(change.oldValue) === StatutPaiement.VALIDE ||
+      Number(change.newValue) !== StatutPaiement.VALIDE
+    ) {
+      return;
+    }
+
+    const id = entity.id ?? (event.databaseEntity as Paiement)?.id;
+    if (!id) return;
+    await this.dispatchValidatedPayment(id, entity, event);
+  }
+
+  private async dispatchValidatedPayment(
+    id: string | number,
+    source: Partial<Paiement>,
+    event: InsertEvent<Paiement> | UpdateEvent<Paiement>,
+  ): Promise<void> {
     // Recharger avec la facture + dossier + client pour résoudre l'audience
-    const paiement = await this.load(entity.id as any, event);
+    const paiement = await this.load(id, event);
     if (!paiement?.facture) return;
+    if (Number(paiement.status) !== StatutPaiement.VALIDE) return;
+
     const facture: any = paiement.facture;
-    const notifyClient = this.resolveTransientBoolean('notify_client', entity, paiement as any);
+    const notifyClient = this.resolveTransientBoolean('notify_client', source, paiement as any);
 
     const currencySymbol = await this.getCurrencySymbol();
 
     this.logger.log(
       `📢 Paiement reçu | id=${paiement.id} | montant=${formatMoney(paiement.montant, currencySymbol)} | facture=${facture.numero} | notify_client=${notifyClient}`,
     );
+
+    this.eventEmitter.emit('paiement.valide', { ...paiement, facture });
 
     await this.notify({
       event: NotifiableEvent.PAIEMENT_RECEIVED,
@@ -80,7 +118,7 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
 
   private load(
     id: string | number,
-    event?: InsertEvent<Paiement>,
+    event?: InsertEvent<Paiement> | UpdateEvent<Paiement>,
   ): Promise<Paiement | null> {
     return this.loadEntity<Paiement>(id, {
       relations: ['facture', 'facture.client', 'facture.dossier'],

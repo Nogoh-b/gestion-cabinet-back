@@ -11,6 +11,7 @@ import {
   UploadedFiles,
   Request,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ProcedureInstanceService } from '../services/procedure-instance.service';
 import { WorkflowService } from '../services/workflow.service';
@@ -21,9 +22,11 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { TriggerEventDto } from '../dto/trigger-event.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('procedure-instances')
 export class ProcedureInstanceController {
   constructor(
@@ -31,7 +34,14 @@ export class ProcedureInstanceController {
     private readonly workflowService: WorkflowService,
   ) {}
 
+  private assertDevelopmentOnly(): void {
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Endpoint de test indisponible en production');
+    }
+  }
+
   @Post()
+  @RequirePermissions('edit_dossier')
   async create(@Body() dto: CreateProcedureInstanceDto, @Request() req: any) {
     // Récupérer l'utilisateur connecté (à adapter selon votre auth)
     const userId = req.user?.id || 'system';
@@ -39,6 +49,7 @@ export class ProcedureInstanceController {
   }
 
   @Get()
+  @RequirePermissions('view_dossiers')
   async findAll(
     @Query('status') status?: InstanceStatus,
     @Query('templateId') templateId?: string,
@@ -47,11 +58,13 @@ export class ProcedureInstanceController {
   }
 
   @Get(':id')
+  @RequirePermissions('view_dossiers')
   async findOne(@Param('id') id: string) {
     return this.instanceService.findOne(id);
   }
 
   @Get(':id/workflow')
+  @RequirePermissions('view_dossiers')
   async getWorkflowStatus(@Param('id') id: string) {
     return this.instanceService.getWorkflowStatus(id);
   }
@@ -61,6 +74,7 @@ export class ProcedureInstanceController {
   * Naviguer vers une étape spécifique
   */
   @Get(':id/stages/:stageId')
+  @RequirePermissions('view_dossiers')
   async navigateToStage(
     @Param('id') id: string,
     @Param('stageId') stageId: string,
@@ -85,6 +99,7 @@ export class ProcedureInstanceController {
  * Compléter une sous-étape dans une étape précédente
  */
 @Post(':id/stages/:stageId/sub-stages/:subStageId/complete')
+@RequirePermissions('edit_dossier')
 async completeSubStageInPreviousStage(
   @Param('id') id: string,
   @Param('stageId') stageId: string,
@@ -102,11 +117,13 @@ async completeSubStageInPreviousStage(
 }
 
   @Get(':id/transitions')
+  @RequirePermissions('view_dossiers')
   async getAvailableTransitions(@Param('id') id: string) {
     return this.workflowService.getAvailableTransitions(id);
   }
 
   @Post(':id/transitions')
+  @RequirePermissions('edit_dossier')
   async applyTransition(
     @Param('id') id: string,
     @Body() dto: ApplyTransitionDto,
@@ -121,11 +138,13 @@ async completeSubStageInPreviousStage(
 
 
   @Get(':id/cycles')
+  @RequirePermissions('view_dossiers')
   async getAvailableCycles(@Param('id') id: string) {
     return this.instanceService.getAvailableCycles(id);
   }
 
   @Post(':id/sub-stages/:subStageId/complete')
+  @RequirePermissions('edit_dossier')
   async completeSubStage(
     @Param('id') id: string,
     @Param('subStageId') subStageId: string,
@@ -142,6 +161,7 @@ async completeSubStageInPreviousStage(
   }
 
   @Post(':id/sub-stages/:subStageId/start')
+  @RequirePermissions('edit_dossier')
   async startSubStage(
     @Param('id') id: string,
     @Param('subStageId') subStageId: string,
@@ -152,6 +172,7 @@ async completeSubStageInPreviousStage(
   }
 
   @Post(':id/transitions/:transitionId/apply')
+  @RequirePermissions('edit_dossier')
   @UseInterceptors(FilesInterceptor('files', 10))
   async applyTransition1(
     @Param('id') id: string,
@@ -180,6 +201,7 @@ async completeSubStageInPreviousStage(
   }
 
   @Post(':id/cycles/:cycleId/apply')
+  @RequirePermissions('edit_dossier')
   async applyCycle(
     @Param('id') id: string,
     @Param('cycleId') cycleId: string,
@@ -190,6 +212,7 @@ async completeSubStageInPreviousStage(
   }
 
   @Put(':id/status')
+  @RequirePermissions('edit_dossier')
   async updateStatus(
     @Param('id') id: string,
     @Body('status') status: InstanceStatus,
@@ -201,6 +224,7 @@ async completeSubStageInPreviousStage(
 
 
   @Post(':id/reset')
+  @RequirePermissions('edit_dossier')
   async resetInstance(
       @Param('id') id: string,
       @Body() body: { 
@@ -227,6 +251,7 @@ async completeSubStageInPreviousStage(
 
   // Version simplifiée
   @Post(':id/reset-simple')
+  @RequirePermissions('edit_dossier')
   async resetInstanceSimple(
       @Param('id') id: string,
       @Body() body: { reason?: string },
@@ -238,8 +263,9 @@ async completeSubStageInPreviousStage(
     /**
    * Déclencher un événement sur une instance
    * POST /procedure-instances/:instanceId/events
-   */
+  */
   @Post(':instanceId/events')
+  @RequirePermissions('edit_dossier')
   @ApiOperation({ summary: 'Déclencher un événement sur une instance' })
   @ApiResponse({ status: 200, description: 'Événement traité avec succès' })
   @ApiResponse({ status: 404, description: 'Instance non trouvée' })
@@ -267,8 +293,9 @@ async completeSubStageInPreviousStage(
 
   /**
    * TEST ONLY - Compléter toutes les sous-étapes de l'étape courante
-   */
+  */
   @Post(':id/test/complete-all-substages')
+  @RequirePermissions('edit_dossier')
   async testCompleteAllSubStagesInCurrentStage(
     @Param('id') id: string,
     @Body() body: {
@@ -278,6 +305,7 @@ async completeSubStageInPreviousStage(
     },
     @Request() req: any,
   ) {
+    this.assertDevelopmentOnly();
     const userId = req.user?.id || 'system';
     return this.instanceService.completeAllSubStagesInCurrentStage(
       id,
@@ -292,8 +320,9 @@ async completeSubStageInPreviousStage(
 
   /**
    * TEST ONLY - Compléter toutes les sous-étapes d'une étape spécifique
-   */
+  */
   @Post(':id/test/complete-all-substages-in-stage/:stageId')
+  @RequirePermissions('edit_dossier')
   async testCompleteAllSubStagesInStage(
     @Param('id') id: string,
     @Param('stageId') stageId: string,
@@ -304,6 +333,7 @@ async completeSubStageInPreviousStage(
     },
     @Request() req: any,
   ) {
+    this.assertDevelopmentOnly();
     const userId = req.user?.id || 'system';
     return this.instanceService.completeAllSubStagesInStage(
       id,
@@ -319,8 +349,9 @@ async completeSubStageInPreviousStage(
 
   /**
    * TEST ONLY - Compléter toutes les sous-étapes de toutes les étapes
-   */
+  */
   @Post(':id/test/complete-all-substages-all-stages')
+  @RequirePermissions('edit_dossier')
   async testCompleteAllSubStagesInAllStages(
     @Param('id') id: string,
     @Body() body: {
@@ -330,6 +361,7 @@ async completeSubStageInPreviousStage(
     },
     @Request() req: any,
   ) {
+    this.assertDevelopmentOnly();
     const userId = req.user?.id || 'system';
     return this.instanceService.completeAllSubStagesInAllStages(
       id,

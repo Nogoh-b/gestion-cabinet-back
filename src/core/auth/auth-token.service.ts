@@ -29,7 +29,7 @@ export class AuthTokenService {
   /**
    * Créer un OTP pour réinitialisation
    */
-  async createOTP(email: string, type: 'reset_password' | 'set_password'): Promise<{ otp: string; expiresAt: Date }> {
+  async createOTP(email: string, type: 'reset_password' | 'set_password' | 'mfa'): Promise<{ otp: string; expiresAt: Date }> {
     // Supprimer les anciens tokens non utilisés
     await this.authTokenRepository.delete({
       email,
@@ -57,7 +57,7 @@ export class AuthTokenService {
   /**
    * Créer un token pour réinitialisation (après vérification OTP)
    */
-  async createResetToken(email: string, type: 'reset_password' | 'set_password'): Promise<string> {
+  async createResetToken(email: string, type: 'reset_password' | 'set_password' | 'mfa'): Promise<string> {
     const token = this.generateToken();
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 15); // Token expire dans 15 minutes
@@ -78,7 +78,7 @@ export class AuthTokenService {
   /**
    * Vérifier l'OTP
    */
-  async verifyOTP(email: string, otp: string, type: 'reset_password' | 'set_password'): Promise<{ isValid: boolean; token?: string }> {
+  async verifyOTP(email: string, otp: string, type: 'reset_password' | 'set_password' | 'mfa'): Promise<{ isValid: boolean; token?: string }> {
     const authToken = await this.authTokenRepository.findOne({
       where: {
         email,
@@ -111,7 +111,7 @@ export class AuthTokenService {
   /**
    * Vérifier le token de réinitialisation
    */
-  async verifyResetToken(token: string, type: 'reset_password' | 'set_password'): Promise<{ isValid: boolean; email?: string }> {
+  async verifyResetToken(token: string, type: 'reset_password' | 'set_password' | 'mfa'): Promise<{ isValid: boolean; email?: string }> {
     const authToken = await this.authTokenRepository.findOne({
       where: {
         token,

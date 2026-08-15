@@ -49,6 +49,7 @@ import { LocalStrategy } from './auth/strategies/local.strategy';
 import { TypeOrmExceptionFilter } from './common/filters/typeorm-exception.filter';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { databaseConfig } from './config/database.config';
+import { getJwtSecret } from './config/secrets';
 import { PublicGuard } from './decorators/public.guard';
 import { OtpCode, OtpOnlineLink } from './entities/otp-code.entity';
 import { InitService } from './init/init.service';
@@ -60,7 +61,6 @@ import { QueryLoggingInterceptor } from './shared/interceptors/query-logging.int
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
 import { EmailService } from './shared/services/email/email.service copy';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
-import { McotiService } from './shared/services/mCoti/mcoti.service';
 import { OtpService } from './shared/services/otp/otp.service';
 import { PaginationService as MyPaginationService, PaginationService } from './shared/services/pagination/pagination.service';
 import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
@@ -121,7 +121,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
       inject: [ConfigService],
     }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secretKey', // à stocker en variable d’environnement
+      secret: getJwtSecret(),
       signOptions: { expiresIn: '30d' },
     }),
     TypeOrmModule.forRootAsync({
@@ -157,7 +157,6 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     PermissionSeeder,
     RoleSeeder,
     JwtStrategy,
-    McotiService,
     OtpService,
     UsersService,
     EmployeeService,
@@ -200,7 +199,6 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     EmployeeService,
     OtpService,
     AuthService,
-    McotiService,
     PermissionSeeder,
     RoleSeeder,
     PermissionsGuard,

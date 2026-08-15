@@ -9,6 +9,7 @@ import { PaginatedResult, PaginationServiceV1 } from 'src/core/shared/services/p
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 
 import { Repository, In, FindOptionsWhere } from 'typeorm';
@@ -275,26 +276,13 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       dossier.collaborators = collaborators;
     }
 
-    let conversationDto = new CreateConversationDto()
-    const users = await this.userRepository.find({
-      // select: ['id'],
-      relations : ['user']
-    });
-    conversationDto.participantIds = dossier.collaborators?.length  > 0 ? createDossierDto.collaborator_ids : users.map(u => u.id)
-    const conversation = await this.chatService.createConversation(conversationDto, createdBy.id)
-    dossier.conversation = conversation;
-    console.log('DTO:', JSON.stringify(createDossierDto, null, 2));
-    console.log('Entity before save:', dossier);
+    // La conversation de suivi est créée par le DossierSubscriber
+    // (onAfterCreate), source unique, dans la transaction d'insertion et avec
+    // l'avocat + les collaborateurs comme participants. On ne la crée donc plus
+    // ici : la créer en amont produisait une conversation orpheline doublonnée
+    // (le subscriber écrasait ensuite le lien).
     const savedDossier = await this.dossierRepository.save(dossier);
-    // this.procedureInstanceService.update(procedureInstance.id , {data:{id: savedDossier.id}})
-    let mailDto = new CreateMailDto() 
-    const dossierR = await this.mapToResponseDto(savedDossier);
-    mailDto.templateName = "entities/dossier/dossier-created-creator"
-    mailDto.context = dossierR
-    mailDto.to = users.map(u => u.email)
-    mailDto.subject = "Creation d'un nouveau dossier"
-    // this.sendMail(mailDto)
-    return dossierR
+    return this.mapToResponseDto(savedDossier);
   }
 
   async findAll(searchDto: DossierSearchDto, user: User): Promise<any[]> {
@@ -677,17 +665,20 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     if (user.role === 'avocat') {
       queryBuilder.where('dossier.lawyer_id = :lawyerId', { lawyerId: user.id });
     }
+    // Isolation multi-tenant : limite aux dossiers du cabinet courant.
+    addTenantCondition(queryBuilder, 'dossier');
 
     const stats = await queryBuilder.getRawMany();
 
     // Statistiques par statut
-    const statusStats = await this.dossierRepository
+    const statusStatsQB = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('dossier.status', 'status')
       .addSelect('COUNT(dossier.id)', 'count')
       .where(user.role === 'avocat' ? 'dossier.lawyer_id = :lawyerId' : '1=1', { lawyerId: user.id })
-      .groupBy('dossier.status')
-      .getRawMany();
+      .groupBy('dossier.status');
+    addTenantCondition(statusStatsQB, 'dossier');
+    const statusStats = await statusStatsQB.getRawMany();
 
     return {
       by_procedure_type: stats,
@@ -716,11 +707,12 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       .replace('{MM}',     MM)
       .replace('{NNNN}',   '');
 
-    const last = await this.dossierRepository
+    const lastQB = this.dossierRepository
       .createQueryBuilder('d')
       .where('d.dossier_number LIKE :pfx', { pfx: `${searchPrefix}%` })
-      .orderBy('d.dossier_number', 'DESC')
-      .getOne();
+      .orderBy('d.dossier_number', 'DESC');
+    addTenantCondition(lastQB, 'd');
+    const last = await lastQB.getOne();
 
     let nextSeq = 1;
     if (last?.dossier_number) {
@@ -853,6 +845,8 @@ async getCollaboratorDossiers(
     .leftJoinAndSelect('dossier.procedure_subtype', 'procedure_subtype')
     .where('collaborator.id = :collaboratorId', { collaboratorId })
     .orderBy('dossier.created_at', 'DESC');
+  // Isolation multi-tenant : limitée aux dossiers du cabinet courant.
+  addTenantCondition(queryBuilder, 'dossier');
 
   // Alternative avec une sous-requête si la première ne fonctionne pas
   // .where(qb => {

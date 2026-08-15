@@ -27,6 +27,9 @@ import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { Audience, AudienceStatus, AudienceType1, } from './entities/audience.entity';
+import { PlanQuotaService } from '../plans/plan-quota.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 
 
@@ -46,12 +49,10 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     private readonly documentCustomerService: DocumentCustomerService,
     @Inject(forwardRef(() => StepsService))
     private stepsService: StepsService,
+    private readonly planQuotaService: PlanQuotaService,
     protected readonly emailsService?: MailService, // Optionnel
-    
   ) {
     super(repository, paginationService, emailsService);
-    console.log(forwardRef)
-
   }
 
   /**
@@ -77,8 +78,13 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    * ➕ Création d'une audience
    */
   async create(dto: CreateAudienceDto): Promise<AudienceResponseDto | Audience | null> {
-    console.log('-------dto ', dto);
-    
+    // ── Vérification quota plan (audiences) ────────────────────────────────
+    const tenantId = getCurrentTenantId();
+    if (tenantId) {
+      const currentCount = await this.repository.count();
+      await this.planQuotaService.checkLimit(tenantId, 'audiences', currentCount);
+    }
+
     const dossier = await this.dossierService.findOne(dto.dossier_id);
     const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
 
@@ -534,7 +540,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
       const repo = entityManager ? entityManager.getRepository(Audience) : this.repository;
       
-      const data = await repo
+      const dataQB = repo
       .createQueryBuilder('audience')
       .leftJoinAndSelect('audience.documents', 'documents')
       .leftJoinAndSelect('audience.dossier', 'dossier')
@@ -543,8 +549,10 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       .leftJoinAndSelect('audience.audience_type', 'audience_type')
       .leftJoinAndSelect('documents.document_type', 'document_type')
       .leftJoinAndSelect('documents.category', 'category')
-      .where('audience.id = :id', { id: audienceId })
-      .getOne();
+      .where('audience.id = :id', { id: audienceId });
+      // Isolation multi-tenant.
+      addTenantCondition(dataQB, 'audience');
+      const data = await dataQB.getOne();
       const audience = plainToInstance(AudienceResponseDto,data)
 // 'dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'
       // console.log('QueryBuilder result - documents count:', audience?.documents?.length);
@@ -780,6 +788,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       .andWhere('audience.status = :status', { status: AudienceStatus.SCHEDULED })
       .orderBy('audience.audience_date', 'ASC')
       .limit(10);
+    // Isolation multi-tenant.
+    addTenantCondition(query, 'audience');
 
     this.applyFilters(query, filters);
 

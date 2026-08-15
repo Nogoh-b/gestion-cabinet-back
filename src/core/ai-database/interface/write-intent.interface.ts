@@ -32,11 +32,18 @@ export interface WriteIntent {
 
 export interface IntentDetectionResult {
   /** READ = interrogation BD, WRITE = écriture BD, CONVERSATIONAL = réponse directe sans SQL */
-  type: 'READ' | 'WRITE' | 'CONVERSATIONAL';
+  type: 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CONVERSATIONAL' | 'DOCUMENT' | 'TEXT';
   writeIntent?: WriteIntent;
   writePlan?: WritePlan;
   sqlQuery?: string;        // Si READ
   requiresConfirmation: boolean;
   /** Réponse directe de l'IA (mode CONVERSATIONAL uniquement) */
   conversationalResponse?: string;
+  /**
+   * Présent uniquement quand type === 'WRITE' sans writePlan : la génération
+   * du plan d'écriture a échoué malgré le mode WRITE forcé par l'utilisateur.
+   * L'appelant doit afficher ce message tel quel plutôt que de retomber sur
+   * le chemin READ (qui produirait des refus SQL incohérents).
+   */
+  writePlanError?: string;
 }

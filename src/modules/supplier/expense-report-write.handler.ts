@@ -44,7 +44,7 @@ export class ExpenseReportWriteHandler extends BaseWriteHandler {
         example: 'Déplacement Tribunal Lyon - Dossier #123',
         required: true,
       },
-      status: { description: 'draft, submitted, approved, rejected, reimbursed', example: 'draft' },
+      status: { description: "BD: 'draft', 'submitted', 'approved', 'rejected', 'reimbursed'.", example: 'draft' },
       submission_date: { description: 'Date de soumission (par défaut: aujourd\'hui)', example: '2026-05-10' },
     };
     for (const f of fields) {

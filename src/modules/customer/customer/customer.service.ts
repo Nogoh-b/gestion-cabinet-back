@@ -55,6 +55,7 @@ import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { TypeCustomersService } from '../type-customer/type-customer.service';
 import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
@@ -298,7 +299,9 @@ export class CustomersService extends BaseServiceV1<Customer> {
       .leftJoinAndSelect('c.branch', 'branch')
       .leftJoinAndSelect('c.loans', 'loans')
       .leftJoinAndSelect('c.type_customer', 'type_customer')
-      .leftJoinAndSelect('c.location_city', 'location_city')
+      .leftJoinAndSelect('c.location_city', 'location_city');
+    // Isolation multi-tenant : limite aux clients du cabinet courant.
+    addTenantCondition(qb, 'c');
 
       const options: PaginationOptions & {
         search?: SearchOptionV1;
@@ -554,10 +557,11 @@ async update(
 
   async generateNextCustomerCode(): Promise<string> {
     // 1) Récupère la plus grande valeur numérique de `code`
-    const raw = await this.customerRepository
+    const rawQB = this.customerRepository
       .createQueryBuilder('c')
-      .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max')
-      .getRawOne<{ max: string }>();
+      .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max');
+    addTenantCondition(rawQB, 'c');
+    const raw = await rawQB.getRawOne<{ max: string }>();
 
     // 2) Parse ou démarre à 0
     const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
@@ -608,7 +612,7 @@ async update(
     return !!customer; // true si trouvé, false sinon
   }
   async findCustomersWithMissingKyc() {
-    return await this.customerRepository
+    const qb = this.customerRepository
       .createQueryBuilder('c')
       .leftJoin('c.type_customer', 'tc')
       .addSelect((subQuery) => {
@@ -626,8 +630,10 @@ async update(
             accepted: DocumentCustomerStatus.ACCEPTED,
           });
       }, 'sentCount')
-      .having('sentCount < requiredCount')
-      .getMany();
+      .having('sentCount < requiredCount');
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'c');
+    return await qb.getMany();
   }
 
   // ==================== COMMUNICATIONS CLIENT ====================

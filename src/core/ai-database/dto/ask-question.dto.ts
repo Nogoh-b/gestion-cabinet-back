@@ -90,17 +90,62 @@ export class AskQuestionDto {
 
   @ApiProperty({
     required: false,
+    description:
+      "Niveau de réflexion du modèle. 'fast' = moins de réflexion (plus rapide), 'precise' = réflexion complète.",
+    enum: ['fast', 'balanced', 'precise'],
+    default: 'fast',
+  })
+  @IsOptional()
+  @IsIn(['fast', 'balanced', 'precise'])
+  reasoningLevel?: 'fast' | 'balanced' | 'precise';
+
+  @ApiProperty({
+    required: false,
     description: 'IDs de documents systeme a lire/analyser (array JSON ou liste separee par virgules en multipart).',
   })
   @IsOptional()
   documentIds?: number[] | string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Historique visible envoye par le front pour les branches de conversation (JSON).',
+  })
+  @IsOptional()
+  @IsString()
+  historyOverride?: string;
 }
 
 /** Une entité référencée via `@` côté front, après parsing du JSON. */
 export interface ReferencedEntityContext {
   type: string;
   label: string;
+  id?: string | number;
+  href?: string;
+  meta?: Record<string, any>;
   data?: Record<string, any> & { id?: string | number };
+}
+
+export interface VisibleHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export function parseVisibleHistory(raw?: string): VisibleHistoryMessage[] {
+  if (!raw || typeof raw !== 'string') return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(item => item && typeof item === 'object')
+      .map(item => ({
+        role: item.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        content: String(item.content ?? '').trim(),
+      }))
+      .filter(item => item.content.length > 0)
+      .slice(-12);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -113,12 +158,25 @@ export function parseReferencedContext(raw?: string): ReferencedEntityContext[] 
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
+    const cleanText = (value: unknown): string => String(value ?? '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
     return parsed
       .filter(it => it && typeof it === 'object' && typeof it.label === 'string')
       .map(it => ({
         type: typeof it.type === 'string' ? it.type : 'entité',
-        label: it.label,
-        data: it.data && typeof it.data === 'object' ? it.data : undefined,
+        label: cleanText(it.label),
+        id: it.id ?? it.data?.id,
+        href: typeof it.href === 'string' && it.href.startsWith('/') ? it.href : undefined,
+        meta: it.meta && typeof it.meta === 'object' ? it.meta : undefined,
+        data: it.data && typeof it.data === 'object'
+          ? { ...it.data, ...(it.meta && typeof it.meta === 'object' ? it.meta : {}), id: it.id ?? it.data?.id }
+          : { ...(it.meta && typeof it.meta === 'object' ? it.meta : {}), id: it.id },
       }));
   } catch {
     return [];

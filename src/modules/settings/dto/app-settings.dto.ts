@@ -66,12 +66,12 @@ export class AppSettingsDto {
   @IsIn(THEME_NAMES as unknown as string[])
   theme_name?: ThemeName;
 
-  @ApiPropertyOptional({ example: 'inter' })
+  @ApiPropertyOptional({ example: 'outfit' })
   @IsOptional()
   @IsString()
   font_ui?: string;
 
-  @ApiPropertyOptional({ example: 'inter' })
+  @ApiPropertyOptional({ example: 'outfit' })
   @IsOptional()
   @IsString()
   font_heading?: string;

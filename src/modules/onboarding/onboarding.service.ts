@@ -16,6 +16,7 @@ import { UserRole } from 'src/core/enums/user-role.enum';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import { CabinetService } from '../cabinet/cabinet.service';
 import { PlansService } from '../plans/plans.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { OnboardingDto } from './onboarding.dto';
 import { JwtPayload } from 'src/core/auth/interfaces/jwt-payload.interface';
 import { MailService } from 'src/core/shared/emails/emails.service';
@@ -35,6 +36,7 @@ export class OnboardingService {
     private readonly tenantContext:  TenantContext,
     private readonly cabinetService: CabinetService,
     private readonly plansService:   PlansService,
+    private readonly subscriptionsService: SubscriptionsService,
     private readonly jwtService:     JwtService,
     private readonly dataSource:     DataSource,
     private readonly mailService:    MailService,
@@ -91,7 +93,9 @@ export class OnboardingService {
       plan:         planCode as CabinetPlan,
       plan_id:      selectedPlan?.id ?? null,
       routing_mode: dto.routing_mode ?? 'path',
-      trial_ends_at: this.trialEnd(30),
+      trial_ends_at: selectedPlan?.trial_enabled
+        ? this.trialEnd(selectedPlan.trial_days)
+        : null,
     });
     await this.cabinetRepo.save(cabinet);
     this.logger.log(`[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan?.id ?? 'none'}`);
@@ -146,6 +150,27 @@ export class OnboardingService {
           await this.assignmentRepo.save(assignment);
         }
 
+        // ── 2e. Abonnement + échéance de facturation ─────────────────────
+        // Crée l'abonnement selon la politique configurée (essai 30j par
+        // défaut). Synchronise le statut + trial_ends_at du cabinet.
+        // À l'inscription : tout plan PAYANT exige le paiement d'abord (même
+        // s'il propose un essai). L'essai est conservé et démarre après paiement.
+        // Plan gratuit → accès direct.
+        const subscription = await this.subscriptionsService.createForCabinet(
+          cabinet.id,
+          selectedPlan?.id ?? null,
+          dto.billing_cycle ?? 'monthly',
+          { gateAllPaid: true },
+        );
+        // Reflète le statut résolu sur l'objet en mémoire pour la réponse.
+        // Plan payant sans essai → pending_payment → cabinet suspendu (paiement requis).
+        cabinet.status =
+          subscription.status === 'trial'
+            ? 'trial'
+            : subscription.status === 'pending_payment'
+            ? 'suspended'
+            : 'active';
+
         // ── 3. Génération du JWT ─────────────────────────────────────────
         const payload: JwtPayload = {
           sub:         savedUser.id,
@@ -172,6 +197,9 @@ export class OnboardingService {
         // ── 5. Retour — valeur propagée via la Promise de run() ──────────
         return {
           success: true,
+          // Vrai quand un paiement doit être réglé avant l'accès (plan payant
+          // sans essai). Le front oriente alors vers l'étape de paiement.
+          requires_payment: subscription.status === 'pending_payment',
           cabinet: {
             id:           cabinet.id,
             code:         cabinet.code,
@@ -199,6 +227,14 @@ export class OnboardingService {
       await this.cabinetRepo.delete(cabinet.id).catch(() => {});
       throw new InternalServerErrorException(`Erreur lors de la création du cabinet : ${err.message}`);
     }
+  }
+
+  /**
+   * Liste publique des plans actifs — utilisée par l'écran d'inscription
+   * (non authentifié) pour proposer TOUS les plans, pas seulement le Starter.
+   */
+  async listActivePlans() {
+    return this.plansService.findActive();
   }
 
   private trialEnd(days: number): Date {

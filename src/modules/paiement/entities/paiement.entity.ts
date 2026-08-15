@@ -14,7 +14,7 @@ import { TenantEntity } from 'src/core/entities/tenant.entity';
 @Entity('paiements')
 @BusinessTable({
   label: 'Paiements',
-  description: 'Enregistrement des paiements reçus des clients pour les factures.',
+  description: 'Enregistrement des paiements reçus des clients pour les factures. Les colonnes enum numériques modePaiement et status se filtrent avec leurs codes BD.',
   icon: '💳',
   category: 'finance'
 })
@@ -60,8 +60,8 @@ export class Paiement extends TenantEntity {
   })
   @BusinessColumn({
     label: 'Mode de paiement',
-    description: 'ESPECES, CHEQUE, VIREMENT, CARTE_BANCAIRE, PRELEVEMENT, MOBILE_MONEY',
-    example: 'VIREMENT, CHEQUE, MOBILE_MONEY',
+    description: 'BD: 0=VIREMENT, 1=CHEQUE, 2=ESPECES, 3=CARTE, 4=PRELEVEMENT, 5=Mobile, 6=AUTRE. En SQL utiliser le nombre.',
+    example: 'modePaiement = 0 pour virement, 2 pour espèces',
     importance: 'high',
     group: 'paiement'
   })
@@ -132,7 +132,8 @@ export class Paiement extends TenantEntity {
   })
   @BusinessColumn({
     label: 'Statut',
-    description: 'EN_ATTENTE, VALIDE, REJETE, ANNULE',
+    description: 'BD: 0=EN_ATTENTE, 1=VALIDE, 2=REJETE, 3=ANNULE. En SQL utiliser le nombre.',
+    example: 'status = 1 pour un paiement validé',
     importance: 'critical',
     group: 'état'
   })

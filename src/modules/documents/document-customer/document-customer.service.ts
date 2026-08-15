@@ -8,7 +8,9 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { FilesUtil, UploadedFileInfo } from 'src/core/shared/utils/file.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { CabinetService } from 'src/modules/cabinet/cabinet.service';
+import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
 import { CustomersService } from 'src/modules/customer/customer/customer.service';
 import { CustomerResponseDto } from 'src/modules/customer/customer/dto/customer-response.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
@@ -73,8 +75,19 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     // @Inject(forwardRef(() => StepsService))
     // private stepsService: StepsService,
     private cabinetService: CabinetService,
+    private planQuotaService: PlanQuotaService,
   ) {
-        super(docRepository, paginationService);console.log(forwardRef)
+        super(docRepository, paginationService);
+  }
+
+  /** Volume total déjà stocké (octets) par le cabinet courant. */
+  private async currentStorageBytes(): Promise<number> {
+    let qb = this.docRepository
+      .createQueryBuilder('d')
+      .select('COALESCE(SUM(d.file_size), 0)', 'total');
+    qb = addTenantCondition(qb, 'd');
+    const row = await qb.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0) || 0;
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
@@ -169,6 +182,8 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       .leftJoinAndSelect('doc.customer', 'customer')
       .leftJoinAndSelect('doc.dossier', 'dossier')
       .leftJoinAndSelect('doc.uploaded_by', 'uploaded_by');
+    // Isolation multi-tenant.
+    addTenantCondition(query, 'doc');
 
     if (documentTypeId) {
       query.andWhere('document_type.id = :documentTypeId', { documentTypeId });
@@ -246,6 +261,17 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       
       // 7. Récupération du nom du cabinet depuis le tenant
       const tenantId = getCurrentTenantId();
+
+      // ── Quota de stockage : refuse l'upload AVANT d'écrire le fichier ──────
+      if (tenantId && file?.size) {
+        const used = await this.currentStorageBytes();
+        await this.planQuotaService.checkStorageLimit(
+          tenantId,
+          used,
+          Number(file.size) || 0,
+        );
+      }
+
       let cabinetName = 'cabinet';
       try {
         const cabinet = await this.cabinetService.findById(tenantId);

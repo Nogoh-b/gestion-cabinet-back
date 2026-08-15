@@ -4,7 +4,6 @@ import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginat
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { EntityManager, Like, Repository } from 'typeorm';
 import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -25,6 +24,7 @@ import { ProcedureInstance } from '../procedure/entities/procedure-instance.enti
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 
 
@@ -45,7 +45,6 @@ export class FactureService extends BaseServiceV1<Facture> {
     private stepsService: StepsService,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
-    private readonly eventEmitter: EventEmitter2,
     private readonly mailService: MailService,
   ) {
     super(repository, paginationService);
@@ -149,9 +148,6 @@ export class FactureService extends BaseServiceV1<Facture> {
     (facture as any).notify_client = !!notify_client;
 
     const fac = await this.saveWithUniqueInvoiceNumber(facture, options.manager);
-    if (!options.manager) {
-      await this.emitStatusEventsIfNeeded(fac.id, StatutFacture.BROUILLON, fac.status);
-    }
 
     // const currentStep = await this.stepsService.getCurrentStep(createDto.dossierId);
     
@@ -181,7 +177,6 @@ export class FactureService extends BaseServiceV1<Facture> {
       // updateDto.resteAPayer = updateDto.montantTTC - facture.montantPaye;
     }
 
-    const previousStatus = facture.status;
     Object.assign(facture, updateDto);
     facture.status = this.normalizeStatus((updateDto as any).status ?? (updateDto as any).statut ?? facture.status);
     if (updateDto.notify_client !== undefined) {
@@ -190,16 +185,11 @@ export class FactureService extends BaseServiceV1<Facture> {
     // facture.calculerResteAPayer();
 
     const saved = await this.repository.save(facture);
-    await this.emitStatusEventsIfNeeded(saved.id, previousStatus, saved.status);
     return plainToInstance(FactureResponseDto, saved);
   }
 
   async searchFactures(searchDto: SearchFactureDto): Promise<any> {
     const criteria: SearchCriteria = { ...searchDto };
-    const factures = await this.repository.find({
-      relations: ['paiements', 'client', 'dossier'],
-    });
-    return plainToInstance(FactureResponseDto, factures);
     // Gestion des ranges de montants
     if (searchDto.montantTTC_min !== undefined || searchDto.montantTTC_max !== undefined) {
       criteria.montantTTC = [
@@ -212,7 +202,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       criteria,
       FactureResponseDto,
       searchDto,
-      ['paiements'],
+      ['paiements', 'client', 'dossier'],
       { created_at: 'DESC' } as any
     );
   }
@@ -379,7 +369,7 @@ export class FactureService extends BaseServiceV1<Facture> {
   }
 
   async getFacturesByClient(clientId: string): Promise<Facture[]> {
-    return this.findAllV1({ clientId }, undefined, ['paiements']);
+    return this.findAllV1({ client_id: clientId }, undefined, ['paiements', 'client', 'dossier']);
   }
 
   async getFacturesImpayees(): Promise<Facture[]> {
@@ -404,55 +394,56 @@ export class FactureService extends BaseServiceV1<Facture> {
       throw new NotFoundException(`Facture avec l'ID ${id} non trouvée`);
     }
 
-    const previousStatus = facture.status;
     const status = this.normalizeStatus(nouveauStatus);
     facture.status = status;
     const saved = await this.repository.save(facture);
-
-    await this.emitStatusEventsIfNeeded(id, previousStatus, status);
 
     return saved;
   }
 
   async getChiffreAffairesParPeriode(dateDebut: Date, dateFin: Date): Promise<number> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('facture')
       .select('SUM(facture.montantTTC)', 'chiffreAffaires')
       .where('facture.dateFacture BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin })
-      .andWhere('facture.status IN (:...statuts)', { 
-        statuts: ['envoyee', 'partiellement_payee', 'payee'] 
-      })
-      .getRawOne();
+      .andWhere('facture.status IN (:...statuts)', {
+        statuts: ['envoyee', 'partiellement_payee', 'payee']
+      });
+    addTenantCondition(qb, 'facture');
+    const result = await qb.getRawOne();
 
     return parseFloat(result.chiffreAffaires) || 0;
   }
 
   async getMontantEncaisseParPeriode(dateDebut: Date, dateFin: Date): Promise<number> {
-    const result = await this.repository
+    const qb = this.repository
       .createQueryBuilder('facture')
       .select('SUM(facture.montantPaye)', 'montantEncaisse')
-      .where('facture.dateFacture BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin })
-      .getRawOne();
+      .where('facture.dateFacture BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin });
+    addTenantCondition(qb, 'facture');
+    const result = await qb.getRawOne();
 
     return parseFloat(result.montantEncaisse) || 0;
   }
 
   async getStatistiquesPaiements(): Promise<any> {
-    const totalFactures = await this.repository
+    const totalQB = this.repository
       .createQueryBuilder('facture')
       .select('COUNT(*)', 'total')
       .addSelect('SUM(facture.montantTTC)', 'totalTTC')
       .addSelect('SUM(facture.montantPaye)', 'totalPaye')
-      .addSelect('SUM(facture.resteAPayer)', 'totalRestant')
-      .getRawOne();
+      .addSelect('SUM(facture.resteAPayer)', 'totalRestant');
+    addTenantCondition(totalQB, 'facture');
+    const totalFactures = await totalQB.getRawOne();
 
-    const parStatut = await this.repository
+    const parStatutQB = this.repository
       .createQueryBuilder('facture')
       .select('facture.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'montantTotal')
-      .groupBy('facture.status')
-      .getRawMany();
+      .groupBy('facture.status');
+    addTenantCondition(parStatutQB, 'facture');
+    const parStatut = await parStatutQB.getRawMany();
 
     return {
       total: parseInt(totalFactures.total),
@@ -502,12 +493,13 @@ export class FactureService extends BaseServiceV1<Facture> {
       .replace('{MM}',     MM)
       .replace('{NNNN}',   ''); // sera complété par le compteur
 
-    const last = await this.repository
+    const lastQB = this.repository
       .createQueryBuilder('f')
       .withDeleted()
       .where('f.numero LIKE :pfx', { pfx: `${searchPrefix}%` })
-      .orderBy('f.numero', 'DESC')
-      .getOne();
+      .orderBy('f.numero', 'DESC');
+    addTenantCondition(lastQB, 'f');
+    const last = await lastQB.getOne();
 
     let nextSeq = 1;
     if (last?.numero) {
@@ -590,31 +582,4 @@ export class FactureService extends BaseServiceV1<Facture> {
     return labels[String(value).toLowerCase()] ?? (value as unknown as StatutFacture);
   }
 
-  private isBillableStatus(status: StatutFacture): boolean {
-    return [
-      StatutFacture.ENVOYEE,
-      StatutFacture.PARTIELLEMENT_PAYEE,
-      StatutFacture.PAYEE,
-      StatutFacture.IMPAYEE,
-    ].includes(status);
-  }
-
-  private async emitStatusEventsIfNeeded(
-    factureId: string,
-    previousStatus: StatutFacture,
-    nextStatus: StatutFacture,
-  ): Promise<void> {
-    if (previousStatus === nextStatus) return;
-
-    const full = await this.findOneV1(factureId, ['client']);
-
-    if (this.isBillableStatus(nextStatus)) {
-      this.eventEmitter.emit('facture.envoyee', full);
-      return;
-    }
-
-    if (nextStatus === StatutFacture.ANNULEE) {
-      this.eventEmitter.emit('facture.annulee', full);
-    }
-  }
 }

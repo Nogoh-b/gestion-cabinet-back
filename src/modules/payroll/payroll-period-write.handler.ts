@@ -35,7 +35,7 @@ export class PayrollPeriodWriteHandler extends BaseWriteHandler {
       label: { description: 'Libellé de la période', example: 'Paie Mars 2026', required: true },
       start_date: { description: 'Premier jour (YYYY-MM-DD)', example: '2026-03-01', required: true },
       end_date: { description: 'Dernier jour (YYYY-MM-DD)', example: '2026-03-31', required: true },
-      status: { description: 'draft, validated, paid, cancelled', example: 'draft' },
+      status: { description: "BD: 'draft', 'validated', 'paid', 'cancelled'.", example: 'draft' },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

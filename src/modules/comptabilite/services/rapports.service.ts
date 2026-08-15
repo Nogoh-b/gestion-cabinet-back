@@ -6,6 +6,7 @@ import { Ecriture } from '../entities/ecriture.entity';
 import { ExerciceComptable } from '../entities/exercice.entity';
 import { LigneEcriture } from '../entities/ligne-ecriture.entity';
 import { ClasseCompte, StatutExercice, TypeCompte } from '../enums/comptabilite.enums';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 @Injectable()
 export class RapportsService {
@@ -32,6 +33,8 @@ export class RapportsService {
       .innerJoin('l.ecriture', 'e')
       .where('e.exercice_id = :eid', { eid: exercice.id })
       .groupBy('l.compte_id');
+    // Isolation multi-tenant (defense-in-depth sur l'écriture jointe).
+    addTenantCondition(qb, 'e');
 
     const rows = await qb.getRawMany();
 
@@ -97,6 +100,8 @@ export class RapportsService {
       .andWhere('c.classe IN (:...classes)', { classes: [ClasseCompte.CLASSE_6, ClasseCompte.CLASSE_7] })
       .groupBy('c.id')
       .orderBy('c.numero', 'ASC');
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'e');
 
     const rows = await qb.getRawMany();
 
@@ -133,6 +138,8 @@ export class RapportsService {
     if (mois) {
       qb.andWhere("DATE_FORMAT(e.date_ecriture, '%Y-%m') = :mois", { mois });
     }
+    // Isolation multi-tenant.
+    addTenantCondition(qb, 'e');
 
     const rows = await qb.getRawMany();
 

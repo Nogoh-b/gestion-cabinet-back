@@ -10,10 +10,11 @@ import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
+import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor';
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 
 @ApiTags('AI Database Analysis')
@@ -32,24 +33,8 @@ export class AiDatabaseController {
   ) {}
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(), // Garder en mémoire pour traitement immédiat
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
-    fileFilter: (req, file, cb) => {
-      const allowed = ['application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
-        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      ];
-      if (allowed.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(new Error(`Type de fichier non supporté: ${file.mimetype}`), false);
-      }
-    }
-  }))
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
+  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -66,9 +51,10 @@ export class AiDatabaseController {
   async askQuestion(
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
+    @Req() req,
     @UploadedFile() file?: Express.Multer.File
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto, user.id, file);
+    return this.aiDbService.analyzeQuestion(dto, user, file, req?.aiRequestLogId);
   }
 
 
@@ -90,21 +76,8 @@ export class AiDatabaseController {
    *   done          → fin du flux
    */
   @Post('ask/stream')
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(FileInterceptor('file', {
-    storage: memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-      const allowed = [
-        'application/pdf', 'text/csv', 'text/plain', 'text/html', 'application/json',
-        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      ];
-      cb(allowed.includes(file.mimetype) ? null : new Error(`Type non supporté: ${file.mimetype}`), allowed.includes(file.mimetype));
-    },
-  }))
+  @UseGuards(JwtAuthGuard, AiQuotaGuard)
+  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Version streaming (SSE) de /ask' })
   async askStream(
@@ -151,8 +124,9 @@ export class AiDatabaseController {
     const tenantId: number = (user?.tenantId as number) ?? getCurrentTenantId();
 
     try {
+      sendEvent('status', { message: 'Connexion IA etablie...' });
       await this.tenantContext.run(tenantId, () =>
-        this.aiDbService.analyzeQuestionStream(dto, user.id, file, sendEvent),
+        this.aiDbService.analyzeQuestionStream(dto, user, file, sendEvent, (res.req as any)?.aiRequestLogId),
       );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });
@@ -172,7 +146,7 @@ export class AiDatabaseController {
     @Body('pendingIntent') pendingIntent: WritePlan,
     @CurrentUser() user
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.confirmWrite(pendingIntent, user.id);
+    return this.aiDbService.confirmWrite(pendingIntent, user);
   }
 
   // ── Résolution d'ambiguïté ───────────────────────────────────────────────────
@@ -218,7 +192,7 @@ export class AiDatabaseController {
       operationIndex,
       fieldName,
       resolvedId,
-      user.id,
+      user,
       conversationId,
       customValue,
       entity,
@@ -228,8 +202,8 @@ export class AiDatabaseController {
   @Post('execute')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exécute une requête SQL (SELECT uniquement)' })
-  async executeCustomQuery(@Body('sql') sqlQuery: string) {
-    return this.aiDbService.executeQuery(sqlQuery);
+  async executeCustomQuery(@Body('sql') sqlQuery: string, @CurrentUser() user) {
+    return this.aiDbService.executeQuery(sqlQuery, user);
   }
 
   @Get('metrics')

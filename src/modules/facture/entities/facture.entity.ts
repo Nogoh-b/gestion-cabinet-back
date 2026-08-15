@@ -1,7 +1,16 @@
 // src/facture/entities/facture.entity.ts
 
+import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { Step } from 'src/modules/dossiers/entities/step.entity';
+import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
+import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
+import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
+import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
+import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
+import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,21 +19,16 @@ import {
   JoinColumn,
   BeforeInsert
 } from 'typeorm';
+
+
 import { Paiement } from '../../paiement/entities/paiement.entity';
 import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
-import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
-import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
-import { Step } from 'src/modules/dossiers/entities/step.entity';
-import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
-import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
-import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
-import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
-import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
+
+
 @Entity('factures')
 @BusinessTable({
   label: 'Factures',
-  description: 'Gestion des factures émises aux clients. Une facture peut être de type honoraires, frais, provision, acompte, avoir. Elle est associée à un dossier et à un client, et peut avoir plusieurs paiements.',
+  description: 'Gestion des factures émises aux clients. Les colonnes enum numériques doivent être filtrées avec leurs codes BD, notamment type et status.',
   icon: '💰',
   category: 'finance'
 })
@@ -57,14 +61,14 @@ export class Facture extends BaseEntity {
   dossier_id: number;
 
   @Column({ name: 'client_id' })
-  @BusinessColumn({
+  @BusinessColumn({ 
     label: 'Client',
     description: 'Identifiant du client destinataire de la facture',
     importance: 'critical',
     group: 'relation',
     ignored: true
   })
-  client_id: number;
+  client_id: number; 
 
   @ManyToOne(() => Step, step => step.factures, { nullable: true })
   @JoinColumn({ name: 'step_id' })
@@ -80,8 +84,8 @@ export class Facture extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Type de facture',
-    description: 'HONORAIRES = Honoraires, FRAIS = Frais divers, PROVISION = Provision, ACOMPTE = Acompte, AVOIR = Avoir',
-    example: 'HONORAIRES, FRAIS, PROVISION, ACOMPTE, AVOIR',
+    description: 'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES. En SQL utiliser le nombre, pas le libellé.',
+    example: '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences',
     importance: 'critical',
     group: 'classification'
   })
@@ -177,8 +181,8 @@ export class Facture extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Statut',
-    description: 'BROUILLON, ENVOYEE, PARTIELLEMENT_PAYEE, PAYEE, IMPAYEE, ANNULEE',
-    example: 'ENVOYEE = Envoyée au client, PAYEE = Entièrement payée',
+    description: 'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 4=IMPAYEE, 5=ANNULEE. En SQL utiliser le nombre.',
+    example: 'status = 3 pour une facture payée',
     importance: 'critical',
     group: 'état'
   })

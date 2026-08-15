@@ -2,6 +2,7 @@
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { Repository, In } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -266,6 +267,8 @@ export class FindingsService extends BaseServiceV1<Finding> {
     if (diligenceId) {
       queryBuilder.where('finding.diligence_id = :diligenceId', { diligenceId });
     }
+    // Isolation multi-tenant.
+    addTenantCondition(queryBuilder, 'finding');
 
     const result = await queryBuilder
       .groupBy('finding.severity')
@@ -286,6 +289,8 @@ export class FindingsService extends BaseServiceV1<Finding> {
     if (diligenceId) {
       queryBuilder.where('finding.diligence_id = :diligenceId', { diligenceId });
     }
+    // Isolation multi-tenant.
+    addTenantCondition(queryBuilder, 'finding');
 
     const result = await queryBuilder
       .groupBy('finding.status')
@@ -306,6 +311,8 @@ export class FindingsService extends BaseServiceV1<Finding> {
     if (diligenceId) {
       queryBuilder.where('finding.diligence_id = :diligenceId', { diligenceId });
     }
+    // Isolation multi-tenant.
+    addTenantCondition(queryBuilder, 'finding');
 
     const result = await queryBuilder
       .groupBy('finding.category')

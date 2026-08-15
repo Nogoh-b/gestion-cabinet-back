@@ -37,7 +37,7 @@ export class CompteWriteHandler extends BaseWriteHandler {
       libelle: { description: 'Libellé du compte (obligatoire)', example: 'Clients', required: true },
       typeCompte: { description: 'ACTIF, PASSIF, CHARGE ou PRODUIT' },
       classe: { description: 'Classe SYSCOHADA (1 à 8). Déduite du numéro si absente.' },
-      actif: { description: '1=Actif (par défaut), 0=Inactif' },
+      actif: { description: 'BD: 1=Actif (par défaut), 0=Inactif.' },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

@@ -70,7 +70,7 @@ export class ExpenseReport extends TenantEntity {
   @Column({ type: 'enum', enum: ExpenseReportStatus, default: ExpenseReportStatus.DRAFT })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Brouillon, soumise, approuvée, rejetée, remboursée',
+    description: "BD: 'draft'=Brouillon, 'submitted'=Soumise, 'approved'=Approuvée, 'rejected'=Rejetée, 'reimbursed'=Remboursée.",
     importance: 'high',
     group: 'statut',
   })

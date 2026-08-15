@@ -30,21 +30,29 @@ export class TenantResolverMiddleware implements NestMiddleware {
 
   async use(req: Request, res: Response, next: NextFunction) {
     const code = this.extractCode(req);
-    let tenantId = 1; // défaut (cabinet système)
+    let resolvedTenantId: number | undefined;
 
     if (code) {
       const resolved = await this.resolveCode(code);
       if (resolved) {
-        tenantId = resolved;
-        (req as any)['resolvedTenantId'] = tenantId;
-        this.logger.debug(`[Tenant] code="${code}" → tenant_id=${tenantId}`);
+        resolvedTenantId = resolved;
+        (req as any)['resolvedTenantId'] = resolvedTenantId;
+        this.logger.debug(`[Tenant] code="${code}" → tenant_id=${resolvedTenantId}`);
       } else {
         this.logger.warn(`[Tenant] code="${code}" non trouvé`);
       }
     }
 
-    this.logger.debug(`[Tenant] run() → tenant_id=${tenantId}, calling next() inside ALS context`);
-    this.tenantContext.run(tenantId, next);
+    // IMPORTANT : si aucun tenant n'est résolu ici, on N'invoque PAS
+    // tenantContext.run() avec tenant_id=1 « au cas où ». On laisse le
+    // TenantInterceptor (qui tourne après le guard JWT) décider du tenant à
+    // partir du JWT. Cela évite qu'une requête sans header active un contexte
+    // « cabinet système » qui contournerait l'isolation des données.
+    if (resolvedTenantId !== undefined) {
+      this.tenantContext.run(resolvedTenantId, next, true);
+    } else {
+      next();
+    }
   }
 
   // ── Extraction du code ────────────────────────────────────────────

@@ -4,7 +4,8 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { BullModule } from '@nestjs/bull';
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
 
@@ -22,10 +23,6 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantResolverMiddleware } from './core/tenant/tenant-resolver.middleware';
-import {
-  UPLOAD_FOLDER_NAME,
-  UPLOAD_PATH,
-} from './core/common/constants/constants';
 import { CoreModule } from './core/core.module';
 import { CabinetModule } from './modules/cabinet/cabinet.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -56,6 +53,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { helpers } from './utils/helper-template-maill';
 import { ProcedureModule } from './modules/procedure/procedure.module';
 import { AiDatabaseModule } from './core/ai-database/ai-database.module';
+import { AiDatabaseProjectModule } from './config/ai-database/ai-database-project.module';
 import { ReferralModule } from './modules/referral/referral.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { SupplierModule } from './modules/supplier/supplier.module';
@@ -65,7 +63,15 @@ import { PdfTemplatesModule } from './modules/pdf-templates/pdf-templates.module
 import { MailTemplateModule } from './modules/mail-template/mail-template.module';
 import { TemplateBlocksModule } from './modules/template-blocks/template-blocks.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ComptabiliteModule } from './modules/comptabilite/comptabilite.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { SuspendedCabinetGuard } from './core/common/guards/suspended-cabinet.guard';
+import { ReminderSchedulerModule } from './core/scheduler/reminder.scheduler.module';
+import { BackupModule } from './modules/backup/backup.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { ExportModule } from './modules/export/export.module';
 
 
 
@@ -89,6 +95,16 @@ dotenv.config();
     OnboardingModule,
 
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
+    // Rate limiting global : protège contre le brute-force (login, OTP...) et
+    // les abus d'API. Limites configurables via RATE_LIMIT_TTL / RATE_LIMIT_MAX.
+    // Des @Throttle spécifiques resserrent les routes d'authentification.
+    ThrottlerModule.forRoot([
+      {
+        ttl: parseInt(process.env.RATE_LIMIT_TTL || '60', 10) * 1000,
+        limit: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
+      },
+    ]),
     ComptabiliteModule,
 
     // 2. Modules indépendants
@@ -108,41 +124,47 @@ dotenv.config();
       isGlobal: true,
       envFilePath: ['.env'],
     }),
-    ServeStaticModule.forRoot({
-      rootPath: UPLOAD_PATH,
-      serveRoot: `/${UPLOAD_FOLDER_NAME}/`,
-    }),
-    MailerModule.forRoot({
-      transport: {
-        host: 'mail.nouyadjamassociates.com',
-        port: 465,
-        secure: true, // true pour le port 465
-        auth: {
-          user: 'emelineenanga@nouyadjamassociates.com',
-          pass: 'Aq123456789!',
-        },
-      },
-      defaults: {
-        from: '"No Reply NOUYADJAM & ASSOCIATES" <emelineenanga@nouyadjamassociates.com>',
-      }, 
-      template: {
-        dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
-        // adapter: new HandlebarsAdapter(helpers), // Moteur de template
-        adapter: new HandlebarsAdapter(helpers), // Moteur de template
-        options: { 
-          strict: true,
-          defaultLayout: 'layout', 
-        },
-        
-      },
-      options: {
-        partials: {
-          dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
-          options: {
-            strict: true, 
+    // NB: le service statique des uploads est désormais géré par un middleware
+    // Express sécurisé dans main.ts (Content-Disposition: attachment +
+    // X-Content-Type-Options: nosniff), au lieu du ServeStaticModule qui
+    // n'ajoutait aucun en-tête de sécurité (risque XSS/sniffing sur les
+    // pièces de dossiers juridiques).
+    MailerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        transport: {
+          host: config.get<string>('SMTP_HOST'),
+          port: config.get<number>('SMTP_PORT', 465),
+          secure: config.get<string>('SMTP_SECURE', 'true') === 'true',
+          auth: {
+            user: config.get<string>('SMTP_USER'),
+            pass: config.get<string>('SMTP_PASSWORD'),
           },
         },
-      },
+        defaults: {
+          from: config.get<string>(
+            'MAIL_FROM',
+            '"No Reply" <no-reply@example.com>',
+          ),
+        },
+        template: {
+          dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+          adapter: new HandlebarsAdapter(helpers),
+          options: {
+            strict: true,
+            defaultLayout: 'layout',
+          },
+        },
+        options: {
+          partials: {
+            dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+            options: {
+              strict: true,
+            },
+          },
+        },
+      }),
     }),
     ClientsModule.register([
       {
@@ -170,15 +192,7 @@ dotenv.config();
       route: '/admin/queues',
       adapter: ExpressAdapter,
     }),
-    // SavingsAccountModule,
-    // ProviderModule,
-    // TransactionModule,
     ActivitiesModule,
-    // PartnerModule,
-    // CommercialModule,
-    // RessourceModule,
-    // PersonnelModule,
-    // CreditModule,
     AudiencesModule,
     FinancesModule,
     ProceduresModule,
@@ -195,18 +209,36 @@ dotenv.config();
     StatsModule,
     DashboardModule,
     ProcedureModule,
+    AiDatabaseProjectModule,
     AiDatabaseModule,
     ReferralModule,
     PayrollModule,
     SupplierModule,
     SettingsModule,
     PlansModule,
+    SubscriptionsModule,
     PdfTemplatesModule,
     MailTemplateModule,
     TemplateBlocksModule,
+    ReminderSchedulerModule,
+    BackupModule,
+    ReportsModule,
+    ExportModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // ThrottlerGuard AVANT SuspendedCabinetGuard : le rate limiting s'applique
+    // en premier à toutes les routes (anti brute-force).
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: SuspendedCabinetGuard,
+    },
+  ],
   exports: [MailerModule],
 })
 export class AppModule implements NestModule {

@@ -83,7 +83,7 @@ export class Ecriture extends TenantEntity {
   @Column({ name: 'source_module', type: 'enum', enum: SourceModule, default: SourceModule.MANUEL })
   @BusinessColumn({
     label: 'Module source',
-    description: 'Module ayant généré l\'écriture (manuel si saisie directe)',
+    description: "BD: 'facture', 'paiement', 'supplier_invoice', 'expense_report', 'payslip', 'salary_advance', 'referral_commission', 'manuel'.",
     importance: 'medium',
     group: 'classification',
   })

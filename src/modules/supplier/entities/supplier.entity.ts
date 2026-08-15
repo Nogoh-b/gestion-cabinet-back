@@ -113,7 +113,7 @@ export class Supplier extends TenantEntity {
   @Column({ type: 'enum', enum: SupplierCategory })
   @BusinessColumn({
     label: 'Catégorie',
-    description: 'Internet, électricité, loyer, fournitures, logiciel, huissier, assurance, maintenance, autre',
+    description: "BD: 'internet', 'electricity', 'rent', 'supplies', 'software', 'bailiff', 'insurance', 'maintenance', 'other'.",
     importance: 'high',
     group: 'identification',
   })
@@ -122,7 +122,7 @@ export class Supplier extends TenantEntity {
   @Column({ type: 'tinyint', default: 1 })
   @BusinessColumn({
     label: 'Actif',
-    description: '1=Actif, 0=Inactif',
+    description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'medium',
     group: 'statut',
   })

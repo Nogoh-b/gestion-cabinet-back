@@ -7,31 +7,105 @@ import { WriteOperation, WritePlan } from './dto/analysis-response.dto';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 
+type IntentClass = 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT';
+
 @Injectable()
 export class IntentDetectionService {
   private readonly logger = new Logger(IntentDetectionService.name);
+  private readonly CACHE_TTL = 2 * 60 * 1000;
+  private readonly classificationCache = new Map<string, { value: IntentClass; timestamp: number }>();
+  private writeSchemaCache: { value: string; timestamp: number } | null = null;
+
+  /**
+   * Regex des mots-clés métier, construite à partir de la config projet.
+   * Fallback : noms des essentialTables si aucun domainKeywords fourni.
+   */
+  private domainKeywordsRegex!: RegExp;
+
+  /**
+   * Pronoms/références anaphoriques qui signalent une question de suivi.
+   * Agnostique du domaine métier — seule la grammaire française est encodée ici.
+   */
+  private readonly FOLLOW_UP_SIGNALS = /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|le(?:s)?\s+(?:dernier|premier|meme)|la\s+(?:derniere|premiere|meme)|l[ea]\s+(?:plus|moins|seul|premier|dernier)|parmi\s+(?:eux|elles|ces|les)|dans\s+(?:cette|ce|ces|la)\s+liste)\b/;
 
   constructor(
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
     @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
-  ) {}
+  ) {
+    this.buildDomainKeywordsRegex();
+  }
+
+  /**
+   * Construit la regex des mots-clés métier à partir de la config projet.
+   * Si `domainKeywords` n'est pas fourni, utilise les noms des `essentialTables`.
+   */
+  private buildDomainKeywordsRegex(): void {
+    const keywords = this.projectConfig?.domainKeywords;
+    if (keywords?.length) {
+      // Échapper les caractères regex spéciaux dans les mots-clés
+      const escaped = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      this.domainKeywordsRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i');
+      return;
+    }
+    // Fallback : noms des essentialTables
+    const tables = this.projectConfig?.databaseTablesConfig?.essentialTables ?? [];
+    if (tables.length) {
+      const escaped = tables.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      this.domainKeywordsRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i');
+      return;
+    }
+    // Dernier recours : regex qui ne matche jamais
+    this.domainKeywordsRegex = /(?!)/;
+  }
 
   async detectIntent(
     question: string,
     llm: ChatOpenAI,
     readSchema: string,
-    options: { forceWrite?: boolean; history?: string } = {},
+    options: {
+      forceWrite?: boolean;
+      history?: string;
+      plannerLlm?: ChatOpenAI;
+      onLlmCall?: (info: { profile: 'fast' | 'quality'; input: unknown; modelName?: string }) => void;
+      classifierModelName?: string;
+      plannerModelName?: string;
+    } = {},
   ): Promise<IntentDetectionResult> {
 
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
-    const isObviousWrite = options.forceWrite || this.isWriteIntent(question);
+    const localClass = options.forceWrite ? 'WRITE' : this.classifyLocal(question);
+    const isObviousWrite = options.forceWrite || localClass === 'WRITE';
+
+    if (localClass === 'HELP') {
+      return { type: 'HELP', requiresConfirmation: false };
+    }
+
+    if (localClass === 'ADVICE') {
+      return { type: 'ADVICE', requiresConfirmation: false };
+    }
+
+    if (localClass === 'CHAT') {
+      return { type: 'CONVERSATIONAL', requiresConfirmation: false };
+    }
+
+    if (localClass === 'READ') {
+      return { type: 'READ', requiresConfirmation: false };
+    }
 
     if (!isObviousWrite) {
       // 1b. Classification légère via LLM : READ | WRITE | CHAT
       //     (plus fiable que des heuristiques statiques)
-      const lightClass = await this.lightClassify(question, llm);
+      const lightClass = await this.lightClassify(question, llm, { ...options, history: options.history });
       this.logger.log(`🏷️ Light classify → ${lightClass}`);
+
+      if (lightClass === 'HELP') {
+        return { type: 'HELP', requiresConfirmation: false };
+      }
+
+      if (lightClass === 'ADVICE') {
+        return { type: 'ADVICE', requiresConfirmation: false };
+      }
 
       if (lightClass === 'CHAT') {
         // Ne pas pré-générer la réponse ici (appel bloquant).
@@ -48,46 +122,190 @@ export class IntentDetectionService {
     const handlers = this.writeHandlerRegistry.getAllHandlers();
     this.logger.log(`📝 Handlers enregistrés: ${handlers.length} → [${handlers.map(h => h.entityName).join(', ')}]`);
 
-    const writeSchema = await this.writeHandlerRegistry.generateGlobalWriteSchema();
+    const writeSchema = await this.getCachedWriteSchema();
     this.logger.log(`📝 Schéma d'écriture généré (${writeSchema.length} chars)`);
 
     // 3️⃣ Prompt amélioré pour les plans complexes
     const prompt = this.buildAdvancedDetectionPrompt(question, readSchema, writeSchema, options.history);
-    
-    try {
-      const response = await llm.invoke([{ role: 'user', content: prompt }]);
-      const content = response.content as string;
-      
-      this.logger.debug(`📥 Réponse LLM: ${content.substring(0, 500)}...`);
-      
-      const result = this.parseResponse(content);
-      
-      if (result.type === 'READ') {
-        return { type: 'READ', requiresConfirmation: false };
+    const planner = options.plannerLlm ?? llm;
+
+    // « Tout faire » pour honorer une demande WRITE avant d'abandonner — surtout
+    // quand l'utilisateur a explicitement forcé le mode écriture (forceWrite) :
+    // dans ce cas on ne doit JAMAIS retomber silencieusement en READ (ça envoie
+    // la demande dans la mauvaise branche, qui génère alors des refus SQL
+    // absurdes du type "opération non autorisée").
+    //
+    // Trois natures d'échec, trois stratégies de retry :
+    // - erreur de CONNEXION (réseau/fournisseur, ex: "Connection error.") →
+    //   on retente le MÊME prompt après un court délai (le modèle n'a rien
+    //   répondu, le gronder n'a aucun sens).
+    // - réponse TRONQUÉE (finish_reason=length, JSON coupé en plein milieu) →
+    //   le budget de tokens était insuffisant : on retente en demandant un
+    //   plan plus concis (pas de texte superflu), jamais la scolarisation
+    //   "ta reponse etait invalide" qui n'aide pas ici.
+    // - réponse reçue complète mais JSON invalide / plan incomplet → on
+    //   retente avec un prompt correctif qui pointe l'erreur.
+    let lastError: string | undefined;
+    let lastWasConnectionError = false;
+    let lastWasTruncated = false;
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0 && lastWasConnectionError) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
       }
-      
-      // Valider et enrichir le plan
-      const validatedPlan = this.validateAndEnrichPlan(result.writePlan);
-      
-      const requiresConfirmation = validatedPlan.confidence < 0.85 || 
-                                    validatedPlan.operations.length > 1 ||
-                                    validatedPlan.operations.some(op => op.operation === 'DELETE');
-      
+      const attemptPrompt = attempt === 0 || lastWasConnectionError
+        ? prompt
+        : lastWasTruncated
+          ? `${prompt}\n\n⚠️ Ta reponse precedente a ete COUPEE avant la fin (JSON incomplet) car trop longue. Reponds UNIQUEMENT avec le JSON, SANS aucun texte de reflexion avant/apres, avec des "humanReadable" TRES courts (moins de 15 mots). Va droit au but.`
+          : `${prompt}\n\n⚠️ Ta reponse precedente etait invalide (${lastError}). Reponds UNIQUEMENT avec un JSON strictement valide, sans commentaire ni texte autour, en respectant exactement le format demande.`;
+      let isTruncated = false;
+      try {
+        const input = [{ role: 'user', content: attemptPrompt }];
+        options.onLlmCall?.({ profile: 'quality', input, modelName: options.plannerModelName });
+        const response = await planner.invoke(input);
+        const content = this.extractLlmText(response);
+        const finishReason = (response as any)?.response_metadata?.finish_reason
+          ?? (response as any)?.generationInfo?.finish_reason;
+        isTruncated = finishReason === 'length';
+
+        this.logger.debug(
+          `📥 Réponse LLM (tentative ${attempt + 1}, ${content.length} chars, finish_reason=${finishReason ?? '?'}): ` +
+          `${content.substring(0, 500)}...`,
+        );
+        if (isTruncated) {
+          this.logger.warn(
+            `✂️ Réponse tronquée (finish_reason=length) — le budget de tokens du planner est insuffisant pour ce plan.`,
+          );
+        }
+
+        const result = this.parseResponse(content);
+
+        if (result.type === 'READ') {
+          return { type: 'READ', requiresConfirmation: false };
+        }
+        if (result.type === 'HELP') {
+          return { type: 'HELP', requiresConfirmation: false };
+        }
+        if (result.type === 'ADVICE') {
+          return { type: 'ADVICE', requiresConfirmation: false };
+        }
+
+        // Valider et enrichir le plan
+        const validatedPlan = this.validateAndEnrichPlan(result.writePlan);
+
+        const requiresConfirmation = validatedPlan.confidence < 0.85 ||
+                                      validatedPlan.operations.length > 1 ||
+                                      validatedPlan.operations.some(op => op.operation === 'DELETE');
+
+        if (attempt > 0) this.logger.log(`✅ Plan WRITE généré à la tentative ${attempt + 1}`);
+        return {
+          type: 'WRITE',
+          writePlan: validatedPlan,
+          requiresConfirmation,
+        };
+      } catch (error) {
+        lastWasConnectionError = this.isConnectionError(error);
+        lastWasTruncated = !lastWasConnectionError && isTruncated;
+        lastError = (error as Error).message;
+        this.logger.warn(
+          `⚠️ Génération du plan WRITE — tentative ${attempt + 1} échouée` +
+          `${lastWasConnectionError ? ' (erreur de connexion)' : lastWasTruncated ? ' (reponse tronquee)' : ''}: ${lastError}`,
+        );
+      }
+    }
+
+    this.logger.error(`❌ Génération du plan WRITE impossible après ${maxAttempts} tentatives: ${lastError}`);
+
+    if (options.forceWrite) {
+      // L'utilisateur a explicitement demandé l'écriture : ne JAMAIS masquer
+      // l'échec en READ silencieux. On remonte un échec explicite que
+      // l'appelant doit afficher tel quel à l'utilisateur.
+      const humanMessage = lastWasConnectionError
+        ? 'Le service IA est temporairement injoignable (erreur de connexion). Réessayez dans quelques instants.'
+        : lastWasTruncated
+          ? 'La demande est trop complexe pour être traitée en une seule fois. Essayez de la découper en plusieurs étapes (ex: créer d\'abord le dossier avec le client et l\'avocat, puis ajouter la procédure et les autres détails dans un second message).'
+          : (lastError || 'Le plan d\'ecriture n\'a pas pu etre genere.');
       return {
         type: 'WRITE',
-        writePlan: validatedPlan,
-        requiresConfirmation,
+        requiresConfirmation: false,
+        writePlanError: humanMessage,
       };
-      
-    } catch (error) {
-      this.logger.error(`❌ Erreur: ${error.message}`);
-      return { type: 'READ', requiresConfirmation: false };
     }
+
+    // Mode auto (pas de forceWrite) : on tente le SQL en dernier recours,
+    // comportement historique conservé pour ne pas regresser les cas READ.
+    return { type: 'READ', requiresConfirmation: false };
+  }
+
+  /**
+   * Détecte une erreur de connexion réseau/fournisseur (ex: APIConnectionError
+   * du SDK OpenAI, message "Connection error.") plutôt qu'une réponse invalide.
+   * Ces erreurs ne doivent jamais être traitées comme une faute du modèle
+   * (pas de prompt correctif "ta réponse était invalide" dans ce cas).
+   */
+  private isConnectionError(error: unknown): boolean {
+    const err = error as { constructor?: { name?: string }; name?: string; message?: string; code?: string };
+    const ctorName = err?.constructor?.name || '';
+    const name = err?.name || '';
+    const message = err?.message || '';
+    const code = err?.code || '';
+    return /connection|network|timeout|econnreset|econnrefused|etimedout|enotfound|fetch failed/i.test(
+      `${ctorName} ${name} ${message} ${code}`,
+    );
   }
 
   /**
    * Prompt avancé pour la détection multi-opérations
    */
+  public classifyLocal(question: string): IntentClass | null {
+    const normalized = this.normalizeText(question).trim();
+    if (!normalized) return 'CHAT';
+
+    if (this.isHelpIntent(question)) {
+      return 'HELP';
+    }
+
+    if (this.isAdviceIntent(question)) {
+      return 'ADVICE';
+    }
+
+    if (this.isChatIntent(normalized)) {
+      return 'CHAT';
+    }
+
+    // Verbes de lecture (liste, affiche, montre, combien, quel…)
+    const readVerbPattern = /^(liste|lister|affiche|afficher|montre|montrer|cherche|chercher|trouve|trouver|combien|quels?|quelles?|qui|donne moi|donnez moi)\b/;
+    // Mots interrogatifs génériques (nombre, total, statut) suivis d'un ?
+    const readQuestionPattern = /\b(nombre|total|statut)\b.*\?/;
+
+    if ((readVerbPattern.test(normalized) || readQuestionPattern.test(normalized))
+        && this.domainKeywordsRegex.test(normalized)) {
+      return 'READ';
+    }
+
+    // Questions de suivi avec pronom anaphorique + mot-clé métier
+    // Ex: "donne moi celle qui est totalement payée" → READ
+    if (this.FOLLOW_UP_SIGNALS.test(normalized) && this.domainKeywordsRegex.test(normalized)) {
+      return 'READ';
+    }
+
+    if (this.isWriteIntent(question)) {
+      return 'WRITE';
+    }
+
+    return null;
+  }
+
+  private async getCachedWriteSchema(): Promise<string> {
+    const now = Date.now();
+    if (this.writeSchemaCache && now - this.writeSchemaCache.timestamp < this.CACHE_TTL) {
+      return this.writeSchemaCache.value;
+    }
+    const value = await this.writeHandlerRegistry.generateGlobalWriteSchema();
+    this.writeSchemaCache = { value, timestamp: now };
+    return value;
+  }
+
   private buildAdvancedDetectionPrompt(question: string, readSchema: string, writeSchema: string, history?: string): string {
     const genericWriteExample = `{
   "type": "WRITE",
@@ -124,6 +342,8 @@ ${history ? `\n## 🗨️ HISTORIQUE RÉCENT DE LA CONVERSATION (le plus ancien 
 ## 🎯 OBJECTIF
 Décomposer cette demande en un PLAN d'opérations.
 - Si c'est une simple lecture → { "type": "READ" }
+- Si l'utilisateur demande comment faire, où cliquer, ou une procédure à suivre → { "type": "HELP" }
+- Si l'utilisateur demande un conseil, une recommandation, quoi ajouter, quoi améliorer, ou une suggestion basée sur le contexte → { "type": "ADVICE" }
 - Si c'est une création/modification → génère un plan avec les dépendances
 
 ## ⚠️ RÈGLES CRITIQUES
@@ -167,6 +387,8 @@ ${this.projectConfig?.promptDomainRules ? `\n${this.projectConfig.promptDomainRu
 
 Pour une LECTURE:
 {"type": "READ"}
+Pour un CONSEIL:
+{"type": "ADVICE"}
 ${this.projectConfig?.promptDomainExample ? `\nPour une CRÉATION MULTI-ENTITÉS:\n${this.projectConfig.promptDomainExample}\n` : `\nPour une CRÉATION:\n${genericWriteExample}\n`}
 Pour une MODIFICATION:
 {
@@ -239,12 +461,113 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
   }
 
   /**
+   * Détection des questions conversationnelles / culture générale.
+   *
+   * Deux critères complémentaires :
+   * 1. Salutations, remerciements et formules courtes → CHAT direct
+   * 2. Si la question NE contient AUCUN mot-clé métier du cabinet ET contient
+   *    un marqueur de culture générale / conversation → CHAT
+   *
+   * @param normalized texte déjà normalisé (minuscules, sans accents)
+   */
+  private isChatIntent(normalized: string): boolean {
+    // 1️⃣ Salutations et formules courtes
+    if (/^(bonjour|bonsoir|salut|hello|hi|hey|coucou|merci|ok|d'accord|dac|ca va|bien|super|genial|cool|top|parfait|entendu|compris|c'est note|pas de souci|bonne journee|bonne soiree|a bientot|au revoir|bye|oui|non|exactement|tout a fait)[\s!.?,]*$/i.test(normalized)) {
+      return true;
+    }
+
+    // 2️⃣ Vérifier l'absence de mots-clés du domaine métier
+    // Si la question contient un mot-clé métier, ce n'est PAS du chat
+    if (this.domainKeywordsRegex.test(normalized)) {
+      return false;
+    }
+
+    // 2b. Si la question contient un pronom de suivi (celle, celui…), c'est
+    // probablement une question de suivi sur des résultats précédents → pas du chat
+    if (this.FOLLOW_UP_SIGNALS.test(normalized)) {
+      return false;
+    }
+
+    // 3️⃣ Marqueurs de questions générales / culture générale / conversation
+    const chatMarkers = [
+      // Questions de culture générale
+      /\b(racine\s+carree?|calcul|mathematique|physique|chimie|biologie|histoire|geographie|philosophie|science|astronomie|planete|capitale|population|superficie|distance|vitesse|temperature|formule)\b/,
+      // Questions "c'est quoi / qu'est-ce que"
+      /\b(c'est\s+quoi|qu'est[- ]ce\s+qu[e']|definition\s+d[eu']|signifie?|signification|veut\s+dire)\b/,
+      // Demandes d'explication hors-métier
+      /\b(explique|expliquer|raconte|raconter|decris|decrire|resume|resumer|traduis|traduire|convertis|convertir)\b.*\b(mot|phrase|texte|concept|notion|theorie|principe|loi\s+de|theorem|equation|reaction)\b/,
+      // Questions "qui est / qui a / qui était"
+      /\bqui\s+(est|etait|a\s+(invente|decouvert|cree|ecrit|fonde|gagne|remporte))\b/,
+      // Questions de conversation courante
+      /\b(quel\s+(?:est\s+le\s+sens|temps\s+fait|jour\s+(?:sommes|est|on\s+est)|age|heure))\b/,
+      // Culture générale directe
+      /\b(president|roi|reine|empereur|premier\s+ministre|secretaire\s+general)\b.*\b(de|du|des|d')\b/,
+      // Demandes créatives
+      /\b(ecris|ecrire|redige|rediger|compose|composer|invente|inventer)\s+(un\s+(?:poeme|texte|histoire|conte|blague|haiku|sonnet|chanson|email|mail))\b/,
+      // Questions existentielles / philosophiques
+      /\b(pourquoi\s+(?:le\s+ciel|la\s+terre|l'eau|les\s+etoiles|on\s+dort|on\s+reve))\b/,
+      // Informatique / programmation (hors métier cabinet)
+      /\b(langage|programmation|algorithme|javascript|python|java|html|css|react|angular|base\s+de\s+donnees|sql\b|api\b|code|fonction|variable|boucle|tableau)\b/,
+      // Demandes de type "donne moi des elements/informations sur" + sujet non-métier
+      /\b(elements?|informations?|infos?|details?|renseignements?)\s+(sur|de|du|des|d')\s+(la|le|les|l')?\s*(jurisprudence|droit\s+(?:civil|penal|commercial|international|constitutionnel|administratif|social|fiscal|du\s+travail)|code\s+(?:civil|penal)|constitution|loi|legislation|reglementation|doctrine|coutume)\b/,
+      // Cuisine, sport, musique, cinéma...
+      /\b(recette|cuisine|cuisinier|ingredient|sport|football|basket|tennis|musique|film|cinema|serie|livre|auteur|artiste|chanteur|acteur|peintre|sculpteur)\b/,
+    ];
+
+    if (chatMarkers.some(pattern => pattern.test(normalized))) {
+      return true;
+    }
+
+    // 4️⃣ Questions très courtes sans mot-clé métier : probablement du chat
+    // ex: "comment ca marche ?", "c'est possible ?", "tu peux m'aider ?"
+    const words = normalized.split(/\s+/).length;
+    if (words <= 4 && /\?$/.test(normalized.trim()) && !this.domainKeywordsRegex.test(normalized)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Détection par mots-clés améliorée.
    *
    * ⚠️ IMPORTANT : Les mots-clés sont DÉJÀ normalisés (sans accents)
    * car normalizeText() supprime les accents du texte d'entrée.
    * Il faut comparer des pommes avec des pommes.
    */
+  private isHelpIntent(question: string): boolean {
+    const normalized = this.normalizeText(question);
+    const patterns = [
+      /comment\s+(?:faire|creer|ajouter|modifier|supprimer)/,
+      /ou\s+cliquer/,
+      /explique.*(?:creer|ajouter|modifier|supprimer)/,
+      /procedure\s+pour/,
+      /guide\s+pour/,
+    ];
+
+    return patterns.some(pattern => pattern.test(normalized));
+  }
+
+  private isAdviceIntent(question: string): boolean {
+    const normalized = this.normalizeText(question);
+    const patterns = [
+      /\bconseil(?:le|ler|s)?\b/,
+      /\brecommand(?:e|er|ation|ations)\b/,
+      /\bsuggestions?\b/,
+      /\bproposes?\b/,
+      /\bidees?\b/,
+      /\bquoi\s+ajouter\b/,
+      /\bque\s+(?:peux|peut|pourrais|pourrait)[-\s]*tu\s+me\s+conseil/,
+      /\bque\s+(?:me\s+)?(?:conseilles?|recommandes?)[-\s]*tu\b/,
+      /\bque\s+manque\b/,
+      /\bqu(?:e|oi)\s+(?:ameliorer|optimiser)\b/,
+      /\b(?:ajouter|ajjouter)\s+encore\b/,
+      /\bprochaine?s?\s+etapes?\b/,
+    ];
+
+    return patterns.some(pattern => pattern.test(normalized));
+  }
+
   private isWriteIntent(question: string): boolean {
     const normalized = this.normalizeText(question);
 
@@ -288,11 +611,9 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       /il\s+faut\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       /(?:merci de|veuillez)\s+(?:creer|ajouter|modifier|supprimer|enregistrer)/,
       // Patterns d'analyse structurée avec données brutes → intent WRITE implicite
-      /cree\s+un\s+dossier/,
-      /dossier\s+(?:client|juridique|structure)/,
       /INSTRUCTION\s*:/i,
       /DONNEES\s+BRUTES/i,
-      /fiche\s+(?:client|de\s+synthese|synthetique)/,
+      /fiche\s+(?:de\s+synthese|synthetique)/,
     ];
 
     for (const pattern of patterns) {
@@ -314,27 +635,60 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
    * Appelé uniquement quand `isWriteIntent()` n'a pas trouvé de mots-clés évidents,
    * donc pas de surcoût pour les WRITE évidents.
    */
-  private async lightClassify(question: string, llm: ChatOpenAI): Promise<'READ' | 'WRITE' | 'CHAT'> {
-    const prompt = `Tu es un classificateur pour un assistant IA de cabinet d'avocats.
-Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, CHAT.
+  private async lightClassify(
+    question: string,
+    llm: ChatOpenAI,
+    options: {
+      onLlmCall?: (info: { profile: 'fast' | 'quality'; input: unknown; modelName?: string }) => void;
+      classifierModelName?: string;
+      history?: string;
+    } = {},
+  ): Promise<IntentClass> {
+    const cacheKey = this.normalizeText(question).trim();
+    const cached = this.classificationCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.value;
+    }
 
-READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...)
+    // Inclure l'historique récent pour que le LLM comprenne les questions
+    // de suivi ("celle qui est payée", "le dernier", "parmi ceux-là"…)
+    const historyBlock = options.history
+      ? `\nHistorique récent de la conversation :\n${options.history}\n`
+      : '';
+
+    const prompt = `Tu es un classificateur pour un assistant IA de cabinet d'avocats.
+Classe la demande suivante en UN SEUL MOT parmi : READ, WRITE, HELP, ADVICE, CHAT.
+
+READ   = interroger des données existantes (lister, chercher, afficher, compter, montrer, combien, quels, qui, quel dossier...). Inclut aussi les QUESTIONS DE SUIVI qui font référence à des résultats précédents avec des pronoms ("celle qui...", "le dernier", "parmi ceux-là", "donne moi celle qui est payée").
 WRITE  = créer, modifier ou supprimer des données (créer, ajouter, enregistrer, ouvrir un dossier, modifier, supprimer, AINSI QUE les opérations comptables : passer/saisir/comptabiliser une écriture, débiter, créditer, créer un compte ou un journal, ouvrir/clôturer un exercice...)
+HELP   = expliquer comment utiliser l'application, ou guider l'utilisateur dans une procédure (comment faire, comment créer, où cliquer, procédure pour, guide pour). Une demande "comment créer..." est HELP, pas WRITE.
+ADVICE = donner des conseils, recommandations, suggestions, pistes d'amélioration ou prochaines étapes, souvent à partir du contexte précédent. Une demande "que peux-tu me conseiller d'ajouter encore ?" est ADVICE, pas READ.
 CHAT   = question générale sans lien avec les données du cabinet (salutation, remerciement, question de culture générale, demande d'explication hors-métier...)
 
 Contexte du cabinet : dossiers juridiques, clients, avocats, factures, audiences, paiements, diligences, ET comptabilité (écritures comptables, comptes du plan comptable, journaux, exercices).
 ⚠️ « passer une écriture », « comptabiliser », « saisir une écriture » sont des opérations WRITE (création d'une écriture comptable), jamais READ.
-
+⚠️ Si l'utilisateur fait référence à un résultat précédent (« celle-ci », « celui-là », « la première », « parmi ceux-là ») en lien avec des données du cabinet, c'est READ, pas CHAT.
+${historyBlock}
 Demande : "${question.replace(/"/g, "'")}"
 
-Réponds UNIQUEMENT avec READ, WRITE ou CHAT. Rien d'autre.`;
+Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
 
     try {
-      const response = await llm.invoke([{ role: 'user', content: prompt }]);
-      const raw = (response.content as string).trim().toUpperCase().replace(/[^A-Z]/g, '');
-      if (raw.startsWith('WRITE')) return 'WRITE';
-      if (raw.startsWith('CHAT')) return 'CHAT';
-      return 'READ'; // défaut sûr : on essaie le SQL
+      const input = [{ role: 'user', content: prompt }];
+      options.onLlmCall?.({ profile: 'fast', input, modelName: options.classifierModelName });
+      const response = await llm.invoke(input);
+      const raw = this.extractLlmText(response).trim().toUpperCase().replace(/[^A-Z]/g, '');
+      const value: IntentClass = raw.startsWith('WRITE')
+        ? 'WRITE'
+        : raw.startsWith('HELP')
+          ? 'HELP'
+        : raw.startsWith('ADVICE')
+          ? 'ADVICE'
+        : raw.startsWith('CHAT')
+          ? 'CHAT'
+          : 'READ';
+      this.classificationCache.set(cacheKey, { value, timestamp: Date.now() });
+      return value;
     } catch {
       return 'READ'; // en cas d'erreur, on tente le SQL
     }
@@ -354,10 +708,25 @@ Réponds UNIQUEMENT avec READ, WRITE ou CHAT. Rien d'autre.`;
         { role: 'system', content: systemPrompt },
         { role: 'user',   content: question },
       ]);
-      return response.content as string;
+      return this.extractLlmText(response);
     } catch {
       return `Bonjour ! Comment puis-je vous aider ?`;
     }
+  }
+
+  /**
+   * Extrait le texte d'une réponse LLM, quel que soit son format (string ou
+   * tableau de blocs, cas des modèles "thinking"). Sans ça, `response.content
+   * as string` plante silencieusement sur un tableau et le catch avale
+   * l'erreur → fallback READ inattendu, y compris en mode WRITE forcé.
+   */
+  private extractLlmText(response: any): string {
+    const content = response?.content ?? response;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content.map((item: any) => item?.text ?? item?.content ?? item ?? '').join('');
+    }
+    return String(content ?? '');
   }
 
   /**

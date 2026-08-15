@@ -38,7 +38,7 @@ export class TaskWriteHandler extends BaseWriteHandler {
       description: { description: 'Description détaillée' },
       dueDate: { description: 'Date d\'échéance (YYYY-MM-DD)', example: '2026-06-30' },
       assignedTo: { description: 'ID de l\'utilisateur assigné' },
-      status: { description: 'pending, in_progress, completed, overdue', example: 'pending' },
+      status: { description: "BD: 'pending', 'in_progress', 'completed', 'overdue'.", example: 'pending' },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

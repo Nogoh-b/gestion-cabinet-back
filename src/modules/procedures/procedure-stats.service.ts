@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProcedureCategoryDto, ProcedureStatsDto } from './dto/procedure-stats.dto';
 import { ProcedureType } from './entities/procedure.entity';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 @Injectable()
 export class ProcedureStatsService {
@@ -19,12 +20,14 @@ export class ProcedureStatsService {
     const active = await this.procedureRepository.count({ where: { is_active: true } });
 
     // Stats par catégorie
-    const procedures = await this.procedureRepository
+    const proceduresQB = this.procedureRepository
       .createQueryBuilder('p')
       .leftJoinAndSelect('p.subtypes', 'subtype')
       .leftJoinAndSelect('p.dossiers', 'dossier')
-      .leftJoinAndSelect('p.parent', 'parent')
-      .getMany();
+      .leftJoinAndSelect('p.parent', 'parent');
+    // Isolation multi-tenant : filtre les dossiers joints.
+    addTenantCondition(proceduresQB, 'dossier');
+    const procedures = await proceduresQB.getMany();
 
     const categories = new Map<string, ProcedureCategoryDto>();
     
@@ -46,7 +49,7 @@ export class ProcedureStatsService {
     });
 
     // Procédures les plus utilisées
-    const mostUsed = await this.procedureRepository
+    const mostUsedQB = this.procedureRepository
       .createQueryBuilder('p')
       .leftJoin('p.dossiers', 'dossier')
       .leftJoin('p.parent', 'parent')
@@ -59,8 +62,10 @@ export class ProcedureStatsService {
       .groupBy('p.id')
       .addGroupBy('parent.name')
       .orderBy('dossiersCount', 'DESC')
-      .limit(10)
-      .getRawMany();
+      .limit(10);
+    // Isolation multi-tenant : filtre les dossiers joints.
+    addTenantCondition(mostUsedQB, 'dossier');
+    const mostUsed = await mostUsedQB.getRawMany();
 
     return {
       total,

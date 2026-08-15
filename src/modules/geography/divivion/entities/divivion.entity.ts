@@ -103,7 +103,7 @@ export class Division {
   @Column({ type: 'tinyint', nullable: true })
   @BusinessColumn({
     label: 'Statut',
-    description: '1 = Actif, 0 = Inactif',
+    description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'medium',
     group: 'état'
   })

@@ -13,13 +13,22 @@ import { IntentDetectionService } from './intent-detection.service';
 import { WriteHandlerRegistry } from './write/write-handler.registry';
 import { EntityResolverService } from './write/entity-resolver.service';
 import { AutoHandlerFactory } from './write/auto-handler-factory.service';
+import { AiDatabasePermissionService } from './ai-database-permission.service';
+import { IamModule } from 'src/modules/iam/iam.module';
+import { PlansModule } from 'src/modules/plans/plans.module';
+import { AiRequestLog } from './entities/ai-request-log.entity';
+import { AiQuotaGuard } from './guards/ai-quota.guard';
+import { AiModelRouterService } from './ai-model-router.service';
 
 @Module({
   imports: [
+    IamModule,
+    PlansModule,
     TypeOrmModule.forFeature([
       Conversation,
       ConversationMessage,
       DocumentCustomer,
+      AiRequestLog,
     ]),
   ],
   controllers: [AiDatabaseController],
@@ -33,13 +42,18 @@ import { AutoHandlerFactory } from './write/auto-handler-factory.service';
     IntentDetectionService,
     EntityResolverService,
     AutoHandlerFactory,
+    AiDatabasePermissionService,
+    AiModelRouterService,
+    AiQuotaGuard,
   ],
   exports: [
     AiDatabaseService,
+    AiModelRouterService,
     WriteHandlerRegistry,
     GenericWriteService,
     EntityResolverService,
-    SchemaMetadataService
+    SchemaMetadataService,
+    AiDatabasePermissionService
   ],
 })
 export class AiDatabaseModule {}

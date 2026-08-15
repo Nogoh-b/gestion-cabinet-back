@@ -17,6 +17,7 @@ import { AudienceDecisionService } from './audience-decision.service';
 import { AudienceWriteHandler } from './audience-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { PlansModule } from '../plans/plans.module';
 
 
 
@@ -30,6 +31,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     DocumentsModule,
     forwardRef(() => DossiersModule),
     AiDatabaseModule,
+    PlansModule,
   ],
   controllers: [AudiencesController],
   providers: [AudiencesService, AudienceSubscriber, AudienceStatsService, AudienceDecisionService, AudienceWriteHandler],

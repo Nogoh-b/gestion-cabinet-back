@@ -71,7 +71,7 @@ export class PayrollPeriod extends TenantEntity {
   @Column({ type: 'enum', enum: PayrollPeriodStatus, default: PayrollPeriodStatus.DRAFT })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Brouillon, validée, payée, annulée',
+    description: "BD: 'draft'=Brouillon, 'validated'=Validée, 'paid'=Payée, 'cancelled'=Annulée.",
     importance: 'high',
     group: 'statut',
   })

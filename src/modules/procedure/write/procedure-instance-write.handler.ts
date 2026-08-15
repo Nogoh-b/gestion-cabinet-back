@@ -41,7 +41,7 @@ export class ProcedureInstanceWriteHandler extends BaseWriteHandler {
       templateId: { description: 'ID du modèle de procédure (UUID). Peut fournir "template" avec le nom.', required: true },
       title: { description: 'Titre de l\'instance', example: 'Procédure contentieuse - Dossier Dupont', required: true },
       currentStageId: { description: 'ID de l\'étape courante (auto-rempli si absent → 1ère étape du template)' },
-      status: { description: 'active, suspended, closed, abandoned, completed, paused, in_progress', example: 'active' },
+      status: { description: "BD: 'active', 'suspended', 'closed', 'abandoned', 'completed', 'paused', 'in_progress'.", example: 'active' },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

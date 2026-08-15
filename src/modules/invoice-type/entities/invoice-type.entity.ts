@@ -89,7 +89,7 @@ export class InvoiceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Catégorie',
-    description: 'legal_fees (Honoraires), expenses (Frais), advance (Provision), settlement (Transaction), other (Autre)',
+    description: "BD: 'legal_fees', 'expenses', 'advance', 'settlement', 'other'.",
     importance: 'high',
     group: 'classification'
   })
@@ -103,7 +103,7 @@ export class InvoiceType extends TenantEntity {
   @Expose()
   @BusinessColumn({
     label: 'Taux TVA par défaut',
-    description: '0%, 5.5%, 10%, 20%',
+    description: 'BD: 0=ZERO, 5.5=REDUCED, 10=INTERMEDIATE, 20=STANDARD. En SQL utiliser le nombre.',
     unit: '%',
     format: 'percentage',
     importance: 'high',

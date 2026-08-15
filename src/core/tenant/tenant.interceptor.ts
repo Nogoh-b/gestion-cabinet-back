@@ -23,15 +23,25 @@ export class TenantInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
-    // Priorité : JWT (utilisateur connecté) → middleware (header/subdomain/path) → défaut 1
-    const tenantId: number =
-      request.user?.tenantId ??
-      (request as any)['resolvedTenantId'] ??
-      1;
+    // Priorité : JWT (utilisateur connecté) → middleware (header/subdomain/path).
+    // On ne retombe PLUS sur tenant_id=1 par défaut pour les routes publiques :
+    // si ni le JWT ni la résolution n'ont donné de tenant, aucun contexte n'est
+    // activé (les routes publiques ne doivent pas accéder aux données métier).
+    const jwtTenantId = request.user?.tenantId;
+    const resolvedTenantId = (request as any)['resolvedTenantId'];
+    const tenantId: number | undefined = jwtTenantId ?? resolvedTenantId;
 
-    // Tout le traitement de la requête (guards, pipes, service, réponse)
-    // s'exécute dans ce contexte → TenantContext.getTenantId() retourne
-    // le bon tenantId partout, pour toute la durée de la requête.
+    // Tout le traitement de la requête (pipes, service, réponse) s'exécute dans
+    // ce contexte → TenantContext.getTenantId() retourne le bon tenantId partout.
+    // explicit=true : ce tenant provient soit du JWT, soit d'une résolution
+    // header/subdomain/path — donc fiable pour l'isolation des données.
+    if (tenantId === undefined) {
+      // Pas de tenant : on n'active aucun contexte. Les repositories ne
+      // filtreront pas (hasActiveTenant() = false → comportement inchangé
+      // pour les routes réellement publiques / les données globales).
+      return next.handle();
+    }
+
     return new Observable((observer) => {
       this.tenantContext.run(tenantId, () => {
         next.handle().subscribe({
@@ -39,7 +49,7 @@ export class TenantInterceptor implements NestInterceptor {
           error:    (err)   => observer.error(err),
           complete: ()      => observer.complete(),
         });
-      });
+      }, true);
     });
   }
 }

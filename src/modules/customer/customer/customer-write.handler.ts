@@ -41,8 +41,8 @@ export class CustomerWriteHandler extends BaseWriteHandler {
       type_customer_id: { description: 'ID du type. Peut fournir "type_customer" avec le code (PART/PRO/ENT/ASSO).' },
       branch_id: { description: 'ID de l\'agence. Peut fournir "branch".' },
       location_city_id: { description: 'ID de la ville. Peut fournir "location_city" avec le nom.' },
-      status: { description: '1=Actif, 0=Inactif, -1=Supprimé', example: '1' },
-      created_from: { description: '0=Agence, 1=En ligne', example: '0' },
+      status: { description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=DELETED/Supprimé, -2=BLOCKED, -3=SUSPENDED, -4=LOCKED.', example: '1' },
+      created_from: { description: 'BD: 0=AGENCY/Agence, 1=ONLINE/En ligne.', example: '0' },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

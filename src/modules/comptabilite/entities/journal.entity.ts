@@ -45,7 +45,7 @@ export class JournalComptable extends TenantEntity {
   @Column({ type: 'enum', enum: TypeJournal })
   @BusinessColumn({
     label: 'Type de journal',
-    description: 'VENTES, ACHATS, CAISSE, BANQUE ou OD (opérations diverses)',
+    description: "BD: 'VENTES', 'ACHATS', 'CAISSE', 'BANQUE', 'OD'.",
     importance: 'critical',
     group: 'classification',
   })

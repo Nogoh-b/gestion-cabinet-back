@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
+import type { ReferencedEntityContext } from './dto/ask-question.dto';
 
 @Injectable()
 export class ConversationManagerService {
@@ -56,14 +57,18 @@ export class ConversationManagerService {
     role: 'system' | 'user' | 'assistant',
     content: string,
     reasoningContent?: string,
-    tokensUsed?: number
+    tokensUsed?: number,
+    references?: ReferencedEntityContext[],
+    metadata?: Record<string, any>,
   ): Promise<ConversationMessage> {
     const message = this.messageRepo.create({
       conversationId,
       role,
       content,
       reasoningContent,
-      tokensUsed: tokensUsed || this.estimateTokens(content)
+      tokensUsed: tokensUsed || this.estimateTokens(content),
+      references: references?.length ? references : undefined,
+      metadata: metadata && Object.keys(metadata).length ? metadata : undefined,
     });
     
     const saved = await this.messageRepo.save(message);
@@ -165,6 +170,38 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     return Math.ceil(text.length / 4);
   }
 
+  private normalizeJsonValue<T>(value: unknown, fallback: T): T {
+    if (value == null) return fallback;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value) as T;
+      } catch {
+        return fallback;
+      }
+    }
+    return value as T;
+  }
+
+  private buildConversationTitle(content: string): string {
+    const cleaned = String(content ?? '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned) return 'Nouvelle conversation';
+    return cleaned.length > 60 ? `${cleaned.slice(0, 60)}...` : cleaned;
+  }
+
+  private async updateTitleFromFirstUserMessage(conversationId: string, content: string): Promise<void> {
+    const conversation = await this.conversationRepo.findOne({ where: { id: conversationId } });
+    if (!conversation) return;
+    const title = String(conversation.title ?? '').trim();
+    if (title && title !== 'Nouvelle conversation') return;
+    await this.conversationRepo.update(conversationId, {
+      title: this.buildConversationTitle(content),
+      updated_at: new Date(),
+    });
+  }
+
    /**
    * Vérifie si la conversation a déjà un message système
    */
@@ -185,21 +222,43 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   /**
    * Ajoute un message utilisateur
    */
-  async addUserMessage(conversationId: string, content: string): Promise<void> {
-    await this.addMessage(conversationId, 'user', content);
+  async addUserMessage(
+    conversationId: string,
+    content: string,
+    references?: ReferencedEntityContext[],
+  ): Promise<void> {
+    await this.addMessage(conversationId, 'user', content, undefined, undefined, references);
+    await this.updateTitleFromFirstUserMessage(conversationId, content);
   }
 
   /**
    * Ajoute un message assistant
    */
-  async addAssistantMessage(conversationId: string, content: string, reasoningContent?: string): Promise<void> {
-    await this.addMessage(conversationId, 'assistant', content, reasoningContent);
+  async addAssistantMessage(
+    conversationId: string,
+    content: string,
+    reasoningContent?: string,
+    metadata?: Record<string, any>,
+  ): Promise<void> {
+    await this.addMessage(conversationId, 'assistant', content, reasoningContent, undefined, undefined, metadata);
   }
 
   /**
    * Récupère l'historique complet au format LangChain
    */
-  async getFullHistory(conversationId: string): Promise<Array<{role: string, content: string}>> {
+  async getFullHistory(conversationId: string): Promise<Array<{
+    id: number;
+    role: string;
+    content: string;
+    created_at: Date;
+    references?: ReferencedEntityContext[];
+    metadata?: Record<string, any>;
+    sqlQuery?: string;
+    results?: any;
+    rowCount?: number;
+    recommendations?: string[];
+    fileInfo?: any;
+  }>> {
     const messages = await this.messageRepo.find({
       where: { conversationId },
       order: { created_at: 'ASC' }
@@ -207,10 +266,129 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     
     // Ne JAMAIS injecter le reasoningContent dans l'historique de conversation :
     // cela double le nombre de tokens et injecte du bruit (raisonnement interne du modèle).
-    return messages.map(msg => ({
+    return messages.map(msg => {
+      const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+      const references = this.normalizeJsonValue<ReferencedEntityContext[]>(msg.references, []);
+      return {
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        created_at: msg.created_at,
+        references,
+        metadata,
+        sqlQuery: metadata.sqlQuery,
+        results: metadata.results,
+        rowCount: metadata.rowCount,
+        recommendations: metadata.recommendations,
+        fileInfo: metadata.fileInfo,
+      };
+    });
+  }
+
+  private formatMessageForPrompt(msg: ConversationMessage): { role: string; content: string } {
+    const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+    let content = msg.content;
+
+    if (msg.role === 'assistant') {
+      const context = this.buildAssistantResultContext(metadata);
+      if (context) {
+        content = `${content}\n\n${context}`;
+      }
+    }
+
+    return {
       role: msg.role,
-      content: msg.content,
-    }));
+      content,
+    };
+  }
+
+  private buildAssistantResultContext(metadata: Record<string, any>): string {
+    const sqlQuery = typeof metadata.sqlQuery === 'string' ? metadata.sqlQuery.trim() : '';
+    const rowCount = typeof metadata.rowCount === 'number' ? metadata.rowCount : undefined;
+    const rows = Array.isArray(metadata.results) ? metadata.results.slice(0, 3) : [];
+
+    if ((rowCount ?? 0) === 0 && rows.length === 0) return '';
+    if (!sqlQuery && rows.length === 0 && rowCount === undefined) return '';
+
+    const lines: string[] = ['[CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI]'];
+    if (sqlQuery) {
+      lines.push(`SQL precedent: ${sqlQuery.replace(/\s+/g, ' ').substring(0, 600)}`);
+    }
+    if (rowCount !== undefined) {
+      lines.push(`Nombre de lignes precedent: ${rowCount}`);
+    }
+    if (rows.length > 0) {
+      lines.push('Resultats cles precedents:');
+      rows.forEach((row, index) => {
+        lines.push(`- ligne ${index + 1}: ${this.formatResultRowForPrompt(row)}`);
+      });
+    }
+    lines.push(
+      'Instruction: pour "ce/cette/cet" element, reutilise ces identifiants et filtres exacts; ne devine pas un autre numero.',
+    );
+
+    return lines.join('\n');
+  }
+
+  private formatResultRowForPrompt(row: Record<string, any>): string {
+    const priorityKeys = [
+      'id',
+      'uuid',
+      'numero',
+      'number',
+      'reference',
+      'dossier_id',
+      'dossier_number',
+      'client_id',
+      'customer_id',
+      'invoice_id',
+      'facture_id',
+      'paiement_id',
+      'jurisdiction_id',
+      'invoice_type_id',
+      'type',
+      'status',
+      'first_name',
+      'last_name',
+      'company_name',
+      'name',
+      'title',
+      'object',
+      'description',
+      'date_facture',
+      'date_echeance',
+      'montant_ht',
+      'montant_ttc',
+      'amount',
+      'currency',
+      'tenant_id',
+    ];
+    const entries: string[] = [];
+    const seen = new Set<string>();
+
+    for (const key of priorityKeys) {
+      if (Object.prototype.hasOwnProperty.call(row, key)) {
+        entries.push(`${key}=${this.formatPromptValue(row[key])}`);
+        seen.add(key);
+      }
+    }
+
+    for (const [key, value] of Object.entries(row)) {
+      if (entries.length >= 25) break;
+      if (seen.has(key)) continue;
+      if (key.endsWith('_id') || key.endsWith('_number') || key.includes('numero')) {
+        entries.push(`${key}=${this.formatPromptValue(value)}`);
+      }
+    }
+
+    return entries.join(', ') || JSON.stringify(row).substring(0, 500);
+  }
+
+  private formatPromptValue(value: unknown): string {
+    if (value === null || value === undefined) return 'NULL';
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'object') return JSON.stringify(value).substring(0, 120);
+    return String(value).replace(/\s+/g, ' ').substring(0, 120);
   }
 
   /**
@@ -236,7 +414,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
 
     for (const msg of messages) {
       if (msg.role === 'system') continue;
-      const messageTokens = msg.tokensUsed || this.estimateTokens(msg.content);
+      const promptMessage = this.formatMessageForPrompt(msg);
+      const messageTokens = this.estimateTokens(promptMessage.content);
       if (selected.length >= maxMessages || (selected.length > 0 && tokens + messageTokens > maxTokens)) {
         break;
       }
@@ -244,10 +423,31 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       tokens += messageTokens;
     }
 
-    return selected.reverse().map(msg => ({
-      role: msg.role,
-      content: msg.content,
-    }));
+    return selected.reverse().map(msg => this.formatMessageForPrompt(msg));
+  }
+
+  /**
+   * Retourne le bloc structuré de contexte de suivi (SQL + lignes de résultats
+   * avec identifiants exacts) construit à partir du dernier message assistant
+   * porteur de résultats. Sert à ancrer les questions de suivi quand le chemin
+   * `historyOverride` (chat) court-circuite getRecentHistoryForPrompt.
+   *
+   * @returns le bloc [CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI] ou null.
+   */
+  async getStructuredFollowUpContext(conversationId: string): Promise<string | null> {
+    const messages = await this.messageRepo.find({
+      where: { conversationId },
+      order: { created_at: 'DESC' },
+      take: 12,
+    });
+
+    for (const msg of messages) {
+      if (msg.role !== 'assistant') continue;
+      const metadata = this.normalizeJsonValue<Record<string, any>>(msg.metadata, {});
+      const block = this.buildAssistantResultContext(metadata);
+      if (block) return block;
+    }
+    return null;
   }
 
   /**

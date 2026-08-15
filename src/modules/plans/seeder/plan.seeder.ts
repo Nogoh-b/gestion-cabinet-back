@@ -36,6 +36,9 @@ export default class PlanSeeder implements Seeder {
         price_yearly: null,
         features: JSON.stringify(['Gestion des dossiers', 'Clients', 'Documents']),
         is_active: true,
+        trial_enabled: false,
+        trial_days: 0,
+        min_commitment_months: 0,
       },
       {
         name: 'Starter',
@@ -68,6 +71,9 @@ export default class PlanSeeder implements Seeder {
           'Assistant IA (100 req/mois)',
         ]),
         is_active: true,
+        trial_enabled: true,
+        trial_days: 14,
+        min_commitment_months: 12,
       },
       {
         name: 'Cabinet',
@@ -100,6 +106,9 @@ export default class PlanSeeder implements Seeder {
           'Support prioritaire',
         ]),
         is_active: true,
+        trial_enabled: true,
+        trial_days: 30,
+        min_commitment_months: 12,
       },
       {
         name: 'Firme',
@@ -132,6 +141,9 @@ export default class PlanSeeder implements Seeder {
           'Support dédié & SLA',
         ]),
         is_active: true,
+        trial_enabled: false,
+        trial_days: 0,
+        min_commitment_months: 0,
       },
     ];
 

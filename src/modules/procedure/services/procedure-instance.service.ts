@@ -2,6 +2,7 @@
 import { Repository, DataSource, QueryRunner, IsNull } from 'typeorm';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 
 import { CreateProcedureInstanceDto, UpdateProcedureInstanceDto } from '../dto/create-procedure-instance.dto';
@@ -312,10 +313,13 @@ private async executeTransitionSimple(
     await queryRunner.startTransaction('READ COMMITTED'); // Niveau d'isolation plus bas
 
     // 1. Récupérer et verrouiller UNIQUEMENT l'instance
+    const tenantId = getCurrentTenantId();
     const instance = await queryRunner.manager
       .createQueryBuilder(ProcedureInstance, 'instance')
       .setLock('pessimistic_write')
       .where('instance.id = :id', { id: instanceId })
+      // Isolation multi-tenant (queryRunner.manager non patché par le filtre auto).
+      .andWhere('instance.tenant_id = :tenantId', { tenantId })
       .getOne();
 
     if (!instance) {
@@ -377,6 +381,8 @@ private async executeTransitionSimple(
         updated_at: new Date(),
       })
       .where('id = :id', { id: instanceId })
+      // Isolation multi-tenant (DML dans transaction non patchée).
+      .andWhere('tenant_id = :tenantId', { tenantId })
       .execute();
 
     // 7. Enregistrer l'historique de manière asynchrone (dans une même transaction)

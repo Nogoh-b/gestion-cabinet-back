@@ -51,7 +51,7 @@ export class User extends BaseEntity {
   @Column({ type: 'tinyint' })
   @BusinessColumn({
     label: 'Statut',
-    description: 'Statut du compte utilisateur',
+    description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'medium',
     group: 'état'
   })
@@ -80,6 +80,10 @@ export class User extends BaseEntity {
   @Column({ length: 200, nullable: true })
   refreshToken: string;
 
+  /** Double authentification (OTP e-mail) activée pour ce compte. */
+  @Column({ name: 'mfa_enabled', type: 'boolean', default: false })
+  mfa_enabled: boolean;
+
   @Exclude()
   @Column({ type: 'char', length: 60, nullable: true })
   password?: string | null;
@@ -94,7 +98,7 @@ export class User extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Rôle',
-    description: 'admin, avocat, secretaire, client, stagiaire, huissier',
+    description: "BD: 'admin', 'avocat', 'secretaire', 'client', 'stagiaire', 'huissier'.",
     importance: 'critical',
     group: 'authentification'
   })

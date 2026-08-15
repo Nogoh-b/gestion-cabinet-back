@@ -23,6 +23,7 @@ export enum NotifiableEvent {
   AUDIENCE_UPDATED = 'audience_updated',
   AUDIENCE_REMINDER = 'audience_reminder',
   AUDIENCE_HELD = 'audience_held',
+  AUDIENCE_CANCELLED = 'audience_cancelled',
 
   // Factures
   FACTURE_CREATED = 'facture_created',

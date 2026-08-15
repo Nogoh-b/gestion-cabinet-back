@@ -17,6 +17,21 @@ export class AnalysisResponseDto {
   error?: string;
   pendingWritePlan?: WritePlan;
 
+  /**
+   * Ensembles de résultats multiples, un par ressource, quand la question
+   * portait sur plusieurs ressources (ex: un client + ses dossiers + ses factures).
+   * Le frontend affiche un tableau étiqueté par ensemble. `results`/`sqlQuery`
+   * restent renseignés (premier ensemble + requêtes concaténées) pour rétro-compat.
+   */
+  resultSets?: Array<{ title: string; sqlQuery: string; data: any[]; rowCount: number }>;
+
+  /**
+   * true quand une demande READ est trop ambigue ou incomprise pour generer
+   * une requete fiable. Le frontend doit afficher les options de clarification.
+   */
+  requiresClarification?: boolean;
+  clarificationContext?: ReadClarificationContext;
+
   // ── Ambiguïté de résolution ───────────────────────────────────────────────
   /**
    * true quand l'IA ne peut pas choisir seule parmi plusieurs entités.
@@ -42,6 +57,20 @@ export class AnalysisResponseDto {
     /** Libellé lisible de l'entité cible (ex: "juridiction", "type de procédure") */
     otherLabel?: string;
   };
+}
+
+export interface ReadClarificationOption {
+  id: string;
+  label: string;
+  description: string;
+  followUpQuestion: string;
+  specificTables?: string[];
+}
+
+export interface ReadClarificationContext {
+  reason: string;
+  question: string;
+  options: ReadClarificationOption[];
 }
 
 export interface WritePlan {

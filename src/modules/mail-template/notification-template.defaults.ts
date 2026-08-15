@@ -211,6 +211,17 @@ const NOTIFICATION_TEMPLATE_CONFIGS: NotificationTemplateConfig[] = [
     actionLabel: 'Voir le compte rendu',
   },
   {
+    code: 'audience_cancelled',
+    label: 'Audience annulee',
+    category: 'audience',
+    kind: 'audience',
+    clientSubject: 'Audience annulee - dossier {{dossier.numero}}',
+    employeeSubject: 'Audience annulee - dossier {{dossier.numero}}',
+    clientIntro: 'Une audience liee a votre dossier a ete annulee. Les informations disponibles sont reprises ci-dessous.',
+    employeeIntro: 'Une audience a ete annulee. Verifiez les impacts sur le dossier, les pieces et les prochaines actions.',
+    actionLabel: 'Voir l audience',
+  },
+  {
     code: 'facture_created',
     label: 'Facture creee',
     category: 'billing',

@@ -98,7 +98,7 @@ export class Audience extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Type d\'audience',
-    description: '0=Plaidoirie, 1=Délibération, 2=Jugement, 3=Conciliation',
+    description: 'BD: 0=HEARING/Plaidoirie, 1=DELIBERATION, 2=JUDGMENT, 3=CONCILIATION.',
     example: '0 = Audience de plaidoirie',
     importance: 'critical',
     group: 'classification'
@@ -112,7 +112,7 @@ export class Audience extends BaseEntity {
   })
   @BusinessColumn({
     label: 'Statut',
-    description: '0=Programmée, 1=Tenue, 2=Reportée, 3=Annulée',
+    description: 'BD: 0=SCHEDULED/Programmée, 1=HELD/Tenue, 2=POSTPONED/Reportée, 3=CANCELLED/Annulée.',
     importance: 'critical',
     group: 'état'
   })

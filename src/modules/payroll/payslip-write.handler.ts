@@ -53,7 +53,7 @@ export class PayslipWriteHandler extends BaseWriteHandler {
         description: 'Net à payer (par défaut = gross_amount)',
         example: '3200.00',
       },
-      status: { description: 'draft, validated, paid', example: 'draft' },
+      status: { description: "BD: 'draft', 'validated', 'paid'.", example: 'draft' },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);

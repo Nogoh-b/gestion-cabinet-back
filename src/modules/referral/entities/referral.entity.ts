@@ -61,7 +61,7 @@ export class Referrer extends TenantEntity {
   @Column({ type: 'enum', enum: ReferrerType, name: 'referrer_type' })
   @BusinessColumn({
     label: 'Type d\'apporteur',
-    description: 'Catégorie : confrère, expert-comptable, agence, client, employé, particulier, autre',
+    description: "BD: 'lawyer'=Confrère, 'accountant'=Expert-comptable, 'agency'=Agence, 'client', 'employee', 'individual', 'other'.",
     importance: 'high',
     group: 'identification',
   })
@@ -179,7 +179,7 @@ export class Referrer extends TenantEntity {
   @Column({ type: 'enum', enum: ReferrerPaymentMethod, nullable: true, name: 'payment_method' })
   @BusinessColumn({
     label: 'Mode de paiement privilégié',
-    description: 'Virement, chèque, espèces, mobile money',
+    description: "BD: 'VIREMENT', 'CHEQUE', 'ESPECES', 'MOBILE_MONEY'.",
     importance: 'medium',
     group: 'financier',
   })
@@ -215,7 +215,7 @@ export class Referrer extends TenantEntity {
   @Column({ type: 'tinyint', default: 1 })
   @BusinessColumn({
     label: 'Actif',
-    description: '1=Actif, 0=Inactif',
+    description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'medium',
     group: 'statut',
   })

@@ -160,6 +160,36 @@ getTableLabel(tableName: string): string {
     return '';
   }
 
+  /**
+   * Récupère l'exemple de valeur d'une colonne depuis les décorateurs.
+   * Permet au générateur SQL de distinguer un identifiant lisible (numero,
+   * reference) d'un id numérique/UUID.
+   */
+  getColumnExample(tableName: string, columnName: string): string {
+    const columnMap = this.columnMetadataCache.get(tableName);
+    if (columnMap) {
+      // ✅ Essayer avec le nom exact
+      let meta = columnMap.get(columnName);
+
+      // ✅ Si pas trouvé, essayer en snake_case → camelCase
+      if (!meta && columnName.includes('_')) {
+        const camelCase = this.snakeToCamel(columnName);
+        meta = columnMap.get(camelCase);
+      }
+
+      // ✅ Si pas trouvé, essayer en camelCase → snake_case
+      if (!meta) {
+        const snakeCase = this.camelToSnake(columnName);
+        meta = columnMap.get(snakeCase);
+      }
+
+      if (meta?.example) {
+        return meta.example;
+      }
+    }
+    return '';
+  }
+
   // Utilitaires
   private snakeToCamel(str: string): string {
     return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -195,7 +225,10 @@ getTableLabel(tableName: string): string {
         const meta = columnMap.get(colName);
         const label = meta?.label || this.formatTechnicalName(colName);
         const description = meta?.description || '';
-        schema += `| ${colName} | ${col.DATA_TYPE} | ${label} | ${description} |\n`;
+        const type = (col.DATA_TYPE === 'enum' || col.DATA_TYPE === 'set') && col.COLUMN_TYPE
+          ? col.COLUMN_TYPE
+          : col.DATA_TYPE;
+        schema += `| ${colName} | ${type} | ${label} | ${description} |\n`;
       }
       
       schema += '\n';
@@ -209,7 +242,7 @@ getTableLabel(tableName: string): string {
    */
   private async getColumnsInfo(table: string): Promise<any[]> {
     return this.dataSource.query(`
-      SELECT COLUMN_NAME, DATA_TYPE 
+      SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE 
       FROM information_schema.COLUMNS 
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
       ORDER BY ORDINAL_POSITION

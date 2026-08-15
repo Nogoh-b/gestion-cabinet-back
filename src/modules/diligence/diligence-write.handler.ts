@@ -38,9 +38,9 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
       title: { description: 'Titre de la diligence', example: 'Due diligence acquisition société X', required: true },
       start_date: { description: 'Date de début (YYYY-MM-DD)', example: '2026-05-01', required: true },
       deadline: { description: 'Date butoir (YYYY-MM-DD)', example: '2026-06-30', required: true },
-      type: { description: 'acquisition, investment, ipo, compliance, litigation, contract', example: 'acquisition' },
-      status: { description: 'draft, in_progress, review, completed, cancelled', example: 'draft' },
-      priority: { description: 'low, medium, high, critical', example: 'medium' },
+      type: { description: "BD: 'acquisition', 'investment', 'ipo', 'compliance', 'litigation', 'contract'.", example: 'acquisition' },
+      status: { description: "BD: 'draft', 'in_progress', 'review', 'completed', 'cancelled'.", example: 'draft' },
+      priority: { description: "BD: 'low', 'medium', 'high', 'critical'.", example: 'medium' },
       assigned_lawyer_id: { description: 'ID de l\'avocat. Peut fournir "assigned_lawyer".' },
     };
     for (const f of fields) {
