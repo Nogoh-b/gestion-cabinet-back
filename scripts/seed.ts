@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import dataSource from 'src/data-source';
+import { dataSource } from 'src/data-source';
 // import dataSource from 'src/core/database/dataSource';
 import { seedDatabase } from 'src/main.seeder';
 
