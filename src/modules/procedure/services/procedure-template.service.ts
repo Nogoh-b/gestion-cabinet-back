@@ -643,8 +643,9 @@ private async updateTransitions(
       // Map des anciens IDs de stages vers les nouveaux
       const stageIdMap = new Map<string, string>();
       
-      // Dupliquer les stages
-      for (const stage of original.stages) {
+      // Dupliquer les stages (les étapes système — ex: "Ouverture" runtime —
+      // ne sont jamais dupliquées dans les templates copiés)
+      for (const stage of (original.stages ?? []).filter((s) => !s.isSystem)) {
         const newStage = this.stageRepository.create({
           templateId: newTemplate.id,
           name: stage.name,
@@ -802,10 +803,11 @@ private async updateTransitions(
       // Map ID temporaire (ancien stage ID) → ID réel (nouveau stage ID)
       const stageIdMap = new Map<string, string>();
 
-      // 2. Copier les stages et sous-stages
-      const sourceStages = source.stages ?? [];
-      // Trier par ordre
-      sourceStages.sort((a, b) => a.order - b.order);
+      // 2. Copier les stages et sous-stages (les étapes système — ex:
+      // "Ouverture" runtime — ne sont jamais copiées dans les templates dérivés)
+      const sourceStages = (source.stages ?? [])
+        .filter((sourceStage) => !sourceStage.isSystem)
+        .sort((a, b) => a.order - b.order);
 
       for (const sourceStage of sourceStages) {
         const stage = this.stageRepository.create({

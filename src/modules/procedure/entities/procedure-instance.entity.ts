@@ -241,6 +241,17 @@ export class ProcedureInstance extends TenantEntity {
     return this.totalMandatorySubStagesCount - this.completedMandatorySubStagesCount;
   }
 
+  /**
+   * Étapes réelles du template, triées par ordre, en excluant les étapes
+   * techniques `isSystem` (ex: le stage runtime "Ouverture") qui ne doivent
+   * jamais compter dans la progression ni la position courante.
+   */
+  private getSortedRealStages(): Stage[] {
+    return (this.template?.stages ?? [])
+      .filter((s) => !s.isSystem)
+      .sort((a, b) => a.order - b.order);
+  }
+
   @Expose()
   @BusinessColumn({
     label: 'Total sous-étapes à compléter',
@@ -249,8 +260,8 @@ export class ProcedureInstance extends TenantEntity {
     group: 'statistiques'
   })
   get totalSubStagesToCompleteCount(): number {
-    if (!this.template?.stages) return 0;
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
+    const sortedStages = this.getSortedRealStages();
+    if (sortedStages.length === 0) return 0;
     const currentStageIndex = sortedStages.findIndex(stage => stage.id === this.currentStageId);
     const completedIds = this.getAllCompletedSubStageIds();
     let total = 0;
@@ -277,8 +288,8 @@ export class ProcedureInstance extends TenantEntity {
     group: 'statistiques'
   })
   get completedSubStagesToCompleteCount(): number {
-    if (!this.template?.stages) return 0;
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
+    const sortedStages = this.getSortedRealStages();
+    if (sortedStages.length === 0) return 0;
     const currentStageIndex = sortedStages.findIndex(stage => stage.id === this.currentStageId);
     const completedIds = this.getAllCompletedSubStageIds();
     let completed = 0;
@@ -358,7 +369,7 @@ export class ProcedureInstance extends TenantEntity {
   })
   get isOnLastStage(): boolean {
     if (!this.template?.stages || !this.currentStage) return false;
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
+    const sortedStages = this.getSortedRealStages();
     const currentStageOrder = this.currentStage.order;
     const maxOrder = Math.max(...sortedStages.map(s => s.order));
     if (currentStageOrder === maxOrder) return true;
@@ -623,7 +634,7 @@ export class ProcedureInstance extends TenantEntity {
       return { isLast: false, reason: 'Template ou stage courant manquant', confidence: 'low' };
     }
 
-    const sortedStages = [...this.template.stages].sort((a, b) => a.order - b.order);
+    const sortedStages = this.getSortedRealStages();
     const currentStageOrder = this.currentStage.order;
     const maxOrder = Math.max(...sortedStages.map(s => s.order));
     const lastStageByOrder = sortedStages.find(s => s.order === maxOrder);

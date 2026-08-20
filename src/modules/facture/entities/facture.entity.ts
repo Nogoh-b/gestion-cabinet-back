@@ -17,7 +17,8 @@ import {
   Column, OneToMany,
   ManyToOne,
   JoinColumn,
-  BeforeInsert
+  BeforeInsert,
+  Index
 } from 'typeorm';
 
 
@@ -26,6 +27,7 @@ import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
 
 
 @Entity('factures')
+@Index('UQ_factures_tenant_numero', ['tenant_id', 'numero'], { unique: true })
 @BusinessTable({
   label: 'Factures',
   description: 'Gestion des factures émises aux clients. Les colonnes enum numériques doivent être filtrées avec leurs codes BD, notamment type et status.',
@@ -91,7 +93,7 @@ export class Facture extends BaseEntity {
   })
   type: TypeFacture;
 
-  @Column({ unique: true })
+  @Column()
   @BusinessColumn({
     label: 'Numéro de facture',
     description: 'Numéro unique de la facture (format: ANN/XXX/YY)',

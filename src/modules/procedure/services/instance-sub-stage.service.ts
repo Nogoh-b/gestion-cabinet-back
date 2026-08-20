@@ -24,7 +24,10 @@ async mapInstanceWithCurrentTemplate(
     currentStageVisit.subStageVisits.map((v) => [v.subStageId, v])
   );
 
-  const mappedStages: MappedStage[] = currentTemplate.stages.map((stage) => {
+  // Exclut les étapes système (ex: "Ouverture" runtime) de l'affichage
+  const mappedStages: MappedStage[] = currentTemplate.stages
+    .filter((stage) => !stage.isSystem)
+    .map((stage) => {
     const mappedSubStages: MappedSubStage[] = stage.subStages.map((subStage) => {
       const subVisit = subStageVisitsMap.get(subStage.id);
       const metadata = subVisit?.metadata || {};
@@ -76,8 +79,23 @@ async mapInstanceWithCurrentTemplate(
     };
   });
 
-  const currentStage = mappedStages.find((s) => s.id === instance.currentStageId) 
-    || mappedStages[mappedStages.length - 1];
+  let currentStage = mappedStages.find((s) => s.id === instance.currentStageId);
+  if (!currentStage) {
+    // Étape courante introuvable (ex: pointe encore vers un stage système
+    // "Ouverture" legacy, ou étape supprimée du template) → on retombe sur la
+    // première vraie étape du template — jamais sur la dernière (qui serait
+    // "Clôture" et donnerait un mauvais contexte de travail).
+    currentStage = mappedStages[0] ?? mappedStages[mappedStages.length - 1];
+  }
+
+  // Le template exposé sur l'instance ne doit jamais contenir les étapes
+  // système (ex: "Ouverture" runtime) : elles fuiraient vers l'UI via
+  // `instance.template.stages` (visualisation, progression, navigation).
+  const realStages = currentTemplate.stages.filter((s) => !s.isSystem);
+  (currentTemplate as any).stages = realStages;
+  if (instance.template && instance.template !== currentTemplate) {
+    (instance.template as any).stages = realStages;
+  }
 
   return {
     instance,

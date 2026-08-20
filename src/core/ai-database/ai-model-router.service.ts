@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
 
 export type AiModelProfile = 'fast' | 'quality' | 'streaming';
+export type AiModelMode = 'fast' | 'balanced' | 'precise';
 
 interface ModelProfileConfig {
   model: string;
@@ -21,17 +22,20 @@ export class AiModelRouterService {
   private readonly models = new Map<string, ChatOpenAI>();
 
   warmUp(): void {
-    this.getModel('fast', 64);
-    this.getModel('quality', 1200);
-    this.getModel('streaming', 1800);
+    this.getModel('fast', 64, undefined, 'fast');
+    this.getModel('quality', 1200, undefined, 'balanced');
+    this.getModel('quality', 1200, undefined, 'precise');
+    this.getModel('streaming', 1800, undefined, 'balanced');
+    this.getModel('streaming', 1800, undefined, 'precise');
   }
 
   getModel(
     profile: AiModelProfile,
     maxTokens?: number,
     modelKwargsOverride?: Record<string, unknown>,
+    mode?: AiModelMode,
   ): ChatOpenAI {
-    const config = this.getProfileConfig(profile, maxTokens, modelKwargsOverride);
+    const config = this.getProfileConfig(profile, maxTokens, modelKwargsOverride, mode);
     const cacheKey = [
       profile,
       config.model,
@@ -71,8 +75,8 @@ export class AiModelRouterService {
     return model;
   }
 
-  getModelName(profile: AiModelProfile): string {
-    return this.getProfileConfig(profile).model;
+  getModelName(profile: AiModelProfile, mode?: AiModelMode): string {
+    return this.getProfileConfig(profile, undefined, undefined, mode).model;
   }
 
   async invoke(
@@ -80,8 +84,9 @@ export class AiModelRouterService {
     input: unknown,
     maxTokens?: number,
     modelKwargsOverride?: Record<string, unknown>,
+    mode?: AiModelMode,
   ) {
-    return this.getModel(profile, maxTokens, modelKwargsOverride).invoke(input as any);
+    return this.getModel(profile, maxTokens, modelKwargsOverride, mode).invoke(input as any);
   }
 
   async stream(
@@ -89,8 +94,9 @@ export class AiModelRouterService {
     input: unknown,
     maxTokens?: number,
     modelKwargsOverride?: Record<string, unknown>,
+    mode?: AiModelMode,
   ) {
-    return this.getModel(profile, maxTokens, modelKwargsOverride).stream(input as any);
+    return this.getModel(profile, maxTokens, modelKwargsOverride, mode).stream(input as any);
   }
 
   /**
@@ -123,12 +129,9 @@ export class AiModelRouterService {
     profile: AiModelProfile,
     maxTokens?: number,
     modelKwargsOverride?: Record<string, unknown>,
+    mode?: AiModelMode,
   ): ModelProfileConfig {
-    const model = profile === 'fast'
-      ? process.env.AI_FAST_MODEL || process.env.AI_MODEL || 'deepseek-v4-flash'
-      : profile === 'streaming'
-        ? process.env.AI_STREAM_MODEL || process.env.AI_MODEL || 'GLM-5.2'
-        : process.env.AI_QUALITY_MODEL || process.env.AI_MODEL || 'deepseek-v4-pro';
+    const model = this.getConfiguredModel(profile, mode);
 
     const defaults: Record<AiModelProfile, number> = {
       fast: 300,
@@ -147,10 +150,37 @@ export class AiModelRouterService {
       // provoquait un échec immédiat et visible sur chaque appel LLM du module.
       maxRetries: this.getProfileNumber(profile, 'MAX_RETRIES', Number(process.env.AI_MAX_RETRIES ?? 2)),
       temperature: this.getProfileNumber(profile, 'TEMPERATURE', Number(process.env.AI_TEMPERATURE || 0)),
-      apiKey: this.getApiKey(profile),
-      baseURL: this.getBaseUrl(profile),
+      apiKey: this.getApiKey(profile, mode),
+      baseURL: this.getBaseUrl(profile, mode),
       modelKwargs: this.mergeModelKwargs(this.getModelKwargs(profile), modelKwargsOverride),
     };
+  }
+
+  /**
+   * Le profil décrit l'usage technique (petite réponse, plan/SQL, streaming),
+   * tandis que le mode demandé par le chat choisit réellement la gamme du
+   * modèle : rapide/équilibré sur Flash, précis sur Pro.
+   */
+  private getConfiguredModel(profile: AiModelProfile, mode?: AiModelMode): string {
+    if (mode === 'precise') {
+      return process.env.AI_PRECISE_MODEL
+        || process.env.AI_QUALITY_MODEL
+        || process.env.AI_MODEL
+        || 'deepseek-v4-pro';
+    }
+
+    if (mode === 'fast' || mode === 'balanced') {
+      return process.env.AI_FLASH_MODEL
+        || process.env.AI_FAST_MODEL
+        || process.env.AI_MODEL
+        || 'deepseek-v4-flash';
+    }
+
+    return profile === 'fast'
+      ? process.env.AI_FAST_MODEL || process.env.AI_MODEL || 'deepseek-v4-flash'
+      : profile === 'streaming'
+        ? process.env.AI_STREAM_MODEL || process.env.AI_MODEL || 'deepseek-v4-flash'
+        : process.env.AI_QUALITY_MODEL || process.env.AI_MODEL || 'deepseek-v4-flash';
   }
 
   /** Fusionne les modelKwargs d'env avec un override par requête (override gagne).
@@ -164,7 +194,13 @@ export class AiModelRouterService {
     return Object.keys(merged).length > 0 ? merged : undefined;
   }
 
-  private getApiKey(profile: AiModelProfile): string | undefined {
+  private getApiKey(profile: AiModelProfile, mode?: AiModelMode): string | undefined {
+    if (mode) {
+      return process.env.DEEPSEEK_API_KEY
+        || process.env.AI_API_KEY
+        || process.env.OPENAI_API_KEY;
+    }
+
     if (profile === 'fast') {
       return process.env.AI_FAST_API_KEY
         || process.env.DEEPSEEK_API_KEY
@@ -180,12 +216,19 @@ export class AiModelRouterService {
     }
 
     return process.env.AI_STREAM_API_KEY
+      || process.env.DEEPSEEK_API_KEY
       || process.env.GLM_API_KEY
       || process.env.AI_API_KEY
       || process.env.OPENAI_API_KEY;
   }
 
-  private getBaseUrl(profile: AiModelProfile): string {
+  private getBaseUrl(profile: AiModelProfile, mode?: AiModelMode): string {
+    if (mode) {
+      return process.env.AI_DEEPSEEK_BASE_URL
+        || process.env.AI_BASE_URL
+        || 'https://api.deepseek.com';
+    }
+
     if (profile === 'fast') {
       return process.env.AI_FAST_BASE_URL
         || process.env.AI_DEEPSEEK_BASE_URL
@@ -201,9 +244,10 @@ export class AiModelRouterService {
     }
 
     return process.env.AI_STREAM_BASE_URL
+      || process.env.AI_DEEPSEEK_BASE_URL
       || process.env.AI_GLM_BASE_URL
       || process.env.AI_BASE_URL
-      || 'https://api.z.ai/api/paas/v4/';
+      || 'https://api.deepseek.com';
   }
 
   private getProfileNumber(profile: AiModelProfile, suffix: string, fallback: number): number {

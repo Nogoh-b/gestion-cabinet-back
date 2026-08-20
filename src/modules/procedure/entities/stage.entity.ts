@@ -103,6 +103,15 @@ export class Stage extends BaseEntity {
   })
   canBeReentered: boolean;
 
+  @Column({ default: false })
+  @BusinessColumn({
+    label: 'Étape système',
+    description: 'Étape technique gérée par le système (ex: Ouverture runtime) — exclue des workflows, des templates et de l\'affichage',
+    importance: 'low',
+    group: 'technique',
+  })
+  isSystem: boolean;
+
   @OneToMany(() => Transition, (transition) => transition.fromStage)
   outgoingTransitions: Transition[];
 

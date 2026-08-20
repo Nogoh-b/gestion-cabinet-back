@@ -10,6 +10,7 @@ import { Cycle } from '../entities/cycle.entity';
 import { EventType, InstanceStatus, TransitionType } from '../entities/enums/instance-status.enum';
 import { HistoryEntry } from '../entities/history-entry.entity';
 import { ProcedureInstance } from '../entities/procedure-instance.entity';
+import { ProcedureTemplate } from '../entities/procedure-template.entity';
 import { StageVisit } from '../entities/stage-visit.entity';
 import { Stage } from '../entities/stage.entity';
 import { SubStageVisit } from '../entities/sub-stage-visit.entity';
@@ -48,6 +49,22 @@ export class ProcedureInstanceService {
 
   ) {}
 
+  /**
+   * Première VRAIE étape d'un template : exclut les étapes techniques
+   * (`isSystem`, ex: le stage runtime "Ouverture") qui ne doivent jamais
+   * devenir l'étape courante d'une instance.
+   */
+  private getFirstStageOfTemplate(template: ProcedureTemplate): Stage {
+    const stages = [...(template.stages ?? [])]
+      .filter((s) => !s.isSystem)
+      .sort((a, b) => a.order - b.order);
+    const first = stages[0];
+    if (!first) {
+      throw new Error('Template has no real (non-system) stages');
+    }
+    return first;
+  }
+
   async create(dto: CreateProcedureInstanceDto, userId: string): Promise<ProcedureInstance & { _openingStageVisitId?: string }> {
       const template = await this.templateService.findOne(dto.templateId);
 
@@ -55,7 +72,7 @@ export class ProcedureInstanceService {
         throw new Error('Template has no stages');
       }
 
-      const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
+      const firstStage = this.getFirstStageOfTemplate(template);
 
       const instance = this.instanceRepository.create({
         templateId: dto.templateId,
@@ -69,6 +86,9 @@ export class ProcedureInstanceService {
       await this.instanceRepository.save(instance);
 
       // ── Créer dynamiquement le stage "Ouverture" (runtime uniquement) ──
+      // ⚠️ Ce stage est technique : il est marqué isSystem=true et est exclu
+      // partout (template, mapper, affichage, transitions) pour ne JAMAIS
+      // devenir l'étape courante d'une instance.
       const openingStageName = 'Ouverture';
       const openingStage = this.stageRepository.create({
         id: crypto.randomUUID(),
@@ -78,6 +98,7 @@ export class ProcedureInstanceService {
         order: 0,
         canBeSkipped: true,
         canBeReentered: false,
+        isSystem: true,
       });
       await this.stageRepository.save(openingStage);
 
@@ -1433,7 +1454,7 @@ async resetInstance(
 
     // Récupérer le template actuel
     const template = await this.templateService.findOne(instance.templateId);
-    const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
+    const firstStage = this.getFirstStageOfTemplate(template);
 
     // Sauvegarder les données originales
     const originalTitle = instance.title;
@@ -1543,7 +1564,7 @@ async resetInstanceSimple(
     try {
         const instance = await this.findOne(instanceId);
         const template = await this.templateService.findOne(instance.templateId);
-        const firstStage = template.stages.sort((a, b) => a.order - b.order)[0];
+        const firstStage = this.getFirstStageOfTemplate(template);
 
         // 1. Supprimer toutes les visites et sous-visites existantes
         await queryRunner.manager

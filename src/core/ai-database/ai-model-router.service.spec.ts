@@ -24,16 +24,29 @@ describe('AiModelRouterService', () => {
     expect(service.getModelName('streaming')).toBe('stream-model');
   });
 
-  it('uses DeepSeek for fast and quality profiles, and GLM for streaming by default', () => {
+  it('uses DeepSeek Flash for all profiles by default', () => {
     delete process.env.AI_MODEL;
     delete process.env.AI_FAST_MODEL;
     delete process.env.AI_QUALITY_MODEL;
     delete process.env.AI_STREAM_MODEL;
+    delete process.env.AI_FLASH_MODEL;
+    delete process.env.AI_PRECISE_MODEL;
 
     const service = new AiModelRouterService();
 
     expect(service.getModelName('fast')).toBe('deepseek-v4-flash');
-    expect(service.getModelName('quality')).toBe('deepseek-v4-pro');
-    expect(service.getModelName('streaming')).toBe('GLM-5.2');
+    expect(service.getModelName('quality')).toBe('deepseek-v4-flash');
+    expect(service.getModelName('streaming')).toBe('deepseek-v4-flash');
+  });
+
+  it('routes fast and balanced modes to Flash, and precise mode to Pro', () => {
+    process.env.AI_FLASH_MODEL = 'deepseek-flash-test';
+    process.env.AI_PRECISE_MODEL = 'deepseek-pro-test';
+
+    const service = new AiModelRouterService();
+
+    expect(service.getModelName('quality', 'fast')).toBe('deepseek-flash-test');
+    expect(service.getModelName('streaming', 'balanced')).toBe('deepseek-flash-test');
+    expect(service.getModelName('fast', 'precise')).toBe('deepseek-pro-test');
   });
 });

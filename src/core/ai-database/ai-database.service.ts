@@ -40,7 +40,7 @@ import { isSharedEntity } from '../tenant/tenant.decorator';
 import { buildAiCacheKey } from './ai-cache-key.util';
 import { AiDatabasePermissionService, AiUserContext } from './ai-database-permission.service';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
-import { AiModelProfile, AiModelRouterService } from './ai-model-router.service';
+import { AiModelMode, AiModelProfile, AiModelRouterService } from './ai-model-router.service';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
 import { AnalysisResponseDto, ReadClarificationContext, WritePlan } from './dto/analysis-response.dto';
@@ -103,6 +103,8 @@ interface AiRequestMetrics {
   models: Set<string>;
   cacheHit: boolean;
   status: 'started' | 'success' | 'error';
+  /** Gamme de modèle choisie pour toute la requête : Flash ou Pro. */
+  modelMode: AiModelMode;
   /** Override de réflexion (thinking) appliqué aux appels quality/streaming de
    *  CETTE requête. Porté par l'AsyncLocalStorage des métriques (actif pendant
    *  toute la requête), lu par invokeModel/streamModel. */
@@ -203,6 +205,7 @@ export class AiDatabaseService implements OnModuleInit {
       models: new Set<string>(),
       cacheHit: false,
       status: 'started',
+      modelMode: 'fast',
     };
 
     return this.metricsStorage.run(metrics, async () => {
@@ -230,7 +233,7 @@ export class AiDatabaseService implements OnModuleInit {
     if (!metrics) return;
     metrics.llmCalls += 1;
     metrics.estimatedPromptTokens += this.aiModelRouter.estimateTokens(input);
-    metrics.models.add(this.aiModelRouter.getModelName(profile));
+    metrics.models.add(this.aiModelRouter.getModelName(profile, metrics.modelMode));
   }
 
   private recordOutput(text: string, token = false): void {
@@ -243,17 +246,49 @@ export class AiDatabaseService implements OnModuleInit {
   }
 
   /** Override de réflexion de la requête courante — appliqué uniquement aux
-   *  profils "pro" (quality/streaming). Le profil `fast` (deepseek-chat, sans
-   *  réflexion) n'est jamais impacté pour éviter un paramètre non supporté. */
+   *  tâches longues (quality/streaming). Le petit appel de classification
+   *  (`fast`) reste sans paramètre de réflexion supplémentaire. */
   private reasoningOverrideFor(profile: AiModelProfile): Record<string, unknown> | undefined {
     if (profile === 'fast') return undefined;
     return this.metricsStorage.getStore()?.reasoningKwargs;
   }
 
+  private currentModelMode(): AiModelMode {
+    return this.metricsStorage.getStore()?.modelMode ?? 'fast';
+  }
+
+  /** Applique le choix Rapide/Équilibré/Précis à tous les appels LLM du tour. */
+  private configureRequestModel(level?: string): {
+    mode: AiModelMode;
+    reasoningKwargs?: Record<string, unknown>;
+  } {
+    const mode = this.normalizeReasoningLevel(level);
+    const reasoningKwargs = this.aiModelRouter.reasoningKwargs(mode);
+    const metrics = this.metricsStorage.getStore();
+    if (metrics) {
+      metrics.modelMode = mode;
+      metrics.reasoningKwargs = reasoningKwargs;
+    }
+    return { mode, reasoningKwargs };
+  }
+
+  private getRequestModel(profile: AiModelProfile, maxTokens?: number): ChatOpenAI {
+    return this.aiModelRouter.getModel(
+      profile,
+      maxTokens,
+      this.reasoningOverrideFor(profile),
+      this.currentModelMode(),
+    );
+  }
+
+  private getRequestModelName(profile: AiModelProfile): string {
+    return this.aiModelRouter.getModelName(profile, this.currentModelMode());
+  }
+
   /**
    * Profil utilisé pour les réponses TEXTE pures (conseil, conversation) qui
    * n'ont besoin ni de SQL ni de réflexion profonde. Défaut `fast`
-   * (deepseek-chat) → réponses quasi instantanées. Réglable via
+   * (DeepSeek Flash) → réponses quasi instantanées. Réglable via
    * `AI_TEXT_ANSWER_PROFILE=streaming` pour repasser sur le modèle pro si l'on
    * privilégie la profondeur à la vitesse.
    */
@@ -264,18 +299,32 @@ export class AiDatabaseService implements OnModuleInit {
 
   private async invokeModel(profile: AiModelProfile, input: unknown, maxTokens?: number): Promise<any> {
     this.recordLlmCall(profile, input);
-    const modelName = this.aiModelRouter.getModelName(profile);
+    const modelMode = this.currentModelMode();
+    const modelName = this.aiModelRouter.getModelName(profile, modelMode);
     this.logger.log(`🤖 [LLM] invoke → profil=${profile} modele=${modelName} maxTokens=${maxTokens ?? '(defaut)'}`);
-    const response = await this.aiModelRouter.invoke(profile, input, maxTokens, this.reasoningOverrideFor(profile));
+    const response = await this.aiModelRouter.invoke(
+      profile,
+      input,
+      maxTokens,
+      this.reasoningOverrideFor(profile),
+      modelMode,
+    );
     this.recordOutput(this.extractLlmText(response));
     return response;
   }
 
   private async streamModel(profile: AiModelProfile, input: unknown, maxTokens?: number): Promise<any> {
     this.recordLlmCall(profile, input);
-    const modelName = this.aiModelRouter.getModelName(profile);
+    const modelMode = this.currentModelMode();
+    const modelName = this.aiModelRouter.getModelName(profile, modelMode);
     this.logger.log(`🤖 [LLM] stream → profil=${profile} modele=${modelName} maxTokens=${maxTokens ?? '(defaut)'}`);
-    return this.aiModelRouter.stream(profile, input, maxTokens, this.reasoningOverrideFor(profile));
+    return this.aiModelRouter.stream(
+      profile,
+      input,
+      maxTokens,
+      this.reasoningOverrideFor(profile),
+      modelMode,
+    );
   }
 
   /**
@@ -296,7 +345,7 @@ export class AiDatabaseService implements OnModuleInit {
   }
 
   private trackExternalLlmCall = (info: { profile: AiModelProfile; input: unknown; modelName?: string }) => {
-    const modelName = info.modelName || this.aiModelRouter.getModelName(info.profile);
+    const modelName = info.modelName || this.getRequestModelName(info.profile);
     this.logger.log(`🤖 [LLM] invoke (externe) → profil=${info.profile} modele=${modelName}`);
     const metrics = this.metricsStorage.getStore();
     if (!metrics) return;
@@ -1316,6 +1365,10 @@ Contraintes obligatoires :
   ): Promise<AnalysisResponseDto> {
     const startTime = Date.now();
     const userId = this.getUserId(user);
+    const modelSelection = this.configureRequestModel(dto.reasoningLevel);
+    this.logger.log(
+      `🤖 Mode IA ${modelSelection.mode} → ${this.getRequestModelName('quality')}`,
+    );
 
     // ── 0. Reprise d'un plan WRITE en attente d'identifiant ───────────────────
     const resumed = this.tryConsumePendingEntityIdClarification(dto.conversationId, dto.question);
@@ -1467,15 +1520,15 @@ Contraintes obligatoires :
     } else {
       intentResult = await this.intentDetectionService.detectIntent(
         enrichedQuestion,
-        this.aiModelRouter.getModel('fast', 64),
+        this.getRequestModel('fast', 64),
         schema,
         {
           forceWrite: intentMode === 'write' || forceWriteDespiteReadMode,
           history: historyForIntent,
-          plannerLlm: this.aiModelRouter.getModel('quality', this.WRITE_PLAN_MAX_TOKENS),
+          plannerLlm: this.getRequestModel('quality', this.WRITE_PLAN_MAX_TOKENS),
           onLlmCall: this.trackExternalLlmCall,
-          classifierModelName: this.aiModelRouter.getModelName('fast'),
-          plannerModelName: this.aiModelRouter.getModelName('quality'),
+          classifierModelName: this.getRequestModelName('fast'),
+          plannerModelName: this.getRequestModelName('quality'),
         },
       );
     }
@@ -3048,13 +3101,13 @@ ${blocks.join('\n\n')}
     try {
       tLog('service entré');
 
-      // Niveau de réflexion demandé (front) → override thinking pour les appels
-      // "pro" (quality/streaming) de cette requête, porté par l'ALS des métriques.
-      const reasoningLevel = this.normalizeReasoningLevel(dto.reasoningLevel);
-      const reasoningKwargs = this.aiModelRouter.reasoningKwargs(reasoningLevel);
-      const metricsStore = this.metricsStorage.getStore();
-      if (metricsStore) metricsStore.reasoningKwargs = reasoningKwargs;
-      if (reasoningKwargs) tLog(`réflexion=${reasoningLevel} → ${JSON.stringify(reasoningKwargs)}`);
+      // Niveau demandé par le front → choix Flash/Pro pour toute la requête et
+      // override thinking pour les appels quality/streaming.
+      const modelSelection = this.configureRequestModel(dto.reasoningLevel);
+      tLog(`mode IA=${modelSelection.mode} → ${this.getRequestModelName('quality')}`);
+      if (modelSelection.reasoningKwargs) {
+        tLog(`réflexion=${modelSelection.mode} → ${JSON.stringify(modelSelection.reasoningKwargs)}`);
+      }
 
       // ── 0. Reprise d'un plan WRITE en attente d'identifiant ─────────────────
       // (ex: "marque-la comme reportée" → entityId manquant → on a demandé
@@ -3237,14 +3290,14 @@ ${blocks.join('\n\n')}
         intentResult = { type: 'CONVERSATIONAL', requiresConfirmation: false };
       } else {
         intentResult = await this.intentDetectionService.detectIntent(
-          enrichedQuestion, this.aiModelRouter.getModel('fast', 64), schema,
+          enrichedQuestion, this.getRequestModel('fast', 64), schema,
           {
             forceWrite: intentMode === 'write' || forceWriteDespiteReadMode,
             history: historyForIntent,
-            plannerLlm: this.aiModelRouter.getModel('quality', this.WRITE_PLAN_MAX_TOKENS),
+            plannerLlm: this.getRequestModel('quality', this.WRITE_PLAN_MAX_TOKENS),
             onLlmCall: this.trackExternalLlmCall,
-            classifierModelName: this.aiModelRouter.getModelName('fast'),
-            plannerModelName: this.aiModelRouter.getModelName('quality'),
+            classifierModelName: this.getRequestModelName('fast'),
+            plannerModelName: this.getRequestModelName('quality'),
           },
         );
       }
@@ -3470,14 +3523,14 @@ ${blocks.join('\n\n')}
           `🛟 Requête non-SELECT générée en voie READ → re-routage WRITE: ${validatedQuery.substring(0, 120)}`,
         );
         const rerouted = await this.intentDetectionService.detectIntent(
-          enrichedQuestion, this.aiModelRouter.getModel('fast', 64), schema,
+          enrichedQuestion, this.getRequestModel('fast', 64), schema,
           {
             forceWrite: true,
             history: historyForIntent,
-            plannerLlm: this.aiModelRouter.getModel('quality', this.WRITE_PLAN_MAX_TOKENS),
+            plannerLlm: this.getRequestModel('quality', this.WRITE_PLAN_MAX_TOKENS),
             onLlmCall: this.trackExternalLlmCall,
-            classifierModelName: this.aiModelRouter.getModelName('fast'),
-            plannerModelName: this.aiModelRouter.getModelName('quality'),
+            classifierModelName: this.getRequestModelName('fast'),
+            plannerModelName: this.getRequestModelName('quality'),
           },
         );
         if (rerouted.type === 'WRITE' && rerouted.writePlan) {
