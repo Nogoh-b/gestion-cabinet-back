@@ -19,14 +19,17 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "typeorm": "typeorm-ts-node-commonjs",
+    "typeorm": "node -r ts-node/register/transpile-only -r tsconfig-paths/register ./node_modules/typeorm/cli-ts-node-commonjs.js",
     "migration": "ts-node migration-cli.ts migrate generate",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
     "mig:run": "npx typeorm migration:run",
     "seed:migrate": "ts-node scripts/seed-with-migration.ts",
     "migration:generate": "npm run typeorm migration:generate -- -d src/data-source.ts",
     "migration:run": "npm run typeorm migration:run -- -d src/data-source.ts",
-    "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts"
+    "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts",
+    "migration:run:prod": "NODE_ENV=production SYNCHRONIZE=false npm run migration:run",
+    "migration:revert:prod": "NODE_ENV=production SYNCHRONIZE=false npm run migration:revert",
+    "migration:show:prod": "NODE_ENV=production SYNCHRONIZE=false npm run typeorm migration:show -- -d src/data-source.ts"
   },
   "dependencies": {
     "@bull-board/api": "^6.10.1",
