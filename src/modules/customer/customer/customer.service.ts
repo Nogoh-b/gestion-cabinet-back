@@ -171,8 +171,7 @@ export class CustomersService extends BaseServiceV1<Customer> {
       await this.planQuotaService.checkLimit(tenantId, 'clients', currentCount);
     }
 
-    return await this.dataSource.transaction(async (manager) => {
-      console.log(createCustomerDto)
+    return await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
 
       // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
       // if (existing) throw new ConflictException('Numero deja attribué à un compte');
@@ -198,26 +197,25 @@ export class CustomersService extends BaseServiceV1<Customer> {
         if (emailExists) throw new ConflictException('L\'adresse mail existe deja');*/
       }
 
-      const customer = this.customerRepository.create({
-        ...createCustomerDto,
+      const { mode: _mode, ...customerData } = createCustomerDto as CreateCustomerDto & { mode?: string };
+      const customer = manager.getRepository(Customer).create({
+        ...customerData,
+        email:
+          typeof createCustomerDto.email === 'string' &&
+          createCustomerDto.email.trim() !== ''
+            ? createCustomerDto.email.trim()
+            : undefined,
         first_name: createCustomerDto.first_name ?? createCustomerDto.first_name,
         type_customer,
         location_city,
       });
       customer.status = CustomerStatus.INACTIVE;
-      customer.customer_code = '_';
-      const savedClient = await manager.save(customer);
-      let code: string;
-      const attempts = 0;
-      code = await this.generateNextCustomerCode();
-      /*do {
-        attempts++;
-      } while (!(await this.isClientCodeUnique(code)) && attempts < 5);*/
 
-      if (attempts >= 5) {
-        throw new Error('Échec de génération d’un code client unique');
-      }
-      savedClient.customer_code = code;
+      // L'index SQL de customer_code est global : le prochain numéro doit donc
+      // être calculé globalement, dans la même transaction sérialisée.
+      customer.customer_code = await this.generateNextCustomerCode(
+        manager.getRepository(Customer),
+      );
       return plainToInstance(CustomerResponseDto, await manager.save(customer));
     });
   }
@@ -555,16 +553,21 @@ async update(
     return this.customerRepository;
   }
 
-  async generateNextCustomerCode(): Promise<string> {
-    // 1) Récupère la plus grande valeur numérique de `code`
-    const rawQB = this.customerRepository
+  async generateNextCustomerCode(repository: Repository<Customer> = this.customerRepository): Promise<string> {
+    // Verrouille le dernier code numérique jusqu'au commit. La lecture est
+    // globale car la contrainte d'unicité SQL l'est également.
+    const raw = await repository
       .createQueryBuilder('c')
-      .select('MAX(CAST(c.customer_code AS UNSIGNED))', 'max');
-    addTenantCondition(rawQB, 'c');
-    const raw = await rawQB.getRawOne<{ max: string }>();
+      .withDeleted()
+      .select('c.customer_code', 'code')
+      .where("c.customer_code REGEXP '^[0-9]+$'")
+      .orderBy('CAST(c.customer_code AS UNSIGNED)', 'DESC')
+      .setLock('pessimistic_write')
+      .limit(1)
+      .getRawOne<{ code: string }>();
 
     // 2) Parse ou démarre à 0
-    const maxValue = raw?.max ? parseInt(raw.max, 10) : 0;
+    const maxValue = raw?.code ? parseInt(raw.code, 10) : 0;
 
     // 3) Calcule le prochain
     const next = maxValue + 1;

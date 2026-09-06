@@ -33,6 +33,7 @@ import { CreateFactureDto } from './dto/create-facture.dto';
 import { FactureResponseDto } from './dto/facture-response.dto';
 import { FactureStatsDto } from './dto/facture-stats.dto';
 import { SearchFactureDto } from './dto/search-facture.dto';
+import { SendFactureEmailDto } from './dto/send-facture-email.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { FactureStatsService } from './facture-stats.service';
 import { FactureService } from './facture.service';
@@ -207,6 +208,18 @@ export class FactureController {
       FactureResponseDto,
       this.factureService.findOneV1(id, ['paiements', 'dossier', 'client']),
     );
+  }
+
+  @Post(':id/envoyer')
+  @RequirePermissions('email_facture')
+  @ApiOperation({ summary: 'Envoyer une facture par e-mail' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Facture envoyée' })
+  async sendByEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendFactureEmailDto,
+  ) {
+    return this.factureService.sendFactureByEmail(id, dto?.email);
   }
 
   @Patch(':id')

@@ -3,7 +3,7 @@ import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { helpers } from 'src/utils/helper-template-maill';
 import { Repository, LessThanOrEqual } from 'typeorm';
 import { MailerService } from '@nestjs-modules/mailer';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -37,6 +37,7 @@ export class MailService {
    * cas d'erreur de résolution du transport cabinet.
    */
   private async dispatch(mailOptions: any): Promise<void> {
+    let tenantTransportError: unknown;
     if (!mailOptions.template) {
       try {
         const t = await this.smtpService.getTenantTransport(getCurrentTenantId());
@@ -45,11 +46,22 @@ export class MailService {
           return;
         }
       } catch (e: any) {
+        tenantTransportError = e;
         this.logger.warn(
           `[SMTP cabinet] indisponible, repli sur SMTP par défaut: ${e?.message ?? e}`,
         );
       }
     }
+
+    // Nodemailer utilise implicitement localhost quand `host` est absent.
+    // On bloque ce repli trompeur afin de fournir un diagnostic exploitable.
+    if (!process.env.SMTP_HOST?.trim()) {
+      const message = tenantTransportError
+        ? 'Connexion au serveur SMTP du cabinet impossible. Vérifiez puis testez sa configuration dans Administration > Configuration SMTP.'
+        : 'Aucun serveur SMTP configuré. Renseignez puis testez la configuration dans Administration > Configuration SMTP.';
+      throw new ServiceUnavailableException(message);
+    }
+
     await this.mailerService.sendMail(mailOptions);
   }
 

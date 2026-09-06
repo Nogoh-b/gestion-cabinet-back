@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { EntityManager, Like, Repository } from 'typeorm';
-import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
@@ -228,6 +228,110 @@ export class FactureService extends BaseServiceV1<Facture> {
       `${client.first_name ?? ''} ${client.last_name ?? ''}`.trim() ||
       ''
     );
+  }
+
+  /** Encode une valeur métier avant de l'insérer dans le corps HTML d'un e-mail. */
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Envoie une facture au client, puis la marque comme envoyée si elle était
+   * encore au brouillon. Le statut n'est modifié qu'après le succès SMTP.
+   */
+  async sendFactureByEmail(
+    id: string,
+    recipientOverride?: string,
+  ): Promise<{ sent: true; to: string; message: string }> {
+    const facture = await this.findOneV1(id, [
+      'paiements',
+      'client',
+      'dossier',
+    ]);
+    if (!facture) {
+      throw new NotFoundException(`Facture avec l'ID ${id} non trouvée`);
+    }
+
+    const client = facture.client as any;
+    const to = (recipientOverride || client?.email || '').trim();
+    if (!to) {
+      throw new BadRequestException(
+        "Aucune adresse e-mail n'est renseignée pour le client de cette facture.",
+      );
+    }
+
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: getCurrentTenantId() },
+    });
+    const currency =
+      facture.currency && facture.currency !== cabinet?.currency
+        ? facture.currency
+        : (cabinet?.currency_symbol ??
+          facture.currency ??
+          cabinet?.currency ??
+          'XAF');
+    const decimals = cabinet?.currency_decimals ?? 0;
+    const fmtMoney = (value: unknown): string =>
+      `${Number(value ?? 0).toLocaleString('fr-FR', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })} ${currency}`;
+    const fmtDate = (value: unknown): string =>
+      value
+        ? new Date(value as string | number | Date).toLocaleDateString('fr-FR')
+        : '';
+
+    const paid = this.computePaid(facture);
+    const remaining = Math.max(0, Number(facture.montantTTC ?? 0) - paid);
+    const clientName = this.escapeHtml(
+      this.clientLabel(client) || 'Madame, Monsieur',
+    );
+    const dossierRef = this.escapeHtml(
+      (facture.dossier as any)?.dossier_number ?? `#${facture.dossier_id}`,
+    );
+    const cabinetName = this.escapeHtml(cabinet?.name ?? 'Votre cabinet');
+
+    const html =
+      `<h2 style="margin-top:0;">Facture ${this.escapeHtml(facture.numero)}</h2>` +
+      `<p>Bonjour ${clientName},</p>` +
+      `<p>Veuillez trouver ci-dessous les informations de votre facture ` +
+      `relative au dossier <strong>${dossierRef}</strong>.</p>` +
+      `<table style="border-collapse:collapse;font-size:14px;">` +
+      `<tbody>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Numéro</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${this.escapeHtml(facture.numero)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Date</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtDate(facture.dateFacture)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Échéance</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtDate(facture.dateEcheance)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Montant TTC</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtMoney(facture.montantTTC)}</td></tr>` +
+      `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;font-weight:600;">Reste à payer</td>` +
+      `<td style="padding:6px 10px;border:1px solid #e5e7eb;">${fmtMoney(remaining)}</td></tr>` +
+      `</tbody></table>` +
+      `<p>Pour toute question, vous pouvez contacter ${cabinetName}.</p>`;
+
+    await this.mailService.sendDirect({
+      to,
+      subject: `Facture ${facture.numero} — ${cabinet?.name ?? 'Votre cabinet'}`,
+      html,
+    });
+
+    if (Number(facture.status) === StatutFacture.BROUILLON) {
+      facture.status = StatutFacture.ENVOYEE;
+      await this.repository.save(facture);
+    }
+
+    return {
+      sent: true,
+      to,
+      message: `Facture ${facture.numero} envoyée à ${to}.`,
+    };
   }
 
   // ─── EXPORT COMPTABLE (CSV) ───────────────────────────────────────────────

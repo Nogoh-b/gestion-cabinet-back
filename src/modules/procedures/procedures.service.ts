@@ -55,9 +55,24 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
     };
   }
   async create(createProcedureTypeDto: CreateProcedureTypeDto): Promise<ProcedureTypeResponseDto> {
+    const rawParentId = (createProcedureTypeDto as any).parent_id;
+    const hasParent =
+      rawParentId !== undefined &&
+      rawParentId !== null &&
+      `${rawParentId}`.trim() !== '';
 
-    if(createProcedureTypeDto.parent_id)
-      return this.createSubtype(createProcedureTypeDto.parent_id, createProcedureTypeDto)
+    if (hasParent) {
+      const parentId = Number(rawParentId);
+      if (!Number.isInteger(parentId) || parentId <= 0) {
+        throw new BadRequestException(
+          'Le type parent doit être un identifiant numérique valide',
+        );
+      }
+      return this.createSubtype(parentId, {
+        ...createProcedureTypeDto,
+        parent_id: parentId,
+      });
+    }
     // Vérifier l'unicité du code
     const existingName = await this.procedureTypeRepository.findOne({
       where: { name: createProcedureTypeDto.name }
@@ -67,7 +82,7 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       throw new ConflictException('Un type de procédure avec ce nom existe déjà');
     }
 
-    let template : ProcedureTemplate = new ProcedureTemplate(); 
+    let template : ProcedureTemplate | null = null;
     if(createProcedureTypeDto.procedure_template_id){
       template = await this.procedureTemplateService.findOne(createProcedureTypeDto.procedure_template_id);
       if(!template){
@@ -81,11 +96,12 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       // });
     }
 
+    const { parent_id: _parentId, ...createData } = createProcedureTypeDto as any;
     const procedureType = this.procedureTypeRepository.create({
-      ...createProcedureTypeDto,
+      ...createData,
       is_subtype: false,
       hierarchy_level: 1,
-      procedure_template: template
+      ...(template ? { procedure_template: template } : {}),
     });
 
     const savedProcedure = await this.procedureTypeRepository.save(procedureType);
@@ -93,6 +109,11 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
   }
 
   async createSubtype(parentId: number, createProcedureTypeDto: CreateProcedureTypeDto): Promise<ProcedureTypeResponseDto> {
+    if (!Number.isInteger(Number(parentId)) || Number(parentId) <= 0) {
+      throw new BadRequestException(
+        'Le type parent doit être un identifiant numérique valide',
+      );
+    }
     const parent = await this.procedureTypeRepository.findOne({
       where: { id: parentId, is_subtype: false }
     });

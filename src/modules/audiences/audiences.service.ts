@@ -125,7 +125,6 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       (dossier as any).jurisdiction_id ??
       (dossier as any).jurisdiction?.id ??
       null;
-      console.log('resolvedJurisdictionId', resolvedJurisdictionId, 'dto.jurisdiction_id', dto.jurisdiction_id, 'dossier.jurisdiction_id', (dossier as any).jurisdiction_id, 'dossier.jurisdiction?.id', (dossier as any).jurisdiction?.id);
     if (!resolvedJurisdictionId) {
       throw new NotFoundException(
         "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier."

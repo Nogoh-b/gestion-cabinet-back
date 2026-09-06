@@ -47,49 +47,33 @@ export class EmployeeService  extends BaseServiceV1<Employee> {
   ) {
     super(employeeRepository, paginationService);
   }
-/**
-   * Override des options de recherche par défaut pour Customer
-   */
+  /** Options de recherche propres aux collaborateurs. */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      // Champs pour la recherche globale
       searchFields: [
+        'user.first_name',
+        'user.last_name',
+        'user.email',
+        'user.username',
+        'branch.name',
+        'employee_number',
+        'specialization',
+        'bar_association_number',
+        'bar_association_city',
+        'professional_address',
+        'professional_phone',
+        'siret_number',
+        'tva_number',
         'managed_dossiers.dossier_number',
-        'object',
-        'jurisdiction',
-        'jurisdiction.name',
-        'court_name',
-        'case_number',
-        'opposing_party_name',
-        'opposing_party_lawyer',
-        'opposing_party_contact',
-        'client.first_name',
-        'client.last_name',
-        'procedure_type.name',
-        'procedure_subtype.name',
-        'client.email',
-        'danger_level'
       ],
-      
-      // Champs pour recherche exacte
       exactMatchFields: [
         'id',
         'status',
-        'confidentiality_level',
-        'priority_level',
-        'budget_estimate',
-        'danger_level'
+        'position',
+        'branch_id',
+        'is_available',
       ],
-      
-      // Champs pour ranges de dates
-      /*dateRangeFields: [
-        'created_at',
-        'updated_at',
-        'opening_date',
-        'closing_date'
-      ],*/
-      
-      // Champs de relations pour filtrage
+      dateRangeFields: ['hireDate', 'birth_date', 'created_at', 'updated_at'],
       relationFields: ['user', 'branch', 'managed_dossiers', 'collaborating_dossiers']
     };
   }

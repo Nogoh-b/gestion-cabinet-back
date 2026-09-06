@@ -109,6 +109,9 @@ export class CreateCustomerDto {
   @ApiPropertyOptional({ example: '+216 55 55 55 56', description: 'Secondary phone number' })
   number_phone_2?: string;
 
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === '' ? undefined : value,
+  )
   @IsEmail()
   @MaxLength(45)
   @IsOptional()

@@ -38,16 +38,27 @@ export class PaginationServiceV1 {
     
     console.log('Pagination params:', page, '*', limit);
     
-    // Construire l'ordre en prenant en compte les relations
-    const order = this.buildOrderFromParams(paginationParams, additionalOptions.order);
+    const validSortBy = this.getValidSortBy(repository, paginationParams.sort_by);
+    const invalidSortRequested = !!paginationParams.sort_by && !validSortBy;
+    const safePaginationParams = Object.assign(new PaginationParamsDto(), paginationParams, {
+      sort_by: validSortBy,
+      sort_direction: validSortBy ? paginationParams.sort_direction : undefined,
+    });
+
+    // Un ordre dérivé d'un sort_by invalide doit aussi être écarté.
+    const order = this.buildOrderFromParams(
+      safePaginationParams,
+      invalidSortRequested ? undefined : additionalOptions.order,
+    );
+    const { order: _ignoredOrder, ...safeAdditionalOptions } = additionalOptions;
 
     const [data, total] = await repository.findAndCount({
+      ...safeAdditionalOptions,
       where,
       relations,
       order,
       skip: (page - 1) * limit,
       take: limit,
-      ...additionalOptions
     });
 
     const totalPages = Math.ceil(total / limit);
@@ -65,6 +76,39 @@ export class PaginationServiceV1 {
         has_next: hasNext,
       },
     };
+  }
+
+  /** Retourne le chemin de tri uniquement s'il existe dans les métadonnées TypeORM. */
+  private getValidSortBy<T extends ObjectLiteral>(
+    repository: Repository<T>,
+    sortBy?: string,
+  ): string | undefined {
+    if (!sortBy) return undefined;
+
+    if (repository.metadata.columns.some(
+      (column) => column.propertyName === sortBy || column.propertyPath === sortBy,
+    )) {
+      return sortBy;
+    }
+
+    const parts = sortBy.split('.');
+    if (parts.length < 2) return undefined;
+
+    let metadata = repository.metadata;
+    for (let index = 0; index < parts.length - 1; index++) {
+      const relation = metadata.relations.find(
+        (candidate) => candidate.propertyName === parts[index],
+      );
+      if (!relation?.inverseEntityMetadata) return undefined;
+      metadata = relation.inverseEntityMetadata;
+    }
+
+    const property = parts[parts.length - 1];
+    return metadata.columns.some(
+      (column) => column.propertyName === property || column.propertyPath === property,
+    )
+      ? sortBy
+      : undefined;
   }
 
   /**
@@ -120,7 +164,8 @@ export class PaginationServiceV1 {
   ): Promise<PaginatedResult<R>> {
     
     // S'assurer que les relations nécessaires sont incluses pour le tri
-    const finalRelations = this.ensureRelationsForSorting(relations, paginationParams.sort_by);
+    const validSortBy = this.getValidSortBy(repository, paginationParams.sort_by);
+    const finalRelations = this.ensureRelationsForSorting(relations, validSortBy);
 
     const result = await this.paginate(
       repository,
