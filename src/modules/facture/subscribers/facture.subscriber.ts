@@ -4,13 +4,15 @@ import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { DataSource, InsertEvent, RemoveEvent, Repository, UpdateEvent } from 'typeorm';
+import { DataSource, In, InsertEvent, RemoveEvent, Repository, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
+import { BillableItem, InvoiceLine } from 'src/modules/case-workflow/entities/billing.entity';
+import { BillableItemStatus } from 'src/modules/case-workflow/case-workflow.enums';
 
 /**
  * Subscriber métier pour les factures.
@@ -117,6 +119,18 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     );
 
     const newStatus = Number(change.newValue);
+    const oldStatus = Number(change.oldValue);
+    if (newStatus === StatutFacture.ANNULEE && oldStatus === StatutFacture.BROUILLON) {
+      const lineRepository = event.manager.getRepository(InvoiceLine);
+      const lines = await lineRepository.find({ where: { facture_id: id } });
+      if (lines.length) {
+        await event.manager.getRepository(BillableItem).update(
+          { id: In(lines.map((line) => line.billable_item_id)), status: BillableItemStatus.INVOICED },
+          { status: BillableItemStatus.TO_INVOICE, invoice_line_id: null, reserved_at: null },
+        );
+        await lineRepository.delete({ facture_id: id });
+      }
+    }
     let event_:
       | NotifiableEvent.FACTURE_PAID
       | NotifiableEvent.FACTURE_OVERDUE

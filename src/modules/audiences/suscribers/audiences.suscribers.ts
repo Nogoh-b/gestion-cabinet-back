@@ -4,6 +4,7 @@ import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
 import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { Audience, AudienceStatus } from '../entities/audience.entity';
 
@@ -25,6 +26,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(dataSource, notificationDispatcher);
   }
@@ -42,7 +44,13 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     if (!audience) return;
     const dossier: any = audience.dossier;
     const client: any = dossier?.client;
-    const notifyClient = this.resolveTransientBoolean('notify_client', entity, audience as any);
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity,
+      audience as any,
+    );
+
+    this.emitWorkflowSourceEvent('created', audience);
 
     this.logger.log(
       `📢 Audience créée | id=${audience.id} | date=${formatDate(audience.audience_date)} | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${notifyClient}`,
@@ -90,6 +98,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       if (change) {
         const nextStatus = Number(change.newValue);
         if (nextStatus === AudienceStatus.HELD) {
+          const audience = await this.load(id, event).catch(() => null);
+          if (audience) this.emitWorkflowSourceEvent('held', audience);
           await this.dispatchHeld(id, entity, event);
         } else if (nextStatus === AudienceStatus.CANCELLED) {
           await this.dispatchCancelled(id, entity, event);
@@ -98,8 +108,25 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     }
 
     if (this.hasColumnChanged(event, 'postponed_to')) {
+      const audience = await this.load(id, event).catch(() => null);
+      if (audience?.postponed_to)
+        this.emitWorkflowSourceEvent('postponed', audience);
       await this.dispatchUpdated(id, entity, 'Report d’audience', event);
     }
+  }
+
+  private emitWorkflowSourceEvent(
+    kind: 'created' | 'held' | 'postponed',
+    audience: Audience,
+  ): void {
+    const dossierId = Number(audience.dossier_id ?? audience.dossier?.id);
+    const tenantId = Number(audience.tenant_id);
+    if (!dossierId || !tenantId) return;
+    this.eventEmitter.emit(`case-workflow.source.audience-${kind}`, {
+      tenantId,
+      dossierId,
+      audienceId: audience.id,
+    });
   }
 
   private async dispatchHeld(
@@ -167,10 +194,9 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     await this.notify({
       event: NotifiableEvent.AUDIENCE_UPDATED,
       title: `${reason} — dossier ${dossier?.dossier_number ?? ''}`,
-      content:
-        audience.postponed_to
-          ? `Reportée au ${formatDate(audience.postponed_to)}`
-          : `Audience modifiée le ${formatDate(audience.audience_date)}`,
+      content: audience.postponed_to
+        ? `Reportée au ${formatDate(audience.postponed_to)}`
+        : `Audience modifiée le ${formatDate(audience.audience_date)}`,
       link: `/audiences/${audience.id}`,
       audience: {
         client: {
@@ -239,16 +265,18 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     id: number,
     event?: InsertEvent<Audience> | UpdateEvent<Audience>,
   ): Promise<Audience | null> {
-    return this.loadEntity<Audience>(id, {
-      relations: ['dossier', 'dossier.client', 'dossier.collaborators'],
-    }, event);
+    return this.loadEntity<Audience>(
+      id,
+      {
+        relations: ['dossier', 'dossier.client', 'dossier.collaborators'],
+      },
+      event,
+    );
   }
 }
 
 function formatDate(v: any): string {
   if (!v) return '';
   const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime())
-    ? String(v)
-    : d.toLocaleDateString('fr-FR');
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('fr-FR');
 }

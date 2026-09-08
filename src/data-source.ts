@@ -2,14 +2,12 @@ import { config } from 'dotenv';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
 
-
-
 // Charger les variables d'environnement
 config();
 
 // Configuration TypeORM pour le Cameroun
 export const dataSource = new DataSource({
-  type: 'mysql',
+  type: 'mariadb',
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '3306'),
   username: process.env.DB_USER || 'root',
@@ -17,17 +15,18 @@ export const dataSource = new DataSource({
   database: process.env.DB_NAME || 'cabinet_avocats_cameroun',
   entities: [
     join(__dirname, 'modules', '**', '*.entity.{ts,js}'),
-    join(__dirname, '**', '*.entity.{ts,js}')
+    join(__dirname, '**', '*.entity.{ts,js}'),
   ],
   migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
   migrationsTableName: 'migrations',
-  synchronize: process.env.NODE_ENV === 'development',
+  synchronize:
+    process.env.SYNCHRONIZE === 'true' && process.env.NODE_ENV !== 'production',
   logging: true,
   // Options spécifiques MySQL pour le Cameroun
   extra: {
     charset: 'utf8mb4',
-    timezone: '+01:00' // Heure du Cameroun (WAT)
-  }
+    timezone: '+01:00', // Heure du Cameroun (WAT)
+  },
 });
 
 // Vérifier la connexion
@@ -35,7 +34,9 @@ export async function testConnection() {
   try {
     await dataSource.initialize();
     console.log('✅ Connexion à la base de données établie avec succès');
-    console.log(`📊 Base de données: ${dataSource.options.database}`);
+    console.log(
+      `📊 Base de données: ${String(dataSource.options.database ?? '')}`,
+    );
     // console.log(`🏠 Hôte: ${dataSource.options.host}`);
     return true;
   } catch (error) {
@@ -43,4 +44,3 @@ export async function testConnection() {
     return false;
   }
 }
-

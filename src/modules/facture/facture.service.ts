@@ -18,7 +18,7 @@ import { FactureResponseDto } from './dto/facture-response.dto';
 import { SearchFactureDto } from './dto/search-facture.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { Facture } from './entities/facture.entity';
-import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
+import { InvoiceType, InvoiceTypeCategory } from '../invoice-type/entities/invoice-type.entity';
 import { StepsService } from '../dossiers/step.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
@@ -45,6 +45,8 @@ export class FactureService extends BaseServiceV1<Facture> {
     private stepsService: StepsService,
     @InjectRepository(Cabinet)
     private readonly cabinetRepo: Repository<Cabinet>,
+    @InjectRepository(InvoiceType)
+    private readonly invoiceTypeRepo: Repository<InvoiceType>,
     private readonly mailService: MailService,
   ) {
     super(repository, paginationService);
@@ -57,6 +59,52 @@ export class FactureService extends BaseServiceV1<Facture> {
       dateRangeFields: ['dateFacture', 'dateEcheance', 'created_at', 'updated_at'],
       relationFields: ['paiements', 'client', 'dossier','invoice_type','subStage']
     };
+  }
+
+  /**
+   * `Facture.type` est une classification historique (0..3), pas la clé
+   * primaire de `invoice_types`. L'ancienne implémentation utilisait pourtant
+   * cette valeur comme ID de relation, ce qui produisait une violation de FK
+   * dès que les IDs du catalogue ne correspondaient pas à 0..3.
+   */
+  private async resolveInvoiceType(
+    type: CreateFactureDto['type'],
+    manager?: EntityManager,
+  ): Promise<InvoiceType | null> {
+    const repository = manager?.getRepository(InvoiceType) ?? this.invoiceTypeRepo;
+    const tenantId = getCurrentTenantId();
+    const preferredCode = {
+      0: 'HON_PROCEDURE',
+      1: 'FRAIS_DOSSIER',
+      2: 'HON_PROCEDURE',
+      3: 'AUTRES_FRAIS',
+      4: 'AVOIR',
+    }[Number(type)];
+
+    if (preferredCode) {
+      const preferred = await repository.createQueryBuilder('invoiceType')
+        .where('invoiceType.code = :preferredCode', { preferredCode })
+        .andWhere('invoiceType.is_active = :active', { active: true })
+        .andWhere('(invoiceType.tenant_id = :tenantId OR invoiceType.tenant_id = 1)', { tenantId })
+        .orderBy('CASE WHEN invoiceType.tenant_id = :tenantId THEN 0 ELSE 1 END', 'ASC')
+        .setParameter('tenantId', tenantId)
+        .getOne();
+      if (preferred) return preferred;
+    }
+
+    const category = Number(type) === 1
+      ? InvoiceTypeCategory.EXPENSES
+      : [3, 4].includes(Number(type))
+        ? InvoiceTypeCategory.OTHER
+        : InvoiceTypeCategory.LEGAL_FEES;
+    return repository.createQueryBuilder('invoiceType')
+      .where('invoiceType.category = :category', { category })
+      .andWhere('invoiceType.is_active = :active', { active: true })
+      .andWhere('(invoiceType.tenant_id = :tenantId OR invoiceType.tenant_id = 1)', { tenantId })
+      .orderBy('CASE WHEN invoiceType.tenant_id = :tenantId THEN 0 ELSE 1 END', 'ASC')
+      .addOrderBy('invoiceType.id', 'ASC')
+      .setParameter('tenantId', tenantId)
+      .getOne();
   }
 
   async createFacture(
@@ -81,6 +129,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       notify_client,
       numero: providedNumero,
       statut,
+      original_facture_id,
       ...rest
     } = createDto as CreateFactureDto & { status?: StatutFacture };
     const dossier_ = options.dossier ?? await (
@@ -128,13 +177,17 @@ export class FactureService extends BaseServiceV1<Facture> {
     // Lire la devise courante du cabinet pour la figer sur la facture
     const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } });
     const currency = cabinet?.currency ?? 'XAF';
+    const invoiceType = await this.resolveInvoiceType(createDto.type, options.manager);
 
     const facture = this.repository.create({
       ...rest,
       dossier,
       numero,
       client,
-      invoice_type: { id: createDto.type } as InvoiceType,
+      // La relation est nullable : un cabinet dont le catalogue n'est pas
+      // encore seedé peut créer la facture sans fabriquer une fausse FK.
+      invoice_type: invoiceType ?? undefined,
+      original_facture_id: original_facture_id ?? null,
       client_id,
       currency,
       montantPaye: 0,
@@ -499,6 +552,11 @@ export class FactureService extends BaseServiceV1<Facture> {
     }
 
     const status = this.normalizeStatus(nouveauStatus);
+    if (status === StatutFacture.ANNULEE && facture.status !== StatutFacture.BROUILLON) {
+      throw new BadRequestException(
+        'Une facture émise ne peut pas être annulée directement. Créez un avoir ou une ligne d’ajustement liée à l’original.',
+      );
+    }
     facture.status = status;
     const saved = await this.repository.save(facture);
 

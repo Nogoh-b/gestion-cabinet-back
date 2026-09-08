@@ -11,11 +11,12 @@ import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.r
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { FactureSubscriber } from './subscribers/facture.subscriber';
+import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Facture, Cabinet]),
+    TypeOrmModule.forFeature([Facture, Cabinet, InvoiceType]),
     forwardRef(() => DossiersModule),
     AiDatabaseModule,
   ],

@@ -25,6 +25,8 @@ import { Conversation } from '../chat/entities/conversation.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { PlansModule } from '../plans/plans.module';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
+import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
+import { CaseWorkflowFeature } from '../case-workflow/entities/workflow-audit.entity';
 
 @Module({
   imports: [
@@ -36,9 +38,10 @@ import { Cabinet } from '../cabinet/entities/cabinet.entity';
     forwardRef(() => FactureModule),
     forwardRef(() => ProcedureModule),
 
-    TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee, Cabinet]),
+    TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee, Cabinet, CaseWorkflowFeature]),
     AiDatabaseModule,
     PlansModule,
+    forwardRef(() => CaseWorkflowModule),
   ],
   controllers: [DossiersController],
   providers: [DossiersService, DossierStatsService, StepsService, DossierWriteHandler, DossierSubscriber],

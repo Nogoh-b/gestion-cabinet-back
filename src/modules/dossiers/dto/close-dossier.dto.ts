@@ -7,6 +7,7 @@ import {
   IsDateString,
   Min,
   IsBoolean,
+  IsArray,
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -70,4 +71,14 @@ export class CloseDossierDto {
   @IsOptional()
   @IsBoolean()
   send_report_to_client?: boolean;
+
+  /** Motif obligatoire lorsque le contrôle V2 remonte des avertissements. */
+  @IsOptional()
+  @IsString()
+  justification?: string;
+
+  /** Résolutions structurées des points relevés par le contrôle de clôture. */
+  @IsOptional()
+  @IsArray()
+  resolutions?: Array<Record<string, unknown>>;
 }

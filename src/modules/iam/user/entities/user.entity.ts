@@ -16,9 +16,11 @@ import {
 import { UserRoleAssignment } from '../../user-role-assignment/entities/user-role-assignment.entity';
 import { Finding } from 'src/modules/finding/entities/finding.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
-
 
 @Entity('user')
 @BusinessTable({
@@ -32,19 +34,20 @@ export class User extends BaseEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'utilisateur, qui est le même que employée',
+    description:
+      "Identifiant unique de l'utilisateur, qui est le même que employée",
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
   @Column({ length: 45, unique: false })
   @BusinessColumn({
-    label: 'Nom d\'utilisateur',
+    label: "Nom d'utilisateur",
     description: 'Identifiant de connexion',
     importance: 'high',
-    group: 'authentification'
+    group: 'authentification',
   })
   username: string;
 
@@ -53,17 +56,17 @@ export class User extends BaseEntity {
     label: 'Statut',
     description: 'BD: 1=Actif, 0=Inactif. En SQL utiliser le nombre.',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   status: number;
 
   @Column({ length: 45, nullable: true })
   @BusinessColumn({
     label: 'Email',
-    description: 'Adresse email de l\'utilisateur',
+    description: "Adresse email de l'utilisateur",
     format: 'email',
     importance: 'critical',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   email: string;
 
@@ -73,7 +76,7 @@ export class User extends BaseEntity {
     description: 'Token pour notifications push',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   fcmToken: string;
 
@@ -94,13 +97,14 @@ export class User extends BaseEntity {
   @Column({
     type: 'enum',
     enum: UserRole,
-    default: UserRole.AVOCAT
+    default: UserRole.AVOCAT,
   })
   @BusinessColumn({
     label: 'Rôle',
-    description: "BD: 'admin', 'avocat', 'secretaire', 'client', 'stagiaire', 'huissier'.",
+    description:
+      "BD: 'admin', 'avocat', 'collaborateur', 'comptable', 'secretaire', 'client', 'stagiaire', 'huissier'.",
     importance: 'critical',
-    group: 'authentification'
+    group: 'authentification',
   })
   role: UserRole;
 
@@ -116,7 +120,7 @@ export class User extends BaseEntity {
     label: 'Nom',
     description: 'Nom de famille',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   last_name: string;
 
@@ -125,7 +129,7 @@ export class User extends BaseEntity {
     label: 'Prénom',
     description: 'Prénom',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   first_name: string;
 
@@ -135,7 +139,7 @@ export class User extends BaseEntity {
   @Column({
     name: 'lastSeen',
     type: 'timestamp',
-    default: () => 'CURRENT_TIMESTAMP'
+    default: () => 'CURRENT_TIMESTAMP',
   })
   lastSeen?: string | null;
 
@@ -145,10 +149,9 @@ export class User extends BaseEntity {
     label: 'Client associé',
     description: 'Client associé à cet utilisateur (cas des comptes clients)',
     importance: 'medium',
-    group: 'relation'
+    group: 'relation',
   })
   customer: Customer;
-
 
   @OneToMany(() => Dossier, (dossier) => dossier.lawyer)
   managed_dossiers: Dossier[];
@@ -161,7 +164,6 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Finding, (finding) => finding.validated_by)
   validated_findings: Finding[];
-
 
   @Expose()
   get full_name(): string {

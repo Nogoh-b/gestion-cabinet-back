@@ -1,8 +1,9 @@
 import { NotificationDispatcher } from 'src/core/notifications/notification-dispatcher.service';
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
-import { DataSource, InsertEvent } from 'typeorm';
+import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { DocumentCustomer } from '../entities/document-customer.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
@@ -20,6 +21,7 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
   constructor(
     dataSource: DataSource,
     notificationDispatcher: NotificationDispatcher,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super(dataSource, notificationDispatcher);
   }
@@ -38,7 +40,12 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
 
     const dossier: any = doc.dossier;
     const client: any = dossier?.client ?? doc.customer;
-    const notifyClient = this.resolveTransientBoolean('notify_client', entity, doc as any);
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity,
+      doc as any,
+    );
+    this.emitWorkflowSourceEvent(doc);
 
     this.logger.log(
       `📢 Document uploadé | id=${doc.id} | name="${doc.name}" | dossier=${dossier?.dossier_number ?? '?'} | notify_client=${notifyClient}`,
@@ -68,12 +75,37 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
     });
   }
 
+  protected async onAfterUpdate(
+    entity: Partial<DocumentCustomer>,
+    event: UpdateEvent<DocumentCustomer>,
+  ): Promise<void> {
+    const id = entity.id ?? (event.databaseEntity as DocumentCustomer)?.id;
+    if (!id) return;
+    const doc = await this.load(id, event).catch(() => null);
+    if (doc) this.emitWorkflowSourceEvent(doc);
+  }
+
+  private emitWorkflowSourceEvent(document: DocumentCustomer): void {
+    const dossierId = Number(document.dossier_id ?? document.dossier?.id);
+    const tenantId = Number(document.tenant_id);
+    if (!dossierId || !tenantId) return;
+    this.eventEmitter.emit('case-workflow.source.document-changed', {
+      tenantId,
+      dossierId,
+      documentId: document.id,
+    });
+  }
+
   private load(
     id: number,
-    event?: InsertEvent<DocumentCustomer>,
+    event?: InsertEvent<DocumentCustomer> | UpdateEvent<DocumentCustomer>,
   ): Promise<DocumentCustomer | null> {
-    return this.loadEntity<DocumentCustomer>(id, {
-      relations: ['dossier', 'dossier.client', 'customer'],
-    }, event);
+    return this.loadEntity<DocumentCustomer>(
+      id,
+      {
+        relations: ['dossier', 'dossier.client', 'customer'],
+      },
+      event,
+    );
   }
 }

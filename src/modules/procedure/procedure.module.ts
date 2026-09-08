@@ -38,6 +38,8 @@ import { SubStageWriteHandler } from './write/sub-stage-write.handler';
 import { TransitionWriteHandler } from './write/transition-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { Dossier } from '../dossiers/entities/dossier.entity';
+import { LegacyWorkflowMutationGuard } from './services/legacy-workflow-mutation.guard';
 
 @Module({
   imports: [
@@ -54,6 +56,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
       HistoryEntry,
       SubStageVisit,
       Task,
+      Dossier,
     ]),
     AiDatabaseModule,
   ],
@@ -75,6 +78,7 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     StageWriteHandler,
     SubStageWriteHandler,
     TransitionWriteHandler,
+    LegacyWorkflowMutationGuard,
   ],
   exports: [
     ProcedureTemplateService,

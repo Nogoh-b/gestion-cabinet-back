@@ -181,7 +181,8 @@ async function bootstrap() {
     // que d'utiliser '*' qui est refusé par les navigateurs avec credentials.
     allowedHeaders:
       'Content-Type,Authorization,X-Tenant-Code,X-Requested-With,' +
-      'Accept,Accept-Language,Cache-Control,Pragma,If-None-Match,Last-Event-ID',
+      'Accept,Accept-Language,Cache-Control,Pragma,If-None-Match,Last-Event-ID,' +
+      'Idempotency-Key,If-Match',
   });
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath('/admin/queues');

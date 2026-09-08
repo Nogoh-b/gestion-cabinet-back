@@ -24,6 +24,7 @@ import {
 
 import { Paiement } from '../../paiement/entities/paiement.entity';
 import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
+import { InvoiceLine } from 'src/modules/case-workflow/entities/billing.entity';
 
 
 @Entity('factures')
@@ -245,6 +246,16 @@ export class Facture extends BaseEntity {
     group: 'relation'
   })
   paiements: Paiement[];
+
+  @OneToMany(() => InvoiceLine, (line) => line.facture)
+  lines: InvoiceLine[];
+
+  @Column({ name: 'original_facture_id', type: 'varchar', length: 36, nullable: true })
+  original_facture_id: string | null;
+
+  @ManyToOne(() => Facture, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'original_facture_id' })
+  original_facture: Facture | null;
 
   @ManyToOne(() => Dossier, { nullable: true })
   @JoinColumn({ name: 'dossier_id' })

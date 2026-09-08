@@ -18,7 +18,8 @@ export enum TypeFacture {
   HONORAIRES = 0,
   FRAIS_PROCEDURE = 1,
   DILIGENCES = 2,
-  AUTRES = 3
+  AUTRES = 3,
+  AVOIR = 4,
 }
 
 export class CreateFactureDto {
@@ -153,4 +154,9 @@ export class CreateFactureDto {
   @IsBoolean()
   @IsOptional()
   notify_client?: boolean;
+
+  @ApiPropertyOptional({ description: 'Facture d\'origine corrigée par cet avoir' })
+  @IsUUID()
+  @IsOptional()
+  original_facture_id?: string;
 }

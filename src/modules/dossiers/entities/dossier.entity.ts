@@ -14,6 +14,7 @@ import { ProcedureType } from 'src/modules/procedures/entities/procedure.entity'
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable, OneToOne, BeforeInsert, AfterLoad, Index } from 'typeorm';
 
 import { Step, StepStatus } from './step.entity';
+import { DossierLifecyclePhase, WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
 
 
 export enum DangerLevel {
@@ -208,6 +209,37 @@ export class Dossier extends BaseEntity {
     group: 'état'
   })
   status: DossierStatus;
+
+  /**
+   * Phase opérationnelle du dossier. Elle est volontairement indépendante du
+   * statut juridique ci-dessus afin que le workflow ne déduise plus son état
+   * depuis un statut métier ambigu.
+   */
+  @Column({
+    name: 'lifecycle_phase',
+    type: 'enum',
+    enum: DossierLifecyclePhase,
+    default: DossierLifecyclePhase.OPENING,
+  })
+  lifecycle_phase: DossierLifecyclePhase;
+
+  /** Sélecteur de coexistence dossier par dossier pendant la migration. */
+  @Column({
+    name: 'workflow_engine',
+    type: 'enum',
+    enum: WorkflowEngine,
+    default: WorkflowEngine.LEGACY,
+  })
+  workflow_engine: WorkflowEngine;
+
+  @Column({ name: 'legacy_workflow_locked', type: 'boolean', default: false })
+  legacy_workflow_locked: boolean;
+
+  @Column({ name: 'opening_validated_at', type: 'datetime', nullable: true })
+  opening_validated_at: Date | null;
+
+  @Column({ name: 'opening_validated_by', type: 'int', nullable: true })
+  opening_validated_by: number | null;
 
   @Column({ name: 'opening_date', type: 'date', nullable: false })
   @BusinessColumn({

@@ -9,6 +9,8 @@ import { PaginatedResult, PaginationServiceV1 } from 'src/core/shared/services/p
 import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { DossierLifecyclePhase, WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
+import { CaseWorkflowFeature } from 'src/modules/case-workflow/entities/workflow-audit.entity';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
 
@@ -102,6 +104,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     private readonly planQuotaService: PlanQuotaService,
     @InjectRepository(Cabinet)
     private readonly cabinetRepository: Repository<Cabinet>,
+    @InjectRepository(CaseWorkflowFeature)
+    private readonly caseWorkflowFeatureRepository: Repository<CaseWorkflowFeature>,
     protected readonly emailsService?: MailService, // Optionnel
 
   ) {
@@ -250,6 +254,10 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
 
     // const procedureInstance = await this.procedureInstanceService.create(procedureInstanceDTO, createdBy.id.toString())
 
+    const workflowFeature = tenantId
+      ? await this.caseWorkflowFeatureRepository.findOne({ where: { tenant_id: tenantId } })
+      : null;
+    const useActionsV2 = Boolean(workflowFeature?.enabled && workflowFeature.default_for_new_dossiers);
     const dossier = this.dossierRepository.create({
       ...createDossierDto,
       dossier_number: dossierNumber,
@@ -264,6 +272,8 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       // procedureInstance,
       opening_date: createDossierDto.opening_date ? new Date(createDossierDto.opening_date) : new Date(),
       status: DossierStatus.OPEN,
+      workflow_engine: useActionsV2 ? WorkflowEngine.ACTIONS_V2 : WorkflowEngine.LEGACY,
+      lifecycle_phase: DossierLifecyclePhase.OPENING,
     });
     // Champ transient consommé par DossierSubscriber pour notifier le client.
     (dossier as any).notify_client = !!createDossierDto.notify_client;

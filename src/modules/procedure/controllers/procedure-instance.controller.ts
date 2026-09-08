@@ -24,6 +24,7 @@ import { TriggerEventDto } from '../dto/trigger-event.dto';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { LegacyWorkflowMutationGuard } from '../services/legacy-workflow-mutation.guard';
 
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -32,6 +33,7 @@ export class ProcedureInstanceController {
   constructor(
     private readonly instanceService: ProcedureInstanceService,
     private readonly workflowService: WorkflowService,
+    private readonly legacyMutationGuard: LegacyWorkflowMutationGuard,
   ) {}
 
   private assertDevelopmentOnly(): void {
@@ -107,6 +109,7 @@ async completeSubStageInPreviousStage(
   @Body('notes') notes: string,
   @Request() req,
 ) {
+  await this.legacyMutationGuard.assertMutable(id);
   return this.instanceService.completeSubStageInPreviousStage(
     id,
     subStageId,
@@ -129,6 +132,7 @@ async completeSubStageInPreviousStage(
     @Body() dto: ApplyTransitionDto,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     return this.workflowService.applyManualTransition(id, dto, userId);
   }
@@ -153,6 +157,7 @@ async completeSubStageInPreviousStage(
     @Body() body: { notes?: string; skipAutoTransitions?: boolean },
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     // Le front peut envoyer la note via query OU via body — on accepte les deux.
     const notes = body?.notes ?? queryNotes;
@@ -167,6 +172,7 @@ async completeSubStageInPreviousStage(
     @Param('subStageId') subStageId: string,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     return this.instanceService.startSubStage(id, subStageId, userId);
   }
@@ -181,6 +187,7 @@ async completeSubStageInPreviousStage(
     @UploadedFiles() files: Express.Multer.File[],
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     
     // Gérer les fichiers uploadés
@@ -207,6 +214,7 @@ async completeSubStageInPreviousStage(
     @Param('cycleId') cycleId: string,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     return this.instanceService.applyCycle(id, cycleId, userId);
   }
@@ -218,6 +226,7 @@ async completeSubStageInPreviousStage(
     @Body('status') status: InstanceStatus,
     @Request() req: any,
   ) {
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     return this.instanceService.updateStatus(id, status, userId);
   }
@@ -235,6 +244,7 @@ async completeSubStageInPreviousStage(
       },
       @Request() req: any,
   ) {
+      await this.legacyMutationGuard.assertMutable(id);
       const userId = req.user?.id || 'system';
       
       return this.instanceService.resetInstance(
@@ -257,6 +267,7 @@ async completeSubStageInPreviousStage(
       @Body() body: { reason?: string },
       @Request() req: any,
   ) {
+      await this.legacyMutationGuard.assertMutable(id);
       const userId = req.user?.id || 'system';
       return this.instanceService.resetInstanceSimple(id, userId, body?.reason);
   }
@@ -274,6 +285,7 @@ async completeSubStageInPreviousStage(
     @Body() triggerEventDto: TriggerEventDto,
     @Request() req,
   ): Promise<{ success: boolean; message: string }> {
+    await this.legacyMutationGuard.assertMutable(instanceId);
     const userId = req.user?.id || 'system';
     
     await this.instanceService.triggerEventOnInstance(
@@ -306,6 +318,7 @@ async completeSubStageInPreviousStage(
     @Request() req: any,
   ) {
     this.assertDevelopmentOnly();
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     return this.instanceService.completeAllSubStagesInCurrentStage(
       id,
@@ -334,6 +347,7 @@ async completeSubStageInPreviousStage(
     @Request() req: any,
   ) {
     this.assertDevelopmentOnly();
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     return this.instanceService.completeAllSubStagesInStage(
       id,
@@ -362,6 +376,7 @@ async completeSubStageInPreviousStage(
     @Request() req: any,
   ) {
     this.assertDevelopmentOnly();
+    await this.legacyMutationGuard.assertMutable(id);
     const userId = req.user?.id || 'system';
     return this.instanceService.completeAllSubStagesInAllStages(
       id,

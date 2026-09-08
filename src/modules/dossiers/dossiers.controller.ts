@@ -23,7 +23,10 @@ import {
   UseInterceptors,
   UploadedFile,
   UploadedFiles,
-  Request
+  Request,
+  ForbiddenException,
+  Headers,
+  BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
@@ -52,6 +55,7 @@ import { DossierResponseDto } from './dto/dossier-response.dto';
 import { DossierSearchDto } from './dto/dossier-search.dto';
 import { DossierStatsDto } from './dto/dossier-stats.dto';
 import { UpdateDossierDto } from './dto/update-dossier.dto';
+import { CaseWorkflowService } from '../case-workflow/services/case-workflow.service';
 
 
 
@@ -72,7 +76,8 @@ import { UpdateDossierDto } from './dto/update-dossier.dto';
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class DossiersController {
   constructor(private readonly dossiersService: DossiersService,
-  private readonly statsService: DossierStatsService) {}
+  private readonly statsService: DossierStatsService,
+  private readonly caseWorkflowService: CaseWorkflowService) {}
 
     @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
@@ -476,8 +481,20 @@ export class DossiersController {
   async closeDossier(
     @Param('id') id: string,
     @Body() closeDto: CloseDossierDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @CurrentUser() user: User
   ) {
+    if (await this.caseWorkflowService.isV2(+id)) {
+      const authUser = user as any;
+      const permissions: string[] = Array.isArray(authUser.permissions) ? authUser.permissions : [];
+      if (authUser.role !== UserRole.ADMIN && !permissions.includes('close_dossier')) {
+        throw new ForbiddenException('Permission close_dossier requise pour clôturer un dossier V2');
+      }
+      if (!idempotencyKey?.trim()) {
+        throw new BadRequestException('L’en-tête Idempotency-Key est obligatoire pour clôturer un dossier V2');
+      }
+      return this.caseWorkflowService.close(+id, closeDto, user, idempotencyKey.trim());
+    }
     return this.dossiersService.closeDossier(+id, user, closeDto);
   }
 

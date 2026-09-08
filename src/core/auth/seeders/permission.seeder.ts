@@ -27,6 +27,16 @@ export class PermissionSeeder {
       { code: 'delete_dossier',          description: 'Supprimer un dossier' },
       { code: 'assign_dossier',          description: 'Assigner un dossier à un avocat' },
       { code: 'view_dossier_confidential', description: 'Voir les informations confidentielles d\'un dossier' },
+      { code: 'view_dossier_actions',      description: 'Voir les actions et recommandations du dossier' },
+      { code: 'create_dossier_action',     description: 'Créer une action de dossier' },
+      { code: 'update_dossier_action',     description: 'Faire évoluer une action de dossier' },
+      { code: 'manage_action_catalog',     description: 'Configurer le catalogue des actions' },
+      { code: 'view_billable_items',       description: 'Voir les éléments à facturer' },
+      { code: 'manage_billable_items',     description: 'Gérer les éléments à facturer' },
+      { code: 'generate_invoice_from_items', description: 'Générer une facture depuis les éléments sélectionnés' },
+      { code: 'close_dossier',             description: 'Clôturer un dossier après contrôle' },
+      { code: 'reopen_dossier',            description: 'Réouvrir un dossier clôturé' },
+      { code: 'migrate_dossier_workflow',  description: 'Migrer un dossier vers le parcours orienté actions' },
 
       // ===================================================================
       // CABINET — AUDIENCES

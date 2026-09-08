@@ -11,6 +11,16 @@ export enum Permission {
   DELETE_DOSSIER            = 'delete_dossier',
   ASSIGN_DOSSIER            = 'assign_dossier',
   VIEW_DOSSIER_CONFIDENTIAL = 'view_dossier_confidential',
+  VIEW_DOSSIER_ACTIONS      = 'view_dossier_actions',
+  CREATE_DOSSIER_ACTION     = 'create_dossier_action',
+  UPDATE_DOSSIER_ACTION     = 'update_dossier_action',
+  MANAGE_ACTION_CATALOG     = 'manage_action_catalog',
+  VIEW_BILLABLE_ITEMS       = 'view_billable_items',
+  MANAGE_BILLABLE_ITEMS     = 'manage_billable_items',
+  GENERATE_INVOICE_ITEMS    = 'generate_invoice_from_items',
+  CLOSE_DOSSIER             = 'close_dossier',
+  REOPEN_DOSSIER            = 'reopen_dossier',
+  MIGRATE_DOSSIER_WORKFLOW  = 'migrate_dossier_workflow',
 
   // ── Audiences ───────────────────────────────────────────────────────────
   VIEW_AUDIENCES            = 'view_audiences',
