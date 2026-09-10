@@ -40,7 +40,7 @@ export class EmployeeWriteHandler extends BaseWriteHandler {
     const fields = await super.getWriteableFieldsSchema();
     // Annoter clairement que INSERT n'est pas possible
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
-      position: { description: 'avocat, secretaire, assistant, stagiaire, huissier, administratif' },
+      position: { description: 'avocat, collaborateur, juriste, comptable, secretaire, assistant, stagiaire, huissier, administratif' },
       specialization: { description: 'Spécialisation juridique', example: 'Droit des affaires' },
       bar_association_number: { description: "Numéro d'inscription au barreau" },
       bar_association_city: { description: "Ville d'inscription au barreau", example: 'Paris' },

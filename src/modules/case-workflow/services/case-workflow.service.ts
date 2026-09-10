@@ -19,6 +19,10 @@ import {
 } from 'src/modules/dossiers/entities/dossier.entity';
 import { StepStatus } from 'src/modules/dossiers/entities/step.entity';
 import {
+  Diligence,
+  DiligenceStatus,
+} from 'src/modules/diligence/entities/diligence.entity';
+import {
   DocumentCustomer,
   DocumentCustomerStatus,
 } from 'src/modules/documents/document-customer/entities/document-customer.entity';
@@ -135,6 +139,8 @@ export class CaseWorkflowService {
     private readonly audienceRepository: Repository<Audience>,
     @InjectRepository(DocumentCustomer)
     private readonly documentRepository: Repository<DocumentCustomer>,
+    @InjectRepository(Diligence)
+    private readonly diligenceRepository: Repository<Diligence>,
     @InjectRepository(Facture)
     private readonly factureRepository: Repository<Facture>,
     @InjectRepository(CaseWorkflowEvent)
@@ -428,12 +434,11 @@ export class CaseWorkflowService {
         ? await this.recommendationService.getCurrent(dossierId)
         : null;
     if (isV2 && dossier.lifecycle_phase === DossierLifecyclePhase.TREATMENT) {
-      recommendation =
-        (await this.recommendationService.evaluate(
-          dossierId,
-          RecommendationTrigger.MANUAL,
-          `WORKSPACE_EVALUATION:${dossierId}:${new Date().toISOString().slice(0, 13)}`,
-        )) ?? recommendation;
+      recommendation = await this.recommendationService.evaluate(
+        dossierId,
+        RecommendationTrigger.MANUAL,
+        `WORKSPACE_EVALUATION:${dossierId}:${new Date().toISOString().slice(0, 13)}`,
+      );
     }
     const [
       actions,
@@ -445,6 +450,7 @@ export class CaseWorkflowService {
       reviewDocumentLinks,
       reviewAudienceLinks,
       billingProfile,
+      diligences,
     ] = await Promise.all([
       this.actionRepository.find({
         where: { tenant_id: tenantId, dossier_id: dossierId },
@@ -493,7 +499,89 @@ export class CaseWorkflowService {
       this.dataSource
         .getRepository(DossierBillingProfile)
         .findOne({ where: { tenant_id: tenantId, dossier_id: dossierId } }),
+      this.diligenceRepository.find({
+        where: { tenant_id: tenantId, dossier_id: dossierId },
+        order: { updated_at: 'DESC' },
+        take: 20,
+      }),
     ]);
+
+    let workspaceRecommendation: Record<string, unknown> | null = recommendation
+      ? { ...recommendation, kind: 'RULE' }
+      : null;
+    if (
+      !workspaceRecommendation &&
+      isV2 &&
+      dossier.lifecycle_phase === DossierLifecyclePhase.TREATMENT
+    ) {
+      const deferred = await this.recommendationRepository.findOne({
+        where: {
+          tenant_id: tenantId,
+          dossier_id: dossierId,
+          status: RecommendationStatus.DEFERRED,
+        },
+        relations: ['action_definition', 'action_definition.family'],
+        order: { remind_at: 'DESC', created_at: 'DESC' },
+      });
+      if (deferred?.remind_at && deferred.remind_at.getTime() > Date.now()) {
+        workspaceRecommendation = {
+          ...deferred,
+          kind: 'DEFERRED_RECOMMENDATION',
+        };
+      } else {
+        const openAction = [...actions]
+          .filter((action) =>
+            [
+              DossierActionStatus.IN_PROGRESS,
+              DossierActionStatus.ON_HOLD,
+              DossierActionStatus.TODO,
+            ].includes(action.status),
+          )
+          .sort((left, right) => {
+            const statusRank: Record<DossierActionStatus, number> = {
+              [DossierActionStatus.IN_PROGRESS]: 0,
+              [DossierActionStatus.ON_HOLD]: 1,
+              [DossierActionStatus.TODO]: 2,
+              [DossierActionStatus.COMPLETED]: 3,
+              [DossierActionStatus.CANCELLED]: 4,
+            };
+            const byStatus = statusRank[left.status] - statusRank[right.status];
+            if (byStatus !== 0) return byStatus;
+            return (
+              (left.due_at?.getTime() ?? Number.MAX_SAFE_INTEGER) -
+              (right.due_at?.getTime() ?? Number.MAX_SAFE_INTEGER)
+            );
+          })[0];
+        workspaceRecommendation = openAction
+          ? {
+              id: `ACTION:${openAction.id}`,
+              kind: 'CONTINUE_ACTION',
+              action_id: openAction.id,
+              status: RecommendationStatus.ACTIVE,
+              reason:
+                openAction.status === DossierActionStatus.IN_PROGRESS
+                  ? 'Cette action est en cours et constitue la prochaine étape du dossier.'
+                  : openAction.status === DossierActionStatus.ON_HOLD
+                    ? 'Cette action est suspendue et doit être reprise ou réévaluée.'
+                    : 'Cette action est prête à être commencée.',
+              due_at: openAction.due_at,
+              remind_at: openAction.remind_at,
+              lock_version: openAction.lock_version,
+              action_definition: openAction.definition,
+            }
+          : {
+              id: `REVIEW:${dossierId}`,
+              kind: 'REVIEW',
+              status: RecommendationStatus.ACTIVE,
+              reason:
+                'Aucune action n’est ouverte. Analysez le dossier et choisissez la prochaine action.',
+              due_at: null,
+              remind_at: null,
+              lock_version: 1,
+              action_definition: null,
+            };
+      }
+    }
 
     const actionIds = actions.map((action) => action.id);
     const [actionDocumentLinks, actionAudienceLinks, actionRelations] =
@@ -583,6 +671,40 @@ export class CaseWorkflowService {
         count: reviewItems,
         label: `${reviewItems} élément(s) tarifaire(s) à revoir`,
       });
+    const pendingDocuments = documents.filter(
+      (document) => document.status === DocumentCustomerStatus.PENDING,
+    ).length;
+    if (pendingDocuments)
+      alerts.push({
+        type: 'DOCUMENT_REVIEW',
+        severity: 'high',
+        count: pendingDocuments,
+        label: `${pendingDocuments} document(s) à valider`,
+      });
+    const uninvoicedItems = billableItems.filter(
+      (item) => item.status === BillableItemStatus.TO_INVOICE,
+    ).length;
+    if (uninvoicedItems)
+      alerts.push({
+        type: 'UNINVOICED_ITEMS',
+        severity: 'medium',
+        count: uninvoicedItems,
+        label: `${uninvoicedItems} élément(s) prêt(s) à facturer`,
+      });
+    const overdueDiligences = diligences.filter(
+      (diligence) =>
+        new Date(diligence.deadline).getTime() < now &&
+        ![DiligenceStatus.COMPLETED, DiligenceStatus.CANCELLED].includes(
+          diligence.status,
+        ),
+    ).length;
+    if (overdueDiligences)
+      alerts.push({
+        type: 'OVERDUE_DILIGENCES',
+        severity: 'high',
+        count: overdueDiligences,
+        label: `${overdueDiligences} diligence(s) en retard`,
+      });
     const reviewLinks = reviewDocumentLinks + reviewAudienceLinks;
     if (reviewLinks)
       alerts.push({
@@ -633,6 +755,31 @@ export class CaseWorkflowService {
           amount: invoice.montantTTC,
         },
       })),
+      ...diligences.map((diligence) => ({
+        id: `DILIGENCE:${diligence.id}`,
+        event_type: 'DILIGENCE_ACTIVITY',
+        occurred_at: diligence.updated_at ?? diligence.created_at,
+        payload: {
+          diligenceId: diligence.id,
+          label: diligence.title,
+          status: diligence.status,
+          deadline: diligence.deadline,
+        },
+      })),
+      ...invoices.flatMap((invoice) =>
+        (invoice.paiements ?? []).map((payment) => ({
+          id: `PAYMENT:${payment.id}`,
+          event_type: 'PAYMENT_ACTIVITY',
+          occurred_at: payment.created_at ?? payment.datePaiement,
+          payload: {
+            paymentId: payment.id,
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.numero,
+            amount: payment.montant,
+            status: payment.status,
+          },
+        })),
+      ),
     ]
       .sort(
         (left, right) =>
@@ -667,11 +814,13 @@ export class CaseWorkflowService {
           billingProfile,
         },
       },
-      recommendation,
+      recommendation: workspaceRecommendation,
       alerts,
       actions: workspaceActions,
       documents,
       audiences,
+      diligences,
+      invoices,
       activity: unifiedActivity,
       billableItems: billableItems
         .sort(
@@ -970,7 +1119,6 @@ export class CaseWorkflowService {
         );
       }
       dossier.lifecycle_phase = DossierLifecyclePhase.CLOSED;
-      dossier.status = DossierStatus.CLOSED;
       dossier.closing_date = new Date();
       dossier.outcome = dto.outcome;
       dossier.outcome_date = new Date();
@@ -1057,7 +1205,6 @@ export class CaseWorkflowService {
       if (entity.lifecycle_phase !== DossierLifecyclePhase.CLOSED)
         throw new ConflictException('Le dossier n’est pas clôturé');
       entity.lifecycle_phase = DossierLifecyclePhase.TREATMENT;
-      entity.status = DossierStatus.OPEN;
       entity.closing_date = null as unknown as Date;
       await repository.save(entity);
       await manager.getRepository(DossierClosureReview).save(

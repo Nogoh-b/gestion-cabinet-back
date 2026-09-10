@@ -14,12 +14,14 @@ import { EmployeeWriteHandler } from './employee/employee-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
+import { UserRole } from '../iam/user-role/entities/user-role.entity';
+import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-role-assignment.entity';
 
 
 @Module({
   imports: [
     forwardRef(() => GeographyModule),
-    TypeOrmModule.forFeature([Branch, Employee]),
+    TypeOrmModule.forFeature([Branch, Employee, UserRole, UserRoleAssignment]),
     AiDatabaseModule,
     PlansModule,
   ],

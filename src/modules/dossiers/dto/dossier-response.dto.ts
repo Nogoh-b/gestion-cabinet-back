@@ -6,6 +6,7 @@ import { Diligence } from "src/modules/diligence/entities/diligence.entity";
 import { DocumentCustomerStatus } from "src/modules/documents/document-customer/entities/document-customer.entity";
 import { StatutFacture } from "src/modules/facture/dto/create-facture.dto";
 import { FactureResponseDto } from "src/modules/facture/dto/facture-response.dto";
+import { DossierLifecyclePhase, WorkflowEngine } from "src/modules/case-workflow/case-workflow.enums";
 
 import { ApiProperty } from "@nestjs/swagger";
 
@@ -61,6 +62,17 @@ export class DossierResponseDto {
   @ApiProperty({ example: DossierStatus.LITIGATION, enum: DossierStatus })
   @Expose()
   status: DossierStatus;
+
+  @ApiProperty({ enum: DossierLifecyclePhase })
+  @Expose()
+  lifecycle_phase: DossierLifecyclePhase;
+
+  @ApiProperty({ enum: WorkflowEngine })
+  @Expose()
+  workflow_engine: WorkflowEngine;
+
+  @Expose()
+  opening_validated_at?: Date | null;
 
   @ApiProperty({ example: "2025-01-15" })
   @Expose()
@@ -554,7 +566,9 @@ steps_summary: {
   @ApiProperty({ example: true })
   @Expose()
   @Transform(({ obj }) => {
-    const isClosed = obj.status === DossierStatus.CLOSED || obj.status === DossierStatus.ARCHIVED;
+    const isClosed = obj.workflow_engine === WorkflowEngine.ACTIONS_V2
+      ? obj.lifecycle_phase === DossierLifecyclePhase.CLOSED
+      : obj.status === DossierStatus.CLOSED || obj.status === DossierStatus.ARCHIVED;
     const isArchived = obj.status === DossierStatus.ARCHIVED;
     return !isClosed && !isArchived;
   })
@@ -562,8 +576,11 @@ steps_summary: {
 
   @ApiProperty({ example: false })
   @Expose()
-  @Transform(({ obj }) => 
-    obj.status === DossierStatus.CLOSED || obj.status === DossierStatus.ARCHIVED
+  @Transform(({ obj }) =>
+    obj.workflow_engine === WorkflowEngine.ACTIONS_V2
+      ? obj.lifecycle_phase === DossierLifecyclePhase.CLOSED
+      : obj.status === DossierStatus.CLOSED ||
+        obj.status === DossierStatus.ARCHIVED,
   )
   is_closed: boolean;
 

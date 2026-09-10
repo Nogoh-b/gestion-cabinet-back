@@ -86,8 +86,8 @@ export class BranchStatsService {
     
     // Filtrer par date si nécessaire
     const dossiersFiltres = this.filterByDate(tousDossiers, filters, 'created_at');
-    const dossiersActifs = dossiersFiltres.filter(d => d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED);
-    const dossiersClos = dossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+    const dossiersActifs = dossiersFiltres.filter(d => d.is_active);
+    const dossiersClos = dossiersFiltres.filter(d => d.is_closed);
 
     // Récupérer toutes les audiences
     const toutesAudiences = dossiersFiltres.flatMap(d => d.audiences || []);
@@ -167,7 +167,7 @@ export class BranchStatsService {
       .filter(e => e.position === EmployeePosition.AVOCAT)
       .map(e => {
         const dossiers = e.managed_dossiers || [];
-        const dossiersClos = dossiers.filter(d => d.status === DossierStatus.CLOSED).length;
+        const dossiersClos = dossiers.filter(d => d.is_closed).length;
         const audiences = dossiers.flatMap(d => d.audiences || []);
         
         return {
@@ -392,7 +392,7 @@ export class BranchStatsService {
     
     const tousDossiers = employes.flatMap(e => e.managed_dossiers || []);
     const dossiersFiltres = this.filterByDate(tousDossiers, filters, 'created_at');
-    const dossiersClos = dossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+    const dossiersClos = dossiersFiltres.filter(d => d.is_closed);
     
     const toutesAudiences = dossiersFiltres.flatMap(d => d.audiences || []);
     const audiencesTenues = toutesAudiences.filter(a => a.status === AudienceStatus.HELD);

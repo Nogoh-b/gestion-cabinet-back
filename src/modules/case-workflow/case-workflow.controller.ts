@@ -26,6 +26,7 @@ import {
   CompleteDossierActionDto,
   CreateActionFamilyDto,
   CreateActionDefinitionDto,
+  CreateRecommendationRuleDto,
   CreateDossierBillingRuleDto,
   CreateDossierActionDto,
   CreateManualBillableItemDto,
@@ -38,6 +39,7 @@ import {
   ReviseDossierBillingRuleDto,
   ReviseActionDefinitionDto,
   ReviseLegacyWorkflowMappingDto,
+  ReviseRecommendationRuleDto,
   UpdateBillingProfileDto,
   UpdateActionFamilyDto,
   UpdateCaseWorkflowFeatureDto,
@@ -103,6 +105,27 @@ export class ActionCatalogController {
     @Body() dto: ReviseActionDefinitionDto,
   ) {
     return this.catalogService.reviseDefinition(id, dto);
+  }
+
+  @Get('recommendation-rules/manage')
+  @RequirePermissions('manage_action_catalog')
+  getRecommendationRulesForManagement() {
+    return this.catalogService.getRecommendationRules(true);
+  }
+
+  @Post('recommendation-rules')
+  @RequirePermissions('manage_action_catalog')
+  createRecommendationRule(@Body() dto: CreateRecommendationRuleDto) {
+    return this.catalogService.createRecommendationRule(dto);
+  }
+
+  @Patch('recommendation-rules/:id')
+  @RequirePermissions('manage_action_catalog')
+  reviseRecommendationRule(
+    @Param('id') id: string,
+    @Body() dto: ReviseRecommendationRuleDto,
+  ) {
+    return this.catalogService.reviseRecommendationRule(id, dto);
   }
 }
 
@@ -248,6 +271,7 @@ export class DossierWorkspaceController {
       dto,
       requireIdempotencyKey(key),
       actorId(user),
+      dto.start_immediately === true,
     );
   }
 

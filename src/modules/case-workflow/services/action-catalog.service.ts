@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -19,9 +20,12 @@ import { RecommendationRule } from '../entities/recommendation.entity';
 import {
   CreateActionFamilyDto,
   CreateActionDefinitionDto,
+  CreateRecommendationRuleDto,
   UpdateActionFamilyDto,
   ReviseActionDefinitionDto,
+  ReviseRecommendationRuleDto,
 } from '../dto/case-workflow.dto';
+import { findForbiddenJsonLogicOperator } from '../case-workflow.logic';
 
 const FAMILY_DEFAULTS = [
   ['DOCUMENT_DRAFTING', 'Rédaction et production documentaire'],
@@ -1084,11 +1088,13 @@ export class ActionCatalogService {
       (
         family as ActionFamily & { definitions: ActionDefinition[] }
       ).definitions = includeInactive
-        ? [
-            ...new Map(
-              definitions.map((definition) => [definition.code, definition]),
-            ).values(),
-          ].sort((left, right) => left.label.localeCompare(right.label))
+        ? definitions
+            .filter(
+              (definition, index, all) =>
+                all.findIndex((item) => item.code === definition.code) ===
+                index,
+            )
+            .sort((left, right) => left.label.localeCompare(right.label))
         : definitions.sort((left, right) =>
             left.label.localeCompare(right.label),
           );
@@ -1102,6 +1108,176 @@ export class ActionCatalogService {
       .toUpperCase()
       .replace(/[^A-Z0-9_]+/g, '_')
       .replace(/^_+|_+$/g, '');
+  }
+
+  private normalizeRuleCode(value: string): string {
+    return value
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private assertRecommendationCondition(value: unknown): void {
+    const forbidden = findForbiddenJsonLogicOperator(value);
+    if (forbidden) {
+      throw new BadRequestException(
+        `Opérateur json-logic non autorisé: ${forbidden}`,
+      );
+    }
+  }
+
+  async getRecommendationRules(
+    includeInactive = false,
+  ): Promise<RecommendationRule[]> {
+    await this.ensureDefaults();
+    const tenantId = getCurrentTenantId();
+    const rules = await this.ruleRepository.find({
+      where: includeInactive
+        ? { tenant_id: tenantId }
+        : { tenant_id: tenantId, is_active: true },
+      relations: {
+        action_definition: { family: true },
+      },
+      order: { code: 'ASC', version: 'DESC' },
+    });
+
+    // L'administration manipule seulement la version courante de chaque règle.
+    return rules
+      .filter(
+        (rule, index, all) =>
+          all.findIndex((item) => item.code === rule.code) === index,
+      )
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }
+
+  async createRecommendationRule(
+    dto: CreateRecommendationRuleDto,
+  ): Promise<RecommendationRule> {
+    const tenantId = getCurrentTenantId();
+    const code = this.normalizeRuleCode(dto.code);
+    if (!code) throw new ConflictException('Le code de la règle est invalide');
+    const existing = await this.ruleRepository.findOne({
+      where: { tenant_id: tenantId, code },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `La règle ${code} existe déjà ; créez une nouvelle version`,
+      );
+    }
+    const definition = await this.definitionRepository.findOne({
+      where: {
+        id: dto.action_definition_id,
+        tenant_id: tenantId,
+        is_active: true,
+      },
+    });
+    if (!definition) {
+      throw new NotFoundException(
+        'Définition d’action active introuvable dans ce cabinet',
+      );
+    }
+    this.assertRecommendationCondition(dto.condition_json);
+
+    return this.ruleRepository.save(
+      this.ruleRepository.create({
+        tenant_id: tenantId,
+        code,
+        label: dto.label.trim(),
+        version: 1,
+        trigger: dto.trigger,
+        condition_json: dto.condition_json,
+        action_definition_id: definition.id,
+        reason_template: dto.reason_template.trim(),
+        priority: dto.priority ?? 0,
+        specificity: dto.specificity ?? 0,
+        due_offset_days: dto.due_offset_days ?? null,
+        is_active: dto.is_active ?? true,
+      }),
+    );
+  }
+
+  async reviseRecommendationRule(
+    id: string,
+    dto: ReviseRecommendationRuleDto,
+  ): Promise<RecommendationRule> {
+    const tenantId = getCurrentTenantId();
+    return this.dataSource.transaction(async (manager) => {
+      const ruleRepository = manager.getRepository(RecommendationRule);
+      const definitionRepository = manager.getRepository(ActionDefinition);
+      const source = await ruleRepository
+        .createQueryBuilder('rule')
+        .setLock('pessimistic_write')
+        .where('rule.id = :id AND rule.tenant_id = :tenantId', {
+          id,
+          tenantId,
+        })
+        .getOne();
+      if (!source)
+        throw new NotFoundException('Règle de recommandation introuvable');
+
+      const latest = await ruleRepository.findOne({
+        where: { tenant_id: tenantId, code: source.code },
+        order: { version: 'DESC' },
+      });
+      if (
+        !latest ||
+        latest.id !== source.id ||
+        dto.expected_version !== source.version
+      ) {
+        throw new ConflictException(
+          'Cette règle n’est plus la version courante',
+        );
+      }
+
+      const definitionId =
+        dto.action_definition_id ?? source.action_definition_id;
+      let definition = await definitionRepository.findOne({
+        where: {
+          id: definitionId,
+          tenant_id: tenantId,
+          is_active: true,
+        },
+      });
+      if (
+        !definition &&
+        dto.is_active === false &&
+        dto.action_definition_id === undefined
+      ) {
+        definition = await definitionRepository.findOne({
+          where: { id: definitionId, tenant_id: tenantId },
+        });
+      }
+      if (!definition) {
+        throw new NotFoundException(
+          'Définition d’action active introuvable dans ce cabinet',
+        );
+      }
+      const condition = dto.condition_json ?? source.condition_json;
+      this.assertRecommendationCondition(condition);
+
+      await ruleRepository.update(
+        { tenant_id: tenantId, code: source.code, is_active: true },
+        { is_active: false },
+      );
+      return ruleRepository.save(
+        ruleRepository.create({
+          tenant_id: tenantId,
+          code: source.code,
+          label: dto.label?.trim() ?? source.label,
+          version: source.version + 1,
+          trigger: dto.trigger ?? source.trigger,
+          condition_json: condition,
+          action_definition_id: definition.id,
+          reason_template:
+            dto.reason_template?.trim() ?? source.reason_template,
+          priority: dto.priority ?? source.priority,
+          specificity: dto.specificity ?? source.specificity,
+          due_offset_days: dto.due_offset_days ?? source.due_offset_days,
+          is_active: dto.is_active ?? true,
+        }),
+      );
+    });
   }
 
   async createFamily(dto: CreateActionFamilyDto): Promise<ActionFamily> {

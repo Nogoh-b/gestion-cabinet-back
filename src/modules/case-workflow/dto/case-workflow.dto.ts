@@ -30,6 +30,7 @@ import {
   BillingCalculationMode,
   BillingMode,
   BillingTrigger,
+  RecommendationTrigger,
 } from '../case-workflow.enums';
 
 export class ActionResultDefinitionDto {
@@ -271,6 +272,99 @@ export class CreateDossierActionDto {
   @IsOptional()
   @IsUUID()
   source_recommendation_id?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  start_immediately?: boolean;
+}
+
+export class CreateRecommendationRuleDto {
+  @IsString()
+  @MaxLength(100)
+  code: string;
+
+  @IsString()
+  @MaxLength(200)
+  label: string;
+
+  @IsEnum(RecommendationTrigger)
+  trigger: RecommendationTrigger;
+
+  @IsObject()
+  condition_json: Record<string, unknown>;
+
+  @IsUUID()
+  action_definition_id: string;
+
+  @IsString()
+  @MaxLength(2000)
+  reason_template: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  specificity?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  due_offset_days?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+}
+
+export class ReviseRecommendationRuleDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string;
+
+  @IsOptional()
+  @IsEnum(RecommendationTrigger)
+  trigger?: RecommendationTrigger;
+
+  @IsOptional()
+  @IsObject()
+  condition_json?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsUUID()
+  action_definition_id?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason_template?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  specificity?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  due_offset_days?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+
+  @IsInt()
+  @Min(1)
+  expected_version: number;
 }
 
 export class ActionTransitionDto {

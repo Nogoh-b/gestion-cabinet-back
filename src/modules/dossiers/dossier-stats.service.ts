@@ -12,6 +12,38 @@ import { DocumentCustomerStatus } from '../documents/document-customer/entities/
 import { AudienceStatus } from '../audiences/entities/audience.entity';
 import { DiligencePriority, DiligenceStatus } from '../diligence/entities/diligence.entity';
 import { StatutFacture } from '../facture/dto/create-facture.dto';
+import {
+  DossierLifecyclePhase,
+  WorkflowEngine,
+} from '../case-workflow/case-workflow.enums';
+
+/**
+ * MariaDB stores a numeric TypeScript enum in an ENUM column as text values
+ * ("0", "1", ...). Raw QueryBuilder parameters must therefore be strings:
+ * numeric parameters are interpreted by MariaDB as ENUM indexes instead of
+ * values (for example, 0 targets the special empty ENUM value).
+ */
+const dossierStatusValue = (status: DossierStatus): string => String(status);
+
+const ACTIVE_DOSSIER_STATUSES = [
+  DossierStatus.OPEN,
+  DossierStatus.PRELIMINARY_ANALYSIS,
+  DossierStatus.AMICABLE,
+  DossierStatus.LITIGATION,
+  DossierStatus.JUDGMENT,
+  DossierStatus.APPEAL,
+  DossierStatus.CASSATION,
+  DossierStatus.EXECUTION,
+].map(dossierStatusValue);
+
+const CLOSED_DOSSIER_FILTER =
+  '(dossier.lifecycle_phase = :closedPhase OR (dossier.workflow_engine = :legacyEngine AND dossier.status = :closedStatus))';
+
+const CLOSED_DOSSIER_PARAMETERS = {
+  closedPhase: DossierLifecyclePhase.CLOSED,
+  legacyEngine: WorkflowEngine.LEGACY,
+  closedStatus: dossierStatusValue(DossierStatus.CLOSED),
+};
 
 @Injectable()
 export class DossierStatsService extends BaseStatsService<Dossier> {
@@ -34,14 +66,15 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
   private async getActiveCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
-      .where('dossier.status IN (:...statuses)', {
-        statuses: [
-          DossierStatus.OPEN,
-          DossierStatus.AMICABLE,
-          DossierStatus.LITIGATION,
-          // DossierStatus.DECISION,
-          DossierStatus.APPEAL,
-        ],
+      .where(
+        '(dossier.workflow_engine = :v2Engine OR dossier.status IN (:...statuses))',
+        {
+          v2Engine: WorkflowEngine.ACTIONS_V2,
+          statuses: ACTIVE_DOSSIER_STATUSES,
+        },
+      )
+      .andWhere('dossier.lifecycle_phase != :closedPhase', {
+        closedPhase: DossierLifecyclePhase.CLOSED,
       });
     this.applyFilters(query, filters, 'dossier'); ;
     return query.getCount();
@@ -50,7 +83,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
   private async getClosedCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
-      .where('dossier.status = :status', { status: DossierStatus.CLOSED });
+      .where(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS);
     this.applyFilters(query, filters, 'dossier'); ;
     return query.getCount();
   }
@@ -58,7 +91,9 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
   private async getArchivedCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
-      .where('dossier.status = :status', { status: DossierStatus.ARCHIVED });
+      .where('dossier.status = :status', {
+        status: dossierStatusValue(DossierStatus.ARCHIVED),
+      });
     this.applyFilters(query, filters, 'dossier'); ;
     return query.getCount();
   }
@@ -317,7 +352,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .addSelect('dossier.opening_date', 'openingDate')
       .addSelect('dossier.closing_date', 'closingDate')
       .addSelect('DATEDIFF(dossier.closing_date, dossier.opening_date)', 'duration')
-      .where('dossier.status = :status', { status: DossierStatus.CLOSED })
+      .where(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS)
       .andWhere('dossier.opening_date IS NOT NULL')
       .andWhere('dossier.closing_date IS NOT NULL');
 
@@ -336,7 +371,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .select('procedureType.name', 'procedureType')
       .addSelect('AVG(DATEDIFF(dossier.closing_date, dossier.opening_date))', 'avgDuration')
       .addSelect('COUNT(*)', 'count')
-      .where('dossier.status = :status', { status: DossierStatus.CLOSED })
+      .where(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS)
       .andWhere('dossier.opening_date IS NOT NULL')
       .andWhere('dossier.closing_date IS NOT NULL')
       .andWhere('procedureType.id IS NOT NULL')
@@ -365,7 +400,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .select("DATE_FORMAT(dossier.closing_date, '%Y-%m')", 'month')
       .addSelect('COUNT(*)', 'count')
       .where('dossier.closing_date BETWEEN :start AND :end', { start: startDate, end: endDate })
-      .andWhere('dossier.status = :status', { status: DossierStatus.CLOSED })
+      .andWhere(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS)
       .groupBy("DATE_FORMAT(dossier.closing_date, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -433,12 +468,15 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .leftJoinAndSelect('dossier.client', 'client')
       .leftJoinAndSelect('dossier.lawyer', 'lawyer')
       .leftJoinAndSelect('dossier.audiences', 'audience')
-      .where('dossier.status IN (:...activeStatuses)', {
-        activeStatuses: [
-          DossierStatus.OPEN,
-          DossierStatus.AMICABLE,
-          DossierStatus.LITIGATION,
-        ],
+      .where(
+        '(dossier.workflow_engine = :v2Engine OR dossier.status IN (:...activeStatuses))',
+        {
+          v2Engine: WorkflowEngine.ACTIONS_V2,
+          activeStatuses: ACTIVE_DOSSIER_STATUSES,
+        },
+      )
+      .andWhere('dossier.lifecycle_phase != :closedPhase', {
+        closedPhase: DossierLifecyclePhase.CLOSED,
       })
       .andWhere(
         '(dossier.danger_level IN (:...highLevels) OR dossier.priority_level >= :highPriority)',
@@ -809,6 +847,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       total,
       activeDossiers: activeCount,
       closedDossiers: closedCount,
+      closureRate: this.calculatePercentage(closedCount, total),
       archivedDossiers: archivedCount,
       evolution,
       byStatus,

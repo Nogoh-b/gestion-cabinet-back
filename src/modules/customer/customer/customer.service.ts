@@ -1,6 +1,5 @@
 import * as bcrypt from 'bcrypt';
 import { plainToInstance } from 'class-transformer';
-import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { EmailService } from 'src/core/shared/services/email/email.service copy';
 import { User } from 'src/modules/iam/user/entities/user.entity';
@@ -515,9 +514,8 @@ async update(
       ...fullCustomer,
       document_count: fullCustomer.documents?.length || 0,
       communication_count: fullCustomer.communications?.length || 0,
-      dossiers_en_cours: fullCustomer.dossiers?.filter(d => 
-        d.status !== DossierStatus.CLOSED && d.is_active
-      ).length || 0,
+      dossiers_en_cours:
+        fullCustomer.dossiers?.filter(d => d.is_active).length || 0,
       chiffre_affaires: fullCustomer.factures?.reduce(
         (sum, facture) => sum + (facture.montantTTC || 0), 0
       ) || 0,

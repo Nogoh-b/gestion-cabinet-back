@@ -91,8 +91,9 @@ export class DossierActionService {
   private validateSpecificData(
     schema: Record<string, any> | null,
     data: Record<string, unknown> | undefined,
+    requiredProperty: 'required' | 'required_on_start' = 'required',
   ): void {
-    const issue = validateDynamicPayload(schema, data)[0];
+    const issue = validateDynamicPayload(schema, data, requiredProperty)[0];
     if (issue) throw new BadRequestException(issue.message);
   }
 
@@ -364,6 +365,7 @@ export class DossierActionService {
         this.validateSpecificData(
           definition.specific_fields_schema,
           dto.specific_data,
+          'required_on_start',
         );
         this.validateRequiredLinks(definition.required_relations, dto);
         const dueAt = dto.due_at

@@ -1,7 +1,33 @@
 import {
   ActionBillingDecision,
   BillingCalculationMode,
+  RecommendationTrigger,
 } from './case-workflow.enums';
+
+export function recommendationTriggersForEvaluation(
+  trigger: RecommendationTrigger,
+): RecommendationTrigger[] {
+  if (trigger === RecommendationTrigger.MANUAL) {
+    return [RecommendationTrigger.MANUAL, RecommendationTrigger.NO_OPEN_ACTION];
+  }
+  if (trigger === RecommendationTrigger.NO_OPEN_ACTION) {
+    return [RecommendationTrigger.NO_OPEN_ACTION];
+  }
+  return [trigger, RecommendationTrigger.NO_OPEN_ACTION];
+}
+
+export function shouldSuppressRecommendationAction(input: {
+  ruleTrigger: RecommendationTrigger;
+  definitionCode: string;
+  openDefinitionCodes: string[];
+  lastCompletedDefinitionCode: string | null;
+}): boolean {
+  if (input.openDefinitionCodes.includes(input.definitionCode)) return true;
+  return (
+    input.ruleTrigger === RecommendationTrigger.NO_OPEN_ACTION &&
+    input.lastCompletedDefinitionCode === input.definitionCode
+  );
+}
 
 export interface DynamicFieldIssue {
   field: string;
@@ -104,12 +130,14 @@ export function validateRequiredRelations(
 export function validateDynamicPayload(
   schema: Record<string, unknown> | null,
   data: Record<string, unknown> | undefined,
+  requiredProperty: 'required' | 'required_on_start' = 'required',
 ): DynamicFieldIssue[] {
   if (!schema) return [];
   const payload = data ?? {};
   const issues: DynamicFieldIssue[] = [];
-  const required = Array.isArray(schema.required)
-    ? schema.required.filter((key): key is string => typeof key === 'string')
+  const requiredConfig = schema[requiredProperty];
+  const required = Array.isArray(requiredConfig)
+    ? requiredConfig.filter((key): key is string => typeof key === 'string')
     : [];
   for (const key of required) {
     if (

@@ -1,8 +1,10 @@
 import {
   calculateActionBilling,
   findForbiddenJsonLogicOperator,
+  recommendationTriggersForEvaluation,
   recommendationScore,
   resolveLegacyMapping,
+  shouldSuppressRecommendationAction,
   validateDeadlineExtension,
   validateDynamicPayload,
   validateRequiredRelations,
@@ -10,6 +12,7 @@ import {
 import {
   ActionBillingDecision,
   BillingCalculationMode,
+  RecommendationTrigger,
 } from './case-workflow.enums';
 import { describe, expect, it } from '@jest/globals';
 
@@ -28,6 +31,31 @@ describe('case-workflow business rules', () => {
     expect(
       validateDynamicPayload(schema, { analysis: 'Risque maîtrisé', risk: 2 }),
     ).toEqual([]);
+  });
+
+  it('réserve les champs de résultat obligatoires à la complétion', () => {
+    const schema = {
+      required: ['analysis'],
+      required_on_start: ['question'],
+      properties: {
+        analysis: { type: 'string' },
+        question: { type: 'string' },
+      },
+    };
+
+    expect(validateDynamicPayload(schema, {}, 'required_on_start')).toEqual([
+      expect.objectContaining({ field: 'question' }),
+    ]);
+    expect(
+      validateDynamicPayload(
+        schema,
+        { question: 'Quels sont les risques ?' },
+        'required_on_start',
+      ),
+    ).toEqual([]);
+    expect(
+      validateDynamicPayload(schema, { question: 'Quels sont les risques ?' }),
+    ).toEqual([expect.objectContaining({ field: 'analysis' })]);
   });
 
   it('refuse une valeur dynamique hors de la liste autorisée', () => {
@@ -108,6 +136,42 @@ describe('case-workflow business rules', () => {
       specificity: 100,
     });
     expect(critical).toBeGreaterThan(ordinary);
+  });
+
+  it('ne rejoue pas les règles d’ouverture lors du recalcul du workspace', () => {
+    expect(
+      recommendationTriggersForEvaluation(RecommendationTrigger.MANUAL),
+    ).toEqual([
+      RecommendationTrigger.MANUAL,
+      RecommendationTrigger.NO_OPEN_ACTION,
+    ]);
+    expect(
+      recommendationTriggersForEvaluation(
+        RecommendationTrigger.OPENING_VALIDATED,
+      ),
+    ).toEqual([
+      RecommendationTrigger.OPENING_VALIDATED,
+      RecommendationTrigger.NO_OPEN_ACTION,
+    ]);
+  });
+
+  it('évite de recommander immédiatement la même action sans action ouverte', () => {
+    expect(
+      shouldSuppressRecommendationAction({
+        ruleTrigger: RecommendationTrigger.NO_OPEN_ACTION,
+        definitionCode: 'UPDATE_CASE_DATA',
+        openDefinitionCodes: [],
+        lastCompletedDefinitionCode: 'UPDATE_CASE_DATA',
+      }),
+    ).toBe(true);
+    expect(
+      shouldSuppressRecommendationAction({
+        ruleTrigger: RecommendationTrigger.NO_OPEN_ACTION,
+        definitionCode: 'UPDATE_CASE_DATA',
+        openDefinitionCodes: [],
+        lastCompletedDefinitionCode: 'ANALYSE_DOSSIER',
+      }),
+    ).toBe(false);
   });
 
   it('calcule un honoraire horaire et sa taxe sans dérive décimale', () => {

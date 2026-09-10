@@ -2,6 +2,7 @@ import { PERMISSIONS_KEY } from 'src/core/decorators/permissions.decorator';
 import { ROLES_CONFIG } from 'src/core/auth/seeders/role.seeder';
 import { describe, expect, it } from '@jest/globals';
 import {
+  ActionCatalogController,
   BillableItemsController,
   CaseInvoicesController,
   DossierActionsController,
@@ -41,6 +42,18 @@ describe('case-workflow endpoint permissions', () => {
     expect(permissions(WorkflowMappingsController.prototype, 'create')).toEqual(
       ['manage_action_catalog'],
     );
+    expect(
+      permissions(
+        ActionCatalogController.prototype,
+        'getRecommendationRulesForManagement',
+      ),
+    ).toEqual(['manage_action_catalog']);
+    expect(
+      permissions(
+        ActionCatalogController.prototype,
+        'reviseRecommendationRule',
+      ),
+    ).toEqual(['manage_action_catalog']);
   });
 
   it('refuse toutes les permissions V2 au client en V1', () => {

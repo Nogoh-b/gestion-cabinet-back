@@ -372,6 +372,7 @@ export const ROLES_CONFIG: {
     permissions: [
       // Dossiers
       'view_dossiers',
+      'create_dossier',
       'edit_dossier',
       'view_dossier_actions',
       'create_dossier_action',

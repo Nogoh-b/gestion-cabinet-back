@@ -193,13 +193,13 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     DELETE: 'delete_user',
   },
   branch: {
-    READ: 'MANAGE_LOCATION',
+    READ: 'view_dossiers',
     INSERT: 'MANAGE_LOCATION',
     UPDATE: 'MANAGE_LOCATION',
     DELETE: 'DELETE_BRANCH',
   },
   jurisdictions: {
-    READ: 'MANAGE_JURISDICTIONS',
+    READ: 'view_dossiers',
     INSERT: 'MANAGE_JURISDICTIONS',
     UPDATE: 'MANAGE_JURISDICTIONS',
     DELETE: 'MANAGE_JURISDICTIONS',
@@ -207,31 +207,31 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
 
   // Localisation
   country: {
-    READ: 'MANAGE_LOCATION',
+    READ: 'view_dossiers',
     INSERT: 'MANAGE_LOCATION',
     UPDATE: 'MANAGE_LOCATION',
     DELETE: 'MANAGE_LOCATION',
   },
   region: {
-    READ: 'MANAGE_LOCATION',
+    READ: 'view_dossiers',
     INSERT: 'MANAGE_LOCATION',
     UPDATE: 'MANAGE_LOCATION',
     DELETE: 'MANAGE_LOCATION',
   },
   division: {
-    READ: 'MANAGE_LOCATION',
+    READ: 'view_dossiers',
     INSERT: 'MANAGE_LOCATION',
     UPDATE: 'MANAGE_LOCATION',
     DELETE: 'MANAGE_LOCATION',
   },
   district: {
-    READ: 'MANAGE_LOCATION',
+    READ: 'view_dossiers',
     INSERT: 'MANAGE_LOCATION',
     UPDATE: 'MANAGE_LOCATION',
     DELETE: 'MANAGE_LOCATION',
   },
   location_city: {
-    READ: 'MANAGE_LOCATION',
+    READ: 'view_dossiers',
     INSERT: 'MANAGE_LOCATION',
     UPDATE: 'MANAGE_LOCATION',
     DELETE: 'MANAGE_LOCATION',
@@ -503,22 +503,37 @@ export class AiDatabasePermissionService {
   }
 
   private async getUserPermissionCodes(user: AiUserLike): Promise<Set<string>> {
-    if (typeof user === 'object' && Array.isArray(user?.permissions) && user.permissions.length > 0) {
-      return new Set(user.permissions);
-    }
+    const jwtPermissions =
+      typeof user === 'object' && Array.isArray(user?.permissions) && user.permissions.length > 0
+        ? new Set(user.permissions)
+        : null;
 
+    // Source de vérité = DB (les modifs faites dans Paramètres > Rôles doivent
+    // s'appliquer sans obliger l'utilisateur à se reconnecter). Le JWT ne sert
+    // que de fallback si la DB est inaccessible.
     const userId = typeof user === 'string' || typeof user === 'number'
       ? Number(user)
       : Number(user?.userId ?? user?.id);
-    if (!Number.isFinite(userId)) return new Set();
-
-    try {
-      const permissions = await this.usersService.getUserPermissions(userId);
-      return new Set((permissions ?? []).map((permission: any) => permission.code));
-    } catch (error: any) {
-      this.logger.warn(`Impossible de charger les permissions IAM pour user=${userId}: ${error?.message ?? error}`);
-      return new Set();
+    if (Number.isFinite(userId)) {
+      try {
+        const permissions = await this.usersService.getUserPermissions(userId);
+        const codes = (permissions ?? []).map((permission: any) => permission.code ?? permission);
+        if (codes.length > 0) return new Set(codes);
+        // Rôle sans permission en DB : ne pas retomber sur un JWT périmé.
+        if (jwtPermissions) {
+          this.logger.warn(
+            `Permissions DB vides pour user=${userId}, JWT ignoré (risque de stale)`,
+          );
+        }
+        return new Set();
+      } catch (error: any) {
+        this.logger.warn(`Impossible de charger les permissions IAM pour user=${userId}: ${error?.message ?? error}`);
+        if (jwtPermissions) return jwtPermissions;
+        return new Set();
+      }
     }
+
+    return jwtPermissions ?? new Set();
   }
 
   private getUserDebugId(user: AiUserLike): string {

@@ -6,10 +6,10 @@ import { ExpressAdapter } from '@bull-board/express';
 import { ClassSerializerInterceptor } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
 
-import { Transport } from '@nestjs/microservices';
-
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
+
+
 
 
 
@@ -23,6 +23,8 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
+
+
 
 
 
@@ -113,13 +115,13 @@ async function bootstrap() {
   });
 
   // Microservice TCP attaché à la MÊME instance NestJS (pas de second graph DI)
-  app.connectMicroservice({
-    transport: Transport.TCP,
-    options: {
-      host: process.env.MICROSERVICE_HOST || '0.0.0.0',
-      port: parseInt(process.env.MICROSERVICE_PORT || '2999', 10),
-    },
-  });
+  // app.connectMicroservice({
+  //   transport: Transport.TCP,
+  //   options: {
+  //     host: process.env.MICROSERVICE_HOST || '0.0.0.0',
+  //     port: parseInt(process.env.MICROSERVICE_PORT || '2999', 10),
+  //   },
+  // });
 
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector)),

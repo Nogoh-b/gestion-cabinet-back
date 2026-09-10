@@ -757,7 +757,13 @@ export class Dossier extends BaseEntity {
 
   // Getters
   get is_closed(): boolean {
-    return this.status === DossierStatus.CLOSED || this.status === DossierStatus.ARCHIVED;
+    if (this.workflow_engine === WorkflowEngine.ACTIONS_V2) {
+      return this.lifecycle_phase === DossierLifecyclePhase.CLOSED;
+    }
+    return (
+      this.status === DossierStatus.CLOSED ||
+      this.status === DossierStatus.ARCHIVED
+    );
   }
 
   // get is_archived(): boolean {
@@ -888,6 +894,11 @@ export class Dossier extends BaseEntity {
 
   // Clôturer le dossier
   close(): void {
+    if (this.workflow_engine === WorkflowEngine.ACTIONS_V2) {
+      throw new Error(
+        'Un dossier V2 doit être clôturé par le contrôle de clôture',
+      );
+    }
     if (this.status !== DossierStatus.EXECUTION && 
         this.status !== DossierStatus.AMICABLE && 
         this.status !== DossierStatus.ABANDONED) {
@@ -900,6 +911,15 @@ export class Dossier extends BaseEntity {
 
   // Override de la méthode change_status existante
   change_status(new_status: DossierStatus): void {
+    if (
+      this.workflow_engine === WorkflowEngine.ACTIONS_V2 &&
+      (new_status === DossierStatus.CLOSED ||
+        new_status === DossierStatus.ARCHIVED)
+    ) {
+      throw new Error(
+        'La clôture et l’archivage V2 modifient la phase de vie, pas le statut métier',
+      );
+    }
     const allowed_transitions: Record<DossierStatus, DossierStatus[]> = {
       [DossierStatus.PRELIMINARY_ANALYSIS]: [DossierStatus.AMICABLE, DossierStatus.LITIGATION, DossierStatus.ABANDONED],
       [DossierStatus.AMICABLE]: [DossierStatus.CLOSED],
@@ -1042,7 +1062,10 @@ setOutcome(outcome: DossierOutcome, notes?: string, damages?: number): void {
   if (damages) this.damages_awarded = damages;
   
   // Si le dossier est gagné ou perdu, on peut le clôturer
-  if (outcome === DossierOutcome.WON || outcome === DossierOutcome.LOST) {
+  if (
+    this.workflow_engine !== WorkflowEngine.ACTIONS_V2 &&
+    (outcome === DossierOutcome.WON || outcome === DossierOutcome.LOST)
+  ) {
     this.status = DossierStatus.CLOSED;
     this.closing_date = new Date();
   }

@@ -26,7 +26,9 @@ import {
 import { ActionCatalogService } from './action-catalog.service';
 import {
   findForbiddenJsonLogicOperator,
+  recommendationTriggersForEvaluation,
   recommendationScore,
+  shouldSuppressRecommendationAction,
 } from '../case-workflow.logic';
 
 type RecommendationContext = Record<string, unknown> & {
@@ -37,7 +39,11 @@ type RecommendationContext = Record<string, unknown> & {
     dangerLevel: number;
     priorityLevel: number;
   };
-  actions: { openCount: number; openDefinitionCodes: string[] };
+  actions: {
+    openCount: number;
+    openDefinitionCodes: string[];
+    lastCompletedDefinitionCode: string | null;
+  };
   audiences: {
     activeCount: number;
     postponedCount: number;
@@ -129,6 +135,14 @@ export class RecommendationService {
         ].includes(action.status),
       )
       .map((action) => action.definition_code);
+    const lastCompletedDefinitionCode =
+      actions
+        .filter((action) => action.status === DossierActionStatus.COMPLETED)
+        .sort(
+          (left, right) =>
+            (right.completed_at?.getTime() ?? 0) -
+            (left.completed_at?.getTime() ?? 0),
+        )[0]?.definition_code ?? null;
 
     const activeAudiences = audiences.filter((item) =>
       [AudienceStatus.SCHEDULED, AudienceStatus.POSTPONED].includes(
@@ -253,7 +267,11 @@ export class RecommendationService {
         dangerLevel: Number(dossier.danger_level ?? 0),
         priorityLevel: Number(dossier.priority_level ?? 0),
       },
-      actions: { openCount, openDefinitionCodes },
+      actions: {
+        openCount,
+        openDefinitionCodes,
+        lastCompletedDefinitionCode,
+      },
       audiences: {
         activeCount: activeAudiences.length,
         postponedCount: audiences.filter(
@@ -299,14 +317,7 @@ export class RecommendationService {
     if (deferred) deferred.status = RecommendationStatus.SUPERSEDED;
     if (deferred) await recommendationRepo.save(deferred);
 
-    const triggers =
-      trigger === RecommendationTrigger.MANUAL
-        ? Object.values(RecommendationTrigger).filter(
-            (value) => value !== RecommendationTrigger.MANUAL,
-          )
-        : trigger === RecommendationTrigger.NO_OPEN_ACTION
-          ? [RecommendationTrigger.NO_OPEN_ACTION]
-          : [trigger, RecommendationTrigger.NO_OPEN_ACTION];
+    const triggers = recommendationTriggersForEvaluation(trigger);
     const rules = await ruleRepo.find({
       where: { tenant_id: tenantId, trigger: In(triggers), is_active: true },
       relations: ['action_definition'],
@@ -314,10 +325,16 @@ export class RecommendationService {
 
     const candidates = rules.filter((rule) => {
       this.assertAllowedOperators(rule.condition_json);
+      const definitionCode = rule.action_definition?.code;
+      if (!definitionCode) return false;
       return (
-        !context.actions.openDefinitionCodes.includes(
-          rule.action_definition?.code,
-        ) &&
+        !shouldSuppressRecommendationAction({
+          ruleTrigger: rule.trigger,
+          definitionCode,
+          openDefinitionCodes: context.actions.openDefinitionCodes,
+          lastCompletedDefinitionCode:
+            context.actions.lastCompletedDefinitionCode,
+        }) &&
         Boolean(
           jsonLogic.apply(
             rule.condition_json as RulesLogic<AdditionalOperation>,

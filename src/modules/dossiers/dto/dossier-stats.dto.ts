@@ -5,6 +5,7 @@ export class DossierStatsDto extends BaseStatsDto {
   // Vue d'ensemble
   activeDossiers: number;
   closedDossiers: number;
+  closureRate: number;
   archivedDossiers: number;
   
   // Distributions

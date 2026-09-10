@@ -2,6 +2,7 @@
 import { IsInt, IsString, IsEmail, IsNotEmpty, IsDateString, IsOptional, IsArray, IsBoolean, Min, IsNumber, IsEnum } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { EmployeePosition } from 'src/modules/agencies/employee/entities/employee.entity';
+import { UserRole } from 'src/core/enums/user-role.enum';
 
 
 export class ResetPasswordRequestDto {
@@ -44,6 +45,16 @@ export class CreateUserDto {
   @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
   @IsEnum(EmployeePosition)
   position: EmployeePosition;
+
+  @ApiProperty({
+    required: false,
+    enum: UserRole,
+    example: 'avocat',
+    description: "Code du profil d'accès. À défaut, il est déduit du poste.",
+  })
+  @IsEnum(UserRole)
+  @IsOptional()
+  role?: UserRole;
 
   @ApiProperty({ required: true, example: 1 })
   @IsInt()

@@ -19,6 +19,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 
@@ -649,6 +650,12 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     }
 
     this.checkDossierAccess(dossier, user);
+
+    if (dossier.workflow_engine === WorkflowEngine.ACTIONS_V2) {
+      throw new ConflictException(
+        'Un dossier V2 doit être clôturé ou réouvert depuis le contrôle de clôture.',
+      );
+    }
 
     // Vérifier que toutes les factures sont payées (R5)
     const unpaidFactures = dossier.factures.filter(facture => facture.montantPaye <= 0);
@@ -1412,6 +1419,12 @@ async closeDossier(
   this.checkDossierAccess(dossier, user);
 
   // Vérifier si le dossier peut être clôturé
+  if (dossier.workflow_engine === WorkflowEngine.ACTIONS_V2) {
+    throw new ConflictException(
+      'Ce dossier utilise le parcours V2. Utilisez le contrôle de clôture dans Traitement.',
+    );
+  }
+
   const closableStatuses = [
     DossierStatus.OPEN,
     DossierStatus.AMICABLE,

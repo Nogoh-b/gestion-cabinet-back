@@ -22,6 +22,9 @@ import { Branch } from '../../branch/entities/branch.entity';
 
 export enum EmployeePosition {
   AVOCAT = 'avocat',
+  COLLABORATEUR = 'collaborateur',
+  JURISTE = 'juriste',
+  COMPTABLE = 'comptable',
   SECRETAIRE = 'secretaire',
   ASSISTANT = 'assistant',
   STAGIAIRE = 'stagiaire',
@@ -75,7 +78,7 @@ export class Employee extends BaseEntity {
   @Column({ type: 'enum', enum: EmployeePosition })
   @BusinessColumn({
     label: 'Fonction',
-    description: "BD: 'avocat', 'secretaire', 'assistant', 'stagiaire', 'huissier', 'administratif'.",
+    description: "BD: 'avocat', 'collaborateur', 'juriste', 'comptable', 'secretaire', 'assistant', 'stagiaire', 'huissier', 'administratif'.",
     example: 'avocat',
     importance: 'critical',
     group: 'identification'

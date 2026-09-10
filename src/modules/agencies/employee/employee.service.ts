@@ -14,7 +14,7 @@ import { User } from 'src/modules/iam/user/entities/user.entity';
 import { UsersService } from 'src/modules/iam/user/user.service';
 
 import { Repository } from 'typeorm';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
@@ -25,6 +25,8 @@ import { MailService } from 'src/core/shared/emails/emails.service';
 import { MailTemplateService } from 'src/modules/mail-template/mail-template.service';
 import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { UserRole as UserRoleEntity } from 'src/modules/iam/user-role/entities/user-role.entity';
+import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
 // import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
 
@@ -38,6 +40,10 @@ export class EmployeeService  extends BaseServiceV1<Employee> {
     private employeeRepository: Repository<Employee>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    @InjectRepository(UserRoleEntity)
+    private userRoleRepository: Repository<UserRoleEntity>,
+    @InjectRepository(UserRoleAssignment)
+    private userRoleAssignmentRepository: Repository<UserRoleAssignment>,
     // private mailerService: EmailService,
     private userService: UsersService,
     private mailService: MailService,
@@ -98,6 +104,21 @@ async createEmployee(
     throw new NotFoundException('Branche non trouvée ou inactive');
   }
 
+  const defaultRole = this.getUserRoleFromPosition(dto.position);
+  const requestedRoleCode = dto.role?.trim() || defaultRole;
+  const accessProfile = await this.userRoleRepository.findOne({
+    where: {
+      tenant_id: tenantId,
+      code: requestedRoleCode,
+      status: 1,
+    },
+  });
+  if (!accessProfile) {
+    throw new BadRequestException(
+      `Profil d'accès actif introuvable pour le code ${requestedRoleCode}`,
+    );
+  }
+
   // Vérification des doublons d'email
   const existingUser = await this.repository.findOne({
     where: { user: { email: dto.email } }
@@ -120,11 +141,19 @@ async createEmployee(
     status: 1, // Actif par défaut
     password: hashed_password,
     // phoneNumber: dto.phone_number,
-    role: this.getUserRoleFromPosition(dto.position), 
+    role: requestedRoleCode as UserRole,
     // isActive: true,
   });
 
   const savedUser = await this.userRepo.save(user);
+
+  await this.userRoleAssignmentRepository.save(
+    this.userRoleAssignmentRepository.create({
+      user_id: savedUser.id,
+      role_id: accessProfile.id,
+      status: 1,
+    }),
+  );
 
   // Création de l'employé avec tous les champs
   const employeeData: Partial<Employee> = {
@@ -203,8 +232,13 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
   switch (position) {
     case EmployeePosition.AVOCAT:
       return UserRole.AVOCAT;
-    case EmployeePosition.SECRETAIRE:
+    case EmployeePosition.COLLABORATEUR:
+    case EmployeePosition.JURISTE:
     case EmployeePosition.ASSISTANT:
+      return UserRole.COLLABORATEUR;
+    case EmployeePosition.COMPTABLE:
+      return UserRole.COMPTABLE;
+    case EmployeePosition.SECRETAIRE:
     case EmployeePosition.ADMINISTRATIF:
       return UserRole.SECRETAIRE;
     case EmployeePosition.HUISSIER:

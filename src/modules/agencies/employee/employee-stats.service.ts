@@ -107,16 +107,16 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       const tousDossiersFiltres = [...managedDossiersFiltres, ...collaboratingDossiersFiltres];
       
       // Stats pour dossiers gérés
-      const managedActifs = managedDossiersFiltres.filter(d => 
-        d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED
-      );
-      const managedClos = managedDossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+      const managedActifs = managedDossiersFiltres.filter(d => d.is_active);
+      const managedClos = managedDossiersFiltres.filter(d => d.is_closed);
       
       // Stats pour dossiers en collaboration
-      const collaboratingActifs = collaboratingDossiersFiltres.filter(d => 
-        d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED
+      const collaboratingActifs = collaboratingDossiersFiltres.filter(
+        d => d.is_active,
       );
-      const collaboratingClos = collaboratingDossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+      const collaboratingClos = collaboratingDossiersFiltres.filter(
+        d => d.is_closed,
+      );
       
       // Stats combinées
       const dossiersActifsTotal = managedActifs.length + collaboratingActifs.length;
@@ -179,7 +179,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     // Dossiers actifs avec prochaine audience
     const actifs = dossiersFiltres
-      .filter(d => d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED)
+      .filter(d => d.is_active)
       .map(d => {
         const prochainesAudiences = (d.audiences || [])
           .filter(a => new Date(a.full_datetime) > maintenant && a.status === AudienceStatus.SCHEDULED)
@@ -364,7 +364,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const dossiersFiltres = this.filterByDate(dossiers, filters, 'created_at');
     
     // Dossiers clos par mois
-    const dossiersClos = dossiersFiltres.filter(d => d.status === DossierStatus.CLOSED);
+    const dossiersClos = dossiersFiltres.filter(d => d.is_closed);
     const closParMois = new Map<string, number>();
     
     dossiersClos.forEach(d => {
@@ -431,8 +431,8 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
   }
 
   private getWorkloadForEmployee(employee: Employee): SingleEmployeeStatsDto['chargeTravail'] {
-    const dossiersActifs = (employee.managed_dossiers || []).filter(d => 
-      d.status !== DossierStatus.CLOSED && d.status !== DossierStatus.ARCHIVED
+    const dossiersActifs = (employee.managed_dossiers || []).filter(
+      d => d.is_active,
     ).length;
     
     const maxLoad = employee.max_dossiers || 50;
@@ -636,6 +636,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const positionLabels = {
       [EmployeePosition.AVOCAT]: 'Avocats',
+      [EmployeePosition.COLLABORATEUR]: 'Collaborateurs',
+      [EmployeePosition.JURISTE]: 'Juristes',
+      [EmployeePosition.COMPTABLE]: 'Comptables',
       [EmployeePosition.SECRETAIRE]: 'Secrétaires',
       [EmployeePosition.ASSISTANT]: 'Assistants',
       [EmployeePosition.STAGIAIRE]: 'Stagiaires',
@@ -645,6 +648,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const positionColors = {
       [EmployeePosition.AVOCAT]: '#3b82f6',
+      [EmployeePosition.COLLABORATEUR]: '#0ea5e9',
+      [EmployeePosition.JURISTE]: '#14b8a6',
+      [EmployeePosition.COMPTABLE]: '#22c55e',
       [EmployeePosition.SECRETAIRE]: '#10b981',
       [EmployeePosition.ASSISTANT]: '#f59e0b',
       [EmployeePosition.STAGIAIRE]: '#8b5cf6',
@@ -866,6 +872,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const positionLabels = {
       [EmployeePosition.AVOCAT]: 'Avocats',
+      [EmployeePosition.COLLABORATEUR]: 'Collaborateurs',
+      [EmployeePosition.JURISTE]: 'Juristes',
+      [EmployeePosition.COMPTABLE]: 'Comptables',
       [EmployeePosition.SECRETAIRE]: 'Secrétaires',
       [EmployeePosition.ASSISTANT]: 'Assistants',
       [EmployeePosition.STAGIAIRE]: 'Stagiaires',

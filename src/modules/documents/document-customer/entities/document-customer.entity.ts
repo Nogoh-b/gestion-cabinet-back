@@ -1,6 +1,10 @@
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import {
+  DossierLifecyclePhase,
+  WorkflowEngine,
+} from 'src/modules/case-workflow/case-workflow.enums';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
@@ -450,12 +454,16 @@ export class DocumentCustomer extends BaseEntity {
 
   get can_be_modified(): boolean {
     return this.status !== DocumentCustomerStatus.ARCHIVED &&
-           this.dossier?.status !== DossierStatus.CLOSED;
+      (this.dossier?.workflow_engine === WorkflowEngine.ACTIONS_V2
+        ? this.dossier.lifecycle_phase !== DossierLifecyclePhase.CLOSED
+        : this.dossier?.status !== DossierStatus.CLOSED);
   }
 
   public canBeModified(): boolean {
     return this.status !== DocumentCustomerStatus.ARCHIVED &&
-           this.dossier.status != 5;
+      (this.dossier?.workflow_engine === WorkflowEngine.ACTIONS_V2
+        ? this.dossier.lifecycle_phase !== DossierLifecyclePhase.CLOSED
+        : this.dossier?.status !== DossierStatus.CLOSED);
   }
 
   @BeforeInsert()

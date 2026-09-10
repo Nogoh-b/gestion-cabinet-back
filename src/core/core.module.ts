@@ -10,6 +10,7 @@ import { RolePermission } from 'src/modules/iam/role-permission/entities/role-pe
 import { RolePermissionService } from 'src/modules/iam/role-permission/role-permission.service';
 // import { swaggerConfig } from './config/swagger.config';
 import { UserRole } from 'src/modules/iam/user-role/entities/user-role.entity';
+import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entities/user-role-assignment.entity';
 
 import { UserRolesService } from 'src/modules/iam/user-role/user-role.service';
 
@@ -137,6 +138,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
       RolePermission, 
       Employee,
       UserRole,
+      UserRoleAssignment,
       Customer,
       OtpOnlineLink,
       AuthToken,
