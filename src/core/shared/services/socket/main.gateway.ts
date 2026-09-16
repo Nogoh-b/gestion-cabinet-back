@@ -10,11 +10,13 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { NotificationType } from 'src/modules/notification/enum/notification-type.enum';
 import { ChatService } from 'src/modules/chat/services/chat/chat.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { NotificationResponseDto } from 'src/modules/notification/dto/notification-response.dto';
 import { UsersService } from 'src/modules/iam/user/user.service';
+import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
 
 @WebSocketGateway({
   cors: {
@@ -36,26 +38,51 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private userRooms: Map<number, Set<string>> = new Map();
 
   async handleConnection(client: Socket) {
-    const userId = client.handshake.auth.userId;
-    
-    this.logger.log(`🟢 Connexion - User: ${userId}, Socket: ${client.id}`);
-
-    if (!userId) {
-      this.logger.warn('Connexion refusée: userId manquant');
-      client.disconnect();
-      return;
-    }
-
     try {
+      const token = String(client.handshake.auth?.token ?? '');
+      if (!token) throw new Error('Jeton de session manquant');
+
+      const payload = await this.jwtService.verifyAsync(token);
+      const userId = Number(payload?.sub);
+      const tenantId = Number(payload?.tenantId ?? 1);
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new Error('Utilisateur de session invalide');
+      }
+
+      const sessionUser = await this.userService.findSessionState(userId, tenantId);
+      const employeeStatus = sessionUser?.employee?.status;
+      if (
+        !sessionUser ||
+        sessionUser.status !== 1 ||
+        employeeStatus === EmployeeStatus.INACTIVE ||
+        employeeStatus === EmployeeStatus.SUSPENDED
+      ) {
+        throw new Error('Compte inactif ou bloqué');
+      }
+
+      this.logger.log(`🟢 Connexion - User: ${userId}, Socket: ${client.id}`);
+      const wasOnline = this.isUserOnline(userId);
+
       // Enregistrer la connexion
       this.addConnection(userId, client);
+      client.data.userId = userId;
+      client.data.tenantId = tenantId;
 
       // Joindre la room personnelle
       const userRoom = `user_${userId}`;
       await client.join(userRoom);
       this.addUserRoom(userId, userRoom);
-      this.userService.update(userId,{is_online : true})
-      this.chatService.setReceiveMessagesWithCount(userId)
+      if (!wasOnline) {
+        await this.userService.update(userId, { is_online: true });
+        this.server.emit('user_status_changed', {
+          userId,
+          status: 'online',
+          isOnline: true,
+          timestamp: new Date().toISOString(),
+        });
+        this.server.emit('userOnline', { userId });
+      }
+      void this.chatService.setReceiveMessagesWithCount(userId);
       // Envoyer les notifications non lues (comportement de NotificationGateway)
       const unreadNotifications = await this.getUnreadNotifications(userId);
       if (unreadNotifications.length > 0) {
@@ -65,20 +92,11 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
       }
 
-      // Notifier les autres (comportement des deux gateways)
-      client.broadcast.emit('user_status_changed', {
-        userId,
-        status: 'online',
-        timestamp: new Date().toISOString()
-      });
-
-      client.broadcast.emit('userOnline', { userId });
-
       this.logger.log(`✅ Utilisateur ${userId} connecté`);
 
     } catch (error) {
-      this.logger.error(`Erreur connexion: ${error.message}`);
-      client.disconnect();
+      this.logger.warn(`Connexion socket refusée: ${error?.message ?? error}`);
+      client.disconnect(true);
     }
   }
 
@@ -96,13 +114,20 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
         const lastSeen  = new Date().toISOString()
         // Notifier les deux types d'événements
-        client.broadcast.emit('userOffline', {
+        this.server.emit('userOffline', {
           userId,
           status: 'offline',
           timestamp: new Date().toISOString(),
           lastSeen
         });
-        this.userService.update(userId,{is_online : false, lastSeen})
+        this.server.emit('user_status_changed', {
+          userId,
+          status: 'offline',
+          isOnline: false,
+          timestamp: lastSeen,
+          lastSeen,
+        });
+        await this.userService.update(userId, { is_online: false, lastSeen });
         
         // this.server.emit('userOffline', { userId, lastSeen });
       }
@@ -902,6 +927,20 @@ private getUserSockets(userId: number): string[] {
     return this.userSockets.has(userId) && (this.userSockets.get(userId)?.size ?? 0) > 0;
   }
 
+  /** Instantané des utilisateurs ayant au moins une connexion ouverte. */
+  getOnlineUserIds(): number[] {
+    return Array.from(this.userSockets.entries())
+      .filter(([, sockets]) => sockets.size > 0)
+      .map(([userId]) => userId);
+  }
+
+  /** Coupe toutes les connexions d'un membre bloqué. */
+  disconnectUser(userId: number): void {
+    for (const socketId of this.getUserSockets(userId)) {
+      this.server.sockets.sockets.get(socketId)?.disconnect(true);
+    }
+  }
+
   private async getUnreadNotifications(userId: number): Promise<any[]> {
     // Implémentez selon votre logique
     return this.notificationService.getUnreadNotifications(userId);
@@ -915,6 +954,7 @@ private getUserSockets(userId: number): string[] {
     // pour pousser les notifs temps réel après create / createBulk.
     @Inject(forwardRef(() => NotificationService))
     private notificationService: NotificationService,
-    private userService: UsersService
+    private userService: UsersService,
+    private readonly jwtService: JwtService,
   ) {}
 }

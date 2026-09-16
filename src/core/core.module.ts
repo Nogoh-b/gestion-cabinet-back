@@ -15,6 +15,8 @@ import { UserRoleAssignment } from 'src/modules/iam/user-role-assignment/entitie
 import { UserRolesService } from 'src/modules/iam/user-role/user-role.service';
 
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { ActivitiesUser } from 'src/modules/iam/activities-user/entities/activities-user.entity';
+import { ActivitiesUserService } from 'src/modules/iam/activities-user/activities-user.service';
 
 import { UsersService } from 'src/modules/iam/user/user.service';
 
@@ -142,6 +144,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
       Customer,
       OtpOnlineLink,
       AuthToken,
+      ActivitiesUser,
     ]),
     PassportModule,
     ChatModule,
@@ -166,6 +169,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     PermissionsService,
     RolePermissionService,// RolesGuard,
     PermissionsGuard,
+    ActivitiesUserService,
     PublicGuard,
     { provide: APP_GUARD, useClass: PublicGuard },
     { provide: APP_FILTER, useClass: TypeOrmExceptionFilter },
@@ -204,6 +208,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     PermissionSeeder,
     RoleSeeder,
     PermissionsGuard,
+    ActivitiesUserService,
     MyPaginationService,
     PaginationService,
     PaginationServiceV1,

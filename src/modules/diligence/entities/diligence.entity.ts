@@ -2,7 +2,7 @@
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, ManyToMany, JoinTable } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, ManyToMany, JoinTable, Index } from 'typeorm';
 import { Finding, FindingSeverity, FindingStatus } from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
@@ -13,6 +13,7 @@ import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
 
 export enum DiligenceType {
+  GENERAL = 'general',
   ACQUISITION = 'acquisition',
   INVESTMENT = 'investment',
   IPO = 'ipo',
@@ -37,6 +38,9 @@ export enum DiligencePriority {
 }
 
 @Entity('diligences')
+@Index('UQ_diligence_source_action', ['tenant_id', 'source_action_id'], {
+  unique: true,
+})
 @BusinessTable({
   label: 'Diligences',
   description: 'Gestion des investigations et actes réalisés dans le cadre des dossiers juridiques. Une diligence peut être de type acquisition, investissement, conformité, contentieux, contrat, etc.',
@@ -150,7 +154,18 @@ export class Diligence extends BaseEntity {
   dossier_id: number;
 
   @Column({ name: 'assigned_lawyer_id', type: 'int', nullable: true })
-  assigned_lawyer_id: number;
+  assigned_lawyer_id: number | null;
+
+  /** Action V2 à l'origine de la diligence. Null pour les diligences autonomes/legacy. */
+  @Column({ name: 'source_action_id', type: 'varchar', length: 36, nullable: true })
+  @BusinessColumn({
+    label: 'Action associée',
+    description: 'Action de traitement ayant créé cette diligence',
+    importance: 'high',
+    group: 'relation',
+    ignored: true,
+  })
+  source_action_id: string | null;
 
   @Column({ name: 'client_reference', length: 100, nullable: true })
   @BusinessColumn({
@@ -389,6 +404,7 @@ export class Diligence extends BaseEntity {
   })
   get type_label(): string {
     const labels = {
+      [DiligenceType.GENERAL]: 'Diligence de traitement',
       [DiligenceType.ACQUISITION]: 'Due diligence acquisition',
       [DiligenceType.INVESTMENT]: 'Due diligence investissement',
       [DiligenceType.IPO]: 'Due diligence introduction en bourse',

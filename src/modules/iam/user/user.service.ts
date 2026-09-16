@@ -210,6 +210,14 @@ export class UsersService {
     return this.userRepository.findOne({ where: { id: userId } });
   }
 
+  /** État relu à chaque requête protégée pour appliquer un blocage sans délai. */
+  async findSessionState(userId: number, tenantId: number): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { id: userId, tenant_id: tenantId },
+      relations: ['employee'],
+    });
+  }
+
   // And potentially a method to find a user by refresh token
   async findByRefreshToken(refreshToken: string): Promise<User | null> {
     return this.userRepository.findOne({ where: { refreshToken } });

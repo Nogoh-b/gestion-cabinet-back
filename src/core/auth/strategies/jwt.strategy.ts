@@ -3,10 +3,12 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
 import { getJwtSecret } from 'src/core/config/secrets';
+import { UsersService } from 'src/modules/iam/user/user.service';
+import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor() {
+  constructor(private readonly usersService: UsersService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -46,6 +48,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     ) {
       throw new UnauthorizedException(
         'Accès refusé : vos identifiants n\'appartiennent pas à ce cabinet.',
+      );
+    }
+
+    const sessionUser = await this.usersService.findSessionState(
+      Number(payload.sub),
+      jwtTenantId,
+    );
+    const employeeStatus = sessionUser?.employee?.status;
+    if (
+      !sessionUser ||
+      sessionUser.status !== 1 ||
+      employeeStatus === EmployeeStatus.INACTIVE ||
+      employeeStatus === EmployeeStatus.SUSPENDED
+    ) {
+      throw new UnauthorizedException(
+        'Ce compte a été bloqué par un administrateur.',
       );
     }
 

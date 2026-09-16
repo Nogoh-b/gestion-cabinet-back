@@ -12,9 +12,16 @@ import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import {
+  Diligence,
+  DiligencePriority,
+  DiligenceStatus,
+  DiligenceType,
+} from 'src/modules/diligence/entities/diligence.entity';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   ActionLinkRole,
+  ActionPriority,
   DossierActionStatus,
   DossierLifecyclePhase,
   RecommendationStatus,
@@ -59,6 +66,82 @@ export class DossierActionService {
     private readonly billingService: CaseBillingService,
     private readonly eventService: WorkflowEventService,
   ) {}
+
+  private diligencePriority(priority: ActionPriority): DiligencePriority {
+    if (priority === ActionPriority.CRITICAL) return DiligencePriority.CRITICAL;
+    if (priority === ActionPriority.HIGH) return DiligencePriority.HIGH;
+    if (priority === ActionPriority.LOW) return DiligencePriority.LOW;
+    return DiligencePriority.MEDIUM;
+  }
+
+  /**
+   * La diligence devient la vue personnelle/exécutable d'une action confiée.
+   * Le lien unique rend l'opération idempotente et évite deux diligences pour
+   * une même action en cas de nouvelle tentative réseau.
+   */
+  private async createLinkedDiligence(
+    manager: EntityManager,
+    action: DossierAction,
+  ): Promise<void> {
+    const repository = manager.getRepository(Diligence);
+    const existing = await repository.findOne({
+      where: {
+        tenant_id: action.tenant_id,
+        source_action_id: action.id,
+      },
+    });
+    if (existing) return;
+
+    const startDate = action.planned_at ?? new Date();
+    const fallbackDeadline = new Date(startDate.getTime() + 7 * 86_400_000);
+    await repository.save(
+      repository.create({
+        tenant_id: action.tenant_id,
+        dossier_id: action.dossier_id,
+        assigned_lawyer_id: action.responsible_user_id,
+        source_action_id: action.id,
+        title: action.title,
+        description: `Diligence créée automatiquement depuis l’action « ${action.title} »`,
+        type: DiligenceType.GENERAL,
+        status:
+          action.status === DossierActionStatus.IN_PROGRESS
+            ? DiligenceStatus.IN_PROGRESS
+            : DiligenceStatus.DRAFT,
+        priority: this.diligencePriority(action.priority),
+        start_date: startDate,
+        deadline: action.due_at ?? fallbackDeadline,
+        confidential: true,
+      }),
+    );
+  }
+
+  private async syncLinkedDiligence(
+    manager: EntityManager,
+    action: DossierAction,
+  ): Promise<void> {
+    const repository = manager.getRepository(Diligence);
+    const diligence = await repository.findOne({
+      where: {
+        tenant_id: action.tenant_id,
+        source_action_id: action.id,
+      },
+    });
+    if (!diligence) return;
+
+    diligence.title = action.title;
+    diligence.assigned_lawyer_id = action.responsible_user_id;
+    diligence.priority = this.diligencePriority(action.priority);
+    if (action.due_at) diligence.deadline = action.due_at;
+    if (action.status === DossierActionStatus.IN_PROGRESS) {
+      diligence.status = DiligenceStatus.IN_PROGRESS;
+    } else if (action.status === DossierActionStatus.COMPLETED) {
+      diligence.status = DiligenceStatus.COMPLETED;
+      diligence.completion_date = action.completed_at ?? new Date();
+    } else if (action.status === DossierActionStatus.CANCELLED) {
+      diligence.status = DiligenceStatus.CANCELLED;
+    }
+    await repository.save(diligence);
+  }
 
   private async assertConfidentialDossierAccess(
     manager: EntityManager,
@@ -417,6 +500,7 @@ export class DossierActionService {
           }),
         );
         await this.saveLinks(manager, created, dto);
+        await this.createLinkedDiligence(manager, created);
         await this.eventService.append(manager, {
           dossierId,
           eventType: autoStart
@@ -542,6 +626,7 @@ export class DossierActionService {
         ]);
       }
       const saved = await repository.save(action);
+      await this.syncLinkedDiligence(manager, saved);
       await this.eventService.append(manager, {
         dossierId: action.dossier_id,
         eventType: `DOSSIER_ACTION_${target}`,
@@ -678,6 +763,7 @@ export class DossierActionService {
       action.remind_at = proposedRemindAt;
       action.reminder_sent_at = null;
       const saved = await repository.save(action);
+      await this.syncLinkedDiligence(manager, saved);
       await manager
         .getRepository(Dossier)
         .update(
@@ -791,6 +877,7 @@ export class DossierActionService {
       action.billing_decision = dto.billing_decision;
       action.billing_reason = dto.billing_reason ?? null;
       const saved = await repository.save(action);
+      await this.syncLinkedDiligence(manager, saved);
       await this.saveLinks(manager, saved, dto);
       const billableItem = await this.billingService.createForCompletedAction(
         manager,

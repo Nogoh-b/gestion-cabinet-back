@@ -53,7 +53,9 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
       event: NotifiableEvent.DILIGENCE_ASSIGNED,
       title: `Nouvelle diligence — ${diligence.title}`,
       content: diligence.description?.trim() || `Diligence assignée`,
-      link: `/dossiers/diligences/${diligence.id}`,
+      link: diligence.source_action_id
+        ? `/dossiers/${dossier?.id ?? diligence.dossier_id}?tab=steps#action-${diligence.source_action_id}`
+        : `/dossiers/diligences/${diligence.id}`,
       audience: {
         client: {
           user_id: (dossier?.client as any)?.user_id,
