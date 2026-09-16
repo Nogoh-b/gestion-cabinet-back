@@ -250,7 +250,7 @@ export class Facture extends BaseEntity {
   @OneToMany(() => InvoiceLine, (line) => line.facture)
   lines: InvoiceLine[];
 
-  @Column({ name: 'original_facture_id', type: 'varchar', length: 36, nullable: true })
+  @Column({ name: 'original_facture_id', type: 'varchar', nullable: true })
   original_facture_id: string | null;
 
   @ManyToOne(() => Facture, { nullable: true, onDelete: 'RESTRICT' })

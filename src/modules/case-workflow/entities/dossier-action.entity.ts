@@ -40,7 +40,7 @@ export class DossierAction extends TenantEntity {
   @Column({ name: 'dossier_id', type: 'int' })
   dossier_id: number;
 
-  @Column({ name: 'definition_id', type: 'varchar', length: 36 })
+  @Column({ name: 'definition_id', type: 'varchar' })
   definition_id: string;
 
   @ManyToOne(() => ActionDefinition, { onDelete: 'RESTRICT' })
@@ -159,7 +159,7 @@ export class DossierActionDocumentLink extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'action_id', type: 'varchar', length: 36 })
+  @Column({ name: 'action_id', type: 'varchar' })
   action_id: string;
 
   @ManyToOne(() => DossierAction, { onDelete: 'CASCADE' })
@@ -192,7 +192,7 @@ export class DossierActionAudienceLink extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'action_id', type: 'varchar', length: 36 })
+  @Column({ name: 'action_id', type: 'varchar' })
   action_id: string;
 
   @ManyToOne(() => DossierAction, { onDelete: 'CASCADE' })
@@ -225,14 +225,14 @@ export class DossierActionRelation extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'action_id', type: 'varchar', length: 36 })
+  @Column({ name: 'action_id', type: 'varchar' })
   action_id: string;
 
   @ManyToOne(() => DossierAction, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'action_id' })
   action: DossierAction;
 
-  @Column({ name: 'related_action_id', type: 'varchar', length: 36 })
+  @Column({ name: 'related_action_id', type: 'varchar' })
   related_action_id: string;
 
   @ManyToOne(() => DossierAction, { onDelete: 'RESTRICT' })

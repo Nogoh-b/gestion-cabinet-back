@@ -57,9 +57,10 @@ export class ReferralCommission extends TenantEntity {
   dossier_referral: DossierReferral;
 
   // ⚠️ Facture.id est un UUID (PrimaryGeneratedColumn('uuid')) → la colonne FK
-  // doit être varchar(36), pas int, sinon la valeur UUID est coercée et la
-  // contrainte FK échoue.
-  @Column({ type: 'varchar', length: 36, nullable: true, name: 'facture_id' })
+  // doit être varchar, pas int, sinon la valeur UUID est coercée et la
+  // contrainte FK échoue. Ne PAS ajouter `length` : TypeORM aligne le type sur
+  // l'UUID réferencé et MariaDB >= 10.7 rejette `length` sur uuid.
+  @Column({ type: 'varchar', nullable: true, name: 'facture_id' })
   facture_id: string;
 
   @ManyToOne(() => Facture, { nullable: true })
@@ -72,8 +73,8 @@ export class ReferralCommission extends TenantEntity {
   })
   facture: Facture;
 
-  // ⚠️ Paiement.id est également un UUID → varchar(36).
-  @Column({ type: 'varchar', length: 36, nullable: true, name: 'paiement_id' })
+  // ⚠️ Paiement.id est également un UUID → varchar sans `length` (cf. ci-dessus).
+  @Column({ type: 'varchar', nullable: true, name: 'paiement_id' })
   paiement_id: string;
 
   @ManyToOne(() => Paiement, { nullable: true })

@@ -289,7 +289,10 @@ export class InvoiceLine extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'facture_id', type: 'varchar', length: 36 })
+  // Note : pas de `length` ici — TypeORM aligne le type de la colonne FK sur la
+  // PK réferencée (uuid) et MariaDB >= 10.7 refuse `length` sur uuid.
+  // Le DDL réel (varchar(36)) est porté par la migration SQL.
+  @Column({ name: 'facture_id', type: 'varchar' })
   facture_id: string;
 
   @ManyToOne(() => Facture, (facture) => facture.lines, {

@@ -49,7 +49,7 @@ export class ActionDefinition extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'family_id', type: 'varchar', length: 36 })
+  @Column({ name: 'family_id', type: 'varchar' })
   family_id: string;
 
   @ManyToOne(() => ActionFamily, { onDelete: 'RESTRICT' })
