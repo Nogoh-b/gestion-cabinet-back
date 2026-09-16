@@ -4,19 +4,17 @@ export const DatabaseTablesConfig = {
     "dossiers",
     "customer",
     "employee",
+    "dossier_actions",
+    "dossier_recommendations",
+    "billable_items",
+    "dossier_billing_profiles",
     "audiences",
     "factures",
     "paiements",
     "document_customer",
     "diligences",
     "findings",
-    "stages",
-    "stage_visits",
-    "sub_stage_visits",
-    "sub_stages",
-    "procedure_instances",
-    "procedure_templates",
-    "transitions",
+    "invoice_lines",
   ],
 
   // Tables à ignorer complètement
@@ -26,7 +24,18 @@ export const DatabaseTablesConfig = {
     'otp_codes',
     'otp_online_link',
     'sequence',
-    'user_notifications'
+    'user_notifications',
+    'procedure_instances',
+    'procedure_templates',
+    'stages',
+    'stage_visits',
+    'sub_stage_visits',
+    'sub_stages',
+    'transitions',
+    'cycles',
+    'tasks',
+    'stage_configs',
+    'decisions'
   ],
 
   // Configuration des échantillons
@@ -37,7 +46,7 @@ export const DatabaseTablesConfig = {
 
   // Métadonnées pour guider l'IA
   tableDescriptions: {
-    dossiers: "Dossiers contentieux du cabinet. Un dossier a une instance de procédure (procedureInstanceId → procedure_instances.id)",
+    dossiers: "Dossiers du cabinet. Le traitement courant est suivi par dossier_actions et dossier_recommendations.",
     customer: "Clients (particuliers et entreprises)",
     employee: "Avocats et collaborateurs",
     audiences: "Audiences programmées",
@@ -46,8 +55,10 @@ export const DatabaseTablesConfig = {
     paiements: "Paiements reçus",
     savings_account: "Comptes épargne clients",
     loan: "Prêts accordés",
-    procedure_instances: "Instance de procédure d'un dossier. Liée à dossiers.procedureInstanceId",
-    stages: "Étapes d'une procédure",
-    stage_visits: "Visite d'une étape pour une instance. instanceId → procedure_instances.id, stageId → stages.id",
+    dossier_actions: "Actions de traitement d'un dossier",
+    dossier_recommendations: "Prochaines actions recommandées",
+    dossier_billing_profiles: "Paramètres de facturation du dossier",
+    billable_items: "Travaux et frais à facturer",
+    invoice_lines: "Lignes de facture issues des éléments facturables",
   },
 };

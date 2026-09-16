@@ -16,8 +16,15 @@ import {
   BillingMode,
   BillingTrigger,
 } from '../case-workflow.enums';
+import { BusinessTable } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('dossier_billing_profiles')
+@BusinessTable({
+  label: 'Profils de facturation des dossiers',
+  description: 'Convention d’honoraires, devise, TVA et tarifs applicables à chaque dossier.',
+  category: 'finance',
+  readOnly: true,
+})
 @Index('UQ_dossier_billing_profile', ['tenant_id', 'dossier_id'], {
   unique: true,
 })
@@ -149,6 +156,12 @@ export class DossierBillingRule extends TenantEntity {
 }
 
 @Entity('billable_items')
+@BusinessTable({
+  label: 'Éléments facturables',
+  description: 'Travaux, honoraires et frais à contrôler, facturer, ajuster ou abandonner.',
+  category: 'finance',
+  readOnly: true,
+})
 @Index('UQ_billable_item_source_event', ['tenant_id', 'source_event_key'], {
   unique: true,
 })
@@ -263,6 +276,12 @@ export class BillableItem extends TenantEntity {
 }
 
 @Entity('invoice_lines')
+@BusinessTable({
+  label: 'Lignes de facture',
+  description: 'Lignes de facture créées à partir des éléments facturables des dossiers.',
+  category: 'finance',
+  readOnly: true,
+})
 @Index('UQ_invoice_line_billable_item', ['tenant_id', 'billable_item_id'], {
   unique: true,
 })

@@ -111,6 +111,22 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     DELETE: 'delete_diligence_finding',
   },
 
+  // Traitement orienté actions (lecture uniquement via l'IA)
+  case_action_families: { READ: 'view_dossier_actions' },
+  case_action_definitions: { READ: 'view_dossier_actions' },
+  dossier_actions: { READ: 'view_dossier_actions' },
+  dossier_action_document_links: { READ: 'view_dossier_actions' },
+  dossier_action_audience_links: { READ: 'view_dossier_actions' },
+  dossier_action_relations: { READ: 'view_dossier_actions' },
+  case_recommendation_rules: { READ: 'view_dossier_actions' },
+  dossier_recommendations: { READ: 'view_dossier_actions' },
+
+  // Facturation issue du parcours d'actions (lecture uniquement via l'IA)
+  dossier_billing_profiles: { READ: 'view_billable_items' },
+  dossier_billing_rules: { READ: 'view_billable_items' },
+  billable_items: { READ: 'view_billable_items' },
+  invoice_lines: { READ: 'view_factures' },
+
   // Procedure/workflow
   procedure_templates: {
     READ: 'view_dossiers',

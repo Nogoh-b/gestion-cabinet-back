@@ -512,7 +512,7 @@ export class EntityResolverService {
       return {
         resolved,
         created: false,
-        message: `${tableName} "${searchTerm}" trouvé(e) (ID: ${(resolved.best as any).id})`,
+        message: `« ${searchTerm} » a été trouvé(e)`,
       };
     }
 
@@ -602,7 +602,7 @@ export class EntityResolverService {
         resolved: createdResult,
         created: true,
         newEntity,
-        message: `${tableName} "${searchTerm}" créé(e) automatiquement (ID: ${entityId})`,
+        message: `« ${searchTerm} » a été créé(e) automatiquement`,
       };
     } catch (error) {
       if (error instanceof ForbiddenException) throw error;

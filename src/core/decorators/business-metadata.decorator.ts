@@ -19,7 +19,9 @@ export interface BusinessTableMetadata {
   description: string;     // Description de ce que représente la table
   icon?: string;           // Icône pour l'UI
   category?: 'client' | 'dossier' | 'finance' | 'procedure' | 'document' | 'organisation' | 'audit' | 'other' | string; // Catégorie métier
-  ignored?: boolean;  
+  ignored?: boolean;
+  /** Visible en lecture pour l'IA, mais exclue des écritures génériques. */
+  readOnly?: boolean;
 }
 
 export function BusinessTable(metadata: BusinessTableMetadata) {

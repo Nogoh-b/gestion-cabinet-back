@@ -285,7 +285,7 @@ export class GenericWriteService {
         entityId: (existing as any).id,
         affected: 0,
         data: existing,
-        message: `Enregistrement existant retourné (ID: ${(existing as any).id}) dans "${entity}"`,
+        message: `L'enregistrement existe déjà ; aucun doublon n'a été créé.`,
       };
     }
 
@@ -299,7 +299,7 @@ export class GenericWriteService {
       entityId: saved.id,
       affected: 1,
       data: saved,
-      message: `Enregistrement créé (ID: ${saved.id}) dans "${entity}"`,
+      message: `Enregistrement créé avec succès.`,
     };
   }
 

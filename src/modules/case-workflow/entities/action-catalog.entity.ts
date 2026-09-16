@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { ActionPriority, BillingCalculationMode } from '../case-workflow.enums';
+import { BusinessTable } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('case_action_families')
 @Index('UQ_case_action_family_tenant_code', ['tenant_id', 'code'], {
@@ -34,6 +35,12 @@ export class ActionFamily extends TenantEntity {
 }
 
 @Entity('case_action_definitions')
+@BusinessTable({
+  label: 'Définitions d’actions',
+  description: 'Définitions versionnées des actions disponibles dans le parcours de traitement.',
+  category: 'traitement',
+  readOnly: true,
+})
 @Index('UQ_case_action_definition_version', ['tenant_id', 'code', 'version'], {
   unique: true,
 })

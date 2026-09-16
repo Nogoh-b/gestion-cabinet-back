@@ -1,6 +1,7 @@
 import {
   calculateActionBilling,
   findForbiddenJsonLogicOperator,
+  getActionDeadlineState,
   recommendationTriggersForEvaluation,
   recommendationScore,
   resolveLegacyMapping,
@@ -12,11 +13,34 @@ import {
 import {
   ActionBillingDecision,
   BillingCalculationMode,
+  DossierActionStatus,
   RecommendationTrigger,
 } from './case-workflow.enums';
 import { describe, expect, it } from '@jest/globals';
 
 describe('case-workflow business rules', () => {
+  it('considère uniquement une action ouverte et échue comme en retard', () => {
+    const now = new Date('2026-09-16T12:00:00.000Z');
+
+    expect(
+      getActionDeadlineState(
+        {
+          status: DossierActionStatus.IN_PROGRESS,
+          due_at: new Date('2026-09-14T12:00:00.000Z'),
+        },
+        now,
+      ),
+    ).toEqual({ isOverdue: true, overdueDays: 2 });
+    expect(
+      getActionDeadlineState(
+        {
+          status: DossierActionStatus.COMPLETED,
+          due_at: new Date('2026-09-14T12:00:00.000Z'),
+        },
+        now,
+      ),
+    ).toEqual({ isOverdue: false, overdueDays: 0 });
+  });
   it('valide les champs dynamiques obligatoires et leur type', () => {
     const schema = {
       required: ['analysis', 'risk'],

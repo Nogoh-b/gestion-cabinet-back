@@ -288,31 +288,39 @@ export class Facture extends BaseEntity {
   client: Customer;
 
   @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
+  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
   sub_stage_id: string;
 
   @ManyToOne(() => SubStage, (subStage) => subStage.factures, { nullable: true })
   @JoinColumn({ name: 'sub_stage_id' })
+  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
   subStage: SubStage;
 
   @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
+  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
   sub_stage_visit_id: string;
 
   @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, { nullable: true })
   @JoinColumn({ name: 'sub_stage_visit_id' })
+  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
   subStageVisit: SubStageVisit;
 
   @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
+  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
   stageVisit_id: string;
 
   @ManyToOne(() => StageVisit)
   @JoinColumn({ name: 'stageVisit_id' })
+  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
   stageVisit: StageVisit;
 
   @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
+  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
   procedure_instance_id: string;
 
   @ManyToOne(() => ProcedureInstance, { nullable: true })
   @JoinColumn({ name: 'procedure_instance_id' })
+  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
   procedureInstance: ProcedureInstance;
 
   // ==================== GETTERS MÉTIER ====================

@@ -13,6 +13,7 @@ import {
   RecommendationTrigger,
 } from '../case-workflow.enums';
 import { ActionDefinition } from './action-catalog.entity';
+import { BusinessTable } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('case_recommendation_rules')
 @Index(
@@ -63,6 +64,12 @@ export class RecommendationRule extends TenantEntity {
 }
 
 @Entity('dossier_recommendations')
+@BusinessTable({
+  label: 'Recommandations des dossiers',
+  description: 'Actions recommandées, différées ou traitées pour chaque dossier.',
+  category: 'traitement',
+  readOnly: true,
+})
 @Index('IDX_dossier_recommendation_current', [
   'tenant_id',
   'dossier_id',

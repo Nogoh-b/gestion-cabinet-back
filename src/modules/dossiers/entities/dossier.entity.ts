@@ -740,6 +740,11 @@ export class Dossier extends BaseEntity {
   procedureInstance: ProcedureInstance;
 
   @Column({ nullable: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien conservé uniquement pour la compatibilité avec l’ancien workflow.',
+    ignored: true,
+  })
   procedureInstanceId: string;
 
   @OneToMany(() => Step, step => step.dossier)

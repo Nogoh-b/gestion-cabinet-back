@@ -1,8 +1,39 @@
 import {
   ActionBillingDecision,
   BillingCalculationMode,
+  DossierActionStatus,
   RecommendationTrigger,
 } from './case-workflow.enums';
+
+const DAY_MS = 86_400_000;
+
+export function getActionDeadlineState(
+  action: { status: DossierActionStatus; due_at?: Date | string | null },
+  now: Date | number = new Date(),
+): { isOverdue: boolean; overdueDays: number } {
+  const isOpen = [
+    DossierActionStatus.TODO,
+    DossierActionStatus.IN_PROGRESS,
+    DossierActionStatus.ON_HOLD,
+  ].includes(action.status);
+  if (!isOpen || !action.due_at) {
+    return { isOverdue: false, overdueDays: 0 };
+  }
+
+  const dueAt =
+    action.due_at instanceof Date
+      ? action.due_at.getTime()
+      : new Date(action.due_at).getTime();
+  const nowTime = now instanceof Date ? now.getTime() : now;
+  if (!Number.isFinite(dueAt) || dueAt > nowTime) {
+    return { isOverdue: false, overdueDays: 0 };
+  }
+
+  return {
+    isOverdue: true,
+    overdueDays: Math.max(1, Math.ceil((nowTime - dueAt) / DAY_MS)),
+  };
+}
 
 export function recommendationTriggersForEvaluation(
   trigger: RecommendationTrigger,

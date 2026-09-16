@@ -83,9 +83,17 @@ export class AutoHandlerFactory implements OnModuleInit {
         continue;
       }
 
-      if (tableMeta.ignored) {
+      if (tableMeta.ignored || this.schemaMetadata.isTableIgnored(tableName)) {
         skippedIgnored++;
         this.logger.debug(`⏭️ ${tableName}: @BusinessTable(ignored=true)`);
+        continue;
+      }
+
+      // Les tables de consultation restent visibles en lecture sans exposer
+      // d'écriture générique qui contournerait leurs services métier.
+      if (tableMeta.readOnly) {
+        skippedIgnored++;
+        this.logger.debug(`${tableName}: @BusinessTable(readOnly=true)`);
         continue;
       }
 

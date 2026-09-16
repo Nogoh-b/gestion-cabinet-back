@@ -40,4 +40,27 @@ describe('IntentDetectionService local classifier', () => {
   it('detects simple chat without LLM', () => {
     expect(service.classifyLocal('Bonjour')).toBe('CHAT');
   });
+
+  it('retire les tables ignorées du schéma d’écriture', async () => {
+    const generateGlobalWriteSchema = jest.fn(async () => 'schema');
+    const scopedService = new IntentDetectionService(
+      {
+        getAllHandlers: jest.fn(() => []),
+        generateGlobalWriteSchema,
+      } as any,
+      {
+        databaseTablesConfig: {
+          ignoredTables: ['procedure_instances', 'stages', 'sub_stage_visits'],
+        },
+      },
+    );
+
+    await (scopedService as any).getCachedWriteSchema();
+
+    expect(generateGlobalWriteSchema).toHaveBeenCalledWith([
+      'procedure_instances',
+      'stages',
+      'sub_stage_visits',
+    ]);
+  });
 });

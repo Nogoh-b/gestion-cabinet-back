@@ -32,10 +32,13 @@ export class WriteHandlerRegistry {
   /**
    * Génère le schéma pour tous les handlers (utilisé par le prompt IA)
    */
-  async generateGlobalWriteSchema(): Promise<string> {
+  async generateGlobalWriteSchema(excludedTables: string[] = []): Promise<string> {
     let schema = '# 📝 OPÉRATIONS D\'ÉCRITURE DISPONIBLES\n\n';
     
+    const excluded = new Set(excludedTables.map((table) => table.toLowerCase()));
+
     for (const handler of this.handlers.values()) {
+      if (excluded.has(handler.entityName.toLowerCase())) continue;
       const fields = await handler.getWriteableFieldsSchema();
       schema += `## ${handler.entityName}\n`;
       schema += `| Champ | Type | Requis | Description | Exemple |\n`;

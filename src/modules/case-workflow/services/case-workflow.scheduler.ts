@@ -14,6 +14,7 @@ import {
   RecommendationTrigger,
   WorkflowEngine,
 } from '../case-workflow.enums';
+import { getActionDeadlineState } from '../case-workflow.logic';
 import { DossierAction } from '../entities/dossier-action.entity';
 import {
   CaseWorkflowEvent,
@@ -135,7 +136,7 @@ export class CaseWorkflowScheduler {
   private async sendDueActionReminders(
     dossier: Dossier,
     tenantId: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const actions = await this.actionRepository.find({
       where: {
         tenant_id: tenantId,
@@ -148,26 +149,70 @@ export class CaseWorkflowScheduler {
       },
     });
     const now = Date.now();
+    let hasOverdueAction = false;
     for (const action of actions) {
-      if (!action.due_at || action.reminder_sent_at) continue;
-      const reminderTime =
-        action.remind_at?.getTime() ??
-        action.due_at.getTime() - DEFAULT_REMINDER_LEAD_MS;
-      if (reminderTime > now) continue;
+      if (!action.due_at) continue;
+      const deadlineState = getActionDeadlineState(action, now);
+      hasOverdueAction ||= deadlineState.isOverdue;
       const recipients = this.uniqueIds([
         action.responsible_user_id,
         dossier.lawyer?.user?.id,
         ...(dossier.collaborators ?? []).map((employee) => employee.user?.id),
       ]);
-      if (recipients.length) {
-        const overdue = action.due_at.getTime() <= now;
+
+      if (deadlineState.isOverdue) {
+        const overdueEventKey = `ACTION_OVERDUE_NOTIFICATION:${action.id}:${action.due_at.toISOString()}`;
+        const alreadyNotified = await this.eventRepository.findOne({
+          where: {
+            tenant_id: tenantId,
+            idempotency_key: overdueEventKey,
+          },
+        });
+        if (alreadyNotified || recipients.length === 0) continue;
+
         await this.notifications.createBulk(
           {
             user_ids: recipients,
             type: NotificationType.DOSSIER_DEADLINE,
-            title: overdue
-              ? `Action en retard — ${action.title}`
-              : `Échéance proche — ${action.title}`,
+            title: `Action en retard — ${action.title}`,
+            content: `Dossier ${dossier.dossier_number} · en retard de ${deadlineState.overdueDays} jour(s) · échéance ${action.due_at.toLocaleString('fr-FR')}`,
+            data: {
+              dossierId: dossier.id,
+              actionId: action.id,
+              dueAt: action.due_at.toISOString(),
+              overdueDays: deadlineState.overdueDays,
+            },
+            link: `/dossiers/${dossier.id}`,
+            priority: 'URGENT',
+          },
+          SYSTEM_SENDER_ID,
+        );
+        await this.eventService.append(this.actionRepository.manager, {
+          dossierId: dossier.id,
+          eventType: 'DOSSIER_ACTION_OVERDUE_NOTIFIED',
+          aggregateType: 'DossierAction',
+          aggregateId: action.id,
+          actorUserId: null,
+          payload: {
+            dueAt: action.due_at.toISOString(),
+            overdueDays: deadlineState.overdueDays,
+          },
+          idempotencyKey: overdueEventKey,
+        });
+        continue;
+      }
+
+      if (action.reminder_sent_at) continue;
+      const reminderTime =
+        action.remind_at?.getTime() ??
+        action.due_at.getTime() - DEFAULT_REMINDER_LEAD_MS;
+      if (reminderTime > now) continue;
+      if (recipients.length) {
+        await this.notifications.createBulk(
+          {
+            user_ids: recipients,
+            type: NotificationType.DOSSIER_DEADLINE,
+            title: `Échéance proche — ${action.title}`,
             content: `Dossier ${dossier.dossier_number} · échéance ${action.due_at.toLocaleString('fr-FR')}`,
             data: {
               dossierId: dossier.id,
@@ -175,7 +220,7 @@ export class CaseWorkflowScheduler {
               dueAt: action.due_at.toISOString(),
             },
             link: `/dossiers/${dossier.id}`,
-            priority: overdue ? 'URGENT' : 'HIGH',
+            priority: 'HIGH',
           },
           SYSTEM_SENDER_ID,
         );
@@ -197,6 +242,7 @@ export class CaseWorkflowScheduler {
         idempotencyKey: `ACTION_REMINDER:${action.id}:${action.due_at.toISOString()}`,
       });
     }
+    return hasOverdueAction;
   }
 
   private async notifyRecommendation(

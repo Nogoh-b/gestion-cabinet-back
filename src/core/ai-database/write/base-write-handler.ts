@@ -628,7 +628,7 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
         entityId: (existing as any).id,
         affected: 0,
         data: existing,
-        message: `${label} déjà existant retourné (ID: ${(existing as any).id}) — pas de doublon créé`,
+        message: `${label} existe déjà — aucun doublon n'a été créé`,
       };
     }
 
@@ -650,7 +650,7 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
       entityId: saved.id,
       affected: 1,
       data: saved,
-      message: `${label} créé(e) avec succès (ID: ${saved.id})`,
+      message: `${label} créé(e) avec succès`,
     };
   }
 

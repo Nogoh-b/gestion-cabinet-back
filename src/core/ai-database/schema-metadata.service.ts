@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { BUSINESS_METADATA_KEY, BusinessTableMetadata, BusinessColumnMetadata } from '../decorators/business-metadata.decorator';
+import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
+import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import 'reflect-metadata';
 
 @Injectable()
@@ -9,7 +11,19 @@ export class SchemaMetadataService {
   private tableMetadataCache: Map<string, any> = new Map();
   private columnMetadataCache: Map<string, Map<string, BusinessColumnMetadata>> = new Map();
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @Optional()
+    @Inject(AI_DATABASE_PROJECT_CONFIG)
+    private readonly projectConfig?: AiDatabaseProjectConfig,
+  ) {}
+
+  isTableIgnored(tableName: string): boolean {
+    const ignoredTables = this.projectConfig?.databaseTablesConfig?.ignoredTables ?? [];
+    return ignoredTables.some(
+      (ignoredTable) => ignoredTable.toLowerCase() === tableName.toLowerCase(),
+    );
+  }
 
   /**
    * Initialise le cache des métadonnées à partir des entités TypeORM
@@ -20,6 +34,11 @@ export class SchemaMetadataService {
     for (const entity of entities) {
       const tableName = entity.tableName;
       const entityClass = entity.target;
+
+      if (this.isTableIgnored(tableName)) {
+        this.logger.debug(`Table ignorée par la configuration IA: ${tableName}`);
+        continue;
+      }
       
       // ✅ Vérifier si la table doit être ignorée
       let tableIgnored = true;
@@ -263,12 +282,12 @@ getTableLabel(tableName: string): string {
    * Transforme une ligne de résultat en objet métier
    */
   transformRowToBusiness(row: any, tableName: string): any {
-    const columnMap = this.columnMetadataCache.get(tableName);
-    if (!columnMap) return row;
+    const columnMap = this.columnMetadataCache.get(tableName) ?? new Map();
     
     const transformed: any = {};
     for (const [key, value] of Object.entries(row)) {
       const meta = columnMap.get(key);
+      if (this.mustHideFromBusinessResult(key, value, meta)) continue;
       const label = meta?.label || this.formatTechnicalName(key);
       
       let formattedValue = value;
@@ -281,6 +300,58 @@ getTableLabel(tableName: string): string {
       transformed[label] = formattedValue;
     }
     return transformed;
+  }
+
+  /**
+   * Les identifiants restent disponibles dans les métadonnées internes de la
+   * conversation pour les questions de suivi, mais ne sont jamais transmis au
+   * modèle chargé de rédiger la réponse visible par l'utilisateur.
+   */
+  private mustHideFromBusinessResult(
+    key: string,
+    value: unknown,
+    meta?: BusinessColumnMetadata,
+  ): boolean {
+    if (meta?.ignored || meta?.sensitive) return true;
+
+    const normalizedKey = key
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    const isReadableReference =
+      /(numero|number|reference|code|matricule)/.test(normalizedKey);
+    const isInternalIdentifier =
+      /(^|_)(id|uuid)$/.test(normalizedKey) ||
+      /(^|_)(id|uuid)_/.test(normalizedKey) ||
+      /(^|_)(identifiant|identifiant_technique)($|_)/.test(normalizedKey) ||
+      [
+        'tenant_id',
+        'lock_version',
+        'idempotency_key',
+        'definition_code',
+        'definition_version',
+      ].includes(normalizedKey);
+
+    if (isInternalIdentifier && !isReadableReference) return true;
+
+    const stringValue = String(value ?? '').trim();
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        stringValue,
+      );
+    if (isUuid && !isReadableReference) return true;
+
+    const isPersonLabel = /(responsable|utilisateur|user|collaborateur|avocat)/.test(
+      normalizedKey,
+    );
+    const isUnresolvedPerson =
+      typeof value === 'number' ||
+      /^(?:utilisateur|user|responsable)\s*(?:#|n[°o]|:)?\s*\d+$/i.test(
+        stringValue,
+      );
+    return isPersonLabel && isUnresolvedPerson;
   }
 
   private formatDate(date: any): string {

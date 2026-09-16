@@ -36,6 +36,12 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 - Un numero de facture (ex: FAC2-202606-0001) filtre factures.numero, jamais factures.id.
 - Un numero de dossier (ex: DOS1-202606-0001) filtre dossiers.dossier_number, jamais dossiers.id.
 - La colonne id (numerique/UUID) ne doit etre comparee qu'a des valeurs purement numeriques ou UUID, jamais a un identifiant contenant des lettres ou des tirets.
+
+### Présentation des résultats à l'utilisateur
+- Les colonnes techniques id, uuid, tenant_id et celles terminant par _id servent uniquement aux jointures et aux filtres. Ne les sélectionne jamais comme informations à afficher.
+- Retourne des numéros métier, noms, libellés et titres : dossier_number, numero, reference, title, label, first_name et last_name.
+- Pour une action de dossier, utilise dossier_actions.title ou dossier_actions.definition_label. N'affiche jamais definition_id ni l'UUID de l'action.
+- Pour afficher le responsable d'une action, fais un LEFT JOIN avec user u ON u.id = dossier_actions.responsible_user_id et sélectionne CONCAT(u.first_name, ' ', u.last_name) AS responsable. Ne sélectionne jamais responsible_user_id seul.
 `;
 
 export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [

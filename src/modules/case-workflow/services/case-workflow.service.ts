@@ -71,7 +71,10 @@ import { ActionCatalogService } from './action-catalog.service';
 import { CaseBillingService } from './case-billing.service';
 import { RecommendationService } from './recommendation.service';
 import { WorkflowEventService } from './workflow-event.service';
-import { resolveLegacyMapping } from '../case-workflow.logic';
+import {
+  getActionDeadlineState,
+  resolveLegacyMapping,
+} from '../case-workflow.logic';
 
 const DEFAULT_LEGACY_MAPPINGS: Array<{
   pattern: string;
@@ -552,14 +555,18 @@ export class CaseWorkflowService {
               (right.due_at?.getTime() ?? Number.MAX_SAFE_INTEGER)
             );
           })[0];
+        const deadlineState = openAction
+          ? getActionDeadlineState(openAction)
+          : null;
         workspaceRecommendation = openAction
           ? {
               id: `ACTION:${openAction.id}`,
               kind: 'CONTINUE_ACTION',
               action_id: openAction.id,
               status: RecommendationStatus.ACTIVE,
-              reason:
-                openAction.status === DossierActionStatus.IN_PROGRESS
+              reason: deadlineState?.isOverdue
+                ? `Cette action a dépassé son échéance de ${deadlineState.overdueDays} jour(s). Traitez-la ou prolongez son échéance en indiquant le motif.`
+                : openAction.status === DossierActionStatus.IN_PROGRESS
                   ? 'Cette action est en cours et constitue la prochaine étape du dossier.'
                   : openAction.status === DossierActionStatus.ON_HOLD
                     ? 'Cette action est suspendue et doit être reprise ou réévaluée.'
@@ -608,30 +615,27 @@ export class CaseWorkflowService {
           ])
         : [[], [], []];
 
-    const workspaceActions = actions.map((action) => ({
-      ...action,
-      document_links: actionDocumentLinks.filter(
-        (link) => link.action_id === action.id,
-      ),
-      audience_links: actionAudienceLinks.filter(
-        (link) => link.action_id === action.id,
-      ),
-      relation_links: actionRelations.filter(
-        (link) => link.action_id === action.id,
-      ),
-    }));
-
     const now = Date.now();
+    const workspaceActions = actions.map((action) => {
+      const deadlineState = getActionDeadlineState(action, now);
+      return {
+        ...action,
+        is_overdue: deadlineState.isOverdue,
+        overdue_days: deadlineState.overdueDays,
+        document_links: actionDocumentLinks.filter(
+          (link) => link.action_id === action.id,
+        ),
+        audience_links: actionAudienceLinks.filter(
+          (link) => link.action_id === action.id,
+        ),
+        relation_links: actionRelations.filter(
+          (link) => link.action_id === action.id,
+        ),
+      };
+    });
+
     const alerts: Array<Record<string, unknown>> = [];
-    const overdue = actions.filter(
-      (action) =>
-        action.due_at &&
-        action.due_at.getTime() < now &&
-        ![
-          DossierActionStatus.COMPLETED,
-          DossierActionStatus.CANCELLED,
-        ].includes(action.status),
-    );
+    const overdue = workspaceActions.filter((action) => action.is_overdue);
     if (overdue.length)
       alerts.push({
         type: 'OVERDUE_ACTIONS',

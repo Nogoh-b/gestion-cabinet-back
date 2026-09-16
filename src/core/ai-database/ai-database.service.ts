@@ -43,7 +43,12 @@ import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { AiModelMode, AiModelProfile, AiModelRouterService } from './ai-model-router.service';
 import { DatabaseTablesConfig } from './config/database-tables.config';
 import { ConversationManagerService } from './conversation-manager.service';
-import { AnalysisResponseDto, ReadClarificationContext, WritePlan } from './dto/analysis-response.dto';
+import {
+  AnalysisResponseDto,
+  ReadClarificationContext,
+  WriteOperation,
+  WritePlan,
+} from './dto/analysis-response.dto';
 import { AskQuestionDto, parseReferencedContext, parseVisibleHistory, ReferencedEntityContext, VisibleHistoryMessage } from './dto/ask-question.dto';
 import { AiRequestLog } from './entities/ai-request-log.entity';
 import { GenericWriteService } from './generic-write.service';
@@ -454,6 +459,7 @@ export class AiDatabaseService implements OnModuleInit {
     let schema = '# 📝 OPÉRATIONS D\'ÉCRITURE DISPONIBLES\n\n';
     
     for (const handler of this.writeHandlerRegistry.getAllHandlers()) {
+      if (!this.schemaMetadata.hasTableMetadata(handler.entityName)) continue;
       const fields = await handler.getWriteableFieldsSchema();
       schema += `## ${handler.entityName}\n`;
       schema += `| Champ | Type | Requis | Description | Exemple |\n`;
@@ -630,6 +636,7 @@ REGLES ABSOLUES :
 11. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le schéma ci-dessus. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le tableau du schéma.
 12. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes listées ci-dessus, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
 13. Un identifiant LISIBLE contenant des lettres/chiffres/tirets/slashs (ex: \`F-2025-001\`, \`FAC2-202606-0001\`, \`DOS-2024-12\`) correspond TOUJOURS à une colonne d'identifiant métier (\`numero\`, \`reference\`, ou une colonne se terminant par \`_number\`/\`_reference\`), JAMAIS à la colonne \`id\` (qui est numérique ou UUID). Pour filtrer par un tel identifiant, utilise la colonne \`numero\`/\`reference\` correspondante (ex: \`WHERE f.numero = 'FAC2-202606-0001'\`), pas \`id\`. Réserve \`id\` aux valeurs purement numériques/UUID. La colonne Exemple du schéma indique le format réel de chaque colonne.
+14. Les colonnes \`id\`, \`uuid\`, \`tenant_id\` et \`*_id\` peuvent servir aux JOIN et aux filtres, mais ne doivent JAMAIS figurer dans le SELECT destiné à l'utilisateur. Sélectionne à leur place un nom, un titre, un libellé, un numéro métier ou une référence lisible. N'utilise \`SELECT *\` que dans l'exemple de syntaxe ci-dessous, jamais dans la requête finale.
 
 ${readDomainRules}
 
@@ -1331,8 +1338,7 @@ Contraintes obligatoires :
         message += `\n\n📦 **Entités créées automatiquement :**`;
         for (const creation of allCascadeCreations) {
           const entityLabel = this.schemaMetadata.getTableLabel(creation.entityName) || creation.entityName;
-          const entityId = (creation.entity as any)?.id || '?';
-          message += `\n   • ${entityLabel} "${creation.searchTerm}" (ID: ${entityId})`;
+          message += `\n   • ${entityLabel} « ${creation.searchTerm} »`;
         }
       }
       
@@ -1410,7 +1416,7 @@ Contraintes obligatoires :
           this.rememberPendingEntityIdClarification(
             conversationId, resumed.plan, error.operationIndex, error.entity, userId,
           );
-          const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
+          const message = `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
           await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
           return {
             success: true, question: dto.question, analysis: message,
@@ -2099,7 +2105,7 @@ Règles :
         this.rememberPendingEntityIdClarification(
           conversationId, plan, error.operationIndex, error.entity, userId,
         );
-        const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
+        const message = `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
         await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
         return {
           success: true,
@@ -2284,7 +2290,7 @@ Règles :
       op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
 
       return this.executePatchedPlan(patchedPlan, userId, conversationId, startTime,
-        `✅ **${this.getFieldLabel(fieldName)}** créé(e) : « ${customValue} » (ID: ${writeResult.entityId})\n\n`,
+        `✅ **${this.getFieldLabel(fieldName)}** créé(e) : « ${customValue} »\n\n`,
       );
     } catch (error) {
       // Si le handler lève une ambiguïté (ex: FK manquante dans l'entité enfant)
@@ -3144,7 +3150,7 @@ ${blocks.join('\n\n')}
             this.rememberPendingEntityIdClarification(
               conversationId, resumed.plan, error.operationIndex, error.entity, userId,
             );
-            const message = `❓ Je n'ai toujours pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant exact (ex: "c'est l'audience 6").`;
+            const message = `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
             await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
             sendEvent('result', {
               success: true, question: dto.question, analysis: message,
@@ -3825,30 +3831,32 @@ RÉPONSE :`;
   private formatPlanForDisplay(plan: WritePlan): string {
     let display = `**Plan d'opérations à confirmer :**\n\n`;
     display += `📋 **Description:** ${plan.humanReadable}\n\n`;
-    display += `**Confiance:** ${Math.round(plan.confidence * 100)}%\n\n`;
-    display += `**Opérations prévues:**\n`;
+    display += `**Modifications prévues :**\n`;
+    const operationLabels: Record<WriteOperation['operation'], string> = {
+      INSERT: 'Création',
+      UPDATE: 'Modification',
+      DELETE: 'Suppression',
+    };
     
     for (let i = 0; i < plan.operations.length; i++) {
       const op = plan.operations[i];
       const emoji = op.operation === 'INSERT' ? '➕' : op.operation === 'UPDATE' ? '✏️' : '🗑️';
       
-      display += `${i + 1}. ${emoji} **${op.operation}** sur **${op.entity}**`;
-      
-      if (op.entityId) {
-        display += ` (ID: ${op.entityId})`;
-      }
+      const entityLabel =
+        this.schemaMetadata.getTableLabel(op.entity) ||
+        this.schemaMetadata.formatTechnicalName(op.entity);
+      display += `${i + 1}. ${emoji} **${operationLabels[op.operation]}** — **${entityLabel}**`;
       
       display += `\n`;
       
       // Afficher les champs à modifier
-      const fieldKeys = Object.keys(op.fields);
+      const fieldKeys = Object.keys(op.fields).filter(
+        (key) => !/(^id$|_id$|tenant_id|lock_version)/i.test(key),
+      );
       if (fieldKeys.length > 0) {
-        display += `   📝 Champs: ${fieldKeys.map(k => `"${k}"`).join(', ')}\n`;
-      }
-      
-      // Afficher les dépendances
-      if (op.tempId) {
-        display += `   🔗 Référencé comme: **${op.tempId}**\n`;
+        display += `   📝 Informations : ${fieldKeys
+          .map((key) => this.getFieldLabel(key))
+          .join(', ')}\n`;
       }
       
       display += `\n`;
@@ -4075,15 +4083,16 @@ INSTRUCTIONS IMPORTANTES:
 5. Si la réponse contient des dates, formate-les de façon lisible
 6. Sois concis mais précis (max 500 mots)
 7. Termine par une phrase d'action ou de recommandation si pertinent
-8. IMPORTANT : pour CHAQUE élément listé (dossier, audience, client...), mentionne toujours son identifiant numérique réel entre parenthèses, ex: "Audience du 20 juin (ID: 42)". Cela permet à l'utilisateur de désigner cet élément précisément dans un message suivant (ex: "marque-la comme reportée").
-9. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
+8. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise uniquement les noms, numéros métier, titres et libellés fournis. Si aucun nom lisible n'est disponible, omets l'information au lieu d'afficher l'identifiant.
+9. Pour une personne (responsable, avocat, collaborateur, client), affiche son nom complet. Pour une action, affiche son titre ou son libellé. Pour un dossier ou une facture, utilise son numéro métier.
+10. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
 
 RÉPONSE (en français courant, langage métier):`;
 
     const response = await this.invokeModel('streaming', prompt, this.MAX_TOKENS);
     const analysis = this.extractLlmText(response).trim();
     if (analysis) return analysis;
-    return this.buildFallbackAnalysisFromResults(question, results.data);
+    return this.buildFallbackAnalysisFromResults(question, businessResults);
   }
 
   private buildFallbackAnalysisFromResults(question: string, data: any[]): string {
@@ -4118,8 +4127,6 @@ RÉPONSE (en français courant, langage métier):`;
     const sample = data.slice(0, 5);
     for (const row of sample) {
       const parts: string[] = [];
-      const id = row.id ?? row.ID;
-      if (id !== undefined) parts.push(`ID: ${id}`);
       for (const key of Object.keys(row)) {
         if (['id', 'ID', 'deleted_at', 'deleted_by', 'tenant_id'].includes(key)) continue;
         const val = row[key];
@@ -4179,8 +4186,9 @@ INSTRUCTIONS IMPORTANTES:
 4. Si la réponse contient des dates, formate-les de façon lisible
 5. Sois concis mais précis (max 500 mots)
 6. Termine par une phrase d'action ou de recommandation si pertinent
-7. IMPORTANT : pour CHAQUE élément listé (dossier, audience, client...), mentionne toujours son identifiant numérique réel entre parenthèses, ex: "Audience du 20 juin (ID: 42)". Cela permet à l'utilisateur de désigner cet élément précisément dans un message suivant (ex: "marque-la comme reportée").
-8. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
+7. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise les noms complets, numéros métier, titres et libellés fournis. Si aucun libellé lisible n'est disponible, omets l'information.
+8. Pour une personne, affiche son nom complet ; pour une action son titre ; pour un dossier ou une facture son numéro métier.
+9. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
 
 RÉPONSE (en langage naturel):`;
 
@@ -4212,7 +4220,7 @@ RÉPONSE (en langage naturel):`;
     }
 
     if (!fullText.trim()) {
-      fullText = this.buildFallbackAnalysisFromResults(question, results.data);
+      fullText = this.buildFallbackAnalysisFromResults(question, businessResults);
       this.logger.warn(`⚠️ [STREAM] Analyse vide — fallback construit: ${fullText.substring(0, 80)}`);
       sendEvent('token', { text: fullText });
     }
@@ -4362,10 +4370,11 @@ INSTRUCTIONS IMPORTANTES:
 1. Rédige UNE réponse unique et cohérente couvrant TOUTES les ressources demandées.
 2. Structure clairement la réponse par ressource (une section par ressource, ex: le client, puis ses dossiers, puis ses factures).
 3. Réponds comme à un collègue non technique. N'utilise JAMAIS de termes techniques (SQL, requête, base de données, table, colonne).
-4. Pour CHAQUE élément listé (dossier, facture, audience...), mentionne son identifiant numérique réel entre parenthèses, ex: "Dossier Dupont (ID: 12)".
-5. Formate les dates de façon lisible. Si un ensemble est vide, indique-le brièvement.
-6. Format d'affichage: texte simple uniquement. Pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes "- Libellé : valeur".
-7. Sois complet mais concis (max ~700 mots).
+4. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise uniquement les noms, numéros métier, titres et libellés fournis.
+5. Pour une personne, affiche son nom complet ; pour une action son titre ; pour un dossier ou une facture son numéro métier. Si aucun libellé lisible n'est disponible, omets l'information.
+6. Formate les dates de façon lisible. Si un ensemble est vide, indique-le brièvement.
+7. Format d'affichage: texte simple uniquement. Pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes "- Libellé : valeur".
+8. Sois complet mais concis (max ~700 mots).
 
 RÉPONSE (en langage naturel):`;
   }
@@ -4373,9 +4382,15 @@ RÉPONSE (en langage naturel):`;
   /** Repli textuel combiné si l'analyse LLM est vide. */
   private buildCombinedFallbackAnalysis(
     parts: Array<{ title: string; data: any[] }>,
+    tables: string[],
   ): string {
     return parts
-      .map(p => `${p.title}\n${this.buildFallbackAnalysisFromResults(p.title, p.data)}`)
+      .map((p) =>
+        `${p.title}\n${this.buildFallbackAnalysisFromResults(
+          p.title,
+          this.transformToBusinessResults(p.data, tables),
+        )}`,
+      )
       .join('\n\n');
   }
 
@@ -4410,7 +4425,7 @@ RÉPONSE (en langage naturel):`;
     }
 
     if (!fullText.trim()) {
-      fullText = this.buildCombinedFallbackAnalysis(parts);
+      fullText = this.buildCombinedFallbackAnalysis(parts, tables);
       sendEvent('token', { text: fullText });
     }
     return fullText;
@@ -4425,7 +4440,7 @@ RÉPONSE (en langage naturel):`;
     const prompt = this.buildCombinedAnalysisPrompt(question, parts, tables);
     const response = await this.invokeModel('streaming', prompt, this.MAX_TOKENS);
     const analysis = this.extractLlmText(response).trim();
-    return analysis || this.buildCombinedFallbackAnalysis(parts);
+    return analysis || this.buildCombinedFallbackAnalysis(parts, tables);
   }
 
   /**
@@ -4817,13 +4832,15 @@ RÉPONSE (en langage naturel):`;
     const byType: Record<string, string[]> = {
       audience: ['audiences', 'dossiers', 'jurisdictions', 'audience_types'],
       hearing: ['audiences', 'dossiers', 'jurisdictions', 'audience_types'],
-      dossier: ['dossiers', 'customer', 'procedure_instances', 'procedure_templates'],
-      case: ['dossiers', 'customer', 'procedure_instances', 'procedure_templates'],
+      dossier: ['dossiers', 'customer', 'dossier_actions', 'dossier_recommendations'],
+      case: ['dossiers', 'customer', 'dossier_actions', 'dossier_recommendations'],
       client: ['customer', 'dossiers'],
       customer: ['customer', 'dossiers'],
       document: ['document_customer', 'dossiers', 'customer'],
-      facture: ['factures', 'customer', 'dossiers'],
-      invoice: ['factures', 'customer', 'dossiers'],
+      facture: ['factures', 'invoice_lines', 'customer', 'dossiers'],
+      invoice: ['factures', 'invoice_lines', 'customer', 'dossiers'],
+      action: ['dossier_actions', 'case_action_definitions', 'dossiers'],
+      recommandation: ['dossier_recommendations', 'case_action_definitions', 'dossiers'],
       diligence: ['diligences', 'dossiers', 'employee'],
       employee: ['employee'],
       collaborateur: ['employee'],
@@ -5076,7 +5093,10 @@ private async getDefaultSchema(): Promise<string> {
         if (columnMetadata instanceof Map) {
           fkMeta = columnMetadata.get(fk.column);
         }
-        if (!fkMeta?.ignored) {
+        if (
+          !fkMeta?.ignored &&
+          this.schemaMetadata.hasTableMetadata(fk.referencedTable)
+        ) {
           const fkLabel = this.schemaMetadata.getBusinessLabel(table, fk.column);
           const refTableLabel = this.schemaMetadata.getTableLabel(fk.referencedTable);
           schema += `- **${fkLabel}** (${fk.column}) → **${refTableLabel}** (${fk.referencedTable}.${fk.referencedColumn})\n`;
@@ -5093,6 +5113,13 @@ private async getDefaultSchema(): Promise<string> {
       schema += 'et sélectionner user.last_name et user.first_name.\n';
       schema += 'Ne JAMAIS utiliser employee.last_name ou employee.first_name — ces colonnes n\'existent PAS.\n';
       schema += 'Pour le nom complet : CONCAT(user.first_name, \' \', user.last_name).\n';
+    }
+
+    if (table === 'dossier_actions') {
+      schema += '\n### 👤 Affichage lisible des actions\n\n';
+      schema += 'N\'affiche jamais id, definition_id, responsible_user_id ou un UUID.\n';
+      schema += 'Affiche title ou definition_label pour désigner l\'action.\n';
+      schema += 'Pour le responsable, fais un LEFT JOIN avec "user" sur user.id = dossier_actions.responsible_user_id, puis sélectionne CONCAT(user.first_name, \' \', user.last_name) AS responsable.\n';
     }
     
     return schema;
@@ -5195,7 +5222,7 @@ private async getDefaultSchema(): Promise<string> {
       
       if (relationships?.foreignKeys) {
         const fk = relationships.foreignKeys.find((f: any) => f.column === col.COLUMN_NAME);
-        if (fk) {
+        if (fk && this.schemaMetadata.hasTableMetadata(fk.referencedTable)) {
           isForeignKey = true;
           foreignKeyTo = {
             table: fk.referencedTable,
@@ -5787,7 +5814,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
         this.rememberPendingEntityIdClarification(
           conversationId, plan, error.operationIndex, error.entity, userId,
         );
-        const message = `❓ Je n'ai pas pu identifier précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Donnez-moi son identifiant ou un critère unique (ex: "c'est l'audience 6") et je continuerai.`;
+        const message = `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
         await this.conversationManager.addAssistantMessage(conversationId, message, undefined);
         sendEvent('result', {
           success: true, question: dto.question, analysis: message,

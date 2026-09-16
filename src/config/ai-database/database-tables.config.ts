@@ -8,7 +8,7 @@ import { AiDatabaseProjectConfig } from 'src/core/ai-database/interfaces/ai-data
 export const DOMAIN_KEYWORDS: AiDatabaseProjectConfig['domainKeywords'] = [
   // Entités principales
   'dossier', 'dossiers', 'client', 'clients', 'customer',
-  'audience', 'audiences', 'facture', 'factures',
+  'audience', 'audiences', 'facture', 'factures', 'facturable', 'facturables', 'facturer',
   'paiement', 'paiements', 'document', 'documents',
   'avocat', 'avocats', 'employee', 'employe', 'employes',
   'diligence', 'diligences',
@@ -16,8 +16,10 @@ export const DOMAIN_KEYWORDS: AiDatabaseProjectConfig['domainKeywords'] = [
   'ecriture', 'ecritures', 'compte', 'comptes',
   'journal', 'journaux', 'exercice', 'exercices',
   'salaire', 'salaires',
-  // Procédures
-  'procedure', 'procedures', 'etape', 'etapes', 'stage',
+  // Traitement orienté actions
+  'traitement', 'action', 'actions', 'sous-action', 'sous-actions',
+  'recommandation', 'recommandations', 'priorite', 'rappel',
+  'etape', 'etapes', 'prochaine action',
   // Termes financiers
   'chiffre', 'montant', 'encaisse', 'encaisser', 'encaissement',
   'impaye', 'impayes', 'impayee', 'impayees',
@@ -68,22 +70,30 @@ export const DOMAIN_ENTITIES: AiDatabaseProjectConfig['domainEntities'] = [
   { pattern: 'comptes?', label: 'compte' },
   { pattern: 'exercices?', label: 'exercice' },
   { pattern: 'journa(?:l|ux)', label: 'journal comptable' },
-  // Procédure / étapes (workflow d'un dossier)
-  { pattern: 'etape en cours|etape courante|etape actuelle|etape du moment', label: 'etape en cours' },
-  { pattern: 'prochaine etape|etape suivante|prochaine action|etape a faire|etape a venir|etape suivante a faire', label: 'prochaine etape' },
-  { pattern: 'procedures?|procedure instance|instance de procedure', label: 'procedure' },
+  { pattern: 'actions?|sous[ -]?actions?|traitement', label: 'action de traitement' },
+  { pattern: 'recommandations?|prochaine action|action suivante', label: 'recommandation' },
+  { pattern: 'elements? facturables?|travaux a facturer|frais a facturer', label: 'element facturable' },
 ];
 
 export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConfig'] = {
   essentialTables: [
-    'dossiers', 'customer', 'employee', 'audiences', 'factures', 'paiements',
-    'document_customer', 'diligences', 'findings', 'stages', 'stage_visits',
-    'sub_stage_visits', 'sub_stages', 'procedure_instances', 'procedure_templates', 'transitions',
+    'dossiers', 'customer', 'employee', 'dossier_actions', 'dossier_recommendations',
+    'billable_items', 'dossier_billing_profiles', 'factures', 'invoice_lines',
+    'paiements', 'audiences', 'document_customer', 'diligences', 'findings',
+    'case_action_definitions', 'dossier_action_document_links',
+    'dossier_action_audience_links', 'dossier_action_relations',
   ],
-  ignoredTables: ['history_entries', 'auth_tokens', 'otp_codes', 'otp_online_link', 'sequence', 'user_notifications'],
+  ignoredTables: [
+    'history_entries', 'auth_tokens', 'otp_codes', 'otp_online_link', 'sequence',
+    'user_notifications',
+    // Ancien moteur de procédure : remplacé par le parcours orienté actions.
+    'procedure_instances', 'procedure_templates', 'stages', 'stage_visits',
+    'sub_stage_visits', 'sub_stages', 'transitions', 'cycles', 'tasks',
+    'stage_configs', 'decisions',
+  ],
   sampling: { sampleRows: 2, maxStringLength: 200 },
   tableDescriptions: {
-    dossiers: 'Dossiers contentieux du cabinet. Un dossier a une instance de procedure (procedureInstanceId -> procedure_instances.id)',
+    dossiers: 'Dossiers du cabinet. Le traitement courant est suivi par dossier_actions et dossier_recommendations.',
     customer: 'Clients (particuliers et entreprises)',
     employee: 'Avocats et collaborateurs',
     audiences: 'Audiences programmees',
@@ -92,9 +102,12 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
     paiements: 'Paiements recus. Source des montants encaisses uniquement quand la question parle d\'encaissement/paiement recu.',
     savings_account: 'Comptes epargne clients',
     loan: 'Prets accordes',
-    procedure_instances: 'Instance de procedure d\'un dossier. Liee a dossiers.procedureInstanceId',
-    stages: 'Etapes d\'une procedure',
-    stage_visits: 'Visite d\'une etape pour une instance. instanceId -> procedure_instances.id, stageId -> stages.id',
+    case_action_definitions: 'Définitions versionnées des actions disponibles dans le parcours de traitement.',
+    dossier_actions: 'Actions de traitement planifiées, démarrées ou terminées dans un dossier.',
+    dossier_recommendations: 'Prochaines actions recommandées pour un dossier.',
+    dossier_billing_profiles: 'Convention et paramètres de facturation propres à un dossier.',
+    billable_items: 'Travaux, honoraires et frais à contrôler ou à facturer.',
+    invoice_lines: 'Lignes de facture issues des éléments facturables.',
   },
   tableSynonyms: {
     factures: [
@@ -116,39 +129,41 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       'montant encaisse',
       'paiements recus',
     ],
-    stages: [
-      'etape',
-      'etapes',
+    dossier_actions: [
+      'traitement',
+      'action',
+      'actions du dossier',
+      'action en cours',
+      'action terminee',
       'etape en cours',
-      'etape courante',
-      'etape actuelle',
-      'prochaine etape',
-      'etape suivante',
-      'etape de procedure',
-    ],
-    stage_visits: [
-      'etape en cours',
-      'etape courante',
-      'avancement',
-      'progression',
-      'visite d etape',
-      'etat d avancement',
-    ],
-    procedure_instances: [
-      'procedure',
-      'instance de procedure',
       'avancement du dossier',
-      'etat d avancement du dossier',
     ],
-    procedure_templates: [
-      'modele de procedure',
-      'etapes de la procedure',
-      'prochaine etape',
+    dossier_recommendations: [
+      'prochaine action',
+      'action suivante',
+      'action recommandee',
+      'recommandation',
     ],
-    transitions: [
-      'prochaine etape',
-      'etape suivante',
-      'transition',
+    case_action_definitions: [
+      'catalogue d actions',
+      'type d action',
+      'sous action',
+    ],
+    billable_items: [
+      'element facturable',
+      'elements a facturer',
+      'travaux a facturer',
+      'frais a facturer',
+      'honoraires a facturer',
+    ],
+    dossier_billing_profiles: [
+      'mode de facturation',
+      'convention d honoraires',
+      'tarif du dossier',
+    ],
+    invoice_lines: [
+      'ligne de facture',
+      'detail de facture',
     ],
   },
 };

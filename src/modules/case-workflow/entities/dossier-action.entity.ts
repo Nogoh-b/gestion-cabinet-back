@@ -15,8 +15,15 @@ import {
   DossierActionStatus,
 } from '../case-workflow.enums';
 import { ActionDefinition } from './action-catalog.entity';
+import { BusinessTable } from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('dossier_actions')
+@BusinessTable({
+  label: 'Actions des dossiers',
+  description: 'Actions de traitement planifiées, en cours, terminées ou annulées dans les dossiers.',
+  category: 'traitement',
+  readOnly: true,
+})
 @Index('IDX_dossier_action_workspace', ['tenant_id', 'dossier_id', 'status'])
 @Index('UQ_dossier_action_idempotency', ['tenant_id', 'idempotency_key'], {
   unique: true,
@@ -137,6 +144,12 @@ export class DossierAction extends TenantEntity {
 }
 
 @Entity('dossier_action_document_links')
+@BusinessTable({
+  label: 'Documents liés aux actions',
+  description: 'Documents utilisés, produits ou conservés comme preuve pour une action de dossier.',
+  category: 'traitement',
+  readOnly: true,
+})
 @Index(
   'UQ_action_document_role',
   ['tenant_id', 'action_id', 'document_id', 'role'],
@@ -164,6 +177,12 @@ export class DossierActionDocumentLink extends TenantEntity {
 }
 
 @Entity('dossier_action_audience_links')
+@BusinessTable({
+  label: 'Audiences liées aux actions',
+  description: 'Audiences utilisées ou produites dans le cadre d’une action de dossier.',
+  category: 'traitement',
+  readOnly: true,
+})
 @Index(
   'UQ_action_audience_role',
   ['tenant_id', 'action_id', 'audience_id', 'role'],
@@ -191,6 +210,12 @@ export class DossierActionAudienceLink extends TenantEntity {
 }
 
 @Entity('dossier_action_relations')
+@BusinessTable({
+  label: 'Dépendances entre actions',
+  description: 'Relations de dépendance entre les actions successives d’un dossier.',
+  category: 'traitement',
+  readOnly: true,
+})
 @Index(
   'UQ_action_relation_role',
   ['tenant_id', 'action_id', 'related_action_id', 'role'],

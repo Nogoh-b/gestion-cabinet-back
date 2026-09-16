@@ -278,8 +278,8 @@ export class IntentDetectionService {
     // Mots interrogatifs génériques (nombre, total, statut) suivis d'un ?
     const readQuestionPattern = /\b(nombre|total|statut)\b.*\?/;
 
-    if ((readVerbPattern.test(normalized) || readQuestionPattern.test(normalized))
-        && this.domainKeywordsRegex.test(normalized)) {
+    if (readVerbPattern.test(normalized)
+        || (readQuestionPattern.test(normalized) && this.domainKeywordsRegex.test(normalized))) {
       return 'READ';
     }
 
@@ -301,7 +301,9 @@ export class IntentDetectionService {
     if (this.writeSchemaCache && now - this.writeSchemaCache.timestamp < this.CACHE_TTL) {
       return this.writeSchemaCache.value;
     }
-    const value = await this.writeHandlerRegistry.generateGlobalWriteSchema();
+    const value = await this.writeHandlerRegistry.generateGlobalWriteSchema(
+      this.projectConfig?.databaseTablesConfig?.ignoredTables ?? [],
+    );
     this.writeSchemaCache = { value, timestamp: now };
     return value;
   }
@@ -578,7 +580,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       'modifie', 'modifier', 'modification', 'modifie',
       'supprime', 'supprimer', 'suppression', 'supprime',
       'enregistre', 'enregistrer', 'enregistre',
-      'ouvre', 'ouvrir', 'ouvert',
+      'ouvre', 'ouvrir',
       'ferme', 'fermer', 'ferme',
       'archive', 'archiver', 'archive',
       'cloture', 'cloturer', 'cloture',
