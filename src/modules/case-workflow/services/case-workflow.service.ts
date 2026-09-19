@@ -853,10 +853,10 @@ export class CaseWorkflowService {
         currency: billableItems[0]?.currency ?? invoices[0]?.currency ?? 'XAF',
       },
       quickLinks: {
-        documents: `/documents?dossierId=${dossierId}`,
-        audiences: `/audiences?dossierId=${dossierId}`,
-        invoices: `/facturation/factures?dossierId=${dossierId}`,
-        diligences: `/dossiers/diligences?dossierId=${dossierId}`,
+        documents: `/documents?dossier_id=${dossierId}`,
+        audiences: `/audiences?dossier_id=${dossierId}`,
+        invoices: `/facturation/factures?dossier_id=${dossierId}`,
+        diligences: `/dossiers/diligences?dossier_id=${dossierId}`,
       },
     };
   }
