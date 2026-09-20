@@ -41,6 +41,7 @@ import {
   ReviseLegacyWorkflowMappingDto,
   ReviseRecommendationRuleDto,
   UpdateBillingProfileDto,
+  UpdateDossierActionDetailsDto,
   UpdateActionFamilyDto,
   UpdateCaseWorkflowFeatureDto,
   WaiveBillableItemDto,
@@ -371,6 +372,22 @@ export class DossierWorkspaceController {
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class DossierActionsController {
   constructor(private readonly actionService: DossierActionService) {}
+
+  @Patch(':id/details')
+  @RequirePermissions('update_dossier_action')
+  updateDetails(
+    @Param('id') id: string,
+    @Body() dto: UpdateDossierActionDetailsDto,
+    @Headers('idempotency-key') key: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.actionService.updateDetails(
+      id,
+      dto,
+      requireIdempotencyKey(key),
+      actorId(user),
+    );
+  }
 
   @Post(':id/start')
   @RequirePermissions('update_dossier_action')

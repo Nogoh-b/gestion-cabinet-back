@@ -34,6 +34,7 @@ import {
   CreateDossierActionDto,
   DeferRecommendationDto,
   ExtendDossierActionDeadlineDto,
+  UpdateDossierActionDetailsDto,
 } from '../dto/case-workflow.dto';
 import { ActionDefinition } from '../entities/action-catalog.entity';
 import {
@@ -180,19 +181,6 @@ export class DossierActionService {
     if (issue) throw new BadRequestException(issue.message);
   }
 
-  private validateRequiredLinks(
-    requirements: Record<string, unknown> | null,
-    dto: CreateDossierActionDto | CompleteDossierActionDto,
-  ): void {
-    const issue = validateRequiredRelations(requirements, {
-      documents: dto.documents,
-      audiences: dto.audiences,
-      previous_actions:
-        'previous_actions' in dto ? dto.previous_actions : undefined,
-    })[0];
-    if (issue) throw new BadRequestException(issue);
-  }
-
   private isDuplicateKeyError(error: unknown): boolean {
     const candidate = error as {
       code?: string;
@@ -210,7 +198,10 @@ export class DossierActionService {
   private async validateLinkedIds(
     manager: EntityManager,
     dossierId: number,
-    dto: CreateDossierActionDto | CompleteDossierActionDto,
+    dto:
+      | CreateDossierActionDto
+      | CompleteDossierActionDto
+      | UpdateDossierActionDetailsDto,
     actorUserId: number,
   ): Promise<void> {
     const tenantId = getCurrentTenantId();
@@ -298,7 +289,10 @@ export class DossierActionService {
   private async saveLinks(
     manager: EntityManager,
     action: DossierAction,
-    dto: CreateDossierActionDto | CompleteDossierActionDto,
+    dto:
+      | CreateDossierActionDto
+      | CompleteDossierActionDto
+      | UpdateDossierActionDetailsDto,
   ): Promise<void> {
     const tenantId = getCurrentTenantId();
     if (dto.documents?.length) {
@@ -370,6 +364,80 @@ export class DossierActionService {
           );
       }
     }
+  }
+
+  private async replaceActionInputs(
+    manager: EntityManager,
+    action: DossierAction,
+    dto: UpdateDossierActionDetailsDto,
+  ): Promise<void> {
+    const tenantId = getCurrentTenantId();
+    if (dto.documents !== undefined) {
+      if (dto.documents.some((link) => link.role !== ActionLinkRole.INPUT)) {
+        throw new BadRequestException(
+          'Seuls les documents d’entrée peuvent être modifiés avant la complétion',
+        );
+      }
+      await manager.getRepository(DossierActionDocumentLink).delete({
+        tenant_id: tenantId,
+        action_id: action.id,
+        role: ActionLinkRole.INPUT,
+      });
+    }
+    if (dto.audiences !== undefined) {
+      if (dto.audiences.some((link) => link.role !== ActionLinkRole.INPUT)) {
+        throw new BadRequestException(
+          'Seules les audiences d’entrée peuvent être modifiées avant la complétion',
+        );
+      }
+      await manager.getRepository(DossierActionAudienceLink).delete({
+        tenant_id: tenantId,
+        action_id: action.id,
+        role: ActionLinkRole.INPUT,
+      });
+    }
+    if (dto.previous_actions !== undefined) {
+      await manager.getRepository(DossierActionRelation).delete({
+        tenant_id: tenantId,
+        action_id: action.id,
+        role: ActionLinkRole.DEPENDS_ON,
+      });
+    }
+    await this.saveLinks(manager, action, dto);
+  }
+
+  private async validateCompletionRequirements(
+    manager: EntityManager,
+    action: DossierAction,
+    dto: CompleteDossierActionDto,
+  ): Promise<void> {
+    const tenantId = getCurrentTenantId();
+    const [documentLinks, audienceLinks, relationLinks] = await Promise.all([
+      manager.getRepository(DossierActionDocumentLink).find({
+        where: { tenant_id: tenantId, action_id: action.id },
+      }),
+      manager.getRepository(DossierActionAudienceLink).find({
+        where: { tenant_id: tenantId, action_id: action.id },
+      }),
+      manager.getRepository(DossierActionRelation).find({
+        where: { tenant_id: tenantId, action_id: action.id },
+      }),
+    ]);
+    const issue = validateRequiredRelations(
+      action.definition.required_relations,
+      {
+        documents: [
+          ...documentLinks.map((link) => ({ role: link.role })),
+          ...(dto.documents ?? []),
+        ],
+        audiences: [
+          ...audienceLinks.map((link) => ({ role: link.role })),
+          ...(dto.audiences ?? []),
+        ],
+        previous_actions: relationLinks.map((link) => ({ role: link.role })),
+      },
+    )[0];
+    if (issue) throw new BadRequestException(issue);
   }
 
   async create(
@@ -445,12 +513,8 @@ export class DossierActionService {
             );
         }
         await this.validateLinkedIds(manager, dossierId, dto, actorUserId);
-        this.validateSpecificData(
-          definition.specific_fields_schema,
-          dto.specific_data,
-          'required_on_start',
-        );
-        this.validateRequiredLinks(definition.required_relations, dto);
+        // La création doit rester instantanée : les informations propres à
+        // l’action et ses liens sont désormais renseignés progressivement.
         const dueAt = dto.due_at
           ? new Date(dto.due_at)
           : definition.default_due_days == null
@@ -542,6 +606,102 @@ export class DossierActionService {
       );
     }
     return action;
+  }
+
+  async updateDetails(
+    actionId: string,
+    dto: UpdateDossierActionDetailsDto,
+    idempotencyKey: string,
+    actorUserId: number,
+  ): Promise<DossierAction> {
+    const tenantId = getCurrentTenantId();
+    return this.dataSource.transaction(async (manager) => {
+      const eventKey = `ACTION_DETAILS:${idempotencyKey}`;
+      const priorEvent = await manager
+        .getRepository(CaseWorkflowEvent)
+        .findOne({
+          where: { tenant_id: tenantId, idempotency_key: eventKey },
+        });
+      if (priorEvent) {
+        const existing = await manager.getRepository(DossierAction).findOne({
+          where: { id: actionId, tenant_id: tenantId },
+          relations: ['definition'],
+        });
+        if (existing) return existing;
+      }
+
+      const repository = manager.getRepository(DossierAction);
+      const action = await repository
+        .createQueryBuilder('action')
+        .leftJoinAndSelect('action.definition', 'definition')
+        .setLock('pessimistic_write')
+        .where('action.id = :actionId AND action.tenant_id = :tenantId', {
+          actionId,
+          tenantId,
+        })
+        .getOne();
+      if (!action) throw new NotFoundException('Action introuvable');
+      await this.assertConfidentialDossierAccess(
+        manager,
+        action.dossier_id,
+        actorUserId,
+      );
+      if (action.lock_version !== dto.expected_version) {
+        throw new ConflictException(
+          'Cette action a été modifiée. Rechargez le dossier.',
+        );
+      }
+      if (
+        ![
+          DossierActionStatus.TODO,
+          DossierActionStatus.IN_PROGRESS,
+          DossierActionStatus.ON_HOLD,
+        ].includes(action.status)
+      ) {
+        throw new ConflictException(
+          'Les informations d’une action terminée ou annulée ne peuvent plus être modifiées',
+        );
+      }
+
+      await this.validateLinkedIds(
+        manager,
+        action.dossier_id,
+        dto,
+        actorUserId,
+      );
+      const nextSpecificData = {
+        ...(action.specific_data ?? {}),
+        ...(dto.specific_data ?? {}),
+      };
+      const schemaWithoutRequiredFields = action.definition
+        .specific_fields_schema
+        ? {
+            ...action.definition.specific_fields_schema,
+            required: [],
+            required_on_start: [],
+          }
+        : null;
+      this.validateSpecificData(schemaWithoutRequiredFields, nextSpecificData);
+
+      action.specific_data = nextSpecificData;
+      const saved = await repository.save(action);
+      await this.replaceActionInputs(manager, saved, dto);
+      await this.eventService.append(manager, {
+        dossierId: saved.dossier_id,
+        eventType: 'DOSSIER_ACTION_DETAILS_UPDATED',
+        aggregateType: 'DossierAction',
+        aggregateId: saved.id,
+        actorUserId,
+        payload: {
+          fields: Object.keys(dto.specific_data ?? {}),
+          documentCount: dto.documents?.length ?? null,
+          audienceCount: dto.audiences?.length ?? null,
+          dependencyCount: dto.previous_actions?.length ?? null,
+        },
+        idempotencyKey: eventKey,
+      });
+      return saved;
+    });
   }
 
   private async transition(
@@ -868,6 +1028,7 @@ export class DossierActionService {
         action.definition.specific_fields_schema,
         dto.specific_data ?? action.specific_data ?? undefined,
       );
+      await this.validateCompletionRequirements(manager, action, dto);
       action.status = DossierActionStatus.COMPLETED;
       action.completed_at = new Date();
       action.result_code = dto.result_code;

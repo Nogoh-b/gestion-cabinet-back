@@ -278,6 +278,34 @@ export class CreateDossierActionDto {
   start_immediately?: boolean;
 }
 
+export class UpdateDossierActionDetailsDto {
+  @IsInt()
+  @Min(1)
+  expected_version: number;
+
+  @IsOptional()
+  @IsObject()
+  specific_data?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ActionResourceLinkDto)
+  documents?: ActionResourceLinkDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ActionResourceLinkDto)
+  audiences?: ActionResourceLinkDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ActionDependencyDto)
+  previous_actions?: ActionDependencyDto[];
+}
+
 export class CreateRecommendationRuleDto {
   @IsString()
   @MaxLength(100)
