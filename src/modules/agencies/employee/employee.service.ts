@@ -14,7 +14,7 @@ import { User } from 'src/modules/iam/user/entities/user.entity';
 import { UsersService } from 'src/modules/iam/user/user.service';
 
 import { Repository } from 'typeorm';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 
@@ -107,16 +107,13 @@ async createEmployee(
 
   const defaultRole = this.getUserRoleFromPosition(dto.position);
   const requestedRoleCode = dto.role?.trim() || defaultRole;
-  const accessProfile = await this.userRoleRepository.findOne({
-    where: {
-      tenant_id: tenantId,
-      code: requestedRoleCode,
-      status: 1,
-    },
-  });
+  // Résolution tolérante (tenant exact → rôles globaux tenant 1 → sans filtre).
+  // On ne bloque plus la création si le profil est absent en DB : l'employé
+  // est créé avec `user.role` renseigné, sans ligne d'assignation.
+  const accessProfile = await this.resolveAccessProfile(requestedRoleCode);
   if (!accessProfile) {
-    throw new BadRequestException(
-      `Profil d'accès actif introuvable pour le code ${requestedRoleCode}`,
+    console.warn(
+      `[Employee] Profil d'accès actif introuvable pour le code '${requestedRoleCode}' — création sans assignation de rôle.`,
     );
   }
 
@@ -148,13 +145,15 @@ async createEmployee(
 
   const savedUser = await this.userRepo.save(user);
 
-  await this.userRoleAssignmentRepository.save(
-    this.userRoleAssignmentRepository.create({
-      user_id: savedUser.id,
-      role_id: accessProfile.id,
-      status: 1,
-    }),
-  );
+  if (accessProfile) {
+    await this.userRoleAssignmentRepository.save(
+      this.userRoleAssignmentRepository.create({
+        user_id: savedUser.id,
+        role_id: accessProfile.id,
+        status: 1,
+      }),
+    );
+  }
 
   // Création de l'employé avec tous les champs
   const employeeData: Partial<Employee> = {
@@ -228,6 +227,36 @@ async createEmployee(
   return plainToInstance(EmployeeResponseDto, employee);
 }
 
+/**
+ * Résout un profil d'accès (`user_role`) par son code avec repli :
+ *  1. tenant exact courant,
+ *  2. rôles globaux partagés (tenant_id = 1, cf. @SharedAcrossTenants),
+ *  3. sans filtre tenant (dernier recours).
+ * Retourne `null` si aucun profil actif ne correspond — l'appelant ne doit
+ * pas bloquer la création/mise à jour dans ce cas.
+ */
+private async resolveAccessProfile(code: string) {
+  const tenantId = getCurrentTenantId();
+  const tryTenant = async (tid?: number | null) => {
+    const qb = this.userRoleRepository
+      .createQueryBuilder('r')
+      .where('r.code = :code', { code })
+      .andWhere('r.status = 1');
+    if (tid !== undefined && tid !== null) {
+      qb.andWhere('r.tenant_id = :tid', { tid });
+    }
+    return qb.getOne();
+  };
+
+  return (
+    (tenantId !== undefined && tenantId !== null
+      ? await tryTenant(tenantId)
+      : null) ??
+    (tenantId !== 1 ? await tryTenant(1) : null) ??
+    (await tryTenant(undefined))
+  );
+}
+
 // Méthode helper pour déterminer le rôle utilisateur 
 private getUserRoleFromPosition(position: EmployeePosition): UserRole {
   switch (position) {
@@ -299,30 +328,25 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
     const requestedRoleCode =
       dto.role?.trim() || this.getUserRoleFromPosition(newPosition);
     if (requestedRoleCode && requestedRoleCode !== user.role) {
-      const accessProfile = await this.userRoleRepository.findOne({
-        where: {
-          tenant_id: tenantId,
-          code: requestedRoleCode,
-          status: 1,
-        },
-      });
+      const accessProfile = await this.resolveAccessProfile(requestedRoleCode);
+      user.role = requestedRoleCode as UserRole;
       if (!accessProfile) {
-        throw new BadRequestException(
-          `Profil d'accès actif introuvable pour le code ${requestedRoleCode}`,
+        console.warn(
+          `[Employee] Profil d'accès actif introuvable pour le code '${requestedRoleCode}' — rôle mis à jour sans réassignation.`,
+        );
+      } else {
+        await this.userRoleAssignmentRepository.update(
+          { user_id: user.id, status: 1 } as any,
+          { status: 0 } as any,
+        );
+        await this.userRoleAssignmentRepository.save(
+          this.userRoleAssignmentRepository.create({
+            user_id: user.id,
+            role_id: accessProfile.id,
+            status: 1,
+          }),
         );
       }
-      user.role = requestedRoleCode as UserRole;
-      await this.userRoleAssignmentRepository.update(
-        { user_id: user.id, status: 1 } as any,
-        { status: 0 } as any,
-      );
-      await this.userRoleAssignmentRepository.save(
-        this.userRoleAssignmentRepository.create({
-          user_id: user.id,
-          role_id: accessProfile.id,
-          status: 1,
-        }),
-      );
     }
 
     // ── Champs employé ─────────────────────────────────────────────────────

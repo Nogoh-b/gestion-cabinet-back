@@ -384,12 +384,16 @@ export class DossierWriteHandler extends BaseWriteHandler {
 
     const now = new Date();
     const YYYY = now.getFullYear().toString();
+    const YY = YYYY.slice(-2);
     const MM = (now.getMonth() + 1).toString().padStart(2, '0');
+    const DD = now.getDate().toString().padStart(2, '0');
 
     const searchPrefix = template
       .replace('{PREFIX}', prefix)
       .replace('{YYYY}', YYYY)
+      .replace('{YY}', YY)
       .replace('{MM}', MM)
+      .replace('{DD}', DD)
       .replace('{NNNN}', '');
 
     const lastQB = this.dossierRepo
@@ -411,7 +415,9 @@ export class DossierWriteHandler extends BaseWriteHandler {
       template
         .replace('{PREFIX}', prefix)
         .replace('{YYYY}', YYYY)
+        .replace('{YY}', YY)
         .replace('{MM}', MM)
+        .replace('{DD}', DD)
         .replace('{NNNN}', seq.toString().padStart(padding, '0'));
 
     let dossierNumber = build(nextSeq);

@@ -79,8 +79,19 @@ const PAIEMENT_VARIABLES = [
   'paiement.statut',
 ];
 
+const ACTION_VARIABLES = [
+  'action.titre',
+  'action.statut',
+  'action.priorite',
+  'action.echeance',
+  'action.responsable',
+  'action.nb_reports',
+  'action.dernier_motif_report',
+];
+
 const DILIGENCE_VARIABLES = [
   ...DOSSIER_VARIABLES,
+  ...ACTION_VARIABLES,
   'diligence.titre',
   'diligence.description',
   'diligence.type',
@@ -486,6 +497,11 @@ function rowsFor(kind: NotificationTemplateKind): string[] {
       row('Date debut', 'diligence.date_debut'),
       row('Date limite', 'diligence.date_limite'),
       row('Avocat assigne', 'diligence.avocat'),
+      row('Action liee', 'action.titre'),
+      row('Statut action', 'action.statut'),
+      row('Echeance action', 'action.echeance'),
+      row("Reports d'echeance", 'action.nb_reports'),
+      row('Motif dernier report', 'action.dernier_motif_report'),
       ...commonRows,
     ];
   }

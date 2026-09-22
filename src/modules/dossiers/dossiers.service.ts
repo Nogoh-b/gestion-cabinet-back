@@ -243,11 +243,21 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
     }
 
 
-    // Génération du numéro de dossier
-    const dossierNumber = await this.generateDossierNumber();
-    if(!createDossierDto.dossier_number){
-      createDossierDto.dossier_number = dossierNumber
-    } 
+    // Le code saisi est prioritaire. Un code automatique n'est généré que
+    // lorsque le champ est vide ou ne contient que des espaces.
+    const providedDossierNumber = createDossierDto.dossier_number?.trim();
+    const dossierNumber = providedDossierNumber || await this.generateDossierNumber();
+
+    if (providedDossierNumber) {
+      const duplicateQB = this.dossierRepository
+        .createQueryBuilder('dossier')
+        .withDeleted()
+        .where('dossier.dossier_number = :dossierNumber', { dossierNumber });
+      addTenantCondition(duplicateQB, 'dossier');
+      if (await duplicateQB.getOne()) {
+        throw new ConflictException(`Le code dossier « ${dossierNumber} » est déjà utilisé`);
+      }
+    }
 
     // let procedureInstanceDTO = new CreateProcedureInstanceDto();
     // procedureInstanceDTO.templateId = procedureSubtype.procedure_template?.id || procedureType.procedure_template?.id;
@@ -715,17 +725,22 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
 
     const now  = new Date();
     const YYYY = now.getFullYear().toString();
+    const YY   = YYYY.slice(-2);
     const MM   = (now.getMonth() + 1).toString().padStart(2, '0');
+    const DD   = now.getDate().toString().padStart(2, '0');
 
     // Partie fixe avant le compteur (jeton {NNNN})
     const searchPrefix = template
       .replace('{PREFIX}', prefix)
       .replace('{YYYY}',   YYYY)
+      .replace('{YY}',     YY)
       .replace('{MM}',     MM)
+      .replace('{DD}',     DD)
       .replace('{NNNN}',   '');
 
     const lastQB = this.dossierRepository
       .createQueryBuilder('d')
+      .withDeleted()
       .where('d.dossier_number LIKE :pfx', { pfx: `${searchPrefix}%` })
       .orderBy('d.dossier_number', 'DESC');
     addTenantCondition(lastQB, 'd');
@@ -742,7 +757,9 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       template
         .replace('{PREFIX}', prefix)
         .replace('{YYYY}',   YYYY)
+        .replace('{YY}',     YY)
         .replace('{MM}',     MM)
+        .replace('{DD}',     DD)
         .replace('{NNNN}',   seq.toString().padStart(padding, '0'));
 
     let dossierNumber = buildNumber(nextSeq);
@@ -750,9 +767,12 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     // Filet anti-collision
     let safety = 0;
     while (safety++ < 100) {
-      const existing = await this.dossierRepository.findOne({
-        where: { dossier_number: dossierNumber },
-      });
+      const existingQB = this.dossierRepository
+        .createQueryBuilder('d')
+        .withDeleted()
+        .where('d.dossier_number = :dossierNumber', { dossierNumber });
+      addTenantCondition(existingQB, 'd');
+      const existing = await existingQB.getOne();
       if (!existing) break;
       nextSeq++;
       dossierNumber = buildNumber(nextSeq);

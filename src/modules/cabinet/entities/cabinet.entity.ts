@@ -230,6 +230,7 @@ export class Cabinet {
    *  "{PREFIX}{YYYY}-{NNNN}"   → DOS-2026-0001  (défaut)
    *  "{YYYY}/{NNNN}"           → 2026/0001
    *  "{NNNN}/{YYYY}"           → 0001/2026
+   *  "{YY}{MM}{DD}-{NNNN}"     → 260922-0001
    */
   @Column({
     type: 'varchar',

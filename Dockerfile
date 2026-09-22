@@ -42,4 +42,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 
 EXPOSE 3004
 # Les secrets sont fournis via les variables d'environnement (jamais dans l'image).
-CMD ["node", "dist/src/main.js"]
+# Les migrations tournent AVANT le serveur : en cas d'echec, le conteneur
+# s'arrete au lieu de demarrer sur un schema obsolete.
+CMD ["sh", "-c", "node dist/src/run-migrations.js && node dist/src/main.js"]
