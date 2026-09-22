@@ -60,6 +60,7 @@ export class DashboardService {
       }),
       topPerformers: this.buildTopPerformers(employes),
       financial: this.buildFinancial(factures),
+      actions: this.buildActions({ diligences, audiences }),
     };
   }
 
@@ -83,6 +84,45 @@ export class DashboardService {
       documentsEnAttente: data.documents?.pendingValidation || 0,
       audiencesAJour: data.audiences?.upcomingAudiences?.length || 0,
     };
+  }
+
+  private buildActions(data: any): DashboardOverviewDto['actions'] {
+    const diligencesEnRetard = (data.diligences?.expiredDeadlines || []).slice(0, 8).map((d: any) => ({
+      id: d.id,
+      title: d.title,
+      dossierNumber: d.dossierNumber,
+      clientName: d.clientName,
+      lawyerName: d.lawyerName,
+      deadline: d.deadline,
+      daysOverdue: d.daysOverdue ?? 0,
+      priority: d.priority,
+      dossierId: d.dossierId ?? null,
+      sourceActionId: d.sourceActionId ?? null,
+    }));
+
+    const echeancesProches = (data.diligences?.upcomingDeadlines || []).slice(0, 8).map((d: any) => ({
+      id: d.id,
+      title: d.title,
+      dossierNumber: d.dossierNumber,
+      clientName: d.clientName,
+      lawyerName: d.lawyerName,
+      deadline: d.deadline,
+      daysRemaining: d.daysRemaining ?? 0,
+      priority: d.priority,
+      dossierId: d.dossierId ?? null,
+      sourceActionId: d.sourceActionId ?? null,
+    }));
+
+    const prochainesAudiences = (data.audiences?.upcomingAudiences || []).slice(0, 5).map((a: any) => ({
+      id: a.id,
+      date: a.date,
+      jurisdiction: a.jurisdiction,
+      dossierNumber: a.dossierNumber,
+      clientName: a.clientName,
+      status: a.status,
+    }));
+
+    return { diligencesEnRetard, echeancesProches, prochainesAudiences };
   }
 
   private buildByStatus(data: any): DashboardOverviewDto['byStatus'] {

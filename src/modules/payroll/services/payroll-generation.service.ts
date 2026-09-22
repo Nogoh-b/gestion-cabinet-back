@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { Payslip, PayslipStatus } from '../entities/payslip.entity';
@@ -6,7 +6,7 @@ import { PayslipLine, PayslipLineType } from '../entities/payslip-line.entity';
 import { PayrollPeriod } from '../entities/payroll-period.entity';
 import { PayrollContribution } from '../entities/payroll-contribution.entity';
 import { SalaryAdvance, SalaryAdvanceStatus } from '../entities/salary-advance.entity';
-import { Employee } from '../../agencies/employee/entities/employee.entity';
+import { Employee, EmployeeStatus } from '../../agencies/employee/entities/employee.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
 import { PayrollCalculatorService } from './payroll-calculator.service';
 
@@ -50,11 +50,12 @@ export class PayrollGenerationService {
     const period = await this.periodRepo.findOne({ where: { id: periodId } });
     if (!period) throw new NotFoundException('Période de paie non trouvée');
     if (period.status !== 'draft') {
-      throw new NotFoundException('La génération n\'est possible que sur une période en brouillon.');
+      throw new BadRequestException('La génération n\'est possible que sur une période en brouillon.');
     }
 
     const employees = await this.employeeRepo.find();
     const contributions = await this.contributionRepo.find({ where: { is_active: true } });
+    const effectiveBranchId = branchId ?? (period.branch_id ? Number(period.branch_id) : undefined);
 
     const result: GenerationResult = {
       period_id: periodId,
@@ -66,8 +67,8 @@ export class PayrollGenerationService {
     };
 
     for (const emp of employees) {
-      if (!emp.is_active) continue;
-      if (branchId && Number(emp.branch_id) !== Number(branchId)) continue;
+      if (Number(emp.status) !== EmployeeStatus.ACTIVE) continue;
+      if (effectiveBranchId && Number(emp.branch_id) !== effectiveBranchId) continue;
       result.eligible_employees++;
 
       const salary = Number(emp.salary);

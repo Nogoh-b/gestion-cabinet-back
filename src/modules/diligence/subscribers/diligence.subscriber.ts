@@ -2,10 +2,12 @@ import { NotificationDispatcher } from 'src/core/notifications/notification-disp
 import { NotifiableEvent } from 'src/core/notifications/notification-events.enum';
 import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { DataSource, InsertEvent, UpdateEvent } from 'typeorm';
+import { DataSource, EntityManager, InsertEvent, UpdateEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
 import { Diligence, DiligenceStatus } from '../entities/diligence.entity';
+import { DossierAction } from '../../case-workflow/entities/dossier-action.entity';
+import { CaseWorkflowEvent } from '../../case-workflow/entities/workflow-audit.entity';
 
 /**
  * Subscriber métier pour les diligences.
@@ -70,6 +72,7 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
         dossier,
         resourceType: 'diligence',
         resource: diligence as any,
+        action: await this.loadSourceActionContext(event.manager, diligence),
       }),
     });
   }
@@ -114,8 +117,50 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
         dossier,
         resourceType: 'diligence',
         resource: diligence as any,
+        action: await this.loadSourceActionContext(event.manager, diligence),
       }),
     });
+  }
+
+  /**
+   * Charge l'action de dossier a l'origine de la diligence (si liee) avec
+   * son historique de reports d'echeance, pour alimenter le namespace
+   * action.* des templates d'e-mail. Ne doit jamais faire echouer la
+   * notification : toute erreur retourne undefined.
+   */
+  private async loadSourceActionContext(
+    manager: EntityManager,
+    diligence: Diligence,
+  ): Promise<Record<string, any> | undefined> {
+    try {
+      if (!diligence.source_action_id) return undefined;
+      const tenantId = (diligence as any).tenant_id;
+      const action = await manager.getRepository(DossierAction).findOne({
+        where: { id: diligence.source_action_id, tenant_id: tenantId },
+      });
+      if (!action) return undefined;
+      const events = await manager.getRepository(CaseWorkflowEvent).find({
+        where: {
+          tenant_id: tenantId,
+          aggregate_type: 'DossierAction',
+          aggregate_id: diligence.source_action_id,
+          event_type: 'DOSSIER_ACTION_DEADLINE_EXTENDED',
+        },
+        order: { created_at: 'ASC' },
+      });
+      const history = events.map((e) => ({
+        date: (e as any).created_at,
+        previousDueAt: (e.payload as any)?.previousDueAt ?? null,
+        dueAt: (e.payload as any)?.dueAt ?? null,
+        reason: (e.payload as any)?.reason ?? null,
+      }));
+      return {
+        ...(action as any),
+        deadlineExtensions: { count: history.length, history },
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   private load(

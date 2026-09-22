@@ -62,4 +62,40 @@ export class DashboardOverviewDto {
     tauxRecouvrement: number;
     facturesEnRetard: number;
   };
+
+  // Plan d'action de l'avocat - diligences à traiter, échéances, audiences
+  actions: {
+    diligencesEnRetard: Array<{
+      id: number;
+      title: string;
+      dossierNumber?: string;
+      dossierId?: number | null;
+      sourceActionId?: string | null;
+      clientName?: string;
+      lawyerName?: string;
+      deadline: Date;
+      daysOverdue: number;
+      priority?: string;
+    }>;
+    echeancesProches: Array<{
+      id: number;
+      title: string;
+      dossierNumber?: string;
+      dossierId?: number | null;
+      sourceActionId?: string | null;
+      clientName?: string;
+      lawyerName?: string;
+      deadline: Date;
+      daysRemaining: number;
+      priority?: string;
+    }>;
+    prochainesAudiences: Array<{
+      id: number;
+      date: Date;
+      jurisdiction?: string;
+      dossierNumber?: string;
+      clientName?: string;
+      status?: string;
+    }>;
+  };
 }

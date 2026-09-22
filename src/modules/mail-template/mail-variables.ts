@@ -44,6 +44,21 @@ export const DOSSIER_STATUS_LABELS: Record<number, string> = {
   10: 'Abandonné',
 };
 
+export const DOSSIER_ACTION_STATUS_LABELS: Record<string, string> = {
+  TODO: 'À faire',
+  IN_PROGRESS: 'En cours',
+  ON_HOLD: 'En attente',
+  COMPLETED: 'Terminée',
+  CANCELLED: 'Annulée',
+};
+
+export const DOSSIER_ACTION_PRIORITY_LABELS: Record<string, string> = {
+  LOW: 'Basse',
+  NORMAL: 'Normale',
+  HIGH: 'Haute',
+  CRITICAL: 'Critique',
+};
+
 // ── Catalogue ─────────────────────────────────────────────────────────────────
 
 export const MAIL_VARIABLE_GROUPS: MailVariableGroup[] = [
@@ -140,6 +155,19 @@ export const MAIL_VARIABLE_GROUPS: MailVariableGroup[] = [
     ],
   },
   {
+    namespace: 'action',
+    label: 'Action de dossier',
+    variables: [
+      { key: 'action.titre',                label: 'Titre',                        example: 'Rédiger les conclusions' },
+      { key: 'action.statut',               label: 'Statut',                       example: 'En cours'                },
+      { key: 'action.priorite',             label: 'Priorité',                     example: 'Haute'                   },
+      { key: 'action.echeance',             label: 'Échéance',                     example: '31/01/2024'              },
+      { key: 'action.responsable',          label: 'Responsable',                  example: 'Me Durand'               },
+      { key: 'action.nb_reports',           label: "Nombre de reports d'échéance", example: '2'                       },
+      { key: 'action.dernier_motif_report', label: 'Motif du dernier report',      example: 'Attente pièce adverse'   },
+    ],
+  },
+  {
     namespace: 'document',
     label: 'Document',
     variables: [
@@ -180,6 +208,67 @@ function fmt(value: unknown): string {
   return s;
 }
 
+// ── Action de dossier ─────────────────────────────────────────────────────────
+
+function actionExtensionsOf(a: Record<string, any> | null | undefined): {
+  count: number;
+  history: Array<Record<string, any>>;
+} {
+  const ext = (a as any)?.deadlineExtensions ?? null;
+  if (ext && typeof ext.count === 'number') {
+    return { count: ext.count, history: Array.isArray(ext.history) ? ext.history : [] };
+  }
+  return { count: 0, history: [] };
+}
+
+/**
+ * Totaux reportes d'echeance : historique suppose en ordre croissant
+ * (voir DiligencesService.getDeadlineExtensions).
+ */
+function resolveAction(
+  explicit: Record<string, any> | null | undefined,
+  resourceType: string | null | undefined,
+  raw: Record<string, any>,
+): Record<string, any> | null {
+  if (explicit) return explicit;
+  if (resourceType === 'action') return raw;
+  if (raw?.source_action) {
+    return {
+      ...raw.source_action,
+      deadlineExtensions:
+        raw.deadline_extensions ?? raw.source_action.deadlineExtensions ?? null,
+    };
+  }
+  return null;
+}
+
+function buildActionContext(a: Record<string, any> | null | undefined): Record<string, string> {
+  const empty = {
+    titre: '',
+    statut: '',
+    priorite: '',
+    echeance: '',
+    responsable: '',
+    nb_reports: '',
+    dernier_motif_report: '',
+  };
+  if (!a) return empty;
+  const ext = actionExtensionsOf(a);
+  const lastWithReason = [...ext.history]
+    .reverse()
+    .find((h) => (h as any)?.reason);
+  return {
+    titre: a.title ?? '',
+    statut: DOSSIER_ACTION_STATUS_LABELS[a.status] ?? fmt(a.status),
+    priorite: DOSSIER_ACTION_PRIORITY_LABELS[a.priority] ?? fmt(a.priority),
+    echeance: fmt(a.due_at ?? a.dueAt),
+    responsable:
+      a.responsible?.full_name ?? a.responsible_name ?? a.responsible_full_name ?? '',
+    nb_reports: ext.count > 0 ? String(ext.count) : '',
+    dernier_motif_report: (lastWithReason as any)?.reason ?? '',
+  };
+}
+
 // ── Context builder ───────────────────────────────────────────────────────────
 
 /**
@@ -205,8 +294,10 @@ export function buildEntityMailContext(input: {
   dossier?: Record<string, any> | null;
   resourceType?: string | null;
   resource?: Record<string, any> | null;
+  /** Action de dossier explicite (ex. chargee par le subscriber diligence). */
+  action?: Record<string, any> | null;
 }): Record<string, any> {
-  const { cabinet, dossier, resourceType, resource } = input;
+  const { cabinet, dossier, resourceType, resource, action: explicitAction } = input;
   const raw = resource ?? {};
 
   const d = dossier ?? raw.dossier ?? raw.facture?.dossier ?? null;
@@ -288,6 +379,8 @@ export function buildEntityMailContext(input: {
       date_limite: fmt(raw.deadline),
       avocat:      raw.assigned_lawyer?.full_name ?? '',
     } : { titre: '', description: '', type: '', statut: '', priorite: '', date_debut: '', date_limite: '', avocat: '' },
+    // ── Action de dossier ──────────────────────────────────────────────────────
+    action: buildActionContext(resolveAction(explicitAction, resourceType, raw)),
     // ── Document ─────────────────────────────────────────────────────────────
     document: resourceType === 'document' ? {
       nom:    raw.name ?? raw.original_name ?? '',

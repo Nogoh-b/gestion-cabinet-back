@@ -20,6 +20,8 @@ import { CreateDiligenceDto } from './dto/create-diligence.dto';
 import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 import { Diligence, DiligenceStatus, DiligencePriority } from './entities/diligence.entity';
+import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
+import { CaseWorkflowEvent } from '../case-workflow/entities/workflow-audit.entity';
 
 
 
@@ -162,12 +164,59 @@ export class DiligencesService extends BaseServiceV1<Diligence> {
       throw new NotFoundException(`Diligence avec ID ${id} introuvable`);
     }
 
-    return plainToInstance(DiligenceResponseDto, diligence);
+    const dto = plainToInstance(DiligenceResponseDto, diligence);
+    const sourceAction = await this.findSourceAction(diligence);
+    const deadlineExtensions = await this.getDeadlineExtensions(diligence);
+    return { ...dto, source_action: sourceAction, deadline_extensions: deadlineExtensions };
   }
 
   /**
    * ✏️ Mise à jour d'une diligence
    */
+  private async findSourceAction(diligence: Diligence) {
+    if (!diligence.source_action_id) return null;
+    const action = await this.repository.manager
+      .getRepository(DossierAction)
+      .findOne({
+        where: { id: diligence.source_action_id, tenant_id: diligence.tenant_id },
+      });
+    if (!action) return null;
+    return {
+      id: action.id,
+      dossierId: action.dossier_id,
+      title: action.title,
+      status: action.status,
+      priority: action.priority,
+      dueAt: action.due_at,
+    };
+  }
+
+  private async getDeadlineExtensions(diligence: Diligence) {
+    if (!diligence.source_action_id) return { count: 0, history: [] };
+    const events = await this.repository.manager
+      .getRepository(CaseWorkflowEvent)
+      .find({
+        where: {
+          tenant_id: diligence.tenant_id,
+          aggregate_type: 'DossierAction',
+          aggregate_id: diligence.source_action_id,
+          event_type: In(['DOSSIER_ACTION_DEADLINE_SET', 'DOSSIER_ACTION_DEADLINE_EXTENDED']),
+        },
+        order: { created_at: 'ASC' },
+      });
+    const history = events
+      .filter((event) => event.event_type === 'DOSSIER_ACTION_DEADLINE_EXTENDED')
+      .map((event) => {
+        const payload = (event.payload || {}) as Record<string, any>;
+        return {
+          date: (event as any).created_at,
+          previousDueAt: payload.previousDueAt ?? null,
+          dueAt: payload.dueAt ?? null,
+          reason: payload.reason ?? null,
+        };
+      });
+    return { count: history.length, history };
+  }
   async update(id: number, dto: UpdateDiligenceDto): Promise<Diligence> {
 
     console.log(id ,  ' ', dto)

@@ -129,10 +129,20 @@ export class AppSettingsDto {
   @IsIn(NUMBERING_STRATEGIES as unknown as string[])
   invoice_numbering_strategy?: NumberingStrategy;
 
+  @ApiPropertyOptional({ example: '{PREFIX}{YYYY}-{NNNN}' })
+  @IsOptional()
+  @IsString()
+  invoice_number_format?: string;
+
   @ApiPropertyOptional({ example: 'DOS-' })
   @IsOptional()
   @IsString()
   dossier_prefix?: string;
+
+  @ApiPropertyOptional({ example: '{YY}{MM}{DD}-{NNNN}' })
+  @IsOptional()
+  @IsString()
+  dossier_number_format?: string;
 
   // ── Horaires ──────────────────────────────────────────────────────────────
   @ApiPropertyOptional({ example: '08:00' })

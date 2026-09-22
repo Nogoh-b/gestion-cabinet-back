@@ -20,9 +20,13 @@ import { SwaggerModule } from '@nestjs/swagger';
 
 
 
+
+
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
+
+
 
 
 
@@ -141,7 +145,7 @@ async function bootstrap() {
   if (process.env.NODE_ENV !== 'production') {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api-docs', app, document, {
-      swaggerOptions: {
+      swaggerOptions: { 
         persistAuthorization: true, 
         defaultModelsExpandDepth: -1,
       },

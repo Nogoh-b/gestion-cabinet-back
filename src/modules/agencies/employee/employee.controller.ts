@@ -7,11 +7,12 @@ import { CreateUserDto } from 'src/modules/iam/user/dto/create-user.dto';
 
 
 
-import { Controller, Get, Post, Body, UseGuards, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, UseGuards, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 
 
 import { ResetPasswordRequestDto } from './dto/create-employee.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { SearchEmployeeDto } from './dto/search-dossier.dto';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
 import { EmployeeService } from './employee.service';
@@ -117,6 +118,19 @@ export class EmployeeController {
     return this.employeeService.send_new_password({
       id: dto.id
     });
+  }
+
+  @Patch(':id')
+  @RequirePermissions('edit_user')
+  @ApiOperation({ summary: 'Mettre à jour un employé' })
+  @ApiParam({ name: 'id', description: "ID de l'employé" })
+  @ApiResponse({ status: 200, description: 'Employé mis à jour', type: EmployeeResponseDto })
+  @ApiResponse({ status: 404, description: 'Employé non trouvé' })
+  async updateEmployee(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateEmployeeDto,
+  ): Promise<EmployeeResponseDto> {
+    return this.employeeService.updateEmployee(id, dto);
   }
 
   @Get(':id')

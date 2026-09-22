@@ -167,9 +167,9 @@ export class CreateDossierDto {
   court_name?: string;
 
   @ApiPropertyOptional({
-    description: 'Numéro d\'affaire au tribunal',
-    example: 'RG-2024-12345',
-    maxLength: 100
+    description: 'Code du dossier. Généré automatiquement si non renseigné.',
+    example: 'DOS-2024-0001',
+    maxLength: 50
   })
   @IsOptional()
   @IsString()
