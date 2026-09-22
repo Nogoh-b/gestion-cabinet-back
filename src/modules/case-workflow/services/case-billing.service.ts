@@ -1241,6 +1241,82 @@ export class CaseBillingService {
     };
   }
 
+  async getFilterOptions() {
+    const tenantId = getCurrentTenantId();
+    const rows = await this.itemRepository
+      .createQueryBuilder('item')
+      .innerJoin(
+        Dossier,
+        'dossier',
+        'dossier.id = item.dossier_id AND dossier.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        Customer,
+        'customer',
+        'customer.id = item.client_id AND customer.tenant_id = item.tenant_id',
+      )
+      .where('item.tenant_id = :tenantId', { tenantId })
+      .select('item.dossier_id', 'dossier_id')
+      .addSelect('dossier.dossier_number', 'dossier_number')
+      .addSelect('dossier.object', 'dossier_object')
+      .addSelect('item.client_id', 'client_id')
+      .addSelect('customer.first_name', 'client_first_name')
+      .addSelect('customer.last_name', 'client_last_name')
+      .addSelect('customer.company_name', 'client_company_name')
+      .distinct(true)
+      .getRawMany<{
+        dossier_id: number | string;
+        dossier_number: string | null;
+        dossier_object: string | null;
+        client_id: number | string | null;
+        client_first_name: string | null;
+        client_last_name: string | null;
+        client_company_name: string | null;
+      }>();
+
+    const dossiers = new Map<
+      string,
+      { value: string; label: string; subtitle?: string }
+    >();
+    const clients = new Map<
+      string,
+      { value: string; label: string }
+    >();
+
+    rows.forEach((row) => {
+      const dossierId = String(row.dossier_id);
+      if (!dossiers.has(dossierId)) {
+        dossiers.set(dossierId, {
+          value: dossierId,
+          label: row.dossier_number || `Dossier #${dossierId}`,
+          ...(row.dossier_object ? { subtitle: row.dossier_object } : {}),
+        });
+      }
+
+      if (row.client_id == null) return;
+      const clientId = String(row.client_id);
+      if (clients.has(clientId)) return;
+      const companyName = String(row.client_company_name ?? '').trim();
+      const personalName = [row.client_first_name, row.client_last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      clients.set(clientId, {
+        value: clientId,
+        label: companyName || personalName || `Client #${clientId}`,
+      });
+    });
+
+    return {
+      dossiers: [...dossiers.values()].sort((left, right) =>
+        left.label.localeCompare(right.label, 'fr', { numeric: true }),
+      ),
+      clients: [...clients.values()].sort((left, right) =>
+        left.label.localeCompare(right.label, 'fr'),
+      ),
+    };
+  }
+
   async getItemsSummary() {
     const tenantId = getCurrentTenantId();
     const rows = await this.itemRepository

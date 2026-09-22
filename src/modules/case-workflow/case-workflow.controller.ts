@@ -536,6 +536,12 @@ export class CaseInvoicesController {
 export class BillableItemsController {
   constructor(private readonly billingService: CaseBillingService) {}
 
+  @Get('filter-options')
+  @RequirePermissions('view_billable_items')
+  filterOptions() {
+    return this.billingService.getFilterOptions();
+  }
+
   @Get('search')
   @RequirePermissions('view_billable_items')
   search(

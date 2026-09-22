@@ -27,6 +27,9 @@ describe('case-workflow endpoint permissions', () => {
     expect(permissions(BillableItemsController.prototype, 'review')).toEqual([
       'manage_billable_items',
     ]);
+    expect(
+      permissions(BillableItemsController.prototype, 'filterOptions'),
+    ).toEqual(['view_billable_items']);
     expect(permissions(CaseInvoicesController.prototype, 'generate')).toEqual([
       'generate_invoice_from_items',
     ]);
