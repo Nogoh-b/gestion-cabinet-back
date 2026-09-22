@@ -24,7 +24,7 @@ export enum TransitionType {
   description: 'Transitions entre les étapes d\'un modèle de procédure. Définissent les chemins possibles d\'une étape à une autre, avec conditions et actions.',
   icon: '➡️',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 export class Transition extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')

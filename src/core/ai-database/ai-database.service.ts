@@ -4839,7 +4839,7 @@ RÉPONSE (en langage naturel):`;
       document: ['document_customer', 'dossiers', 'customer'],
       facture: ['factures', 'invoice_lines', 'customer', 'dossiers'],
       invoice: ['factures', 'invoice_lines', 'customer', 'dossiers'],
-      action: ['dossier_actions', 'case_action_definitions', 'dossiers'],
+      action: ['dossier_actions', 'billable_items', 'dossier_billing_rules', 'case_action_definitions', 'dossiers'],
       recommandation: ['dossier_recommendations', 'case_action_definitions', 'dossiers'],
       diligence: ['diligences', 'dossiers', 'employee'],
       employee: ['employee'],
@@ -5120,6 +5120,14 @@ private async getDefaultSchema(): Promise<string> {
       schema += 'N\'affiche jamais id, definition_id, responsible_user_id ou un UUID.\n';
       schema += 'Affiche title ou definition_label pour désigner l\'action.\n';
       schema += 'Pour le responsable, fais un LEFT JOIN avec "user" sur user.id = dossier_actions.responsible_user_id, puis sélectionne CONCAT(user.first_name, \' \', user.last_name) AS responsable.\n';
+      schema += 'Une action COMPLETED n\'est pas automatiquement facturable. Utilise exclusivement billing_decision = \'BILLABLE\' pour la qualifier d\'action à facturer.\n';
+      schema += 'Pour une action prête à mettre sur facture, joins billable_items sur source_type = \'ACTION\' et source_id = dossier_actions.id, puis exige billable_items.status = \'TO_INVOICE\'.\n';
+    }
+
+    if (table === 'billable_items') {
+      schema += '\n### 💰 Interprétation de la facturation\n\n';
+      schema += 'TO_INVOICE = prêt à facturer; NEEDS_REVIEW = tarif ou calcul à contrôler; RESERVED = réservé; INVOICED = déjà facturé; WAIVED = abandonné; ADJUSTED = ajusté.\n';
+      schema += 'Ne présente jamais NEEDS_REVIEW comme déjà prêt à facturer.\n';
     }
     
     return schema;

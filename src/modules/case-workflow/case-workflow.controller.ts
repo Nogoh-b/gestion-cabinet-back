@@ -17,7 +17,10 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { BillableItemStatus } from './case-workflow.enums';
+import {
+  BillableItemStatus,
+  BillableSourceType,
+} from './case-workflow.enums';
 import {
   ActionTransitionDto,
   ApplyWorkflowMigrationDto,
@@ -532,6 +535,33 @@ export class CaseInvoicesController {
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class BillableItemsController {
   constructor(private readonly billingService: CaseBillingService) {}
+
+  @Get('search')
+  @RequirePermissions('view_billable_items')
+  search(
+    @Query()
+    query: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: BillableItemStatus;
+      source_type?: BillableSourceType;
+      dossier_id?: number;
+      client_id?: number;
+      from?: string;
+      to?: string;
+      sort_by?: string;
+      sort_direction?: string;
+    },
+  ) {
+    return this.billingService.searchItems(query);
+  }
+
+  @Get('summary')
+  @RequirePermissions('view_billable_items')
+  summary() {
+    return this.billingService.getItemsSummary();
+  }
 
   @Post(':id/review')
   @RequirePermissions('manage_billable_items')

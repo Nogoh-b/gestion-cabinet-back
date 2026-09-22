@@ -16,6 +16,7 @@ import {
   DiligenceStatus,
 } from 'src/modules/diligence/entities/diligence.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { FactureService } from 'src/modules/facture/facture.service';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import {
@@ -1074,6 +1075,176 @@ export class CaseBillingService {
     if (filters.status)
       query.andWhere('item.status = :status', { status: filters.status });
     return query.getMany();
+  }
+
+  async searchItems(filters: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: BillableItemStatus;
+    source_type?: BillableSourceType;
+    dossier_id?: number;
+    client_id?: number;
+    from?: string;
+    to?: string;
+    sort_by?: string;
+    sort_direction?: string;
+  }) {
+    const tenantId = getCurrentTenantId();
+    const page = Math.max(1, Number(filters.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters.limit) || 10));
+    const query = this.itemRepository
+      .createQueryBuilder('item')
+      .innerJoin(
+        Dossier,
+        'dossier',
+        'dossier.id = item.dossier_id AND dossier.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        Customer,
+        'customer',
+        'customer.id = item.client_id AND customer.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        DossierAction,
+        'action',
+        "item.source_type = 'ACTION' AND action.id = item.source_id AND action.tenant_id = item.tenant_id",
+      )
+      .leftJoin(
+        InvoiceLine,
+        'invoice_line',
+        'invoice_line.id = item.invoice_line_id AND invoice_line.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        Facture,
+        'invoice',
+        'invoice.id = invoice_line.facture_id AND invoice.tenant_id = item.tenant_id',
+      )
+      .where('item.tenant_id = :tenantId', { tenantId })
+      .select('item')
+      .addSelect('dossier.dossier_number', 'dossier_number')
+      .addSelect('dossier.object', 'dossier_object')
+      .addSelect('customer.first_name', 'client_first_name')
+      .addSelect('customer.last_name', 'client_last_name')
+      .addSelect('customer.company_name', 'client_company_name')
+      .addSelect('action.title', 'action_title')
+      .addSelect('invoice.id', 'invoice_id')
+      .addSelect('invoice.numero', 'invoice_number');
+
+    if (filters.search?.trim()) {
+      query.andWhere(
+        `LOWER(CONCAT_WS(' ', item.label, dossier.dossier_number, dossier.object,
+          customer.first_name, customer.last_name, customer.company_name,
+          action.title, invoice.numero)) LIKE :search`,
+        { search: `%${filters.search.trim().toLowerCase()}%` },
+      );
+    }
+    if (filters.status) {
+      query.andWhere('item.status = :status', { status: filters.status });
+    }
+    if (filters.source_type) {
+      query.andWhere('item.source_type = :sourceType', {
+        sourceType: filters.source_type,
+      });
+    }
+    if (Number(filters.dossier_id) > 0) {
+      query.andWhere('item.dossier_id = :dossierId', {
+        dossierId: Number(filters.dossier_id),
+      });
+    }
+    if (Number(filters.client_id) > 0) {
+      query.andWhere('item.client_id = :clientId', {
+        clientId: Number(filters.client_id),
+      });
+    }
+    if (filters.from) {
+      const from = new Date(filters.from);
+      if (Number.isNaN(from.getTime()))
+        throw new BadRequestException('Date de début invalide');
+      query.andWhere('item.occurred_at >= :from', { from });
+    }
+    if (filters.to) {
+      const to = new Date(filters.to);
+      if (Number.isNaN(to.getTime()))
+        throw new BadRequestException('Date de fin invalide');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.to))
+        to.setHours(23, 59, 59, 999);
+      query.andWhere('item.occurred_at <= :to', { to });
+    }
+
+    const sortColumns: Record<string, string> = {
+      occurred_at: 'item.occurred_at',
+      label: 'item.label',
+      gross_amount: 'item.gross_amount',
+      status: 'item.status',
+      source_type: 'item.source_type',
+      dossier_number: 'dossier.dossier_number',
+      client_name: 'customer.last_name',
+      invoice_number: 'invoice.numero',
+    };
+    const sortColumn = sortColumns[filters.sort_by ?? 'occurred_at'] ?? 'item.occurred_at';
+    const sortDirection = filters.sort_direction?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const total = await query.getCount();
+    const { entities, raw } = await query
+      .orderBy(sortColumn, sortDirection)
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getRawAndEntities();
+
+    const data = entities.map((item, index) => {
+      const row = raw[index] as Record<string, unknown>;
+      const companyName = String(row.client_company_name ?? '').trim();
+      const personalName = [row.client_first_name, row.client_last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      return Object.assign(item, {
+        dossier_number: row.dossier_number,
+        dossier_object: row.dossier_object,
+        client_name: companyName || personalName || 'Client non renseigné',
+        action_title: row.action_title ?? null,
+        invoice_id: row.invoice_id ?? null,
+        invoice_number: row.invoice_number ?? null,
+      });
+    });
+    const totalPages = Math.ceil(total / limit);
+    return {
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        total_pages: totalPages,
+        has_previous: page > 1,
+        has_next: page < totalPages,
+      },
+    };
+  }
+
+  async getItemsSummary() {
+    const tenantId = getCurrentTenantId();
+    const rows = await this.itemRepository
+      .createQueryBuilder('item')
+      .select('item.status', 'status')
+      .addSelect('COUNT(item.id)', 'count')
+      .addSelect('COALESCE(SUM(item.gross_amount), 0)', 'amount')
+      .where('item.tenant_id = :tenantId', { tenantId })
+      .groupBy('item.status')
+      .getRawMany<{ status: BillableItemStatus; count: string; amount: string }>();
+    const byStatus = Object.values(BillableItemStatus).reduce(
+      (summary, status) => {
+        summary[status] = { count: 0, amount: 0 };
+        return summary;
+      },
+      {} as Record<BillableItemStatus, { count: number; amount: number }>,
+    );
+    rows.forEach((row) => {
+      byStatus[row.status] = {
+        count: Number(row.count),
+        amount: Number(row.amount),
+      };
+    });
+    return { by_status: byStatus };
   }
 
   async reviewItem(

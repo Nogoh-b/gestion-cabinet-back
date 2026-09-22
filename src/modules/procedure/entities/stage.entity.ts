@@ -25,7 +25,7 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   description: 'Étapes d\'un modèle de procédure. Chaque étape peut contenir des sous-étapes et des transitions vers d\'autres étapes.',
   icon: '📌',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 export class Stage extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')

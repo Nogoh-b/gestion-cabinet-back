@@ -25,7 +25,7 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   description: 'Sous-étapes d\'une étape de procédure. Représentent les actions élémentaires à réaliser pour valider une étape.',
   icon: '🔹',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 export class SubStage extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')

@@ -1,6 +1,11 @@
 // src/modules/auth/auth.service.ts
 import * as bcrypt from 'bcrypt';
-import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { DataSource } from 'typeorm';
+import {
+  TenantContext,
+  getCurrentTenantId,
+  hasActiveTenant,
+} from 'src/core/tenant/tenant.context';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
 
@@ -37,6 +42,7 @@ export class AuthService {
     private authTokenService: AuthTokenService,
     private tenantContext: TenantContext,
     private mailTemplateService: MailTemplateService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -111,6 +117,22 @@ export class AuthService {
 
       // tenant_id de l'employee (source de vérité pour le JWT)
       resolvedTenantId = (employee as any).tenant_id ?? tenantId;
+    } else {
+      // Connexion globale (/auth/login sans cabinet) : aucun tenant résolu,
+      // on cherche le premier employé correspondant à l'e-mail SANS filtre
+      // tenant (runWithoutTenant) et on en déduit le cabinet.
+      // Sans employé, on conserve le tenant par défaut — issueSession() applique
+      // alors le comportement historique (erreur Utilisateur inexistant).
+      try {
+        const employee: any = await this.tenantContext.runWithoutTenant(() =>
+          this.employeeService.findByEmail(username, false),
+        );
+        if (employee) {
+          resolvedTenantId = (employee as any).tenant_id ?? resolvedTenantId;
+        }
+      } catch {
+        // Recherche globale impossible : le flux historique tranche (issueSession).
+      }
     }
 
     const { password, ...result } = user;
@@ -205,11 +227,23 @@ export class AuthService {
     // On évite les doublons : findOne(userId) x2 + findByEmail(employee) x2.
     const role: string | null = data.role ?? null;
 
+    // Tenant de session : on charge l’employé DANS ce contexte (fail-closed),
+    // sauf appel historique sans tenant explicite (contexte ambiant conservé).
+    const sessionTenant: number | undefined =
+      (data as any)._resolvedTenantId ??
+      (hasActiveTenant() ? getCurrentTenantId() : undefined);
+    const inSessionTenant = <T>(fn: () => Promise<T>): Promise<T> =>
+      sessionTenant !== undefined
+        ? this.tenantContext.run(sessionTenant, fn)
+        : fn();
+
     // Paralléliser : employee (pour payload JWT) + permissions (role → codes)
-    const [user, permissionObjects] = await Promise.all([
-      this.employeeService.findByEmail(data.email),
-      this.usersService.getPermissionsByRoleCode(role),
-    ]);
+    const [user, permissionObjects] = await inSessionTenant(() =>
+      Promise.all([
+        this.employeeService.findByEmail(data.email),
+        this.usersService.getPermissionsByRoleCode(role),
+      ]),
+    );
 
     if (!user) {
       throw new UnauthorizedException('Utilisateur inexistant');
@@ -249,7 +283,30 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
       user: userWithRole,
       permissions,
+      tenant_id: tenantId,
+      tenant_code: await this.resolveTenantCode(tenantId),
     };
+  }
+
+  /**
+   * Code public du cabinet (ex: xk7m2p8a) — permet au front de rediriger
+   * vers /t/[code]/dashboard après une connexion globale. null si introuvable :
+   * la connexion reste valide, le front retombe sur le chemin sans tenant.
+   */
+  private async resolveTenantCode(tenantId: number): Promise<string | null> {
+    try {
+      const rows = await this.dataSource.query(
+        'SELECT code FROM cabinets WHERE id = ? LIMIT 1',
+        [tenantId],
+      );
+      const code = rows?.[0]?.code;
+      return typeof code === 'string' && code ? code : null;
+    } catch (err) {
+      this.logger.warn(
+        '[login] Code cabinet introuvable pour tenant_id=' + tenantId + ' : ' + (err as Error)?.message,
+      );
+      return null;
+    }
   }
 
   /**

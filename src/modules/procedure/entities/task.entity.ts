@@ -19,6 +19,7 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   description: 'Tâches associées à une instance de procédure. Actions à réaliser avec échéance et assignation.',
   icon: '✅',
   category: 'procedure',
+  ignored: true,
 })
 export class Task extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
