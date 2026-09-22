@@ -148,28 +148,46 @@ export class DossierActionService {
     manager: EntityManager,
     dossierId: number,
     actorUserId: number,
-  ): Promise<void> {
+  ): Promise<Dossier> {
     const tenantId = getCurrentTenantId();
     const dossier = await manager.getRepository(Dossier).findOne({
       where: { id: dossierId, tenant_id: tenantId },
-      relations: ['lawyer', 'collaborators'],
+      relations: [
+        'lawyer',
+        'lawyer.user',
+        'collaborators',
+        'collaborators.user',
+      ],
     });
     if (!dossier) throw new NotFoundException('Dossier introuvable');
-    if (!dossier.confidentiality_level) return;
+    if (!dossier.confidentiality_level) return dossier;
     const actor = await manager.getRepository(User).findOne({
       where: { id: actorUserId, tenant_id: tenantId },
     });
     const assigned =
       dossier.lawyer_id === actorUserId ||
       dossier.lawyer?.id === actorUserId ||
+      dossier.lawyer?.user?.id === actorUserId ||
       dossier.collaborators?.some(
-        (collaborator) => collaborator.id === actorUserId,
+        (collaborator) =>
+          collaborator.id === actorUserId ||
+          collaborator.user?.id === actorUserId,
       );
     if (actor?.role !== UserRole.ADMIN && !assigned) {
       throw new ForbiddenException(
         'Ce dossier confidentiel est réservé à ses membres affectés',
       );
     }
+    return dossier;
+  }
+
+  private async ensureLegacyWorkflowLocked(
+    manager: EntityManager,
+    dossier: Dossier,
+  ): Promise<void> {
+    if (dossier.legacy_workflow_locked) return;
+    dossier.legacy_workflow_locked = true;
+    await manager.getRepository(Dossier).save(dossier);
   }
 
   private validateSpecificData(
@@ -423,18 +441,37 @@ export class DossierActionService {
         where: { tenant_id: tenantId, action_id: action.id },
       }),
     ]);
+    const distinctLinks = <T extends { id: number | string; role?: string }>(
+      links: T[],
+    ): T[] =>
+      Array.from(
+        new Map(
+          links.map((link) => [`${String(link.id)}:${link.role ?? ''}`, link]),
+        ).values(),
+      );
     const issue = validateRequiredRelations(
       action.definition.required_relations,
       {
-        documents: [
-          ...documentLinks.map((link) => ({ role: link.role })),
+        documents: distinctLinks([
+          ...documentLinks.map((link) => ({
+            id: link.document_id,
+            role: link.role,
+          })),
           ...(dto.documents ?? []),
-        ],
-        audiences: [
-          ...audienceLinks.map((link) => ({ role: link.role })),
+        ]),
+        audiences: distinctLinks([
+          ...audienceLinks.map((link) => ({
+            id: link.audience_id,
+            role: link.role,
+          })),
           ...(dto.audiences ?? []),
-        ],
-        previous_actions: relationLinks.map((link) => ({ role: link.role })),
+        ]),
+        previous_actions: distinctLinks(
+          relationLinks.map((link) => ({
+            id: link.related_action_id,
+            role: link.role,
+          })),
+        ),
       },
     )[0];
     if (issue) throw new BadRequestException(issue);
@@ -735,17 +772,12 @@ export class DossierActionService {
         })
         .getOne();
       if (!action) throw new NotFoundException('Action introuvable');
-      await this.assertConfidentialDossierAccess(
+      const dossier = await this.assertConfidentialDossierAccess(
         manager,
         action.dossier_id,
         actorUserId,
       );
-      await manager
-        .getRepository(Dossier)
-        .update(
-          { id: action.dossier_id, tenant_id: tenantId },
-          { legacy_workflow_locked: true },
-        );
+      await this.ensureLegacyWorkflowLocked(manager, dossier);
       if (action.lock_version !== dto.expected_version)
         throw new ConflictException(
           'Cette action a été modifiée. Rechargez le dossier.',
@@ -868,7 +900,7 @@ export class DossierActionService {
         })
         .getOne();
       if (!action) throw new NotFoundException('Action introuvable');
-      await this.assertConfidentialDossierAccess(
+      const dossier = await this.assertConfidentialDossierAccess(
         manager,
         action.dossier_id,
         actorUserId,
@@ -890,11 +922,6 @@ export class DossierActionService {
         );
       }
 
-      const dossier = await manager.getRepository(Dossier).findOne({
-        where: { id: action.dossier_id, tenant_id: tenantId },
-      });
-      if (!dossier)
-        throw new NotFoundException(`Dossier ${action.dossier_id} introuvable`);
       if (dossier.lifecycle_phase === DossierLifecyclePhase.CLOSED) {
         throw new ConflictException(
           'Le dossier est clôturé. Réouvrez-le avant de modifier une échéance.',
@@ -924,12 +951,7 @@ export class DossierActionService {
       action.reminder_sent_at = null;
       const saved = await repository.save(action);
       await this.syncLinkedDiligence(manager, saved);
-      await manager
-        .getRepository(Dossier)
-        .update(
-          { id: action.dossier_id, tenant_id: tenantId },
-          { legacy_workflow_locked: true },
-        );
+      await this.ensureLegacyWorkflowLocked(manager, dossier);
       await this.eventService.append(manager, {
         dossierId: action.dossier_id,
         eventType: previousDueAt
@@ -973,17 +995,12 @@ export class DossierActionService {
         })
         .getOne();
       if (!action) throw new NotFoundException('Action introuvable');
-      await this.assertConfidentialDossierAccess(
+      const dossier = await this.assertConfidentialDossierAccess(
         manager,
         action.dossier_id,
         actorUserId,
       );
-      await manager
-        .getRepository(Dossier)
-        .update(
-          { id: action.dossier_id, tenant_id: tenantId },
-          { legacy_workflow_locked: true },
-        );
+      await this.ensureLegacyWorkflowLocked(manager, dossier);
       const existingEvent = await manager
         .getRepository(CaseWorkflowEvent)
         .findOne({

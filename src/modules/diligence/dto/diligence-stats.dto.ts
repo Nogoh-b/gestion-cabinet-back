@@ -58,6 +58,8 @@ export class UpcomingDeadlineDto {
   daysRemaining: number;
   priority: string;
   progress: number;
+  dossierId: number;
+  sourceActionId: string | null;
 }
 
 export class ExpiredDeadlineDto {
@@ -69,6 +71,8 @@ export class ExpiredDeadlineDto {
   deadline: Date;
   daysOverdue: number;
   priority: string;
+  dossierId: number;
+  sourceActionId: string | null;
 }
 
 export class CompletionTrendDto {

@@ -723,6 +723,8 @@ export class CaseWorkflowService {
         id: event.id,
         event_type: event.event_type,
         occurred_at: event.occurred_at,
+        aggregate_type: event.aggregate_type,
+        aggregate_id: event.aggregate_id,
         payload: event.payload,
       })),
       ...documents.map((document) => ({

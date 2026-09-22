@@ -20,6 +20,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { Branch } from '../branch/entities/branch.entity';
 import { EmployeeResponseDto } from './dto/response-employee.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { MailTemplateService } from 'src/modules/mail-template/mail-template.service';
@@ -249,6 +250,162 @@ private getUserRoleFromPosition(position: EmployeePosition): UserRole {
       return UserRole.SECRETAIRE;
   }
 }
+
+  async updateEmployee(
+    id: number,
+    dto: UpdateEmployeeDto,
+  ): Promise<EmployeeResponseDto> {
+    // ── Chargement employé + user ──────────────────────────────────────────
+    const employee = await this.employeeRepository.findOne({
+      where: { id },
+      relations: { user: true, branch: true },
+    });
+    if (!employee || !employee.user) {
+      throw new NotFoundException(`Employé ${id} introuvable`);
+    }
+    const user = employee.user;
+    const tenantId = getCurrentTenantId();
+
+    // ── Branche ────────────────────────────────────────────────────────────
+    if (dto.branch_id !== undefined && dto.branch_id !== null) {
+      const branch = await this.branchRepository.findOne({
+        where: { id: Number(dto.branch_id), status: 1 },
+      });
+      if (!branch) {
+        throw new NotFoundException('Branche non trouvée ou inactive');
+      }
+      employee.branch = branch;
+    }
+
+    // ── Email (unicité + sync username) ────────────────────────────────────
+    if (dto.email && dto.email !== user.email) {
+      const existing = await this.userRepo.findOne({
+        where: { email: dto.email },
+      });
+      if (existing && existing.id !== user.id) {
+        throw new ConflictException('Un utilisateur avec cet email existe déjà');
+      }
+      user.email = dto.email;
+      user.username = dto.email;
+    }
+
+    // ── Champs user directs ────────────────────────────────────────────────
+    if (dto.first_name !== undefined) user.first_name = dto.first_name;
+    if (dto.last_name !== undefined) user.last_name = dto.last_name;
+
+    // ── Position / profil d'accès ──────────────────────────────────────────
+    const newPosition = dto.position ?? employee.position;
+    if (dto.position !== undefined) employee.position = dto.position;
+    const requestedRoleCode =
+      dto.role?.trim() || this.getUserRoleFromPosition(newPosition);
+    if (requestedRoleCode && requestedRoleCode !== user.role) {
+      const accessProfile = await this.userRoleRepository.findOne({
+        where: {
+          tenant_id: tenantId,
+          code: requestedRoleCode,
+          status: 1,
+        },
+      });
+      if (!accessProfile) {
+        throw new BadRequestException(
+          `Profil d'accès actif introuvable pour le code ${requestedRoleCode}`,
+        );
+      }
+      user.role = requestedRoleCode as UserRole;
+      await this.userRoleAssignmentRepository.update(
+        { user_id: user.id, status: 1 } as any,
+        { status: 0 } as any,
+      );
+      await this.userRoleAssignmentRepository.save(
+        this.userRoleAssignmentRepository.create({
+          user_id: user.id,
+          role_id: accessProfile.id,
+          status: 1,
+        }),
+      );
+    }
+
+    // ── Champs employé ─────────────────────────────────────────────────────
+    if (dto.hire_date !== undefined && dto.hire_date !== null && dto.hire_date !== '') {
+      employee.hireDate = new Date(dto.hire_date as any);
+    }
+    if ((dto as any).hireDate !== undefined && (dto as any).hireDate !== null && (dto as any).hireDate !== '') {
+      employee.hireDate = new Date((dto as any).hireDate);
+    }
+    if ((dto as any).status !== undefined) {
+      employee.status = this.mapStatusToEnum((dto as any).status);
+    }
+    if (dto.specialization !== undefined) employee.specialization = dto.specialization;
+    if (dto.bar_association_number !== undefined)
+      employee.bar_association_number = dto.bar_association_number;
+    if (dto.bar_association_city !== undefined)
+      employee.bar_association_city = dto.bar_association_city;
+    if (dto.years_of_experience !== undefined)
+      employee.years_of_experience = dto.years_of_experience;
+    if (dto.hourly_rate !== undefined) employee.hourly_rate = dto.hourly_rate;
+    if (dto.salary !== undefined) employee.salary = dto.salary;
+    if (dto.is_available !== undefined) employee.is_available = dto.is_available;
+    if (dto.max_dossiers !== undefined) employee.max_dossiers = dto.max_dossiers;
+    if (dto.bio !== undefined) employee.bio = dto.bio;
+    if (dto.languages !== undefined) employee.languages = dto.languages;
+    if (dto.expertise_areas !== undefined) employee.expertise_areas = dto.expertise_areas;
+    if (dto.birth_date !== undefined && dto.birth_date !== null && dto.birth_date !== '') {
+      employee.birth_date = new Date(dto.birth_date as any);
+    }
+    if (dto.professional_address !== undefined)
+      employee.professional_address = dto.professional_address;
+    // `phone_number` du formulaire n'a pas de colonne user dédiée :
+    // on le répercute sur le téléphone professionnel s'il n'est pas fourni.
+    if (dto.professional_phone !== undefined) {
+      employee.professional_phone = dto.professional_phone;
+    } else if ((dto as any).phone_number) {
+      employee.professional_phone = (dto as any).phone_number;
+    }
+    if (dto.siret_number !== undefined) employee.siret_number = dto.siret_number;
+    if (dto.tva_number !== undefined) employee.tva_number = dto.tva_number;
+
+    await this.userRepo.save(user);
+    await this.employeeRepository.save(employee);
+
+    return plainToInstance(
+      EmployeeResponseDto,
+      await this.employeeRepository.findOne({
+        where: { id },
+        relations: { user: true, branch: true },
+      }),
+    );
+  }
+
+  /** Convertit le statut du formulaire (texte ou numérique) vers l'enum BD. */
+  private mapStatusToEnum(status: string | number): EmployeeStatus {
+    if (typeof status === 'number' || /^-?\d+$/.test(String(status))) {
+      const n = Number(status);
+      if (n === 1) return EmployeeStatus.ACTIVE;
+      if (n === 0) return EmployeeStatus.INACTIVE;
+      if (n === -1) return EmployeeStatus.SUSPENDED;
+      if (n === 2) return EmployeeStatus.VACATION;
+      return EmployeeStatus.ACTIVE;
+    }
+    switch (String(status).toLowerCase()) {
+      case 'active':
+      case 'actif':
+        return EmployeeStatus.ACTIVE;
+      case 'inactive':
+      case 'inactif':
+        return EmployeeStatus.INACTIVE;
+      case 'suspended':
+      case 'suspendu':
+        return EmployeeStatus.SUSPENDED;
+      case 'on_leave':
+      case 'vacation':
+      case 'training':
+      case 'sick_leave':
+      case 'conge':
+        return EmployeeStatus.VACATION;
+      default:
+        return EmployeeStatus.ACTIVE;
+    }
+  }
 
   async findAllEmployees(
     branch_id: number = 0,

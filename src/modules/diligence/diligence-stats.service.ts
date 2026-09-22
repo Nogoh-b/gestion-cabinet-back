@@ -589,6 +589,8 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
         deadline: d.deadline,
         daysRemaining: Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
         priority: d.priority,
+        dossierId: d.dossier?.id ?? d.dossier_id ?? null,
+        sourceActionId: d.source_action_id ?? null,
         progress: this.calculateProgress(d.findings),
       };
     });
@@ -624,6 +626,8 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
         deadline: d.deadline,
         daysOverdue: Math.ceil((now.getTime() - deadline.getTime()) / (1000 * 60 * 60 * 24)),
         priority: d.priority,
+        dossierId: d.dossier?.id ?? d.dossier_id ?? null,
+        sourceActionId: d.source_action_id ?? null,
       };
     });
   }

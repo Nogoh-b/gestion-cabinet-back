@@ -195,6 +195,29 @@ export class DiligenceResponseDto {
     return statusLabels[obj.status] || 'Inconnu';
   })
   status_label: string;
+
+  @ApiProperty({ required: false })
+  @Expose()
+  source_action?: {
+    id: string;
+    dossierId: number;
+    title: string;
+    status: string;
+    priority: string;
+    dueAt: Date | null;
+  } | null;
+
+  @ApiProperty({ required: false })
+  @Expose()
+  deadline_extensions?: {
+    count: number;
+    history: Array<{
+      date: Date;
+      previousDueAt: Date | null;
+      dueAt: Date | null;
+      reason: string | null;
+    }>;
+  };
 }
 
 // DTO pour les listes
