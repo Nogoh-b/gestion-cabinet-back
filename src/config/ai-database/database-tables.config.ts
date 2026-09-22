@@ -78,7 +78,7 @@ export const DOMAIN_ENTITIES: AiDatabaseProjectConfig['domainEntities'] = [
 export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConfig'] = {
   essentialTables: [
     'dossiers', 'customer', 'employee', 'dossier_actions', 'dossier_recommendations',
-    'billable_items', 'dossier_billing_profiles', 'factures', 'invoice_lines',
+    'billable_items', 'dossier_billing_profiles', 'dossier_billing_rules', 'factures', 'invoice_lines',
     'paiements', 'audiences', 'document_customer', 'diligences', 'findings',
     'case_action_definitions', 'dossier_action_document_links',
     'dossier_action_audience_links', 'dossier_action_relations',
@@ -103,10 +103,11 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
     savings_account: 'Comptes epargne clients',
     loan: 'Prets accordes',
     case_action_definitions: 'Définitions versionnées des actions disponibles dans le parcours de traitement.',
-    dossier_actions: 'Actions de traitement planifiées, démarrées ou terminées dans un dossier.',
+    dossier_actions: 'Actions de traitement d’un dossier. Une action terminée n’est à facturer que si billing_decision vaut BILLABLE.',
     dossier_recommendations: 'Prochaines actions recommandées pour un dossier.',
     dossier_billing_profiles: 'Convention et paramètres de facturation propres à un dossier.',
-    billable_items: 'Travaux, honoraires et frais à contrôler ou à facturer.',
+    dossier_billing_rules: 'Règles tarifaires actives applicables au dossier et, éventuellement, à un code d’action précis.',
+    billable_items: 'Source de vérité des travaux à facturer : TO_INVOICE=prêt à facturer, NEEDS_REVIEW=tarif à contrôler, INVOICED=déjà facturé.',
     invoice_lines: 'Lignes de facture issues des éléments facturables.',
   },
   tableSynonyms: {
@@ -160,6 +161,11 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       'mode de facturation',
       'convention d honoraires',
       'tarif du dossier',
+    ],
+    dossier_billing_rules: [
+      'regle tarifaire',
+      'tarif applicable',
+      'tarif de l action',
     ],
     invoice_lines: [
       'ligne de facture',
