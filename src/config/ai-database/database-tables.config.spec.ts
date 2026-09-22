@@ -11,6 +11,7 @@ describe('Configuration des tables IA du cabinet', () => {
         'dossier_actions',
         'dossier_recommendations',
         'dossier_billing_profiles',
+        'dossier_billing_rules',
         'billable_items',
         'invoice_lines',
       ]),
@@ -26,6 +27,10 @@ describe('Configuration des tables IA du cabinet', () => {
       'sub_stages',
       'sub_stage_visits',
       'transitions',
+      'cycles',
+      'tasks',
+      'stage_configs',
+      'decisions',
     ];
 
     expect(config.ignoredTables).toEqual(

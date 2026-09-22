@@ -1,7 +1,9 @@
 /**
- * Connexion globale (/auth/login sans cabinet) :
- * - validateUser() résout le tenant depuis le premier employé correspondant,
- *   SANS filtre tenant actif (recherche globale).
+ * Connexion globale (/auth/login sans cabinet) avec e-mails dupliqués :
+ * - validateUser() teste le mot de passe sur CHAQUE compte partageant
+ *   l'e-mail (id ASC) et retient le premier qui matche — jamais la première
+ *   ligne arbitraire d'un findOne.
+ * - le tenant est déduit de l'employé lié à CE compte (même id), sans filtre.
  * - login() renvoie tenant_id + tenant_code pour rediriger vers /t/[code]/dashboard.
  *
  * Note : les globals jest sont importés explicitement car le tsconfig du
@@ -20,9 +22,20 @@ import {
 
 const PASSWORD = 'Secret123!';
 const HASH = bcrypt.hashSync(PASSWORD, 4);
+const EMAIL = 'avocat@cabinet.test';
+
+const baseUser = (overrides: Record<string, unknown> = {}) => ({
+  id: 11,
+  email: EMAIL,
+  password: HASH,
+  role: 'admin',
+  mfa_enabled: false,
+  ...overrides,
+});
 
 function buildService(
   overrides: {
+    users?: any[];
     user?: any;
     employee?: any;
     employeeError?: Error | null;
@@ -30,18 +43,29 @@ function buildService(
   } = {},
 ) {
   const {
+    users,
     user,
     employee,
     employeeError = null,
     cabinetCode = 'xk7m2p8a',
   } = overrides;
+  const accounts = users ?? (user ? [user] : []);
 
-  const seenTenantDuringEmployeeLookup: Array<number | 'no-context'> = [];
+  const lookups: Array<{ method: string; tenant: number | 'no-context' }> = [];
+  const snap = (method: string) =>
+    lookups.push({
+      method,
+      tenant: hasActiveTenant() ? getCurrentTenantId() : 'no-context',
+    });
+
   const employeeService = {
     findByEmail: jest.fn(async (_email: string, _strict?: boolean) => {
-      seenTenantDuringEmployeeLookup.push(
-        hasActiveTenant() ? getCurrentTenantId() : 'no-context',
-      );
+      snap('findByEmail');
+      if (employeeError) throw employeeError;
+      return employee ?? null;
+    }),
+    findOne: jest.fn(async (_id: number) => {
+      snap('findOne');
       if (employeeError) throw employeeError;
       return employee ?? null;
     }),
@@ -49,9 +73,11 @@ function buildService(
 
   const usersService = {
     findByEmail: jest.fn(async (_email: string) => {
-      if (!user) throw new UnauthorizedException('missing');
-      return user;
+      if (!user && accounts.length === 0)
+        throw new UnauthorizedException('missing');
+      return user ?? accounts[0] ?? null;
     }),
+    findAllByEmail: jest.fn(async (_email: string) => accounts),
     getPermissionsByRoleCode: jest.fn(async (_role: string | null) => [
       { code: 'DOSSIER_READ' },
     ]),
@@ -81,17 +107,9 @@ function buildService(
     employeeService,
     jwtService,
     dataSource,
-    seenTenantDuringEmployeeLookup,
+    lookups,
   };
 }
-
-const baseUser = () => ({
-  id: 11,
-  email: 'avocat@cabinet.test',
-  password: HASH,
-  role: 'admin',
-  mfa_enabled: false,
-});
 
 /** Forme du retour de login() (branche session, hors challenge MFA). */
 interface SessionOut {
@@ -106,126 +124,113 @@ describe('AuthService — connexion globale sans cabinet', () => {
     jest.clearAllMocks();
   });
 
-  it('validateUser sans tenant résout le tenant depuis le premier employé (recherche globale)', async () => {
-    const { service, seenTenantDuringEmployeeLookup } = buildService({
-      user: baseUser(),
-      employee: {
-        id: 11,
-        email: 'avocat@cabinet.test',
-        tenant_id: 7,
-        status: 1,
-      },
+  it('retient le premier compte dont le mot de passe matche (cas des 9 doublons)', async () => {
+    const wrong = baseUser({
+      id: 4,
+      password: bcrypt.hashSync('AutreMdp!', 4),
+    });
+    const good = baseUser({ id: 31, password: HASH });
+    const { service, usersService, employeeService, lookups } = buildService({
+      users: [wrong, good],
+      employee: { id: 31, email: EMAIL, tenant_id: 22, status: 1 },
+      cabinetCode: 'pwcp202s',
     });
 
-    const result = await service.validateUser(
-      'avocat@cabinet.test',
-      PASSWORD,
-      1,
-    );
+    const result = await service.validateUser(EMAIL, PASSWORD, 1);
 
-    expect(result._resolvedTenantId).toBe(7);
-    // La recherche employé a eu lieu SANS contexte tenant (pas de filtre WHERE tenant_id)
-    expect(seenTenantDuringEmployeeLookup).toEqual(['no-context']);
+    expect(result.id).toBe(31);
+    expect(result._resolvedTenantId).toBe(22);
+    // Recherche globale : tous les comptes, puis l'employé lié par id.
+    expect(usersService.findAllByEmail).toHaveBeenCalledWith(EMAIL);
+    expect(usersService.findByEmail).not.toHaveBeenCalled();
+    expect(employeeService.findOne).toHaveBeenCalledWith(31);
+    expect(lookups.filter((l) => l.method === 'findOne')).toEqual([
+      { method: 'findOne', tenant: 'no-context' },
+    ]);
   });
 
-  it('validateUser sans tenant et sans employé conserve le tenant par défaut (comportement inchangé)', async () => {
-    const { service } = buildService({ user: baseUser(), employee: null });
-
-    const result = await service.validateUser(
-      'avocat@cabinet.test',
-      PASSWORD,
-      1,
-    );
-
-    expect(result._resolvedTenantId).toBe(1);
-  });
-
-  it('validateUser rejette un mot de passe invalide (avec ou sans tenant)', async () => {
+  it('rejette quand aucun compte ne matche le mot de passe', async () => {
     const { service } = buildService({
-      user: baseUser(),
-      employee: {
-        id: 11,
-        email: 'avocat@cabinet.test',
-        tenant_id: 7,
-        status: 1,
-      },
+      users: [
+        baseUser({ id: 4, password: bcrypt.hashSync('Mdp-A!', 4) }),
+        baseUser({ id: 13, password: bcrypt.hashSync('Mdp-B!', 4) }),
+      ],
+      employee: null,
     });
 
     await expect(
-      service.validateUser('avocat@cabinet.test', 'MauvaisMdp!', 1),
+      service.validateUser(EMAIL, PASSWORD, 1),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rejette quand aucun compte ne porte cet e-mail', async () => {
+    const { service, usersService } = buildService({ users: [] });
+
+    await expect(
+      service.validateUser(EMAIL, PASSWORD, 1),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(usersService.findAllByEmail).toHaveBeenCalledWith(EMAIL);
+  });
+
+  it('sans employé lié, conserve le tenant par défaut (comportement inchangé)', async () => {
+    const { service } = buildService({
+      users: [baseUser()],
+      employee: null,
+    });
+
+    const result = await service.validateUser(EMAIL, PASSWORD, 1);
+
+    expect(result._resolvedTenantId).toBe(1);
   });
 
   it('validateUser avec tenant bloque le cross-tenant (régression)', async () => {
     const { service } = buildService({
       user: baseUser(),
-      employeeError: new Error(
-        'Employee with email avocat@cabinet.test not found',
-      ),
+      employeeError: new Error(`Employee with email ${EMAIL} not found`),
     });
 
     await expect(
-      service.validateUser('avocat@cabinet.test', PASSWORD, 5),
+      service.validateUser(EMAIL, PASSWORD, 5),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
-  it('login global renvoie tenant_id + tenant_code et charge dans le bon tenant', async () => {
-    const {
-      service,
-      employeeService,
-      dataSource,
-      seenTenantDuringEmployeeLookup,
-    } = buildService({
-      user: baseUser(),
-      employee: {
-        id: 11,
-        email: 'avocat@cabinet.test',
-        tenant_id: 7,
-        status: 1,
-      },
-      cabinetCode: 'xk7m2p8a',
+  it('login global ouvre la session du bon cabinet malgré les doublons', async () => {
+    const { service, employeeService, dataSource, lookups } = buildService({
+      users: [
+        baseUser({ id: 4, password: bcrypt.hashSync('AutreMdp!', 4) }),
+        baseUser({ id: 31, password: HASH }),
+      ],
+      employee: { id: 31, email: EMAIL, tenant_id: 22, status: 1 },
+      cabinetCode: 'pwcp202s',
     });
 
-    const validated = await service.validateUser(
-      'avocat@cabinet.test',
-      PASSWORD,
-      1,
-    );
+    const validated = await service.validateUser(EMAIL, PASSWORD, 1);
     const session = (await service.login(validated)) as unknown as SessionOut;
 
     expect(session.access_token).toBe('signed-jwt');
-    expect(session.tenant_id).toBe(7);
-    expect(session.tenant_code).toBe('xk7m2p8a');
+    expect(session.tenant_id).toBe(22);
+    expect(session.tenant_code).toBe('pwcp202s');
     expect(session.permissions).toEqual(['DOSSIER_READ']);
-    // L'employé de session a été chargé DANS le contexte du tenant résolu
-    expect(seenTenantDuringEmployeeLookup).toContain(7);
-    expect(employeeService.findByEmail).toHaveBeenCalledWith(
-      'avocat@cabinet.test',
-    );
+    // L'employé de session a été chargé DANS le contexte du tenant résolu.
+    expect(lookups.filter((l) => l.method === 'findByEmail')).toContainEqual({
+      method: 'findByEmail',
+      tenant: 22,
+    });
     expect(dataSource.query).toHaveBeenCalled();
   });
 
   it('login global réussit même si le code cabinet est introuvable (tenant_code null)', async () => {
     const { service } = buildService({
-      user: baseUser(),
-      employee: {
-        id: 11,
-        email: 'avocat@cabinet.test',
-        tenant_id: 7,
-        status: 1,
-      },
+      users: [baseUser({ id: 31 })],
+      employee: { id: 31, email: EMAIL, tenant_id: 22, status: 1 },
       cabinetCode: null,
     });
 
-    const validated = await service.validateUser(
-      'avocat@cabinet.test',
-      PASSWORD,
-      1,
-    );
+    const validated = await service.validateUser(EMAIL, PASSWORD, 1);
     const session = (await service.login(validated)) as unknown as SessionOut;
 
     expect(session.access_token).toBe('signed-jwt');
-    expect(session.tenant_id).toBe(7);
+    expect(session.tenant_id).toBe(22);
     expect(session.tenant_code).toBeNull();
   });
 });

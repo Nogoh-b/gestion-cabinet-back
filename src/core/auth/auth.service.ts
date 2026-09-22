@@ -75,29 +75,29 @@ export class AuthService {
   async validateUser(username: string, pass: string, tenantId = 1): Promise<any> {
     this.logger.debug(`[validateUser] email="${username}" tenantId=${tenantId}`);
 
-    // ── 1. Recherche de l'utilisateur (User est global, sans tenant_id) ────
     let user: any;
-    try {
-      user = await this.usersService.findByEmail(username);
-    } catch {
-      throw new UnauthorizedException('Identifiants invalides EMAIL');
-    }
-
-    if (!user || !user.password) {
-      throw new UnauthorizedException('Identifiants invalides EMAIL ou mot de passe');
-    }
-
-    // ── 2. Vérification du mot de passe ────────────────────────────────────
-    const isPasswordValid = await bcrypt.compare(pass, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
-    }
-
-    // ── 3. Vérification d'appartenance au cabinet ───────────────────────────
-    // User n'a pas de tenant_id → on vérifie + récupère le tenant via Employee.
     let resolvedTenantId = tenantId;
 
     if (tenantId && tenantId !== 1) {
+      // ── Connexion tenancée : l'utilisateur est cherché DANS le cabinet
+      // (le patch TenantRepository filtre sur le contexte posé par le middleware).
+      try {
+        user = await this.usersService.findByEmail(username);
+      } catch {
+        throw new UnauthorizedException('Identifiants invalides EMAIL');
+      }
+
+      if (!user || !user.password) {
+        throw new UnauthorizedException('Identifiants invalides EMAIL ou mot de passe');
+      }
+
+      // ── Vérification du mot de passe ───────────────────────────────
+      const isPasswordValid = await bcrypt.compare(pass, user.password);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
+      }
+
+      // ── Vérification d'appartenance au cabinet ───────────────
       let employee: any = null;
       await this.tenantContext.run(tenantId, async () => {
         try {
@@ -118,14 +118,43 @@ export class AuthService {
       // tenant_id de l'employee (source de vérité pour le JWT)
       resolvedTenantId = (employee as any).tenant_id ?? tenantId;
     } else {
-      // Connexion globale (/auth/login sans cabinet) : aucun tenant résolu,
-      // on cherche le premier employé correspondant à l'e-mail SANS filtre
-      // tenant (runWithoutTenant) et on en déduit le cabinet.
-      // Sans employé, on conserve le tenant par défaut — issueSession() applique
-      // alors le comportement historique (erreur Utilisateur inexistant).
+      // ── Connexion globale (/auth/login sans cabinet) ────────────────
+      // L'e-mail n'a pas de contrainte d'unicité : plusieurs comptes peuvent
+      // le partager entre cabinets. On teste le mot de passe sur CHAQUE compte
+      // (id ASC) et on retient le premier qui matche — jamais la première
+      // ligne arbitraire renvoyée par un findOne.
+      let candidates: any[];
+      try {
+        candidates = await this.tenantContext.runWithoutTenant(() =>
+          this.usersService.findAllByEmail(username),
+        );
+      } catch {
+        throw new UnauthorizedException('Identifiants invalides EMAIL');
+      }
+
+      if (!candidates || candidates.length === 0) {
+        throw new UnauthorizedException('Identifiants invalides EMAIL');
+      }
+
+      let matched: any = null;
+      for (const candidate of candidates) {
+        if (candidate?.password && (await bcrypt.compare(pass, candidate.password))) {
+          matched = candidate;
+          break;
+        }
+      }
+
+      if (!matched) {
+        throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
+      }
+      user = matched;
+
+      // Cabinet déduit de l'employé lié à CE compte (même id), recherché
+      // SANS filtre tenant. Sans employé, on conserve le tenant par défaut —
+      // issueSession() applique alors le comportement historique (erreur 'Utilisateur inexistant').
       try {
         const employee: any = await this.tenantContext.runWithoutTenant(() =>
-          this.employeeService.findByEmail(username, false),
+          this.employeeService.findOne(user.id),
         );
         if (employee) {
           resolvedTenantId = (employee as any).tenant_id ?? resolvedTenantId;

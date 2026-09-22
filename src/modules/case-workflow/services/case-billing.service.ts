@@ -1128,6 +1128,7 @@ export class CaseBillingService {
       .addSelect('customer.last_name', 'client_last_name')
       .addSelect('customer.company_name', 'client_company_name')
       .addSelect('action.title', 'action_title')
+      .addSelect('action.status', 'action_status')
       .addSelect('invoice.id', 'invoice_id')
       .addSelect('invoice.numero', 'invoice_number');
 
@@ -1185,11 +1186,25 @@ export class CaseBillingService {
     const sortColumn = sortColumns[filters.sort_by ?? 'occurred_at'] ?? 'item.occurred_at';
     const sortDirection = filters.sort_direction?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
     const total = await query.getCount();
-    const { entities, raw } = await query
+    // Avec des jointures, TypeORM enveloppe getRawAndEntities + skip/take dans
+    // un SELECT DISTINCT dont les alias ne correspondent plus aux colonnes
+    // jointes. Paginer les identifiants Ã©vite cette requÃªte distinctAlias.
+    const idRows = await query
+      .clone()
+      .select('item.id', 'item_id')
+      .addSelect(sortColumn, 'sort_value')
       .orderBy(sortColumn, sortDirection)
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getRawAndEntities();
+      .addOrderBy('item.id', sortDirection)
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany<{ item_id: string }>();
+    const pageIds = idRows.map((row) => row.item_id);
+    const { entities, raw } = pageIds.length
+      ? await query
+          .andWhere('item.id IN (:...pageIds)', { pageIds })
+          .getRawAndEntities()
+      : { entities: [], raw: [] };
+    const pageOrder = new Map(pageIds.map((id, index) => [id, index]));
 
     const data = entities.map((item, index) => {
       const row = raw[index] as Record<string, unknown>;
@@ -1203,10 +1218,15 @@ export class CaseBillingService {
         dossier_object: row.dossier_object,
         client_name: companyName || personalName || 'Client non renseigné',
         action_title: row.action_title ?? null,
+        action_status: row.action_status ?? null,
         invoice_id: row.invoice_id ?? null,
         invoice_number: row.invoice_number ?? null,
       });
-    });
+    }).sort(
+      (left, right) =>
+        (pageOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (pageOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+    );
     const totalPages = Math.ceil(total / limit);
     return {
       data,

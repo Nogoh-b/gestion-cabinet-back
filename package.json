@@ -22,6 +22,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "node -r ts-node/register/transpile-only -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration": "ts-node migration-cli.ts migrate generate",
+    "diag:login": "node scripts/diag-login-password.js",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
     "mig:run": "npx typeorm migration:run",
     "seed:migrate": "ts-node scripts/seed-with-migration.ts",
