@@ -211,34 +211,48 @@ export class DossiersService  extends BaseServiceV1<Dossier>  {
       await this.planQuotaService.checkLimit(tenantId, 'dossiers', currentCount);
     }
 
-    // Validation de la paire type/sous-type (R8)
-    const isValidPair = await this.validateProcedureTypeSubtype(
-      createDossierDto.procedure_type_id,
-      createDossierDto.procedure_subtype_id
-    );
+    // Optional references: lawyer, type and subtype can be completed later.
+    const lawyerId = createDossierDto.lawyer_id ?? null;
+    const procedureTypeId = createDossierDto.procedure_type_id ?? null;
+    const procedureSubtypeId = createDossierDto.procedure_subtype_id ?? null;
 
-    if (!isValidPair) {
-      throw new BadRequestException('Le sous-type ne correspond pas au type de procédure');
+    // Le type et le sous-type sont indépendamment optionnels. La cohérence de
+    // la hiérarchie ne peut être vérifiée que lorsque les deux sont fournis.
+    if (procedureTypeId != null && procedureSubtypeId != null) {
+      const isValidPair = await this.validateProcedureTypeSubtype(
+        procedureTypeId,
+        procedureSubtypeId,
+      );
+
+      if (!isValidPair) {
+        throw new BadRequestException('Le sous-type ne correspond pas au type de procédure');
+      }
     }
 
     // Vérification des entités liées
     const [client, lawyer, procedureType, procedureSubtype] = await Promise.all([
       this.clientRepository.findOne({ where: { id: Number(createDossierDto.client_id) } }),
-      this.userRepository.findOne({ where: { id: createDossierDto.lawyer_id }, relations: ['user'] }),
-      this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_type_id } }),
-      this.procedureTypeRepository.findOne({ where: { id: createDossierDto.procedure_subtype_id }, relations: ['procedure_template'] }),
+      lawyerId != null
+        ? this.userRepository.findOne({ where: { id: lawyerId }, relations: ['user'] })
+        : null,
+      procedureTypeId != null
+        ? this.procedureTypeRepository.findOne({ where: { id: procedureTypeId } })
+        : null,
+      procedureSubtypeId != null
+        ? this.procedureTypeRepository.findOne({ where: { id: procedureSubtypeId }, relations: ['procedure_template'] })
+        : null,
     ]);
 
     if (!client) {
       throw new NotFoundException('Client non trouvé');
     }
-    if (!lawyer) {
+    if (lawyerId != null && !lawyer) {
       throw new NotFoundException('Avocat non trouvé');
     }
-    if (!procedureType) {
+    if (procedureTypeId != null && !procedureType) {
       throw new NotFoundException('Type de procédure non trouvé');
     }
-    if (!procedureSubtype) {
+    if (procedureSubtypeId != null && !procedureSubtype) {
       throw new NotFoundException('Sous-type de procédure non trouvé');
     }
 
@@ -498,13 +512,17 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
     /* =============================
     * Validation type / sous-type
     * ============================= */
-    if (
-      updateDossierDto.procedure_type_id &&
-      updateDossierDto.procedure_subtype_id
-    ) {
+    const nextProcedureTypeId = updateDossierDto.procedure_type_id !== undefined
+      ? updateDossierDto.procedure_type_id
+      : dossier.procedure_type_id;
+    const nextProcedureSubtypeId = updateDossierDto.procedure_subtype_id !== undefined
+      ? updateDossierDto.procedure_subtype_id
+      : dossier.procedure_subtype_id;
+
+    if (nextProcedureTypeId != null && nextProcedureSubtypeId != null) {
       const isValidPair = await this.validateProcedureTypeSubtype(
-        updateDossierDto.procedure_type_id,
-        updateDossierDto.procedure_subtype_id
+        nextProcedureTypeId,
+        nextProcedureSubtypeId,
       );
 
       if (!isValidPair) {
@@ -533,24 +551,34 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
       dossier.lawyer = lawyer;
     }
 
-    if (updateDossierDto.procedure_type_id) {
-      const procedureType = await this.procedureTypeRepository.findOne({
-        where: { id: updateDossierDto.procedure_type_id },
-      });
-      if (!procedureType) {
-        throw new NotFoundException('Type de procédure non trouvé');
+    if (updateDossierDto.procedure_type_id !== undefined) {
+      if (updateDossierDto.procedure_type_id === null) {
+        dossier.procedure_type_id = null;
+        dossier.procedure_type = null;
+      } else {
+        const procedureType = await this.procedureTypeRepository.findOne({
+          where: { id: updateDossierDto.procedure_type_id },
+        });
+        if (!procedureType) {
+          throw new NotFoundException('Type de procédure non trouvé');
+        }
+        dossier.procedure_type = procedureType;
       }
-      dossier.procedure_type = procedureType;
     }
 
-    if (updateDossierDto.procedure_subtype_id) {
-      const procedureSubtype = await this.procedureTypeRepository.findOne({
-        where: { id: updateDossierDto.procedure_subtype_id },
-      });
-      if (!procedureSubtype) {
-        throw new NotFoundException('Sous-type de procédure non trouvé');
+    if (updateDossierDto.procedure_subtype_id !== undefined) {
+      if (updateDossierDto.procedure_subtype_id === null) {
+        dossier.procedure_subtype_id = null;
+        dossier.procedure_subtype = null;
+      } else {
+        const procedureSubtype = await this.procedureTypeRepository.findOne({
+          where: { id: updateDossierDto.procedure_subtype_id },
+        });
+        if (!procedureSubtype) {
+          throw new NotFoundException('Sous-type de procédure non trouvé');
+        }
+        dossier.procedure_subtype = procedureSubtype;
       }
-      dossier.procedure_subtype = procedureSubtype;
     }
 
     /* =============================
@@ -836,22 +864,28 @@ async findOneByInstance(procedureInstanceId: string): Promise<DossierResponseDto
         email: dossier.client.email,
         company_name: dossier.client.company_name
       },
-      lawyer: {
-        id: dossier.lawyer.id,
-        full_name: dossier.lawyer.full_name,
-        email: dossier.lawyer.email,
-        specialization: dossier.lawyer.specialization
-      },
-      procedure_type: {
-        id: dossier.procedure_type.id,
-        name: dossier.procedure_type.name,
-        code: dossier.procedure_type.code
-      },
-      procedure_subtype: {
-        id: dossier.procedure_subtype.id,
-        name: dossier.procedure_subtype.name,
-        code: dossier.procedure_subtype.code
-      }
+      lawyer: dossier.lawyer
+        ? {
+            id: dossier.lawyer.id,
+            full_name: dossier.lawyer.full_name,
+            email: dossier.lawyer.email,
+            specialization: dossier.lawyer.specialization,
+          }
+        : null,
+      procedure_type: dossier.procedure_type
+        ? {
+            id: dossier.procedure_type.id,
+            name: dossier.procedure_type.name,
+            code: dossier.procedure_type.code,
+          }
+        : null,
+      procedure_subtype: dossier.procedure_subtype
+        ? {
+            id: dossier.procedure_subtype.id,
+            name: dossier.procedure_subtype.name,
+            code: dossier.procedure_subtype.code,
+          }
+        : null,
     });
 
     return response;

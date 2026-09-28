@@ -8,7 +8,11 @@ import {
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { InjectRepository } from '@nestjs/typeorm';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { Audience } from 'src/modules/audiences/entities/audience.entity';
+import {
+  Audience,
+  AudienceStatus,
+} from 'src/modules/audiences/entities/audience.entity';
+import { postponeAudienceWithManager } from 'src/modules/audiences/audience-workflow';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
@@ -211,6 +215,160 @@ export class DossierActionService {
       candidate?.driverError?.code === 'ER_DUP_ENTRY' ||
       candidate?.driverError?.errno === 1062
     );
+  }
+
+  private normalizeBusinessCode(value: string | null | undefined): string {
+    return (value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private isHearingReportAction(action: DossierAction): boolean {
+    const code = this.normalizeBusinessCode(action.definition_code);
+    if (
+      [
+        'WRITE_HEARING_REPORT',
+        'RAPPORT_AUDIENCE',
+        'RAPPORT_D_AUDIENCE',
+        'COMPTE_RENDU_AUDIENCE',
+        'COMPTE_RENDU_D_AUDIENCE',
+      ].includes(code)
+    ) {
+      return true;
+    }
+    const label = this.normalizeBusinessCode(action.definition_label);
+    return (
+      label.includes('AUDIENCE') &&
+      (label.includes('RAPPORT') || label.includes('COMPTE_RENDU'))
+    );
+  }
+
+  private isPostponedHearingResult(resultCode: string): boolean {
+    const code = this.normalizeBusinessCode(resultCode);
+    return (
+      code.includes('POSTPON') ||
+      code.includes('REPORTEE') ||
+      code.includes('RENVOI') ||
+      (code.includes('REPORT') && code.includes('AUDIENCE')) ||
+      [
+        'REPORT',
+        'REPORT_AUDIENCE',
+        'REPORT_D_AUDIENCE',
+        'AUDIENCE_REPORT',
+      ].includes(code)
+    );
+  }
+
+  private readCompletionString(
+    data: Record<string, unknown>,
+    keys: string[],
+  ): string | undefined {
+    for (const key of keys) {
+      const value = data[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return undefined;
+  }
+
+  /** Keep the audience resource and the completed hearing-report action in sync. */
+  private async applyAudienceCompletionEffects(
+    manager: EntityManager,
+    action: DossierAction,
+    dto: CompleteDossierActionDto,
+    actorUserId: number,
+  ): Promise<void> {
+    if (!this.isHearingReportAction(action)) return;
+
+    const tenantId = getCurrentTenantId();
+    const existingLinks = await manager
+      .getRepository(DossierActionAudienceLink)
+      .find({ where: { tenant_id: tenantId, action_id: action.id } });
+    const audienceIds = [
+      ...new Set([
+        ...existingLinks.map((link) => link.audience_id),
+        ...(dto.audiences ?? []).map((link) => link.id),
+      ]),
+    ];
+    if (audienceIds.length !== 1) {
+      throw new BadRequestException(
+        audienceIds.length === 0
+          ? `Une audience doit \u00eatre li\u00e9e au rapport d'audience.`
+          : `Le rapport d'audience doit cibler une seule audience.`,
+      );
+    }
+
+    const specificData = dto.specific_data ?? action.specific_data ?? {};
+    const reportContent =
+      this.readCompletionString(specificData, [
+        'report_content',
+        'reportContent',
+        'hearing_report',
+        'hearingReport',
+      ]) ?? dto.result_notes?.trim();
+    if (!reportContent) {
+      throw new BadRequestException(`Le rapport d'audience est obligatoire.`);
+    }
+
+    if (this.isPostponedHearingResult(dto.result_code)) {
+      const reason = this.readCompletionString(specificData, [
+        'postponement_reason',
+        'postpone_reason',
+        'report_reason',
+        'reason',
+      ]);
+      const audienceDate = this.readCompletionString(specificData, [
+        'new_audience_date',
+        'postponed_date',
+        'audience_date',
+      ]);
+      const audienceTime = this.readCompletionString(specificData, [
+        'new_audience_time',
+        'postponed_time',
+        'audience_time',
+      ]);
+      if (!reason) {
+        throw new BadRequestException(`Le motif du report d'audience est obligatoire.`);
+      }
+      if (!audienceDate || !audienceTime) {
+        throw new BadRequestException(
+          `La nouvelle date et la nouvelle heure sont obligatoires pour reporter l'audience.`,
+        );
+      }
+      await postponeAudienceWithManager(manager, audienceIds[0], {
+        audience_date: audienceDate,
+        audience_time: audienceTime,
+        reason,
+        report_content: reportContent,
+        report_author_id: String(actorUserId),
+      });
+      return;
+    }
+
+    const audienceRepository = manager.getRepository(Audience);
+    const audience = await audienceRepository.findOne({
+      where: { id: audienceIds[0], tenant_id: tenantId },
+    });
+    if (!audience) throw new NotFoundException('Audience introuvable');
+    if (audience.status === AudienceStatus.CANCELLED) {
+      throw new BadRequestException(
+        `Le rapport ne peut pas \u00eatre rattach\u00e9 \u00e0 une audience annul\u00e9e.`,
+      );
+    }
+    audience.report_content = reportContent;
+    audience.report_date = new Date();
+    audience.report_author_id = String(actorUserId);
+    const normalizedResult = this.normalizeBusinessCode(dto.result_code);
+    if (
+      normalizedResult.includes('HELD') ||
+      normalizedResult.includes('TENUE')
+    ) {
+      audience.mark_as_held(undefined, 'held');
+    }
+    await audienceRepository.save(audience);
   }
 
   private async validateLinkedIds(
@@ -1027,9 +1185,16 @@ export class DossierActionService {
           'Seule une action en cours peut être terminée',
         );
       const allowedResults = action.definition.allowed_results ?? [];
+      const normalizedResult = this.normalizeBusinessCode(dto.result_code);
+      const allowedByAudienceBinding =
+        this.isHearingReportAction(action) &&
+        (this.isPostponedHearingResult(dto.result_code) ||
+          normalizedResult.includes('HELD') ||
+          normalizedResult.includes('TENUE'));
       if (
         allowedResults.length &&
-        !allowedResults.some((item) => item.code === dto.result_code)
+        !allowedResults.some((item) => item.code === dto.result_code) &&
+        !allowedByAudienceBinding
       ) {
         throw new BadRequestException(
           'Résultat non autorisé pour cette version de la définition',
@@ -1046,6 +1211,12 @@ export class DossierActionService {
         dto.specific_data ?? action.specific_data ?? undefined,
       );
       await this.validateCompletionRequirements(manager, action, dto);
+      await this.applyAudienceCompletionEffects(
+        manager,
+        action,
+        dto,
+        actorUserId,
+      );
       action.status = DossierActionStatus.COMPLETED;
       action.completed_at = new Date();
       action.result_code = dto.result_code;

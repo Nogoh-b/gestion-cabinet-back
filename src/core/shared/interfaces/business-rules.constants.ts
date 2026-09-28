@@ -1,7 +1,7 @@
 export const BUSINESS_RULES = {
   // Règles métier du système
   DOSSIER: {
-    REQUIRED_FIELDS: ['client', 'avocat', 'juridiction', 'procedureType'],
+    REQUIRED_FIELDS: ['client', 'avocat', 'juridiction'],
     MIN_CLIENT_INFO: ['firstName', 'lastName', 'email'],
   },
   

@@ -172,7 +172,12 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       }
 
       // Étape 5 : Calcul des montants
-      const montantHT = Number(cabinet.dossier_opening_fee);
+      // Per-dossier override when defined, otherwise the configured cabinet amount.
+      const dossierOverride = Number(
+        (dossier as any)?.procedure_costs ?? (entity as any)?.procedure_costs,
+      );
+      const montantHT =
+        dossierOverride > 0 ? dossierOverride : Number(cabinet.dossier_opening_fee);
       const tauxTVA = Number(cabinet.dossier_opening_fee_tva ?? 0);
       const montantTVA = Math.round(montantHT * tauxTVA) / 100;
       const montantTTC = montantHT + montantTVA;

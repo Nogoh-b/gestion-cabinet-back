@@ -54,6 +54,7 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
   async resolve(input: string, config?: ResolveConfig): Promise<ResolveResult<any>> {
     const ni = normalize(input);
     const parts = ni.split(' ');
+    const isFullIdentity = parts.length > 1;
     const first = parts[0];
     const rest = parts.slice(1).join(' ');
 
@@ -86,10 +87,16 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
         const scores = [
           { score: similarityScore(input, fullName), label: 'prénom+nom' },
           { score: similarityScore(input, reverseName), label: 'nom+prénom' },
-          { score: similarityScore(input, c.first_name), label: 'prénom' },
-          { score: similarityScore(input, c.last_name), label: 'nom' },
           { score: similarityScore(input, c.company_name), label: 'entreprise' },
           { score: similarityScore(input, c.email), label: 'email' },
+          // Avec une identité complète, une égalité sur le seul prénom ou le
+          // seul nom n'est jamais suffisante pour attribuer un dossier.
+          ...(!isFullIdentity
+            ? [
+                { score: similarityScore(input, c.first_name), label: 'prénom' },
+                { score: similarityScore(input, c.last_name), label: 'nom' },
+              ]
+            : []),
         ];
         const best = scores.reduce((a, b) => (a.score >= b.score ? a : b));
         return {
@@ -111,7 +118,9 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
     if (scored.length === 0) {
       return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
     }
-    const MIN_SCORE = config?.minScore ?? 40;
+    // Le client est le propriétaire juridique du dossier. On conserve la
+    // tolérance aux petites fautes, mais on refuse les rapprochements faibles.
+    const MIN_SCORE = config?.minScore ?? 70;
     const AMBIGUITY_GAP = config?.ambiguityGap ?? 15;
     const valid = scored.filter(m => m.score >= MIN_SCORE);
     if (valid.length === 0) {

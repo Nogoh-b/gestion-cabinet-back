@@ -48,6 +48,7 @@ const DEFINITION_DEFAULTS: Array<{
   billable?: boolean;
   billingMode?: BillingCalculationMode;
   fields?: Record<string, unknown>;
+  relations?: Record<string, unknown>;
   results: Array<{ code: string; label: string }>;
 }> = [
   {
@@ -453,8 +454,40 @@ const ADDITIONAL_DEFINITION_DEFAULTS: typeof DEFINITION_DEFAULTS = [
     dueDays: 1,
     billable: true,
     billingMode: BillingCalculationMode.HOURLY,
-    fields: FAMILY_FIELDS.AUDIENCE,
-    results: STANDARD_RESULTS,
+    fields: {
+      type: 'object',
+      required: ['report_content'],
+      properties: {
+        report_content: {
+          type: 'string',
+          label: `Rapport d'audience`,
+          multiline: true,
+          description: `Ce contenu sera enregistr\u00e9 sur la ressource audience li\u00e9e.`,
+        },
+        postponement_reason: {
+          type: 'string',
+          label: 'Motif du report',
+          multiline: true,
+          description: `Obligatoire lorsque l'issue est "Audience report\u00e9e".`,
+        },
+        new_audience_date: {
+          type: 'string',
+          format: 'date',
+          label: 'Nouvelle date',
+        },
+        new_audience_time: {
+          type: 'string',
+          multiline: false,
+          label: 'Nouvelle heure',
+          description: 'Format HH:MM.',
+        },
+      },
+    },
+    relations: { audiences: { min: 1 } },
+    results: [
+      { code: 'HELD', label: 'Audience tenue' },
+      { code: 'POSTPONED', label: 'Audience report\u00e9e' },
+    ],
   },
   {
     family: 'AUDIENCE',
@@ -1008,7 +1041,7 @@ export class ActionCatalogService {
                 properties: {},
               },
               allowed_results: item.results,
-              required_relations: null,
+              required_relations: item.relations ?? null,
               default_due_days: item.dueDays ?? null,
               default_priority: item.priority ?? ActionPriority.NORMAL,
               is_required: false,
@@ -1025,6 +1058,22 @@ export class ActionCatalogService {
           });
           if (!definition) throw error;
         }
+      }
+      // Upgrade only the untouched v1 hearing-report default. Definitions
+      // revised by a cabinet have another active version and remain unchanged.
+      if (
+        definition &&
+        item.code === 'WRITE_HEARING_REPORT' &&
+        (definition.allowed_results ?? []).map((result) => result.code).join(',') ===
+          STANDARD_RESULTS.map((result) => result.code).join(',')
+      ) {
+        definition.specific_fields_schema = item.fields ?? {
+          type: 'object',
+          properties: {},
+        };
+        definition.allowed_results = item.results;
+        definition.required_relations = item.relations ?? null;
+        definition = await this.definitionRepository.save(definition);
       }
       definitions.set(item.code, definition);
     }
