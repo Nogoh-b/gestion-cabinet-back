@@ -4,7 +4,7 @@ export default registerAs('validation', () => ({
   // Règles de validation métier
   dossier: {
     minClientInfo: ['firstName', 'lastName', 'email'],
-    requiredFields: ['clientId', 'avocatId', 'procedureTypeId', 'juridiction'],
+    requiredFields: ['clientId', 'avocatId', 'juridiction'],
     statusTransitions: {
       allowed: {
         'ouvert': ['amiable', 'contentieux'],

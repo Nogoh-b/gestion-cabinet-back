@@ -1,6 +1,5 @@
 import { Type } from 'class-transformer';
 import {
-  ArrayNotEmpty,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -44,9 +43,11 @@ export class ActionResultDefinitionDto {
 }
 
 export class CreateActionFamilyDto {
+  /** Facultatif : généré à partir du libellé si absent (cf. memory/codes-auto-generation.md). */
+  @IsOptional()
   @IsString()
   @MaxLength(80)
-  code: string;
+  code?: string;
 
   @IsString()
   @MaxLength(160)
@@ -97,9 +98,11 @@ export class CreateActionDefinitionDto {
   @IsUUID()
   family_id: string;
 
+  /** Facultatif : généré à partir du libellé si absent (cf. memory/codes-auto-generation.md). */
+  @IsOptional()
   @IsString()
   @MaxLength(100)
-  code: string;
+  code?: string;
 
   @IsString()
   @MaxLength(200)
@@ -526,9 +529,14 @@ export class UpdateBillingProfileDto {
 
 export class GenerateInvoiceFromItemsDto {
   @IsArray()
-  @ArrayNotEmpty()
   @IsUUID('4', { each: true })
   billable_item_ids: string[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  dossier_id?: number;
 
   @IsOptional()
   @IsDateString()
@@ -537,6 +545,16 @@ export class GenerateInvoiceFromItemsDto {
   @IsOptional()
   @IsDateString()
   due_date?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  internal_notes?: string;
 }
 
 export class ReviewBillableItemDto {

@@ -11,7 +11,7 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   description: 'Modèles de procédure définissant les étapes, transitions et cycles pour différents types de procédures juridiques',
   icon: '📋',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 @Unique(['tenant_id', 'name'])
 export class ProcedureTemplate extends BaseEntity {

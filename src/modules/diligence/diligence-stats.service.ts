@@ -77,7 +77,7 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
         numero: diligence.dossier?.dossier_number,
         objet: diligence.dossier?.object,
         client: diligence.dossier?.client?.full_name,
-        avocat: diligence.dossier?.lawyer?.full_name,
+        avocat: diligence.dossier?.lawyer?.full_name ?? 'Non assigné',
         statut: diligence.dossier?.status,
       },
       avocat: {

@@ -112,11 +112,11 @@ export class Dossier extends BaseEntity {
 
   @Column({ name: 'court_name', length: 255, nullable: true })
   @BusinessColumn({
-    label: 'Nom du tribunal',
-    description: 'Nom officiel du tribunal saisi',
-    example: 'Tribunal judiciaire de Paris',
+    label: "Nature de l'affaire",
+    description: "Nature de l'affaire en texte libre (ex: 'Recouvrement de créance', 'Divorce', 'Licenciement abusif'). Ce n'est PAS le nom du tribunal : la juridiction saisie utilise jurisdiction_id/jurisdiction. Peut aussi être fourni via l'alias \"nature\".",
+    example: 'Recouvrement de créance',
     importance: 'high',
-    group: 'localisation'
+    group: 'contenu'
   })
   court_name: string;
 
@@ -243,7 +243,7 @@ export class Dossier extends BaseEntity {
 
   @Column({ name: 'opening_date', type: 'date', nullable: false })
   @BusinessColumn({
-    label: "Date d'ouverture",
+    label: "Date d\u2019ouverture",
     description: 'Date de création/ouverture officielle du dossier',
     format: 'date',
     importance: 'high',
@@ -299,6 +299,17 @@ export class Dossier extends BaseEntity {
     group: 'financier'
   })
   budget_estimate: number;
+
+  @Column({ name: 'procedure_costs', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @BusinessColumn({
+    label: 'Frais d\u2019ouverture (montant spécifique au dossier)',
+    description: 'Surcharge du montant configuré du cabinet pour la facture d\u2019ouverture. Vide = montant configuré.',
+    unit: '€',
+    format: 'currency',
+    importance: 'high',
+    group: 'financier'
+  })
+  procedure_costs?: number | null;
 
   // @Column({ name: 'actual_costs', type: 'decimal', precision: 10, scale: 2, default: 0 })
   // @BusinessColumn({
@@ -417,7 +428,7 @@ export class Dossier extends BaseEntity {
   })
   client_id: number;
 
-    @Column({ name: 'lawyer_id', type: 'int', nullable: false })
+    @Column({ name: 'lawyer_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Avocat référent',
     description: 'Identifiant de l\'avocat en charge',
@@ -426,23 +437,23 @@ export class Dossier extends BaseEntity {
   })
   lawyer_id: number;
 
-    @Column({ name: 'procedure_type_id', type: 'int', nullable: false })
+    @Column({ name: 'procedure_type_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Type de procédure',
     description: 'Identifiant du type de procédure',
     importance: 'high',
     group: 'procédure'
   })
-  procedure_type_id: number;
+  procedure_type_id: number | null;
 
-  @Column({ name: 'procedure_subtype_id', type: 'int', nullable: false })
+  @Column({ name: 'procedure_subtype_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Sous-type de procédure',
     description: 'Identifiant du sous-type de procédure',
     importance: 'medium',
     group: 'procédure'
   })
-  procedure_subtype_id: number;
+  procedure_subtype_id: number | null;
 
   @Column({ 
     name: 'client_decision', 
@@ -695,21 +706,21 @@ export class Dossier extends BaseEntity {
   @JoinColumn({ name: 'client_id' })
   client: Customer;
 
-  @ManyToOne(() => Employee, { nullable: false })
+  @ManyToOne(() => Employee, { nullable: true })
   @JoinColumn({ name: 'lawyer_id' })
-  lawyer: Employee;
+  lawyer: Employee | null;
 
-  @ManyToOne(() => ProcedureType, { nullable: false })
+  @ManyToOne(() => ProcedureType, { nullable: true })
   @JoinColumn({ name: 'procedure_type_id' })
-  procedure_type: ProcedureType;
+  procedure_type: ProcedureType | null;
 
   @ManyToOne(() => Jurisdiction, { nullable: true })
   @JoinColumn({ name: 'jurisdiction_id' })
   jurisdiction?: Jurisdiction | null;
 
-  @ManyToOne(() => ProcedureType, { nullable: false })
+  @ManyToOne(() => ProcedureType, { nullable: true })
   @JoinColumn({ name: 'procedure_subtype_id' })
-  procedure_subtype: ProcedureType;
+  procedure_subtype: ProcedureType | null;
 
   @OneToMany(() => Diligence, (diligence) => diligence.dossier)
   diligences: Diligence[];
@@ -780,7 +791,7 @@ export class Dossier extends BaseEntity {
   }
 
   get procedure_hierarchy(): string {
-    return `${this.procedure_type.name} > ${this.procedure_subtype.name}`;
+    return `${this.procedure_type?.name || 'Type à définir'} > ${this.procedure_subtype?.name || 'Sous-type à définir'}`;
   }
 
   get full_name(): string {

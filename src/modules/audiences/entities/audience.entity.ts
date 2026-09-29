@@ -61,7 +61,7 @@ export class Audience extends BaseEntity {
   @Column({ name: 'dossier_id', type: 'int', nullable: true })
   dossier_id: string;
 
-  @Column({ name: 'audience_time', length: 10, nullable: false })
+  @Column({ name: 'audience_time', length: 10, nullable: false, default: '09:00' })
   @BusinessColumn({
     label: 'Heure de l\'audience',
     description: 'Horaire de début de l\'audience (format HH:MM)',
@@ -71,7 +71,7 @@ export class Audience extends BaseEntity {
   })
   audience_time: string;
 
-  @Column({ nullable: false, default: 1 })
+  @Column({ nullable: true, default: null })
   @BusinessColumn({
     label: 'Juridiction',
     description: 'Identifiant de la juridiction où se tient l\'audience',
@@ -79,7 +79,7 @@ export class Audience extends BaseEntity {
     group: 'localisation',
     ignored: true
   })
-  jurisdiction_id: number;
+  jurisdiction_id: number | null;
 
   @Column({ name: 'room', length: 50, nullable: true })
   @BusinessColumn({
@@ -179,8 +179,8 @@ export class Audience extends BaseEntity {
   })
   judge_name: string;
 
-  @Column({ nullable: true, default: 1 })
-  audience_type_id: number;
+  @Column({ nullable: true, default: null })
+  audience_type_id: number | null;
 
   @Column({ name: 'outcome', length: 100, nullable: true })
   @BusinessColumn({
@@ -203,7 +203,7 @@ export class Audience extends BaseEntity {
   })
   dossier: Dossier;
 
-  @ManyToOne(() => Jurisdiction, (jurisdiction) => jurisdiction.audiences, { nullable: false })
+  @ManyToOne(() => Jurisdiction, (jurisdiction) => jurisdiction.audiences, { nullable: true })
   @JoinColumn({ name: 'jurisdiction_id' })
   @BusinessColumn({
     label: 'Tribunal',

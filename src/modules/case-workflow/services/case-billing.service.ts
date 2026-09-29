@@ -16,6 +16,7 @@ import {
   DiligenceStatus,
 } from 'src/modules/diligence/entities/diligence.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { FactureService } from 'src/modules/facture/facture.service';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import {
@@ -121,9 +122,14 @@ export class CaseBillingService {
           hourly_rate: null,
           percentage_rate: null,
           percentage_base: null,
-          opening_fee: cabinet?.dossier_opening_fee_enabled
-            ? Number(cabinet.dossier_opening_fee)
-            : null,
+          // Le montant saisi à l'ouverture appartient au dossier et prime
+          // toujours sur le tarif par défaut du cabinet.
+          opening_fee:
+            dossier.procedure_costs != null
+              ? Number(dossier.procedure_costs)
+              : cabinet?.dossier_opening_fee_enabled
+                ? Number(cabinet.dossier_opening_fee)
+                : null,
           is_confirmed: false,
         }),
       );
@@ -350,6 +356,9 @@ export class CaseBillingService {
     });
     const configuredAmount =
       profile?.opening_fee ??
+      (dossier.procedure_costs != null
+        ? Number(dossier.procedure_costs)
+        : null) ??
       (cabinet?.dossier_opening_fee_enabled
         ? Number(cabinet.dossier_opening_fee)
         : null);
@@ -1076,6 +1085,272 @@ export class CaseBillingService {
     return query.getMany();
   }
 
+  async searchItems(filters: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: BillableItemStatus;
+    source_type?: BillableSourceType;
+    dossier_id?: number;
+    client_id?: number;
+    from?: string;
+    to?: string;
+    sort_by?: string;
+    sort_direction?: string;
+  }) {
+    const tenantId = getCurrentTenantId();
+    const page = Math.max(1, Number(filters.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters.limit) || 10));
+    const query = this.itemRepository
+      .createQueryBuilder('item')
+      .innerJoin(
+        Dossier,
+        'dossier',
+        'dossier.id = item.dossier_id AND dossier.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        Customer,
+        'customer',
+        'customer.id = item.client_id AND customer.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        DossierAction,
+        'action',
+        "item.source_type = 'ACTION' AND action.id = item.source_id AND action.tenant_id = item.tenant_id",
+      )
+      .leftJoin(
+        InvoiceLine,
+        'invoice_line',
+        'invoice_line.id = item.invoice_line_id AND invoice_line.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        Facture,
+        'invoice',
+        'invoice.id = invoice_line.facture_id AND invoice.tenant_id = item.tenant_id',
+      )
+      .where('item.tenant_id = :tenantId', { tenantId })
+      .select('item')
+      .addSelect('dossier.dossier_number', 'dossier_number')
+      .addSelect('dossier.object', 'dossier_object')
+      .addSelect('customer.first_name', 'client_first_name')
+      .addSelect('customer.last_name', 'client_last_name')
+      .addSelect('customer.company_name', 'client_company_name')
+      .addSelect('action.title', 'action_title')
+      .addSelect('action.status', 'action_status')
+      .addSelect('invoice.id', 'invoice_id')
+      .addSelect('invoice.numero', 'invoice_number');
+
+    if (filters.search?.trim()) {
+      query.andWhere(
+        `LOWER(CONCAT_WS(' ', item.label, dossier.dossier_number, dossier.object,
+          customer.first_name, customer.last_name, customer.company_name,
+          action.title, invoice.numero)) LIKE :search`,
+        { search: `%${filters.search.trim().toLowerCase()}%` },
+      );
+    }
+    if (filters.status) {
+      query.andWhere('item.status = :status', { status: filters.status });
+    }
+    if (filters.source_type) {
+      query.andWhere('item.source_type = :sourceType', {
+        sourceType: filters.source_type,
+      });
+    }
+    if (Number(filters.dossier_id) > 0) {
+      query.andWhere('item.dossier_id = :dossierId', {
+        dossierId: Number(filters.dossier_id),
+      });
+    }
+    if (Number(filters.client_id) > 0) {
+      query.andWhere('item.client_id = :clientId', {
+        clientId: Number(filters.client_id),
+      });
+    }
+    if (filters.from) {
+      const from = new Date(filters.from);
+      if (Number.isNaN(from.getTime()))
+        throw new BadRequestException('Date de début invalide');
+      query.andWhere('item.occurred_at >= :from', { from });
+    }
+    if (filters.to) {
+      const to = new Date(filters.to);
+      if (Number.isNaN(to.getTime()))
+        throw new BadRequestException('Date de fin invalide');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.to))
+        to.setHours(23, 59, 59, 999);
+      query.andWhere('item.occurred_at <= :to', { to });
+    }
+
+    const sortColumns: Record<string, string> = {
+      occurred_at: 'item.occurred_at',
+      label: 'item.label',
+      gross_amount: 'item.gross_amount',
+      status: 'item.status',
+      source_type: 'item.source_type',
+      dossier_number: 'dossier.dossier_number',
+      client_name: 'customer.last_name',
+      invoice_number: 'invoice.numero',
+    };
+    const sortColumn = sortColumns[filters.sort_by ?? 'occurred_at'] ?? 'item.occurred_at';
+    const sortDirection = filters.sort_direction?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const total = await query.getCount();
+    // Avec des jointures, TypeORM enveloppe getRawAndEntities + skip/take dans
+    // un SELECT DISTINCT dont les alias ne correspondent plus aux colonnes
+    // jointes. Paginer les identifiants Ã©vite cette requÃªte distinctAlias.
+    const idRows = await query
+      .clone()
+      .select('item.id', 'item_id')
+      .addSelect(sortColumn, 'sort_value')
+      .orderBy(sortColumn, sortDirection)
+      .addOrderBy('item.id', sortDirection)
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany<{ item_id: string }>();
+    const pageIds = idRows.map((row) => row.item_id);
+    const { entities, raw } = pageIds.length
+      ? await query
+          .andWhere('item.id IN (:...pageIds)', { pageIds })
+          .getRawAndEntities()
+      : { entities: [], raw: [] };
+    const pageOrder = new Map(pageIds.map((id, index) => [id, index]));
+
+    const data = entities.map((item, index) => {
+      const row = raw[index] as Record<string, unknown>;
+      const companyName = String(row.client_company_name ?? '').trim();
+      const personalName = [row.client_first_name, row.client_last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      return Object.assign(item, {
+        dossier_number: row.dossier_number,
+        dossier_object: row.dossier_object,
+        client_name: companyName || personalName || 'Client non renseigné',
+        action_title: row.action_title ?? null,
+        action_status: row.action_status ?? null,
+        invoice_id: row.invoice_id ?? null,
+        invoice_number: row.invoice_number ?? null,
+      });
+    }).sort(
+      (left, right) =>
+        (pageOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (pageOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+    const totalPages = Math.ceil(total / limit);
+    return {
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        total_pages: totalPages,
+        has_previous: page > 1,
+        has_next: page < totalPages,
+      },
+    };
+  }
+
+  async getFilterOptions() {
+    const tenantId = getCurrentTenantId();
+    const rows = await this.itemRepository
+      .createQueryBuilder('item')
+      .innerJoin(
+        Dossier,
+        'dossier',
+        'dossier.id = item.dossier_id AND dossier.tenant_id = item.tenant_id',
+      )
+      .leftJoin(
+        Customer,
+        'customer',
+        'customer.id = item.client_id AND customer.tenant_id = item.tenant_id',
+      )
+      .where('item.tenant_id = :tenantId', { tenantId })
+      .select('item.dossier_id', 'dossier_id')
+      .addSelect('dossier.dossier_number', 'dossier_number')
+      .addSelect('dossier.object', 'dossier_object')
+      .addSelect('item.client_id', 'client_id')
+      .addSelect('customer.first_name', 'client_first_name')
+      .addSelect('customer.last_name', 'client_last_name')
+      .addSelect('customer.company_name', 'client_company_name')
+      .distinct(true)
+      .getRawMany<{
+        dossier_id: number | string;
+        dossier_number: string | null;
+        dossier_object: string | null;
+        client_id: number | string | null;
+        client_first_name: string | null;
+        client_last_name: string | null;
+        client_company_name: string | null;
+      }>();
+
+    const dossiers = new Map<
+      string,
+      { value: string; label: string; subtitle?: string }
+    >();
+    const clients = new Map<
+      string,
+      { value: string; label: string }
+    >();
+
+    rows.forEach((row) => {
+      const dossierId = String(row.dossier_id);
+      if (!dossiers.has(dossierId)) {
+        dossiers.set(dossierId, {
+          value: dossierId,
+          label: row.dossier_number || `Dossier #${dossierId}`,
+          ...(row.dossier_object ? { subtitle: row.dossier_object } : {}),
+        });
+      }
+
+      if (row.client_id == null) return;
+      const clientId = String(row.client_id);
+      if (clients.has(clientId)) return;
+      const companyName = String(row.client_company_name ?? '').trim();
+      const personalName = [row.client_first_name, row.client_last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      clients.set(clientId, {
+        value: clientId,
+        label: companyName || personalName || `Client #${clientId}`,
+      });
+    });
+
+    return {
+      dossiers: [...dossiers.values()].sort((left, right) =>
+        left.label.localeCompare(right.label, 'fr', { numeric: true }),
+      ),
+      clients: [...clients.values()].sort((left, right) =>
+        left.label.localeCompare(right.label, 'fr'),
+      ),
+    };
+  }
+
+  async getItemsSummary() {
+    const tenantId = getCurrentTenantId();
+    const rows = await this.itemRepository
+      .createQueryBuilder('item')
+      .select('item.status', 'status')
+      .addSelect('COUNT(item.id)', 'count')
+      .addSelect('COALESCE(SUM(item.gross_amount), 0)', 'amount')
+      .where('item.tenant_id = :tenantId', { tenantId })
+      .groupBy('item.status')
+      .getRawMany<{ status: BillableItemStatus; count: string; amount: string }>();
+    const byStatus = Object.values(BillableItemStatus).reduce(
+      (summary, status) => {
+        summary[status] = { count: 0, amount: 0 };
+        return summary;
+      },
+      {} as Record<BillableItemStatus, { count: number; amount: number }>,
+    );
+    rows.forEach((row) => {
+      byStatus[row.status] = {
+        count: Number(row.count),
+        amount: Number(row.amount),
+      };
+    });
+    return { by_status: byStatus };
+  }
+
   async reviewItem(
     itemId: string,
     dto: ReviewBillableItemDto,
@@ -1196,12 +1471,19 @@ export class CaseBillingService {
 
     return this.dataSource.transaction(async (manager) => {
       const itemRepo = manager.getRepository(BillableItem);
-      const items = await itemRepo
-        .createQueryBuilder('item')
-        .setLock('pessimistic_write')
-        .where('item.tenant_id = :tenantId', { tenantId })
-        .andWhere('item.id IN (:...ids)', { ids: dto.billable_item_ids })
-        .getMany();
+      if (!dto.billable_item_ids.length && !dto.dossier_id) {
+        throw new BadRequestException(
+          'Le dossier est obligatoire lorsqu’aucun élément à facturer n’est sélectionné',
+        );
+      }
+      const items = dto.billable_item_ids.length
+        ? await itemRepo
+            .createQueryBuilder('item')
+            .setLock('pessimistic_write')
+            .where('item.tenant_id = :tenantId', { tenantId })
+            .andWhere('item.id IN (:...ids)', { ids: dto.billable_item_ids })
+            .getMany()
+        : [];
       if (items.length !== dto.billable_item_ids.length) {
         throw new NotFoundException(
           'Un ou plusieurs éléments à facturer sont introuvables',
@@ -1228,18 +1510,26 @@ export class CaseBillingService {
           'Un élément est déjà réservé, facturé ou doit être revu',
         );
       }
-      if (new Set(items.map((item) => item.dossier_id)).size !== 1) {
+      if (
+        items.length &&
+        new Set(items.map((item) => item.dossier_id)).size !== 1
+      ) {
         throw new ConflictException(
           'La V1 génère une facture pour un seul dossier',
         );
       }
-      if (new Set(items.map((item) => item.currency)).size !== 1) {
+      if (
+        items.length &&
+        new Set(items.map((item) => item.currency)).size !== 1
+      ) {
         throw new ConflictException(
           'Les éléments sélectionnés doivent utiliser la même devise',
         );
       }
+      const dossierId = items[0]?.dossier_id ?? dto.dossier_id;
+      if (!dossierId) throw new BadRequestException('Dossier obligatoire');
       const dossier = await manager.getRepository(Dossier).findOne({
-        where: { id: items[0].dossier_id, tenant_id: tenantId },
+        where: { id: dossierId, tenant_id: tenantId },
         relations: ['client'],
       });
       if (!dossier) throw new NotFoundException('Dossier introuvable');
@@ -1296,11 +1586,17 @@ export class CaseBillingService {
           tauxTVA: net !== 0 ? this.round((tax / net) * 100) : 0,
           montantTVA: tax,
           montantTTC: this.round(net + tax),
-          description: isCreditNote
-            ? `Avoir lié à la facture d’origine — dossier ${dossier.dossier_number}`
-            : `Prestations du dossier ${dossier.dossier_number}`,
+          description:
+            dto.description?.trim() ||
+            (isCreditNote
+              ? `Avoir lié à la facture d’origine — dossier ${dossier.dossier_number}`
+              : `Prestations du dossier ${dossier.dossier_number}`),
           statut: StatutFacture.BROUILLON,
-          notesInternes: `Générée depuis ${items.length} élément(s) facturable(s)`,
+          notesInternes:
+            dto.internal_notes?.trim() ||
+            (items.length
+              ? `Générée depuis ${items.length} élément(s) facturable(s)`
+              : 'Facture créée sans élément facturable associé'),
         },
         { manager, dossier, client: dossier.client },
       );
@@ -1337,7 +1633,9 @@ export class CaseBillingService {
       await itemRepo.save(items);
       await this.eventService.append(manager, {
         dossierId: dossier.id,
-        eventType: 'INVOICE_CREATED_FROM_BILLABLE_ITEMS',
+        eventType: items.length
+          ? 'INVOICE_CREATED_FROM_BILLABLE_ITEMS'
+          : 'INVOICE_CREATED',
         aggregateType: 'Facture',
         aggregateId: facture.id,
         actorUserId,

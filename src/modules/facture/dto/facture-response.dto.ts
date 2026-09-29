@@ -93,6 +93,14 @@ export class FactureResponseDto {
   @Type(() => CustomerResponseDto)
   client: CustomerResponseDto;
 
+  @ApiProperty({ type: [Object], required: false })
+  @Expose()
+  paiements?: Record<string, unknown>[];
+
+  @ApiProperty({ type: [Object], required: false })
+  @Expose()
+  lines?: Record<string, unknown>[];
+
   // ✅ Champs calculés
   @ApiProperty({ description: 'Jours de retard' })
   @Expose()

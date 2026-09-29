@@ -7,8 +7,13 @@ import {
 } from '@nestjs/common';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { InjectRepository } from '@nestjs/typeorm';
+import { isDuplicateKeyError } from 'src/core/shared/utils/db-error.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { Audience } from 'src/modules/audiences/entities/audience.entity';
+import {
+  Audience,
+  AudienceStatus,
+} from 'src/modules/audiences/entities/audience.entity';
+import { postponeAudienceWithManager } from 'src/modules/audiences/audience-workflow';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
@@ -54,6 +59,13 @@ import {
   validateDynamicPayload,
   validateRequiredRelations,
 } from '../case-workflow.logic';
+import {
+  AUDIENCE_BINDABLE_FIELDS,
+  AudienceBinding,
+  POSTPONE_OWNED_AUDIENCE_FIELDS,
+  buildAudiencePatch,
+  collectAudienceBindings,
+} from '../audience-binding';
 
 @Injectable()
 export class DossierActionService {
@@ -67,6 +79,151 @@ export class DossierActionService {
     private readonly billingService: CaseBillingService,
     private readonly eventService: WorkflowEventService,
   ) {}
+
+  async list(
+    dossierId: number,
+    actorUserId: number,
+    filters: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      familyId?: string;
+      search?: string;
+    } = {},
+  ) {
+    await this.assertConfidentialDossierAccess(
+      this.dataSource.manager,
+      dossierId,
+      actorUserId,
+    );
+    const tenantId = getCurrentTenantId();
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filters.limit ?? 12));
+    const query = this.actionRepository
+      .createQueryBuilder('action')
+      .leftJoinAndSelect('action.definition', 'definition')
+      .leftJoinAndSelect('definition.family', 'family')
+      .where('action.tenant_id = :tenantId', { tenantId })
+      .andWhere('action.dossier_id = :dossierId', { dossierId });
+
+    const statuses = (filters.status ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) =>
+        Object.values(DossierActionStatus).includes(value as DossierActionStatus),
+      );
+    if (statuses.length) query.andWhere('action.status IN (:...statuses)', { statuses });
+    if (filters.familyId?.trim()) {
+      query.andWhere('family.id = :familyId', { familyId: filters.familyId.trim() });
+    }
+    if (filters.search?.trim()) {
+      query.andWhere(
+        '(action.title LIKE :search OR action.definition_label LIKE :search OR action.result_notes LIKE :search)',
+        { search: `%${filters.search.trim()}%` },
+      );
+    }
+
+    const [actions, total] = await query
+      .orderBy('action.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    const actionIds = actions.map((action) => action.id);
+    const [documentLinks, audienceLinks, relationLinks] = actionIds.length
+      ? await Promise.all([
+          this.dataSource.getRepository(DossierActionDocumentLink).find({
+            where: { tenant_id: tenantId, action_id: In(actionIds) },
+          }),
+          this.dataSource.getRepository(DossierActionAudienceLink).find({
+            where: { tenant_id: tenantId, action_id: In(actionIds) },
+          }),
+          this.dataSource.getRepository(DossierActionRelation).find({
+            where: { tenant_id: tenantId, action_id: In(actionIds) },
+          }),
+        ])
+      : [[], [], []];
+
+    return {
+      data: actions.map((action) => ({
+        ...action,
+        document_links: documentLinks.filter((link) => link.action_id === action.id),
+        audience_links: audienceLinks.filter((link) => link.action_id === action.id),
+        relation_links: relationLinks.filter((link) => link.action_id === action.id),
+      })),
+      meta: {
+        page,
+        limit,
+        total,
+        total_pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  async getDeadlineHistory(actionId: string, actorUserId: number) {
+    const tenantId = getCurrentTenantId();
+    const action = await this.actionRepository.findOne({
+      where: { id: actionId, tenant_id: tenantId },
+    });
+    if (!action) throw new NotFoundException('Action introuvable');
+
+    await this.assertConfidentialDossierAccess(
+      this.dataSource.manager,
+      action.dossier_id,
+      actorUserId,
+    );
+
+    const events = await this.dataSource.getRepository(CaseWorkflowEvent).find({
+      where: {
+        tenant_id: tenantId,
+        dossier_id: action.dossier_id,
+        aggregate_type: 'DossierAction',
+        aggregate_id: action.id,
+        event_type: In([
+          'DOSSIER_ACTION_DEADLINE_EXTENDED',
+          'DOSSIER_ACTION_DEADLINE_SET',
+        ]),
+      },
+      order: { occurred_at: 'DESC' },
+    });
+
+    const actorIds = [
+      ...new Set(
+        events
+          .map((event) => event.actor_user_id)
+          .filter((id): id is number => id !== null),
+      ),
+    ];
+    const actors = actorIds.length
+      ? await this.dataSource.getRepository(User).find({
+          where: { tenant_id: tenantId, id: In(actorIds) },
+        })
+      : [];
+    const actorsById = new Map(actors.map((actor) => [actor.id, actor]));
+
+    return events.map((event) => {
+      const actor = event.actor_user_id
+        ? actorsById.get(event.actor_user_id)
+        : undefined;
+      return {
+        id: event.id,
+        event_type: event.event_type,
+        occurred_at: event.occurred_at,
+        aggregate_type: event.aggregate_type,
+        aggregate_id: event.aggregate_id,
+        actor_user_id: event.actor_user_id,
+        payload: event.payload,
+        actor: actor
+          ? {
+              id: actor.id,
+              first_name: actor.first_name,
+              last_name: actor.last_name,
+              full_name: `${actor.first_name} ${actor.last_name}`.trim(),
+            }
+          : null,
+      };
+    });
+  }
 
   private diligencePriority(priority: ActionPriority): DiligencePriority {
     if (priority === ActionPriority.CRITICAL) return DiligencePriority.CRITICAL;
@@ -199,18 +356,256 @@ export class DossierActionService {
     if (issue) throw new BadRequestException(issue.message);
   }
 
-  private isDuplicateKeyError(error: unknown): boolean {
-    const candidate = error as {
-      code?: string;
-      errno?: number;
-      driverError?: { code?: string; errno?: number };
-    };
+  private normalizeBusinessCode(value: string | null | undefined): string {
+    return (value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private isHearingReportAction(action: DossierAction): boolean {
+    const code = this.normalizeBusinessCode(action.definition_code);
+    if (
+      [
+        'WRITE_HEARING_REPORT',
+        'RAPPORT_AUDIENCE',
+        'RAPPORT_D_AUDIENCE',
+        'COMPTE_RENDU_AUDIENCE',
+        'COMPTE_RENDU_D_AUDIENCE',
+      ].includes(code)
+    ) {
+      return true;
+    }
+    const label = this.normalizeBusinessCode(action.definition_label);
     return (
-      candidate?.code === 'ER_DUP_ENTRY' ||
-      candidate?.errno === 1062 ||
-      candidate?.driverError?.code === 'ER_DUP_ENTRY' ||
-      candidate?.driverError?.errno === 1062
+      label.includes('AUDIENCE') &&
+      (label.includes('RAPPORT') || label.includes('COMPTE_RENDU'))
     );
+  }
+
+  private isPostponedHearingResult(resultCode: string): boolean {
+    const code = this.normalizeBusinessCode(resultCode);
+    return (
+      code.includes('POSTPON') ||
+      code.includes('REPORTEE') ||
+      code.includes('RENVOI') ||
+      (code.includes('REPORT') && code.includes('AUDIENCE')) ||
+      [
+        'REPORT',
+        'REPORT_AUDIENCE',
+        'REPORT_D_AUDIENCE',
+        'AUDIENCE_REPORT',
+      ].includes(code)
+    );
+  }
+
+  private readCompletionString(
+    data: Record<string, unknown>,
+    keys: string[],
+  ): string | undefined {
+    for (const key of keys) {
+      const value = data[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return undefined;
+  }
+
+  /** Audiences li\u00e9es \u00e0 l'action, en fusionnant les liens d\u00e9j\u00e0 pos\u00e9s et ceux du DTO. */
+  private async resolveLinkedAudienceIds(
+    manager: EntityManager,
+    action: DossierAction,
+    dto: CompleteDossierActionDto,
+  ): Promise<number[]> {
+    const tenantId = getCurrentTenantId();
+    const existingLinks = await manager
+      .getRepository(DossierActionAudienceLink)
+      .find({ where: { tenant_id: tenantId, action_id: action.id } });
+    return [
+      ...new Set([
+        ...existingLinks.map((link) => link.audience_id),
+        ...(dto.audiences ?? []).map((link) => link.id),
+      ]),
+    ];
+  }
+
+  /**
+   * Applique les liaisons d\u00e9clar\u00e9es sur une audience d\u00e9j\u00e0 charg\u00e9e.
+   *
+   * Seconde v\u00e9rification de la liste blanche au moment de l'\u00e9criture : la cible
+   * vient d'une configuration utilisateur, on ne pose jamais une propri\u00e9t\u00e9
+   * arbitraire sur l'entit\u00e9.
+   */
+  private applyAudienceBindings(
+    audience: Audience,
+    bindings: readonly AudienceBinding[],
+    specificData: Record<string, unknown>,
+  ): void {
+    if (!bindings.length) return;
+    const { patch, issues } = buildAudiencePatch(bindings, specificData);
+    if (issues.length) throw new BadRequestException(issues[0]);
+    for (const [key, value] of Object.entries(patch)) {
+      if (!Object.prototype.hasOwnProperty.call(AUDIENCE_BINDABLE_FIELDS, key))
+        continue;
+      (audience as unknown as Record<string, unknown>)[key] = value;
+    }
+  }
+
+  /**
+   * Synchronise l'audience li\u00e9e avec l'action qui vient d'\u00eatre cl\u00f4tur\u00e9e.
+   *
+   * Deux sources se cumulent :
+   *  - le comportement historique du rapport d'audience, reconnu par son code ou
+   *    son libell\u00e9 (`isHearingReportAction`) et conserv\u00e9 tel quel pour les
+   *    d\u00e9finitions d\u00e9j\u00e0 livr\u00e9es ;
+   *  - les liaisons \u00ab champ d'action \u2192 champ d'audience \u00bb configur\u00e9es dans le
+   *    catalogue, qui recopient n'importe quel champ personnalis\u00e9 vers une
+   *    colonne autoris\u00e9e de l'audience.
+   */
+  private async applyAudienceCompletionEffects(
+    manager: EntityManager,
+    action: DossierAction,
+    dto: CompleteDossierActionDto,
+    actorUserId: number,
+  ): Promise<void> {
+    const bindings = collectAudienceBindings(
+      action.definition?.specific_fields_schema ?? null,
+    );
+    const legacy = this.isHearingReportAction(action);
+    if (!bindings.length && !legacy) return;
+
+    const tenantId = getCurrentTenantId();
+    const audienceIds = await this.resolveLinkedAudienceIds(
+      manager,
+      action,
+      dto,
+    );
+
+    if (legacy) {
+      if (audienceIds.length !== 1) {
+        throw new BadRequestException(
+          audienceIds.length === 0
+            ? `Une audience doit \u00eatre li\u00e9e au rapport d'audience.`
+            : `Le rapport d'audience doit cibler une seule audience.`,
+        );
+      }
+    } else {
+      // Une liaison ne rend pas l'audience obligatoire : c'est le r\u00f4le du
+      // r\u00e9glage \u00ab Audiences \u00bb des relations requises, d\u00e9j\u00e0 contr\u00f4l\u00e9 en amont.
+      if (audienceIds.length === 0) return;
+      if (audienceIds.length > 1) {
+        throw new BadRequestException(
+          `Cette action \u00e9crit dans une audience : une seule audience doit \u00eatre li\u00e9e.`,
+        );
+      }
+    }
+
+    const specificData = dto.specific_data ?? action.specific_data ?? {};
+
+    // Une liaison explicite vers report_content prime sur le reniflage d'alias
+    // historique : c'est ce qui \u00e9vite la double \u00e9criture quand une d\u00e9finition
+    // livr\u00e9e est reconfigur\u00e9e depuis le catalogue.
+    const reportContentBinding = bindings.find(
+      (binding) => binding.target === 'report_content',
+    );
+    let reportContent: string | undefined;
+    if (legacy) {
+      reportContent = reportContentBinding
+        ? this.readCompletionString(specificData, [
+            reportContentBinding.sourceKey,
+          ])
+        : (this.readCompletionString(specificData, [
+            'report_content',
+            'reportContent',
+            'hearing_report',
+            'hearingReport',
+          ]) ?? dto.result_notes?.trim());
+      if (!reportContent) {
+        throw new BadRequestException(`Le rapport d'audience est obligatoire.`);
+      }
+    }
+
+    if (legacy && this.isPostponedHearingResult(dto.result_code)) {
+      const reason = this.readCompletionString(specificData, [
+        'postponement_reason',
+        'postpone_reason',
+        'report_reason',
+        'reason',
+      ]);
+      const audienceDate = this.readCompletionString(specificData, [
+        'new_audience_date',
+        'postponed_date',
+        'audience_date',
+      ]);
+      const audienceTime = this.readCompletionString(specificData, [
+        'new_audience_time',
+        'postponed_time',
+        'audience_time',
+      ]);
+      if (!reason) {
+        throw new BadRequestException(`Le motif du report d'audience est obligatoire.`);
+      }
+      if (!audienceDate || !audienceTime) {
+        throw new BadRequestException(
+          `La nouvelle date et la nouvelle heure sont obligatoires pour reporter l'audience.`,
+        );
+      }
+      const { original } = await postponeAudienceWithManager(
+        manager,
+        audienceIds[0],
+        {
+          audience_date: audienceDate,
+          audience_time: audienceTime,
+          reason,
+          report_content: reportContent,
+          report_author_id: String(actorUserId),
+        },
+      );
+
+      // Le report est propri\u00e9taire du proc\u00e8s-verbal, du statut et des dates :
+      // seules les liaisons qui ne touchent pas \u00e0 ces champs sont appliqu\u00e9es.
+      const safeBindings = bindings.filter(
+        (binding) => !POSTPONE_OWNED_AUDIENCE_FIELDS.has(binding.target),
+      );
+      if (safeBindings.length) {
+        this.applyAudienceBindings(original, safeBindings, specificData);
+        await manager.getRepository(Audience).save(original);
+      }
+      return;
+    }
+
+    const audienceRepository = manager.getRepository(Audience);
+    const audience = await audienceRepository.findOne({
+      where: { id: audienceIds[0], tenant_id: tenantId },
+    });
+    if (!audience) throw new NotFoundException('Audience introuvable');
+    if (audience.status === AudienceStatus.CANCELLED) {
+      throw new BadRequestException(
+        `Le rapport ne peut pas \u00eatre rattach\u00e9 \u00e0 une audience annul\u00e9e.`,
+      );
+    }
+
+    if (legacy && reportContent) {
+      audience.report_content = reportContent;
+      audience.report_date = new Date();
+      audience.report_author_id = String(actorUserId);
+    }
+
+    this.applyAudienceBindings(audience, bindings, specificData);
+
+    // Heuristique historique, volontairement limit\u00e9e aux actions de rapport
+    // d'audience : un code de r\u00e9sultat contenant \u00ab TENUE \u00bb sur une action
+    // quelconque ne doit pas cl\u00f4turer l'audience.
+    const normalizedResult = this.normalizeBusinessCode(dto.result_code);
+    if (
+      legacy &&
+      (normalizedResult.includes('HELD') || normalizedResult.includes('TENUE'))
+    ) {
+      audience.mark_as_held(undefined, 'held');
+    }
+    await audienceRepository.save(audience);
   }
 
   private async validateLinkedIds(
@@ -619,7 +1014,7 @@ export class DossierActionService {
         return created;
       });
     } catch (error) {
-      if (!this.isDuplicateKeyError(error)) throw error;
+      if (!isDuplicateKeyError(error)) throw error;
       const concurrent = await this.actionRepository.findOne({
         where: dto.source_recommendation_id
           ? [
@@ -1027,9 +1422,16 @@ export class DossierActionService {
           'Seule une action en cours peut être terminée',
         );
       const allowedResults = action.definition.allowed_results ?? [];
+      const normalizedResult = this.normalizeBusinessCode(dto.result_code);
+      const allowedByAudienceBinding =
+        this.isHearingReportAction(action) &&
+        (this.isPostponedHearingResult(dto.result_code) ||
+          normalizedResult.includes('HELD') ||
+          normalizedResult.includes('TENUE'));
       if (
         allowedResults.length &&
-        !allowedResults.some((item) => item.code === dto.result_code)
+        !allowedResults.some((item) => item.code === dto.result_code) &&
+        !allowedByAudienceBinding
       ) {
         throw new BadRequestException(
           'Résultat non autorisé pour cette version de la définition',
@@ -1046,6 +1448,12 @@ export class DossierActionService {
         dto.specific_data ?? action.specific_data ?? undefined,
       );
       await this.validateCompletionRequirements(manager, action, dto);
+      await this.applyAudienceCompletionEffects(
+        manager,
+        action,
+        dto,
+        actorUserId,
+      );
       action.status = DossierActionStatus.COMPLETED;
       action.completed_at = new Date();
       action.result_code = dto.result_code;

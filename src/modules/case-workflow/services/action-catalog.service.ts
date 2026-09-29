@@ -5,8 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
+import { isDuplicateKeyError } from 'src/core/shared/utils/db-error.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import {
   ActionPriority,
   BillingCalculationMode,
@@ -48,6 +50,7 @@ const DEFINITION_DEFAULTS: Array<{
   billable?: boolean;
   billingMode?: BillingCalculationMode;
   fields?: Record<string, unknown>;
+  relations?: Record<string, unknown>;
   results: Array<{ code: string; label: string }>;
 }> = [
   {
@@ -127,6 +130,27 @@ const DEFINITION_DEFAULTS: Array<{
     label: 'Traiter le report d’audience',
     dueDays: 1,
     priority: ActionPriority.HIGH,
+    // Détails pratiques de l'audience de remplacement, inconnus au moment du
+    // report lui-même. La date et l'heure ne sont volontairement pas liables :
+    // elles appartiennent au workflow de report, qui seul crée l'audience
+    // de remplacement et sa filiation.
+    fields: {
+      type: 'object',
+      properties: {
+        confirmed_room: {
+          type: 'string',
+          multiline: false,
+          label: 'Salle confirmée',
+          binding: { entity: 'audience', field: 'room' },
+        },
+        confirmed_judge: {
+          type: 'string',
+          multiline: false,
+          label: 'Magistrat confirmé',
+          binding: { entity: 'audience', field: 'judge_name' },
+        },
+      },
+    },
     results: [
       { code: 'RESCHEDULED', label: 'Nouvelle date enregistrée' },
       { code: 'FOLLOW_UP_REQUIRED', label: 'Relance nécessaire' },
@@ -443,7 +467,22 @@ const ADDITIONAL_DEFINITION_DEFAULTS: typeof DEFINITION_DEFAULTS = [
     dueDays: 1,
     billable: true,
     billingMode: BillingCalculationMode.HOURLY,
-    fields: FAMILY_FIELDS.AUDIENCE,
+    // Copie de FAMILY_FIELDS.AUDIENCE : l'objet est partagé par référence avec
+    // trois autres définitions, y poser la liaison les alimenterait toutes.
+    fields: {
+      type: 'object',
+      properties: {
+        keyPoints: { type: 'string', label: 'Points à soutenir ou vérifier' },
+        attendee: { type: 'string', label: 'Personne présente' },
+        hearingOutcome: {
+          type: 'string',
+          label: 'Résultat ou décision',
+          // `decision` est un texte long : `outcome` est plafonné à 100
+          // caractères et refuserait un compte rendu de décision.
+          binding: { entity: 'audience', field: 'decision' },
+        },
+      },
+    },
     results: STANDARD_RESULTS,
   },
   {
@@ -453,8 +492,43 @@ const ADDITIONAL_DEFINITION_DEFAULTS: typeof DEFINITION_DEFAULTS = [
     dueDays: 1,
     billable: true,
     billingMode: BillingCalculationMode.HOURLY,
-    fields: FAMILY_FIELDS.AUDIENCE,
-    results: STANDARD_RESULTS,
+    fields: {
+      type: 'object',
+      required: ['report_content'],
+      properties: {
+        report_content: {
+          type: 'string',
+          label: `Rapport d'audience`,
+          multiline: true,
+          description: `Ce contenu sera enregistr\u00e9 sur la ressource audience li\u00e9e.`,
+          // Liaison explicite : rend visible dans le catalogue ce que le
+          // service devinait par reniflage d'alias, et la rend modifiable.
+          binding: { entity: 'audience', field: 'report_content' },
+        },
+        postponement_reason: {
+          type: 'string',
+          label: 'Motif du report',
+          multiline: true,
+          description: `Obligatoire lorsque l'issue est "Audience report\u00e9e".`,
+        },
+        new_audience_date: {
+          type: 'string',
+          format: 'date',
+          label: 'Nouvelle date',
+        },
+        new_audience_time: {
+          type: 'string',
+          multiline: false,
+          label: 'Nouvelle heure',
+          description: 'Format HH:MM.',
+        },
+      },
+    },
+    relations: { audiences: { min: 1 } },
+    results: [
+      { code: 'HELD', label: 'Audience tenue' },
+      { code: 'POSTPONED', label: 'Audience report\u00e9e' },
+    ],
   },
   {
     family: 'AUDIENCE',
@@ -1008,7 +1082,7 @@ export class ActionCatalogService {
                 properties: {},
               },
               allowed_results: item.results,
-              required_relations: null,
+              required_relations: item.relations ?? null,
               default_due_days: item.dueDays ?? null,
               default_priority: item.priority ?? ActionPriority.NORMAL,
               is_required: false,
@@ -1025,6 +1099,22 @@ export class ActionCatalogService {
           });
           if (!definition) throw error;
         }
+      }
+      // Upgrade only the untouched v1 hearing-report default. Definitions
+      // revised by a cabinet have another active version and remain unchanged.
+      if (
+        definition &&
+        item.code === 'WRITE_HEARING_REPORT' &&
+        (definition.allowed_results ?? []).map((result) => result.code).join(',') ===
+          STANDARD_RESULTS.map((result) => result.code).join(',')
+      ) {
+        definition.specific_fields_schema = item.fields ?? {
+          type: 'object',
+          properties: {},
+        };
+        definition.allowed_results = item.results;
+        definition.required_relations = item.relations ?? null;
+        definition = await this.definitionRepository.save(definition);
       }
       definitions.set(item.code, definition);
     }
@@ -1108,6 +1198,38 @@ export class ActionCatalogService {
       .toUpperCase()
       .replace(/[^A-Z0-9_]+/g, '_')
       .replace(/^_+|_+$/g, '');
+  }
+
+  /**
+   * Fabrique un code métier libre à partir du libellé.
+   *
+   * Les formulaires ne demandent plus de code (cf. memory/codes-auto-generation.md) :
+   * on dérive un slug du libellé avec un suffixe aléatoire, en vérifiant qu'il
+   * n'est pas déjà pris dans le cabinet. La collision reste possible en
+   * concurrence, d'où le second filet de sécurité sur ER_DUP_ENTRY côté appelant.
+   */
+  private async generateUniqueCatalogCode<
+    T extends ActionFamily | ActionDefinition,
+  >(
+    repository: Repository<T>,
+    prefix: 'FAM' | 'ACT',
+    label: string,
+    maxLength: number,
+  ): Promise<string> {
+    const tenantId = getCurrentTenantId();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = this.normalizeFamilyCode(
+        generateEntityCode(prefix, label),
+      ).slice(0, maxLength);
+      if (!code) continue;
+      const exists = await repository.findOne({
+        where: { tenant_id: tenantId, code } as FindOptionsWhere<T>,
+      });
+      if (!exists) return code;
+    }
+    return this.normalizeFamilyCode(
+      `${prefix}_${Date.now().toString(36)}`,
+    ).slice(0, maxLength);
   }
 
   private normalizeRuleCode(value: string): string {
@@ -1282,28 +1404,56 @@ export class ActionCatalogService {
 
   async createFamily(dto: CreateActionFamilyDto): Promise<ActionFamily> {
     const tenantId = getCurrentTenantId();
-    const code = this.normalizeFamilyCode(dto.code);
-    if (!code)
-      throw new ConflictException('Le code de la famille est invalide');
-    const exists = await this.familyRepository.findOne({
-      where: { tenant_id: tenantId, code },
-    });
-    if (exists) throw new ConflictException(`La famille ${code} existe déjà`);
+    const provided = dto.code?.trim();
+    let generated = false;
+    let code: string;
+
+    if (provided) {
+      code = this.normalizeFamilyCode(provided);
+      if (!code)
+        throw new ConflictException('Le code de la famille est invalide');
+      const exists = await this.familyRepository.findOne({
+        where: { tenant_id: tenantId, code },
+      });
+      if (exists) throw new ConflictException(`La famille ${code} existe déjà`);
+    } else {
+      generated = true;
+      code = await this.generateUniqueCatalogCode(
+        this.familyRepository,
+        'FAM',
+        dto.label,
+        80,
+      );
+    }
 
     const last = await this.familyRepository.findOne({
       where: { tenant_id: tenantId },
       order: { display_order: 'DESC' },
     });
-    return this.familyRepository.save(
+    const build = (familyCode: string) =>
       this.familyRepository.create({
         tenant_id: tenantId,
-        code,
+        code: familyCode,
         label: dto.label.trim(),
         description: dto.description?.trim() || null,
         display_order: dto.display_order ?? (last?.display_order ?? 0) + 1,
         is_active: dto.is_active ?? true,
-      }),
-    );
+      });
+
+    try {
+      return await this.familyRepository.save(build(code));
+    } catch (error) {
+      // Course sur UQ_case_action_family_tenant_code : un code auto-généré peut
+      // être repris tel quel, un code choisi par l'utilisateur doit remonter.
+      if (!generated || !isDuplicateKeyError(error)) throw error;
+      const retry = await this.generateUniqueCatalogCode(
+        this.familyRepository,
+        'FAM',
+        dto.label,
+        80,
+      );
+      return this.familyRepository.save(build(retry));
+    }
   }
 
   async updateFamily(
@@ -1323,7 +1473,9 @@ export class ActionCatalogService {
         .getOne();
       if (!family) throw new NotFoundException('Famille d’action introuvable');
 
-      if (dto.code !== undefined) {
+      // Une chaîne vide venant d'un client qui n'affiche plus le champ ne doit
+      // pas être traitée comme une demande de renommage.
+      if (dto.code !== undefined && dto.code.trim()) {
         const code = this.normalizeFamilyCode(dto.code);
         if (!code)
           throw new ConflictException('Le code de la famille est invalide');
@@ -1356,25 +1508,36 @@ export class ActionCatalogService {
         'Famille d’action introuvable dans ce cabinet',
       );
 
-    const code = dto.code
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9_]+/g, '_');
-    if (!code)
-      throw new ConflictException('Le code de la définition est invalide');
-    const exists = await this.definitionRepository.findOne({
-      where: { tenant_id: tenantId, code },
-    });
-    if (exists)
-      throw new ConflictException(
-        `La définition ${code} existe déjà; créez une nouvelle version`,
-      );
+    const provided = dto.code?.trim();
+    let generated = false;
+    let code: string;
 
-    return this.definitionRepository.save(
+    if (provided) {
+      code = provided.toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+      if (!code)
+        throw new ConflictException('Le code de la définition est invalide');
+      const exists = await this.definitionRepository.findOne({
+        where: { tenant_id: tenantId, code },
+      });
+      if (exists)
+        throw new ConflictException(
+          `La définition ${code} existe déjà; créez une nouvelle version`,
+        );
+    } else {
+      generated = true;
+      code = await this.generateUniqueCatalogCode(
+        this.definitionRepository,
+        'ACT',
+        dto.label,
+        100,
+      );
+    }
+
+    const build = (definitionCode: string) =>
       this.definitionRepository.create({
         tenant_id: tenantId,
         family_id: family.id,
-        code,
+        code: definitionCode,
         label: dto.label.trim(),
         version: 1,
         specific_fields_schema: dto.specific_fields_schema ?? {
@@ -1390,8 +1553,21 @@ export class ActionCatalogService {
         billing_mode: dto.billing_mode ?? null,
         default_rate: dto.default_rate ?? null,
         is_active: true,
-      }),
-    );
+      });
+
+    try {
+      return await this.definitionRepository.save(build(code));
+    } catch (error) {
+      // Course sur UQ_case_action_definition_version.
+      if (!generated || !isDuplicateKeyError(error)) throw error;
+      const retry = await this.generateUniqueCatalogCode(
+        this.definitionRepository,
+        'ACT',
+        dto.label,
+        100,
+      );
+      return this.definitionRepository.save(build(retry));
+    }
   }
 
   async reviseDefinition(

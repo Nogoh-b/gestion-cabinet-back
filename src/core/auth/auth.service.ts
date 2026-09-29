@@ -1,6 +1,11 @@
 // src/modules/auth/auth.service.ts
 import * as bcrypt from 'bcrypt';
-import { TenantContext, getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { DataSource } from 'typeorm';
+import {
+  TenantContext,
+  getCurrentTenantId,
+  hasActiveTenant,
+} from 'src/core/tenant/tenant.context';
 import { EmployeeService } from 'src/modules/agencies/employee/employee.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
 
@@ -37,6 +42,7 @@ export class AuthService {
     private authTokenService: AuthTokenService,
     private tenantContext: TenantContext,
     private mailTemplateService: MailTemplateService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -69,29 +75,29 @@ export class AuthService {
   async validateUser(username: string, pass: string, tenantId = 1): Promise<any> {
     this.logger.debug(`[validateUser] email="${username}" tenantId=${tenantId}`);
 
-    // ── 1. Recherche de l'utilisateur (User est global, sans tenant_id) ────
     let user: any;
-    try {
-      user = await this.usersService.findByEmail(username);
-    } catch {
-      throw new UnauthorizedException('Identifiants invalides EMAIL');
-    }
-
-    if (!user || !user.password) {
-      throw new UnauthorizedException('Identifiants invalides EMAIL ou mot de passe');
-    }
-
-    // ── 2. Vérification du mot de passe ────────────────────────────────────
-    const isPasswordValid = await bcrypt.compare(pass, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
-    }
-
-    // ── 3. Vérification d'appartenance au cabinet ───────────────────────────
-    // User n'a pas de tenant_id → on vérifie + récupère le tenant via Employee.
     let resolvedTenantId = tenantId;
 
     if (tenantId && tenantId !== 1) {
+      // ── Connexion tenancée : l'utilisateur est cherché DANS le cabinet
+      // (le patch TenantRepository filtre sur le contexte posé par le middleware).
+      try {
+        user = await this.usersService.findByEmail(username);
+      } catch {
+        throw new UnauthorizedException('Identifiants invalides EMAIL');
+      }
+
+      if (!user || !user.password) {
+        throw new UnauthorizedException('Identifiants invalides EMAIL ou mot de passe');
+      }
+
+      // ── Vérification du mot de passe ───────────────────────────────
+      const isPasswordValid = await bcrypt.compare(pass, user.password);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
+      }
+
+      // ── Vérification d'appartenance au cabinet ───────────────
       let employee: any = null;
       await this.tenantContext.run(tenantId, async () => {
         try {
@@ -111,6 +117,51 @@ export class AuthService {
 
       // tenant_id de l'employee (source de vérité pour le JWT)
       resolvedTenantId = (employee as any).tenant_id ?? tenantId;
+    } else {
+      // ── Connexion globale (/auth/login sans cabinet) ────────────────
+      // L'e-mail n'a pas de contrainte d'unicité : plusieurs comptes peuvent
+      // le partager entre cabinets. On teste le mot de passe sur CHAQUE compte
+      // (id ASC) et on retient le premier qui matche — jamais la première
+      // ligne arbitraire renvoyée par un findOne.
+      let candidates: any[];
+      try {
+        candidates = await this.tenantContext.runWithoutTenant(() =>
+          this.usersService.findAllByEmail(username),
+        );
+      } catch {
+        throw new UnauthorizedException('Identifiants invalides EMAIL');
+      }
+
+      if (!candidates || candidates.length === 0) {
+        throw new UnauthorizedException('Identifiants invalides EMAIL');
+      }
+
+      let matched: any = null;
+      for (const candidate of candidates) {
+        if (candidate?.password && (await bcrypt.compare(pass, candidate.password))) {
+          matched = candidate;
+          break;
+        }
+      }
+
+      if (!matched) {
+        throw new UnauthorizedException('Identifiants invalides MOT DE PASSE');
+      }
+      user = matched;
+
+      // Cabinet déduit de l'employé lié à CE compte (même id), recherché
+      // SANS filtre tenant. Sans employé, on conserve le tenant par défaut —
+      // issueSession() applique alors le comportement historique (erreur 'Utilisateur inexistant').
+      try {
+        const employee: any = await this.tenantContext.runWithoutTenant(() =>
+          this.employeeService.findOne(user.id),
+        );
+        if (employee) {
+          resolvedTenantId = (employee as any).tenant_id ?? resolvedTenantId;
+        }
+      } catch {
+        // Recherche globale impossible : le flux historique tranche (issueSession).
+      }
     }
 
     const { password, ...result } = user;
@@ -205,11 +256,23 @@ export class AuthService {
     // On évite les doublons : findOne(userId) x2 + findByEmail(employee) x2.
     const role: string | null = data.role ?? null;
 
+    // Tenant de session : on charge l’employé DANS ce contexte (fail-closed),
+    // sauf appel historique sans tenant explicite (contexte ambiant conservé).
+    const sessionTenant: number | undefined =
+      (data as any)._resolvedTenantId ??
+      (hasActiveTenant() ? getCurrentTenantId() : undefined);
+    const inSessionTenant = <T>(fn: () => Promise<T>): Promise<T> =>
+      sessionTenant !== undefined
+        ? this.tenantContext.run(sessionTenant, fn)
+        : fn();
+
     // Paralléliser : employee (pour payload JWT) + permissions (role → codes)
-    const [user, permissionObjects] = await Promise.all([
-      this.employeeService.findByEmail(data.email),
-      this.usersService.getPermissionsByRoleCode(role),
-    ]);
+    const [user, permissionObjects] = await inSessionTenant(() =>
+      Promise.all([
+        this.employeeService.findByEmail(data.email),
+        this.usersService.getPermissionsByRoleCode(role),
+      ]),
+    );
 
     if (!user) {
       throw new UnauthorizedException('Utilisateur inexistant');
@@ -249,7 +312,30 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
       user: userWithRole,
       permissions,
+      tenant_id: tenantId,
+      tenant_code: await this.resolveTenantCode(tenantId),
     };
+  }
+
+  /**
+   * Code public du cabinet (ex: xk7m2p8a) — permet au front de rediriger
+   * vers /t/[code]/dashboard après une connexion globale. null si introuvable :
+   * la connexion reste valide, le front retombe sur le chemin sans tenant.
+   */
+  private async resolveTenantCode(tenantId: number): Promise<string | null> {
+    try {
+      const rows = await this.dataSource.query(
+        'SELECT code FROM cabinets WHERE id = ? LIMIT 1',
+        [tenantId],
+      );
+      const code = rows?.[0]?.code;
+      return typeof code === 'string' && code ? code : null;
+    } catch (err) {
+      this.logger.warn(
+        '[login] Code cabinet introuvable pour tenant_id=' + tenantId + ' : ' + (err as Error)?.message,
+      );
+      return null;
+    }
   }
 
   /**

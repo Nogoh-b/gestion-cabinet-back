@@ -147,6 +147,29 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Connexion globale : TOUS les comptes partageant un e-mail.
+   * L'e-mail n'a pas de contrainte d'unicité : des doublons inter-cabinets
+   * sont possibles. Ordre id ASC = premier compte déterministe.
+   * À appeler SANS contexte tenant (runWithoutTenant) pour une recherche
+   * globale ; dans un contexte tenant, le patch TenantRepository filtre seul.
+   */
+  async findAllByEmail(email: string): Promise<any[]> {
+    const users = await this.userRepository.find({
+      where: { email },
+      relations: ['customer', 'roleAssignments.role'],
+      order: { id: 'ASC' },
+    });
+
+    return (users ?? []).map((user) => {
+      const activeRoleAssignment = user.roleAssignments?.find(
+        (assignment) => assignment.role?.status === 1,
+      );
+      user.roleAssignments = activeRoleAssignment ? [activeRoleAssignment] : [];
+      return user;
+    });
+  }
+
   async findByEmailForPasswordReset(email: string, tenantId?: number): Promise<any | null> {
     let qb = this.userRepository
       .createQueryBuilder('user')

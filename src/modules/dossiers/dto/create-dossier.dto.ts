@@ -137,25 +137,25 @@ export class CreateDossierDto {
     description: 'ID de l\'avocat responsable',
     example: 2
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  lawyer_id: number;
+  lawyer_id?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'ID du type de procédure',
     example: 11
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  procedure_type_id: number;
+  procedure_type_id?: number | null;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'ID du sous-type de procédure',
     example: 2
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsNumber()
-  procedure_subtype_id: number;
+  procedure_subtype_id?: number | null;
 
   @ApiPropertyOptional({
     description: 'Nom du tribunal',

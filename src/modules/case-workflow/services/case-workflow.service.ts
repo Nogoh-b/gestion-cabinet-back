@@ -353,8 +353,6 @@ export class CaseWorkflowService {
         throw new NotFoundException(`Dossier ${dossierId} introuvable`);
       const missing = [
         !dossier.client_id && 'client',
-        !dossier.lawyer_id && 'avocat référent',
-        !dossier.procedure_type_id && 'type de dossier',
         !dossier.object?.trim() && 'objet',
       ].filter(Boolean);
       if (missing.length)
@@ -801,11 +799,19 @@ export class CaseWorkflowService {
         context: {
           client: dossier.client,
           lawyer: dossier.lawyer?.user
-            ? { ...dossier.lawyer.user, employee_id: dossier.lawyer.id }
+            ? {
+                ...dossier.lawyer.user,
+                employee_id: dossier.lawyer.id,
+                position: dossier.lawyer.position,
+              }
             : dossier.lawyer,
           collaborators: (dossier.collaborators ?? []).map((employee) =>
             employee.user
-              ? { ...employee.user, employee_id: employee.id }
+              ? {
+                  ...employee.user,
+                  employee_id: employee.id,
+                  position: employee.position,
+                }
               : employee,
           ),
           jurisdiction: dossier.jurisdiction,

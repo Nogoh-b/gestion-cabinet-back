@@ -30,6 +30,7 @@ import { Audience, AudienceStatus, AudienceType1, } from './entities/audience.en
 import { PlanQuotaService } from '../plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
+import { postponeAudienceWithManager } from './audience-workflow';
 
 
 
@@ -86,13 +87,31 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
 
     const dossier = await this.dossierService.findOne(dto.dossier_id);
-    const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
+    const audience_type = dto.audience_type_id
+      ? await this.audienceTypeService.findOne(dto.audience_type_id)
+      : null;
 
     if (!dossier) {
       throw new NotFoundException('Dossier non trouvé');
     }
-    if (!audience_type) {
+    if (dto.audience_type_id && !audience_type) {
       throw new NotFoundException('Type d\'audience non trouvé');
+    }
+
+    const reason = dto.reason?.trim();
+    const parentAudience = dto.parent_audience_id
+      ? await this.repository.findOne({
+          where: {
+            id: dto.parent_audience_id,
+            dossier_id: String(dto.dossier_id),
+          },
+        })
+      : null;
+    if (dto.parent_audience_id && !parentAudience) {
+      throw new NotFoundException("L'audience renvoyée est introuvable dans ce dossier");
+    }
+    if (parentAudience && !reason) {
+      throw new BadRequestException('Le motif du renvoi est obligatoire');
     }
 
     // ✅ VÉRIFICATION DU STATUT DU DOSSIER
@@ -125,23 +144,26 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       (dossier as any).jurisdiction_id ??
       (dossier as any).jurisdiction?.id ??
       null;
-    if (!resolvedJurisdictionId) {
-      throw new NotFoundException(
-        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier."
-      );
-    }
+    const audienceTime = dto.audience_time?.trim() || '09:00';
 
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
       audience_date: dto.audience_date,
-      audience_time: dto.audience_time,
-      jurisdiction: { id: resolvedJurisdictionId } as Jurisdiction,
+      audience_time: audienceTime,
+      ...(resolvedJurisdictionId
+        ? { jurisdiction: { id: resolvedJurisdictionId } as Jurisdiction }
+        : {}),
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
-      notes: dto.notes,
+      notes: parentAudience
+        ? [dto.notes, `Audience issue du renvoi de #${parentAudience.id}. Motif : ${reason}`]
+            .filter(Boolean)
+            .join('\n')
+        : dto.notes,
       postponed_to: dto.postponed_to,
-      audience_type,
+      ...(audience_type ? { audience_type } : {}),
+      ...(parentAudience ? { parent_audience: parentAudience } : {}),
       type: AudienceType1.HEARING,
       dossier,
       status: AudienceStatus.SCHEDULED,
@@ -158,6 +180,15 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
 
     let aud = await this.repository.save(audience);
+
+    if (parentAudience) {
+      parentAudience.status = AudienceStatus.POSTPONED;
+      parentAudience.postponed_to = new Date(
+        `${String(dto.audience_date).slice(0, 10)}T${audienceTime}`,
+      );
+      parentAudience.notes = `${parentAudience.notes || ''}\nReporté: ${reason}`.trim();
+      await this.repository.save(parentAudience);
+    }
     
     // ✅ Mettre à jour le dossier si nécessaire (ex: première audience en contentieux)
     await this.updateDossierStatusOnAudience(aud, dossier);
@@ -326,74 +357,17 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
    * les deux.
    */
   async postpone(id: number, dto: UpdateAudienceDto): Promise<{ original: Audience; replacement: Audience }> {
-    if (!dto.audience_date || !dto.audience_time) {
-      throw new BadRequestException(
-        `La nouvelle date et la nouvelle heure de l'audience sont requises pour effectuer un report.`
-      );
-    }
-
-    const audience = await this.repository.findOne({
-      where: { id },
-      relations: this.getDefaultSearchOptions().relationFields,
-    });
-    if (!audience) {
-      throw new NotFoundException(`Audience ${id} introuvable`);
-    }
-    if (audience.status === AudienceStatus.POSTPONED) {
-      throw new BadRequestException(`Cette audience a déjà été reportée.`);
-    }
-    if (audience.status === AudienceStatus.CANCELLED) {
-      throw new BadRequestException(`Une audience annulée ne peut pas être reportée.`);
-    }
-
-    // 🚦 Le rapport d'audience est OBLIGATOIRE avant tout report.
-    // Soit déjà saisi (audience.report_content), soit fourni dans le DTO (dto.report_content).
-    const incomingReport = (dto as any).report_content as string | undefined;
-    const hasReport = (incomingReport && incomingReport.trim().length > 0)
-                   || (audience.report_content && audience.report_content.trim().length > 0);
-    if (!hasReport) {
-      throw new BadRequestException(
-        `Le rapport d'audience doit être rédigé avant de reporter cette audience.`
-      );
-    }
-
-    // 1. Figer l'audience d'origine (en sauvant le rapport s'il vient d'arriver)
-    const original = plainToInstance(Audience, audience);
-    if (incomingReport && incomingReport.trim().length > 0) {
-      original.report_content   = incomingReport;
-      original.report_date      = original.report_date ?? new Date();
-    }
-    original.postpone(new Date(dto.audience_date), dto.audience_time, dto.reason);
-    await this.repository.save(original);
-
-    // 2. Créer l'audience de remplacement héritée
-    const replacement = this.repository.create({
-      audience_date: dto.audience_date as any,
-      audience_time: dto.audience_time,
-      jurisdiction: audience.jurisdiction,
-      jurisdiction_id: audience.jurisdiction_id,
-      room: dto.room ?? audience.room,
-      type: audience.type,
-      audience_type: audience.audience_type,
-      audience_type_id: audience.audience_type_id,
-      judge_name: dto.judge_name ?? audience.judge_name,
-      duration_minutes: dto.duration_minutes ?? audience.duration_minutes,
-      notes: dto.reason
-        ? `Audience issue du report de #${audience.id}. Motif : ${dto.reason}`
-        : `Audience issue du report de #${audience.id}.`,
-      dossier: audience.dossier,
-      dossier_id: audience.dossier_id,
-      status: AudienceStatus.SCHEDULED,
-      procedure_instance_id: audience.procedure_instance_id,
-      stageVisit_id: audience.stageVisit_id,
-      sub_stage_visit_id: audience.sub_stage_visit_id,
-      sub_stage_id: audience.sub_stage_id,
-      step_id: audience.step_id,
-      parent_audience_id: audience.id,
-    });
-    const savedReplacement = await this.repository.save(replacement);
-
-    return { original, replacement: savedReplacement };
+    return this.repository.manager.transaction((manager) =>
+      postponeAudienceWithManager(manager, id, {
+        audience_date: dto.audience_date as Date,
+        audience_time: dto.audience_time as string,
+        reason: dto.reason,
+        report_content: dto.report_content,
+        room: dto.room,
+        judge_name: dto.judge_name,
+        duration_minutes: dto.duration_minutes,
+      }),
+    );
   }
 
   /**

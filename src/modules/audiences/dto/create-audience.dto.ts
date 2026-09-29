@@ -1,5 +1,5 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 
@@ -23,20 +23,22 @@ export class CreateAudienceDto {
   @IsNotEmpty()
   audience_date: Date;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: '09:00:00',
-    description: "Heure prévue pour l'audience",
+    description: "Heure prévue pour l'audience (09:00 par défaut)",
   })
-  @IsDateString()
-  @IsNotEmpty()
-  audience_time: string;
+  @IsString()
+  @Matches(/^\d{1,2}:\d{2}(?::\d{2})?$/)
+  @IsOptional()
+  audience_time?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 60,
     description: "Durée prévue pour l'audience en minutes",
   })
   @IsInt()
-  duration_minutes: number;
+  @IsOptional()
+  duration_minutes?: number;
 
   @ApiProperty({
     example: 'Tribunal de première instance de Yaoundé',
@@ -76,7 +78,23 @@ export class CreateAudienceDto {
   })
   @IsNumber()
   @IsOptional()
-  audience_type_id: number;
+  audience_type_id?: number;
+
+  @ApiPropertyOptional({
+    description: "Audience d'origine lorsqu'il s'agit d'un renvoi",
+    example: 42,
+  })
+  @IsInt()
+  @IsOptional()
+  parent_audience_id?: number;
+
+  @ApiPropertyOptional({
+    description: 'Motif du renvoi',
+    example: 'Renvoi pour communication de pièces',
+  })
+  @IsString()
+  @IsOptional()
+  reason?: string;
 
   @ApiProperty({
     example: 'Affaire reportée faute de partie adverse',

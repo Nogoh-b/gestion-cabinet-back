@@ -204,9 +204,15 @@ export class FactureController {
   @ApiResponse({ status: HttpStatus.OK, type: FactureResponseDto })
   @ApiParam({ name: 'id', type: String })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
+    const facture = await this.factureService.findOneV1(id, [
+      'paiements',
+      'dossier',
+      'client',
+      'lines',
+    ]);
     return plainToInstance(
       FactureResponseDto,
-      this.factureService.findOneV1(id, ['paiements', 'dossier', 'client']),
+      facture,
     );
   }
 

@@ -19,6 +19,7 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
   description: 'Cycles de répétition entre étapes d\'un modèle de procédure. Permettent de revenir à une étape antérieure un nombre limité de fois.',
   icon: '🔄',
   category: 'procedure',
+  ignored: true,
 })
 export class Cycle extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')

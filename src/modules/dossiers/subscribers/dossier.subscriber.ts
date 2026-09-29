@@ -126,15 +126,17 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         `[createOpeningFeeInvoice] Cabinet trouvé: dossier_opening_fee_enabled=${cabinet.dossier_opening_fee_enabled}, dossier_opening_fee=${cabinet.dossier_opening_fee}`,
       );
 
-      // Étape 2 : Vérification des conditions d'activation
-      if (!cabinet.dossier_opening_fee_enabled) {
+      // Étape 2 : Vérification des conditions d'activation. Un montant
+      // propre au dossier reste applicable même si le tarif global est coupé.
+      const entityOverride = Number((entity as any)?.procedure_costs);
+      if (!cabinet.dossier_opening_fee_enabled && !(entityOverride > 0)) {
         this.logger.log(
           `[createOpeningFeeInvoice] Frais d'ouverture désactivés pour le cabinet, abandon`,
         );
         return;
       }
 
-      if (Number(cabinet.dossier_opening_fee) <= 0) {
+      if (Number(cabinet.dossier_opening_fee) <= 0 && !(entityOverride > 0)) {
         this.logger.log(
           `[createOpeningFeeInvoice] Frais d'ouverture <= 0 (${cabinet.dossier_opening_fee}), abandon`,
         );
@@ -172,7 +174,12 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
       }
 
       // Étape 5 : Calcul des montants
-      const montantHT = Number(cabinet.dossier_opening_fee);
+      // Per-dossier override when defined, otherwise the configured cabinet amount.
+      const dossierOverride = Number(
+        (dossier as any)?.procedure_costs ?? (entity as any)?.procedure_costs,
+      );
+      const montantHT =
+        dossierOverride > 0 ? dossierOverride : Number(cabinet.dossier_opening_fee);
       const tauxTVA = Number(cabinet.dossier_opening_fee_tva ?? 0);
       const montantTVA = Math.round(montantHT * tauxTVA) / 100;
       const montantTTC = montantHT + montantTVA;

@@ -17,7 +17,10 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { BillableItemStatus } from './case-workflow.enums';
+import {
+  BillableItemStatus,
+  BillableSourceType,
+} from './case-workflow.enums';
 import {
   ActionTransitionDto,
   ApplyWorkflowMigrationDto,
@@ -276,6 +279,26 @@ export class DossierWorkspaceController {
     );
   }
 
+  @Get(':id/actions')
+  @RequirePermissions('view_dossier_actions')
+  listActions(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: User,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('family_id') familyId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.actionService.list(id, actorId(user), {
+      page: Number(page) || 1,
+      limit: Number(limit) || 12,
+      status,
+      familyId,
+      search,
+    });
+  }
+
   @Get(':id/billable-items')
   @RequirePermissions('view_billable_items')
   getBillableItems(
@@ -372,6 +395,15 @@ export class DossierWorkspaceController {
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class DossierActionsController {
   constructor(private readonly actionService: DossierActionService) {}
+
+  @Get(':id/deadline-history')
+  @RequirePermissions('view_dossier_actions')
+  deadlineHistory(
+    @Param('id') id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.actionService.getDeadlineHistory(id, actorId(user));
+  }
 
   @Patch(':id/details')
   @RequirePermissions('update_dossier_action')
@@ -532,6 +564,39 @@ export class CaseInvoicesController {
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class BillableItemsController {
   constructor(private readonly billingService: CaseBillingService) {}
+
+  @Get('filter-options')
+  @RequirePermissions('view_billable_items')
+  filterOptions() {
+    return this.billingService.getFilterOptions();
+  }
+
+  @Get('search')
+  @RequirePermissions('view_billable_items')
+  search(
+    @Query()
+    query: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: BillableItemStatus;
+      source_type?: BillableSourceType;
+      dossier_id?: number;
+      client_id?: number;
+      from?: string;
+      to?: string;
+      sort_by?: string;
+      sort_direction?: string;
+    },
+  ) {
+    return this.billingService.searchItems(query);
+  }
+
+  @Get('summary')
+  @RequirePermissions('view_billable_items')
+  summary() {
+    return this.billingService.getItemsSummary();
+  }
 
   @Post(':id/review')
   @RequirePermissions('manage_billable_items')

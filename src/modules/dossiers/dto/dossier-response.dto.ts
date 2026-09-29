@@ -295,20 +295,20 @@ steps_summary: {
     email: string;
     specialization?: string;
     bar_association_number?: string;
-  };
+  } | null;
 
   // ---------------- PROCÉDURE ----------------
   @ApiProperty({
     example: { id: 1, name: "Procédure Civile", code: "CIV001" },
   })
   @Expose()
-  procedure_type: { id: number; name: string; code: string; description?: string };
+  procedure_type: { id: number; name: string; code: string; description?: string } | null;
 
   @ApiProperty({
     example: { id: 2, name: "Contentieux Commercial", code: "CIV-COM" },
   })
   @Expose()
-  procedure_subtype: { id: number; name: string; code: string };
+  procedure_subtype: { id: number; name: string; code: string } | null;
 
   // ---------------- DOCUMENTS ----------------
   /*@ApiProperty({

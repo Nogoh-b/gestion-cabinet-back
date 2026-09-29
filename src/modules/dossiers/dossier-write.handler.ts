@@ -13,6 +13,11 @@ import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
 import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.exception';
+import {
+  DossierLifecyclePhase,
+  WorkflowEngine,
+} from 'src/modules/case-workflow/case-workflow.enums';
+import { CaseWorkflowFeature } from 'src/modules/case-workflow/entities/workflow-audit.entity';
 
 /**
  * Handler custom pour les dossiers.
@@ -20,7 +25,7 @@ import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.excepti
  * et surcharge uniquement la logique métier spécifique :
  *   - Génération du numéro de dossier (DOS-YYYY-XXXX)
  *   - Valeurs par défaut (status, priority_level, danger_level)
- *   - Validation métier (client + avocat requis)
+ *   - Validation métier alignée sur CreateDossierDto (client + objet requis)
  */
 @Injectable()
 export class DossierWriteHandler extends BaseWriteHandler {
@@ -31,8 +36,28 @@ export class DossierWriteHandler extends BaseWriteHandler {
     entityResolver: EntityResolverService,
     @InjectRepository(Dossier)
     private readonly dossierRepo: Repository<Dossier>,
+    @InjectRepository(CaseWorkflowFeature)
+    private readonly caseWorkflowFeatureRepository: Repository<CaseWorkflowFeature>,
   ) {
     super('dossiers', dataSource, schemaMetadata, entityResolver);
+  }
+
+  /**
+   * Applique exactement la même bascule de parcours que la création
+   * classique d'un dossier. Sans cela, la valeur par défaut de l'entité
+   * (`LEGACY`) était utilisée pour toutes les créations faites par l'IA.
+   */
+  private async getNewDossierWorkflowEngine(): Promise<WorkflowEngine> {
+    if (!hasActiveTenant()) return WorkflowEngine.LEGACY;
+
+    const tenantId = getCurrentTenantId();
+    const workflowFeature = await this.caseWorkflowFeatureRepository.findOne({
+      where: { tenant_id: tenantId },
+    });
+
+    return workflowFeature?.enabled && workflowFeature.default_for_new_dossiers
+      ? WorkflowEngine.ACTIONS_V2
+      : WorkflowEngine.LEGACY;
   }
 
   // ── Schema override : ajouter des descriptions/exemples plus précis ────────
@@ -48,8 +73,12 @@ export class DossierWriteHandler extends BaseWriteHandler {
         example: '1',
       },
       object: {
-        description: "Description synthétique de l'affaire",
-        example: 'Litige commercial pour non-paiement de factures',
+        description: "Nom de l'affaire / objet du dossier. Ce texte est affiché comme titre principal du dossier.",
+        example: 'Affaire Société ABC — recouvrement de facture impayée',
+      },
+      court_name: {
+        description: "Nature de l'affaire en texte libre (champ historique utilisé par le formulaire d'ouverture). Ne pas y mettre la juridiction, qui utilise jurisdiction_id/jurisdiction.",
+        example: 'Recouvrement de créance',
       },
       status: {
         description: '0=Ouvert, 1=Analyse, 2=Amicable, 3=Contentieux',
@@ -58,6 +87,7 @@ export class DossierWriteHandler extends BaseWriteHandler {
       lawyer_id: {
         description: "ID de l'avocat responsable. Peut aussi fournir \"lawyer\" avec le nom.",
         example: '1',
+        required: false,
       },
       priority_level: {
         description: '0=Normale, 1=Haute, 2=Prioritaire, 3=Urgent absolu',
@@ -70,12 +100,12 @@ export class DossierWriteHandler extends BaseWriteHandler {
       procedure_type_id: {
         description: 'ID du type de procédure. Peut aussi fournir "procedure_type" avec le nom (ex: "Contentieux civil", "Droit des affaires").',
         example: '1',
-        required: true,
+        required: false,
       },
       procedure_subtype_id: {
         description: 'ID du sous-type de procédure. Peut aussi fournir "procedure_subtype" avec le nom (ex: "Rupture conventionnelle", "Divorce").',
         example: '1',
-        required: true,
+        required: false,
       },
       jurisdiction_id: {
         description: 'ID de la juridiction compétente. Peut aussi fournir "jurisdiction" avec le nom du tribunal (ex: "Tribunal de première instance de Yaoundé"). Sera héritée par les audiences du dossier.',
@@ -88,6 +118,31 @@ export class DossierWriteHandler extends BaseWriteHandler {
       if (enrichment) {
         Object.assign(field, enrichment);
       }
+    }
+
+    // ── Alias métier présentés au LLM comme des champs à part entière ────────
+    // "case_name" → mappé vers "object" et "nature" → mappé vers "court_name"
+    // dans resolveDependencies(). Sans ces entrées, le LLM ne peut pas deviner
+    // ces noms et ne remplit jamais le nom / la nature de l'affaire séparément.
+    if (!fields.find(f => f.name === 'case_name')) {
+      fields.push({
+        name: 'case_name',
+        label: "Nom de l'affaire",
+        type: 'string',
+        required: true,
+        example: 'Affaire Société ABC — facture impayée de 2 500 000 FCFA',
+        description: "Nom de l'affaire, affiché comme titre principal du dossier. Stocké dans \"object\". Toujours le renseigner, distinct de la nature.",
+      });
+    }
+    if (!fields.find(f => f.name === 'nature')) {
+      fields.push({
+        name: 'nature',
+        label: "Nature de l'affaire",
+        type: 'string',
+        required: false,
+        example: 'Recouvrement de créance',
+        description: "Nature de l'affaire en texte libre (ex: 'Recouvrement de créance', 'Divorce'). Stockée dans \"court_name\". Ce n'est pas le tribunal (voir jurisdiction).",
+      });
     }
 
     return fields;
@@ -113,25 +168,6 @@ export class DossierWriteHandler extends BaseWriteHandler {
         errors.push("L'objet du litige est requis");
       }
 
-      // Avocat référent requis
-      if (!fields.lawyer_id) {
-        errors.push("L'avocat référent est requis (lawyer_id ou lawyer)");
-      }
-
-      // Type de procédure requis
-      if (!fields.procedure_type_id) {
-        errors.push('Le type de procédure est requis (procedure_type_id ou procedure_type)');
-      }
-
-      // Sous-type de procédure requis
-      if (!fields.procedure_subtype_id) {
-        errors.push('Le sous-type de procédure est requis (procedure_subtype_id ou procedure_subtype)');
-      }
-    } else if (operation === 'UPDATE') {
-      // Vérifications spécifiques UPDATE : on peut modifier procedure_type mais pas le rendre vide
-      if (fields.procedure_type_id === null || fields.procedure_subtype_id === null) {
-        errors.push('Le type et sous-type de procédure ne peuvent pas être supprimés');
-      }
     }
 
     return {
@@ -155,9 +191,21 @@ export class DossierWriteHandler extends BaseWriteHandler {
     createdEntities?: Map<string, any>,
     config?: ResolveConfig,
   ): Promise<Record<string, any>> {
+    // Accepter aussi les noms métier employés par le formulaire et dans les
+    // demandes en langage naturel, puis les convertir vers les colonnes réelles.
+    const normalizedFields = { ...fields };
+    if (!normalizedFields.object && typeof normalizedFields.case_name === 'string') {
+      normalizedFields.object = normalizedFields.case_name;
+    }
+    if (!normalizedFields.court_name && typeof normalizedFields.nature === 'string') {
+      normalizedFields.court_name = normalizedFields.nature;
+    }
+    delete normalizedFields.case_name;
+    delete normalizedFields.nature;
+
     // ── 1. Extraire les alias texte procedure_type / procedure_subtype ──────
     //    pour éviter que super.resolveDependencies les résolve sans filtre
-    const withoutProcedure = { ...fields };
+    const withoutProcedure = { ...normalizedFields };
     const typeValue = withoutProcedure.procedure_type;
     const subtypeValue = withoutProcedure.procedure_subtype;
     delete withoutProcedure.procedure_type;
@@ -269,33 +317,6 @@ export class DossierWriteHandler extends BaseWriteHandler {
           // le frontend affiche les candidats (0..N) + l'option "Autre" (allowOther=true)
           throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, fallbackCandidates, -1, this.entityName);
         }
-      }
-    }
-
-    // ── 5. Proposer des suggestions pour les FK requises mais absentes ───────
-
-    if (!resolved.lawyer_id) {
-      const candidates = await this.fetchTopEmployees();
-      if (candidates.length > 0) {
-        this.logger.warn(`🔍 lawyer manquant — proposition de ${candidates.length} avocats`);
-        throw new AmbiguityException('employee', 'lawyer', '(non spécifié)', candidates, -1, this.entityName);
-      }
-    }
-
-    if (!resolved.procedure_type_id) {
-      const candidates = await this.fetchTopProcedureTypes(false);
-      if (candidates.length > 0) {
-        this.logger.warn(`🔍 procedure_type manquant — proposition de ${candidates.length} types`);
-        throw new AmbiguityException('procedure_types', 'procedure_type', '(non spécifié)', candidates, -1, this.entityName);
-      }
-    }
-
-    if (!resolved.procedure_subtype_id) {
-      const parentId = resolved.procedure_type_id;
-      const candidates = await this.fetchTopProcedureTypes(true, parentId);
-      if (candidates.length > 0) {
-        this.logger.warn(`🔍 procedure_subtype manquant — proposition de ${candidates.length} sous-types`);
-        throw new AmbiguityException('procedure_types', 'procedure_subtype', '(non spécifié)', candidates, -1, this.entityName);
       }
     }
 
@@ -448,6 +469,7 @@ export class DossierWriteHandler extends BaseWriteHandler {
     // Filtrer les champs connus + stripper les champs auto-générés (codes, refs)
     // → on ne veut pas que le LLM impose un dossier_number qui causerait collision
     const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
+    const workflowEngine = await this.getNewDossierWorkflowEngine();
 
     const dossierData = {
       ...safeFields,
@@ -456,9 +478,21 @@ export class DossierWriteHandler extends BaseWriteHandler {
       status: safeFields.status !== undefined ? parseInt(safeFields.status) : DossierStatus.OPEN,
       priority_level: safeFields.priority_level || 0,
       danger_level: safeFields.danger_level || DangerLevel.Normal,
-      // S'assurer que procedure_type_id et procedure_subtype_id sont des nombres
-      procedure_type_id: safeFields.procedure_type_id ? Number(safeFields.procedure_type_id) : undefined,
-      procedure_subtype_id: safeFields.procedure_subtype_id ? Number(safeFields.procedure_subtype_id) : undefined,
+      // Le parcours est décidé par la configuration du cabinet, comme dans
+      // DossiersService.create. Il ne doit jamais être imposé par le LLM.
+      workflow_engine: workflowEngine,
+      lifecycle_phase: DossierLifecyclePhase.OPENING,
+      // Les deux références sont optionnelles et peuvent être complétées plus tard.
+      procedure_type_id: safeFields.procedure_type_id === undefined
+        ? undefined
+        : safeFields.procedure_type_id === null || safeFields.procedure_type_id === ''
+          ? null
+          : Number(safeFields.procedure_type_id),
+      procedure_subtype_id: safeFields.procedure_subtype_id === undefined
+        ? undefined
+        : safeFields.procedure_subtype_id === null || safeFields.procedure_subtype_id === ''
+          ? null
+          : Number(safeFields.procedure_subtype_id),
     } as any;
 
     // Supprimer les undefined pour laisser TypeORM gérer les defaults

@@ -31,7 +31,7 @@ import { Task } from './task.entity';
   description: 'Instance d\'exécution d\'un modèle de procédure. C\'est le cœur du workflow : une instance représente le suivi concret d\'un dossier à travers ses étapes et sous-étapes, avec l\'état d\'avancement réel.',
   icon: '⚙️',
   category: 'procedure',
-  ignored: false,
+  ignored: true,
 })
 export class ProcedureInstance extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')

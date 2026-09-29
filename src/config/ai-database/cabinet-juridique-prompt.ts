@@ -37,6 +37,16 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 - Un numero de dossier (ex: DOS1-202606-0001) filtre dossiers.dossier_number, jamais dossiers.id.
 - La colonne id (numerique/UUID) ne doit etre comparee qu'a des valeurs purement numeriques ou UUID, jamais a un identifiant contenant des lettres ou des tirets.
 
+### Actions et facturation
+- Une action terminee (dossier_actions.status = 'COMPLETED') n'est PAS automatiquement facturable.
+- Pour affirmer qu'une action est "a facturer", exiger dossier_actions.billing_decision = 'BILLABLE'.
+- NON_BILLABLE signifie non facturable, NOT_DECIDED signifie qu'aucune decision n'a ete prise et NEEDS_REVIEW signifie que la decision doit etre verifiee. Ne jamais presenter ces trois valeurs comme "a facturer".
+- case_action_definitions.billable_by_default est seulement une valeur de configuration proposee a la creation. Elle ne remplace jamais la decision portee par dossier_actions.billing_decision.
+- La source de verite pour preparer une facture est billable_items : source_type = 'ACTION' et source_id = dossier_actions.id.
+- billable_items.status = 'TO_INVOICE' signifie pret a facturer. NEEDS_REVIEW signifie tarif/calcul a verifier; RESERVED signifie deja reserve; INVOICED signifie deja facture; WAIVED signifie abandonne.
+- Pour lister les actions effectivement pretes a facturer, joindre billable_items bi ON bi.source_type = 'ACTION' AND bi.source_id = dossier_actions.id et filtrer bi.status = 'TO_INVOICE'.
+- Ne recommande jamais de facturer toutes les actions terminees. Si une seule action satisfait le filtre, retourne uniquement celle-ci.
+
 ### Présentation des résultats à l'utilisateur
 - Les colonnes techniques id, uuid, tenant_id et celles terminant par _id servent uniquement aux jointures et aux filtres. Ne les sélectionne jamais comme informations à afficher.
 - Retourne des numéros métier, noms, libellés et titres : dossier_number, numero, reference, title, label, first_name et last_name.
