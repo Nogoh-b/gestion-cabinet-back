@@ -130,6 +130,27 @@ const DEFINITION_DEFAULTS: Array<{
     label: 'Traiter le report d’audience',
     dueDays: 1,
     priority: ActionPriority.HIGH,
+    // Détails pratiques de l'audience de remplacement, inconnus au moment du
+    // report lui-même. La date et l'heure ne sont volontairement pas liables :
+    // elles appartiennent au workflow de report, qui seul crée l'audience
+    // de remplacement et sa filiation.
+    fields: {
+      type: 'object',
+      properties: {
+        confirmed_room: {
+          type: 'string',
+          multiline: false,
+          label: 'Salle confirmée',
+          binding: { entity: 'audience', field: 'room' },
+        },
+        confirmed_judge: {
+          type: 'string',
+          multiline: false,
+          label: 'Magistrat confirmé',
+          binding: { entity: 'audience', field: 'judge_name' },
+        },
+      },
+    },
     results: [
       { code: 'RESCHEDULED', label: 'Nouvelle date enregistrée' },
       { code: 'FOLLOW_UP_REQUIRED', label: 'Relance nécessaire' },
@@ -446,7 +467,22 @@ const ADDITIONAL_DEFINITION_DEFAULTS: typeof DEFINITION_DEFAULTS = [
     dueDays: 1,
     billable: true,
     billingMode: BillingCalculationMode.HOURLY,
-    fields: FAMILY_FIELDS.AUDIENCE,
+    // Copie de FAMILY_FIELDS.AUDIENCE : l'objet est partagé par référence avec
+    // trois autres définitions, y poser la liaison les alimenterait toutes.
+    fields: {
+      type: 'object',
+      properties: {
+        keyPoints: { type: 'string', label: 'Points à soutenir ou vérifier' },
+        attendee: { type: 'string', label: 'Personne présente' },
+        hearingOutcome: {
+          type: 'string',
+          label: 'Résultat ou décision',
+          // `decision` est un texte long : `outcome` est plafonné à 100
+          // caractères et refuserait un compte rendu de décision.
+          binding: { entity: 'audience', field: 'decision' },
+        },
+      },
+    },
     results: STANDARD_RESULTS,
   },
   {
@@ -465,6 +501,9 @@ const ADDITIONAL_DEFINITION_DEFAULTS: typeof DEFINITION_DEFAULTS = [
           label: `Rapport d'audience`,
           multiline: true,
           description: `Ce contenu sera enregistr\u00e9 sur la ressource audience li\u00e9e.`,
+          // Liaison explicite : rend visible dans le catalogue ce que le
+          // service devinait par reniflage d'alias, et la rend modifiable.
+          binding: { entity: 'audience', field: 'report_content' },
         },
         postponement_reason: {
           type: 'string',

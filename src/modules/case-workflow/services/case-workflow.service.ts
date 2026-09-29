@@ -799,11 +799,19 @@ export class CaseWorkflowService {
         context: {
           client: dossier.client,
           lawyer: dossier.lawyer?.user
-            ? { ...dossier.lawyer.user, employee_id: dossier.lawyer.id }
+            ? {
+                ...dossier.lawyer.user,
+                employee_id: dossier.lawyer.id,
+                position: dossier.lawyer.position,
+              }
             : dossier.lawyer,
           collaborators: (dossier.collaborators ?? []).map((employee) =>
             employee.user
-              ? { ...employee.user, employee_id: employee.id }
+              ? {
+                  ...employee.user,
+                  employee_id: employee.id,
+                  position: employee.position,
+                }
               : employee,
           ),
           jurisdiction: dossier.jurisdiction,
