@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
+import { TenantContext } from 'src/core/tenant/tenant.context';
+import { WorkflowEngine } from 'src/modules/case-workflow/case-workflow.enums';
 import { DossierWriteHandler } from './dossier-write.handler';
 
 describe('DossierWriteHandler', () => {
@@ -102,5 +104,41 @@ describe('DossierWriteHandler', () => {
       object: 'Affaire Société ABC',
       court_name: 'Recouvrement de créance',
     });
+  });
+
+  it('utilise le parcours V2 pour une création IA lorsque le cabinet le demande', async () => {
+    const handler = createHandler();
+    const findOne = jest.fn(async () => ({
+      enabled: true,
+      default_for_new_dossiers: true,
+    }));
+    Object.defineProperty(handler, 'caseWorkflowFeatureRepository', {
+      value: { findOne },
+    });
+
+    const workflowEngine = await new TenantContext().run(22, () =>
+      (handler as any).getNewDossierWorkflowEngine(),
+    );
+
+    expect(findOne).toHaveBeenCalledWith({ where: { tenant_id: 22 } });
+    expect(workflowEngine).toBe(WorkflowEngine.ACTIONS_V2);
+  });
+
+  it('conserve le parcours historique lorsque le parcours V2 n’est pas activé', async () => {
+    const handler = createHandler();
+    Object.defineProperty(handler, 'caseWorkflowFeatureRepository', {
+      value: {
+        findOne: jest.fn(async () => ({
+          enabled: false,
+          default_for_new_dossiers: true,
+        })),
+      },
+    });
+
+    const workflowEngine = await new TenantContext().run(22, () =>
+      (handler as any).getNewDossierWorkflowEngine(),
+    );
+
+    expect(workflowEngine).toBe(WorkflowEngine.LEGACY);
   });
 });

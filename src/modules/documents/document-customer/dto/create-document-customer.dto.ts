@@ -14,11 +14,11 @@ import { DocumentCustomerStatus } from '../entities/document-customer.entity';
 
 
 export class CreateDocumentCustomerDto {
-  @ApiProperty({ description: 'ID du type de document' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ description: 'ID du type de document' })
+  @IsOptional()
   @IsNumber()
   @Transform(({ value }) => parseInt(value))
-  document_type_id: number;
+  document_type_id?: number;
 
   @ApiProperty({ description: 'ID du dossier' })
   @IsNotEmpty()
@@ -26,11 +26,11 @@ export class CreateDocumentCustomerDto {
   @Transform(({ value }) => parseInt(value))
   dossier_id: number;
 
-  @ApiProperty({ description: 'ID du client' })
-  @IsNotEmpty()
+  @ApiPropertyOptional({ description: 'ID du client (déduit du dossier si absent)' })
+  @IsOptional()
   @IsNumber()
   @Transform(({ value }) => parseInt(value))
-  customer_id: number;
+  customer_id?: number;
 
   @ApiPropertyOptional({ description: 'ID du prêt associé' })
   @IsOptional()

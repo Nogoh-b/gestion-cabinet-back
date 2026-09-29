@@ -122,9 +122,14 @@ export class CaseBillingService {
           hourly_rate: null,
           percentage_rate: null,
           percentage_base: null,
-          opening_fee: cabinet?.dossier_opening_fee_enabled
-            ? Number(cabinet.dossier_opening_fee)
-            : null,
+          // Le montant saisi à l'ouverture appartient au dossier et prime
+          // toujours sur le tarif par défaut du cabinet.
+          opening_fee:
+            dossier.procedure_costs != null
+              ? Number(dossier.procedure_costs)
+              : cabinet?.dossier_opening_fee_enabled
+                ? Number(cabinet.dossier_opening_fee)
+                : null,
           is_confirmed: false,
         }),
       );
@@ -351,6 +356,9 @@ export class CaseBillingService {
     });
     const configuredAmount =
       profile?.opening_fee ??
+      (dossier.procedure_costs != null
+        ? Number(dossier.procedure_costs)
+        : null) ??
       (cabinet?.dossier_opening_fee_enabled
         ? Number(cabinet.dossier_opening_fee)
         : null);
@@ -1463,12 +1471,19 @@ export class CaseBillingService {
 
     return this.dataSource.transaction(async (manager) => {
       const itemRepo = manager.getRepository(BillableItem);
-      const items = await itemRepo
-        .createQueryBuilder('item')
-        .setLock('pessimistic_write')
-        .where('item.tenant_id = :tenantId', { tenantId })
-        .andWhere('item.id IN (:...ids)', { ids: dto.billable_item_ids })
-        .getMany();
+      if (!dto.billable_item_ids.length && !dto.dossier_id) {
+        throw new BadRequestException(
+          'Le dossier est obligatoire lorsqu’aucun élément à facturer n’est sélectionné',
+        );
+      }
+      const items = dto.billable_item_ids.length
+        ? await itemRepo
+            .createQueryBuilder('item')
+            .setLock('pessimistic_write')
+            .where('item.tenant_id = :tenantId', { tenantId })
+            .andWhere('item.id IN (:...ids)', { ids: dto.billable_item_ids })
+            .getMany()
+        : [];
       if (items.length !== dto.billable_item_ids.length) {
         throw new NotFoundException(
           'Un ou plusieurs éléments à facturer sont introuvables',
@@ -1495,18 +1510,26 @@ export class CaseBillingService {
           'Un élément est déjà réservé, facturé ou doit être revu',
         );
       }
-      if (new Set(items.map((item) => item.dossier_id)).size !== 1) {
+      if (
+        items.length &&
+        new Set(items.map((item) => item.dossier_id)).size !== 1
+      ) {
         throw new ConflictException(
           'La V1 génère une facture pour un seul dossier',
         );
       }
-      if (new Set(items.map((item) => item.currency)).size !== 1) {
+      if (
+        items.length &&
+        new Set(items.map((item) => item.currency)).size !== 1
+      ) {
         throw new ConflictException(
           'Les éléments sélectionnés doivent utiliser la même devise',
         );
       }
+      const dossierId = items[0]?.dossier_id ?? dto.dossier_id;
+      if (!dossierId) throw new BadRequestException('Dossier obligatoire');
       const dossier = await manager.getRepository(Dossier).findOne({
-        where: { id: items[0].dossier_id, tenant_id: tenantId },
+        where: { id: dossierId, tenant_id: tenantId },
         relations: ['client'],
       });
       if (!dossier) throw new NotFoundException('Dossier introuvable');
@@ -1563,11 +1586,17 @@ export class CaseBillingService {
           tauxTVA: net !== 0 ? this.round((tax / net) * 100) : 0,
           montantTVA: tax,
           montantTTC: this.round(net + tax),
-          description: isCreditNote
-            ? `Avoir lié à la facture d’origine — dossier ${dossier.dossier_number}`
-            : `Prestations du dossier ${dossier.dossier_number}`,
+          description:
+            dto.description?.trim() ||
+            (isCreditNote
+              ? `Avoir lié à la facture d’origine — dossier ${dossier.dossier_number}`
+              : `Prestations du dossier ${dossier.dossier_number}`),
           statut: StatutFacture.BROUILLON,
-          notesInternes: `Générée depuis ${items.length} élément(s) facturable(s)`,
+          notesInternes:
+            dto.internal_notes?.trim() ||
+            (items.length
+              ? `Générée depuis ${items.length} élément(s) facturable(s)`
+              : 'Facture créée sans élément facturable associé'),
         },
         { manager, dossier, client: dossier.client },
       );
@@ -1604,7 +1633,9 @@ export class CaseBillingService {
       await itemRepo.save(items);
       await this.eventService.append(manager, {
         dossierId: dossier.id,
-        eventType: 'INVOICE_CREATED_FROM_BILLABLE_ITEMS',
+        eventType: items.length
+          ? 'INVOICE_CREATED_FROM_BILLABLE_ITEMS'
+          : 'INVOICE_CREATED',
         aggregateType: 'Facture',
         aggregateId: facture.id,
         actorUserId,

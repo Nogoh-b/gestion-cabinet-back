@@ -87,13 +87,31 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
 
     const dossier = await this.dossierService.findOne(dto.dossier_id);
-    const audience_type = await this.audienceTypeService.findOne(dto.audience_type_id);
+    const audience_type = dto.audience_type_id
+      ? await this.audienceTypeService.findOne(dto.audience_type_id)
+      : null;
 
     if (!dossier) {
       throw new NotFoundException('Dossier non trouvé');
     }
-    if (!audience_type) {
+    if (dto.audience_type_id && !audience_type) {
       throw new NotFoundException('Type d\'audience non trouvé');
+    }
+
+    const reason = dto.reason?.trim();
+    const parentAudience = dto.parent_audience_id
+      ? await this.repository.findOne({
+          where: {
+            id: dto.parent_audience_id,
+            dossier_id: String(dto.dossier_id),
+          },
+        })
+      : null;
+    if (dto.parent_audience_id && !parentAudience) {
+      throw new NotFoundException("L'audience renvoyée est introuvable dans ce dossier");
+    }
+    if (parentAudience && !reason) {
+      throw new BadRequestException('Le motif du renvoi est obligatoire');
     }
 
     // ✅ VÉRIFICATION DU STATUT DU DOSSIER
@@ -126,23 +144,26 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       (dossier as any).jurisdiction_id ??
       (dossier as any).jurisdiction?.id ??
       null;
-    if (!resolvedJurisdictionId) {
-      throw new NotFoundException(
-        "Aucune juridiction n'est rattachée au dossier. Renseignez la juridiction sur le dossier."
-      );
-    }
+    const audienceTime = dto.audience_time?.trim() || '09:00';
 
     // 🧠 Conversion explicite pour éviter l’erreur
     const audience = this.repository.create({
       audience_date: dto.audience_date,
-      audience_time: dto.audience_time,
-      jurisdiction: { id: resolvedJurisdictionId } as Jurisdiction,
+      audience_time: audienceTime,
+      ...(resolvedJurisdictionId
+        ? { jurisdiction: { id: resolvedJurisdictionId } as Jurisdiction }
+        : {}),
       room: dto.room,
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
-      notes: dto.notes,
+      notes: parentAudience
+        ? [dto.notes, `Audience issue du renvoi de #${parentAudience.id}. Motif : ${reason}`]
+            .filter(Boolean)
+            .join('\n')
+        : dto.notes,
       postponed_to: dto.postponed_to,
-      audience_type,
+      ...(audience_type ? { audience_type } : {}),
+      ...(parentAudience ? { parent_audience: parentAudience } : {}),
       type: AudienceType1.HEARING,
       dossier,
       status: AudienceStatus.SCHEDULED,
@@ -159,6 +180,15 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }
 
     let aud = await this.repository.save(audience);
+
+    if (parentAudience) {
+      parentAudience.status = AudienceStatus.POSTPONED;
+      parentAudience.postponed_to = new Date(
+        `${String(dto.audience_date).slice(0, 10)}T${audienceTime}`,
+      );
+      parentAudience.notes = `${parentAudience.notes || ''}\nReporté: ${reason}`.trim();
+      await this.repository.save(parentAudience);
+    }
     
     // ✅ Mettre à jour le dossier si nécessaire (ex: première audience en contentieux)
     await this.updateDossierStatusOnAudience(aud, dossier);

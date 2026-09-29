@@ -353,8 +353,6 @@ export class CaseWorkflowService {
         throw new NotFoundException(`Dossier ${dossierId} introuvable`);
       const missing = [
         !dossier.client_id && 'client',
-        !dossier.lawyer_id && 'avocat référent',
-        !dossier.procedure_type_id && 'type de dossier',
         !dossier.object?.trim() && 'objet',
       ].filter(Boolean);
       if (missing.length)

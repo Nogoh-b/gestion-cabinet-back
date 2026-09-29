@@ -8,12 +8,11 @@ import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.serv
 import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
-import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.exception';
 
 /**
  * Handler custom pour les audiences.
  * Logique métier :
- *   - dossier + jurisdiction + date + heure obligatoires
+ *   - dossier + date obligatoires ; heure par défaut à 09:00
  *   - Format heure HH:MM
  *   - Status par défaut : SCHEDULED
  *   - Transitions automatiques :
@@ -36,9 +35,9 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       dossier_id: { description: 'ID du dossier. Peut fournir "dossier" avec son numéro.', required: true },
-      jurisdiction_id: { description: 'ID du tribunal. Peut fournir "jurisdiction" avec le nom.', required: true },
+      jurisdiction_id: { description: 'ID du tribunal. Peut fournir "jurisdiction" avec le nom.', required: false },
       audience_date: { description: 'Date (YYYY-MM-DD)', example: '2026-06-15', required: true },
-      audience_time: { description: 'Heure (HH:MM)', example: '14:30', required: true },
+      audience_time: { description: 'Heure (HH:MM), 09:00 par défaut', example: '14:30', required: false },
       type: { description: 'BD: 0=HEARING/Plaidoirie, 1=DELIBERATION, 2=JUDGMENT, 3=CONCILIATION.', example: '0' },
       status: { description: 'BD: 0=SCHEDULED/Programmée, 1=HELD/Tenue, 2=POSTPONED/Reportée, 3=CANCELLED/Annulée.', example: '0' },
       judge_name: { description: 'Nom du juge', example: 'Madame la Présidente Dupont' },
@@ -65,9 +64,7 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       : fields.reason;
     if (operation === 'INSERT') {
       if (!fields.dossier_id) errors.push('Le dossier est requis (dossier_id ou dossier)');
-      if (!fields.jurisdiction_id) errors.push('La juridiction est requise (jurisdiction_id ou jurisdiction)');
       if (!fields.audience_date) errors.push('La date d\'audience est requise (audience_date)');
-      if (!fields.audience_time) errors.push('L\'heure d\'audience est requise (audience_time, format HH:MM)');
     }
     if (fields.audience_time && !/^\d{1,2}:\d{2}$/.test(String(fields.audience_time))) {
       errors.push('Le format de l\'heure doit être HH:MM (ex: 14:30)');
@@ -94,7 +91,7 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     };
   }
 
-  // ── Résolution des dépendances : propose top 10 juridictions si absentes ──
+  // ── Résolution des dépendances ────────────────────────────────────────────
 
   async resolveDependencies(
     fields: Record<string, any>,
@@ -103,11 +100,6 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     config?: ResolveConfig,
   ): Promise<Record<string, any>> {
     const resolved = await super.resolveDependencies(fields, userId, createdEntities, config);
-    const isLikelyUpdateWithoutSchedulingContext =
-      !resolved.dossier_id &&
-      !resolved.jurisdiction_id &&
-      !resolved.audience_date &&
-      !resolved.audience_time;
 
     // Auto-injection du contexte de stage visit courant
     if (resolved.dossier_id) {
@@ -125,15 +117,6 @@ export class AudienceWriteHandler extends BaseWriteHandler {
       if (dossierJurisdictionId) {
         this.logger.log(`⚖️ jurisdiction déduite du dossier ${resolved.dossier_id} → ${dossierJurisdictionId}`);
         resolved.jurisdiction_id = dossierJurisdictionId;
-      }
-    }
-
-    // En dernier recours seulement (dossier sans juridiction), on propose un choix.
-    if (!resolved.jurisdiction_id && !isLikelyUpdateWithoutSchedulingContext) {
-      const jurisdictions = await this.fetchTopJurisdictions();
-      if (jurisdictions.length > 0) {
-        this.logger.warn(`🔍 jurisdiction manquante — proposition de ${jurisdictions.length} juridictions`);
-        throw new AmbiguityException('jurisdictions', 'jurisdiction', '(non spécifiée)', jurisdictions, -1, this.entityName);
       }
     }
 
@@ -156,33 +139,13 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     }
   }
 
-  /** Récupère les 10 premières juridictions actives (ordre alphabétique) */
-  private async fetchTopJurisdictions(): Promise<Array<{ id: any; label: string; score: number; data: any }>> {
-    try {
-      const rows = await this.dataSource
-        .getRepository('jurisdictions')
-        .createQueryBuilder('j')
-        .orderBy('j.name', 'ASC')
-        .limit(10)
-        .getMany();
-      return rows.map((j: any) => ({
-        id: j.id,
-        label: `${j.name}${j.code ? ` (${j.code})` : ''}${j.city ? ` — ${j.city}` : ''}`,
-        score: 0,
-        data: j,
-      }));
-    } catch (err) {
-      this.logger.error(`Erreur récupération juridictions: ${(err as Error).message}`);
-      return [];
-    }
-  }
-
   protected async doInsert(fields: Record<string, any>, userId: string): Promise<WriteResult> {
     const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
 
     const data = {
       ...safeFields,
       audience_date: new Date(safeFields.audience_date),
+      audience_time: safeFields.audience_time || '09:00',
       type: safeFields.type !== undefined ? Number(safeFields.type) : AudienceType1.HEARING,
       status: safeFields.status !== undefined ? Number(safeFields.status) : AudienceStatus.SCHEDULED,
       reminder_sent: safeFields.reminder_sent ?? false,

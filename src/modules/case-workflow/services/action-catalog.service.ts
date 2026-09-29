@@ -5,8 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
+import { isDuplicateKeyError } from 'src/core/shared/utils/db-error.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import {
   ActionPriority,
   BillingCalculationMode,
@@ -1159,6 +1161,38 @@ export class ActionCatalogService {
       .replace(/^_+|_+$/g, '');
   }
 
+  /**
+   * Fabrique un code métier libre à partir du libellé.
+   *
+   * Les formulaires ne demandent plus de code (cf. memory/codes-auto-generation.md) :
+   * on dérive un slug du libellé avec un suffixe aléatoire, en vérifiant qu'il
+   * n'est pas déjà pris dans le cabinet. La collision reste possible en
+   * concurrence, d'où le second filet de sécurité sur ER_DUP_ENTRY côté appelant.
+   */
+  private async generateUniqueCatalogCode<
+    T extends ActionFamily | ActionDefinition,
+  >(
+    repository: Repository<T>,
+    prefix: 'FAM' | 'ACT',
+    label: string,
+    maxLength: number,
+  ): Promise<string> {
+    const tenantId = getCurrentTenantId();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = this.normalizeFamilyCode(
+        generateEntityCode(prefix, label),
+      ).slice(0, maxLength);
+      if (!code) continue;
+      const exists = await repository.findOne({
+        where: { tenant_id: tenantId, code } as FindOptionsWhere<T>,
+      });
+      if (!exists) return code;
+    }
+    return this.normalizeFamilyCode(
+      `${prefix}_${Date.now().toString(36)}`,
+    ).slice(0, maxLength);
+  }
+
   private normalizeRuleCode(value: string): string {
     return value
       .trim()
@@ -1331,28 +1365,56 @@ export class ActionCatalogService {
 
   async createFamily(dto: CreateActionFamilyDto): Promise<ActionFamily> {
     const tenantId = getCurrentTenantId();
-    const code = this.normalizeFamilyCode(dto.code);
-    if (!code)
-      throw new ConflictException('Le code de la famille est invalide');
-    const exists = await this.familyRepository.findOne({
-      where: { tenant_id: tenantId, code },
-    });
-    if (exists) throw new ConflictException(`La famille ${code} existe déjà`);
+    const provided = dto.code?.trim();
+    let generated = false;
+    let code: string;
+
+    if (provided) {
+      code = this.normalizeFamilyCode(provided);
+      if (!code)
+        throw new ConflictException('Le code de la famille est invalide');
+      const exists = await this.familyRepository.findOne({
+        where: { tenant_id: tenantId, code },
+      });
+      if (exists) throw new ConflictException(`La famille ${code} existe déjà`);
+    } else {
+      generated = true;
+      code = await this.generateUniqueCatalogCode(
+        this.familyRepository,
+        'FAM',
+        dto.label,
+        80,
+      );
+    }
 
     const last = await this.familyRepository.findOne({
       where: { tenant_id: tenantId },
       order: { display_order: 'DESC' },
     });
-    return this.familyRepository.save(
+    const build = (familyCode: string) =>
       this.familyRepository.create({
         tenant_id: tenantId,
-        code,
+        code: familyCode,
         label: dto.label.trim(),
         description: dto.description?.trim() || null,
         display_order: dto.display_order ?? (last?.display_order ?? 0) + 1,
         is_active: dto.is_active ?? true,
-      }),
-    );
+      });
+
+    try {
+      return await this.familyRepository.save(build(code));
+    } catch (error) {
+      // Course sur UQ_case_action_family_tenant_code : un code auto-généré peut
+      // être repris tel quel, un code choisi par l'utilisateur doit remonter.
+      if (!generated || !isDuplicateKeyError(error)) throw error;
+      const retry = await this.generateUniqueCatalogCode(
+        this.familyRepository,
+        'FAM',
+        dto.label,
+        80,
+      );
+      return this.familyRepository.save(build(retry));
+    }
   }
 
   async updateFamily(
@@ -1372,7 +1434,9 @@ export class ActionCatalogService {
         .getOne();
       if (!family) throw new NotFoundException('Famille d’action introuvable');
 
-      if (dto.code !== undefined) {
+      // Une chaîne vide venant d'un client qui n'affiche plus le champ ne doit
+      // pas être traitée comme une demande de renommage.
+      if (dto.code !== undefined && dto.code.trim()) {
         const code = this.normalizeFamilyCode(dto.code);
         if (!code)
           throw new ConflictException('Le code de la famille est invalide');
@@ -1405,25 +1469,36 @@ export class ActionCatalogService {
         'Famille d’action introuvable dans ce cabinet',
       );
 
-    const code = dto.code
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9_]+/g, '_');
-    if (!code)
-      throw new ConflictException('Le code de la définition est invalide');
-    const exists = await this.definitionRepository.findOne({
-      where: { tenant_id: tenantId, code },
-    });
-    if (exists)
-      throw new ConflictException(
-        `La définition ${code} existe déjà; créez une nouvelle version`,
-      );
+    const provided = dto.code?.trim();
+    let generated = false;
+    let code: string;
 
-    return this.definitionRepository.save(
+    if (provided) {
+      code = provided.toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+      if (!code)
+        throw new ConflictException('Le code de la définition est invalide');
+      const exists = await this.definitionRepository.findOne({
+        where: { tenant_id: tenantId, code },
+      });
+      if (exists)
+        throw new ConflictException(
+          `La définition ${code} existe déjà; créez une nouvelle version`,
+        );
+    } else {
+      generated = true;
+      code = await this.generateUniqueCatalogCode(
+        this.definitionRepository,
+        'ACT',
+        dto.label,
+        100,
+      );
+    }
+
+    const build = (definitionCode: string) =>
       this.definitionRepository.create({
         tenant_id: tenantId,
         family_id: family.id,
-        code,
+        code: definitionCode,
         label: dto.label.trim(),
         version: 1,
         specific_fields_schema: dto.specific_fields_schema ?? {
@@ -1439,8 +1514,21 @@ export class ActionCatalogService {
         billing_mode: dto.billing_mode ?? null,
         default_rate: dto.default_rate ?? null,
         is_active: true,
-      }),
-    );
+      });
+
+    try {
+      return await this.definitionRepository.save(build(code));
+    } catch (error) {
+      // Course sur UQ_case_action_definition_version.
+      if (!generated || !isDuplicateKeyError(error)) throw error;
+      const retry = await this.generateUniqueCatalogCode(
+        this.definitionRepository,
+        'ACT',
+        dto.label,
+        100,
+      );
+      return this.definitionRepository.save(build(retry));
+    }
   }
 
   async reviseDefinition(

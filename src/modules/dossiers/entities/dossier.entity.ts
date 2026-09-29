@@ -112,11 +112,11 @@ export class Dossier extends BaseEntity {
 
   @Column({ name: 'court_name', length: 255, nullable: true })
   @BusinessColumn({
-    label: 'Nom du tribunal',
-    description: 'Nom officiel du tribunal saisi',
-    example: 'Tribunal judiciaire de Paris',
+    label: "Nature de l'affaire",
+    description: "Nature de l'affaire en texte libre (ex: 'Recouvrement de créance', 'Divorce', 'Licenciement abusif'). Ce n'est PAS le nom du tribunal : la juridiction saisie utilise jurisdiction_id/jurisdiction. Peut aussi être fourni via l'alias \"nature\".",
+    example: 'Recouvrement de créance',
     importance: 'high',
-    group: 'localisation'
+    group: 'contenu'
   })
   court_name: string;
 

@@ -224,36 +224,35 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     } = createDto;
 
     try {
-      // 1. Validation du type de document
-      const docType = await this.validateDocumentType(document_type_id, strict);
-      if (!docType && !strict) return null;
-
-      // 3. Validation du dossier
+      // 1. Validation du dossier : le client est déduit de cette relation.
       const dossier : DossierResponseDto = await this.validateDossier(dossier_id, strict);
       if (!dossier && !strict) return null;
 
-      // 2. Validation du client et vérification des documents requis
-      const customer = await this.validateCustomer(dossier.client.id, document_type_id, strict);
+      // 2. Le type et la catégorie sont des informations complémentaires.
+      const docType = document_type_id
+        ? await this.validateDocumentType(document_type_id, strict)
+        : null;
+      const customer = await this.validateCustomer(
+        dossier.client.id,
+        document_type_id ?? 0,
+        strict,
+      );
       if (!customer && !strict) return null;
-      
-      // 2. Validation du client et vérification des documents requis
-      if (!category_id) {
-        throw new NotFoundException(`Catégorie avec l'ID ${category_id} introuvable`);
-      }
-      const category = await this.documentCategoryService.findOne(category_id);
-      if (!category && !strict) return null;
-
-
+      const category = category_id
+        ? await this.documentCategoryService.findOne(category_id)
+        : null;
 
       // 5. Vérification des documents similaires existants
-      const hasSimilarDocs = await this.checkSimilarDocuments(document_type_id, customer_id);
+      const hasSimilarDocs = document_type_id
+        ? await this.checkSimilarDocuments(document_type_id, dossier.client.id)
+        : false;
       if (hasSimilarDocs && strict) {
         // throw new ConflictException(`Un document de ce type a déjà été soumis ou validé`);
       }
       if (hasSimilarDocs && !strict) return null;
 
       // 6. Validation du fichier
-      await this.validateFile(file, docType!, strict);
+      if (docType) await this.validateFile(file, docType, strict);
       if (!file && strict) {
         throw new BadRequestException('Aucun fichier uploadé');
       }
@@ -282,9 +281,11 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         cabinetName = 'cabinet';
       }
 
-      const dir = `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType!.name}`
+      const categoryName = category?.name ?? 'Documents non classés';
+      const typeName = docType?.name ?? 'Pièces diverses';
+      const dir = `${cabinetName}/${dossier.dossier_number}/${categoryName}/${typeName}`
       // 8. Upload du fichier
-      const docName = restDto.name || docType!.name;
+      const docName = restDto.name || path.parse(file.originalname).name;
       const uploadedFile = await this.uploadFile(file, dir, docName);
 
         // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
@@ -312,10 +313,12 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       // 8. Création du document
       const document = await this.createDocument({
         ...restDto,
-        document_type: docType!,
+        document_type: docType ?? undefined,
         customer,
         status : DocumentCustomerStatus.ACCEPTED,
-        category : plainToInstance(DocumentCategory, category),
+        category: category
+          ? plainToInstance(DocumentCategory, category)
+          : undefined,
         dossier: plainToInstance(Dossier, dossier), // ou gardez l'objet tel quel
         notify_client: !!createDto.notify_client,
         uploadedFile,
@@ -649,7 +652,7 @@ async linkDocumentsToSubStage(
    * Crée l'entité document
    */
   private async createDocument(params: {
-    document_type: DocumentType;
+    document_type?: DocumentType;
     customer: Customer;
     dossier: Dossier;
     uploadedFile: UploadedFileInfo;
@@ -677,7 +680,7 @@ async linkDocumentsToSubStage(
       document_type,
       customer,
       dossier,
-      name: restParams.name ?? document_type.name,
+      name: restParams.name ?? document_type?.name ?? uploadedFile.fileName,
       file_path: uploadedFile.filePath,
       file_url: uploadedFile.fileUrl,
       file_size: uploadedFile.fileSize,

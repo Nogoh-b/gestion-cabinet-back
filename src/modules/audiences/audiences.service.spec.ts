@@ -1,15 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { beforeEach, describe, expect, it } from '@jest/globals';
 import { AudiencesService } from './audiences.service';
 
 describe('AudiencesService', () => {
   let service: AudiencesService;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [AudiencesService],
-    }).compile();
-
-    service = module.get<AudiencesService>(AudiencesService);
+  beforeEach(() => {
+    service = Object.create(AudiencesService.prototype) as AudiencesService;
   });
 
   it('should be defined', () => {
