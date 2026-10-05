@@ -18,7 +18,9 @@ export class TemplateBlocksService {
 
   async create(dto: CreateTemplateBlockDto): Promise<TemplateBlock> {
     const block = this.repository.create(dto as any);
-    const saved = (await this.repository.save(block as any)) as unknown as TemplateBlock;
+    const saved = (await this.repository.save(
+      block as any,
+    )) as unknown as TemplateBlock;
     if (saved.is_default) {
       await this.unsetOtherDefaults(saved.channel, saved.kind, saved.id);
     }
@@ -66,7 +68,10 @@ export class TemplateBlocksService {
     return this.repository.findOne({ where: { code } });
   }
 
-  async update(id: number, dto: UpdateTemplateBlockDto): Promise<TemplateBlock> {
+  async update(
+    id: number,
+    dto: UpdateTemplateBlockDto,
+  ): Promise<TemplateBlock> {
     const block = await this.findOne(id);
     // Code et canal/nature des blocs système restent figés.
     if (block.is_system) {

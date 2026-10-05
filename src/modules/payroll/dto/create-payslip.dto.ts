@@ -29,7 +29,8 @@ export class CreatePayslipDto {
 
   @ApiProperty({
     example: 4500.0,
-    description: 'Salaire de base. Le back génère les cotisations et calcule le brut/net.',
+    description:
+      'Salaire de base. Le back génère les cotisations et calcule le brut/net.',
   })
   @IsNumber()
   @Min(0)
@@ -38,7 +39,8 @@ export class CreatePayslipDto {
 
   @ApiPropertyOptional({
     example: 3200.0,
-    description: 'Net à payer (optionnel — calculé automatiquement à partir des lignes/cotisations)',
+    description:
+      'Net à payer (optionnel — calculé automatiquement à partir des lignes/cotisations)',
   })
   @IsNumber()
   @Min(0)
@@ -48,7 +50,8 @@ export class CreatePayslipDto {
   @ApiPropertyOptional({
     enum: PayslipStatus,
     example: PayslipStatus.DRAFT,
-    description: "Statut souhaité. 'validated'/'paid' déclenchent le cycle de vie (validation, comptabilisation).",
+    description:
+      "Statut souhaité. 'validated'/'paid' déclenchent le cycle de vie (validation, comptabilisation).",
   })
   @IsEnum(PayslipStatus)
   @IsOptional()

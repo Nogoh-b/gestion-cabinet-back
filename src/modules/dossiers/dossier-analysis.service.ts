@@ -3,7 +3,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Dossier, DangerLevel } from './entities/dossier.entity';
-import { ClientDecision, RecommendationType } from 'src/core/enums/dossier-status.enum';
+import {
+  ClientDecision,
+  RecommendationType,
+} from 'src/core/enums/dossier-status.enum';
 import { Step, StepStatus, StepType } from './entities/step.entity';
 
 @Injectable()
@@ -35,10 +38,10 @@ export class DossierAnalysisService {
 
     // Effectuer l'analyse
     dossier.performPreliminaryAnalysis(successProbability, dangerLevel, notes);
-    
+
     // Créer les étapes correspondantes
     await this.createStepsFromAnalysis(dossier);
-    
+
     return this.dossierRepository.save(dossier);
   }
 
@@ -68,7 +71,8 @@ export class DossierAnalysisService {
       steps.push({
         type: StepType.AMIABLE,
         title: 'Présentation des options au client',
-        description: 'Présenter les options de transaction et contentieux au client',
+        description:
+          'Présenter les options de transaction et contentieux au client',
         status: StepStatus.PENDING,
         scheduledDate: new Date(),
         dossier,
@@ -103,7 +107,8 @@ export class DossierAnalysisService {
       steps.push({
         type: StepType.AMIABLE,
         title: 'Phase de négociation transactionnelle',
-        description: 'Négociation avec la partie adverse pour trouver un accord amiable',
+        description:
+          'Négociation avec la partie adverse pour trouver un accord amiable',
         status: StepStatus.IN_PROGRESS,
         dossier,
       });
@@ -111,7 +116,7 @@ export class DossierAnalysisService {
       steps.push({
         type: StepType.CONTENTIOUS,
         title: 'Assignation',
-        description: 'Préparation et dépôt de l\'assignation',
+        description: "Préparation et dépôt de l'assignation",
         status: StepStatus.IN_PROGRESS,
         dossier,
       });
@@ -158,7 +163,7 @@ export class DossierAnalysisService {
     if (!isSatisfied && dossier.appeal_possibility) {
       const appealStep = this.stepRepository.create({
         type: StepType.APPEAL,
-        title: 'Possibilité d\'appel',
+        title: "Possibilité d'appel",
         description: `Délai pour faire appel: ${dossier.appeal_deadline}`,
         status: StepStatus.PENDING,
         scheduledDate: dossier.appeal_deadline,

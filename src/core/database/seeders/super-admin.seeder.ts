@@ -18,7 +18,7 @@ export class SuperAdminSeeder {
 
   constructor(
     @InjectRepository(User)
-    private readonly userRepository: Repository<User>,    
+    private readonly userRepository: Repository<User>,
     private readonly employeeService: EmployeeService,
     @InjectRepository(UserRole)
     private readonly roleRepository: Repository<UserRole>,
@@ -86,21 +86,23 @@ export class SuperAdminSeeder {
 
     // Check if SUPER_ADMIN user already exists
     const superAdminUsername = 'superadmin';
-    let superAdminUser = await  this.employeeService.findOneByUsername(superAdminUsername, false) /*await this.userRepository.findOne({
+    let superAdminUser = await this.employeeService.findOneByUsername(
+      superAdminUsername,
+      false,
+    ); /*await this.userRepository.findOne({
       where: { username: superAdminUsername },
     });*/
-
 
     if (!superAdminUser) {
       // Create SUPER_ADMIN user
       const hashedPassword = await bcrypt.hash('Admin@1234', 10); // Use a strong default password
-      let dto = new CreateUserDto();
-      dto.email = 'admin@gmail.com'
+      const dto = new CreateUserDto();
+      dto.email = 'admin@gmail.com';
       // dto.username = superAdminUsername
-      dto.password = 'Admin@1234'
+      dto.password = 'Admin@1234';
       //dto.branch_id = -1
       // dto.hire_date = new Date()
-      superAdminUser = await this.employeeService.createEmployee(dto, false)
+      superAdminUser = await this.employeeService.createEmployee(dto, false);
       this.logger.log('Created SUPER_ADMIN user');
     }
 

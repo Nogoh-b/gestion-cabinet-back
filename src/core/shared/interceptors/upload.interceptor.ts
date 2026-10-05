@@ -12,11 +12,28 @@ import { randomBytes } from 'crypto';
  */
 const ALLOWED_EXTENSIONS = new Set([
   // Documents
-  '.pdf', '.doc', '.docx', '.odt', '.rtf', '.txt', '.csv', '.xls', '.xlsx',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.odt',
+  '.rtf',
+  '.txt',
+  '.csv',
+  '.xls',
+  '.xlsx',
   // Images
-  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.tiff',
   // Audio/vidéo (preuves, audition)
-  '.mp3', '.wav', '.mp4', '.mov',
+  '.mp3',
+  '.wav',
+  '.mp4',
+  '.mov',
 ]);
 
 /** Mapping extension → types MIME attendus (vérification du contenu réel). */

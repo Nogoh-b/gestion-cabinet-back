@@ -1,18 +1,18 @@
 // src/modules/audiences/dto/audience-stats.dto.ts
 
-import { BaseStatsDto, DistributionItem } from "src/core/types/base-stats.dto";
+import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class AudienceStatsDto extends BaseStatsDto {
   scheduled: number;
   held: number;
   postponed: number;
   cancelled: number;
-  
+
   byStatus: DistributionItem[];
   byType: DistributionItem[];
   byJurisdiction: DistributionItem[];
   byDossier: DistributionItem[];
-  
+
   upcomingAudiences: UpcomingAudienceDto[];
   pastAudiences: PastAudienceStatsDto;
   monthlyTrend: MonthlyAudienceTrendDto[];

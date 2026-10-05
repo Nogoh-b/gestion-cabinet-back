@@ -27,7 +27,13 @@ export class SingleInvoiceTypeStatsDto {
     montantTotal: number;
     montantPaye: number;
     montantImpaye: number;
-    parStatut: Array<{ name: string; value: number; montant: number; percentage: number; color?: string }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      montant: number;
+      percentage: number;
+      color?: string;
+    }>;
     recents: Array<{
       id: string;
       numero: string;
@@ -77,7 +83,11 @@ export class SingleInvoiceTypeStatsDto {
 
   // Tendances
   tendances: {
-    evolutionAnnuelle: Array<{ annee: string; montant: number; croissance: number }>;
+    evolutionAnnuelle: Array<{
+      annee: string;
+      montant: number;
+      croissance: number;
+    }>;
     saisonnalite: Array<{ mois: number; moyenne: number }>;
   };
 }

@@ -1,11 +1,11 @@
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsInt,
-    IsNumber,
-    IsDateString,
-    Min,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  IsNumber,
+  IsDateString,
+  Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -27,7 +27,7 @@ export class CreateExpenseReportDto {
   title: string;
 
   @ApiProperty({
-    example: 245.50,
+    example: 245.5,
     description: 'Montant total de la note',
   })
   @IsNumber()

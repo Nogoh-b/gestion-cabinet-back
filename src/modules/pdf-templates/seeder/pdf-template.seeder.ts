@@ -725,6 +725,44 @@ const AUDIENCE_CONVOCATION = `
 </div>
 `;
 
+/* ── Liste des audiences sur une période (calendrier, exports de planning) ── */
+
+const AUDIENCE_LIST_VARS = JSON.stringify([
+  'cabinetName',
+  'periode_fmt',
+  'totalCount',
+  'audiencesRows',
+  'generatedAt_fmt',
+  'year',
+]);
+
+const AUDIENCE_LISTE_PERIODE = `
+<div style="padding:16px;">
+  <div style="text-align:center; padding-bottom:12px; margin-bottom:16px; border-bottom:2px solid #1e3a8a;">
+    <div style="font-size:20px; font-weight:bold; color:#1e3a8a;">{{cabinetName}}</div>
+    <div style="font-size:16px; font-weight:bold; color:#0f172a;">LISTE DES AUDIENCES</div>
+    <div style="font-size:11px; color:#475569;">{{periode_fmt}} — {{totalCount}} audience(s)</div>
+  </div>
+
+  <table style="width:100%;">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Heure</th>
+        <th>Dossier</th>
+        <th>Client</th>
+        <th>Juridiction</th>
+        <th>Type</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>{{audiencesRows}}</tbody>
+  </table>
+
+  <div class="footer">Liste générée le {{generatedAt_fmt}} — {{cabinetName}} © {{year}}</div>
+</div>
+`;
+
 const GENERAL_MISE_EN_DEMEURE = `
 <div style="padding:24px;">
   <table style="width:100%; margin-bottom:24px; border:none;">
@@ -952,6 +990,21 @@ export default class PdfTemplateSeeder implements Seeder {
         is_system: true,
         is_active: true,
       },
+      {
+        code: 'audience_liste_periode',
+        name: 'Audiences — Liste sur une période',
+        entity_type: 'audience_list',
+        variant: 'standard',
+        description:
+          "Tableau des audiences d'une semaine ou d'une période donnée (agenda, planning).",
+        title: 'LISTE DES AUDIENCES',
+        body_html: AUDIENCE_LISTE_PERIODE,
+        variables: AUDIENCE_LIST_VARS,
+        orientation: 'landscape',
+        paper_size: 'a4',
+        is_system: true,
+        is_active: true,
+      },
 
       // ── DILIGENCES ────────────────────────────────────────────
       {
@@ -959,7 +1012,7 @@ export default class PdfTemplateSeeder implements Seeder {
         name: 'Diligence — Ordre de mission',
         entity_type: 'diligence',
         variant: 'standard',
-        description: "Ordre de mission décrivant la diligence à réaliser.",
+        description: 'Ordre de mission décrivant la diligence à réaliser.',
         title: 'ORDRE DE MISSION',
         body_html: DILIGENCE_ORDRE,
         variables: DILIGENCE_VARS,
@@ -973,8 +1026,7 @@ export default class PdfTemplateSeeder implements Seeder {
         name: 'Diligence — Rapport',
         entity_type: 'diligence',
         variant: 'interne',
-        description:
-          'Rapport de diligence : constatations et recommandations.',
+        description: 'Rapport de diligence : constatations et recommandations.',
         title: 'RAPPORT DE DILIGENCE',
         body_html: DILIGENCE_RAPPORT,
         variables: DILIGENCE_VARS,

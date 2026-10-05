@@ -6,10 +6,13 @@ import {
   ManyToOne,
   JoinColumn,
   Index,
-  OneToMany
+  OneToMany,
 } from 'typeorm';
 import { User } from '../../iam/user/entities/user.entity';
-import { NotificationPriority, NotificationType } from '../enum/notification-type.enum';
+import {
+  NotificationPriority,
+  NotificationType,
+} from '../enum/notification-type.enum';
 import { UserNotification } from './user-notification.entity';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
@@ -52,7 +55,6 @@ export class Notification extends TenantEntity {
   @Column({ type: 'boolean', default: false })
   is_read: boolean;
 
-
   @Column({ type: 'boolean', default: false })
   is_archived: boolean;
 
@@ -65,6 +67,9 @@ export class Notification extends TenantEntity {
   @Column({ type: 'json', nullable: true })
   actions: any[];
 
-    @OneToMany(() => UserNotification, userNotification => userNotification.notification)
+  @OneToMany(
+    () => UserNotification,
+    (userNotification) => userNotification.notification,
+  )
   userNotifications: UserNotification[];
 }

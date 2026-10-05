@@ -1,22 +1,23 @@
-import { AttachmentMail, Mail, MailStatus } from 'src/core/shared/emails/entities/mail.entity';
+import {
+  AttachmentMail,
+  Mail,
+  MailStatus,
+} from 'src/core/shared/emails/entities/mail.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { helpers } from 'src/utils/helper-template-maill';
 import { Repository, LessThanOrEqual } from 'typeorm';
 import { MailerService } from '@nestjs-modules/mailer';
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
 
 import { CreateMailDto } from './dto/create-mail.dto';
 import { SmtpService } from './smtp.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-
-
-
-
 
 @Injectable()
 export class MailService {
@@ -40,9 +41,13 @@ export class MailService {
     let tenantTransportError: unknown;
     if (!mailOptions.template) {
       try {
-        const t = await this.smtpService.getTenantTransport(getCurrentTenantId());
+        const t =
+          await this.smtpService.getTenantTransport(getCurrentTenantId());
         if (t) {
-          await t.transport.sendMail({ ...mailOptions, from: mailOptions.from ?? t.from });
+          await t.transport.sendMail({
+            ...mailOptions,
+            from: mailOptions.from ?? t.from,
+          });
           return;
         }
       } catch (e: any) {
@@ -68,12 +73,15 @@ export class MailService {
   /**
    * Crée un email en base (programmé ou immédiat)
    */
-  async create(createMailDto: CreateMailDto, deduplicationKey?: string): Promise<Mail> {
+  async create(
+    createMailDto: CreateMailDto,
+    deduplicationKey?: string,
+  ): Promise<Mail> {
     if (deduplicationKey) {
       const existingMail = await this.mailRepository.findOne({
-        where: { deduplicationKey }
+        where: { deduplicationKey },
       });
-      
+
       if (existingMail) {
         this.logger.warn(`Email déjà créé avec la clé ${deduplicationKey}`);
         return existingMail;
@@ -82,7 +90,9 @@ export class MailService {
     const mail = this.mailRepository.create({
       ...createMailDto,
       deduplicationKey, // Stocker la clé
-    scheduledAt: createMailDto.scheduledAt ? new Date(createMailDto.scheduledAt) : undefined,
+      scheduledAt: createMailDto.scheduledAt
+        ? new Date(createMailDto.scheduledAt)
+        : undefined,
       status: MailStatus.PENDING,
     });
     const saved = await this.mailRepository.save(mail);
@@ -90,7 +100,9 @@ export class MailService {
     // Si pas de programmation, on tente l'envoi immédiat (asynchrone)
     if (!saved.scheduledAt) {
       // On lance l'envoi sans attendre (fire-and-forget)
-      this.sendMail(saved.id).catch(err => this.logger.error(`Erreur envoi immédiat mail ${saved.id}`, err));
+      this.sendMail(saved.id).catch((err) =>
+        this.logger.error(`Erreur envoi immédiat mail ${saved.id}`, err),
+      );
     }
 
     return saved;
@@ -110,8 +122,8 @@ export class MailService {
       this.logger.warn(`Mail ${id} déjà envoyé`);
       return;
     }
-    let attachments : AttachmentMail[] = []
-    if(mail.attachments)
+    let attachments: AttachmentMail[] = [];
+    if (mail.attachments)
       attachments = await this.prepareAttachmentsWithBuffers(mail.attachments);
 
     try {
@@ -128,18 +140,18 @@ export class MailService {
       if (mail.templateName) {
         // Rendu via fichier Handlebars (.hbs)
         mailOptions.template = mail.templateName;
-        mailOptions.context  = mail.context || {};
+        mailOptions.context = mail.context || {};
       } else {
         // HTML déjà rendu (composer frontend) — court-circuit Handlebars complet.
         // On utilise la propriété nodemailer native `html` ET on désactive le
         // layout par défaut (`defaultLayout: 'layout'` dans app.module) afin que
         // le HandlebarsAdapter ne tente pas de re-compiler le HTML via Handlebars
         // (ce qui échouerait en mode strict sur des accolades CSS / non résolues).
-        mailOptions.html    = mail.html;
-        mailOptions.text    = mail.text;
+        mailOptions.html = mail.html;
+        mailOptions.text = mail.text;
         // layout: false → désactive le defaultLayout pour cet envoi uniquement
-        (mailOptions as any).context  = { ...(mail.context || {}) };
-        (mailOptions as any).layout   = false;
+        mailOptions.context = { ...(mail.context || {}) };
+        mailOptions.layout = false;
       }
 
       // Envoyer (SMTP cabinet si configuré, sinon défaut)
@@ -164,25 +176,26 @@ export class MailService {
     }
   }
 
-
-  private async prepareAttachmentsWithBuffers(documents: AttachmentMail[]): Promise<any[]> {
-  const attachments = [] as AttachmentMail[];
-  for (const doc of documents) {
-    if (doc.href) {
-      const response = await fetch(doc.href);
-      const buffer = await response.arrayBuffer();
-      attachments.push({
-        filename: doc.filename,
-        content: Buffer.from(buffer),
-        contentType: doc.contentType,
-      });
+  private async prepareAttachmentsWithBuffers(
+    documents: AttachmentMail[],
+  ): Promise<any[]> {
+    const attachments = [] as AttachmentMail[];
+    for (const doc of documents) {
+      if (doc.href) {
+        const response = await fetch(doc.href);
+        const buffer = await response.arrayBuffer();
+        attachments.push({
+          filename: doc.filename,
+          content: Buffer.from(buffer),
+          contentType: doc.contentType,
+        });
+      }
+      // sinon, lire depuis le disque local
     }
-    // sinon, lire depuis le disque local
+    return attachments;
   }
-  return attachments;
-}
 
- /**
+  /**
    * Envoie un email immédiatement sans le persister en base
    */
   async sendDirect(options: {
@@ -196,7 +209,17 @@ export class MailService {
     cc?: string | string[];
     bcc?: string | string[];
   }): Promise<void> {
-    const { to, subject, html, text, templateName, context, attachments, cc, bcc } = options;
+    const {
+      to,
+      subject,
+      html,
+      text,
+      templateName,
+      context,
+      attachments,
+      cc,
+      bcc,
+    } = options;
 
     // Préparer les pièces jointes si nécessaire (récupération des buffers)
     let attachmentList: any[] = [];
@@ -215,13 +238,13 @@ export class MailService {
 
     if (templateName) {
       mailOptions.template = templateName;
-      mailOptions.context  = context || {};
+      mailOptions.context = context || {};
     } else {
       // HTML inline — désactive le defaultLayout Handlebars (évite erreur strict mode)
-      mailOptions.html    = html;
-      mailOptions.text    = text;
-      (mailOptions as any).layout  = false;
-      (mailOptions as any).context = {};
+      mailOptions.html = html;
+      mailOptions.text = text;
+      mailOptions.layout = false;
+      mailOptions.context = {};
     }
 
     // Envoyer (SMTP cabinet si configuré, sinon défaut)
@@ -229,49 +252,47 @@ export class MailService {
     this.logger.log(`Email direct envoyé à ${to}`);
   }
 
-
-
   async sendResetPasswordEmail(user: any, token: string) {
-  const context = {
-    ...user,
-    resetLink: helpers.resetPasswordLink(token)
-  };
-  
-  await this.sendDirect({
-    to: user.email,
-    subject: 'Réinitialisation de votre mot de passe',
-    templateName: 'entities/employee/reset-password',
-    context
-  });
-}
+    const context = {
+      ...user,
+      resetLink: helpers.resetPasswordLink(token),
+    };
 
-async sendActivationEmail(user: any, token: string) {
-  const context = {
-    ...user,
-    activationLink: helpers.activationLink(token)
-  };
-  
-  await this.sendDirect({
-    to: user.email,
-    subject: 'Activez votre compte',
-    templateName: 'entities/employee/welcome-activation',
-    context
-  });
-}
+    await this.sendDirect({
+      to: user.email,
+      subject: 'Réinitialisation de votre mot de passe',
+      templateName: 'entities/employee/reset-password',
+      context,
+    });
+  }
 
-async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
-  const context = {
-    ...user,
-    tempPassword
-  };
-  
-  await this.sendDirect({
-    to: user.email,
-    subject: 'Bienvenue sur la plateforme',
-    templateName: 'entities/employee/welcome-password',
-    context
-  });
-}
+  async sendActivationEmail(user: any, token: string) {
+    const context = {
+      ...user,
+      activationLink: helpers.activationLink(token),
+    };
+
+    await this.sendDirect({
+      to: user.email,
+      subject: 'Activez votre compte',
+      templateName: 'entities/employee/welcome-activation',
+      context,
+    });
+  }
+
+  async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
+    const context = {
+      ...user,
+      tempPassword,
+    };
+
+    await this.sendDirect({
+      to: user.email,
+      subject: 'Bienvenue sur la plateforme',
+      templateName: 'entities/employee/welcome-password',
+      context,
+    });
+  }
 
   /**
    * Annule un email programmé
@@ -303,7 +324,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
 
     for (const mail of pendingMails) {
       // On lance l'envoi en arrière-plan pour ne pas bloquer le cron
-      this.sendMail(mail.id).catch(err =>
+      this.sendMail(mail.id).catch((err) =>
         this.logger.error(`Erreur cron pour mail ${mail.id}`, err),
       );
     }
@@ -321,26 +342,31 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
    * Convention de stockage : `metadata = { linkedEntity: { type: 'dossier', id: 42 } }`.
    * Utilise une requête JSON (compatible MySQL 5.7+).
    */
-  async findByEntity(entityType: string, entityId: string | number): Promise<Mail[]> {    
+  async findByEntity(
+    entityType: string,
+    entityId: string | number,
+  ): Promise<Mail[]> {
     const idStr = String(entityId);
-    return this.mailRepository
-      .createQueryBuilder('mail')
-      // 1. Mail directement lié à l'entité (linkedEntity)
-      .where(
-        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = :type
+    return (
+      this.mailRepository
+        .createQueryBuilder('mail')
+        // 1. Mail directement lié à l'entité (linkedEntity)
+        .where(
+          `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = :type
           AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id')) = :idStr)`,
-        { type: entityType, idStr },
-      )
-      // 2. Mail lié à une sous-ressource MAIS rattaché à ce parent (parentRef).
-      //    Ex : mail envoyé depuis une facture/audience d'un dossier → doit
-      //    apparaître dans l'historique du dossier parent.
-      .orWhere(
-        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.type')) = :type
+          { type: entityType, idStr },
+        )
+        // 2. Mail lié à une sous-ressource MAIS rattaché à ce parent (parentRef).
+        //    Ex : mail envoyé depuis une facture/audience d'un dossier → doit
+        //    apparaître dans l'historique du dossier parent.
+        .orWhere(
+          `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.type')) = :type
           AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.parentRef.id')) = :idStr)`,
-        { type: entityType, idStr },
-      )
-      .orderBy('mail.created_at', 'DESC')
-      .getMany();
+          { type: entityType, idStr },
+        )
+        .orderBy('mail.created_at', 'DESC')
+        .getMany()
+    );
   }
 
   /**
@@ -361,7 +387,7 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
       'SELECT id FROM dossiers WHERE client_id = ? AND deleted_at IS NULL',
       [idNum],
     );
-    const dossierIds = rawRows.map(r => String(r.id));
+    const dossierIds = rawRows.map((r) => String(r.id));
 
     this.logger.debug(
       `[findByClient] clientId=${idStr} → ${rawRows.length} dossier(s) : [${dossierIds.join(', ')}]`,
@@ -369,8 +395,9 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
 
     // Diagnostic : si toujours 0, loguer quels client_ids ont des dossiers avec des mails
     if (rawRows.length === 0) {
-      const sample: Array<{ client_id: number; cnt: string }> = await this.dossierRepository.query(
-        `SELECT d.client_id, COUNT(d.id) as cnt
+      const sample: Array<{ client_id: number; cnt: string }> =
+        await this.dossierRepository.query(
+          `SELECT d.client_id, COUNT(d.id) as cnt
          FROM dossiers d
          WHERE d.deleted_at IS NULL
            AND EXISTS (
@@ -381,21 +408,21 @@ async sendWelcomeWithPasswordEmail(user: any, tempPassword: string) {
          GROUP BY d.client_id
          ORDER BY cnt DESC
          LIMIT 20`,
-      );
+        );
       this.logger.debug(
         `[findByClient] DEBUG — clients ayant des dossiers avec mails : ` +
-        sample.map(r => `client_id=${r.client_id}(${r.cnt} dossiers)`).join(', '),
+          sample
+            .map((r) => `client_id=${r.client_id}(${r.cnt} dossiers)`)
+            .join(', '),
       );
     }
 
-    const qb = this.mailRepository
-      .createQueryBuilder('mail')
-      .where(
-        // Mail directement lié au client
-        `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = 'client'
+    const qb = this.mailRepository.createQueryBuilder('mail').where(
+      // Mail directement lié au client
+      `(JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.type')) = 'client'
           AND JSON_UNQUOTE(JSON_EXTRACT(mail.metadata, '$.linkedEntity.id')) = :idStr)`,
-        { idStr },
-      );
+      { idStr },
+    );
 
     if (dossierIds.length > 0) {
       qb.orWhere(

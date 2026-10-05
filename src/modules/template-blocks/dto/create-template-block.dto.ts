@@ -8,7 +8,10 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTemplateBlockDto {
-  @ApiProperty({ example: 'pdf_header_defaut', description: 'Code unique du bloc' })
+  @ApiProperty({
+    example: 'pdf_header_defaut',
+    description: 'Code unique du bloc',
+  })
   @IsString()
   @IsNotEmpty()
   code: string;
@@ -36,12 +39,17 @@ export class CreateTemplateBlockDto {
   @IsNotEmpty()
   body_html: string;
 
-  @ApiPropertyOptional({ description: 'Liste JSON des variables', example: '["cabinet.name","year"]' })
+  @ApiPropertyOptional({
+    description: 'Liste JSON des variables',
+    example: '["cabinet.name","year"]',
+  })
   @IsString()
   @IsOptional()
   variables?: string;
 
-  @ApiPropertyOptional({ description: 'Bloc par défaut pour son couple (channel, kind)' })
+  @ApiPropertyOptional({
+    description: 'Bloc par défaut pour son couple (channel, kind)',
+  })
   @IsBoolean()
   @IsOptional()
   is_default?: boolean;

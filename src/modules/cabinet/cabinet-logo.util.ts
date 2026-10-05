@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join, normalize } from 'path';
-import { UPLOAD_FOLDER_NAME, UPLOAD_PATH } from 'src/core/common/constants/constants';
+import {
+  UPLOAD_FOLDER_NAME,
+  UPLOAD_PATH,
+} from 'src/core/common/constants/constants';
 import type { Cabinet } from './entities/cabinet.entity';
 
 /**

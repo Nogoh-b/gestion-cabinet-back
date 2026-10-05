@@ -3,8 +3,17 @@ import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 export enum FindingSeverity {
   CRITICAL = 'critical',
@@ -39,9 +48,10 @@ export enum FindingCategory {
 @Entity('findings')
 @BusinessTable({
   label: 'Constats / Anomalies',
-  description: 'Gestion des constats, anomalies et risques identifiés lors des diligences légales (due diligence). Chaque constat a une sévérité (critique, élevé, moyen, faible, info) et un statut (identifié, en analyse, validé, résolu, accepté).',
+  description:
+    'Gestion des constats, anomalies et risques identifiés lors des diligences légales (due diligence). Chaque constat a une sévérité (critique, élevé, moyen, faible, info) et un statut (identifié, en analyse, validé, résolu, accepté).',
   icon: '⚠️',
-  category: 'investigation'
+  category: 'investigation',
 })
 export class Finding extends BaseEntity {
   @PrimaryGeneratedColumn()
@@ -50,7 +60,7 @@ export class Finding extends BaseEntity {
     description: 'Identifiant unique du constat',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -58,9 +68,10 @@ export class Finding extends BaseEntity {
   @BusinessColumn({
     label: 'Titre',
     description: 'Titre ou objet du constat',
-    example: 'Non-conformité fiscale, Clause contractuelle déséquilibrée, Défaut de gouvernance',
+    example:
+      'Non-conformité fiscale, Clause contractuelle déséquilibrée, Défaut de gouvernance',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   title: string;
 
@@ -69,47 +80,50 @@ export class Finding extends BaseEntity {
     label: 'Description',
     description: 'Description détaillée du constat et de son contexte',
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
   @Column({
     type: 'enum',
     enum: FindingSeverity,
-    default: FindingSeverity.MEDIUM
+    default: FindingSeverity.MEDIUM,
   })
   @BusinessColumn({
     label: 'Sévérité',
-    description: "BD: 'critical'=Critique, 'high'=Élevé, 'medium'=Moyen, 'low'=Faible, 'info'=Information.",
+    description:
+      "BD: 'critical'=Critique, 'high'=Élevé, 'medium'=Moyen, 'low'=Faible, 'info'=Information.",
     example: 'critical, high, medium, low, info',
     importance: 'critical',
-    group: 'priorité'
+    group: 'priorité',
   })
   severity: FindingSeverity;
 
   @Column({
     type: 'enum',
     enum: FindingStatus,
-    default: FindingStatus.IDENTIFIED
+    default: FindingStatus.IDENTIFIED,
   })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'identified'=Identifié, 'in_analysis'=En analyse, 'validated'=Validé, 'resolved'=Résolu, 'waived'=Accepté.",
+    description:
+      "BD: 'identified'=Identifié, 'in_analysis'=En analyse, 'validated'=Validé, 'resolved'=Résolu, 'waived'=Accepté.",
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: FindingStatus;
 
   @Column({
     type: 'enum',
     enum: FindingCategory,
-    default: FindingCategory.OTHER
+    default: FindingCategory.OTHER,
   })
   @BusinessColumn({
     label: 'Catégorie',
-    description: "BD: 'corporate', 'contract', 'labor', 'tax', 'ip', 'litigation', 'real_estate', 'regulatory', 'compliance', 'financial', 'other'.",
+    description:
+      "BD: 'corporate', 'contract', 'labor', 'tax', 'ip', 'litigation', 'real_estate', 'regulatory', 'compliance', 'financial', 'other'.",
     importance: 'high',
-    group: 'classification'
+    group: 'classification',
   })
   category: FindingCategory;
 
@@ -131,7 +145,7 @@ export class Finding extends BaseEntity {
     description: 'Date à laquelle le constat a été validé',
     format: 'date',
     importance: 'medium',
-    group: 'dates'
+    group: 'dates',
   })
   validated_at: Date;
 
@@ -141,7 +155,7 @@ export class Finding extends BaseEntity {
     description: 'Date à laquelle le constat a été résolu',
     format: 'date',
     importance: 'medium',
-    group: 'dates'
+    group: 'dates',
   })
   resolved_at: Date;
 
@@ -151,7 +165,7 @@ export class Finding extends BaseEntity {
     description: 'Impact potentiel sur l’opération ou le dossier',
     example: 'Risque de nullité du contrat, Pénalités fiscales estimées à X€',
     importance: 'high',
-    group: 'analyse'
+    group: 'analyse',
   })
   impact: string;
 
@@ -161,37 +175,45 @@ export class Finding extends BaseEntity {
     description: 'Recommandation de l’avocat pour traiter le constat',
     example: 'Renégocier la clause, Obtenir une régularisation fiscale',
     importance: 'high',
-    group: 'analyse'
+    group: 'analyse',
   })
   recommendation: string;
 
   @Column({ name: 'client_comment', type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Commentaire client',
-    description: 'Commentaire ou décision du client sur le constat (ex: acceptation du risque)',
+    description:
+      'Commentaire ou décision du client sur le constat (ex: acceptation du risque)',
     importance: 'medium',
-    group: 'communication'
+    group: 'communication',
   })
   client_comment: string;
 
   @Column({ name: 'legal_basis', type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Base légale',
-    description: 'Références juridiques justifiant le constat (articles de loi, jurisprudence)',
+    description:
+      'Références juridiques justifiant le constat (articles de loi, jurisprudence)',
     example: 'Article L. 123-1 Code de commerce, Cass. civ. 3e, 12 janv. 2023',
     importance: 'high',
-    group: 'juridique'
+    group: 'juridique',
   })
   legal_basis: string;
 
-  @Column({ name: 'estimated_risk_amount', type: 'decimal', precision: 15, scale: 2, nullable: true })
+  @Column({
+    name: 'estimated_risk_amount',
+    type: 'decimal',
+    precision: 15,
+    scale: 2,
+    nullable: true,
+  })
   @BusinessColumn({
     label: 'Montant estimé du risque',
     description: 'Évaluation financière du risque potentiel',
     unit: '€',
     format: 'currency',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   estimated_risk_amount: number;
 
@@ -201,7 +223,7 @@ export class Finding extends BaseEntity {
     description: 'Date limite pour la résolution du constat',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   due_date: Date;
 
@@ -210,28 +232,32 @@ export class Finding extends BaseEntity {
     label: 'Confidentiel',
     description: 'True = constat confidentiel (accès restreint)',
     importance: 'medium',
-    group: 'sécurité'
+    group: 'sécurité',
   })
   confidential: boolean;
 
   // Relations
-  @ManyToOne(() => Diligence, (diligence) => diligence.findings, { nullable: false })
+  @ManyToOne(() => Diligence, (diligence) => diligence.findings, {
+    nullable: false,
+  })
   @JoinColumn({ name: 'diligence_id' })
   @BusinessColumn({
     label: 'Diligence',
     description: 'Diligence légale à laquelle ce constat est rattaché',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   diligence: Diligence;
 
-  @ManyToOne(() => DocumentCustomer, (document) => document.findings, { nullable: true })
+  @ManyToOne(() => DocumentCustomer, (document) => document.findings, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'document_id' })
   @BusinessColumn({
     label: 'Document source',
     description: 'Document à l’origine du constat',
     importance: 'medium',
-    group: 'relation'
+    group: 'relation',
   })
   document: DocumentCustomer;
 
@@ -247,9 +273,10 @@ export class Finding extends BaseEntity {
 
   @BusinessColumn({
     label: 'Est critique',
-    description: 'True si le constat est de sévérité critique (bloquant pour l’opération)',
+    description:
+      'True si le constat est de sévérité critique (bloquant pour l’opération)',
     importance: 'high',
-    group: 'priorité'
+    group: 'priorité',
   })
   get is_critical(): boolean {
     return this.severity === FindingSeverity.CRITICAL;
@@ -257,10 +284,10 @@ export class Finding extends BaseEntity {
 
   @BusinessColumn({
     label: 'Jours restants',
-    description: "Nombre de jours avant la date butoir (null si non défini)",
+    description: 'Nombre de jours avant la date butoir (null si non défini)',
     unit: 'jours',
     importance: 'medium',
-    group: 'dates'
+    group: 'dates',
   })
   get days_to_resolve(): number | null {
     if (!this.due_date) return null;
@@ -274,11 +301,14 @@ export class Finding extends BaseEntity {
     label: 'Est en retard',
     description: 'True si la date butoir est dépassée et le constat non résolu',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   get is_overdue(): boolean {
     if (!this.due_date) return false;
-    if (this.status === FindingStatus.RESOLVED || this.status === FindingStatus.WAIVED) {
+    if (
+      this.status === FindingStatus.RESOLVED ||
+      this.status === FindingStatus.WAIVED
+    ) {
       return false;
     }
     const today = new Date();
@@ -290,7 +320,7 @@ export class Finding extends BaseEntity {
     label: 'Sévérité libellée',
     description: 'Libellé lisible de la sévérité',
     importance: 'medium',
-    group: 'priorité'
+    group: 'priorité',
   })
   get severity_label(): string {
     const labels = {
@@ -298,7 +328,7 @@ export class Finding extends BaseEntity {
       [FindingSeverity.HIGH]: 'Élevée',
       [FindingSeverity.MEDIUM]: 'Moyenne',
       [FindingSeverity.LOW]: 'Faible',
-      [FindingSeverity.INFO]: 'Information'
+      [FindingSeverity.INFO]: 'Information',
     };
     return labels[this.severity] || this.severity;
   }
@@ -307,7 +337,7 @@ export class Finding extends BaseEntity {
     label: 'Statut libellé',
     description: 'Libellé lisible du statut',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get status_label(): string {
     const labels = {
@@ -315,7 +345,7 @@ export class Finding extends BaseEntity {
       [FindingStatus.IN_ANALYSIS]: 'En analyse',
       [FindingStatus.VALIDATED]: 'Validé',
       [FindingStatus.RESOLVED]: 'Résolu',
-      [FindingStatus.WAIVED]: 'Accepté par le client'
+      [FindingStatus.WAIVED]: 'Accepté par le client',
     };
     return labels[this.status] || this.status;
   }
@@ -324,7 +354,7 @@ export class Finding extends BaseEntity {
     label: 'Catégorie libellée',
     description: 'Libellé lisible de la catégorie',
     importance: 'medium',
-    group: 'classification'
+    group: 'classification',
   })
   get category_label(): string {
     const labels = {
@@ -338,7 +368,7 @@ export class Finding extends BaseEntity {
       [FindingCategory.REGULATORY]: 'Réglementaire',
       [FindingCategory.COMPLIANCE]: 'Conformité',
       [FindingCategory.FINANCIAL]: 'Financier',
-      [FindingCategory.OTHER]: 'Autre'
+      [FindingCategory.OTHER]: 'Autre',
     };
     return labels[this.category] || this.category;
   }

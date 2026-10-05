@@ -22,7 +22,8 @@ export class CreateSupplierInvoiceDto {
 
   @ApiProperty({
     example: 'FAC-2026-0452',
-    description: 'Numéro de facture fournisseur. Généré automatiquement si non fourni.',
+    description:
+      'Numéro de facture fournisseur. Généré automatiquement si non fourni.',
     required: false,
   })
   @IsOptional()
@@ -39,7 +40,7 @@ export class CreateSupplierInvoiceDto {
 
   @ApiProperty({
     example: '2026-03-15',
-    description: 'Date d\'émission',
+    description: "Date d'émission",
   })
   @IsDateString()
   @IsNotEmpty()
@@ -47,7 +48,7 @@ export class CreateSupplierInvoiceDto {
 
   @ApiProperty({
     example: '2026-04-15',
-    description: 'Date d\'échéance',
+    description: "Date d'échéance",
   })
   @IsDateString()
   @IsNotEmpty()
@@ -108,7 +109,7 @@ export class CreateSupplierInvoiceDto {
 
   @ApiPropertyOptional({
     example: 2,
-    description: 'ID de l\'agence',
+    description: "ID de l'agence",
   })
   @IsInt()
   @IsOptional()

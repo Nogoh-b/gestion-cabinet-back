@@ -1,7 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, IsObject, IsIn, IsInt } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsObject,
+  IsIn,
+  IsInt,
+} from 'class-validator';
 
-const THEME_NAMES = ['ocean', 'silver', 'yellow', 'forest', 'sunset', 'rose'] as const;
+const THEME_NAMES = [
+  'ocean',
+  'silver',
+  'yellow',
+  'forest',
+  'sunset',
+  'rose',
+] as const;
 type ThemeName = (typeof THEME_NAMES)[number];
 
 const NUMBERING_STRATEGIES = ['yearly', 'monthly', 'continuous'] as const;
@@ -186,4 +200,32 @@ export class AppSettingsDto {
   @IsOptional()
   @IsString()
   dossier_template?: string | null;
+
+  // ── IA (par cabinet) ──────────────────────────────────────────────────
+  @ApiPropertyOptional({
+    description: 'Configuration IA du cabinet (provider, clés, modèles)',
+    example: {
+      active_provider: 'deepseek',
+      providers: {
+        deepseek: {
+          base_url: 'https://api.deepseek.com',
+          api_key: 'sk-...',
+          model: 'deepseek-v4-flash',
+        },
+        meta: {
+          base_url: 'https://api.meta.ai',
+          api_key: 'LLM_...',
+          model: 'muse-spark-1.3-contributor',
+        },
+        freellm: {
+          base_url: 'https://freellm.bisoft-solutions.com/v1',
+          api_key: 'freellmapi-...',
+          model: 'multi-models',
+        },
+      },
+    },
+  })
+  @IsOptional()
+  @IsObject()
+  ai_config?: Record<string, any> | null;
 }

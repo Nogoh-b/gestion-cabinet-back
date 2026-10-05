@@ -9,7 +9,7 @@ export default registerAs('features', () => ({
     reporting: process.env.FEATURE_REPORTING !== 'false',
     mfa: process.env.FEATURE_MFA === 'true',
   },
-  
+
   // Fonctionnalités spécifiques
   features: {
     autoArchive: process.env.FEATURE_AUTO_ARCHIVE === 'true',
@@ -18,11 +18,20 @@ export default registerAs('features', () => ({
     clientPortal: process.env.FEATURE_CLIENT_PORTAL === 'true',
     electronicSignature: process.env.FEATURE_ELECTRONIC_SIGNATURE === 'true',
   },
-  
+
   // Limites système
   limits: {
-    maxDossiersPerUser: parseInt(process.env.MAX_DOSSIERS_PER_USER || '1000', 10),
-    maxDocumentsPerDossier: parseInt(process.env.MAX_DOCUMENTS_PER_DOSSIER || '500', 10),
-    maxClientsPerAvocat: parseInt(process.env.MAX_CLIENTS_PER_AVOCAT || '500', 10),
+    maxDossiersPerUser: parseInt(
+      process.env.MAX_DOSSIERS_PER_USER || '1000',
+      10,
+    ),
+    maxDocumentsPerDossier: parseInt(
+      process.env.MAX_DOCUMENTS_PER_DOSSIER || '500',
+      10,
+    ),
+    maxClientsPerAvocat: parseInt(
+      process.env.MAX_CLIENTS_PER_AVOCAT || '500',
+      10,
+    ),
   },
 }));

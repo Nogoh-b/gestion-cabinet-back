@@ -1,6 +1,9 @@
 // src/facture/entities/facture.entity.ts
 
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
@@ -14,26 +17,26 @@ import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
-  Column, OneToMany,
+  Column,
+  OneToMany,
   ManyToOne,
   JoinColumn,
   BeforeInsert,
-  Index
+  Index,
 } from 'typeorm';
-
 
 import { Paiement } from '../../paiement/entities/paiement.entity';
 import { StatutFacture, TypeFacture } from '../dto/create-facture.dto';
 import { InvoiceLine } from 'src/modules/case-workflow/entities/billing.entity';
 
-
 @Entity('factures')
 @Index('UQ_factures_tenant_numero', ['tenant_id', 'numero'], { unique: true })
 @BusinessTable({
   label: 'Factures',
-  description: 'Gestion des factures émises aux clients. Les colonnes enum numériques doivent être filtrées avec leurs codes BD, notamment type et status.',
+  description:
+    'Gestion des factures émises aux clients. Les colonnes enum numériques doivent être filtrées avec leurs codes BD, notamment type et status.',
   icon: '💰',
-  category: 'finance'
+  category: 'finance',
 })
 export class Facture extends BaseEntity {
   /**
@@ -49,7 +52,7 @@ export class Facture extends BaseEntity {
     description: 'Identifiant unique de la facture (format UUID)',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: string;
 
@@ -59,21 +62,21 @@ export class Facture extends BaseEntity {
     description: 'Identifiant du dossier associé à la facture',
     importance: 'critical',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   dossier_id: number;
 
   @Column({ name: 'client_id' })
-  @BusinessColumn({ 
+  @BusinessColumn({
     label: 'Client',
     description: 'Identifiant du client destinataire de la facture',
     importance: 'critical',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
-  client_id: number; 
+  client_id: number;
 
-  @ManyToOne(() => Step, step => step.factures, { nullable: true })
+  @ManyToOne(() => Step, (step) => step.factures, { nullable: true })
   @JoinColumn({ name: 'step_id' })
   step: Step;
 
@@ -83,14 +86,15 @@ export class Facture extends BaseEntity {
   @Column({
     type: 'enum',
     enum: TypeFacture,
-    default: TypeFacture.HONORAIRES
+    default: TypeFacture.HONORAIRES,
   })
   @BusinessColumn({
     label: 'Type de facture',
-    description: 'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES. En SQL utiliser le nombre, pas le libellé.',
+    description:
+      'BD: 0=HONORAIRES, 1=FRAIS_PROCEDURE, 2=DILIGENCES, 3=AUTRES. En SQL utiliser le nombre, pas le libellé.',
     example: '0 = Honoraires, 1 = Frais de procédure, 2 = Diligences',
     importance: 'critical',
-    group: 'classification'
+    group: 'classification',
   })
   type: TypeFacture;
 
@@ -100,17 +104,17 @@ export class Facture extends BaseEntity {
     description: 'Numéro unique de la facture (format: ANN/XXX/YY)',
     example: '2025/001/01, F-2025-001',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   numero: string;
 
   @Column({ name: 'date_facture', type: 'date' })
   @BusinessColumn({
     label: 'Date de facture',
-    description: 'Date d\'émission de la facture',
+    description: "Date d'émission de la facture",
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   dateFacture: Date;
 
@@ -120,7 +124,7 @@ export class Facture extends BaseEntity {
     description: 'Date limite de paiement de la facture',
     format: 'date',
     importance: 'critical',
-    group: 'dates'
+    group: 'dates',
   })
   dateEcheance: Date;
 
@@ -131,7 +135,7 @@ export class Facture extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'critical',
-    group: 'financier'
+    group: 'financier',
   })
   montantHT: number;
 
@@ -142,7 +146,7 @@ export class Facture extends BaseEntity {
     unit: '%',
     format: 'percentage',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   tauxTVA: number;
 
@@ -153,7 +157,7 @@ export class Facture extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   montantTVA: number;
 
@@ -164,7 +168,7 @@ export class Facture extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'critical',
-    group: 'financier'
+    group: 'financier',
   })
   montantTTC: number;
 
@@ -173,21 +177,22 @@ export class Facture extends BaseEntity {
     label: 'Description',
     description: 'Description détaillée des prestations ou produits facturés',
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
   @Column({
     type: 'enum',
     enum: StatutFacture,
-    default: StatutFacture.BROUILLON
+    default: StatutFacture.BROUILLON,
   })
   @BusinessColumn({
     label: 'Statut',
-    description: 'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 4=IMPAYEE, 5=ANNULEE. En SQL utiliser le nombre.',
+    description:
+      'BD: 0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 4=IMPAYEE, 5=ANNULEE. En SQL utiliser le nombre.',
     example: 'status = 3 pour une facture payée',
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: StatutFacture;
 
@@ -196,7 +201,7 @@ export class Facture extends BaseEntity {
     label: 'Notes internes',
     description: 'Commentaires internes non visibles par le client',
     importance: 'low',
-    group: 'interne'
+    group: 'interne',
   })
   notesInternes: string;
 
@@ -209,9 +214,10 @@ export class Facture extends BaseEntity {
   @Column({ type: 'varchar', length: 10, nullable: true, name: 'currency' })
   @BusinessColumn({
     label: 'Devise',
-    description: 'Code ISO de la devise au moment de l\'émission (XAF, EUR, USD…)',
+    description:
+      "Code ISO de la devise au moment de l'émission (XAF, EUR, USD…)",
     importance: 'medium',
-    group: 'financier'
+    group: 'financier',
   })
   currency: string | null;
 
@@ -238,12 +244,12 @@ export class Facture extends BaseEntity {
   // updated_at: Date;
 
   // Relations
-  @OneToMany(() => Paiement, paiement => paiement.facture, { nullable: true })
+  @OneToMany(() => Paiement, (paiement) => paiement.facture, { nullable: true })
   @BusinessColumn({
     label: 'Paiements',
     description: 'Liste des paiements associés à cette facture',
     importance: 'high',
-    group: 'relation'
+    group: 'relation',
   })
   paiements: Paiement[];
 
@@ -263,7 +269,7 @@ export class Facture extends BaseEntity {
     label: 'Dossier',
     description: 'Dossier juridique associé à la facture',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   dossier: Dossier;
 
@@ -273,7 +279,7 @@ export class Facture extends BaseEntity {
     label: "Type d'honoraire",
     description: "Catégorie d'honoraire: forfaitaire, horaire, mixte",
     importance: 'medium',
-    group: 'classification'
+    group: 'classification',
   })
   invoice_type: InvoiceType;
 
@@ -283,44 +289,80 @@ export class Facture extends BaseEntity {
     label: 'Client',
     description: 'Client destinataire de la facture',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   client: Customer;
 
   @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_id: string;
 
-  @ManyToOne(() => SubStage, (subStage) => subStage.factures, { nullable: true })
+  @ManyToOne(() => SubStage, (subStage) => subStage.factures, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'sub_stage_id' })
-  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStage: SubStage;
 
   @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_visit_id: string;
 
-  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, { nullable: true })
+  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'sub_stage_visit_id' })
-  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStageVisit: SubStageVisit;
 
   @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit_id: string;
 
   @ManyToOne(() => StageVisit)
   @JoinColumn({ name: 'stageVisit_id' })
-  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit: StageVisit;
 
   @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedure_instance_id: string;
 
   @ManyToOne(() => ProcedureInstance, { nullable: true })
   @JoinColumn({ name: 'procedure_instance_id' })
-  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedureInstance: ProcedureInstance;
 
   // ==================== GETTERS MÉTIER ====================
@@ -331,12 +373,12 @@ export class Facture extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'critical',
-    group: 'financier'
+    group: 'financier',
   })
   get montantPaye(): number {
     if (!this.paiements || this.paiements.length === 0) return 0;
     return this.paiements
-      .filter(p => p.status === StatutPaiement.VALIDE)
+      .filter((p) => p.status === StatutPaiement.VALIDE)
       .reduce((sum, p) => sum + Number(p.montant), 0);
   }
 
@@ -346,7 +388,7 @@ export class Facture extends BaseEntity {
     unit: '€',
     format: 'currency',
     importance: 'critical',
-    group: 'financier'
+    group: 'financier',
   })
   get resteAPayer(): number {
     return Number(this.montantTTC) - this.montantPaye;
@@ -357,7 +399,7 @@ export class Facture extends BaseEntity {
     description: "Nombre de jours de retard par rapport à la date d'échéance",
     unit: 'jours',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   get jours_retard(): number {
     if (!this.dateEcheance) return 0;
@@ -370,9 +412,10 @@ export class Facture extends BaseEntity {
 
   @BusinessColumn({
     label: 'Est en retard',
-    description: 'True si la facture est en retard de paiement (>0 jours et non payée)',
+    description:
+      'True si la facture est en retard de paiement (>0 jours et non payée)',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   get is_en_retard(): boolean {
     return this.jours_retard > 0 && this.resteAPayer > 0;
@@ -380,14 +423,18 @@ export class Facture extends BaseEntity {
 
   @BusinessColumn({
     label: 'Statut paiement',
-    description: 'ENVOYEE (0 payé), PARTIELLEMENT_PAYEE (partiellement payé), PAYEE (total payé)',
+    description:
+      'ENVOYEE (0 payé), PARTIELLEMENT_PAYEE (partiellement payé), PAYEE (total payé)',
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   get statut_paiement(): StatutFacture {
     if (this.montantPaye === 0) {
       return StatutFacture.ENVOYEE;
-    } else if (this.montantPaye > 0 && this.montantPaye < Number(this.montantTTC)) {
+    } else if (
+      this.montantPaye > 0 &&
+      this.montantPaye < Number(this.montantTTC)
+    ) {
       return StatutFacture.PARTIELLEMENT_PAYEE;
     } else if (this.montantPaye >= Number(this.montantTTC)) {
       return StatutFacture.PAYEE;
@@ -399,14 +446,14 @@ export class Facture extends BaseEntity {
     label: 'Type libellé',
     description: 'Libellé lisible du type de facture',
     importance: 'medium',
-    group: 'classification'
+    group: 'classification',
   })
   get type_label(): string {
     const labels = {
       [TypeFacture.HONORAIRES]: 'Honoraires',
       [TypeFacture.FRAIS_PROCEDURE]: 'Frais de procédure',
       [TypeFacture.DILIGENCES]: 'Diligences',
-      [TypeFacture.AUTRES]: 'Autres'
+      [TypeFacture.AUTRES]: 'Autres',
     };
     return labels[this.type] || String(this.type);
   }
@@ -415,7 +462,7 @@ export class Facture extends BaseEntity {
     label: 'Statut libellé',
     description: 'Libellé lisible du statut',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get status_label(): string {
     const labels = {
@@ -424,9 +471,9 @@ export class Facture extends BaseEntity {
       [StatutFacture.PARTIELLEMENT_PAYEE]: 'Partiellement payée',
       [StatutFacture.PAYEE]: 'Payée',
       [StatutFacture.IMPAYEE]: 'Impayée',
-      [StatutFacture.ANNULEE]: 'Annulée'
+      [StatutFacture.ANNULEE]: 'Annulée',
     };
-    return (labels[this.status] || String(this.status)) as string;
+    return labels[this.status] || String(this.status);
   }
 
   @BusinessColumn({
@@ -434,7 +481,7 @@ export class Facture extends BaseEntity {
     description: 'Pourcentage du montant TTC par rapport au montant HT',
     unit: '%',
     importance: 'low',
-    group: 'financier'
+    group: 'financier',
   })
   get billing_rate(): number {
     if (this.montantHT === 0) return 0;

@@ -10,7 +10,7 @@ import {
   DocumentTypeCustomerTypeStatsDto,
   TopDocumentTypeDto,
   DocumentTypeUsageStatsDto,
-  MimeTypeStatsDto
+  MimeTypeStatsDto,
 } from './dto/document-type-stats.dto';
 import { SingleDocumentTypeStatsDto } from './dto/single-document-type-stats.dto';
 import { DocumentCustomerStatus } from './../document-customer/entities/document-customer.entity';
@@ -24,7 +24,9 @@ export class DocumentTypeStatsService {
     private typeCustomerRepository: Repository<TypeCustomer>,
   ) {}
 
-  async getStats(typeId?: number): Promise<DocumentTypeStatsDto | SingleDocumentTypeStatsDto> {
+  async getStats(
+    typeId?: number,
+  ): Promise<DocumentTypeStatsDto | SingleDocumentTypeStatsDto> {
     // Si un typeId est fourni, on retourne les stats détaillées de ce type
     if (typeId) {
       return this.getStatsForSingleType(typeId);
@@ -35,7 +37,9 @@ export class DocumentTypeStatsService {
   }
 
   // Méthode pour un type de document spécifique
-  private async getStatsForSingleType(typeId: number): Promise<SingleDocumentTypeStatsDto> {
+  private async getStatsForSingleType(
+    typeId: number,
+  ): Promise<SingleDocumentTypeStatsDto> {
     const typeDocument = await this.documentTypeRepository.findOne({
       where: { id: typeId },
       relations: [
@@ -43,8 +47,8 @@ export class DocumentTypeStatsService {
         'documents',
         'documents.dossier',
         'documents.dossier.client',
-        'documents.uploaded_by'
-      ]
+        'documents.uploaded_by',
+      ],
     });
 
     if (!typeDocument) {
@@ -70,7 +74,9 @@ export class DocumentTypeStatsService {
         dateMiseAJour: typeDocument.updated_at,
       },
       documents: this.getDocumentsStats(typeDocument.documents || []),
-      typesClients: await this.getTypesClientsStats(typeDocument.customerTypes || []),
+      typesClients: await this.getTypesClientsStats(
+        typeDocument.customerTypes || [],
+      ),
       parDossier: this.getDistributionByDossier(typeDocument.documents || []),
       parUploader: this.getDistributionByUploader(typeDocument.documents || []),
       evolution: this.getEvolutionStats(typeDocument.documents || []),
@@ -78,14 +84,16 @@ export class DocumentTypeStatsService {
     };
   }
 
-  private getDocumentsStats(documents: any[]): SingleDocumentTypeStatsDto['documents'] {
+  private getDocumentsStats(
+    documents: any[],
+  ): SingleDocumentTypeStatsDto['documents'] {
     const total = documents.length;
     const totalSize = documents.reduce((sum, d) => sum + (d.file_size || 0), 0);
     const tailleMoyenne = total > 0 ? totalSize / total : 0;
 
     // Stats par statut
     const byStatusMap = new Map<number, number>();
-    documents.forEach(d => {
+    documents.forEach((d) => {
       byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
     });
 
@@ -105,18 +113,23 @@ export class DocumentTypeStatsService {
       [DocumentCustomerStatus.ARCHIVED]: '#9ca3af',
     };
 
-    const parStatut = Array.from(byStatusMap.entries()).map(([status, count]) => ({
-      name: statusLabels[status] || 'Inconnu',
-      value: count,
-      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-      color: statusColors[status] || '#6b7280',
-    }));
+    const parStatut = Array.from(byStatusMap.entries()).map(
+      ([status, count]) => ({
+        name: statusLabels[status] || 'Inconnu',
+        value: count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: statusColors[status] || '#6b7280',
+      }),
+    );
 
     // Documents récents
     const recents = [...documents]
-      .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime(),
+      )
       .slice(0, 10)
-      .map(d => ({
+      .map((d) => ({
         id: d.id,
         nom: d.name,
         dossier: d.dossier?.dossier_number,
@@ -136,8 +149,10 @@ export class DocumentTypeStatsService {
     };
   }
 
-  private async getTypesClientsStats(typesClients: any[]): Promise<SingleDocumentTypeStatsDto['typesClients']> {
-    return typesClients.map(tc => ({
+  private async getTypesClientsStats(
+    typesClients: any[],
+  ): Promise<SingleDocumentTypeStatsDto['typesClients']> {
+    return typesClients.map((tc) => ({
       id: tc.id,
       nom: tc.name,
       code: tc.code,
@@ -145,14 +160,19 @@ export class DocumentTypeStatsService {
     }));
   }
 
-  private getDistributionByDossier(documents: any[]): SingleDocumentTypeStatsDto['parDossier'] {
-    const dossierMap = new Map<number, { dossierNumber: string; count: number }>();
+  private getDistributionByDossier(
+    documents: any[],
+  ): SingleDocumentTypeStatsDto['parDossier'] {
+    const dossierMap = new Map<
+      number,
+      { dossierNumber: string; count: number }
+    >();
 
-    documents.forEach(d => {
+    documents.forEach((d) => {
       if (d.dossier) {
         const current = dossierMap.get(d.dossier.id) || {
           dossierNumber: d.dossier.dossier_number,
-          count: 0
+          count: 0,
         };
         current.count++;
         dossierMap.set(d.dossier.id, current);
@@ -173,14 +193,16 @@ export class DocumentTypeStatsService {
     return distribution;
   }
 
-  private getDistributionByUploader(documents: any[]): SingleDocumentTypeStatsDto['parUploader'] {
+  private getDistributionByUploader(
+    documents: any[],
+  ): SingleDocumentTypeStatsDto['parUploader'] {
     const uploaderMap = new Map<number, { userName: string; count: number }>();
 
-    documents.forEach(d => {
+    documents.forEach((d) => {
       if (d.uploaded_by) {
         const current = uploaderMap.get(d.uploaded_by.id) || {
           userName: d.uploaded_by.full_name,
-          count: 0
+          count: 0,
         };
         current.count++;
         uploaderMap.set(d.uploaded_by.id, current);
@@ -200,16 +222,21 @@ export class DocumentTypeStatsService {
     return distribution;
   }
 
-  private getEvolutionStats(documents: any[]): SingleDocumentTypeStatsDto['evolution'] {
+  private getEvolutionStats(
+    documents: any[],
+  ): SingleDocumentTypeStatsDto['evolution'] {
     const maintenant = new Date();
     const sixMoisAvant = new Date();
     sixMoisAvant.setMonth(sixMoisAvant.getMonth() - 6);
 
-    const evolutionMap = new Map<string, { count: number; totalSize: number }>();
+    const evolutionMap = new Map<
+      string,
+      { count: number; totalSize: number }
+    >();
 
     documents
-      .filter(d => new Date(d.uploaded_at) >= sixMoisAvant)
-      .forEach(d => {
+      .filter((d) => new Date(d.uploaded_at) >= sixMoisAvant)
+      .forEach((d) => {
         const date = new Date(d.uploaded_at);
         const mois = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         const current = evolutionMap.get(mois) || { count: 0, totalSize: 0 };
@@ -230,24 +257,27 @@ export class DocumentTypeStatsService {
     return evolution;
   }
 
-  private async getConformiteStats(typeDocument: DocumentType): Promise<SingleDocumentTypeStatsDto['conformite']> {
+  private async getConformiteStats(
+    typeDocument: DocumentType,
+  ): Promise<SingleDocumentTypeStatsDto['conformite']> {
     // Récupérer tous les dossiers qui nécessitent ce type de document
     // Cette logique dépend de comment tu associes les types de documents aux dossiers
     // Exemple simplifié :
-    
+
     const totalDocuments = typeDocument.documents?.length || 0;
-    
+
     // Taux d'utilisation = nombre de documents de ce type / total des documents
     const tousDocuments = await this.documentTypeRepository
       .createQueryBuilder('dt')
       .leftJoin('dt.documents', 'doc')
       .select('COUNT(doc.id)', 'total')
       .getRawOne();
-    
+
     const totalGlobalDocuments = parseInt(tousDocuments?.total || 0);
-    const tauxUtilisation = totalGlobalDocuments > 0 
-      ? Math.round((totalDocuments / totalGlobalDocuments) * 100) 
-      : 0;
+    const tauxUtilisation =
+      totalGlobalDocuments > 0
+        ? Math.round((totalDocuments / totalGlobalDocuments) * 100)
+        : 0;
 
     // Ces métriques nécessitent une logique métier plus poussée
     return {
@@ -280,7 +310,13 @@ export class DocumentTypeStatsService {
       this.getOptionalCount(),
     ]);
 
-    const [byStatus, byCustomerType, topDocumentTypes, usageStats, mimeTypeStats] = await Promise.all([
+    const [
+      byStatus,
+      byCustomerType,
+      topDocumentTypes,
+      usageStats,
+      mimeTypeStats,
+    ] = await Promise.all([
       this.getStatsByStatus(),
       this.getStatsByCustomerType(),
       this.getTopDocumentTypes(),
@@ -327,8 +363,8 @@ export class DocumentTypeStatsService {
     const total = documentTypes.length;
 
     const statusCounts = {
-      active: documentTypes.filter(d => d.status === 1).length,
-      inactive: documentTypes.filter(d => d.status === 0).length,
+      active: documentTypes.filter((d) => d.status === 1).length,
+      inactive: documentTypes.filter((d) => d.status === 0).length,
     };
 
     const statusColors = {
@@ -346,29 +382,33 @@ export class DocumentTypeStatsService {
         status: statusLabels.active,
         code: 1,
         count: statusCounts.active,
-        percentage: total > 0 ? Math.round((statusCounts.active / total) * 100) : 0,
+        percentage:
+          total > 0 ? Math.round((statusCounts.active / total) * 100) : 0,
         color: statusColors.active,
       },
       {
         status: statusLabels.inactive,
         code: 0,
         count: statusCounts.inactive,
-        percentage: total > 0 ? Math.round((statusCounts.inactive / total) * 100) : 0,
+        percentage:
+          total > 0 ? Math.round((statusCounts.inactive / total) * 100) : 0,
         color: statusColors.inactive,
       },
-    ].filter(s => s.count > 0);
+    ].filter((s) => s.count > 0);
   }
 
-  private async getStatsByCustomerType(): Promise<DocumentTypeCustomerTypeStatsDto[]> {
+  private async getStatsByCustomerType(): Promise<
+    DocumentTypeCustomerTypeStatsDto[]
+  > {
     const documentTypes = await this.documentTypeRepository.find({
       relations: ['customerTypes'],
     });
 
     const stats: DocumentTypeCustomerTypeStatsDto[] = [];
 
-    documentTypes.forEach(docType => {
+    documentTypes.forEach((docType) => {
       if (docType.customerTypes && docType.customerTypes.length > 0) {
-        docType.customerTypes.forEach(customerType => {
+        docType.customerTypes.forEach((customerType) => {
           stats.push({
             customerTypeId: customerType.id,
             customerTypeName: customerType.name,
@@ -380,14 +420,17 @@ export class DocumentTypeStatsService {
       }
     });
 
-    const aggregated = stats.reduce((acc, curr) => {
-      const key = `${curr.customerTypeId}-${curr.documentTypeId}`;
-      if (!acc[key]) {
-        acc[key] = { ...curr, count: 0 };
-      }
-      acc[key].count += 1;
-      return acc;
-    }, {} as Record<string, DocumentTypeCustomerTypeStatsDto>);
+    const aggregated = stats.reduce(
+      (acc, curr) => {
+        const key = `${curr.customerTypeId}-${curr.documentTypeId}`;
+        if (!acc[key]) {
+          acc[key] = { ...curr, count: 0 };
+        }
+        acc[key].count += 1;
+        return acc;
+      },
+      {} as Record<string, DocumentTypeCustomerTypeStatsDto>,
+    );
 
     return Object.values(aggregated);
   }
@@ -409,7 +452,7 @@ export class DocumentTypeStatsService {
       .limit(10)
       .getRawMany();
 
-    return documentTypes.map(dt => ({
+    return documentTypes.map((dt) => ({
       id: dt.id,
       code: dt.code,
       name: dt.name,
@@ -426,9 +469,12 @@ export class DocumentTypeStatsService {
     });
 
     let totalDocuments = 0;
-    const typeStats: Record<number, { count: number; name: string; code: string }> = {};
+    const typeStats: Record<
+      number,
+      { count: number; name: string; code: string }
+    > = {};
 
-    documentTypes.forEach(type => {
+    documentTypes.forEach((type) => {
       const docCount = type.documents?.length || 0;
       totalDocuments += docCount;
 
@@ -451,14 +497,20 @@ export class DocumentTypeStatsService {
       }
     });
 
-    const requiredCount = documentTypes.filter(t => t.isRequired).length;
-    const optionalCount = documentTypes.filter(t => !t.isRequired).length;
+    const requiredCount = documentTypes.filter((t) => t.isRequired).length;
+    const optionalCount = documentTypes.filter((t) => !t.isRequired).length;
 
     return {
       totalDocuments,
-      averagePerType: documentTypes.length > 0 ? Math.round((totalDocuments / documentTypes.length) * 100) / 100 : 0,
+      averagePerType:
+        documentTypes.length > 0
+          ? Math.round((totalDocuments / documentTypes.length) * 100) / 100
+          : 0,
       mostUsedType,
-      leastUsedType: leastUsedType.count === Infinity ? { id: 0, name: '', code: '', count: 0 } : leastUsedType,
+      leastUsedType:
+        leastUsedType.count === Infinity
+          ? { id: 0, name: '', code: '', count: 0 }
+          : leastUsedType,
       requiredDocumentsCount: requiredCount,
       optionalDocumentsCount: optionalCount,
     };
@@ -471,10 +523,10 @@ export class DocumentTypeStatsService {
 
     const mimeTypeMap = new Map<string, { count: number; documents: number }>();
 
-    documentTypes.forEach(type => {
+    documentTypes.forEach((type) => {
       const mimeType = type.mimetype || 'non spécifié';
       const current = mimeTypeMap.get(mimeType) || { count: 0, documents: 0 };
-      
+
       mimeTypeMap.set(mimeType, {
         count: current.count + 1,
         documents: current.documents + (type.documents?.length || 0),

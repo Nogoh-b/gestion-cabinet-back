@@ -10,6 +10,7 @@ import { isDuplicateKeyError } from 'src/core/shared/utils/db-error.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import {
+  ActionDefaultProfessionalTreatment,
   ActionPriority,
   BillingCalculationMode,
   RecommendationTrigger,
@@ -1087,6 +1088,15 @@ export class ActionCatalogService {
               default_priority: item.priority ?? ActionPriority.NORMAL,
               is_required: false,
               billable_by_default: item.billable ?? false,
+              default_professional_treatment: !item.billable
+                ? ActionDefaultProfessionalTreatment.NON_BILLABLE
+                : item.billingMode === BillingCalculationMode.HOURLY
+                  ? ActionDefaultProfessionalTreatment.HOURLY
+                  : item.billingMode === BillingCalculationMode.FIXED
+                    ? ActionDefaultProfessionalTreatment.VACATION
+                    : ActionDefaultProfessionalTreatment.NEEDS_REVIEW,
+              may_have_expenses: false,
+              may_have_disbursements: false,
               billing_mode: item.billingMode ?? null,
               default_rate: null,
               is_active: true,
@@ -1105,8 +1115,9 @@ export class ActionCatalogService {
       if (
         definition &&
         item.code === 'WRITE_HEARING_REPORT' &&
-        (definition.allowed_results ?? []).map((result) => result.code).join(',') ===
-          STANDARD_RESULTS.map((result) => result.code).join(',')
+        (definition.allowed_results ?? [])
+          .map((result) => result.code)
+          .join(',') === STANDARD_RESULTS.map((result) => result.code).join(',')
       ) {
         definition.specific_fields_schema = item.fields ?? {
           type: 'object',
@@ -1533,8 +1544,11 @@ export class ActionCatalogService {
       );
     }
 
-    const build = (definitionCode: string) =>
-      this.definitionRepository.create({
+    const build = (definitionCode: string) => {
+      const professionalTreatment =
+        dto.default_professional_treatment ??
+        ActionDefaultProfessionalTreatment.FOLLOW_DOSSIER;
+      return this.definitionRepository.create({
         tenant_id: tenantId,
         family_id: family.id,
         code: definitionCode,
@@ -1549,11 +1563,18 @@ export class ActionCatalogService {
         default_due_days: dto.default_due_days ?? null,
         default_priority: dto.default_priority ?? ActionPriority.NORMAL,
         is_required: dto.is_required ?? false,
-        billable_by_default: dto.billable_by_default ?? false,
+        billable_by_default:
+          dto.billable_by_default ??
+          professionalTreatment !==
+            ActionDefaultProfessionalTreatment.NON_BILLABLE,
+        default_professional_treatment: professionalTreatment,
+        may_have_expenses: dto.may_have_expenses ?? false,
+        may_have_disbursements: dto.may_have_disbursements ?? false,
         billing_mode: dto.billing_mode ?? null,
         default_rate: dto.default_rate ?? null,
         is_active: true,
       });
+    };
 
     try {
       return await this.definitionRepository.save(build(code));
@@ -1630,8 +1651,18 @@ export class ActionCatalogService {
           is_required: dto.is_required ?? source.is_required,
           billable_by_default:
             dto.billable_by_default ?? source.billable_by_default,
+          default_professional_treatment:
+            dto.default_professional_treatment ??
+            source.default_professional_treatment,
+          may_have_expenses:
+            dto.may_have_expenses ?? source.may_have_expenses,
+          may_have_disbursements:
+            dto.may_have_disbursements ?? source.may_have_disbursements,
           billing_mode: dto.billing_mode ?? source.billing_mode,
-          default_rate: dto.default_rate ?? source.default_rate,
+          default_rate:
+            dto.default_rate !== undefined
+              ? dto.default_rate
+              : source.default_rate,
           is_active: dto.is_active ?? true,
         }),
       );

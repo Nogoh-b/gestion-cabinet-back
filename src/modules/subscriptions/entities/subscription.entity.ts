@@ -60,7 +60,14 @@ export class Subscription {
 
   @Column({
     type: 'enum',
-    enum: ['trial', 'active', 'expired', 'suspended', 'cancelled', 'pending_payment'],
+    enum: [
+      'trial',
+      'active',
+      'expired',
+      'suspended',
+      'cancelled',
+      'pending_payment',
+    ],
     default: 'trial',
   })
   status: SubscriptionStatus;

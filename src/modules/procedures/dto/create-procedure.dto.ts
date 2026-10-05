@@ -1,12 +1,19 @@
 // src/modules/procedures/dto/create-procedure-type.dto.ts
-import { IsNotEmpty, IsString, IsOptional, IsBoolean, IsArray, IsNumber } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsArray,
+  IsNumber,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProcedureTypeDto {
   @ApiProperty({
     description: 'Nom du type de procédure',
     example: 'Civile',
-    maxLength: 100
+    maxLength: 100,
   })
   @IsNotEmpty()
   @IsString()
@@ -15,7 +22,7 @@ export class CreateProcedureTypeDto {
   @ApiPropertyOptional({
     description: 'Code unique. Généré automatiquement si non fourni.',
     example: 'CIVILE',
-    maxLength: 50
+    maxLength: 50,
   })
   @IsOptional()
   @IsString()
@@ -23,16 +30,15 @@ export class CreateProcedureTypeDto {
 
   @ApiPropertyOptional({
     description: 'Description du type de procédure',
-    example: 'Procédures civiles générales'
+    example: 'Procédures civiles générales',
   })
   @IsOptional()
   @IsString()
   description?: string;
 
-
   @ApiPropertyOptional({
     description: 'Documents requis pour ce type de procédure',
-    example: ['piece_identite', 'justificatif_domicile', 'contrat']
+    example: ['piece_identite', 'justificatif_domicile', 'contrat'],
   })
   @IsOptional()
   @IsArray()
@@ -48,7 +54,7 @@ export class CreateProcedureTypeDto {
 
   @ApiPropertyOptional({
     description: 'Durée moyenne en jours',
-    example: 180
+    example: 180,
   })
   @IsOptional()
   @IsString()
@@ -56,7 +62,7 @@ export class CreateProcedureTypeDto {
 
   @ApiPropertyOptional({
     description: 'Juridictions spécifiques',
-    example: ['Tribunal de Grande Instance', 'Tribunal de Commerce']
+    example: ['Tribunal de Grande Instance', 'Tribunal de Commerce'],
   })
   @IsOptional()
   @IsArray()
@@ -66,16 +72,16 @@ export class CreateProcedureTypeDto {
   @ApiPropertyOptional({
     description: 'Type actif',
     example: true,
-    default: true
+    default: true,
   })
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
-    @ApiPropertyOptional({
-      description: 'ID du type parent (pour les sous-types)',
-      example: 2
-    })
-    @IsOptional()
-    @IsNumber()
-    parent_id?: number;
+  @ApiPropertyOptional({
+    description: 'ID du type parent (pour les sous-types)',
+    example: 2,
+  })
+  @IsOptional()
+  @IsNumber()
+  parent_id?: number;
 }

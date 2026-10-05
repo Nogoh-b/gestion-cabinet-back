@@ -2,12 +2,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { DossierReferral, CommissionBasis, CommissionMode } from './entities/dossier-referral.entity';
+import {
+  DossierReferral,
+  CommissionBasis,
+  CommissionMode,
+} from './entities/dossier-referral.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
-import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import {
+  WriteableFieldSchema,
+  ValidationResult,
+} from 'src/core/ai-database/interface/entity-write-handler.interface';
 
 /**
  * Handler custom pour les apports de dossiers.
@@ -34,16 +41,37 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
   async getWriteableFieldsSchema(): Promise<WriteableFieldSchema[]> {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
-      dossier_id: { description: 'ID du dossier. Peut fournir "dossier".', required: true },
-      referrer_id: { description: 'ID de l\'apporteur. Peut fournir "referrer" avec son nom.', required: true },
-      commission_mode: { description: 'rate ou fixed_amount (defaut: rate)', example: 'rate' },
-      commission_rate: { description: 'Taux de commission en % (requis si commission_mode=rate)', example: '10.00' },
-      commission_amount: { description: 'Montant fixe de commission (requis si commission_mode=fixed_amount)', example: '25000.00' },
+      dossier_id: {
+        description: 'ID du dossier. Peut fournir "dossier".',
+        required: true,
+      },
+      referrer_id: {
+        description:
+          'ID de l\'apporteur. Peut fournir "referrer" avec son nom.',
+        required: true,
+      },
+      commission_mode: {
+        description: 'rate ou fixed_amount (defaut: rate)',
+        example: 'rate',
+      },
+      commission_rate: {
+        description: 'Taux de commission en % (requis si commission_mode=rate)',
+        example: '10.00',
+      },
+      commission_amount: {
+        description:
+          'Montant fixe de commission (requis si commission_mode=fixed_amount)',
+        example: '25000.00',
+      },
       commission_basis: {
-        description: 'invoiced_ht, invoiced_ttc, collected_ht (défaut), collected_ttc',
+        description:
+          'invoiced_ht, invoiced_ttc, collected_ht (défaut), collected_ttc',
         example: 'collected_ht',
       },
-      referral_date: { description: 'Date d\'apport (par défaut: aujourd\'hui)', example: '2026-05-15' },
+      referral_date: {
+        description: "Date d'apport (par défaut: aujourd'hui)",
+        example: '2026-05-15',
+      },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);
@@ -57,30 +85,52 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
   ): Promise<ValidationResult> {
     const errors: string[] = [];
     if (operation === 'INSERT') {
-      if (!fields.dossier_id) errors.push('Le dossier est requis (dossier_id ou dossier)');
-      if (!fields.referrer_id) errors.push('L\'apporteur est requis (referrer_id ou referrer)');
+      if (!fields.dossier_id)
+        errors.push('Le dossier est requis (dossier_id ou dossier)');
+      if (!fields.referrer_id)
+        errors.push("L'apporteur est requis (referrer_id ou referrer)");
       const mode = fields.commission_mode ?? CommissionMode.RATE;
-      if (mode === CommissionMode.RATE && (fields.commission_rate === undefined || fields.commission_rate === null)) {
+      if (
+        mode === CommissionMode.RATE &&
+        (fields.commission_rate === undefined ||
+          fields.commission_rate === null)
+      ) {
         errors.push('Le taux de commission est requis (commission_rate)');
       }
-      if (mode === CommissionMode.FIXED_AMOUNT && (fields.commission_amount === undefined || fields.commission_amount === null)) {
-        errors.push('Le montant fixe de commission est requis (commission_amount)');
+      if (
+        mode === CommissionMode.FIXED_AMOUNT &&
+        (fields.commission_amount === undefined ||
+          fields.commission_amount === null)
+      ) {
+        errors.push(
+          'Le montant fixe de commission est requis (commission_amount)',
+        );
       }
     }
     if (fields.commission_rate !== undefined) {
       const rate = Number(fields.commission_rate);
-      if (rate <= 0) errors.push('Le taux de commission doit être strictement positif');
-      if (rate > 100) errors.push('Le taux de commission ne peut pas excéder 100%');
+      if (rate <= 0)
+        errors.push('Le taux de commission doit être strictement positif');
+      if (rate > 100)
+        errors.push('Le taux de commission ne peut pas excéder 100%');
     }
     if (fields.commission_amount !== undefined) {
       const amount = Number(fields.commission_amount);
-      if (amount <= 0) errors.push('Le montant fixe de commission doit etre strictement positif');
+      if (amount <= 0)
+        errors.push(
+          'Le montant fixe de commission doit etre strictement positif',
+        );
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
 
-  protected async doInsert(fields: Record<string, any>, userId: string): Promise<WriteResult> {
-    const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
+  protected async doInsert(
+    fields: Record<string, any>,
+    userId: string,
+  ): Promise<WriteResult> {
+    const safeFields = this.stripAutoGeneratedFields(
+      this.filterKnownColumns(fields),
+    );
 
     // Dédup par dossier_id (UNIQUE)
     if (safeFields.dossier_id) {
@@ -106,13 +156,21 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
       ...safeFields,
       commission_mode: safeFields.commission_mode ?? CommissionMode.RATE,
       commission_rate: Number(safeFields.commission_rate ?? 0),
-      commission_amount: safeFields.commission_amount != null ? Number(safeFields.commission_amount) : null,
-      commission_basis: safeFields.commission_basis ?? CommissionBasis.COLLECTED_HT,
-      referral_date: safeFields.referral_date ? new Date(safeFields.referral_date) : new Date(),
+      commission_amount:
+        safeFields.commission_amount != null
+          ? Number(safeFields.commission_amount)
+          : null,
+      commission_basis:
+        safeFields.commission_basis ?? CommissionBasis.COLLECTED_HT,
+      referral_date: safeFields.referral_date
+        ? new Date(safeFields.referral_date)
+        : new Date(),
     };
 
     const record = this.referralRepo.create(data);
-    const saved = await this.referralRepo.save(record) as unknown as DossierReferral;
+    const saved = (await this.referralRepo.save(
+      record,
+    )) as unknown as DossierReferral;
 
     return {
       success: true,
@@ -129,10 +187,15 @@ export class DossierReferralWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     userId: string,
   ): Promise<WriteResult> {
-    const referral = await this.referralRepo.findOne({ where: { id: entityId as any } });
-    if (!referral) throw new NotFoundException(`Apport ${entityId} introuvable`);
+    const referral = await this.referralRepo.findOne({
+      where: { id: entityId as any },
+    });
+    if (!referral)
+      throw new NotFoundException(`Apport ${entityId} introuvable`);
 
-    const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
+    const safeFields = this.stripAutoGeneratedFields(
+      this.filterKnownColumns(fields),
+    );
     // dossier_id et referrer_id non modifiables (intégrité référentielle)
     delete safeFields['dossier_id'];
     delete safeFields['referrer_id'];

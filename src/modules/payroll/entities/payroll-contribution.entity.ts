@@ -1,4 +1,7 @@
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
@@ -33,7 +36,8 @@ export enum ContributionPayer {
 @Entity('payroll_contribution')
 @BusinessTable({
   label: 'Barème de cotisations',
-  description: 'Règles de cotisations sociales et retenues fiscales appliquées à la paie (paramétrable par cabinet).',
+  description:
+    'Règles de cotisations sociales et retenues fiscales appliquées à la paie (paramétrable par cabinet).',
   icon: '⚖️',
   category: 'rh',
 })
@@ -43,7 +47,7 @@ export class PayrollContribution extends TenantEntity {
     label: 'Identifiant',
     description: 'Identifiant unique de la cotisation',
     importance: 'low',
-    group: 'technique', 
+    group: 'technique',
     ignored: true,
   })
   id: number;
@@ -71,14 +75,20 @@ export class PayrollContribution extends TenantEntity {
   @Column({ type: 'decimal', precision: 10, scale: 4 })
   @BusinessColumn({
     label: 'Taux ou montant',
-    description: 'Pourcentage (ex: 4.2000 pour 4,2 %) ou montant fixe si base = fixed',
+    description:
+      'Pourcentage (ex: 4.2000 pour 4,2 %) ou montant fixe si base = fixed',
     example: '4.2000',
     importance: 'high',
     group: 'financier',
   })
   rate: number;
 
-  @Column({ type: 'enum', enum: ContributionBase, default: ContributionBase.GROSS, name: 'base_type' })
+  @Column({
+    type: 'enum',
+    enum: ContributionBase,
+    default: ContributionBase.GROSS,
+    name: 'base_type',
+  })
   @BusinessColumn({
     label: 'Assiette',
     description: "BD: 'gross'=Brut, 'taxable'=Imposable, 'fixed'=Montant fixe.",
@@ -90,7 +100,8 @@ export class PayrollContribution extends TenantEntity {
   @Column({ type: 'enum', enum: ContributionPayer })
   @BusinessColumn({
     label: 'Supporté par',
-    description: "BD: 'employee'=Retenue salariale, 'employer'=Charge patronale.",
+    description:
+      "BD: 'employee'=Retenue salariale, 'employer'=Charge patronale.",
     importance: 'high',
     group: 'financier',
   })
@@ -106,7 +117,12 @@ export class PayrollContribution extends TenantEntity {
   })
   ceiling: number | null;
 
-  @Column({ type: 'varchar', length: 20, nullable: true, name: 'account_number' })
+  @Column({
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+    name: 'account_number',
+  })
   @BusinessColumn({
     label: 'Compte comptable',
     description: 'Compte SYSCOHADA pour la comptabilisation (ex: 431)',

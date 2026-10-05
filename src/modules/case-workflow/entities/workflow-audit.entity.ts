@@ -17,7 +17,7 @@ export class CaseWorkflowFeature extends TenantEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ type: 'boolean', default: true })
   enabled: boolean;
 
   @Column({ name: 'default_for_new_dossiers', type: 'boolean', default: false })

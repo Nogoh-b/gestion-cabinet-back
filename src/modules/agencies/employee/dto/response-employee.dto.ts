@@ -1,6 +1,10 @@
 import { Expose, Transform, Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { EmployeePosition, EmployeeStatus } from '../entities/employee.entity';
+import {
+  EmployeePosition,
+  EmployeeStatus,
+  MaritalStatus,
+} from '../entities/employee.entity';
 import { UserResponseDto } from 'src/modules/iam/user/dto/user-response.dto';
 import { BranchResponseDto } from '../../branch/dto/response-branch.dto';
 import { MinimalDossierResponseDto } from 'src/modules/dossiers/dto/dossier-response.dto';
@@ -8,7 +12,7 @@ import { MinimalDossierResponseDto } from 'src/modules/dossiers/dto/dossier-resp
 export class EmployeeResponseDto {
   // =========== PROPRIÉTÉS DE BASE ===========
 
-  @ApiProperty({ example: 1, description: 'ID unique de l\'employé' })
+  @ApiProperty({ example: 1, description: "ID unique de l'employé" })
   @Expose()
   id: number;
 
@@ -19,11 +23,9 @@ export class EmployeeResponseDto {
   @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
   @Expose()
   position: EmployeePosition;
-  
+
   @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
-  @Transform(({ obj }) =>
-    obj.position
-  )
+  @Transform(({ obj }) => obj.position)
   @Expose()
   role: EmployeePosition;
 
@@ -39,11 +41,14 @@ export class EmployeeResponseDto {
   @Expose()
   specialization: string;
 
-  @ApiProperty({ example: 'A123456', description: "Numéro d'inscription au barreau" })
+  @ApiProperty({
+    example: 'A123456',
+    description: "Numéro d'inscription au barreau",
+  })
   @Expose()
   bar_association_number: string;
 
-  @ApiProperty({ example: 'Paris', description: "Ville du barreau" })
+  @ApiProperty({ example: 'Paris', description: 'Ville du barreau' })
   @Expose()
   bar_association_city: string;
 
@@ -51,7 +56,7 @@ export class EmployeeResponseDto {
   @Expose()
   years_of_experience: number;
 
-  @ApiProperty({ example: 150.00, description: 'Taux horaire' })
+  @ApiProperty({ example: 150.0, description: 'Taux horaire' })
   @Expose()
   hourly_rate: number;
 
@@ -67,19 +72,31 @@ export class EmployeeResponseDto {
   @Expose()
   max_dossiers: number;
 
-  @ApiProperty({ example: 'Avocat spécialisé en droit commercial...', description: 'Biographie' })
+  @ApiProperty({
+    example: 'Avocat spécialisé en droit commercial...',
+    description: 'Biographie',
+  })
   @Expose()
   bio: string;
 
-  @ApiProperty({ example: ['Français', 'Anglais'], description: 'Langues parlées' })
+  @ApiProperty({
+    example: ['Français', 'Anglais'],
+    description: 'Langues parlées',
+  })
   @Expose()
   languages: string[];
 
-  @ApiProperty({ example: ['Droit des sociétés', 'Contrats'], description: "Domaines d'expertise" })
+  @ApiProperty({
+    example: ['Droit des sociétés', 'Contrats'],
+    description: "Domaines d'expertise",
+  })
   @Expose()
   expertise_areas: string[];
 
-  @ApiProperty({ example: 'EMP-AVO-2026-8YY3FB', description: "Numéro d'employé unique" })
+  @ApiProperty({
+    example: 'EMP-AVO-2026-8YY3FB',
+    description: "Numéro d'employé unique",
+  })
   @Expose()
   employee_number: string;
 
@@ -87,30 +104,72 @@ export class EmployeeResponseDto {
   @Expose()
   birth_date: Date;
 
-  @ApiProperty({ example: '123 Rue du Palais, 75001 Paris', description: 'Adresse professionnelle' })
+  @ApiProperty({ example: 'Douala', description: 'Lieu de naissance' })
+  @Expose()
+  birth_place: string;
+
+  @ApiProperty({
+    example: 'Akwa, Douala',
+    description: 'Ville / adresse personnelle',
+  })
+  @Expose()
+  home_address: string;
+
+  @ApiProperty({
+    example: '+237 690 00 00 00',
+    description: 'Téléphone personnel',
+  })
+  @Expose()
+  personal_phone: string;
+
+  @ApiProperty({
+    enum: MaritalStatus,
+    example: MaritalStatus.MARRIED,
+    description: 'Statut social',
+  })
+  @Expose()
+  marital_status: MaritalStatus;
+
+  @ApiProperty({ example: 2, description: "Nombre d'enfants à charge" })
+  @Expose()
+  children_count: number;
+
+  @ApiProperty({
+    example: '123 Rue du Palais, 75001 Paris',
+    description: 'Adresse professionnelle',
+  })
   @Expose()
   professional_address: string;
 
-  @ApiProperty({ example: '+33 1 45 67 89 00', description: 'Téléphone professionnel' })
+  @ApiProperty({
+    example: '+33 1 45 67 89 00',
+    description: 'Téléphone professionnel',
+  })
   @Expose()
   professional_phone: string;
 
-  @ApiProperty({ example: 'MC123456789', description: "Numéro SIRET" })
+  @ApiProperty({ example: 'MC123456789', description: 'Numéro SIRET' })
   @Expose()
   siret_number: string;
 
-  @ApiProperty({ example: 'FR12345678901', description: "Numéro de TVA" })
+  @ApiProperty({ example: 'FR12345678901', description: 'Numéro de TVA' })
   @Expose()
   tva_number: string;
 
   // =========== RELATIONS ===========
 
-  @ApiProperty({ type: () => UserResponseDto, description: 'Informations utilisateur associées' })
+  @ApiProperty({
+    type: () => UserResponseDto,
+    description: 'Informations utilisateur associées',
+  })
   @Expose()
   @Type(() => UserResponseDto)
   user: UserResponseDto;
 
-  @ApiProperty({ type: () => BranchResponseDto, description: 'Agence de rattachement' })
+  @ApiProperty({
+    type: () => BranchResponseDto,
+    description: 'Agence de rattachement',
+  })
   @Expose()
   @Type(() => BranchResponseDto)
   branch?: BranchResponseDto;
@@ -125,7 +184,10 @@ export class EmployeeResponseDto {
   @Expose()
   email: string;
 
-  @ApiProperty({ example: '2025-07-09T02:02:56.000Z', description: 'Dernière connexion' })
+  @ApiProperty({
+    example: '2025-07-09T02:02:56.000Z',
+    description: 'Dernière connexion',
+  })
   @Expose()
   lastSeen: string;
 
@@ -133,32 +195,32 @@ export class EmployeeResponseDto {
   @Expose()
   username: string;
 
-  @ApiProperty({ example: true, description: "Est en ligne" })
+  @ApiProperty({ example: true, description: 'Est en ligne' })
   @Expose()
   is_online: boolean;
 
-  @ApiProperty({ example: true, description: "Est un avocat" })
+  @ApiProperty({ example: true, description: 'Est un avocat' })
   @Expose()
   is_avocat: boolean;
 
-  @ApiProperty({ example: false, description: "Est un secrétaire" })
+  @ApiProperty({ example: false, description: 'Est un secrétaire' })
   @Expose()
   is_secretaire: boolean;
 
-  @ApiProperty({ example: false, description: "Est un huissier" })
+  @ApiProperty({ example: false, description: 'Est un huissier' })
   @Expose()
   is_huissier: boolean;
 
-  @ApiProperty({ example: 12, description: "Nombre de dossiers en cours" })
+  @ApiProperty({ example: 12, description: 'Nombre de dossiers en cours' })
   @Type(() => Number)
   @Transform(({ obj }) => {
     if (!obj.managed_dossiers) return 0;
     // Transformation explicite vers le DTO
-    return obj.managed_dossiers.length
+    return obj.managed_dossiers.length;
   })
   current_dossier_count: number;
 
-  @ApiProperty({ example: true, description: "Peut accepter plus de dossiers" })
+  @ApiProperty({ example: true, description: 'Peut accepter plus de dossiers' })
   @Expose()
   can_accept_more_dossiers: boolean;
 
@@ -167,7 +229,7 @@ export class EmployeeResponseDto {
   @Transform(({ obj }) => {
     if (!obj.collaborating_dossiers) return [];
     // Transformation explicite vers le DTO
-    return obj.collaborating_dossiers.map(dossier => ({
+    return obj.collaborating_dossiers.map((dossier) => ({
       id: dossier.id,
       dossier_number: dossier.dossier_number,
       object: dossier.object,
@@ -178,18 +240,17 @@ export class EmployeeResponseDto {
       opening_date: dossier.opening_date,
       danger_level: dossier.danger_level,
       priority_level: dossier.priority_level,
-      is_active: dossier.is_active
+      is_active: dossier.is_active,
     }));
   })
   collaborating_dossiers: MinimalDossierResponseDto[];
-
 
   @Expose()
   @Type(() => MinimalDossierResponseDto)
   @Transform(({ obj }) => {
     if (!obj.managed_dossiers) return [];
     // Transformation explicite vers le DTO
-    return obj.collaborating_dossiers.map(dossier => ({
+    return obj.collaborating_dossiers.map((dossier) => ({
       id: dossier.id,
       dossier_number: dossier.dossier_number,
       object: dossier.object,
@@ -200,7 +261,7 @@ export class EmployeeResponseDto {
       opening_date: dossier.opening_date,
       danger_level: dossier.danger_level,
       priority_level: dossier.priority_level,
-      is_active: dossier.is_active
+      is_active: dossier.is_active,
     }));
   })
   managed_dossiers: MinimalDossierResponseDto[];
@@ -210,11 +271,11 @@ export class EmployeeResponseDto {
   @Transform(({ obj }) => {
     if (!obj.collaborating_dossiers) return 0;
     // Transformation explicite vers le DTO
-    return obj.collaborating_dossiers.length
+    return obj.collaborating_dossiers.length;
   })
   collaborating_dossiers_count: number;
 
-  @ApiProperty({ example: true, description: "Est actif" })
+  @ApiProperty({ example: true, description: 'Est actif' })
   @Expose()
   is_active: boolean;
 
@@ -224,17 +285,17 @@ export class EmployeeResponseDto {
 
   // =========== MÉTHODES EXPOSÉES ===========
 
-  @ApiProperty({ example: true, description: "Peut gérer des dossiers" })
+  @ApiProperty({ example: true, description: 'Peut gérer des dossiers' })
   @Expose()
   canManageDossiers: boolean;
 
-  @ApiProperty({ example: true, description: "Peut valider des documents" })
+  @ApiProperty({ example: true, description: 'Peut valider des documents' })
   @Expose()
   canValidateDocuments: boolean;
 
-  @ApiProperty({ 
+  @ApiProperty({
     example: { particulier: 150, professionnel: 180, entreprise: 225 },
-    description: "Tarifs selon le type de client" 
+    description: 'Tarifs selon le type de client',
   })
   @Expose()
   rates_by_client_type: {
@@ -245,15 +306,25 @@ export class EmployeeResponseDto {
 
   // =========== AUDIT ===========
 
-  @ApiProperty({ example: '2025-11-18T17:45:02.121Z', description: 'Date de création' })
+  @ApiProperty({
+    example: '2025-11-18T17:45:02.121Z',
+    description: 'Date de création',
+  })
   @Expose()
   created_at: Date;
 
-  @ApiProperty({ example: '2025-11-18T17:45:02.133Z', description: 'Date de mise à jour' })
+  @ApiProperty({
+    example: '2025-11-18T17:45:02.133Z',
+    description: 'Date de mise à jour',
+  })
   @Expose()
   updated_at: Date;
 
-  @ApiProperty({ example: null, nullable: true, description: 'Date de suppression' })
+  @ApiProperty({
+    example: null,
+    nullable: true,
+    description: 'Date de suppression',
+  })
   @Expose()
   deleted_at: Date | null;
 }

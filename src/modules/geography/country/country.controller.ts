@@ -2,11 +2,18 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-
-
-
 
 import { Region } from '../region/entities/region.entity';
 import { CountriesService } from './country.service';
@@ -16,10 +23,6 @@ import { Country } from './entities/country.entity';
 import { CountrySearchDto } from './dto/country-search.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-
-
-
-
 
 @Controller('countries')
 @ApiBearerAuth()
@@ -33,7 +36,6 @@ export class CountriesController {
     return this.service.create(dto);
   }
 
-  
   @Get('/search')
   @ApiOperation({ summary: 'Rechercher les pays' })
   @ApiResponse({ status: 200, description: 'Liste des pays', type: [Country] })
@@ -41,9 +43,12 @@ export class CountriesController {
     @Query() searchParams?: CountrySearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(searchParams as SearchCriteria, Country, paginationParams);
+    return this.service.searchWithTransformer(
+      searchParams as SearchCriteria,
+      Country,
+      paginationParams,
+    );
   }
-
 
   @Get()
   @RequirePermissions('')
@@ -63,11 +68,13 @@ export class CountriesController {
     return this.service.findOneRegions(id);
   }
 
-
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_LOCATION')
-  update(@Param('id') id: number, @Body() dto: UpdateCountryDto): Promise<Country> {
+  update(
+    @Param('id') id: number,
+    @Body() dto: UpdateCountryDto,
+  ): Promise<Country> {
     return this.service.update(id, dto);
   }
 

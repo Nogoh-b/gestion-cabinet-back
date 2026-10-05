@@ -10,9 +10,12 @@ export class TypeCustomerDocumentType {
   @PrimaryColumn({ name: 'document_type_id' })
   document_type_id: number;
 
-  @ManyToOne(() => TypeCustomer, typeCustomer => typeCustomer.requiredDocuments)
+  @ManyToOne(
+    () => TypeCustomer,
+    (typeCustomer) => typeCustomer.requiredDocuments,
+  )
   typeCustomer: TypeCustomer;
 
-  @ManyToOne(() => DocumentType, document_type => document_type.customerTypes)
+  @ManyToOne(() => DocumentType, (document_type) => document_type.customerTypes)
   document_type: DocumentType;
 }

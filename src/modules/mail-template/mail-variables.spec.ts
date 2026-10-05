@@ -1,8 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import {
-  buildEntityMailContext,
-  MAIL_VARIABLE_GROUPS,
-} from './mail-variables';
+import { buildEntityMailContext, MAIL_VARIABLE_GROUPS } from './mail-variables';
 
 describe('buildEntityMailContext - namespace action', () => {
   it('expose le namespace action dans le catalogue', () => {
@@ -32,8 +29,18 @@ describe('buildEntityMailContext - namespace action', () => {
         deadlineExtensions: {
           count: 2,
           history: [
-            { date: '2026-09-05', previousDueAt: '2026-09-10', dueAt: '2026-09-20', reason: null },
-            { date: '2026-09-18', previousDueAt: '2026-09-20', dueAt: '2026-10-01', reason: 'Attente piece adverse' },
+            {
+              date: '2026-09-05',
+              previousDueAt: '2026-09-10',
+              dueAt: '2026-09-20',
+              reason: null,
+            },
+            {
+              date: '2026-09-18',
+              previousDueAt: '2026-09-20',
+              dueAt: '2026-10-01',
+              reason: 'Attente piece adverse',
+            },
           ],
         },
       },

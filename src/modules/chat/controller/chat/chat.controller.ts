@@ -18,10 +18,14 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiBody,
-  ApiConsumes
+  ApiConsumes,
 } from '@nestjs/swagger';
 // src/chat/controllers/chat.controller.ts
-import { CreateConversationDto, CreateGroupDto, SendMessageDto } from '../../dto/create-conversation.dto';
+import {
+  CreateConversationDto,
+  CreateGroupDto,
+  SendMessageDto,
+} from '../../dto/create-conversation.dto';
 import { ChatService } from '../../services/chat/chat.service';
 import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
@@ -39,28 +43,24 @@ export class ChatController {
 
   @Post('conversations')
   @ApiOperation({ summary: 'Créer une nouvelle conversation' })
-  @ApiResponse({ 
-    status: HttpStatus.CREATED, 
+  @ApiResponse({
+    status: HttpStatus.CREATED,
     description: 'Conversation créée avec succès',
     type: Conversation,
   })
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'Utilisateur non trouvé' 
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Utilisateur non trouvé',
   })
   @ApiBody({ type: CreateConversationDto })
   async createConversation(@Body() dto: CreateConversationDto, @Request() req) {
     return await this.chatService.createConversation(dto, req.user.id);
   }
 
-
-
-
-
   @Post('groups')
   @ApiOperation({ summary: 'Créer un nouveau groupe' })
-  @ApiResponse({ 
-    status: HttpStatus.CREATED, 
+  @ApiResponse({
+    status: HttpStatus.CREATED,
     description: 'Groupe créé avec succès',
     type: Conversation,
   })
@@ -70,9 +70,9 @@ export class ChatController {
   }
 
   @Get('conversations')
-  @ApiOperation({ summary: 'Récupérer les conversations de l\'utilisateur' })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
+  @ApiOperation({ summary: "Récupérer les conversations de l'utilisateur" })
+  @ApiResponse({
+    status: HttpStatus.OK,
     description: 'Liste des conversations',
     type: [Conversation],
   })
@@ -81,40 +81,43 @@ export class ChatController {
   }
 
   @Get('conversations/:id/messages')
-  @ApiOperation({ summary: 'Récupérer les messages d\'une conversation' })
-  @ApiParam({ 
-    name: 'id', 
+  @ApiOperation({ summary: "Récupérer les messages d'une conversation" })
+  @ApiParam({
+    name: 'id',
     description: 'ID de la conversation',
     type: Number,
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
+  @ApiResponse({
+    status: HttpStatus.OK,
     description: 'Liste des messages',
     type: [Message],
   })
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'Conversation non trouvée' 
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Conversation non trouvée',
   })
   async getConversationMessages(@Param('id') id: string, @Request() req) {
-    return await this.chatService.getConversationMessages(parseInt(id), req.user.id);
+    return await this.chatService.getConversationMessages(
+      parseInt(id),
+      req.user.id,
+    );
   }
 
   @Get('conversations/:id')
   @ApiOperation({ summary: 'Récupérer une conversation' })
-  @ApiParam({ 
-    name: 'id', 
+  @ApiParam({
+    name: 'id',
     description: 'ID de la conversation',
     type: Number,
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
+  @ApiResponse({
+    status: HttpStatus.OK,
     description: 'Liste des messages',
     type: [Message],
   })
-  @ApiResponse({ 
-    status: HttpStatus.NOT_FOUND, 
-    description: 'Conversation non trouvée' 
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Conversation non trouvée',
   })
   async getConversation(@Param('id') id: string, @Request() req) {
     return await this.chatService.getConversation(parseInt(id), req.user.id);
@@ -122,8 +125,8 @@ export class ChatController {
 
   @Post('messages')
   @ApiOperation({ summary: 'Envoyer un message' })
-  @ApiResponse({ 
-    status: HttpStatus.CREATED, 
+  @ApiResponse({
+    status: HttpStatus.CREATED,
     description: 'Message envoyé avec succès',
     type: Message,
   })
@@ -132,8 +135,7 @@ export class ChatController {
     return await this.chatService.sendMessage(dto, req.user.id);
   }
 
-
-   @Post('send')
+  @Post('send')
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     description: 'Send message with optional attachments',
@@ -162,9 +164,9 @@ export class ChatController {
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
     return this.chatService.sendMessageWithAttachments(
-      dto, 
+      dto,
       user.id,
-      files || []
+      files || [],
     );
   }
 
@@ -172,15 +174,11 @@ export class ChatController {
   @ApiBody({ type: SendMessageDto })
   @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
   async sendMessageWithAttachementIds(
-    @Body() dto: SendMessageDto, 
-    @CurrentUser() user: User
+    @Body() dto: SendMessageDto,
+    @CurrentUser() user: User,
   ) {
-    return this.chatService.sendMessageWithExistingAttachments(
-      dto,
-      user.id
-    );
+    return this.chatService.sendMessageWithExistingAttachments(dto, user.id);
   }
-
 
   @Post('upload/attachements')
   @ApiConsumes('multipart/form-data')
@@ -201,28 +199,23 @@ export class ChatController {
   })
   @ApiResponse({ status: 201, description: 'Message envoyé avec succès' })
   @UseInterceptors(FilesInterceptor('attachments', 10)) // Max 10 fichiers
-  
   async uploadFiles(
     @Request() req,
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return this.chatService.uploadAttachments(
-      req.user.id,
-      files || []
-    );
+    return this.chatService.uploadAttachments(req.user.id, files || []);
   }
-
 
   @Post('conversations/:id/read')
   @ApiOperation({ summary: 'Marquer les messages comme lus' })
-  @ApiParam({ 
-    name: 'id', 
+  @ApiParam({
+    name: 'id',
     description: 'ID de la conversation',
     type: Number,
   })
-  @ApiResponse({ 
-    status: HttpStatus.OK, 
-    description: 'Messages marqués comme lus' 
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Messages marqués comme lus',
   })
   async markAsRead(@Param('id') id: string, @Request() req) {
     return await this.chatService.markMessagesAsRead(parseInt(id), req.user.id);

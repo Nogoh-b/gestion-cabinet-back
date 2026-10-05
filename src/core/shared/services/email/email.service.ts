@@ -22,7 +22,9 @@ export class MailService {
   async create(createMailDto: CreateMailDto): Promise<Mail> {
     const mail = this.mailRepository.create({
       ...createMailDto,
-      scheduledAt: createMailDto.scheduledAt ? new Date(createMailDto.scheduledAt) : undefined,
+      scheduledAt: createMailDto.scheduledAt
+        ? new Date(createMailDto.scheduledAt)
+        : undefined,
       status: MailStatus.PENDING,
     });
     const saved = await this.mailRepository.save(mail);
@@ -30,7 +32,9 @@ export class MailService {
     // Si pas de programmation, on tente l'envoi immédiat (asynchrone)
     if (!saved.scheduledAt) {
       // On lance l'envoi sans attendre (fire-and-forget)
-      this.sendMail(saved.id).catch(err => this.logger.error(`Erreur envoi immédiat mail ${saved.id}`, err));
+      this.sendMail(saved.id).catch((err) =>
+        this.logger.error(`Erreur envoi immédiat mail ${saved.id}`, err),
+      );
     }
 
     return saved;
@@ -123,7 +127,7 @@ export class MailService {
 
     for (const mail of pendingMails) {
       // On lance l'envoi en arrière-plan pour ne pas bloquer le cron
-      this.sendMail(mail.id).catch(err =>
+      this.sendMail(mail.id).catch((err) =>
         this.logger.error(`Erreur cron pour mail ${mail.id}`, err),
       );
     }

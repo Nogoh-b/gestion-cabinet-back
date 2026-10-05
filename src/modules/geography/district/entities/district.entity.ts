@@ -1,15 +1,27 @@
 // district.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Division } from '../../divivion/entities/divivion.entity';
 import { LocationCity } from '../../location_city/entities/location_city.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('districts')
 @BusinessTable({
   label: 'Districts / Arrondissements',
   description: 'Subdivisions administratives des divisions.',
   icon: '🏘️',
-  category: 'geographie'
+  category: 'geographie',
 })
 export class District {
   @PrimaryGeneratedColumn()
@@ -18,7 +30,7 @@ export class District {
     description: 'Identifiant unique du district',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -28,7 +40,7 @@ export class District {
     description: 'Nom officiel du district',
     example: 'Douala 1er, Dakar Plateau',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
@@ -38,7 +50,7 @@ export class District {
     description: 'Code unique du district',
     example: 'DLA001, DAK001',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   code: string;
 
@@ -48,7 +60,7 @@ export class District {
     description: 'Identifiant de la division parente',
     importance: 'low',
     group: 'relation',
-    ignored: true
+    ignored: true,
   })
   division_id: number;
 
@@ -58,14 +70,11 @@ export class District {
     label: 'Division',
     description: 'Division administrative parente',
     importance: 'high',
-    group: 'relation'
+    group: 'relation',
   })
   division: Division;
 
-  @OneToMany(
-    () => LocationCity,
-    location_citie => location_citie.district
-  )
+  @OneToMany(() => LocationCity, (location_citie) => location_citie.district)
   location_cities: LocationCity[];
 
   @Column({ type: 'varchar', length: 45, nullable: true })
@@ -74,7 +83,7 @@ export class District {
     description: 'Population estimée du district',
     unit: 'habitants',
     importance: 'low',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   population: string;
 
@@ -85,7 +94,7 @@ export class District {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   created_at: Date;
 
@@ -96,7 +105,7 @@ export class District {
     format: 'date',
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   updated_at: Date;
 }

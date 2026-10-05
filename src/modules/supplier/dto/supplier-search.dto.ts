@@ -9,7 +9,10 @@ export class SupplierSearchDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ enum: SupplierCategory, description: 'Filtrer par catégorie' })
+  @ApiPropertyOptional({
+    enum: SupplierCategory,
+    description: 'Filtrer par catégorie',
+  })
   @IsOptional()
   @IsEnum(SupplierCategory)
   category?: SupplierCategory;

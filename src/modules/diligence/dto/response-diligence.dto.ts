@@ -1,7 +1,11 @@
 // src/modules/diligences/dto/response-diligence.dto.ts
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { DiligenceStatus, DiligenceType, DiligencePriority } from '../entities/diligence.entity';
+import {
+  DiligenceStatus,
+  DiligenceType,
+  DiligencePriority,
+} from '../entities/diligence.entity';
 
 export class DiligenceResponseDto {
   @ApiProperty({ example: 1 })
@@ -64,7 +68,10 @@ export class DiligenceResponseDto {
   @Expose()
   report_generated: boolean;
 
-  @ApiProperty({ example: 'https://storage.example.com/report.pdf', required: false })
+  @ApiProperty({
+    example: 'https://storage.example.com/report.pdf',
+    required: false,
+  })
   @Expose()
   report_url?: string;
 
@@ -85,20 +92,22 @@ export class DiligenceResponseDto {
       client: {
         id: 8,
         full_name: 'Jean Dupont',
-        company_name: 'ABC Corp'
-      }
-    }
+        company_name: 'ABC Corp',
+      },
+    },
   })
   @Expose()
   @Transform(({ obj }) => ({
     id: obj.dossier?.id,
     dossier_number: obj.dossier?.dossier_number,
     object: obj.dossier?.object,
-    client: obj.dossier?.client ? {
-      id: obj.dossier.client.id,
-      full_name: obj.dossier.client.full_name,
-      company_name: obj.dossier.client.company_name
-    } : null
+    client: obj.dossier?.client
+      ? {
+          id: obj.dossier.client.id,
+          full_name: obj.dossier.client.full_name,
+          company_name: obj.dossier.client.company_name,
+        }
+      : null,
   }))
   dossier?: {
     id: number;
@@ -115,15 +124,19 @@ export class DiligenceResponseDto {
     example: {
       id: 42,
       full_name: 'Maître Sophie Martin',
-      email: 's.martin@cabinet.fr'
-    }
+      email: 's.martin@cabinet.fr',
+    },
   })
   @Expose()
-  @Transform(({ obj }) => obj.assigned_lawyer ? {
-    id: obj.assigned_lawyer.id,
-    full_name: obj.assigned_lawyer.full_name,
-    email: obj.assigned_lawyer.email
-  } : null)
+  @Transform(({ obj }) =>
+    obj.assigned_lawyer
+      ? {
+          id: obj.assigned_lawyer.id,
+          full_name: obj.assigned_lawyer.full_name,
+          email: obj.assigned_lawyer.email,
+        }
+      : null,
+  )
   assigned_lawyer?: {
     id: number;
     full_name: string;
@@ -134,7 +147,10 @@ export class DiligenceResponseDto {
   @ApiProperty({ example: false })
   @Expose()
   @Transform(({ obj }) => {
-    if (obj.status === DiligenceStatus.COMPLETED || obj.status === DiligenceStatus.CANCELLED) {
+    if (
+      obj.status === DiligenceStatus.COMPLETED ||
+      obj.status === DiligenceStatus.CANCELLED
+    ) {
       return false;
     }
     const today = new Date();
@@ -145,7 +161,10 @@ export class DiligenceResponseDto {
   @ApiProperty({ example: 15 })
   @Expose()
   @Transform(({ obj }) => {
-    if (obj.status === DiligenceStatus.COMPLETED || obj.status === DiligenceStatus.CANCELLED) {
+    if (
+      obj.status === DiligenceStatus.COMPLETED ||
+      obj.status === DiligenceStatus.CANCELLED
+    ) {
       return null;
     }
     const today = new Date();
@@ -167,20 +186,23 @@ export class DiligenceResponseDto {
 
   @ApiProperty({ example: 3 })
   @Expose()
-  @Transform(({ obj }) => obj.findings?.filter(f => f.severity === 'critical').length || 0)
+  @Transform(
+    ({ obj }) =>
+      obj.findings?.filter((f) => f.severity === 'critical').length || 0,
+  )
   total_critical_findings: number;
 
   @ApiProperty({ example: 5 })
   @Expose()
-  @Transform(({ obj }) => obj.findings?.filter(f => f.severity === 'high').length || 0)
+  @Transform(
+    ({ obj }) => obj.findings?.filter((f) => f.severity === 'high').length || 0,
+  )
   total_high_findings: number;
 
   @ApiProperty({ example: 8 })
   @Expose()
   @Transform(({ obj }) => obj.findings?.length || 0)
   findings_count: number;
-
-  
 
   @ApiProperty({ example: 'En retard' })
   @Expose()
@@ -190,7 +212,7 @@ export class DiligenceResponseDto {
       [DiligenceStatus.IN_PROGRESS]: 'En cours',
       [DiligenceStatus.REVIEW]: 'En relecture',
       [DiligenceStatus.COMPLETED]: 'Terminée',
-      [DiligenceStatus.CANCELLED]: 'Annulée'
+      [DiligenceStatus.CANCELLED]: 'Annulée',
     };
     return statusLabels[obj.status] || 'Inconnu';
   })
@@ -253,7 +275,10 @@ export class DiligenceListResponseDto {
 
   @ApiProperty({ example: 'ABC Corp' })
   @Expose()
-  @Transform(({ obj }) => obj.dossier?.client?.company_name || obj.dossier?.client?.full_name)
+  @Transform(
+    ({ obj }) =>
+      obj.dossier?.client?.company_name || obj.dossier?.client?.full_name,
+  )
   client_name: string;
 
   @ApiProperty({ example: 'Maître Sophie Martin' })
@@ -265,7 +290,9 @@ export class DiligenceListResponseDto {
   @Expose()
   @Transform(({ obj }) => {
     const today = new Date();
-    return new Date(obj.deadline) < today && obj.status !== DiligenceStatus.COMPLETED;
+    return (
+      new Date(obj.deadline) < today && obj.status !== DiligenceStatus.COMPLETED
+    );
   })
   is_overdue: boolean;
 

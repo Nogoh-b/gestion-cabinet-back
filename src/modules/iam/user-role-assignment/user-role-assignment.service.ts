@@ -17,7 +17,9 @@ export class UserRoleAssignmentService {
     private readonly userRolesService: UserRolesService,
   ) {}
 
-  async create(createDto: CreateUserRoleAssignmentDto): Promise<UserRoleAssignment> {
+  async create(
+    createDto: CreateUserRoleAssignmentDto,
+  ): Promise<UserRoleAssignment> {
     // Vérifier l'existence de l'utilisateur et du rôle
     await this.usersService.findOne(createDto.user_id);
     await this.userRolesService.findOne(createDto.role_id);
@@ -28,7 +30,7 @@ export class UserRoleAssignmentService {
         user_id: createDto.user_id,
         role_id: createDto.role_id,
       },
-      { status: 0 }
+      { status: 0 },
     );
 
     // Créer la nouvelle association
@@ -36,7 +38,7 @@ export class UserRoleAssignmentService {
       user_id: createDto.user_id,
       role_id: createDto.role_id,
       // assigned_by: createDto.assigned_by,
-      status:  1
+      status: 1,
     });
 
     return this.userRoleAssignmentRepository.save(assignment);
@@ -45,9 +47,9 @@ export class UserRoleAssignmentService {
   async remove(user_id: number, role_id: number): Promise<void> {
     const result = await this.userRoleAssignmentRepository.delete({
       user_id,
-      role_id
+      role_id,
     });
-    
+
     if (result.affected === 0) {
       throw new NotFoundException('Association utilisateur-rôle non trouvée');
     }
@@ -55,32 +57,32 @@ export class UserRoleAssignmentService {
 
   async findByUser(user_id: number): Promise<any[]> {
     const roles_Ass = await this.userRoleAssignmentRepository.find({
-      where: { user_id, status :1 },
-      relations: ['role']
+      where: { user_id, status: 1 },
+      relations: ['role'],
     });
-    let roles : UserRole[] = []
+    const roles: UserRole[] = [];
     for (const role_as of roles_Ass) {
-      roles.push(role_as.role)
+      roles.push(role_as.role);
     }
-    return roles
+    return roles;
   }
 
   async findCurrentRoleByUser(user_id: number): Promise<any[]> {
     const roles_Ass = await this.userRoleAssignmentRepository.find({
-      where: { user_id, status :1 },
-      relations: ['role']
+      where: { user_id, status: 1 },
+      relations: ['role'],
     });
-    let roles : UserRole[] = []
+    const roles: UserRole[] = [];
     for (const role_as of roles_Ass) {
-      roles.push(role_as.role)
+      roles.push(role_as.role);
     }
-    return []
+    return [];
   }
 
   async findByRole(role_id: number): Promise<UserRoleAssignment[]> {
     return this.userRoleAssignmentRepository.find({
       where: { role_id },
-      relations: ['user']
+      relations: ['user'],
     });
   }
 }

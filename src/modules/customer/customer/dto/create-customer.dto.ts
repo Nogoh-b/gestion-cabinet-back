@@ -6,38 +6,63 @@ import {
   IsEmail,
   IsDate,
   IsOptional,
-  IsNotEmpty,
   MaxLength,
-  IsEnum
+  IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { CustomerCreatedFrom, CustomerStatus } from '../entities/customer.entity';
-import { CommunicationStatus, CommunicationType } from '../entities/customer-communication.entity';
-
+import {
+  CustomerCreatedFrom,
+  CustomerStatus,
+} from '../entities/customer.entity';
+import {
+  CommunicationStatus,
+  CommunicationType,
+} from '../entities/customer-communication.entity';
 
 export class CreateCustomerDto {
+  /**
+   * Nom et prénom en un seul champ — c'est ce que le formulaire de création
+   * envoie désormais. `first_name`/`last_name` restent acceptés isolément
+   * (compat ascendante) ; `CustomersService.create` dérive le champ manquant
+   * via `splitFullName`/`joinFullName`. Au moins l'une des deux formes doit
+   * permettre de reconstituer un nom.
+   */
   @IsString()
-  @MaxLength(45)
-  @IsNotEmpty()
-  @ApiProperty({ example: 'John', description: 'Customer first name' })
-  first_name: string;
+  @IsOptional()
+  @ApiPropertyOptional({
+    example: 'John Doe',
+    description: 'Nom et prénom (champ unique)',
+  })
+  full_name?: string;
 
   @IsString()
   @MaxLength(45)
-  @IsNotEmpty()
-  @ApiProperty({ example: 'Doe', description: 'Customer last name' })
-  last_name: string;
+  @IsOptional()
+  @ApiPropertyOptional({ example: 'John', description: 'Customer first name' })
+  first_name?: string;
+
+  @IsString()
+  @MaxLength(45)
+  @IsOptional()
+  @ApiPropertyOptional({ example: 'Doe', description: 'Customer last name' })
+  last_name?: string;
 
   @IsString()
   @MaxLength(255)
   @IsOptional()
-  @ApiPropertyOptional({ example: 'Entreprise SARL', description: 'Company name' })
+  @ApiPropertyOptional({
+    example: 'Entreprise SARL',
+    description: 'Company name',
+  })
   company_name?: string;
 
   @IsString()
   @IsOptional()
-  @ApiPropertyOptional({ example: '123 Rue de la République', description: 'Complete address' })
+  @ApiPropertyOptional({
+    example: '123 Rue de la République',
+    description: 'Complete address',
+  })
   address?: string;
 
   @IsString()
@@ -49,22 +74,29 @@ export class CreateCustomerDto {
   @IsString()
   @MaxLength(100)
   @IsOptional()
-  @ApiPropertyOptional({ example: 'France', description: 'Country', default: 'France' })
+  @ApiPropertyOptional({
+    example: 'France',
+    description: 'Country',
+    default: 'France',
+  })
   country?: string;
 
   @IsString()
   @MaxLength(50)
   @IsOptional()
-  @ApiPropertyOptional({ 
-    example: 'forfait', 
-    description: 'Billing type: forfait, temps_passe, mixte' 
+  @ApiPropertyOptional({
+    example: 'forfait',
+    description: 'Billing type: forfait, temps_passe, mixte',
   })
   billing_type?: string;
 
   @IsString()
   @MaxLength(45)
   @IsOptional()
-  @ApiPropertyOptional({ example: '+33123456789', description: 'Professional phone number' })
+  @ApiPropertyOptional({
+    example: '+33123456789',
+    description: 'Professional phone number',
+  })
   professional_phone?: string;
 
   @IsString()
@@ -76,7 +108,10 @@ export class CreateCustomerDto {
   @IsString()
   @MaxLength(14)
   @IsOptional()
-  @ApiPropertyOptional({ example: '12345678901234', description: 'SIRET number' })
+  @ApiPropertyOptional({
+    example: '12345678901234',
+    description: 'SIRET number',
+  })
   siret?: string;
 
   @IsString()
@@ -88,25 +123,37 @@ export class CreateCustomerDto {
   @IsString()
   @MaxLength(100)
   @IsOptional()
-  @ApiPropertyOptional({ example: 'SARL', description: 'Legal form: SARL, SAS, EI, etc.' })
+  @ApiPropertyOptional({
+    example: 'SARL',
+    description: 'Legal form: SARL, SAS, EI, etc.',
+  })
   legal_form?: string;
 
   @IsString()
   @MaxLength(100)
   @IsOptional()
-  @ApiPropertyOptional({ example: 'Recommandation', description: 'How the client found us' })
+  @ApiPropertyOptional({
+    example: 'Recommandation',
+    description: 'How the client found us',
+  })
   reference?: string;
 
   @IsString()
   @MaxLength(45)
   @IsOptional()
-  @ApiPropertyOptional({ example: '+216 55 55 55 55', description: 'Primary phone number' })
+  @ApiPropertyOptional({
+    example: '+216 55 55 55 55',
+    description: 'Primary phone number',
+  })
   number_phone_1?: string;
 
   @IsString()
   @MaxLength(45)
   @IsOptional()
-  @ApiPropertyOptional({ example: '+216 55 55 55 56', description: 'Secondary phone number' })
+  @ApiPropertyOptional({
+    example: '+216 55 55 55 56',
+    description: 'Secondary phone number',
+  })
   number_phone_2?: string;
 
   @Transform(({ value }) =>
@@ -115,39 +162,48 @@ export class CreateCustomerDto {
   @IsEmail()
   @MaxLength(45)
   @IsOptional()
-  @ApiPropertyOptional({ example: 'john.doe@gmail.com', description: 'Email address' })
+  @ApiPropertyOptional({
+    example: 'john.doe@gmail.com',
+    description: 'Email address',
+  })
   email?: string;
 
+  /**
+   * Agence, ville et type de client : requis en temps normal, mais
+   * facultatifs pour la création minimale depuis un select (« + Créer »,
+   * uniquement `full_name`) — `CustomersService.create` retombe alors sur
+   * des valeurs par défaut (première agence/ville/type actifs).
+   */
   @IsInt()
-  @IsNotEmpty()
-  @ApiProperty({ example: 1, description: 'Branch identifier' })
-  branch_id: number;
+  @IsOptional()
+  @ApiPropertyOptional({ example: 1, description: 'Branch identifier' })
+  branch_id?: number;
 
   @IsInt()
-  @IsNotEmpty()
-  @ApiProperty({ example: 1, description: 'Location city identifier' })
-  location_city_id: number;
+  @IsOptional()
+  @ApiPropertyOptional({ example: 1, description: 'Location city identifier' })
+  location_city_id?: number;
 
   @IsInt()
-  @IsNotEmpty()
-  @ApiProperty({ example: 1, description: 'Customer type identifier' })
-  type_customer_id: number;
+  @IsOptional()
+  @ApiPropertyOptional({ example: 1, description: 'Customer type identifier' })
+  type_customer_id?: number;
 
   @IsString()
   @MaxLength(45)
   @IsOptional()
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     example: '00000000000000000',
-    description: 'National Unique Identifier' 
+    description: 'National Unique Identifier',
   })
   nui?: string;
 
   @IsString()
   @MaxLength(45)
   @IsOptional()
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     example: '00000000000000000',
-    description: 'RCCM number' 
+    description: 'RCCM number',
   })
   rccm?: string;
 
@@ -159,26 +215,28 @@ export class CreateCustomerDto {
 
   @IsEnum(CustomerCreatedFrom)
   @IsOptional()
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     enum: CustomerCreatedFrom,
     example: CustomerCreatedFrom.AGENCY,
-    description: 'How the customer was created' 
+    description: 'How the customer was created',
   })
   created_from?: CustomerCreatedFrom;
 
   @IsEnum(CustomerStatus)
   @IsOptional()
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     enum: CustomerStatus,
     example: CustomerStatus.ACTIVE,
-    description: 'Customer status' 
+    description: 'Customer status',
   })
   status?: CustomerStatus;
 
   @IsOptional()
-  @ApiPropertyOptional({ description: 'Customer code (auto-generated if not provided)' })
+  @ApiPropertyOptional({
+    description: 'Customer code (auto-generated if not provided)',
+  })
   customer_code?: string;
- // ---------------- COMMUNICATIONS ----------------
+  // ---------------- COMMUNICATIONS ----------------
   @ApiProperty({
     type: [Object],
     example: [
@@ -188,9 +246,9 @@ export class CreateCustomerDto {
         subject: 'Confirmation de rendez-vous',
         date: '2024-01-15T10:30:00Z',
         status: 'sent',
-        content: 'Bonjour, je confirme notre rendez-vous...'
-      }
-    ]
+        content: 'Bonjour, je confirme notre rendez-vous...',
+      },
+    ],
   })
   @Expose()
   @Transform(({ obj }) => {
@@ -202,7 +260,7 @@ export class CreateCustomerDto {
       date: comm.date,
       status: comm.status,
       content: comm.content,
-      duration: comm.duration
+      duration: comm.duration,
     }));
   })
   communications?: {
@@ -224,9 +282,9 @@ export class CreateCustomerDto {
         name: 'contrat_signature.pdf',
         document_type_name: 'Contrat',
         created_at: '2024-01-15',
-        file_size_formatted: '2.4 MB'
-      }
-    ]
+        file_size_formatted: '2.4 MB',
+      },
+    ],
   })
   @Expose()
   @Transform(({ obj }) => {
@@ -236,7 +294,7 @@ export class CreateCustomerDto {
       name: doc.name,
       document_type_name: doc.document_type?.name || 'Document',
       created_at: doc.created_at,
-      file_size_formatted: doc.file_size_formatted || '0 KB'
+      file_size_formatted: doc.file_size_formatted || '0 KB',
     }));
   })
   documents?: {
@@ -248,56 +306,55 @@ export class CreateCustomerDto {
   }[];
 
   // ---------------- STATISTIQUES AMÉLIORÉES ----------------
-  @ApiProperty({ example: 5, description: "Nombre total de documents" })
+  @ApiProperty({ example: 5, description: 'Nombre total de documents' })
   @Expose()
   @Transform(({ obj }) => obj.documents?.length || 0)
   document_count: number;
 
-  @ApiProperty({ example: 3, description: "Nombre de communications" })
+  @ApiProperty({ example: 3, description: 'Nombre de communications' })
   @Expose()
   @Transform(({ obj }) => obj.communications?.length || 0)
   communication_count: number;
 
   // ---------------- INFORMATIONS DE CONTACT COMPLÈTES ----------------
-  @ApiProperty({ 
-    example: "M", 
-    description: "Civilité du client",
-    required: false 
+  @ApiProperty({
+    example: 'M',
+    description: 'Civilité du client',
+    required: false,
   })
   @Expose()
   civilite?: string; // Vous devrez ajouter ce champ dans l'entité
 
-  @ApiProperty({ 
-    example: "1985-05-15", 
-    description: "Date de naissance",
-    required: false 
+  @ApiProperty({
+    example: '1985-05-15',
+    description: 'Date de naissance',
+    required: false,
   })
 
   // ---------------- CALCULS DE STATISTIQUES ----------------
-  @ApiProperty({ 
-    example: 2, 
-    description: "Nombre de dossiers en cours" 
+  @ApiProperty({
+    example: 2,
+    description: 'Nombre de dossiers en cours',
   })
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.dossiers) return 0;
-    return obj.dossiers.filter((d: any) => 
-      d.status !== 'closed' && d.is_active
-    ).length;
+    return obj.dossiers.filter((d: any) => d.status !== 'closed' && d.is_active)
+      .length;
   })
   dossiers_en_cours: number;
 
-  @ApiProperty({ 
-    example: 12500, 
-    description: "Chiffre d'affaires total" 
+  @ApiProperty({
+    example: 12500,
+    description: "Chiffre d'affaires total",
   })
   @Expose()
   @Transform(({ obj }) => obj.total_factures_amount || 0)
   chiffre_affaires: number;
 
-  @ApiProperty({ 
-    example: 5700, 
-    description: "Solde en cours" 
+  @ApiProperty({
+    example: 5700,
+    description: 'Solde en cours',
   })
   @Expose()
   @Transform(({ obj }) => obj.outstanding_balance || 0)

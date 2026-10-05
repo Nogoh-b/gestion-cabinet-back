@@ -1,10 +1,15 @@
 // user-role.entity.ts
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, Unique } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  OneToMany,
+  Unique,
+} from 'typeorm';
 
 import { RolePermission } from '../../role-permission/entities/role-permission.entity';
-
 
 @SharedAcrossTenants()
 @Entity('user_role')

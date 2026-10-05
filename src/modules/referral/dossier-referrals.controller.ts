@@ -37,12 +37,15 @@ export class DossierReferralsController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_dossier_referrals')
   @ApiOperation({ summary: 'Rechercher les apports de dossiers' })
-  @ApiResponse({ status: 200, description: 'Liste des apports', type: [DossierReferral] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des apports',
+    type: [DossierReferral],
+  })
   async search(
     @Query() searchParams?: DossierReferralSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-
     return this.service.searchWithTransformer(
       searchParams as any,
       DossierReferral,
@@ -53,7 +56,7 @@ export class DossierReferralsController {
   @Get('/dossier/:dossierId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_dossier_referrals')
-  @ApiOperation({ summary: 'Apporteur d\'un dossier spécifique' })
+  @ApiOperation({ summary: "Apporteur d'un dossier spécifique" })
   findByDossier(@Param('dossierId') dossierId: string) {
     return this.service.findByDossier(+dossierId);
   }
@@ -77,7 +80,7 @@ export class DossierReferralsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_dossier_referrals')
-  @ApiOperation({ summary: 'Détail d\'un apport de dossier' })
+  @ApiOperation({ summary: "Détail d'un apport de dossier" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

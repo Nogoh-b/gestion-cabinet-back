@@ -33,7 +33,9 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
   }
 
   private async getCurrencySymbol(): Promise<string> {
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } }).catch(() => null);
+    const cabinet = await this.cabinetRepo
+      .findOne({ where: { id: getCurrentTenantId() } })
+      .catch(() => null);
     return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 
@@ -66,7 +68,7 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
       return;
     }
 
-    const id = entity.id ?? (event.databaseEntity as Paiement)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
     await this.dispatchValidatedPayment(id, entity, event);
   }
@@ -82,7 +84,11 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     if (Number(paiement.status) !== StatutPaiement.VALIDE) return;
 
     const facture: any = paiement.facture;
-    const notifyClient = this.resolveTransientBoolean('notify_client', source, paiement as any);
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      source,
+      paiement as any,
+    );
 
     const currencySymbol = await this.getCurrencySymbol();
 
@@ -109,7 +115,7 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
       },
       entity: { type: 'paiement', id: paiement.id as any },
       emailContext: buildEntityMailContext({
-        dossier: facture.dossier as any,
+        dossier: facture.dossier,
         resourceType: 'paiement',
         resource: paiement as any,
       }),
@@ -120,9 +126,13 @@ export class PaiementSubscriber extends NotifiableSubscriber<Paiement> {
     id: string | number,
     event?: InsertEvent<Paiement> | UpdateEvent<Paiement>,
   ): Promise<Paiement | null> {
-    return this.loadEntity<Paiement>(id, {
-      relations: ['facture', 'facture.client', 'facture.dossier'],
-    }, event);
+    return this.loadEntity<Paiement>(
+      id,
+      {
+        relations: ['facture', 'facture.client', 'facture.dossier'],
+      },
+      event,
+    );
   }
 }
 
@@ -135,7 +145,5 @@ function formatMoney(v: any, currencySymbol = 'XAF'): string {
 function formatDate(v: any): string {
   if (!v) return '';
   const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime())
-    ? String(v)
-    : d.toLocaleDateString('fr-FR');
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('fr-FR');
 }

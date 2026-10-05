@@ -97,7 +97,10 @@ export class SubscriptionsController {
   @Post('/payments/webhook')
   @ApiOperation({ summary: 'Webhook passerelle (confirmation de paiement)' })
   webhook(@Body() dto: { reference?: string; status?: 'paid' | 'failed' }) {
-    return this.service.handleWebhook(dto?.reference ?? '', dto?.status ?? 'paid');
+    return this.service.handleWebhook(
+      dto?.reference ?? '',
+      dto?.status ?? 'paid',
+    );
   }
 
   /** [TEST] Simule un encaissement réussi (passerelle de test uniquement). */
@@ -118,7 +121,10 @@ export class SubscriptionsController {
   @Patch('/dev/set-ends-in')
   @ApiOperation({ summary: '[DEV] Définir la date de fin à N jours' })
   devSetEndsIn(@Request() req: any, @Body() dto: { days?: number }) {
-    return this.service.devSetEndsIn(this.tenantOf(req), Number(dto?.days ?? 0));
+    return this.service.devSetEndsIn(
+      this.tenantOf(req),
+      Number(dto?.days ?? 0),
+    );
   }
 
   /** [DEV] Termine l'essai en cours → bascule en période payante. */

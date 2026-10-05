@@ -36,7 +36,11 @@ export class ReferrersController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_referrers')
   @ApiOperation({ summary: 'Rechercher les apporteurs' })
-  @ApiResponse({ status: 200, description: 'Liste des apporteurs', type: [Referrer] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des apporteurs',
+    type: [Referrer],
+  })
   async search(
     @Query() searchParams?: ReferrerSearchDto,
     @Query() paginationParams?: PaginationParamsDto,

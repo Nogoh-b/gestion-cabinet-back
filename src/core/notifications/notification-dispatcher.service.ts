@@ -90,7 +90,9 @@ export class NotificationDispatcher {
     try {
       // 1. Résolution des destinataires employés (avocat + collabs + admins)
       const employeeIds = await this.resolveEmployeeIds(payload.audience);
-      this.logger.log(`  ├─ [1/5] resolveEmployeeIds → ${employeeIds.size} employé(s)`);
+      this.logger.log(
+        `  ├─ [1/5] resolveEmployeeIds → ${employeeIds.size} employé(s)`,
+      );
       const clientChannels = await this.resolveClientChannels(
         payload.audience.client,
         payload.event,
@@ -102,11 +104,16 @@ export class NotificationDispatcher {
       }
 
       // 2. Filtrage par préférences utilisateur
-      const channelsByUser = await this.resolveChannels(employeeIds, payload.event);
+      const channelsByUser = await this.resolveChannels(
+        employeeIds,
+        payload.event,
+      );
       const channelsSummary = Array.from(channelsByUser.entries())
         .map(([id, ch]) => `user#${id}: in_app=${ch.in_app} email=${ch.email}`)
         .join(', ');
-      this.logger.log(`  ├─ [2/5] resolveChannels → ${channelsByUser.size} utilisateur(s) [${channelsSummary}]`);
+      this.logger.log(
+        `  ├─ [2/5] resolveChannels → ${channelsByUser.size} utilisateur(s) [${channelsSummary}]`,
+      );
 
       // 3. In-app bulk pour les utilisateurs qui ont in_app=true
       const inAppRecipients = Array.from(channelsByUser.entries())
@@ -122,7 +129,9 @@ export class NotificationDispatcher {
       const dedupedInAppRecipients = Array.from(new Set(inAppRecipients));
 
       if (dedupedInAppRecipients.length > 0) {
-        this.logger.log(`  ├─ [3/5] createBulk in-app → ${dedupedInAppRecipients.length} destinataire(s) : [${dedupedInAppRecipients.join(', ')}]`);
+        this.logger.log(
+          `  ├─ [3/5] createBulk in-app → ${dedupedInAppRecipients.length} destinataire(s) : [${dedupedInAppRecipients.join(', ')}]`,
+        );
         await this.notificationService
           .createBulk(
             {
@@ -141,10 +150,15 @@ export class NotificationDispatcher {
           )
           .then(() => this.logger.log(`  │  ✅ createBulk in-app OK`))
           .catch((err) =>
-            this.logger.error(`  │  ❌ In-app createBulk a échoué : ${err.message}`, err.stack),
+            this.logger.error(
+              `  │  ❌ In-app createBulk a échoué : ${err.message}`,
+              err.stack,
+            ),
           );
       } else {
-        this.logger.log(`  ├─ [3/5] in-app → aucun destinataire (préférences ou pas de cible)`);
+        this.logger.log(
+          `  ├─ [3/5] in-app → aucun destinataire (préférences ou pas de cible)`,
+        );
       }
 
       // 4. E-mails employés (préférence email=true) — adresses lookup individuels
@@ -153,23 +167,33 @@ export class NotificationDispatcher {
         .map(([id]) => id);
 
       if (emailEmployeeIds.length > 0) {
-        this.logger.log(`  ├─ [4/5] sendEmailsTo employés → ${emailEmployeeIds.length} utilisateur(s) : [${emailEmployeeIds.join(', ')}]`);
+        this.logger.log(
+          `  ├─ [4/5] sendEmailsTo employés → ${emailEmployeeIds.length} utilisateur(s) : [${emailEmployeeIds.join(', ')}]`,
+        );
         await this.sendEmailsTo(emailEmployeeIds, payload);
       } else {
-        this.logger.log(`  ├─ [4/5] emails employés → aucun (préférences ou pas de cible)`);
+        this.logger.log(
+          `  ├─ [4/5] emails employés → aucun (préférences ou pas de cible)`,
+        );
       }
 
       // 5. E-mail client (uniquement si la case est cochée)
       const client = payload.audience.client;
       if (client?.notify) {
         if (clientChannels && !clientChannels.email) {
-          this.logger.log(`  ├─ [5/5] email client → désactivé par préférences utilisateur`);
+          this.logger.log(
+            `  ├─ [5/5] email client → désactivé par préférences utilisateur`,
+          );
         } else {
-          this.logger.log(`  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`);
+          this.logger.log(
+            `  ├─ [5/5] sendClientEmail → client user_id=${client.user_id} email=${client.email ?? '?'}`,
+          );
           await this.sendClientEmail(client, payload);
         }
       } else {
-        this.logger.log(`  ├─ [5/5] email client → non notifié (notify_client=false ou absent)`);
+        this.logger.log(
+          `  ├─ [5/5] email client → non notifié (notify_client=false ou absent)`,
+        );
       }
 
       this.logger.log(`✅ dispatch(${payload.event}) terminé avec succès`);
@@ -238,15 +262,18 @@ export class NotificationDispatcher {
 
       for (const code of templateCodes) {
         try {
-          const rendered = await this.mailTemplateService.renderOrCreateSystemDefault(
-            code,
-            context,
-          );
+          const rendered =
+            await this.mailTemplateService.renderOrCreateSystemDefault(
+              code,
+              context,
+            );
           this.logger.log(`  |  Template "${code}" rendu avec succes`);
           return rendered;
         } catch (err) {
           if ((err as Error).message.includes('introuvable')) continue;
-          this.logger.warn(`  |  Template "${code}" erreur rendu : ${(err as Error).message}.`);
+          this.logger.warn(
+            `  |  Template "${code}" erreur rendu : ${(err as Error).message}.`,
+          );
         }
       }
     }
@@ -262,12 +289,15 @@ export class NotificationDispatcher {
 
   // ── Résolution des cibles ─────────────────────────────────────────────────
 
-  private async resolveEmployeeIds(audience: DispatchAudience): Promise<Set<number>> {
+  private async resolveEmployeeIds(
+    audience: DispatchAudience,
+  ): Promise<Set<number>> {
     const ids = new Set<number>();
     if (audience.lawyer_id) ids.add(audience.lawyer_id);
     for (const c of audience.collaborator_ids ?? []) if (c) ids.add(c);
 
-    const adminIds = audience.admin_ids_override ?? (await this.resolveAdminIds());
+    const adminIds =
+      audience.admin_ids_override ?? (await this.resolveAdminIds());
     for (const a of adminIds) ids.add(a);
 
     this.logger.log(
@@ -354,7 +384,10 @@ export class NotificationDispatcher {
     return map.get(client.user_id) ?? { in_app: true, email: true };
   }
 
-  private async sendEmailsTo(userIds: number[], payload: DispatchPayload): Promise<void> {
+  private async sendEmailsTo(
+    userIds: number[],
+    payload: DispatchPayload,
+  ): Promise<void> {
     const users = await this.userRepo.find({
       where: userIds.map((id) => ({ id })),
       select: ['id', 'email', 'first_name', 'last_name'],
@@ -365,7 +398,9 @@ export class NotificationDispatcher {
       `  │  emails employés résolus → users=[${users.map((u) => `${u.id}:${u.email ?? 'sans-email'}`).join(', ')}]`,
     );
     if (recipients.length === 0) {
-      this.logger.warn(`  │  aucun e-mail employé exploitable pour ${payload.event}`);
+      this.logger.warn(
+        `  │  aucun e-mail employé exploitable pour ${payload.event}`,
+      );
       return;
     }
 
@@ -426,9 +461,7 @@ export class NotificationDispatcher {
         subject,
         html,
       })
-      .then(() =>
-        this.logger.log(`  │  ✅ mail client envoyé → ${to}`),
-      )
+      .then(() => this.logger.log(`  │  ✅ mail client envoyé → ${to}`))
       .catch((err) =>
         this.logger.error(
           `sendClientEmail(${to}) a échoué : ${err.message}`,
@@ -460,4 +493,3 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '"')
     .replace(/'/g, '&#39;');
 }
-

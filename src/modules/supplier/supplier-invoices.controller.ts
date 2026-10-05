@@ -54,7 +54,7 @@ export class SupplierInvoicesController {
 
   @Get('/supplier/:supplierId')
   @RequirePermissions('view_supplier_invoices')
-  @ApiOperation({ summary: 'Factures d\'un fournisseur' })
+  @ApiOperation({ summary: "Factures d'un fournisseur" })
   findBySupplier(@Param('supplierId') supplierId: string) {
     return this.service.findBySupplier(+supplierId);
   }
@@ -68,7 +68,7 @@ export class SupplierInvoicesController {
 
   @Get(':id')
   @RequirePermissions('view_supplier_invoices')
-  @ApiOperation({ summary: 'Détail d\'une facture fournisseur' })
+  @ApiOperation({ summary: "Détail d'une facture fournisseur" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

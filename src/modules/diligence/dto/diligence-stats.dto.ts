@@ -1,6 +1,6 @@
 // src/modules/diligences/dto/diligence-stats.dto.ts
 
-import { BaseStatsDto, DistributionItem } from "src/core/types/base-stats.dto";
+import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class DiligenceStatsDto extends BaseStatsDto {
   // Vue d'ensemble
@@ -8,21 +8,21 @@ export class DiligenceStatsDto extends BaseStatsDto {
   completed: number;
   overdue: number;
   cancelled: number;
-  
+
   // Distributions
   byType: DistributionItem[];
   byPriority: DistributionItem[];
   byStatus: DistributionItem[];
   byLawyer: DiligenceLawyerStatsDto[];
   byDossier: DistributionItem[];
-  
+
   // Métriques de performance
   performance: DiligencePerformanceDto;
-  
+
   // Échéances
   upcomingDeadlines: UpcomingDeadlineDto[];
   expiredDeadlines: ExpiredDeadlineDto[];
-  
+
   // Statistiques temporelles
   completionTrend: CompletionTrendDto[];
   averageCompletionTimeByType: AverageTimeByTypeDto[];

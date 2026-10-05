@@ -1,8 +1,6 @@
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-
-
 import { AudienceTypeModule } from '../audience-type/audience-type.module';
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentsModule } from '../documents/documents.module';
@@ -19,9 +17,6 @@ import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.r
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
 
-
-
-
 @Module({
   imports: [
     TypeOrmModule.forFeature([Audience]),
@@ -34,9 +29,14 @@ import { PlansModule } from '../plans/plans.module';
     PlansModule,
   ],
   controllers: [AudiencesController],
-  providers: [AudiencesService, AudienceSubscriber, AudienceStatsService, AudienceDecisionService, AudienceWriteHandler],
-  exports: [AudiencesService, AudienceStatsService]
-
+  providers: [
+    AudiencesService,
+    AudienceSubscriber,
+    AudienceStatsService,
+    AudienceDecisionService,
+    AudienceWriteHandler,
+  ],
+  exports: [AudiencesService, AudienceStatsService],
 })
 export class AudiencesModule {
   constructor(

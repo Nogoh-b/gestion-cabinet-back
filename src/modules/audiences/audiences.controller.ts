@@ -8,17 +8,23 @@ import {
   Patch,
   Param,
   Delete,
-  Query
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AudiencesService } from './audiences.service';
 import { CreateAudienceDto } from './dto/create-audience.dto';
-import { AudienceListResponseDto, AudienceResponseDto } from './dto/response-audience.dto';
+import {
+  AudienceListResponseDto,
+  AudienceResponseDto,
+} from './dto/response-audience.dto';
 import { AudienceSearchDto } from './dto/search-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
 import { AudienceStatsService } from './audience-stats.service';
 import { AudienceDecisionService } from './audience-decision.service';
-import { AddDecisionResponseDto, DecisionAudienceDto } from './dto/decision-audience.dto';
+import {
+  AddDecisionResponseDto,
+  DecisionAudienceDto,
+} from './dto/decision-audience.dto';
 
 @ApiTags('Audiences')
 @Controller('audiences')
@@ -26,22 +32,22 @@ export class AudiencesController {
   constructor(
     private readonly audiencesService: AudiencesService,
     private readonly decisionService: AudienceDecisionService, // Ajouter ceci
-    private readonly statsService: AudienceStatsService
-    ) {}
+    private readonly statsService: AudienceStatsService,
+  ) {}
 
   // ✅ CREATE - POST /audiences
   @Post()
   @ApiOperation({ summary: 'Créer une audience' })
   @ApiResponse({ status: 201, type: AudienceResponseDto })
   async create(@Body() createAudienceDto: CreateAudienceDto) {
-    console.log('-------dto ', createAudienceDto)
+    console.log('-------dto ', createAudienceDto);
 
     return await this.audiencesService.create(createAudienceDto);
   }
 
-    @Get('stats')
-    @ApiQuery({ name: 'startDate', required: false, type: Date })
-    @ApiQuery({ name: 'endDate', required: false, type: Date })
+  @Get('stats')
+  @ApiQuery({ name: 'startDate', required: false, type: Date })
+  @ApiQuery({ name: 'endDate', required: false, type: Date })
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   async getSummary(
     @Query('startDate') startDate?: string,
@@ -50,7 +56,7 @@ export class AudiencesController {
     return this.statsService.getStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
-      fieldToUseForDate : 'audience_date'
+      fieldToUseForDate: 'audience_date',
     });
   }
 
@@ -89,7 +95,10 @@ export class AudiencesController {
   @Patch(':id')
   @ApiOperation({ summary: 'Mettre à jour une audience' })
   @ApiResponse({ status: 200, type: AudienceResponseDto })
-  async update(@Param('id') id: string, @Body() updateAudienceDto: UpdateAudienceDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateAudienceDto: UpdateAudienceDto,
+  ) {
     return await this.audiencesService.update(+id, updateAudienceDto);
   }
 
@@ -101,7 +110,6 @@ export class AudiencesController {
     return await this.audiencesService.remove(+id);
   }
 
-
   /**
    * ✅ AJOUTER UNE DÉCISION - POST /audiences/:id/decision
    */
@@ -112,8 +120,8 @@ export class AudiencesController {
     @Param('id') id: string,
     @Body() decisionDto: DecisionAudienceDto,
   ) {
-    const decision =  await this.decisionService.addDecision(+id, decisionDto);
-    return await this.audiencesService.findOneV1(+id)
+    const decision = await this.decisionService.addDecision(+id, decisionDto);
+    return await this.audiencesService.findOneV1(+id);
   }
 
   /**
@@ -126,34 +134,36 @@ export class AudiencesController {
     @Param('id') id: string,
     @Body() updateDto: UpdateAudienceDto,
   ) {
-    console.log('updateDtoAA ', updateDto)
+    console.log('updateDtoAA ', updateDto);
 
-    const audience =  await this.audiencesService.postpone(+id, updateDto);
-    return audience
+    const audience = await this.audiencesService.postpone(+id, updateDto);
+    return audience;
   }
 
   /**
    * ✅ MODIFIER UNE DÉCISION - PATCH /audiences/:id/decision
    */
   @Patch(':id/decision')
-  @ApiOperation({ summary: 'Modifier la décision d\'une audience' })
+  @ApiOperation({ summary: "Modifier la décision d'une audience" })
   @ApiResponse({ status: 200, type: AddDecisionResponseDto })
   async updateDecision(
     @Param('id') id: string,
     @Body() decisionDto: DecisionAudienceDto,
   ) {
-    const decision =   await this.decisionService.updateDecision(+id, decisionDto);
-        return await this.audiencesService.findOneV1(+id)
+    const decision = await this.decisionService.updateDecision(
+      +id,
+      decisionDto,
+    );
+    return await this.audiencesService.findOneV1(+id);
   }
 
   /**
    * ✅ RÉCUPÉRER LA DÉCISION - GET /audiences/:id/decision
    */
   @Get(':id/decision')
-  @ApiOperation({ summary: 'Récupérer la décision d\'une audience' })
+  @ApiOperation({ summary: "Récupérer la décision d'une audience" })
   async getDecision(@Param('id') id: string) {
     return await this.decisionService.getDecision(+id);
-    
   }
 
   /**
@@ -170,25 +180,37 @@ export class AudiencesController {
 
   // ── Rapport d'audience (procès-verbal) ────────────────────────────────────
   @Post(':id/report')
-  @ApiOperation({ summary: 'Ajouter un rapport d\'audience' })
+  @ApiOperation({ summary: "Ajouter un rapport d'audience" })
   async addReport(
     @Param('id') id: string,
-    @Body() payload: { report_content: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+    @Body()
+    payload: {
+      report_content: string;
+      report_date?: Date;
+      report_author_id?: string;
+      document_ids?: number[];
+    },
   ) {
     return await this.audiencesService.addReport(+id, payload);
   }
 
   @Patch(':id/report')
-  @ApiOperation({ summary: 'Mettre à jour le rapport d\'audience' })
+  @ApiOperation({ summary: "Mettre à jour le rapport d'audience" })
   async updateReport(
     @Param('id') id: string,
-    @Body() payload: { report_content?: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+    @Body()
+    payload: {
+      report_content?: string;
+      report_date?: Date;
+      report_author_id?: string;
+      document_ids?: number[];
+    },
   ) {
     return await this.audiencesService.updateReport(+id, payload);
   }
 
   @Get(':id/report')
-  @ApiOperation({ summary: 'Récupérer le rapport d\'audience' })
+  @ApiOperation({ summary: "Récupérer le rapport d'audience" })
   async getReport(@Param('id') id: string) {
     return await this.audiencesService.getReport(+id);
   }

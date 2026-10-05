@@ -1,7 +1,11 @@
 // src/modules/findings/dto/response-finding.dto.ts
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { FindingSeverity, FindingStatus, FindingCategory } from '../entities/finding.entity';
+import {
+  FindingSeverity,
+  FindingStatus,
+  FindingCategory,
+} from '../entities/finding.entity';
 
 export class FindingResponseDto {
   @ApiProperty({ example: 1 })
@@ -28,7 +32,7 @@ export class FindingResponseDto {
   @Expose()
   category: FindingCategory;
 
-  @ApiProperty({ example: 'Cette clause pourrait empêcher l\'acquisition...' })
+  @ApiProperty({ example: "Cette clause pourrait empêcher l'acquisition..." })
   @Expose()
   impact?: string;
 
@@ -84,14 +88,18 @@ export class FindingResponseDto {
   @ApiProperty({
     example: {
       id: 5,
-      title: 'Due Diligence acquisition Société ABC'
-    }
+      title: 'Due Diligence acquisition Société ABC',
+    },
   })
   @Expose()
-  @Transform(({ obj }) => obj.diligence ? {
-    id: obj.diligence.id,
-    title: obj.diligence.title
-  } : null)
+  @Transform(({ obj }) =>
+    obj.diligence
+      ? {
+          id: obj.diligence.id,
+          title: obj.diligence.title,
+        }
+      : null,
+  )
   diligence?: {
     id: number;
     title: string;
@@ -100,14 +108,18 @@ export class FindingResponseDto {
   @ApiProperty({
     example: {
       id: 12,
-      name: 'Contrat de travail - Jean Martin.pdf'
-    }
+      name: 'Contrat de travail - Jean Martin.pdf',
+    },
   })
   @Expose()
-  @Transform(({ obj }) => obj.document ? {
-    id: obj.document.id,
-    name: obj.document.name
-  } : null)
+  @Transform(({ obj }) =>
+    obj.document
+      ? {
+          id: obj.document.id,
+          name: obj.document.name,
+        }
+      : null,
+  )
   document?: {
     id: number;
     name: string;
@@ -116,14 +128,18 @@ export class FindingResponseDto {
   @ApiProperty({
     example: {
       id: 42,
-      full_name: 'Maître Sophie Martin'
-    }
+      full_name: 'Maître Sophie Martin',
+    },
   })
   @Expose()
-  @Transform(({ obj }) => obj.created_by ? {
-    id: obj.created_by.id,
-    full_name: obj.created_by.full_name
-  } : null)
+  @Transform(({ obj }) =>
+    obj.created_by
+      ? {
+          id: obj.created_by.id,
+          full_name: obj.created_by.full_name,
+        }
+      : null,
+  )
   created_by?: {
     id: number;
     full_name: string;

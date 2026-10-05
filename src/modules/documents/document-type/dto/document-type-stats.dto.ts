@@ -119,7 +119,6 @@ export class TopDocumentTypeDto {
   customerTypesCount: number;
 }
 
-
 export class MimeTypeStatsDto {
   @Expose()
   mimeType: string;

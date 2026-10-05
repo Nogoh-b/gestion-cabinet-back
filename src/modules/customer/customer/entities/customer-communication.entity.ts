@@ -7,14 +7,14 @@ export enum CommunicationType {
   EMAIL = 'email',
   PHONE = 'phone',
   MEETING = 'meeting',
-  LETTER = 'letter'
+  LETTER = 'letter',
 }
 
 export enum CommunicationStatus {
   SENT = 'sent',
   RECEIVED = 'received',
   PLANNED = 'planned',
-  CANCELLED = 'cancelled'
+  CANCELLED = 'cancelled',
 }
 
 @Entity('customer_communication')
@@ -34,10 +34,18 @@ export class CustomerCommunication extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   content: string;
 
-  @Column({ type: 'timestamp' , nullable: false, default: () => 'CURRENT_TIMESTAMP'})
+  @Column({
+    type: 'timestamp',
+    nullable: false,
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   date: Date | null;
 
-  @Column({ type: 'enum', enum: CommunicationStatus, default: CommunicationStatus.SENT })
+  @Column({
+    type: 'enum',
+    enum: CommunicationStatus,
+    default: CommunicationStatus.SENT,
+  })
   status: CommunicationStatus;
 
   @Column({ nullable: true })
@@ -45,6 +53,4 @@ export class CustomerCommunication extends BaseEntity {
 
   @Column({ nullable: true })
   participants: string; // participants à la communication
-
-  
 }

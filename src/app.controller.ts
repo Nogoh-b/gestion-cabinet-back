@@ -6,17 +6,11 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiBody } from '@nestjs/swagger';
 
-
-
 import { AppService } from './app.service';
-
-
-
-
 
 class AddJobDto {
   foo: string;
-  accountId:any; 
+  accountId: any;
   /**
    * Mettre à true pour exécuter le job chaque mois à la même date
    */
@@ -31,22 +25,17 @@ export class AppController {
     // private readonly txService: TransactionSavingsAccountService,
 
     @Inject('USER_SERVICE') private readonly client: ClientProxy,
-  ) {
-
-  }
+  ) {}
 
   @Post('test_cron_maintenance')
   @ApiBody({ type: AddJobDto })
   async addJob(@Body() data: AddJobDto) {
-
-
-    const job = null //await this.queueService.addTaskBuyInterest(2);
+    const job = null; //await this.queueService.addTaskBuyInterest(2);
   }
   @Post('test_cron_maintenance1')
   @ApiBody({ type: AddJobDto })
   async addJobTask(@Body() data: AddJobDto) {
-
-   /* return await this.txService.mcotiService.checkStatusPaymentDeposit(data.accountId, "MOMO")
+    /* return await this.txService.mcotiService.checkStatusPaymentDeposit(data.accountId, "MOMO")
     return {
 "accountId" : "620489772"
 }*/
@@ -55,11 +44,11 @@ export class AppController {
       attempts: 3,
       backoff: { type: 'fixed', delay: 5000 },
     };
-      // Planifie le job chaque mois à minuit à la date du jour
-      const now = new Date();
-      const day = now.getDate();
-      // opts.repeat = { cron: `0 0 ${day} * *` };
-      opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
+    // Planifie le job chaque mois à minuit à la date du jour
+    const now = new Date();
+    const day = now.getDate();
+    // opts.repeat = { cron: `0 0 ${day} * *` };
+    opts.repeat = { cron: '*/5 * * * * *' }; // Toutes les 5 secondes
     // const job = await this.queueService.addTaskCheckPayment(data.accountId);
     // return { jobId: job.id };
   }

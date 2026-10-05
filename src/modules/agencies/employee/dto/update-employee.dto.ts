@@ -12,7 +12,8 @@ export class UpdateEmployeeDto extends PartialType(CreateUserDto) {
   @ApiProperty({
     required: false,
     example: 'active',
-    description: 'Statut : "active" | "inactive" | "on_leave" | "training" | "sick_leave" ou 1 | 0 | -1 | 2',
+    description:
+      'Statut : "active" | "inactive" | "on_leave" | "training" | "sick_leave" ou 1 | 0 | -1 | 2',
   })
   @IsOptional()
   status?: string | number;

@@ -6,24 +6,37 @@ import { Archiver, ZipArchive } from 'archiver';
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'fs';
 import { basename, extname, isAbsolute, join } from 'path';
 
-import { UPLOAD_DOCS_PATH, UPLOAD_PATH } from 'src/core/common/constants/constants';
+import {
+  UPLOAD_DOCS_PATH,
+  UPLOAD_PATH,
+} from 'src/core/common/constants/constants';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 import { Facture } from '../facture/entities/facture.entity';
 import { Paiement } from '../paiement/entities/paiement.entity';
-import { Audience, AudienceStatus, AudienceType1 } from '../audiences/entities/audience.entity';
-import { Diligence, DiligenceStatus, DiligenceType } from '../diligence/entities/diligence.entity';
+import {
+  Audience,
+  AudienceStatus,
+  AudienceType1,
+} from '../audiences/entities/audience.entity';
+import {
+  Diligence,
+  DiligenceStatus,
+  DiligenceType,
+} from '../diligence/entities/diligence.entity';
 import { Step, StepStatus, StepType } from '../dossiers/entities/step.entity';
 
 /** Dossier de stockage des exports ZIP sur le serveur. */
 const EXPORT_PATH = join(UPLOAD_PATH, 'exports');
 
 function sanitize(s: any): string {
-  return String(s ?? '')
-    .replace(/[^\w.\- ]+/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 120) || 'sans-nom';
+  return (
+    String(s ?? '')
+      .replace(/[^\w.\- ]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120) || 'sans-nom'
+  );
 }
 
 /** Sérialise des lignes en CSV (UTF-8 BOM, séparateur ';'). */
@@ -52,7 +65,10 @@ function fmtDate(d: any): string {
 function fmtMoney(v: any): string {
   const n = Number(v);
   if (!Number.isFinite(n)) return '0';
-  return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString('fr-FR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 const AUDIENCE_TYPE_LABELS: Record<number, string> = {
@@ -90,12 +106,18 @@ export class DossierExportService {
   private readonly logger = new Logger(DossierExportService.name);
 
   constructor(
-    @InjectRepository(Dossier) private readonly dossierRepo: Repository<Dossier>,
-    @InjectRepository(DocumentCustomer) private readonly docRepo: Repository<DocumentCustomer>,
-    @InjectRepository(Facture) private readonly factureRepo: Repository<Facture>,
-    @InjectRepository(Paiement) private readonly paiementRepo: Repository<Paiement>,
-    @InjectRepository(Audience) private readonly audienceRepo: Repository<Audience>,
-    @InjectRepository(Diligence) private readonly diligenceRepo: Repository<Diligence>,
+    @InjectRepository(Dossier)
+    private readonly dossierRepo: Repository<Dossier>,
+    @InjectRepository(DocumentCustomer)
+    private readonly docRepo: Repository<DocumentCustomer>,
+    @InjectRepository(Facture)
+    private readonly factureRepo: Repository<Facture>,
+    @InjectRepository(Paiement)
+    private readonly paiementRepo: Repository<Paiement>,
+    @InjectRepository(Audience)
+    private readonly audienceRepo: Repository<Audience>,
+    @InjectRepository(Diligence)
+    private readonly diligenceRepo: Repository<Diligence>,
     @InjectRepository(Step) private readonly stepRepo: Repository<Step>,
   ) {}
 
@@ -109,7 +131,11 @@ export class DossierExportService {
       filePath,
     ].filter(Boolean) as string[];
     for (const c of candidates) {
-      try { if (existsSync(c) && statSync(c).isFile()) return c; } catch { /* ignore */ }
+      try {
+        if (existsSync(c) && statSync(c).isFile()) return c;
+      } catch {
+        /* ignore */
+      }
     }
     return null;
   }
@@ -134,10 +160,14 @@ export class DossierExportService {
       res.destroy(e);
     });
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const filename = ids.length === 1
-      ? `dossier-${ids[0]}_${timestamp}.zip`
-      : `dossiers-export_${timestamp}.zip`;
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')
+      .slice(0, 19);
+    const filename =
+      ids.length === 1
+        ? `dossier-${ids[0]}_${timestamp}.zip`
+        : `dossiers-export_${timestamp}.zip`;
 
     // Sauvegarde locale sur le serveur
     const serverPath = join(EXPORT_PATH, filename);
@@ -154,11 +184,15 @@ export class DossierExportService {
       added += (await this.addDossier(archive, id)) ? 1 : 0;
     }
     if (added === 0) {
-      archive.append('Aucun dossier accessible pour cet export.', { name: 'README.txt' });
+      archive.append('Aucun dossier accessible pour cet export.', {
+        name: 'README.txt',
+      });
     }
     await archive.finalize();
 
-    this.logger.log(`[Export] ZIP sauvegardé → ${serverPath} (${added} dossier(s))`);
+    this.logger.log(
+      `[Export] ZIP sauvegardé → ${serverPath} (${added} dossier(s))`,
+    );
   }
 
   /** Ajoute un dossier complet (métadonnées + documents + factures + paiements + audiences + diligences). */
@@ -173,10 +207,14 @@ export class DossierExportService {
 
     // ── Charger toutes les données liées ──
     const docs = await this.docRepo.find({ where: { dossier_id: id } as any });
-    const factures = await this.factureRepo.find({ where: { dossier_id: id } as any });
+    const factures = await this.factureRepo.find({
+      where: { dossier_id: id } as any,
+    });
     const factureIds = factures.map((f) => f.id);
     const paiements = factureIds.length
-      ? await this.paiementRepo.find({ where: { factureId: In(factureIds) } as any })
+      ? await this.paiementRepo.find({
+          where: { factureId: In(factureIds) } as any,
+        })
       : [];
     const audiences = await this.audienceRepo.find({
       where: { dossier_id: id } as any,
@@ -197,7 +235,8 @@ export class DossierExportService {
     // ── 1. Métadonnées JSON ──
     const clientName = (dossier as any).client?.full_name ?? dossier.client_id;
     const lawyerName = (dossier as any).lawyer?.full_name ?? dossier.lawyer_id;
-    const procedureName = (dossier as any).procedure_type?.name ?? dossier.procedure_type_id;
+    const procedureName =
+      (dossier as any).procedure_type?.name ?? dossier.procedure_type_id;
 
     const meta = {
       dossier_number: dossier.dossier_number,
@@ -219,11 +258,19 @@ export class DossierExportService {
         diligences: diligences.length,
       },
     };
-    archive.append(JSON.stringify(meta, null, 2), { name: `${folder}/dossier.json` });
+    archive.append(JSON.stringify(meta, null, 2), {
+      name: `${folder}/dossier.json`,
+    });
 
     // ── 2. Résumé enrichi ──
-    const totalFacture = factures.reduce((s, f) => s + Number((f as any).total_amount ?? (f as any).amount ?? 0), 0);
-    const totalPaye = paiements.reduce((s, p) => s + Number((p as any).amount ?? 0), 0);
+    const totalFacture = factures.reduce(
+      (s, f) => s + Number((f as any).total_amount ?? (f as any).amount ?? 0),
+      0,
+    );
+    const totalPaye = paiements.reduce(
+      (s, p) => s + Number((p as any).amount ?? 0),
+      0,
+    );
 
     const lines: string[] = [
       '═══════════════════════════════════════════════════════',
@@ -254,8 +301,12 @@ export class DossierExportService {
     if (docs.length) {
       lines.push('', '── DOCUMENTS ──');
       docs.forEach((d, i) => {
-        const size = d.file_size ? `${(Number(d.file_size) / 1024).toFixed(1)} Ko` : '—';
-        lines.push(`  ${i + 1}. ${d.name || '(sans nom)'}  [${size}]  ${fmtDate((d as any).created_at)}`);
+        const size = d.file_size
+          ? `${(Number(d.file_size) / 1024).toFixed(1)} Ko`
+          : '—';
+        lines.push(
+          `  ${i + 1}. ${d.name || '(sans nom)'}  [${size}]  ${fmtDate((d as any).created_at)}`,
+        );
       });
     }
 
@@ -266,7 +317,9 @@ export class DossierExportService {
         const num = f.invoice_number ?? f.numero ?? `#${f.id}`;
         const montant = fmtMoney(f.total_amount ?? f.amount ?? 0);
         const statut = f.status ?? '—';
-        lines.push(`  ${i + 1}. ${num}  |  ${montant} FCFA  |  Statut : ${statut}  |  ${fmtDate(f.created_at)}`);
+        lines.push(
+          `  ${i + 1}. ${num}  |  ${montant} FCFA  |  Statut : ${statut}  |  ${fmtDate(f.created_at)}`,
+        );
       });
     }
 
@@ -276,7 +329,9 @@ export class DossierExportService {
       paiements.forEach((p: any, i) => {
         const montant = fmtMoney(p.amount ?? 0);
         const mode = p.payment_method ?? p.modePaiement ?? '—';
-        lines.push(`  ${i + 1}. ${montant} FCFA  |  Mode : ${mode}  |  ${fmtDate(p.payment_date ?? p.created_at)}`);
+        lines.push(
+          `  ${i + 1}. ${montant} FCFA  |  Mode : ${mode}  |  ${fmtDate(p.payment_date ?? p.created_at)}`,
+        );
       });
     }
 
@@ -285,10 +340,14 @@ export class DossierExportService {
       lines.push('', '── AUDIENCES ──');
       audiences.forEach((a: any, i) => {
         const typeLabel = AUDIENCE_TYPE_LABELS[a.type] ?? String(a.type);
-        const statusLabel = AUDIENCE_STATUS_LABELS[a.status] ?? String(a.status);
+        const statusLabel =
+          AUDIENCE_STATUS_LABELS[a.status] ?? String(a.status);
         const juridiction = a.jurisdiction?.name ?? `#${a.jurisdiction_id}`;
-        lines.push(`  ${i + 1}. ${fmtDate(a.audience_date)} ${a.audience_time ?? ''}  |  ${typeLabel}  |  ${statusLabel}  |  ${juridiction}${a.room ? ` (${a.room})` : ''}`);
-        if (a.decision) lines.push(`     → Décision : ${a.decision.slice(0, 200)}`);
+        lines.push(
+          `  ${i + 1}. ${fmtDate(a.audience_date)} ${a.audience_time ?? ''}  |  ${typeLabel}  |  ${statusLabel}  |  ${juridiction}${a.room ? ` (${a.room})` : ''}`,
+        );
+        if (a.decision)
+          lines.push(`     → Décision : ${a.decision.slice(0, 200)}`);
         if (a.notes) lines.push(`     → Notes : ${a.notes.slice(0, 200)}`);
       });
     }
@@ -299,11 +358,18 @@ export class DossierExportService {
       diligences.forEach((d: any, i) => {
         const statusLabel = d.status ?? '—';
         const typeLabel = d.type ?? '—';
-        const avocat = d.assigned_lawyer?.full_name ?? (d.assigned_lawyer_id ? `#${d.assigned_lawyer_id}` : '—');
-        lines.push(`  ${i + 1}. ${d.title ?? '(sans titre)'}  |  ${typeLabel}  |  ${statusLabel}  |  Avocat : ${avocat}`);
-        lines.push(`     Échéance : ${fmtDate(d.deadline)}  |  Heures : ${d.actual_hours ?? 0}/${d.budget_hours ?? '—'}`);
+        const avocat =
+          d.assigned_lawyer?.full_name ??
+          (d.assigned_lawyer_id ? `#${d.assigned_lawyer_id}` : '—');
+        lines.push(
+          `  ${i + 1}. ${d.title ?? '(sans titre)'}  |  ${typeLabel}  |  ${statusLabel}  |  Avocat : ${avocat}`,
+        );
+        lines.push(
+          `     Échéance : ${fmtDate(d.deadline)}  |  Heures : ${d.actual_hours ?? 0}/${d.budget_hours ?? '—'}`,
+        );
         if (d.scope) lines.push(`     Périmètre : ${d.scope.slice(0, 200)}`);
-        if (d.findings_summary) lines.push(`     Constats : ${d.findings_summary.slice(0, 200)}`);
+        if (d.findings_summary)
+          lines.push(`     Constats : ${d.findings_summary.slice(0, 200)}`);
       });
     }
 
@@ -313,11 +379,16 @@ export class DossierExportService {
       steps.forEach((s: any, i) => {
         const typeLabel = STEP_TYPE_LABELS[s.type] ?? s.type ?? '—';
         const statusLabel = STEP_STATUS_LABELS[s.status] ?? String(s.status);
-        lines.push(`  ┌─ Étape ${i + 1} : ${s.title ?? typeLabel}  [${statusLabel}]`);
+        lines.push(
+          `  ┌─ Étape ${i + 1} : ${s.title ?? typeLabel}  [${statusLabel}]`,
+        );
         lines.push(`  │  Type        : ${typeLabel}`);
-        if (s.scheduledDate) lines.push(`  │  Planifiée   : ${fmtDate(s.scheduledDate)}`);
-        if (s.completedDate) lines.push(`  │  Terminée    : ${fmtDate(s.completedDate)}`);
-        if (s.description) lines.push(`  │  Description : ${s.description.slice(0, 200)}`);
+        if (s.scheduledDate)
+          lines.push(`  │  Planifiée   : ${fmtDate(s.scheduledDate)}`);
+        if (s.completedDate)
+          lines.push(`  │  Terminée    : ${fmtDate(s.completedDate)}`);
+        if (s.description)
+          lines.push(`  │  Description : ${s.description.slice(0, 200)}`);
 
         // Ressources rattachées à cette étape
         const stepDocs = s.documents ?? [];
@@ -327,28 +398,45 @@ export class DossierExportService {
 
         if (stepDocs.length) {
           lines.push(`  │  📄 Documents (${stepDocs.length}) :`);
-          stepDocs.forEach((d: any) => lines.push(`  │     - ${d.name || '(sans nom)'}  [${d.status ?? ''}]`));
+          stepDocs.forEach((d: any) =>
+            lines.push(
+              `  │     - ${d.name || '(sans nom)'}  [${d.status ?? ''}]`,
+            ),
+          );
         }
         if (stepAud.length) {
           lines.push(`  │  🏛 Audiences (${stepAud.length}) :`);
           stepAud.forEach((a: any) => {
             const at = AUDIENCE_TYPE_LABELS[a.type] ?? a.type;
             const as_ = AUDIENCE_STATUS_LABELS[a.status] ?? a.status;
-            lines.push(`  │     - ${fmtDate(a.audience_date)} ${a.audience_time ?? ''} — ${at} [${as_}]`);
+            lines.push(
+              `  │     - ${fmtDate(a.audience_date)} ${a.audience_time ?? ''} — ${at} [${as_}]`,
+            );
           });
         }
         if (stepDil.length) {
           lines.push(`  │  📋 Diligences (${stepDil.length}) :`);
-          stepDil.forEach((d: any) => lines.push(`  │     - ${d.title ?? '(sans titre)'}  [${d.status ?? ''}]`));
+          stepDil.forEach((d: any) =>
+            lines.push(
+              `  │     - ${d.title ?? '(sans titre)'}  [${d.status ?? ''}]`,
+            ),
+          );
         }
         if (stepFac.length) {
           lines.push(`  │  💰 Factures (${stepFac.length}) :`);
           stepFac.forEach((f: any) => {
             const num = f.invoice_number ?? `#${f.id}`;
-            lines.push(`  │     - ${num}  ${fmtMoney(f.total_amount ?? f.amount ?? 0)} FCFA  [${f.status ?? ''}]`);
+            lines.push(
+              `  │     - ${num}  ${fmtMoney(f.total_amount ?? f.amount ?? 0)} FCFA  [${f.status ?? ''}]`,
+            );
           });
         }
-        if (!stepDocs.length && !stepAud.length && !stepDil.length && !stepFac.length) {
+        if (
+          !stepDocs.length &&
+          !stepAud.length &&
+          !stepDil.length &&
+          !stepFac.length
+        ) {
           lines.push(`  │  (aucune ressource rattachée)`);
         }
         lines.push(`  └─────────────────────────────────`);
@@ -369,56 +457,81 @@ export class DossierExportService {
     const missing: string[] = [];
     for (const d of docs) {
       const abs = this.resolvePath(d.file_path);
-      if (!abs) { missing.push(d.name || `document #${d.id}`); continue; }
+      if (!abs) {
+        missing.push(d.name || `document #${d.id}`);
+        continue;
+      }
       const ext = extname(abs) || extname(basename(d.file_path || '')) || '';
-      let name = sanitize(d.name || basename(abs)) + (ext && !d.name?.endsWith(ext) ? ext : '');
+      let name =
+        sanitize(d.name || basename(abs)) +
+        (ext && !d.name?.endsWith(ext) ? ext : '');
       if (used.has(name)) name = `${d.id}_${name}`;
       used.add(name);
       archive.file(abs, { name: `${folder}/documents/${name}` });
     }
     if (missing.length) {
-      archive.append(missing.join('\n'), { name: `${folder}/documents/_fichiers_manquants.txt` });
+      archive.append(missing.join('\n'), {
+        name: `${folder}/documents/_fichiers_manquants.txt`,
+      });
     }
 
     // ── 4. Factures (CSV + JSON) ──
     archive.append(toCsv(factures), { name: `${folder}/factures.csv` });
-    archive.append(JSON.stringify(factures, null, 2), { name: `${folder}/factures.json` });
+    archive.append(JSON.stringify(factures, null, 2), {
+      name: `${folder}/factures.json`,
+    });
 
     // ── 5. Paiements (CSV + JSON) ──
     archive.append(toCsv(paiements), { name: `${folder}/paiements.csv` });
-    archive.append(JSON.stringify(paiements, null, 2), { name: `${folder}/paiements.json` });
+    archive.append(JSON.stringify(paiements, null, 2), {
+      name: `${folder}/paiements.json`,
+    });
 
     // ── 6. Audiences (CSV + JSON) ──
-    archive.append(toCsv(audiences.map((a: any) => ({
-      id: a.id,
-      date: fmtDate(a.audience_date),
-      heure: a.audience_time,
-      type: AUDIENCE_TYPE_LABELS[a.type] ?? a.type,
-      statut: AUDIENCE_STATUS_LABELS[a.status] ?? a.status,
-      juridiction: a.jurisdiction?.name ?? a.jurisdiction_id,
-      salle: a.room,
-      decision: a.decision,
-      notes: a.notes,
-    }))), { name: `${folder}/audiences.csv` });
-    archive.append(JSON.stringify(audiences, null, 2), { name: `${folder}/audiences.json` });
+    archive.append(
+      toCsv(
+        audiences.map((a: any) => ({
+          id: a.id,
+          date: fmtDate(a.audience_date),
+          heure: a.audience_time,
+          type: AUDIENCE_TYPE_LABELS[a.type] ?? a.type,
+          statut: AUDIENCE_STATUS_LABELS[a.status] ?? a.status,
+          juridiction: a.jurisdiction?.name ?? a.jurisdiction_id,
+          salle: a.room,
+          decision: a.decision,
+          notes: a.notes,
+        })),
+      ),
+      { name: `${folder}/audiences.csv` },
+    );
+    archive.append(JSON.stringify(audiences, null, 2), {
+      name: `${folder}/audiences.json`,
+    });
 
     // ── 7. Diligences (CSV + JSON) ──
-    archive.append(toCsv(diligences.map((d: any) => ({
-      id: d.id,
-      titre: d.title,
-      type: d.type,
-      statut: d.status,
-      echeance: fmtDate(d.deadline),
-      completion: fmtDate(d.completion_date),
-      avocat: d.assigned_lawyer?.full_name ?? d.assigned_lawyer_id,
-      heures_budget: d.budget_hours,
-      heures_reelles: d.actual_hours,
-      perimetre: d.scope,
-      constats: d.findings_summary,
-      recommandations: d.recommendations,
-      confidentiel: d.confidential ? 'Oui' : 'Non',
-    }))), { name: `${folder}/diligences.csv` });
-    archive.append(JSON.stringify(diligences, null, 2), { name: `${folder}/diligences.json` });
+    archive.append(
+      toCsv(
+        diligences.map((d: any) => ({
+          id: d.id,
+          titre: d.title,
+          type: d.type,
+          statut: d.status,
+          echeance: fmtDate(d.deadline),
+          completion: fmtDate(d.completion_date),
+          avocat: d.assigned_lawyer?.full_name ?? d.assigned_lawyer_id,
+          heures_budget: d.budget_hours,
+          heures_reelles: d.actual_hours,
+          perimetre: d.scope,
+          constats: d.findings_summary,
+          recommandations: d.recommendations,
+          confidentiel: d.confidential ? 'Oui' : 'Non',
+        })),
+      ),
+      { name: `${folder}/diligences.csv` },
+    );
+    archive.append(JSON.stringify(diligences, null, 2), {
+      name: `${folder}/diligences.json`,
+    });
 
     return true;
   }

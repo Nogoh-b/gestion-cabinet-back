@@ -2,30 +2,39 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { Post, Body, Get, Param, UseGuards, ParseIntPipe, Controller } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-
+import {
+  Post,
+  Body,
+  Get,
+  Param,
+  UseGuards,
+  ParseIntPipe,
+  Controller,
+} from '@nestjs/common';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import { CreateUserDto, ResetPasswordRequestDto } from './dto/create-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { User } from './entities/user.entity';
 import { UsersService } from './user.service';
 
-
-
 @ApiTags('Users1')
 @Controller('users1')
-
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@ApiBearerAuth() 
+@ApiBearerAuth()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Creation d\'un nouvel utilisateur' })
+  @ApiOperation({ summary: "Creation d'un nouvel utilisateur" })
   @ApiResponse({ status: 201, description: 'User created', type: User })
   @RequirePermissions('create_user')
-    create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
+  create(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
     return this.usersService.create(createUserDto);
   }
 
@@ -44,21 +53,20 @@ export class UsersController {
   }
 
   @Post(':id/desable')
-  @ApiOperation({ summary: 'Supression d\'un utilisateur' })
+  @ApiOperation({ summary: "Supression d'un utilisateur" })
   @RequirePermissions('edit_user')
   remove(@Param('id') id: string): Promise<User> {
     return this.usersService.descativeUser(+id);
   }
 
   @Post(':id/enable')
-  @ApiOperation({ summary: 'Supression d\'un utilisateur' })
+  @ApiOperation({ summary: "Supression d'un utilisateur" })
   @RequirePermissions('delete_user')
   add(@Param('id') id: string): Promise<User> {
     return this.usersService.descativeUser(+id);
   }
 
-
-    /**
+  /**
    * Envoie un mot de passe temporaire à l'utilisateur (identification par email ou id dans le body).
    * - Variables en snake_case dans le DTO
    * - Commentaires en français
@@ -67,7 +75,7 @@ export class UsersController {
   @RequirePermissions('edit_user')
   async sendNewPassword(@Body() dto: ResetPasswordRequestDto) {
     return this.usersService.send_new_password({
-      id: dto.id
+      id: dto.id,
     });
   }
 

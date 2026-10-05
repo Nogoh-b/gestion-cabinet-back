@@ -7,7 +7,10 @@ import {
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Supplier } from './supplier.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 
@@ -56,7 +59,9 @@ export class SupplierInvoice extends TenantEntity {
   })
   supplier_id: number;
 
-  @ManyToOne(() => Supplier, (supplier) => supplier.invoices, { nullable: false })
+  @ManyToOne(() => Supplier, (supplier) => supplier.invoices, {
+    nullable: false,
+  })
   @JoinColumn({ name: 'supplier_id' })
   @BusinessColumn({
     label: 'Fournisseur',
@@ -89,7 +94,7 @@ export class SupplierInvoice extends TenantEntity {
   @Column({ type: 'date', name: 'invoice_date' })
   @BusinessColumn({
     label: 'Date de facture',
-    description: 'Date d\'émission de la facture',
+    description: "Date d'émission de la facture",
     format: 'date',
     example: '2026-03-15',
     importance: 'high',
@@ -99,7 +104,7 @@ export class SupplierInvoice extends TenantEntity {
 
   @Column({ type: 'date', name: 'due_date' })
   @BusinessColumn({
-    label: 'Date d\'échéance',
+    label: "Date d'échéance",
     description: 'Date limite de paiement',
     format: 'date',
     example: '2026-04-15',
@@ -119,7 +124,13 @@ export class SupplierInvoice extends TenantEntity {
   })
   amount_ht: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'tax_rate' })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    name: 'tax_rate',
+  })
   @BusinessColumn({
     label: 'Taux TVA',
     description: 'Taux de TVA appliqué',
@@ -152,10 +163,15 @@ export class SupplierInvoice extends TenantEntity {
   })
   amount_ttc: number;
 
-  @Column({ type: 'enum', enum: SupplierInvoiceStatus, default: SupplierInvoiceStatus.RECEIVED })
+  @Column({
+    type: 'enum',
+    enum: SupplierInvoiceStatus,
+    default: SupplierInvoiceStatus.RECEIVED,
+  })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'received'=Reçue, 'approved'=Approuvée, 'paid'=Payée, 'cancelled'=Annulée, 'disputed'=Contestée.",
+    description:
+      "BD: 'received'=Reçue, 'approved'=Approuvée, 'paid'=Payée, 'cancelled'=Annulée, 'disputed'=Contestée.",
     importance: 'high',
     group: 'statut',
   })
@@ -171,16 +187,27 @@ export class SupplierInvoice extends TenantEntity {
   })
   payment_date: Date;
 
-  @Column({ type: 'enum', enum: PaymentMethod, nullable: true, name: 'payment_method' })
+  @Column({
+    type: 'enum',
+    enum: PaymentMethod,
+    nullable: true,
+    name: 'payment_method',
+  })
   @BusinessColumn({
     label: 'Mode de paiement',
-    description: "BD: 'ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE_BANCAIRE', 'PRELEVEMENT', 'MOBILE_MONEY'.",
+    description:
+      "BD: 'ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE_BANCAIRE', 'PRELEVEMENT', 'MOBILE_MONEY'.",
     importance: 'medium',
     group: 'financier',
   })
   payment_method: PaymentMethod;
 
-  @Column({ type: 'varchar', length: 500, nullable: true, name: 'attachment_url' })
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+    name: 'attachment_url',
+  })
   @BusinessColumn({
     label: 'Pièce jointe',
     description: 'Lien vers la facture scannée',
@@ -201,7 +228,7 @@ export class SupplierInvoice extends TenantEntity {
   @Column({ type: 'int', nullable: true, name: 'branch_id' })
   @BusinessColumn({
     label: 'Agence',
-    description: 'Identifiant de l\'agence concernée',
+    description: "Identifiant de l'agence concernée",
     importance: 'medium',
     group: 'relation',
     ignored: true,
@@ -221,7 +248,7 @@ export class SupplierInvoice extends TenantEntity {
   @Column({ type: 'int', nullable: true, name: 'created_by_id' })
   @BusinessColumn({
     label: 'Créé par',
-    description: 'Utilisateur ayant créé l\'enregistrement',
+    description: "Utilisateur ayant créé l'enregistrement",
     importance: 'low',
     group: 'audit',
     ignored: true,
@@ -237,5 +264,4 @@ export class SupplierInvoice extends TenantEntity {
     group: 'audit',
   })
   created_by: User;
-
 }

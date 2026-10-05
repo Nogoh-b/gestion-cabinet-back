@@ -16,7 +16,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Aucun risque de doublon lors de la création de l'index composite : l'ancien
  * index global garantissait déjà l'unicité de `dossier_number` seul.
  */
-export class DossierNumberUniquePerTenant1782300000000 implements MigrationInterface {
+export class DossierNumberUniquePerTenant1782300000000
+  implements MigrationInterface
+{
   private async singleColumnUniqueIndexes(
     queryRunner: QueryRunner,
     column: string,
@@ -34,7 +36,10 @@ export class DossierNumberUniquePerTenant1782300000000 implements MigrationInter
     return rows.map((r) => r.INDEX_NAME);
   }
 
-  private async indexExists(queryRunner: QueryRunner, name: string): Promise<boolean> {
+  private async indexExists(
+    queryRunner: QueryRunner,
+    name: string,
+  ): Promise<boolean> {
     const rows: Array<unknown> = await queryRunner.query(
       `SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
         WHERE TABLE_SCHEMA = DATABASE()
@@ -46,7 +51,12 @@ export class DossierNumberUniquePerTenant1782300000000 implements MigrationInter
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // 1. Créer l'index composite s'il n'existe pas encore.
-    if (!(await this.indexExists(queryRunner, 'UQ_dossiers_tenant_dossier_number'))) {
+    if (
+      !(await this.indexExists(
+        queryRunner,
+        'UQ_dossiers_tenant_dossier_number',
+      ))
+    ) {
       await queryRunner.query(
         `CREATE UNIQUE INDEX UQ_dossiers_tenant_dossier_number
            ON dossiers (tenant_id, dossier_number)`,
@@ -54,7 +64,10 @@ export class DossierNumberUniquePerTenant1782300000000 implements MigrationInter
     }
 
     // 2. Supprimer l'ancien index unique global sur dossier_number seul.
-    for (const name of await this.singleColumnUniqueIndexes(queryRunner, 'dossier_number')) {
+    for (const name of await this.singleColumnUniqueIndexes(
+      queryRunner,
+      'dossier_number',
+    )) {
       await queryRunner.query(`DROP INDEX \`${name}\` ON dossiers`);
     }
   }
@@ -68,13 +81,18 @@ export class DossierNumberUniquePerTenant1782300000000 implements MigrationInter
        ) t`,
     );
     // Ne pas recréer l'unicité globale si des doublons cross-tenant existent.
-    if (rows[0]?.c === 0 && !(await this.indexExists(queryRunner, 'IDX_dossier_number_global'))) {
+    if (
+      rows[0]?.c === 0 &&
+      !(await this.indexExists(queryRunner, 'IDX_dossier_number_global'))
+    ) {
       await queryRunner.query(
         `CREATE UNIQUE INDEX IDX_dossier_number_global ON dossiers (dossier_number)`,
       );
     }
 
-    if (await this.indexExists(queryRunner, 'UQ_dossiers_tenant_dossier_number')) {
+    if (
+      await this.indexExists(queryRunner, 'UQ_dossiers_tenant_dossier_number')
+    ) {
       await queryRunner.query(
         `DROP INDEX \`UQ_dossiers_tenant_dossier_number\` ON dossiers`,
       );

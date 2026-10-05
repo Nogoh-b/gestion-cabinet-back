@@ -1,11 +1,16 @@
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { GenKeys } from 'src/core/shared/utils/generation-keys.util';
+import {
+  joinFullName,
+  splitFullName,
+} from 'src/core/shared/utils/full-name.util';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
 import {
   BeforeInsert,
+  BeforeUpdate,
   Column,
   Entity,
   JoinColumn,
@@ -16,7 +21,10 @@ import {
 import { TypeCustomer } from '../../type-customer/entities/type_customer.entity';
 import { CustomerCommunication } from './customer-communication.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 export enum CustomerStatus {
   ACTIVE = 1,
@@ -35,9 +43,10 @@ export enum CustomerCreatedFrom {
 @Entity('customer')
 @BusinessTable({
   label: 'Clients',
-  description: 'Gestion complète des clients du cabinet (particuliers, professionnels, entreprises). Un client peut avoir plusieurs dossiers, factures et documents.',
+  description:
+    'Gestion complète des clients du cabinet (particuliers, professionnels, entreprises). Un client peut avoir plusieurs dossiers, factures et documents.',
   icon: '👤',
-  category: 'client'
+  category: 'client',
 })
 export class Customer extends BaseEntity {
   @PrimaryGeneratedColumn()
@@ -46,7 +55,7 @@ export class Customer extends BaseEntity {
     description: 'Identifiant unique technique',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -56,7 +65,7 @@ export class Customer extends BaseEntity {
     description: 'Nom de famille du client (pour les particuliers)',
     example: 'Dupont, Martin, Diop',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   last_name: string;
 
@@ -66,17 +75,33 @@ export class Customer extends BaseEntity {
     description: 'Prénom du client (pour les particuliers)',
     example: 'Jean, Marie, Mamadou',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   first_name: string;
+
+  /**
+   * Nom et prénom en un seul champ — saisi directement par les formulaires de
+   * création. `first_name`/`last_name` restent la source lue par l'existant
+   * (recherche, tri, exports, module IA) : ils sont synchronisés
+   * automatiquement avec `full_name` par `syncNameFields()` ci-dessous, à
+   * chaque création ou mise à jour via `save()`.
+   */
+  @Column({ name: 'full_name', length: 91, nullable: false })
+  @BusinessColumn({
+    label: 'Nom complet',
+    description: 'Nom et prénom du client, en un seul champ',
+    importance: 'critical',
+    group: 'identification',
+  })
+  full_name: string;
 
   @Column({ name: 'company_name', length: 255, nullable: true })
   @BusinessColumn({
     label: "Nom de l'entreprise",
-    description: "Nom de la société (pour les clients professionnels)",
+    description: 'Nom de la société (pour les clients professionnels)',
     example: 'SARL Dupont et Fils, SAS Martin Consulting',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   company_name: string;
 
@@ -85,17 +110,17 @@ export class Customer extends BaseEntity {
     label: 'Adresse',
     description: 'Adresse postale complète du client',
     importance: 'high',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   address: string;
 
   @Column({ name: 'postal_code', length: 20, nullable: true })
   @BusinessColumn({
     label: 'Code postal',
-    description: 'Code postal de l\'adresse',
+    description: "Code postal de l'adresse",
     example: '75001, 69000, 13001',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   postal_code: string;
 
@@ -105,7 +130,7 @@ export class Customer extends BaseEntity {
     description: 'Pays de résidence du client',
     example: 'France, Belgique, Suisse, Cameroun',
     importance: 'high',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   country: string;
 
@@ -113,9 +138,10 @@ export class Customer extends BaseEntity {
   @BusinessColumn({
     label: 'Type de facturation',
     description: "BD attendu: 'forfait', 'temps_passe', 'mixte'.",
-    example: 'forfait = Facturation au forfait, temps_passe = Facturation à l\'heure, mixte = Combinaison',
+    example:
+      "forfait = Facturation au forfait, temps_passe = Facturation à l'heure, mixte = Combinaison",
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   billing_type: string;
 
@@ -125,7 +151,7 @@ export class Customer extends BaseEntity {
     description: 'Numéro de téléphone du bureau',
     format: 'phone',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   professional_phone: string;
 
@@ -134,7 +160,7 @@ export class Customer extends BaseEntity {
     label: 'Fax',
     description: 'Numéro de fax',
     importance: 'low',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   fax: string;
 
@@ -144,7 +170,7 @@ export class Customer extends BaseEntity {
     description: "Numéro d'identification de l'entreprise (14 chiffres)",
     example: '12345678901234',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   siret: string;
 
@@ -154,27 +180,27 @@ export class Customer extends BaseEntity {
     description: "Numéro d'identification à la TVA intracommunautaire",
     example: 'FR12345678901',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   tva_number: string;
 
   @Column({ name: 'legal_form', length: 100, nullable: true })
   @BusinessColumn({
     label: 'Forme juridique',
-    description: 'Structure légale de l\'entreprise',
+    description: "Structure légale de l'entreprise",
     example: 'SARL, SAS, EI, SA, EURL',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   legal_form: string;
 
   @Column({ name: 'reference', length: 100, nullable: true })
   @BusinessColumn({
     label: 'Source de référence',
-    description: "Comment le client a connu le cabinet",
+    description: 'Comment le client a connu le cabinet',
     example: 'Recommandation, Internet, Pub, Événement',
     importance: 'medium',
-    group: 'provenance'
+    group: 'provenance',
   })
   reference: string;
 
@@ -190,7 +216,7 @@ export class Customer extends BaseEntity {
     description: 'Numéro de téléphone principal du client',
     format: 'phone',
     importance: 'high',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   number_phone_1: string;
 
@@ -200,7 +226,7 @@ export class Customer extends BaseEntity {
     description: 'Numéro de téléphone secondaire',
     format: 'phone',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   number_phone_2: string;
 
@@ -210,7 +236,7 @@ export class Customer extends BaseEntity {
     description: 'Adresse email du client',
     format: 'email',
     importance: 'critical',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   email: string;
 
@@ -220,10 +246,11 @@ export class Customer extends BaseEntity {
   @Column({ name: 'customer_code', length: 45, nullable: false, unique: true })
   @BusinessColumn({
     label: 'Code client',
-    description: 'Code unique d\'identification du client (format: JUR-TYPE-XXX)',
+    description:
+      "Code unique d'identification du client (format: JUR-TYPE-XXX)",
     example: 'JUR-PART-2025-001, JUR-PRO-2025-045',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   customer_code: string;
 
@@ -236,7 +263,7 @@ export class Customer extends BaseEntity {
     label: 'Agence',
     description: 'Agence de rattachement du client',
     importance: 'medium',
-    group: 'rattachement'
+    group: 'rattachement',
   })
   branch: Branch;
 
@@ -244,9 +271,10 @@ export class Customer extends BaseEntity {
   @JoinColumn({ name: 'type_customer_id' })
   @BusinessColumn({
     label: 'Type de client',
-    description: 'PART = Particulier, PRO = Professionnel, ENT = Entreprise, ASSO = Association',
+    description:
+      'PART = Particulier, PRO = Professionnel, ENT = Entreprise, ASSO = Association',
     importance: 'critical',
-    group: 'classification'
+    group: 'classification',
   })
   type_customer: TypeCustomer;
 
@@ -256,16 +284,17 @@ export class Customer extends BaseEntity {
     label: 'Ville',
     description: 'Ville de résidence du client',
     importance: 'high',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   location_city: LocationCity;
 
   @Column({ nullable: true, default: CustomerCreatedFrom.AGENCY })
   @BusinessColumn({
     label: 'Créé depuis',
-    description: 'BD: 1=ONLINE/En ligne, 0=AGENCY/En agence. En SQL utiliser le nombre.',
+    description:
+      'BD: 1=ONLINE/En ligne, 0=AGENCY/En agence. En SQL utiliser le nombre.',
     importance: 'medium',
-    group: 'provenance'
+    group: 'provenance',
   })
   created_from: CustomerCreatedFrom;
 
@@ -275,17 +304,18 @@ export class Customer extends BaseEntity {
     description: "Numéro d'Unique d'Identification (pièce d'identité)",
     example: '123456789012',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   nui: string;
 
   @Column({ length: 45, nullable: true, unique: false })
   @BusinessColumn({
     label: 'RCCM',
-    description: "Registre du Commerce et des Crédits Mobiliers (pour les entreprises)",
+    description:
+      'Registre du Commerce et des Crédits Mobiliers (pour les entreprises)',
     example: 'CM-DLA-2025-00123',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   rccm: string;
 
@@ -295,16 +325,17 @@ export class Customer extends BaseEntity {
     description: 'Date de naissance du client (pour les particuliers)',
     format: 'date',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   birthday: Date;
 
   @Column({ nullable: true, default: 1 })
   @BusinessColumn({
     label: 'Statut',
-    description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=DELETED/Supprimé, -2=BLOCKED/Bloqué, -3=SUSPENDED/Suspendu, -4=LOCKED/Verrouillé.',
+    description:
+      'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=DELETED/Supprimé, -2=BLOCKED/Bloqué, -3=SUSPENDED/Suspendu, -4=LOCKED/Verrouillé.',
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: CustomerStatus;
 
@@ -313,7 +344,7 @@ export class Customer extends BaseEntity {
     label: 'Dossiers',
     description: 'Liste des dossiers juridiques du client',
     importance: 'high',
-    group: 'relation'
+    group: 'relation',
   })
   dossiers: Dossier[];
 
@@ -325,7 +356,10 @@ export class Customer extends BaseEntity {
   @OneToMany(() => Facture, (facture) => facture.client)
   factures: Facture[];
 
-  @OneToMany(() => CustomerCommunication, (communication) => communication.customer)
+  @OneToMany(
+    () => CustomerCommunication,
+    (communication) => communication.customer,
+  )
   communications: CustomerCommunication[];
 
   // ==================== GETTERS MÉTIER ====================
@@ -334,28 +368,34 @@ export class Customer extends BaseEntity {
     label: 'Professionnel',
     description: 'True si le client est un professionnel ou une entreprise',
     importance: 'high',
-    group: 'classification'
+    group: 'classification',
   })
   get isProfessional(): boolean {
-    return this.type_customer?.code === 'PRO' || this.type_customer?.name === 'Professionnel';
+    return (
+      this.type_customer?.code === 'PRO' ||
+      this.type_customer?.name === 'Professionnel'
+    );
   }
 
   @BusinessColumn({
     label: 'Particulier',
     description: 'True si le client est un particulier',
     importance: 'high',
-    group: 'classification'
+    group: 'classification',
   })
   get isParticulier(): boolean {
-    return this.type_customer?.code === 'PART' || this.type_customer?.name === 'Particulier';
+    return (
+      this.type_customer?.code === 'PART' ||
+      this.type_customer?.name === 'Particulier'
+    );
   }
 
   @BusinessColumn({
     label: 'Nom complet',
-    description: 'Nom complet du client (Prénom Nom) ou nom de l\'entreprise',
+    description: "Nom complet du client (Prénom Nom) ou nom de l'entreprise",
     example: 'Jean Dupont, SARL Dupont et Fils',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   get fullName(): string {
     if (this.company_name && this.isProfessional) {
@@ -368,7 +408,7 @@ export class Customer extends BaseEntity {
     label: 'Adresse complète',
     description: 'Adresse postale complète avec ville',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   get city_full_address(): string {
     return this.location_city?.full_address ?? '';
@@ -378,7 +418,7 @@ export class Customer extends BaseEntity {
     label: 'Contact valide',
     description: 'True si le client a au moins un email ou un téléphone',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   get hasValidContact(): boolean {
     return !!(this.email || this.number_phone_1 || this.professional_phone);
@@ -386,9 +426,9 @@ export class Customer extends BaseEntity {
 
   @BusinessColumn({
     label: 'Nombre de dossiers',
-    description: "Nombre total de dossiers du client",
+    description: 'Nombre total de dossiers du client',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get dossier_count(): number {
     return this.dossiers?.length || 0;
@@ -396,19 +436,19 @@ export class Customer extends BaseEntity {
 
   @BusinessColumn({
     label: 'Dossiers actifs',
-    description: "Nombre de dossiers actifs du client",
+    description: 'Nombre de dossiers actifs du client',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get active_dossier_count(): number {
-    return this.dossiers?.filter(d => d.is_active).length || 0;
+    return this.dossiers?.filter((d) => d.is_active).length || 0;
   }
 
   @BusinessColumn({
     label: 'Nombre de factures',
-    description: "Nombre total de factures du client",
+    description: 'Nombre total de factures du client',
     importance: 'medium',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get facture_count(): number {
     return this.factures?.length || 0;
@@ -418,7 +458,7 @@ export class Customer extends BaseEntity {
     label: 'Est actif',
     description: 'True si le client est actif',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get is_active(): boolean {
     return this.status === CustomerStatus.ACTIVE;
@@ -428,7 +468,7 @@ export class Customer extends BaseEntity {
     label: 'Statut libellé',
     description: 'Libellé lisible du statut',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get status_label(): string {
     const labels = {
@@ -437,7 +477,7 @@ export class Customer extends BaseEntity {
       [CustomerStatus.DELETED]: 'Supprimé',
       [CustomerStatus.BLOCKED]: 'Bloqué',
       [CustomerStatus.SUSPENDED]: 'Suspendu',
-      [CustomerStatus.LOCKED]: 'Verrouillé'
+      [CustomerStatus.LOCKED]: 'Verrouillé',
     };
     return labels[this.status] || 'Inconnu';
   }
@@ -450,11 +490,38 @@ export class Customer extends BaseEntity {
     return this.location_city?.id;
   }
 
-  get full_name(): string {
-    return `${this.first_name} ${this.last_name}`;
-  }
-
   // ==================== MÉTHODES MÉTIER ====================
+
+  /**
+   * Synchronise `full_name` et `first_name`/`last_name` à chaque création ou
+   * mise à jour passant par `save()` (ce que font tous les services actuels
+   * via `repository.create()` + `save()`).
+   *
+   * `full_name` est la source de vérité quand il est renseigné et que
+   * first_name/last_name ne le sont pas encore (formulaire à champ unique) ;
+   * sinon on reconstruit `full_name` depuis first_name/last_name, pour que
+   * les écritures legacy restent cohérentes. Ce champ reste un simple
+   * concat — pour l'affichage "société en priorité", utiliser `fullName`
+   * (getter ci-dessus), qui reste inchangé.
+   *
+   * Limite connue : un `repository.update(id, partial)` direct (sans charger
+   * puis sauvegarder l'entité) contourne ce hook — seuls les flux create/save
+   * sont couverts, ce qui suffit pour les formulaires de création visés ici.
+   */
+  @BeforeInsert()
+  @BeforeUpdate()
+  syncNameFields() {
+    const hasFullName = !!this.full_name?.trim();
+    const hasSplitNames = !!this.first_name?.trim() && !!this.last_name?.trim();
+
+    if (hasFullName && !hasSplitNames) {
+      const { first_name, last_name } = splitFullName(this.full_name);
+      this.first_name = first_name || this.first_name || '';
+      this.last_name = last_name || this.last_name || this.full_name.trim();
+    } else if (!hasFullName) {
+      this.full_name = joinFullName(this.first_name, this.last_name);
+    }
+  }
 
   @BeforeInsert()
   generateKeys() {

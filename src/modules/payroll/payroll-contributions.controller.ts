@@ -31,7 +31,9 @@ export class PayrollContributionsController {
 
   @Post('/seed-defaults')
   @RequirePermissions('edit_payroll_period')
-  @ApiOperation({ summary: 'Installer le barème par défaut (CEMAC) pour le cabinet' })
+  @ApiOperation({
+    summary: 'Installer le barème par défaut (CEMAC) pour le cabinet',
+  })
   seedDefaults() {
     return this.service.seedDefaults();
   }
@@ -45,7 +47,7 @@ export class PayrollContributionsController {
 
   @Get(':id')
   @RequirePermissions('view_payroll')
-  @ApiOperation({ summary: 'Détail d\'une cotisation' })
+  @ApiOperation({ summary: "Détail d'une cotisation" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

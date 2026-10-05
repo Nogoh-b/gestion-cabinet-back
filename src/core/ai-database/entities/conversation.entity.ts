@@ -19,9 +19,13 @@ export class Conversation extends BaseEntity {
 
   // created_at, updated_at, deleted_at hérités de BaseEntity → pas de redéclaration
   // Alias pour la compatibilité avec le code existant qui utilise createdAt/updatedAt
-  get createdAt(): Date { return this.created_at; }
-  get updatedAt(): Date { return this.updated_at; }
+  get createdAt(): Date {
+    return this.created_at;
+  }
+  get updatedAt(): Date {
+    return this.updated_at;
+  }
 
-  @OneToMany(() => ConversationMessage, message => message.conversation)
+  @OneToMany(() => ConversationMessage, (message) => message.conversation)
   messages: ConversationMessage[];
 }

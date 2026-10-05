@@ -81,7 +81,7 @@ export default class TemplateBlockSeeder implements Seeder {
         name: 'En-tête PDF par défaut',
         channel: 'pdf',
         kind: 'header',
-        description: "En-tête PDF : nom du cabinet, slogan et coordonnées.",
+        description: 'En-tête PDF : nom du cabinet, slogan et coordonnées.',
         body_html: PDF_HEADER,
         is_default: true,
         is_system: true,
@@ -125,7 +125,9 @@ export default class TemplateBlockSeeder implements Seeder {
     for (const data of blocks) {
       const existing = await findOneForTenant(repository, 'code', data.code);
       if (!existing) {
-        await repository.save(repository.create({ ...data, variables: BLOCK_VARS } as any));
+        await repository.save(
+          repository.create({ ...data, variables: BLOCK_VARS } as any),
+        );
         console.log(`Bloc de modèle créé : ${data.name} (${data.code})`);
       } else if (existing.is_system) {
         // Synchroniser uniquement les blocs SYSTEM (jamais touchés par

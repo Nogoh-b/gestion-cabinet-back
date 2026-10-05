@@ -32,7 +32,6 @@ import { forwardRef, Global, Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
-
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 
 import { JwtModule } from '@nestjs/jwt';
@@ -65,7 +64,10 @@ import { TransformInterceptor } from './shared/interceptors/transform.intercepto
 import { EmailService } from './shared/services/email/email.service copy';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { OtpService } from './shared/services/otp/otp.service';
-import { PaginationService as MyPaginationService, PaginationService } from './shared/services/pagination/pagination.service';
+import {
+  PaginationService as MyPaginationService,
+  PaginationService,
+} from './shared/services/pagination/pagination.service';
 import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1.service';
 import { MainGateway } from './shared/services/socket/main.gateway';
 import { SocketService } from './shared/services/socket/socket.service';
@@ -73,34 +75,8 @@ import { TenantRepositoryPatch } from './tenant/tenant-repository.patch';
 import { TenantResolverMiddleware } from './tenant/tenant-resolver.middleware';
 import { TenantContext } from './tenant/tenant.context';
 import { TenantInterceptor } from './tenant/tenant.interceptor';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { RequestUserContext } from './security/request-user.context';
+import { RequestUserInterceptor } from './security/request-user.interceptor';
 
 @Global()
 @Module({
@@ -137,7 +113,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
       Permission,
       User,
       Branch,
-      RolePermission, 
+      RolePermission,
       Employee,
       UserRole,
       UserRoleAssignment,
@@ -149,10 +125,12 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     PassportModule,
     ChatModule,
     // forwardRef(() => ChatModule),
-    forwardRef(() => NotificationModule) ,// Pour éviter les dépendances circulaires
+    forwardRef(() => NotificationModule), // Pour éviter les dépendances circulaires
     // forwardRef(() => NotificationModule),
     // SeedersModule,
-    ScheduleModule.forRoot(), AiDatabaseModule, PlansModule,
+    ScheduleModule.forRoot(),
+    AiDatabaseModule,
+    PlansModule,
     CoreNotificationsModule,
   ],
   controllers: [AuthController, OtpController],
@@ -167,7 +145,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     EmployeeService,
     UserRolesService,
     PermissionsService,
-    RolePermissionService,// RolesGuard,
+    RolePermissionService, // RolesGuard,
     PermissionsGuard,
     ActivitiesUserService,
     PublicGuard,
@@ -189,7 +167,9 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     TenantRepositoryPatch,
     TenantResolverMiddleware,
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
-    TypeOrmModule
+    RequestUserContext,
+    { provide: APP_INTERCEPTOR, useClass: RequestUserInterceptor },
+    TypeOrmModule,
     // { provide: 'APP_PIPE', useClass: ValidationPipe },
   ],
   exports: [
@@ -217,6 +197,7 @@ import { TenantInterceptor } from './tenant/tenant.interceptor';
     SocketService,
     MainGateway,
     TenantContext,
+    RequestUserContext,
     CoreNotificationsModule,
   ],
 })

@@ -1,13 +1,6 @@
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  Index,
-  Unique,
-} from 'typeorm';
-
+import { Entity, PrimaryGeneratedColumn, Column, Index, Unique } from 'typeorm';
 
 /**
  * Modèle de document PDF personnalisable.
@@ -86,5 +79,4 @@ export class PdfTemplate extends TenantEntity {
 
   @Column({ type: 'tinyint', default: 1, name: 'is_active' })
   is_active: boolean;
-
 }

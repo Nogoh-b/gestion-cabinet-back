@@ -1,8 +1,6 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-
-
 export class DocumentCategoryResponseDto {
   @ApiProperty()
   @Expose()
@@ -72,9 +70,9 @@ export class DocumentCategoryResponseDto {
   @Expose()
   @Transform(({ obj }) => {
     const colorMap = {
-      'public': 'success',
-      'internal': 'warning',
-      'confidential': 'danger'
+      public: 'success',
+      internal: 'warning',
+      confidential: 'danger',
     };
     return colorMap[obj.metadata?.confidentiality_level] || 'secondary';
   })
@@ -86,11 +84,11 @@ export class DocumentCategoryResponseDto {
     if (!obj.metadata?.retention_period) return 'Illimité';
     const years = Math.floor(obj.metadata.retention_period / 365);
     const months = Math.floor((obj.metadata.retention_period % 365) / 30);
-    
+
     const parts: string[] = [];
     if (years > 0) parts.push(`${years} an${years > 1 ? 's' : ''}`);
     if (months > 0) parts.push(`${months} mois`);
-    
+
     return parts.join(' ') || `${obj.metadata.retention_period} jours`;
   })
   retention_period_formatted: string;
@@ -104,7 +102,7 @@ export class DocumentCategoryResponseDto {
       'fa-file-word': 'Word',
       'fa-file-excel': 'Excel',
       'fa-file-alt': 'Document',
-      'fa-file': 'Fichier'
+      'fa-file': 'Fichier',
     };
     return iconMap[obj.icon] || 'Document';
   })

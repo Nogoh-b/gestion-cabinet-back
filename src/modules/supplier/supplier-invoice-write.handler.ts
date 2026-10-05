@@ -1,13 +1,24 @@
 // src/modules/supplier/supplier-invoice-write.handler.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { SupplierInvoice, SupplierInvoiceStatus, PaymentMethod } from './entities/supplier-invoice.entity';
+import {
+  SupplierInvoice,
+  SupplierInvoiceStatus,
+  PaymentMethod,
+} from './entities/supplier-invoice.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
-import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import {
+  WriteableFieldSchema,
+  ValidationResult,
+} from 'src/core/ai-database/interface/entity-write-handler.interface';
 
 /**
  * Handler custom pour les factures fournisseurs.
@@ -36,7 +47,8 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       supplier_id: {
-        description: 'ID du fournisseur. Peut aussi fournir "supplier" avec son nom.',
+        description:
+          'ID du fournisseur. Peut aussi fournir "supplier" avec son nom.',
         example: '5',
         required: true,
       },
@@ -55,11 +67,13 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
         example: '20.00',
       },
       status: {
-        description: "BD: 'received', 'approved', 'paid', 'cancelled', 'disputed'.",
+        description:
+          "BD: 'received', 'approved', 'paid', 'cancelled', 'disputed'.",
         example: 'received',
       },
       payment_method: {
-        description: "BD: 'ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE_BANCAIRE', 'PRELEVEMENT', 'MOBILE_MONEY'.",
+        description:
+          "BD: 'ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE_BANCAIRE', 'PRELEVEMENT', 'MOBILE_MONEY'.",
         example: 'VIREMENT',
       },
     };
@@ -78,8 +92,12 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
     const errors: string[] = [];
 
     if (operation === 'INSERT') {
-      if (!fields.supplier_id) errors.push('Le fournisseur est requis (supplier_id ou supplier)');
-      if (!fields.invoice_number) errors.push('Le numéro de facture fournisseur est requis (invoice_number)');
+      if (!fields.supplier_id)
+        errors.push('Le fournisseur est requis (supplier_id ou supplier)');
+      if (!fields.invoice_number)
+        errors.push(
+          'Le numéro de facture fournisseur est requis (invoice_number)',
+        );
       if (fields.amount_ht === undefined || fields.amount_ht === null) {
         errors.push('Le montant HT est requis (amount_ht)');
       } else if (Number(fields.amount_ht) <= 0) {
@@ -96,7 +114,10 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
 
   // ── INSERT : calculs + valeurs par défaut + dedup par (supplier+invoice_number) ──
 
-  protected async doInsert(fields: Record<string, any>, userId: string): Promise<WriteResult> {
+  protected async doInsert(
+    fields: Record<string, any>,
+    userId: string,
+  ): Promise<WriteResult> {
     // NB: invoice_number est dans AUTO_GENERATED_FIELDS via "code" / "reference" ? Non,
     // c'est invoice_number — pas générique. On ne le strip PAS pour cette entité.
     const safeFields = this.filterKnownColumns(fields);
@@ -131,7 +152,9 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
     const amountTTC = Math.round((amountHT + amountTVA) * 100) / 100;
 
     // Dates par défaut
-    const invoiceDate = safeFields.invoice_date ? new Date(safeFields.invoice_date) : new Date();
+    const invoiceDate = safeFields.invoice_date
+      ? new Date(safeFields.invoice_date)
+      : new Date();
     const dueDate = safeFields.due_date
       ? new Date(safeFields.due_date)
       : new Date(invoiceDate.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -149,7 +172,9 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
     } as any;
 
     const record = this.invoiceRepo.create(data);
-    const saved = await this.invoiceRepo.save(record) as unknown as SupplierInvoice;
+    const saved = (await this.invoiceRepo.save(
+      record,
+    )) as unknown as SupplierInvoice;
 
     return {
       success: true,
@@ -168,18 +193,28 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     userId: string,
   ): Promise<WriteResult> {
-    const invoice = await this.invoiceRepo.findOne({ where: { id: entityId as any } });
-    if (!invoice) throw new NotFoundException(`Facture fournisseur ${entityId} introuvable`);
+    const invoice = await this.invoiceRepo.findOne({
+      where: { id: entityId as any },
+    });
+    if (!invoice)
+      throw new NotFoundException(
+        `Facture fournisseur ${entityId} introuvable`,
+      );
 
     const safeFields = this.filterKnownColumns(fields);
     Object.assign(invoice, safeFields);
 
     // Recalcul TVA/TTC si modifs financières
-    if (safeFields.amount_ht !== undefined || safeFields.tax_rate !== undefined) {
+    if (
+      safeFields.amount_ht !== undefined ||
+      safeFields.tax_rate !== undefined
+    ) {
       invoice.amount_ht = Number(invoice.amount_ht);
       invoice.tax_rate = Number(invoice.tax_rate);
-      invoice.amount_tva = Math.round(invoice.amount_ht * invoice.tax_rate) / 100;
-      invoice.amount_ttc = Math.round((invoice.amount_ht + invoice.amount_tva) * 100) / 100;
+      invoice.amount_tva =
+        Math.round(invoice.amount_ht * invoice.tax_rate) / 100;
+      invoice.amount_ttc =
+        Math.round((invoice.amount_ht + invoice.amount_tva) * 100) / 100;
     }
 
     // Si on passe à PAID sans payment_date → la mettre à aujourd'hui

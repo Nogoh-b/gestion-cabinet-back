@@ -1,13 +1,15 @@
-import { Repository, FindManyOptions, FindOneOptions, SaveOptions, In } from 'typeorm';
+import {
+  Repository,
+  FindManyOptions,
+  FindOneOptions,
+  SaveOptions,
+  In,
+} from 'typeorm';
 import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
-
-
-
 import { getCurrentTenantId, hasActiveTenant } from './tenant.context';
 import { isSharedEntity } from './tenant.decorator';
-
 
 /**
  * TenantRepositoryPatch — patch unique de Repository.prototype au démarrage.
@@ -38,7 +40,9 @@ export class TenantRepositoryPatch implements OnModuleInit {
 
     /** Retourne true si l'entité gère le multi-tenant */
     function hasTenantColumn(metadata: any): boolean {
-      return !!metadata?.columns?.some((c: any) => c.propertyName === 'tenant_id');
+      return !!metadata?.columns?.some(
+        (c: any) => c.propertyName === 'tenant_id',
+      );
     }
 
     /**
@@ -54,7 +58,8 @@ export class TenantRepositoryPatch implements OnModuleInit {
     function buildReadTenantFilter(metadata: any, tenantId: number): any {
       // Vérifie si l'entité est marquée comme partagée entre cabinets
       // metadata.target peut être string (schema name) ou Function (constructor)
-      const entityCtor = typeof metadata?.target === 'function' ? metadata.target : null;
+      const entityCtor =
+        typeof metadata?.target === 'function' ? metadata.target : null;
       const isShared = entityCtor ? isSharedEntity(entityCtor) : false;
 
       if (isShared) {
@@ -68,28 +73,29 @@ export class TenantRepositoryPatch implements OnModuleInit {
     /** Ajoute tenant_id à un objet where (simple, tableau ou undefined) — pour les lectures */
     function mergeTenantWhere(metadata: any, where: any): any {
       if (!hasTenantColumn(metadata)) return where; // entité non-tenante — pas de filtre
-      if (!hasActiveTenant()) return where;          // hors contexte HTTP → accès complet
+      if (!hasActiveTenant()) return where; // hors contexte HTTP → accès complet
       const tenantId = getCurrentTenantId();
       const tenantFilter = buildReadTenantFilter(metadata, tenantId);
-      if (!where)                   return { tenant_id: tenantFilter };
-      if (Array.isArray(where))     return where.map((w) => ({ ...w, tenant_id: tenantFilter }));
+      if (!where) return { tenant_id: tenantFilter };
+      if (Array.isArray(where))
+        return where.map((w) => ({ ...w, tenant_id: tenantFilter }));
       return { ...where, tenant_id: tenantFilter };
     }
 
     const orig = {
-      find:          Repository.prototype.find,
-      findOne:       Repository.prototype.findOne,
-      findOneBy:     Repository.prototype.findOneBy,
-      findAndCount:  Repository.prototype.findAndCount,
-      findBy:        Repository.prototype.findBy,
-      count:         Repository.prototype.count,
-      countBy:       Repository.prototype.countBy,
-      exists:        (Repository.prototype as any).exists,
-      save:          Repository.prototype.save,
-      update:        (Repository.prototype as any).update,
-      delete:        (Repository.prototype as any).delete,
-      softDelete:    (Repository.prototype as any).softDelete,
-      restore:       (Repository.prototype as any).restore,
+      find: Repository.prototype.find,
+      findOne: Repository.prototype.findOne,
+      findOneBy: Repository.prototype.findOneBy,
+      findAndCount: Repository.prototype.findAndCount,
+      findBy: Repository.prototype.findBy,
+      count: Repository.prototype.count,
+      countBy: Repository.prototype.countBy,
+      exists: (Repository.prototype as any).exists,
+      save: Repository.prototype.save,
+      update: (Repository.prototype as any).update,
+      delete: (Repository.prototype as any).delete,
+      softDelete: (Repository.prototype as any).softDelete,
+      restore: (Repository.prototype as any).restore,
     };
 
     Repository.prototype.find = function (options?: FindManyOptions<any>) {
@@ -106,7 +112,9 @@ export class TenantRepositoryPatch implements OnModuleInit {
       return orig.findOneBy.call(this, mergeTenantWhere(this.metadata, where));
     };
 
-    Repository.prototype.findAndCount = function (options?: FindManyOptions<any>) {
+    Repository.prototype.findAndCount = function (
+      options?: FindManyOptions<any>,
+    ) {
       const where = mergeTenantWhere(this.metadata, options?.where);
       return orig.findAndCount.call(this, { ...(options ?? {}), where });
     };
@@ -125,7 +133,9 @@ export class TenantRepositoryPatch implements OnModuleInit {
     };
 
     if (orig.exists) {
-      (Repository.prototype as any).exists = function (options?: FindManyOptions<any>) {
+      (Repository.prototype as any).exists = function (
+        options?: FindManyOptions<any>,
+      ) {
         const where = mergeTenantWhere(this.metadata, options?.where);
         return orig.exists.call(this, { ...(options ?? {}), where });
       };
@@ -139,7 +149,9 @@ export class TenantRepositoryPatch implements OnModuleInit {
       if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
         const tenantId = getCurrentTenantId();
         if (Array.isArray(entity)) {
-          entity.forEach(e => { e.tenant_id = tenantId; });
+          entity.forEach((e) => {
+            e.tenant_id = tenantId;
+          });
         } else {
           entity.tenant_id = tenantId;
         }
@@ -151,17 +163,21 @@ export class TenantRepositoryPatch implements OnModuleInit {
     // Ajoute tenant_id dans le criteria pour éviter de modifier des lignes
     // d'un autre cabinet. Retire tenant_id du partialEntity pour empêcher
     // qu'un appelant le change accidentellement.
-    (Repository.prototype as any).update = function (criteria: any, partialEntity: any) {
+    (Repository.prototype as any).update = function (
+      criteria: any,
+      partialEntity: any,
+    ) {
       if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
         const tenantId = getCurrentTenantId();
         // Empêche d'écraser le tenant_id dans les données mises à jour
         const { tenant_id: _ignored, ...safePartial } = partialEntity ?? {};
         // Ajoute le filtre tenant dans le criteria
-        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-          ? { id: criteria, tenant_id: tenantId }
-          : Array.isArray(criteria)
-            ? criteria // tableau d'IDs — TypeORM gère comme IN(ids), pas de mélange avec obj
-            : { ...criteria, tenant_id: tenantId };
+        const safeCriteria =
+          typeof criteria === 'number' || typeof criteria === 'string'
+            ? { id: criteria, tenant_id: tenantId }
+            : Array.isArray(criteria)
+              ? criteria // tableau d'IDs — TypeORM gère comme IN(ids), pas de mélange avec obj
+              : { ...criteria, tenant_id: tenantId };
         return orig.update.call(this, safeCriteria, safePartial);
       }
       return orig.update.call(this, criteria, partialEntity);
@@ -172,11 +188,12 @@ export class TenantRepositoryPatch implements OnModuleInit {
     (Repository.prototype as any).delete = function (criteria: any) {
       if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
         const tenantId = getCurrentTenantId();
-        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-          ? { id: criteria, tenant_id: tenantId }
-          : Array.isArray(criteria)
-            ? criteria
-            : { ...criteria, tenant_id: tenantId };
+        const safeCriteria =
+          typeof criteria === 'number' || typeof criteria === 'string'
+            ? { id: criteria, tenant_id: tenantId }
+            : Array.isArray(criteria)
+              ? criteria
+              : { ...criteria, tenant_id: tenantId };
         return orig.delete.call(this, safeCriteria);
       }
       return orig.delete.call(this, criteria);
@@ -186,11 +203,12 @@ export class TenantRepositoryPatch implements OnModuleInit {
     (Repository.prototype as any).softDelete = function (criteria: any) {
       if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
         const tenantId = getCurrentTenantId();
-        const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-          ? { id: criteria, tenant_id: tenantId }
-          : Array.isArray(criteria)
-            ? criteria
-            : { ...criteria, tenant_id: tenantId };
+        const safeCriteria =
+          typeof criteria === 'number' || typeof criteria === 'string'
+            ? { id: criteria, tenant_id: tenantId }
+            : Array.isArray(criteria)
+              ? criteria
+              : { ...criteria, tenant_id: tenantId };
         return orig.softDelete.call(this, safeCriteria);
       }
       return orig.softDelete.call(this, criteria);
@@ -200,27 +218,25 @@ export class TenantRepositoryPatch implements OnModuleInit {
       (Repository.prototype as any).restore = function (criteria: any) {
         if (hasTenantColumn(this.metadata) && hasActiveTenant()) {
           const tenantId = getCurrentTenantId();
-          const safeCriteria = (typeof criteria === 'number' || typeof criteria === 'string')
-            ? { id: criteria, tenant_id: tenantId }
-            : Array.isArray(criteria)
-              ? criteria
-              : { ...criteria, tenant_id: tenantId };
+          const safeCriteria =
+            typeof criteria === 'number' || typeof criteria === 'string'
+              ? { id: criteria, tenant_id: tenantId }
+              : Array.isArray(criteria)
+                ? criteria
+                : { ...criteria, tenant_id: tenantId };
           return orig.restore.call(this, safeCriteria);
         }
         return orig.restore.call(this, criteria);
       };
     }
 
-    logger.log('✅ Repository.prototype patché — filtre tenant_id automatique actif (lecture + écriture)');
+    logger.log(
+      '✅ Repository.prototype patché — filtre tenant_id automatique actif (lecture + écriture)',
+    );
   }
 }
 
 // ─── Helper QueryBuilder ──────────────────────────────────────────────────────
-
-
-
-
-
 
 /**
  * Helper pour les services qui utilisent createQueryBuilder().
@@ -252,19 +268,26 @@ export function addTenantCondition<T extends ObjectLiteral>(
 
   // Détecte si l'entité est marquée comme partagée entre cabinets via @SharedAcrossTenants()
   // metadata.target peut être string (schema name) ou Function (constructor)
-  const entityCtor = typeof qb.expressionMap.mainAlias?.metadata?.target === 'function'
-    ? qb.expressionMap.mainAlias.metadata.target
-    : null;
+  const entityCtor =
+    typeof qb.expressionMap.mainAlias?.metadata?.target === 'function'
+      ? qb.expressionMap.mainAlias.metadata.target
+      : null;
   const isShared = entityCtor ? isSharedEntity(entityCtor) : false;
 
   if (isShared) {
     // Entité partagée (référentiel commun) : données globales + propres
     if (tenantId === 1) {
-      return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: tenantId });
+      return qb.andWhere(`${alias}.tenant_id = :_tenantId`, {
+        _tenantId: tenantId,
+      });
     }
-    return qb.andWhere(`${alias}.tenant_id IN (:..._tenantIds)`, { _tenantIds: [1, tenantId] });
+    return qb.andWhere(`${alias}.tenant_id IN (:..._tenantIds)`, {
+      _tenantIds: [1, tenantId],
+    });
   }
 
   // Entité à isolation stricte (métier) : uniquement ses propres données
-  return qb.andWhere(`${alias}.tenant_id = :_tenantId`, { _tenantId: tenantId });
+  return qb.andWhere(`${alias}.tenant_id = :_tenantId`, {
+    _tenantId: tenantId,
+  });
 }

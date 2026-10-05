@@ -28,7 +28,7 @@ export class ReferralCommissionsController {
   @Post()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('create_referral_commission')
-  @ApiOperation({ summary: 'Calculer une commission d\'apporteur' })
+  @ApiOperation({ summary: "Calculer une commission d'apporteur" })
   create(@Body() dto: CreateReferralCommissionDto) {
     return this.service.create(dto);
   }
@@ -37,7 +37,11 @@ export class ReferralCommissionsController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_referral_commissions')
   @ApiOperation({ summary: 'Rechercher les commissions' })
-  @ApiResponse({ status: 200, description: 'Liste des commissions', type: [ReferralCommission] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des commissions',
+    type: [ReferralCommission],
+  })
   async search(
     @Query() searchParams?: ReferralCommissionSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
@@ -52,7 +56,7 @@ export class ReferralCommissionsController {
   @Get('/referral/:referralId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_referral_commissions')
-  @ApiOperation({ summary: 'Commissions d\'un apport spécifique' })
+  @ApiOperation({ summary: "Commissions d'un apport spécifique" })
   findByReferral(@Param('referralId') referralId: string) {
     return this.service.findByReferral(+referralId);
   }
@@ -60,7 +64,7 @@ export class ReferralCommissionsController {
   @Get('/referrer/:referrerId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_referral_commissions')
-  @ApiOperation({ summary: 'Commissions d\'un apporteur' })
+  @ApiOperation({ summary: "Commissions d'un apporteur" })
   findByReferrer(@Param('referrerId') referrerId: string) {
     return this.service.findByReferrer(+referrerId);
   }
@@ -76,7 +80,7 @@ export class ReferralCommissionsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_referral_commissions')
-  @ApiOperation({ summary: 'Détail d\'une commission' })
+  @ApiOperation({ summary: "Détail d'une commission" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

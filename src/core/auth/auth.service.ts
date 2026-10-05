@@ -15,7 +15,7 @@ import {
   Logger,
   UnauthorizedException,
   ConflictException,
-  BadRequestException
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
@@ -28,7 +28,6 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
-
 
 @Injectable()
 export class AuthService {
@@ -72,8 +71,14 @@ export class AuthService {
    *                  Indépendant d'AsyncLocalStorage (qui ne se propage pas toujours à travers
    *                  l'infrastructure Passport/NestJS au niveau des guards).
    */
-  async validateUser(username: string, pass: string, tenantId = 1): Promise<any> {
-    this.logger.debug(`[validateUser] email="${username}" tenantId=${tenantId}`);
+  async validateUser(
+    username: string,
+    pass: string,
+    tenantId = 1,
+  ): Promise<any> {
+    this.logger.debug(
+      `[validateUser] email="${username}" tenantId=${tenantId}`,
+    );
 
     let user: any;
     let resolvedTenantId = tenantId;
@@ -88,7 +93,9 @@ export class AuthService {
       }
 
       if (!user || !user.password) {
-        throw new UnauthorizedException('Identifiants invalides EMAIL ou mot de passe');
+        throw new UnauthorizedException(
+          'Identifiants invalides EMAIL ou mot de passe',
+        );
       }
 
       // ── Vérification du mot de passe ───────────────────────────────
@@ -110,13 +117,15 @@ export class AuthService {
       if (!employee) {
         this.logger.warn(
           `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
-          `absent du cabinet tenant_id=${tenantId}`,
+            `absent du cabinet tenant_id=${tenantId}`,
         );
-        throw new UnauthorizedException('Identifiants invalides Aucun employé trouvé pour ce cabinet');
+        throw new UnauthorizedException(
+          'Identifiants invalides Aucun employé trouvé pour ce cabinet',
+        );
       }
 
       // tenant_id de l'employee (source de vérité pour le JWT)
-      resolvedTenantId = (employee as any).tenant_id ?? tenantId;
+      resolvedTenantId = employee.tenant_id ?? tenantId;
     } else {
       // ── Connexion globale (/auth/login sans cabinet) ────────────────
       // L'e-mail n'a pas de contrainte d'unicité : plusieurs comptes peuvent
@@ -138,7 +147,10 @@ export class AuthService {
 
       let matched: any = null;
       for (const candidate of candidates) {
-        if (candidate?.password && (await bcrypt.compare(pass, candidate.password))) {
+        if (
+          candidate?.password &&
+          (await bcrypt.compare(pass, candidate.password))
+        ) {
           matched = candidate;
           break;
         }
@@ -157,7 +169,7 @@ export class AuthService {
           this.employeeService.findOne(user.id),
         );
         if (employee) {
-          resolvedTenantId = (employee as any).tenant_id ?? resolvedTenantId;
+          resolvedTenantId = employee.tenant_id ?? resolvedTenantId;
         }
       } catch {
         // Recherche globale impossible : le flux historique tranche (issueSession).
@@ -166,7 +178,7 @@ export class AuthService {
 
     const { password, ...result } = user;
     // Attacher le tenantId résolu pour que login() puisse l'injecter dans le JWT
-    (result as any)._resolvedTenantId = resolvedTenantId;
+    result._resolvedTenantId = resolvedTenantId;
     return result;
   }
 
@@ -181,7 +193,7 @@ export class AuthService {
     const permissionObjects = roleCode
       ? await this.usersService.getPermissionsByRoleCode(roleCode)
       : await this.usersService.getUserPermissions(userId);
-      const user = await this.usersService.findOne(userId);
+    const user = await this.usersService.findOne(userId);
     const permissions = (permissionObjects ?? []).map((p: any) => p.code);
     // Logger les permissions en clair dans la console = fuite d'information.
     // En cas de besoin de débogage, utiliser this.logger.debug() (Winston)
@@ -210,11 +222,12 @@ export class AuthService {
   private async sendMfaOtp(email: string, name?: string): Promise<void> {
     const { otp } = await this.authTokenService.createOTP(email, 'mfa');
     try {
-      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
-        firstName: name || 'Utilisateur',
-        otpCode: otp,
-        expiryMinutes: 10,
-      });
+      const rendered =
+        await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
+          firstName: name || 'Utilisateur',
+          otpCode: otp,
+          expiryMinutes: 10,
+        });
       await this.mailService.sendDirect({
         to: email,
         subject: rendered.subject || 'Code de connexion',
@@ -231,7 +244,11 @@ export class AuthService {
 
   /** Vérifie l'OTP de connexion et émet le token (2e étape du MFA). */
   async verifyMfa(email: string, otp: string) {
-    const { isValid } = await this.authTokenService.verifyOTP(email, otp, 'mfa');
+    const { isValid } = await this.authTokenService.verifyOTP(
+      email,
+      otp,
+      'mfa',
+    );
     if (!isValid) {
       throw new UnauthorizedException('Code invalide ou expiré');
     }
@@ -239,13 +256,15 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Utilisateur introuvable');
     }
-    (user as any)._resolvedTenantId =
-      (user as any).tenant_id ?? this.tenantContext.getTenantId();
+    user._resolvedTenantId = user.tenant_id ?? this.tenantContext.getTenantId();
     return this.issueSession(user);
   }
 
   /** Active/désactive le MFA pour un utilisateur. */
-  async setMfa(userId: number, enabled: boolean): Promise<{ mfa_enabled: boolean }> {
+  async setMfa(
+    userId: number,
+    enabled: boolean,
+  ): Promise<{ mfa_enabled: boolean }> {
     await this.usersService.update(userId, { mfa_enabled: enabled } as any);
     return { mfa_enabled: enabled };
   }
@@ -259,7 +278,7 @@ export class AuthService {
     // Tenant de session : on charge l’employé DANS ce contexte (fail-closed),
     // sauf appel historique sans tenant explicite (contexte ambiant conservé).
     const sessionTenant: number | undefined =
-      (data as any)._resolvedTenantId ??
+      data._resolvedTenantId ??
       (hasActiveTenant() ? getCurrentTenantId() : undefined);
     const inSessionTenant = <T>(fn: () => Promise<T>): Promise<T> =>
       sessionTenant !== undefined
@@ -287,25 +306,25 @@ export class AuthService {
     //  3. tenant_id de l'employee (entity TypeORM si disponible)
     //  4. Fallback 1
     const tenantId: number =
-      (data as any)._resolvedTenantId
-      ?? getCurrentTenantId()
-      ?? (user as any).tenant_id
-      ?? 1;
+      data._resolvedTenantId ??
+      getCurrentTenantId() ??
+      (user as any).tenant_id ??
+      1;
 
     this.logger.log(`[login] email="${data.email}" → JWT tenantId=${tenantId}`);
 
     const payload: JwtPayload = {
-      sub:        user.id,
-      username:   user.email,
-      role:       role ?? undefined,
+      sub: user.id,
+      username: user.email,
+      role: role ?? undefined,
       permissions,
-      customerId: (data as any).customer?.id ?? null,
+      customerId: data.customer?.id ?? null,
       tenantId,
     };
 
     // Écraser user.role (position de l'Employee = "avocat") avec le rôle RBAC réel
     // (User.role = "admin"|"secretaire"|…) pour que le frontend n'affiche pas
-    // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile. 
+    // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile.
     const userWithRole = role ? { ...user, role } : user;
 
     return {
@@ -332,7 +351,10 @@ export class AuthService {
       return typeof code === 'string' && code ? code : null;
     } catch (err) {
       this.logger.warn(
-        '[login] Code cabinet introuvable pour tenant_id=' + tenantId + ' : ' + (err as Error)?.message,
+        '[login] Code cabinet introuvable pour tenant_id=' +
+          tenantId +
+          ' : ' +
+          (err as Error)?.message,
       );
       return null;
     }
@@ -341,32 +363,42 @@ export class AuthService {
   /**
    * Mot de passe oublié - Envoyer OTP
    */
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ success: boolean; message: string }> {
+  async forgotPassword(
+    forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<{ success: boolean; message: string }> {
     const { email } = forgotPasswordDto;
     const tenantId = this.tenantContext.getTenantId();
 
     // Vérifier si l'utilisateur existe
-    const user = await this.usersService.findByEmailForPasswordReset(email, tenantId);
+    const user = await this.usersService.findByEmailForPasswordReset(
+      email,
+      tenantId,
+    );
     if (!user) {
       // Pour des raisons de sécurité, on ne révèle pas si l'email existe ou non
-      return { 
-        success: true, 
-        message: 'Si un compte existe avec cet email, vous recevrez un code de réinitialisation.' 
+      return {
+        success: true,
+        message:
+          'Si un compte existe avec cet email, vous recevrez un code de réinitialisation.',
       };
     }
 
     // Créer un OTP
-    const { otp, expiresAt } = await this.authTokenService.createOTP(email, 'reset_password');
+    const { otp, expiresAt } = await this.authTokenService.createOTP(
+      email,
+      'reset_password',
+    );
 
     // Envoyer l'email avec l'OTP — template DB `otp_code` en priorité,
     // repli sur le template fichier si le template DB n'est pas disponible.
     const otpUserName = user.first_name || user.username || 'Utilisateur';
     try {
-      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
-        firstName: otpUserName,
-        otpCode: otp,
-        expiryMinutes: 10,
-      });
+      const rendered =
+        await this.mailTemplateService.renderOrCreateSystemDefault('otp_code', {
+          firstName: otpUserName,
+          otpCode: otp,
+          expiryMinutes: 10,
+        });
       await this.mailService.sendDirect({
         to: email,
         subject: rendered.subject || 'Code de réinitialisation de mot de passe',
@@ -390,11 +422,17 @@ export class AuthService {
   /**
    * Vérifier l'OTP
    */
-  async verifyOTP(verifyOtpDto: VerifyOtpDto): Promise<{ success: boolean; token?: string; message: string }> {
+  async verifyOTP(
+    verifyOtpDto: VerifyOtpDto,
+  ): Promise<{ success: boolean; token?: string; message: string }> {
     const { email, otp, type } = verifyOtpDto;
 
     // Vérifier l'OTP
-    const { isValid, token } = await this.authTokenService.verifyOTP(email, otp, type);
+    const { isValid, token } = await this.authTokenService.verifyOTP(
+      email,
+      otp,
+      type,
+    );
 
     if (!isValid) {
       throw new BadRequestException('Code invalide ou expiré');
@@ -410,7 +448,9 @@ export class AuthService {
   /**
    * Réinitialiser le mot de passe (après vérification OTP)
    */
-  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ success: boolean; message: string; data?: any }> {
+  async resetPassword(
+    resetPasswordDto: ResetPasswordDto,
+  ): Promise<{ success: boolean; message: string; data?: any }> {
     const { token, password, confirmPassword } = resetPasswordDto;
 
     // Vérifier que les mots de passe correspondent
@@ -419,25 +459,31 @@ export class AuthService {
     }
 
     // Vérifier le token
-    const { isValid, email } = await this.authTokenService.verifyResetToken(token, 'reset_password');
+    const { isValid, email } = await this.authTokenService.verifyResetToken(
+      token,
+      'reset_password',
+    );
 
     if (!isValid || !email) {
       throw new BadRequestException('Token invalide ou expiré');
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
+    const user = await this.usersService.findByEmailForPasswordReset(
+      email,
+      this.tenantContext.getTenantId(),
+    );
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
-    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
+    const userTenantId = user.tenant_id ?? this.tenantContext.getTenantId();
 
     // Hasher le nouveau mot de passe
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Mettre à jour le mot de passe
     await this.tenantContext.run(userTenantId, async () => {
-      await this.usersService.update(user.id, {password:hashedPassword});
+      await this.usersService.update(user.id, { password: hashedPassword });
     });
 
     // Marquer le token comme utilisé
@@ -455,10 +501,14 @@ export class AuthService {
         `<p>Nous vous confirmons que votre mot de passe a bien été modifié le ${pcChangedAt}.</p>` +
         `<p style="color:#dc2626;font-size:13px;">Si vous n'êtes pas à l'origine de cette opération, contactez immédiatement votre administrateur.</p>`;
       try {
-        const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('password_changed', {
-          firstName: pcFirstName,
-          changedAt: pcChangedAt,
-        });
+        const rendered =
+          await this.mailTemplateService.renderOrCreateSystemDefault(
+            'password_changed',
+            {
+              firstName: pcFirstName,
+              changedAt: pcChangedAt,
+            },
+          );
         if (rendered?.html) {
           pcSubject = rendered.subject || pcSubject;
           pcHtml = rendered.html;
@@ -466,9 +516,15 @@ export class AuthService {
       } catch {
         // template DB indisponible → repli inline
       }
-      await this.mailService.sendDirect({ to: email, subject: pcSubject, html: pcHtml });
+      await this.mailService.sendDirect({
+        to: email,
+        subject: pcSubject,
+        html: pcHtml,
+      });
     } catch (mailErr) {
-      this.logger.warn(`[resetPassword] Email de confirmation non envoyé : ${(mailErr as Error)?.message}`);
+      this.logger.warn(
+        `[resetPassword] Email de confirmation non envoyé : ${(mailErr as Error)?.message}`,
+      );
     }
 
     // Optionnel: Générer un nouveau token JWT pour connecter l'utilisateur automatiquement
@@ -477,15 +533,17 @@ export class AuthService {
       employee = await this.employeeService.findByEmail(email);
     });
     const role = user.role;
-    const permissionObjects = await this.tenantContext.run(userTenantId, () => this.usersService.getUserPermissions(user.id));
+    const permissionObjects = await this.tenantContext.run(userTenantId, () =>
+      this.usersService.getUserPermissions(user.id),
+    );
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
-      sub:      employee?.id || user.id,
+      sub: employee?.id || user.id,
       username: user.email,
       role,
       permissions,
-      tenantId: (employee as any)?.tenant_id ?? userTenantId,
+      tenantId: employee?.tenant_id ?? userTenantId,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -504,7 +562,9 @@ export class AuthService {
   /**
    * Créer un mot de passe (invitation)
    */
-  async setPassword(setPasswordDto: SetPasswordDto): Promise<{ success: boolean; message: string; data?: any }> {
+  async setPassword(
+    setPasswordDto: SetPasswordDto,
+  ): Promise<{ success: boolean; message: string; data?: any }> {
     const { token, password, confirmPassword } = setPasswordDto;
 
     // Vérifier que les mots de passe correspondent
@@ -513,22 +573,30 @@ export class AuthService {
     }
 
     // Vérifier le token
-    const { isValid, email } = await this.authTokenService.verifyResetToken(token, 'set_password');
+    const { isValid, email } = await this.authTokenService.verifyResetToken(
+      token,
+      'set_password',
+    );
 
     if (!isValid || !email) {
       throw new BadRequestException('Token invalide ou expiré');
     }
 
     // Récupérer l'utilisateur
-    const user = await this.usersService.findByEmailForPasswordReset(email, this.tenantContext.getTenantId());
+    const user = await this.usersService.findByEmailForPasswordReset(
+      email,
+      this.tenantContext.getTenantId(),
+    );
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
-    const userTenantId = (user as any).tenant_id ?? this.tenantContext.getTenantId();
+    const userTenantId = user.tenant_id ?? this.tenantContext.getTenantId();
 
     // Vérifier si l'utilisateur a déjà un mot de passe
     if (user.password) {
-      throw new ConflictException('Un mot de passe a déjà été défini pour ce compte');
+      throw new ConflictException(
+        'Un mot de passe a déjà été défini pour ce compte',
+      );
     }
 
     // Hasher le nouveau mot de passe
@@ -536,7 +604,7 @@ export class AuthService {
 
     // Mettre à jour le mot de passe
     await this.tenantContext.run(userTenantId, async () => {
-      await this.usersService.update(user.id, {password:hashedPassword});
+      await this.usersService.update(user.id, { password: hashedPassword });
     });
 
     // Marquer le token comme utilisé
@@ -548,15 +616,17 @@ export class AuthService {
       employee = await this.employeeService.findByEmail(email);
     });
     const role = user.role;
-    const permissionObjects = await this.tenantContext.run(userTenantId, () => this.usersService.getUserPermissions(user.id));
+    const permissionObjects = await this.tenantContext.run(userTenantId, () =>
+      this.usersService.getUserPermissions(user.id),
+    );
     const permissions = permissionObjects.map((p: any) => p.code);
 
     const payload: JwtPayload = {
-      sub:      employee?.id || user.id,
+      sub: employee?.id || user.id,
       username: user.email,
       role,
       permissions,
-      tenantId: (employee as any)?.tenant_id ?? userTenantId,
+      tenantId: employee?.tenant_id ?? userTenantId,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -564,11 +634,21 @@ export class AuthService {
     // Email de bienvenue — template DB `account_opening` en priorité, repli fichier.
     const spFirstName = user.first_name || user.username || 'Utilisateur';
     try {
-      const rendered = await this.mailTemplateService.renderOrCreateSystemDefault('account_opening', {
-        firstName: spFirstName,
-        loginUrl: process.env.APP_FRONTEND_URL ? `${process.env.APP_FRONTEND_URL}/login` : '',
+      const rendered =
+        await this.mailTemplateService.renderOrCreateSystemDefault(
+          'account_opening',
+          {
+            firstName: spFirstName,
+            loginUrl: process.env.APP_FRONTEND_URL
+              ? `${process.env.APP_FRONTEND_URL}/login`
+              : '',
+          },
+        );
+      await this.mailService.sendDirect({
+        to: email,
+        subject: rendered.subject,
+        html: rendered.html,
       });
-      await this.mailService.sendDirect({ to: email, subject: rendered.subject, html: rendered.html });
     } catch {
       await this.mailService.sendDirect({
         to: email,
@@ -605,7 +685,7 @@ export class AuthService {
   }
 
   private async generateTokens(user: any) {
-    const payload: JwtPayload = { 
+    const payload: JwtPayload = {
       sub: user.id,
       username: user.username,
     };
@@ -623,7 +703,7 @@ export class AuthService {
 
     await this.usersService.updateRefreshToken(
       user.id,
-      await bcrypt.hash(refreshToken, 10)
+      await bcrypt.hash(refreshToken, 10),
     );
 
     return { accessToken, refreshToken };

@@ -12,7 +12,13 @@ import { ReportsController } from './reports.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Dossier, Audience, Facture, Paiement, ExpenseReport]),
+    TypeOrmModule.forFeature([
+      Dossier,
+      Audience,
+      Facture,
+      Paiement,
+      ExpenseReport,
+    ]),
     PlansModule,
   ],
   controllers: [ReportsController],

@@ -79,7 +79,13 @@ describe('PayrollCalculatorService', () => {
     it('calcule une retenue salariale en pourcentage du brut', () => {
       const res = calc.computeContributions(
         { gross_amount: 500000, taxable_base: 500000 },
-        [contrib({ code: 'CNPS', rate: 4.2, payer: ContributionPayer.EMPLOYEE })],
+        [
+          contrib({
+            code: 'CNPS',
+            rate: 4.2,
+            payer: ContributionPayer.EMPLOYEE,
+          }),
+        ],
       );
       expect(res.employeeDeductions).toHaveLength(1);
       expect(res.employeeDeductions[0].amount).toBe(21000);
@@ -87,10 +93,16 @@ describe('PayrollCalculatorService', () => {
       expect(res.totalEmployer).toBe(0);
     });
 
-    it('applique le plafond d\'assiette', () => {
+    it("applique le plafond d'assiette", () => {
       const res = calc.computeContributions(
         { gross_amount: 1000000, taxable_base: 1000000 },
-        [contrib({ rate: 4.2, ceiling: 750000, payer: ContributionPayer.EMPLOYEE })],
+        [
+          contrib({
+            rate: 4.2,
+            ceiling: 750000,
+            payer: ContributionPayer.EMPLOYEE,
+          }),
+        ],
       );
       // 750000 * 4,2% = 31500
       expect(res.employeeDeductions[0].amount).toBe(31500);
@@ -100,9 +112,18 @@ describe('PayrollCalculatorService', () => {
       const res = calc.computeContributions(
         { gross_amount: 500000, taxable_base: 500000 },
         [
-          contrib({ code: 'SAL', rate: 4.2, payer: ContributionPayer.EMPLOYEE }),
+          contrib({
+            code: 'SAL',
+            rate: 4.2,
+            payer: ContributionPayer.EMPLOYEE,
+          }),
           contrib({ code: 'PAT', rate: 7, payer: ContributionPayer.EMPLOYER }),
-          contrib({ code: 'FIX', rate: 1300, base_type: ContributionBase.FIXED, payer: ContributionPayer.EMPLOYEE }),
+          contrib({
+            code: 'FIX',
+            rate: 1300,
+            base_type: ContributionBase.FIXED,
+            payer: ContributionPayer.EMPLOYEE,
+          }),
         ],
       );
       expect(res.totalEmployee).toBe(21000 + 1300);

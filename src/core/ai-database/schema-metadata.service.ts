@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { BUSINESS_METADATA_KEY, BusinessTableMetadata, BusinessColumnMetadata } from '../decorators/business-metadata.decorator';
+import {
+  BUSINESS_METADATA_KEY,
+  BusinessTableMetadata,
+  BusinessColumnMetadata,
+} from '../decorators/business-metadata.decorator';
 import { AI_DATABASE_PROJECT_CONFIG } from './ai-database.tokens';
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import 'reflect-metadata';
@@ -9,7 +13,10 @@ import 'reflect-metadata';
 export class SchemaMetadataService {
   private readonly logger = new Logger(SchemaMetadataService.name);
   private tableMetadataCache: Map<string, any> = new Map();
-  private columnMetadataCache: Map<string, Map<string, BusinessColumnMetadata>> = new Map();
+  private columnMetadataCache: Map<
+    string,
+    Map<string, BusinessColumnMetadata>
+  > = new Map();
 
   constructor(
     private readonly dataSource: DataSource,
@@ -19,7 +26,8 @@ export class SchemaMetadataService {
   ) {}
 
   isTableIgnored(tableName: string): boolean {
-    const ignoredTables = this.projectConfig?.databaseTablesConfig?.ignoredTables ?? [];
+    const ignoredTables =
+      this.projectConfig?.databaseTablesConfig?.ignoredTables ?? [];
     return ignoredTables.some(
       (ignoredTable) => ignoredTable.toLowerCase() === tableName.toLowerCase(),
     );
@@ -30,83 +38,106 @@ export class SchemaMetadataService {
    */
   async initializeMetadata() {
     const entities = this.dataSource.entityMetadatas;
-    
+
     for (const entity of entities) {
       const tableName = entity.tableName;
       const entityClass = entity.target;
 
       if (this.isTableIgnored(tableName)) {
-        this.logger.debug(`Table ignorée par la configuration IA: ${tableName}`);
+        this.logger.debug(
+          `Table ignorée par la configuration IA: ${tableName}`,
+        );
         continue;
       }
-      
+
       // ✅ Vérifier si la table doit être ignorée
       let tableIgnored = true;
       let tableMeta: BusinessTableMetadata | undefined;
-      
+
       try {
-        tableMeta = Reflect.getMetadata(BUSINESS_METADATA_KEY, entityClass) as BusinessTableMetadata;
+        tableMeta = Reflect.getMetadata(
+          BUSINESS_METADATA_KEY,
+          entityClass,
+        ) as BusinessTableMetadata;
         if (tableMeta) {
-          tableIgnored = tableMeta.ignored === true; 
+          tableIgnored = tableMeta.ignored === true;
           if (!tableIgnored) {
             this.tableMetadataCache.set(tableName, tableMeta);
             this.logger.debug(`📋 Table: ${tableName} → ${tableMeta.label}`);
           } else {
-            this.logger.debug(`⏭️ Table ignorée: ${tableName}`); 
+            this.logger.debug(`⏭️ Table ignorée: ${tableName}`);
             continue;
           }
         } else {
           // ❌ Pas de décorateur BusinessTable → table ignorée
-          this.logger.debug(`⏭️ Table sans décorateur BusinessTable (ignorée): ${tableName}`);
+          this.logger.debug(
+            `⏭️ Table sans décorateur BusinessTable (ignorée): ${tableName}`,
+          );
           continue;
         }
       } catch (err) {
-        this.logger.warn(`Impossible de lire métadonnées de table pour ${tableName}: ${(err as any).message}`);
+        this.logger.warn(
+          `Impossible de lire métadonnées de table pour ${tableName}: ${err.message}`,
+        );
         continue;
       }
-      
+
       // Métadonnées des colonnes
       const columnMap = new Map<string, BusinessColumnMetadata>();
       const prototype = (entityClass as Function).prototype;
-      
+
       if (prototype && !tableIgnored) {
         for (const column of entity.columns) {
           const propName = column.propertyName;
           const dbColumnName = column.databaseName || propName;
-          
+
           try {
-            const columnMeta = Reflect.getMetadata(BUSINESS_METADATA_KEY, prototype, propName) as BusinessColumnMetadata;
-            
+            const columnMeta = Reflect.getMetadata(
+              BUSINESS_METADATA_KEY,
+              prototype,
+              propName,
+            ) as BusinessColumnMetadata;
+
             // ✅ TOUJOURS ajouter la colonne au cache, même si ignorée
             // (pour que getTableInfoJson puisse la détecter et l'ignorer)
             if (columnMeta) {
               columnMap.set(dbColumnName, columnMeta);
               if (columnMeta.ignored === true) {
-                this.logger.debug(`⏭️ Colonne ignorée (mais en cache): ${tableName}.${dbColumnName}`);
+                this.logger.debug(
+                  `⏭️ Colonne ignorée (mais en cache): ${tableName}.${dbColumnName}`,
+                );
               } else {
-                this.logger.debug(`📝 Colonne: ${tableName}.${dbColumnName} → "${columnMeta.label}"`);
+                this.logger.debug(
+                  `📝 Colonne: ${tableName}.${dbColumnName} → "${columnMeta.label}"`,
+                );
               }
             } else {
               // Colonne sans décorateur - on l'ajoute quand même avec un libellé par défaut
               columnMap.set(dbColumnName, {
                 label: this.formatTechnicalName(dbColumnName),
-                description: ''
+                description: '',
               });
-              this.logger.debug(`📝 Colonne (par défaut): ${tableName}.${dbColumnName} → "${this.formatTechnicalName(dbColumnName)}"`);
+              this.logger.debug(
+                `📝 Colonne (par défaut): ${tableName}.${dbColumnName} → "${this.formatTechnicalName(dbColumnName)}"`,
+              );
             }
           } catch (err) {
-            this.logger.warn(`Impossible de lire métadonnée pour ${tableName}.${propName}: ${(err as any).message}`);
+            this.logger.warn(
+              `Impossible de lire métadonnée pour ${tableName}.${propName}: ${err.message}`,
+            );
             // Ajouter quand même avec libellé par défaut
             columnMap.set(dbColumnName, {
               label: this.formatTechnicalName(dbColumnName),
-              description: ''
+              description: '',
             });
           }
         }
       }
-      
+
       this.columnMetadataCache.set(tableName, columnMap);
-      this.logger.log(`✅ ${tableName}: ${columnMap.size} colonnes chargées (dont ${Array.from(columnMap.values()).filter(m => m.ignored).length} ignorées)`);
+      this.logger.log(
+        `✅ ${tableName}: ${columnMap.size} colonnes chargées (dont ${Array.from(columnMap.values()).filter((m) => m.ignored).length} ignorées)`,
+      );
     }
   }
 
@@ -114,7 +145,9 @@ export class SchemaMetadataService {
     const columnMap = this.columnMetadataCache.get(tableName);
     if (columnMap) {
       const meta = columnMap.get(columnName);
-      this.logger.debug(`Colonne ${tableName}.${columnName}: ignored = ${meta?.ignored}`);
+      this.logger.debug(
+        `Colonne ${tableName}.${columnName}: ignored = ${meta?.ignored}`,
+      );
       return meta?.ignored === true;
     }
     return false;
@@ -144,34 +177,34 @@ export class SchemaMetadataService {
   }
 
   /**
- * Récupère le libellé métier d'une table
- */
-getTableLabel(tableName: string): string {
-  const meta = this.tableMetadataCache.get(tableName);
-  return meta?.label || tableName;
-}
+   * Récupère le libellé métier d'une table
+   */
+  getTableLabel(tableName: string): string {
+    const meta = this.tableMetadataCache.get(tableName);
+    return meta?.label || tableName;
+  }
 
-/**
- * Récupère la description d'une colonne depuis les décorateurs
- */
+  /**
+   * Récupère la description d'une colonne depuis les décorateurs
+   */
   getColumnDescription(tableName: string, columnName: string): string {
     const columnMap = this.columnMetadataCache.get(tableName);
     if (columnMap) {
       // ✅ Essayer avec le nom exact
       let meta = columnMap.get(columnName);
-      
+
       // ✅ Si pas trouvé, essayer en snake_case → camelCase
       if (!meta && columnName.includes('_')) {
         const camelCase = this.snakeToCamel(columnName);
         meta = columnMap.get(camelCase);
       }
-      
+
       // ✅ Si pas trouvé, essayer en camelCase → snake_case
       if (!meta) {
         const snakeCase = this.camelToSnake(columnName);
         meta = columnMap.get(snakeCase);
       }
-      
+
       if (meta?.description) {
         return meta.description;
       }
@@ -215,7 +248,7 @@ getTableLabel(tableName: string): string {
   }
 
   private camelToSnake(str: string): string {
-    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
   }
 
   /**
@@ -223,36 +256,39 @@ getTableLabel(tableName: string): string {
    */
   async getRichSchemaForTables(tables: string[]): Promise<string> {
     let schema = '# SCHÉMA DE LA BASE DE DONNÉES (MÉTIER)\n\n';
-    
+
     for (const table of tables) {
       const tableMeta = this.tableMetadataCache.get(table);
       const columnMap = this.columnMetadataCache.get(table);
-      
+
       if (!columnMap) continue;
-      
+
       // En-tête de table
       schema += `## ${tableMeta?.label || table} (${table})\n`;
       if (tableMeta?.description) schema += `${tableMeta.description}\n`;
-      schema += '\n| Colonne technique | Type | Libellé métier | Description |\n';
+      schema +=
+        '\n| Colonne technique | Type | Libellé métier | Description |\n';
       schema += '|------------------|------|----------------|-------------|\n';
-      
+
       // Récupérer les vraies colonnes depuis information_schema pour avoir les types
       const columnsInfo = await this.getColumnsInfo(table);
-      
+
       for (const col of columnsInfo) {
         const colName = col.COLUMN_NAME;
         const meta = columnMap.get(colName);
         const label = meta?.label || this.formatTechnicalName(colName);
         const description = meta?.description || '';
-        const type = (col.DATA_TYPE === 'enum' || col.DATA_TYPE === 'set') && col.COLUMN_TYPE
-          ? col.COLUMN_TYPE
-          : col.DATA_TYPE;
+        const type =
+          (col.DATA_TYPE === 'enum' || col.DATA_TYPE === 'set') &&
+          col.COLUMN_TYPE
+            ? col.COLUMN_TYPE
+            : col.DATA_TYPE;
         schema += `| ${colName} | ${type} | ${label} | ${description} |\n`;
       }
-      
+
       schema += '\n';
     }
-    
+
     return schema;
   }
 
@@ -260,12 +296,15 @@ getTableLabel(tableName: string): string {
    * Récupère les infos techniques des colonnes (depuis la base)
    */
   private async getColumnsInfo(table: string): Promise<any[]> {
-    return this.dataSource.query(`
+    return this.dataSource.query(
+      `
       SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE 
       FROM information_schema.COLUMNS 
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
       ORDER BY ORDINAL_POSITION
-    `, [table]);
+    `,
+      [table],
+    );
   }
 
   /**
@@ -274,7 +313,7 @@ getTableLabel(tableName: string): string {
   public formatTechnicalName(name: string): string {
     return name
       .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   }
 
@@ -283,20 +322,23 @@ getTableLabel(tableName: string): string {
    */
   transformRowToBusiness(row: any, tableName: string): any {
     const columnMap = this.columnMetadataCache.get(tableName) ?? new Map();
-    
+
     const transformed: any = {};
     for (const [key, value] of Object.entries(row)) {
       const meta = columnMap.get(key);
       if (this.mustHideFromBusinessResult(key, value, meta)) continue;
       const label = meta?.label || this.formatTechnicalName(key);
-      
+
       let formattedValue = value;
       if (meta?.format === 'date' && value) {
         formattedValue = this.formatDate(value);
       } else if (meta?.format === 'currency' && value) {
-        formattedValue = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(Number(value));
+        formattedValue = new Intl.NumberFormat('fr-FR', {
+          style: 'currency',
+          currency: 'EUR',
+        }).format(Number(value));
       }
-      
+
       transformed[label] = formattedValue;
     }
     return transformed;
@@ -320,8 +362,9 @@ getTableLabel(tableName: string): string {
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '');
-    const isReadableReference =
-      /(numero|number|reference|code|matricule)/.test(normalizedKey);
+    const isReadableReference = /(numero|number|reference|code|matricule)/.test(
+      normalizedKey,
+    );
     const isInternalIdentifier =
       /(^|_)(id|uuid)$/.test(normalizedKey) ||
       /(^|_)(id|uuid)_/.test(normalizedKey) ||
@@ -343,9 +386,8 @@ getTableLabel(tableName: string): string {
       );
     if (isUuid && !isReadableReference) return true;
 
-    const isPersonLabel = /(responsable|utilisateur|user|collaborateur|avocat)/.test(
-      normalizedKey,
-    );
+    const isPersonLabel =
+      /(responsable|utilisateur|user|collaborateur|avocat)/.test(normalizedKey);
     const isUnresolvedPerson =
       typeof value === 'number' ||
       /^(?:utilisateur|user|responsable)\s*(?:#|n[°o]|:)?\s*\d+$/i.test(
@@ -357,38 +399,45 @@ getTableLabel(tableName: string): string {
   private formatDate(date: any): string {
     try {
       const d = new Date(date);
-      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      return d.toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
     } catch {
       return date;
     }
   }
 
-
   /**
-  * Récupère la map des métadonnées des colonnes pour une table
-  */
-  getColumnMetadataMap(tableName: string): Map<string, BusinessColumnMetadata> | undefined {
+   * Récupère la map des métadonnées des colonnes pour une table
+   */
+  getColumnMetadataMap(
+    tableName: string,
+  ): Map<string, BusinessColumnMetadata> | undefined {
     return this.columnMetadataCache.get(tableName);
   }
 
-    /**
-  * Vérifie si une table a des métadonnées (donc visible)
-  */
+  /**
+   * Vérifie si une table a des métadonnées (donc visible)
+   */
   hasTableMetadata(tableName: string): boolean {
-    Logger.debug(`Vérification métadonnées pour table: ${tableName} → ${this.tableMetadataCache.has(tableName)}`);  
+    Logger.debug(
+      `Vérification métadonnées pour table: ${tableName} → ${this.tableMetadataCache.has(tableName)}`,
+    );
     return this.tableMetadataCache.has(tableName);
   }
 
   /**
-  * Retourne toutes les tables visibles (celles avec métadonnées)
-  */
+   * Retourne toutes les tables visibles (celles avec métadonnées)
+   */
   getAllVisibleTables(): string[] {
     return Array.from(this.tableMetadataCache.keys());
   }
 
   /**
-  * Retourne le nombre de tables visibles
-  */
+   * Retourne le nombre de tables visibles
+   */
   getVisibleTablesCount(): number {
     return this.tableMetadataCache.size;
   }

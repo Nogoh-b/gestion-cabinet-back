@@ -2,15 +2,32 @@
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, ManyToMany, JoinTable, Index } from 'typeorm';
-import { Finding, FindingSeverity, FindingStatus } from 'src/modules/finding/entities/finding.entity';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+  ManyToMany,
+  JoinTable,
+  Index,
+} from 'typeorm';
+import {
+  Finding,
+  FindingSeverity,
+  FindingStatus,
+} from 'src/modules/finding/entities/finding.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { Step } from 'src/modules/dossiers/entities/step.entity';
 import { ProcedureInstance } from 'src/modules/procedure/entities/procedure-instance.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 export enum DiligenceType {
   GENERAL = 'general',
@@ -43,9 +60,10 @@ export enum DiligencePriority {
 })
 @BusinessTable({
   label: 'Diligences',
-  description: 'Gestion des investigations et actes réalisés dans le cadre des dossiers juridiques. Une diligence peut être de type acquisition, investissement, conformité, contentieux, contrat, etc.',
+  description:
+    'Gestion des investigations et actes réalisés dans le cadre des dossiers juridiques. Une diligence peut être de type acquisition, investissement, conformité, contentieux, contrat, etc.',
   icon: '🔍',
-  category: 'investigation'
+  category: 'investigation',
 })
 export class Diligence extends BaseEntity {
   /** Transient — lu par le DiligenceSubscriber pour notifier le client. */
@@ -57,7 +75,7 @@ export class Diligence extends BaseEntity {
     description: 'Identifiant unique de la diligence',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -67,7 +85,7 @@ export class Diligence extends BaseEntity {
     description: 'Titre ou objet de la diligence',
     example: 'Due diligence fiscale - Acquisition société X',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   title: string;
 
@@ -76,47 +94,50 @@ export class Diligence extends BaseEntity {
     label: 'Description',
     description: 'Description détaillée de la diligence et de son périmètre',
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
   @Column({
     type: 'enum',
     enum: DiligenceType,
-    default: DiligenceType.ACQUISITION
+    default: DiligenceType.ACQUISITION,
   })
   @BusinessColumn({
     label: "Type d'investigation",
-    description: "BD: 'acquisition', 'investment', 'ipo', 'compliance', 'litigation', 'contract'.",
+    description:
+      "BD: 'acquisition', 'investment', 'ipo', 'compliance', 'litigation', 'contract'.",
     example: 'compliance = Conformité réglementaire, litigation = Contentieux',
     importance: 'critical',
-    group: 'classification'
+    group: 'classification',
   })
   type: DiligenceType;
 
   @Column({
     type: 'enum',
     enum: DiligenceStatus,
-    default: DiligenceStatus.DRAFT
+    default: DiligenceStatus.DRAFT,
   })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'draft'=Brouillon, 'in_progress'=En cours, 'review'=En relecture, 'completed'=Terminé, 'cancelled'=Annulé.",
+    description:
+      "BD: 'draft'=Brouillon, 'in_progress'=En cours, 'review'=En relecture, 'completed'=Terminé, 'cancelled'=Annulé.",
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: DiligenceStatus;
 
   @Column({
     type: 'enum',
     enum: DiligencePriority,
-    default: DiligencePriority.MEDIUM
+    default: DiligencePriority.MEDIUM,
   })
   @BusinessColumn({
     label: 'Priorité',
-    description: "BD: 'low'=Faible, 'medium'=Moyenne, 'high'=Haute, 'critical'=Critique.",
+    description:
+      "BD: 'low'=Faible, 'medium'=Moyenne, 'high'=Haute, 'critical'=Critique.",
     importance: 'high',
-    group: 'priorité'
+    group: 'priorité',
   })
   priority: DiligencePriority;
 
@@ -126,7 +147,7 @@ export class Diligence extends BaseEntity {
     description: 'Date de commencement de la diligence',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   start_date: Date;
 
@@ -136,7 +157,7 @@ export class Diligence extends BaseEntity {
     description: 'Date butoir pour finaliser la diligence',
     format: 'date',
     importance: 'critical',
-    group: 'dates'
+    group: 'dates',
   })
   deadline: Date;
 
@@ -146,7 +167,7 @@ export class Diligence extends BaseEntity {
     description: 'Date de réalisation effective de la diligence',
     format: 'date',
     importance: 'medium',
-    group: 'dates'
+    group: 'dates',
   })
   completion_date: Date;
 
@@ -157,7 +178,12 @@ export class Diligence extends BaseEntity {
   assigned_lawyer_id: number | null;
 
   /** Action V2 à l'origine de la diligence. Null pour les diligences autonomes/legacy. */
-  @Column({ name: 'source_action_id', type: 'varchar', length: 36, nullable: true })
+  @Column({
+    name: 'source_action_id',
+    type: 'varchar',
+    length: 36,
+    nullable: true,
+  })
   @BusinessColumn({
     label: 'Action associée',
     description: 'Action de traitement ayant créé cette diligence',
@@ -172,7 +198,7 @@ export class Diligence extends BaseEntity {
     label: 'Référence client',
     description: 'Référence interne du client pour cette diligence',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   client_reference: string;
 
@@ -182,7 +208,7 @@ export class Diligence extends BaseEntity {
     description: "Nombre d'heures prévu pour réaliser la diligence",
     unit: 'heures',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   budget_hours: number;
 
@@ -192,7 +218,7 @@ export class Diligence extends BaseEntity {
     description: "Nombre d'heures réellement passées",
     unit: 'heures',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   actual_hours: number;
 
@@ -201,7 +227,7 @@ export class Diligence extends BaseEntity {
     label: 'Périmètre',
     description: 'Description détaillée du périmètre de la diligence',
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   scope: string;
 
@@ -210,7 +236,7 @@ export class Diligence extends BaseEntity {
     label: 'Résumé des constats',
     description: 'Synthèse des anomalies et constats identifiés',
     importance: 'high',
-    group: 'résultats'
+    group: 'résultats',
   })
   findings_summary: string;
 
@@ -219,7 +245,7 @@ export class Diligence extends BaseEntity {
     label: 'Recommandations',
     description: 'Préconisations issues de la diligence',
     importance: 'high',
-    group: 'résultats'
+    group: 'résultats',
   })
   recommendations: string;
 
@@ -234,18 +260,20 @@ export class Diligence extends BaseEntity {
     label: 'Confidentiel',
     description: 'True = document confidentiel (accès restreint)',
     importance: 'medium',
-    group: 'sécurité'
+    group: 'sécurité',
   })
   confidential: boolean;
 
   // Relations
-  @ManyToOne(() => Dossier, (dossier) => dossier.diligences, { nullable: false })
+  @ManyToOne(() => Dossier, (dossier) => dossier.diligences, {
+    nullable: false,
+  })
   @JoinColumn({ name: 'dossier_id' })
   @BusinessColumn({
     label: 'Dossier',
     description: 'Dossier juridique associé à la diligence',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   dossier: Dossier;
 
@@ -255,7 +283,7 @@ export class Diligence extends BaseEntity {
     label: 'Avocat responsable',
     description: 'Avocat chargé de la diligence',
     importance: 'high',
-    group: 'responsables'
+    group: 'responsables',
   })
   assigned_lawyer: User;
 
@@ -275,53 +303,97 @@ export class Diligence extends BaseEntity {
     label: 'Documents',
     description: 'Documents associés à la diligence',
     importance: 'medium',
-    group: 'documents'
+    group: 'documents',
   })
   documents: DocumentCustomer[];
 
-  @ManyToOne(() => Step, step => step.diligences, { nullable: true })
+  @ManyToOne(() => Step, (step) => step.diligences, { nullable: true })
   @JoinColumn({ name: 'step_id' })
-  @BusinessColumn({ label: 'Ancienne étape du dossier', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne étape du dossier',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   step: Step;
 
   @Column({ name: 'step_id', type: 'int', nullable: true })
-  @BusinessColumn({ label: 'Ancienne étape du dossier', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne étape du dossier',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   step_id: number;
 
   @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_id: string;
 
-  @ManyToOne(() => SubStage, (subStage) => subStage.factures, { nullable: true })
+  @ManyToOne(() => SubStage, (subStage) => subStage.factures, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'sub_stage_id' })
-  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStage: SubStage;
 
   @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_visit_id: string;
 
-  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, { nullable: true })
+  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'sub_stage_visit_id' })
-  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStageVisit: SubStageVisit;
 
   @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit_id: string;
 
   @ManyToOne(() => StageVisit)
   @JoinColumn({ name: 'stageVisit_id' })
-  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit: StageVisit;
 
   @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedure_instance_id: string;
 
   @ManyToOne(() => ProcedureInstance, { nullable: true })
   @JoinColumn({ name: 'procedure_instance_id' })
-  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedureInstance: ProcedureInstance;
 
   // ==================== GETTERS MÉTIER ====================
@@ -330,10 +402,13 @@ export class Diligence extends BaseEntity {
     label: 'Est en retard',
     description: 'True si la diligence dépasse sa date limite',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get is_overdue(): boolean {
-    if (this.status === DiligenceStatus.COMPLETED || this.status === DiligenceStatus.CANCELLED) {
+    if (
+      this.status === DiligenceStatus.COMPLETED ||
+      this.status === DiligenceStatus.CANCELLED
+    ) {
       return false;
     }
     const today = new Date();
@@ -342,13 +417,16 @@ export class Diligence extends BaseEntity {
 
   @BusinessColumn({
     label: 'Jours restants',
-    description: "Nombre de jours avant la date limite (null si terminé)",
+    description: 'Nombre de jours avant la date limite (null si terminé)',
     unit: 'jours',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   get days_remaining(): number | null {
-    if (this.status === DiligenceStatus.COMPLETED || this.status === DiligenceStatus.CANCELLED) {
+    if (
+      this.status === DiligenceStatus.COMPLETED ||
+      this.status === DiligenceStatus.CANCELLED
+    ) {
       return null;
     }
     const today = new Date();
@@ -358,49 +436,55 @@ export class Diligence extends BaseEntity {
   }
 
   @BusinessColumn({
-    label: "Avancement",
+    label: 'Avancement',
     description: "Pourcentage d'avancement basé sur les constats résolus",
     unit: '%',
     format: 'percentage',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get progress_percentage(): number {
     if (!this.findings || this.findings.length === 0) return 0;
     const totalFindings = this.findings.length;
     const completedFindings = this.findings.filter(
-      f =>
+      (f) =>
         f.status === FindingStatus.RESOLVED ||
-        f.status === FindingStatus.WAIVED
+        f.status === FindingStatus.WAIVED,
     ).length;
     return Math.round((completedFindings / totalFindings) * 100);
   }
 
   @BusinessColumn({
-    label: "Constats critiques",
-    description: "Nombre de constats de niveau critique",
+    label: 'Constats critiques',
+    description: 'Nombre de constats de niveau critique',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get total_critical_findings(): number {
-    return this.findings?.filter(f => f.severity === FindingSeverity.CRITICAL).length || 0;
+    return (
+      this.findings?.filter((f) => f.severity === FindingSeverity.CRITICAL)
+        .length || 0
+    );
   }
 
   @BusinessColumn({
-    label: "Constats haute priorité",
-    description: "Nombre de constats de priorité haute",
+    label: 'Constats haute priorité',
+    description: 'Nombre de constats de priorité haute',
     importance: 'high',
-    group: 'statistiques'
+    group: 'statistiques',
   })
   get total_high_findings(): number {
-    return this.findings?.filter(f => f.severity === FindingSeverity.HIGH).length || 0;
+    return (
+      this.findings?.filter((f) => f.severity === FindingSeverity.HIGH)
+        .length || 0
+    );
   }
 
   @BusinessColumn({
-    label: "Type libellé",
+    label: 'Type libellé',
     description: "Libellé lisible du type d'investigation",
     importance: 'medium',
-    group: 'classification'
+    group: 'classification',
   })
   get type_label(): string {
     const labels = {
@@ -410,7 +494,7 @@ export class Diligence extends BaseEntity {
       [DiligenceType.IPO]: 'Due diligence introduction en bourse',
       [DiligenceType.COMPLIANCE]: 'Audit conformité',
       [DiligenceType.LITIGATION]: 'Investigation contentieuse',
-      [DiligenceType.CONTRACT]: 'Audit contractuel'
+      [DiligenceType.CONTRACT]: 'Audit contractuel',
     };
     return labels[this.type] || this.type;
   }
@@ -419,7 +503,7 @@ export class Diligence extends BaseEntity {
     label: 'Statut libellé',
     description: 'Libellé lisible du statut',
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get status_label(): string {
     const labels = {
@@ -427,7 +511,7 @@ export class Diligence extends BaseEntity {
       [DiligenceStatus.IN_PROGRESS]: 'En cours',
       [DiligenceStatus.REVIEW]: 'En relecture',
       [DiligenceStatus.COMPLETED]: 'Terminé',
-      [DiligenceStatus.CANCELLED]: 'Annulé'
+      [DiligenceStatus.CANCELLED]: 'Annulé',
     };
     return labels[this.status] || this.status;
   }
@@ -436,24 +520,25 @@ export class Diligence extends BaseEntity {
     label: 'Priorité libellée',
     description: 'Libellé lisible de la priorité',
     importance: 'medium',
-    group: 'priorité'
+    group: 'priorité',
   })
   get priority_label(): string {
     const labels = {
       [DiligencePriority.LOW]: 'Basse',
       [DiligencePriority.MEDIUM]: 'Moyenne',
       [DiligencePriority.HIGH]: 'Haute',
-      [DiligencePriority.CRITICAL]: 'Critique'
+      [DiligencePriority.CRITICAL]: 'Critique',
     };
     return labels[this.priority] || this.priority;
   }
 
   @BusinessColumn({
     label: 'Écart budget',
-    description: "Différence entre heures réelles et budget (négatif = dépassement)",
+    description:
+      'Différence entre heures réelles et budget (négatif = dépassement)',
     unit: 'heures',
     importance: 'medium',
-    group: 'financier'
+    group: 'financier',
   })
   get budget_variance(): number {
     return (this.actual_hours || 0) - (this.budget_hours || 0);

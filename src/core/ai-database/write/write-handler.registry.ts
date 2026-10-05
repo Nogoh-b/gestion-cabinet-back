@@ -15,7 +15,9 @@ export class WriteHandlerRegistry {
    */
   register(handler: EntityWriteHandler): void {
     if (this.handlers.has(handler.entityName)) {
-      this.logger.warn(`⚠️ Handler déjà enregistré pour ${handler.entityName}, remplacement...`);
+      this.logger.warn(
+        `⚠️ Handler déjà enregistré pour ${handler.entityName}, remplacement...`,
+      );
     }
     this.handlers.set(handler.entityName, handler);
     this.logger.log(`✅ Handler enregistré: ${handler.entityName}`);
@@ -32,10 +34,14 @@ export class WriteHandlerRegistry {
   /**
    * Génère le schéma pour tous les handlers (utilisé par le prompt IA)
    */
-  async generateGlobalWriteSchema(excludedTables: string[] = []): Promise<string> {
-    let schema = '# 📝 OPÉRATIONS D\'ÉCRITURE DISPONIBLES\n\n';
-    
-    const excluded = new Set(excludedTables.map((table) => table.toLowerCase()));
+  async generateGlobalWriteSchema(
+    excludedTables: string[] = [],
+  ): Promise<string> {
+    let schema = "# 📝 OPÉRATIONS D'ÉCRITURE DISPONIBLES\n\n";
+
+    const excluded = new Set(
+      excludedTables.map((table) => table.toLowerCase()),
+    );
 
     for (const handler of this.handlers.values()) {
       if (excluded.has(handler.entityName.toLowerCase())) continue;
@@ -43,7 +49,7 @@ export class WriteHandlerRegistry {
       schema += `## ${handler.entityName}\n`;
       schema += `| Champ | Type | Requis | Description | Exemple |\n`;
       schema += `|-------|------|--------|-------------|---------|\n`;
-      
+
       for (const field of fields) {
         schema += `| ${field.name} (${field.label}) | ${field.type}`;
         schema += field.referenceEntity ? ` → ${field.referenceEntity}` : '';
@@ -51,18 +57,20 @@ export class WriteHandlerRegistry {
       }
       schema += `\n`;
     }
-    
+
     return schema;
   }
 }
 
-
 // src/modules/ai/write/interfaces/entity-write-handler.interface.ts
 export interface EntityWriteHandler<T = any> {
   readonly entityName: string;
-  
+
   getWriteableFieldsSchema(): Promise<WritableFieldSchema[]>;
-  validateFields(fields: Partial<T>, operation: 'INSERT' | 'UPDATE'): Promise<ValidationResult>;
+  validateFields(
+    fields: Partial<T>,
+    operation: 'INSERT' | 'UPDATE',
+  ): Promise<ValidationResult>;
   execute(intent: WriteIntent, userId: string): Promise<WriteResult>;
   resolveDependencies?(fields: Partial<T>, userId: string): Promise<Partial<T>>;
 }
@@ -95,7 +103,7 @@ export interface WriteResult {
 export interface IntentDetectionResult {
   type: 'READ' | 'WRITE';
   writePlan?: WritePlan;
-  writeIntent?: WriteIntent;  // Pour compatibilité
+  writeIntent?: WriteIntent; // Pour compatibilité
   sqlQuery?: string;
   requiresConfirmation: boolean;
 }

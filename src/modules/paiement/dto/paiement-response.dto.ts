@@ -38,11 +38,17 @@ class FacturePaiementDto {
   @ApiProperty({ description: 'Statut de la facture' })
   status: number;
 
-  @ApiProperty({ type: ClientPaiementDto, description: 'Client associé à la facture' })
+  @ApiProperty({
+    type: ClientPaiementDto,
+    description: 'Client associé à la facture',
+  })
   @Type(() => ClientPaiementDto)
   client: ClientPaiementDto;
 
-  @ApiProperty({ type: DossierPaiementDto, description: 'Dossier associé à la facture' })
+  @ApiProperty({
+    type: DossierPaiementDto,
+    description: 'Dossier associé à la facture',
+  })
   @Type(() => DossierPaiementDto)
   dossier: DossierPaiementDto;
 }
@@ -95,25 +101,32 @@ export class PaiementResponseDto {
   @ApiProperty({ description: 'Date de modification' })
   updated_at: Date;
 
-  @ApiProperty({ type: FacturePaiementDto, description: 'Facture associée avec client et dossier' })
+  @ApiProperty({
+    type: FacturePaiementDto,
+    description: 'Facture associée avec client et dossier',
+  })
   @Type(() => FacturePaiementDto)
   @Transform(({ obj }) => {
     if (!obj.facture) return null;
-    
+
     return {
       numero: obj.facture.numero,
       notesInternes: obj.facture.notesInternes || '',
       montantTTC: parseFloat(obj.facture.montantTTC || '0'),
       status: obj.facture.status,
-      client: obj.facture.client ? {
-        id: obj.facture.client.id,
-        company_name: obj.facture.client.company_name || null,
-        full_name: `${obj.facture.client.full_name || ''} `.trim()
-      } : null,
-      dossier: obj.facture.dossier ? {
-        id: obj.facture.dossier.id,
-        dossier_number: obj.facture.dossier.dossier_number
-      } : null
+      client: obj.facture.client
+        ? {
+            id: obj.facture.client.id,
+            company_name: obj.facture.client.company_name || null,
+            full_name: `${obj.facture.client.full_name || ''} `.trim(),
+          }
+        : null,
+      dossier: obj.facture.dossier
+        ? {
+            id: obj.facture.dossier.id,
+            dossier_number: obj.facture.dossier.dossier_number,
+          }
+        : null,
     };
   })
   facture: FacturePaiementDto;

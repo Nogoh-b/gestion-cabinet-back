@@ -7,7 +7,10 @@ import {
   OneToMany,
 } from 'typeorm';
 import { PayrollPeriod } from './payroll-period.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { PayslipLine } from './payslip-line.entity';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
@@ -21,7 +24,8 @@ export enum PayslipStatus {
 @Entity('payslip')
 @BusinessTable({
   label: 'Fiches de paie',
-  description: 'Fiche de paie individuelle d\'un collaborateur pour une période donnée.',
+  description:
+    "Fiche de paie individuelle d'un collaborateur pour une période donnée.",
   icon: '📄',
   category: 'rh',
 })
@@ -66,7 +70,9 @@ export class Payslip extends TenantEntity {
   })
   period_id: number;
 
-  @ManyToOne(() => PayrollPeriod, (period) => period.payslips, { nullable: false })
+  @ManyToOne(() => PayrollPeriod, (period) => period.payslips, {
+    nullable: false,
+  })
   @JoinColumn({ name: 'period_id' })
   @BusinessColumn({
     label: 'Période',
@@ -126,10 +132,16 @@ export class Payslip extends TenantEntity {
   })
   notes: string;
 
-  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, name: 'total_employer_charges' })
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+    name: 'total_employer_charges',
+  })
   @BusinessColumn({
     label: 'Charges patronales',
-    description: 'Total des cotisations à la charge de l\'employeur (hors net)',
+    description: "Total des cotisations à la charge de l'employeur (hors net)",
     unit: 'XAF',
     importance: 'medium',
     group: 'financier',
@@ -139,7 +151,8 @@ export class Payslip extends TenantEntity {
   @Column({ type: 'json', nullable: true })
   @BusinessColumn({
     label: 'Instantané de calcul',
-    description: 'Copie figée des montants et du barème au moment de la validation (auditabilité légale)',
+    description:
+      'Copie figée des montants et du barème au moment de la validation (auditabilité légale)',
     importance: 'low',
     group: 'audit',
     ignored: true,
@@ -148,5 +161,4 @@ export class Payslip extends TenantEntity {
 
   @OneToMany(() => PayslipLine, (line) => line.payslip)
   lines: PayslipLine[];
-
 }

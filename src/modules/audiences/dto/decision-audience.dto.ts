@@ -13,7 +13,11 @@ export class DecisionAudienceDto {
   @IsString()
   outcome?: string; // 'favorable', 'unfavorable', 'partial'
 
-  @ApiProperty({ description: 'IDs des documents liés à la décision', required: false, type: [Number] })
+  @ApiProperty({
+    description: 'IDs des documents liés à la décision',
+    required: false,
+    type: [Number],
+  })
   @IsOptional()
   @IsArray()
   document_decision_ids?: number[];
@@ -29,7 +33,10 @@ export class DecisionAudienceDto {
   notes?: string;
 
   // Alias accepté par le formulaire front (champ `decision_notes`).
-  @ApiProperty({ description: 'Observations sur la décision (alias)', required: false })
+  @ApiProperty({
+    description: 'Observations sur la décision (alias)',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   decision_notes?: string;

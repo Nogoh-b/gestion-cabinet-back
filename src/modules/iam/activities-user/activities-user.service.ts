@@ -1,5 +1,10 @@
 // activities-user.service.ts
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
@@ -130,9 +135,13 @@ export class ActivitiesUserService {
         new Date(`${filter.to}T23:59:59.999`),
       ) as any;
     } else if (filter.from) {
-      where.created_at = MoreThanOrEqual(new Date(`${filter.from}T00:00:00.000`)) as any;
+      where.created_at = MoreThanOrEqual(
+        new Date(`${filter.from}T00:00:00.000`),
+      ) as any;
     } else if (filter.to) {
-      where.created_at = LessThanOrEqual(new Date(`${filter.to}T23:59:59.999`)) as any;
+      where.created_at = LessThanOrEqual(
+        new Date(`${filter.to}T23:59:59.999`),
+      ) as any;
     }
 
     const [items, total] = await this.activitiesRepository.findAndCount({
@@ -174,40 +183,42 @@ export class ActivitiesUserService {
       .orderBy('user.lastSeen', 'DESC')
       .getMany();
 
-    const [recentActivity, riskyActivity, loginRows, riskyCount] = await Promise.all([
-      this.activitiesRepository.find({
-        where: { tenant_id: tenantId },
-        relations: ['user', 'user.employee'],
-        order: { created_at: 'DESC' },
-        take,
-      }),
-      this.activitiesRepository.find({
-        where: {
-          tenant_id: tenantId,
-          risk_level: In(['medium', 'high', 'critical']),
-        },
-        relations: ['user', 'user.employee'],
-        order: { created_at: 'DESC' },
-        take,
-      }),
-      this.activitiesRepository.find({
-        where: { tenant_id: tenantId, action: 'login' },
-        relations: ['user'],
-        order: { created_at: 'DESC' },
-        take: 500,
-      }),
-      this.activitiesRepository.count({
-        where: {
-          tenant_id: tenantId,
-          risk_level: In(['medium', 'high', 'critical']),
-        },
-      }),
-    ]);
+    const [recentActivity, riskyActivity, loginRows, riskyCount] =
+      await Promise.all([
+        this.activitiesRepository.find({
+          where: { tenant_id: tenantId },
+          relations: ['user', 'user.employee'],
+          order: { created_at: 'DESC' },
+          take,
+        }),
+        this.activitiesRepository.find({
+          where: {
+            tenant_id: tenantId,
+            risk_level: In(['medium', 'high', 'critical']),
+          },
+          relations: ['user', 'user.employee'],
+          order: { created_at: 'DESC' },
+          take,
+        }),
+        this.activitiesRepository.find({
+          where: { tenant_id: tenantId, action: 'login' },
+          relations: ['user'],
+          order: { created_at: 'DESC' },
+          take: 500,
+        }),
+        this.activitiesRepository.count({
+          where: {
+            tenant_id: tenantId,
+            risk_level: In(['medium', 'high', 'critical']),
+          },
+        }),
+      ]);
 
     const lastLoginByUser = new Map<number, Date>();
     loginRows.forEach((row) => {
       const id = row.user?.id;
-      if (id && !lastLoginByUser.has(id)) lastLoginByUser.set(id, row.created_at);
+      if (id && !lastLoginByUser.has(id))
+        lastLoginByUser.set(id, row.created_at);
     });
     const onlineUserIds = new Set(this.mainGateway.getOnlineUserIds());
     const members = users.map((user) => ({
@@ -235,7 +246,9 @@ export class ActivitiesUserService {
     return {
       metrics: {
         members: members.length,
-        online: members.filter((member) => member.is_online && !member.is_blocked).length,
+        online: members.filter(
+          (member) => member.is_online && !member.is_blocked,
+        ).length,
         blocked: members.filter((member) => member.is_blocked).length,
         risky: riskyCount,
       },
@@ -251,7 +264,9 @@ export class ActivitiesUserService {
     actorUserId: number,
   ): Promise<{ id: number; is_blocked: boolean }> {
     if (userId === actorUserId && blocked) {
-      throw new BadRequestException('Vous ne pouvez pas bloquer votre propre compte');
+      throw new BadRequestException(
+        'Vous ne pouvez pas bloquer votre propre compte',
+      );
     }
     const tenantId = getCurrentTenantId();
     await this.dataSource.transaction(async (manager) => {
@@ -260,13 +275,16 @@ export class ActivitiesUserService {
         where: { id: userId, tenant_id: tenantId },
         relations: ['employee'],
       });
-      if (!user) throw new NotFoundException('Membre introuvable dans ce cabinet');
+      if (!user)
+        throw new NotFoundException('Membre introuvable dans ce cabinet');
       if (blocked && user.role === UserRole.ADMIN) {
         const activeAdmins = await users.count({
           where: { tenant_id: tenantId, role: user.role, status: 1 },
         });
         if (activeAdmins <= 1) {
-          throw new BadRequestException('Le dernier administrateur actif ne peut pas être bloqué');
+          throw new BadRequestException(
+            'Le dernier administrateur actif ne peut pas être bloqué',
+          );
         }
       }
 

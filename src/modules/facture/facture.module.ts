@@ -13,7 +13,6 @@ import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { FactureSubscriber } from './subscribers/facture.subscriber';
 import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
 
-
 @Module({
   imports: [
     TypeOrmModule.forFeature([Facture, Cabinet, InvoiceType]),
@@ -21,7 +20,12 @@ import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
     AiDatabaseModule,
   ],
   controllers: [FactureController],
-  providers: [FactureService, FactureStatsService, FactureWriteHandler, FactureSubscriber],
+  providers: [
+    FactureService,
+    FactureStatsService,
+    FactureWriteHandler,
+    FactureSubscriber,
+  ],
   exports: [FactureService, FactureStatsService, TypeOrmModule],
 })
 export class FactureModule {

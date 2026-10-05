@@ -13,7 +13,10 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateFindingDto } from './dto/create-finding.dto';
 import { UpdateFindingDto } from './dto/update-finding.dto';
-import { FindingResponseDto, FindingListResponseDto } from './dto/response-finding.dto';
+import {
+  FindingResponseDto,
+  FindingListResponseDto,
+} from './dto/response-finding.dto';
 import { FindingSearchDto } from './dto/search-finding.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
@@ -104,9 +107,11 @@ export class FindingsController {
   }
 
   @Get('diligence/:diligenceId')
-  @ApiOperation({ summary: 'Récupérer tous les findings d\'une diligence' })
+  @ApiOperation({ summary: "Récupérer tous les findings d'une diligence" })
   @ApiResponse({ status: 200, type: [FindingListResponseDto] })
-  async findByDiligence(@Param('diligenceId', ParseIntPipe) diligenceId: number) {
+  async findByDiligence(
+    @Param('diligenceId', ParseIntPipe) diligenceId: number,
+  ) {
     return await this.findingsService.findByDiligence(diligenceId);
   }
 

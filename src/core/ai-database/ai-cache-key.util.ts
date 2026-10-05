@@ -22,6 +22,9 @@ function stableNormalize(value: unknown): unknown {
   return value ?? null;
 }
 
-export function buildAiCacheKey(scope: string, parts: Record<string, unknown>): string {
+export function buildAiCacheKey(
+  scope: string,
+  parts: Record<string, unknown>,
+): string {
   return `${scope}:${JSON.stringify(stableNormalize(parts))}`;
 }

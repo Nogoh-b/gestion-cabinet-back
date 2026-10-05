@@ -1,23 +1,14 @@
-import { ApiProperty } from "@nestjs/swagger";
-
-
-
-
-
-
-
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateRessourceTypeDto {
- 
   @ApiProperty({ example: 'Carnet de chèque' })
   name: string;
 
-  
   @ApiProperty({ example: 'CARNET' })
-  code: string;  
-  
+  code: string;
+
   @ApiProperty({ example: 'CARNET' })
-  description: string;  
+  description: string;
   @ApiProperty({ required: false, example: 'BICMCMCX' })
   swift_code?: string;
 
@@ -42,13 +33,9 @@ export class CreateRessourceTypeDto {
   @ApiProperty({ example: 'CM', required: false })
   country_code: string;
 
-
   @ApiProperty({ example: 100 })
   quantity: number;
 
   @ApiProperty({ example: 100 })
   amount: number;
-
-
 }
-

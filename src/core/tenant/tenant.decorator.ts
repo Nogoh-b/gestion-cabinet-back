@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 
-
 export const SHARED_TENANT_KEY = 'shared:tenant';
 
 /**

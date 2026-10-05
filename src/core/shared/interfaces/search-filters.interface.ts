@@ -1,5 +1,5 @@
-import { DossierStatus } from "src/core/enums/dossier-status.enum";
-import { ProcedureType } from "src/core/enums/procedure-type.enum";
+import { DossierStatus } from 'src/core/enums/dossier-status.enum';
+import { ProcedureType } from 'src/core/enums/procedure-type.enum';
 
 export interface SearchFilters {
   query?: string;

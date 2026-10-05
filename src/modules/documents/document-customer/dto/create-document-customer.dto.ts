@@ -1,17 +1,17 @@
 import { Transform } from 'class-transformer';
-import { IsNotEmpty, IsNumber, IsOptional, IsBoolean, IsEnum, IsString, IsJSON } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsBoolean,
+  IsEnum,
+  IsString,
+  IsJSON,
+} from 'class-validator';
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-
-
-
 import { DocumentCustomerStatus } from '../entities/document-customer.entity';
-
-
-
-
-
 
 export class CreateDocumentCustomerDto {
   @ApiPropertyOptional({ description: 'ID du type de document' })
@@ -26,7 +26,9 @@ export class CreateDocumentCustomerDto {
   @Transform(({ value }) => parseInt(value))
   dossier_id: number;
 
-  @ApiPropertyOptional({ description: 'ID du client (déduit du dossier si absent)' })
+  @ApiPropertyOptional({
+    description: 'ID du client (déduit du dossier si absent)',
+  })
   @IsOptional()
   @IsNumber()
   @Transform(({ value }) => parseInt(value))
@@ -35,7 +37,7 @@ export class CreateDocumentCustomerDto {
   @ApiPropertyOptional({ description: 'ID du prêt associé' })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   loan_id?: number;
 
   @ApiPropertyOptional({ description: 'Description du document' })
@@ -48,17 +50,17 @@ export class CreateDocumentCustomerDto {
   @IsString()
   name?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Catégorie du document' 
+  @ApiPropertyOptional({
+    description: 'Catégorie du document',
   })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   category_id?: number;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     enum: DocumentCustomerStatus,
-    description: 'Statut du document' 
+    description: 'Statut du document',
   })
   @IsOptional()
   @IsEnum(DocumentCustomerStatus)
@@ -81,7 +83,9 @@ export class CreateDocumentCustomerDto {
   @IsJSON()
   metadata?: string;
 
-  @ApiPropertyOptional({ description: 'ID de la sous-étape de visite associée' })
+  @ApiPropertyOptional({
+    description: 'ID de la sous-étape de visite associée',
+  })
   @IsOptional()
   sub_stage_visit_id?: any;
 
@@ -91,7 +95,11 @@ export class CreateDocumentCustomerDto {
   @Transform(({ value }) => value === 'true' || value === true)
   strict?: boolean = true;
 
-  @ApiProperty({ type: 'string', format: 'binary', description: 'Fichier à uploader' })
+  @ApiProperty({
+    type: 'string',
+    format: 'binary',
+    description: 'Fichier à uploader',
+  })
   file: Express.Multer.File;
 
   /** Transient — case « Notifier le client » du modal. */

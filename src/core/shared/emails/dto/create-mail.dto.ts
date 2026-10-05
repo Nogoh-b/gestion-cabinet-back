@@ -11,7 +11,6 @@ import {
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-
 export class AttachmentDto {
   @ApiProperty({
     description: 'Nom du fichier',
@@ -137,6 +136,3 @@ export class CreateMailDto {
   @IsObject()
   metadata?: Record<string, any>;
 }
-
-
-

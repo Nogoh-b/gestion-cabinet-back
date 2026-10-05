@@ -11,7 +11,8 @@ export class DossierAnalysisController {
   @Post('preliminary')
   async analyze(
     @Param('dossierId') dossierId: number,
-    @Body() body: {
+    @Body()
+    body: {
       successProbability: number;
       dangerLevel: DangerLevel;
       notes: string;
@@ -36,7 +37,8 @@ export class DossierAnalysisController {
   @Post('judgment')
   async registerJudgment(
     @Param('dossierId') dossierId: number,
-    @Body() body: {
+    @Body()
+    body: {
       decision: string;
       isSatisfied: boolean;
     },

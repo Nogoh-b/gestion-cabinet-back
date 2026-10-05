@@ -2,12 +2,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Customer, CustomerStatus, CustomerCreatedFrom } from './entities/customer.entity';
+import {
+  Customer,
+  CustomerStatus,
+  CustomerCreatedFrom,
+} from './entities/customer.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
-import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import {
+  WriteableFieldSchema,
+  ValidationResult,
+} from 'src/core/ai-database/interface/entity-write-handler.interface';
 
 /**
  * Handler custom pour les clients.
@@ -33,16 +40,44 @@ export class CustomerWriteHandler extends BaseWriteHandler {
   async getWriteableFieldsSchema(): Promise<WriteableFieldSchema[]> {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
-      first_name: { description: 'Prénom (obligatoire pour particulier)', example: 'Jean' },
-      last_name: { description: 'Nom (obligatoire pour particulier)', example: 'Dupont' },
-      company_name: { description: 'Raison sociale (obligatoire pour pro/entreprise)', example: 'SARL Dupont' },
-      email: { description: 'Email du client (sert à la déduplication)', example: 'jean.dupont@mail.fr' },
-      number_phone_1: { description: 'Téléphone principal', example: '+33 6 12 34 56 78' },
-      type_customer_id: { description: 'ID du type. Peut fournir "type_customer" avec le code (PART/PRO/ENT/ASSO).' },
+      first_name: {
+        description: 'Prénom (obligatoire pour particulier)',
+        example: 'Jean',
+      },
+      last_name: {
+        description: 'Nom (obligatoire pour particulier)',
+        example: 'Dupont',
+      },
+      company_name: {
+        description: 'Raison sociale (obligatoire pour pro/entreprise)',
+        example: 'SARL Dupont',
+      },
+      email: {
+        description: 'Email du client (sert à la déduplication)',
+        example: 'jean.dupont@mail.fr',
+      },
+      number_phone_1: {
+        description: 'Téléphone principal',
+        example: '+33 6 12 34 56 78',
+      },
+      type_customer_id: {
+        description:
+          'ID du type. Peut fournir "type_customer" avec le code (PART/PRO/ENT/ASSO).',
+      },
       branch_id: { description: 'ID de l\'agence. Peut fournir "branch".' },
-      location_city_id: { description: 'ID de la ville. Peut fournir "location_city" avec le nom.' },
-      status: { description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=DELETED/Supprimé, -2=BLOCKED, -3=SUSPENDED, -4=LOCKED.', example: '1' },
-      created_from: { description: 'BD: 0=AGENCY/Agence, 1=ONLINE/En ligne.', example: '0' },
+      location_city_id: {
+        description:
+          'ID de la ville. Peut fournir "location_city" avec le nom.',
+      },
+      status: {
+        description:
+          'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=DELETED/Supprimé, -2=BLOCKED, -3=SUSPENDED, -4=LOCKED.',
+        example: '1',
+      },
+      created_from: {
+        description: 'BD: 0=AGENCY/Agence, 1=ONLINE/En ligne.',
+        example: '0',
+      },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);
@@ -59,24 +94,37 @@ export class CustomerWriteHandler extends BaseWriteHandler {
       const hasPerson = fields.first_name && fields.last_name;
       const hasCompany = fields.company_name;
       if (!hasPerson && !hasCompany) {
-        errors.push('Fournir soit (first_name + last_name) pour un particulier, soit company_name pour une entreprise');
+        errors.push(
+          'Fournir soit (first_name + last_name) pour un particulier, soit company_name pour une entreprise',
+        );
       }
     }
     // Validation format email basique
-    if (fields.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(fields.email))) {
-      errors.push('Format d\'email invalide');
+    if (
+      fields.email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(fields.email))
+    ) {
+      errors.push("Format d'email invalide");
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
 
-  protected async doInsert(fields: Record<string, any>, userId: string): Promise<WriteResult> {
+  protected async doInsert(
+    fields: Record<string, any>,
+    userId: string,
+  ): Promise<WriteResult> {
     // Le strip AUTO_GENERATED_FIELDS + findDuplicateBy se font dans super.doInsert
     // donc on délègue après avoir injecté les défauts métier.
     const enriched = {
       ...fields,
-      status: fields.status !== undefined ? Number(fields.status) : CustomerStatus.ACTIVE,
+      status:
+        fields.status !== undefined
+          ? Number(fields.status)
+          : CustomerStatus.ACTIVE,
       created_from:
-        fields.created_from !== undefined ? Number(fields.created_from) : CustomerCreatedFrom.AGENCY,
+        fields.created_from !== undefined
+          ? Number(fields.created_from)
+          : CustomerCreatedFrom.AGENCY,
     };
     // Appel direct au flow standard avec les enrichissements
     return super.doInsert(enriched, userId);
@@ -87,10 +135,15 @@ export class CustomerWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     userId: string,
   ): Promise<WriteResult> {
-    const customer = await this.customerRepo.findOne({ where: { id: entityId as any } });
-    if (!customer) throw new NotFoundException(`Client ${entityId} introuvable`);
+    const customer = await this.customerRepo.findOne({
+      where: { id: entityId as any },
+    });
+    if (!customer)
+      throw new NotFoundException(`Client ${entityId} introuvable`);
 
-    const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
+    const safeFields = this.stripAutoGeneratedFields(
+      this.filterKnownColumns(fields),
+    );
     // Ne jamais écraser le customer_code
     delete safeFields['customer_code'];
 

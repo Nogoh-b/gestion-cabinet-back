@@ -16,15 +16,11 @@ export class DropPayslipLegacyAdvanceColumns1779600000000
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
     if (await queryRunner.hasColumn('payslip', 'is_advance')) {
-      await queryRunner.query(
-        `ALTER TABLE payslip DROP COLUMN is_advance`,
-      );
+      await queryRunner.query(`ALTER TABLE payslip DROP COLUMN is_advance`);
     }
 
     if (await queryRunner.hasColumn('payslip', 'advance_amount')) {
-      await queryRunner.query(
-        `ALTER TABLE payslip DROP COLUMN advance_amount`,
-      );
+      await queryRunner.query(`ALTER TABLE payslip DROP COLUMN advance_amount`);
     }
 
     if (await queryRunner.hasColumn('payslip', 'advance_recovered_amount')) {

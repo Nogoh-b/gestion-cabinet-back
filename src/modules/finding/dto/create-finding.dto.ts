@@ -7,10 +7,14 @@ import {
   IsEnum,
   IsNumber,
   IsDateString,
-  IsBoolean
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { FindingSeverity, FindingCategory, FindingStatus } from '../entities/finding.entity';
+import {
+  FindingSeverity,
+  FindingCategory,
+  FindingStatus,
+} from '../entities/finding.entity';
 
 export class CreateFindingDto {
   @ApiProperty({
@@ -22,8 +26,9 @@ export class CreateFindingDto {
   title: string;
 
   @ApiPropertyOptional({
-    example: 'La clause de non-concurrence s\'étend sur 5 ans et sur tout le territoire national...',
-    description: "Description détaillée",
+    example:
+      "La clause de non-concurrence s'étend sur 5 ans et sur tout le territoire national...",
+    description: 'Description détaillée',
   })
   @IsString()
   @IsOptional()
@@ -31,7 +36,7 @@ export class CreateFindingDto {
 
   @ApiProperty({
     example: 5,
-    description: "ID de la diligence concernée",
+    description: 'ID de la diligence concernée',
   })
   @IsInt()
   @IsNotEmpty()
@@ -39,7 +44,7 @@ export class CreateFindingDto {
 
   @ApiPropertyOptional({
     example: 12,
-    description: "ID du document concerné (optionnel)",
+    description: 'ID du document concerné (optionnel)',
   })
   @IsInt()
   @IsOptional()
@@ -48,7 +53,7 @@ export class CreateFindingDto {
   @ApiProperty({
     enum: FindingSeverity,
     example: FindingSeverity.HIGH,
-    description: "Sévérité du risque",
+    description: 'Sévérité du risque',
   })
   @IsEnum(FindingSeverity)
   @IsNotEmpty()
@@ -57,7 +62,7 @@ export class CreateFindingDto {
   @ApiProperty({
     enum: FindingCategory,
     example: FindingCategory.CONTRACT,
-    description: "Catégorie juridique",
+    description: 'Catégorie juridique',
   })
   @IsEnum(FindingCategory)
   @IsNotEmpty()
@@ -72,7 +77,8 @@ export class CreateFindingDto {
   created_by_id?: number;
 
   @ApiPropertyOptional({
-    example: 'Cette clause pourrait empêcher l\'acquisition car elle limite trop la liberté du dirigeant',
+    example:
+      "Cette clause pourrait empêcher l'acquisition car elle limite trop la liberté du dirigeant",
     description: "Impact potentiel sur l'opération",
   })
   @IsString()
@@ -80,8 +86,9 @@ export class CreateFindingDto {
   impact?: string;
 
   @ApiPropertyOptional({
-    example: 'Négocier une réduction à 2 ans et un périmètre géographique limité',
-    description: "Recommandation",
+    example:
+      'Négocier une réduction à 2 ans et un périmètre géographique limité',
+    description: 'Recommandation',
   })
   @IsString()
   @IsOptional()
@@ -89,7 +96,7 @@ export class CreateFindingDto {
 
   @ApiPropertyOptional({
     example: 'Article L. 1234-5 du Code du travail...',
-    description: "Base légale / jurisprudence",
+    description: 'Base légale / jurisprudence',
   })
   @IsString()
   @IsOptional()
@@ -97,7 +104,7 @@ export class CreateFindingDto {
 
   @ApiPropertyOptional({
     example: FindingStatus.IDENTIFIED,
-    description: "Base légale / jurisprudence",
+    description: 'Base légale / jurisprudence',
   })
   @IsString()
   @IsOptional()
@@ -105,7 +112,7 @@ export class CreateFindingDto {
 
   @ApiPropertyOptional({
     example: 150000,
-    description: "Montant estimé du risque (en euros)",
+    description: 'Montant estimé du risque (en euros)',
   })
   @IsNumber()
   @IsOptional()
@@ -113,7 +120,7 @@ export class CreateFindingDto {
 
   @ApiPropertyOptional({
     example: '2026-04-01',
-    description: "Date butoir pour la résolution",
+    description: 'Date butoir pour la résolution',
   })
   @IsDateString()
   @IsOptional()
@@ -121,7 +128,7 @@ export class CreateFindingDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: "Confidentiel",
+    description: 'Confidentiel',
   })
   @IsBoolean()
   @IsOptional()

@@ -1,4 +1,10 @@
-import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  OneToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { ApiProperty } from '@nestjs/swagger';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
@@ -81,5 +87,8 @@ export class UserSettings extends TenantEntity {
     nullable: true,
   })
   @Column({ type: 'json', nullable: true, name: 'notification_preferences' })
-  notification_preferences: Record<string, { in_app: boolean; email: boolean }> | null;
+  notification_preferences: Record<
+    string,
+    { in_app: boolean; email: boolean }
+  > | null;
 }

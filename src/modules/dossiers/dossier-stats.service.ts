@@ -1,16 +1,27 @@
 // src/modules/dossiers/services/dossier-stats.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { DangerLevel, Dossier } from './entities/dossier.entity';
+import {
+  addDossierVisibilityCondition,
+  canBypassConfidentiality,
+} from './dossier-visibility';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
-import { DossierStatsDto, FinancialStatsDto, TimelineStatsDto } from './dto/dossier-stats.dto';
+import {
+  DossierStatsDto,
+  FinancialStatsDto,
+  TimelineStatsDto,
+} from './dto/dossier-stats.dto';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { SingleDossierStatsDto } from './dto/single-dossier-stats.dto';
 import { DocumentCustomerStatus } from '../documents/document-customer/entities/document-customer.entity';
 import { AudienceStatus } from '../audiences/entities/audience.entity';
-import { DiligencePriority, DiligenceStatus } from '../diligence/entities/diligence.entity';
+import {
+  DiligencePriority,
+  DiligenceStatus,
+} from '../diligence/entities/diligence.entity';
 import { StatutFacture } from '../facture/dto/create-facture.dto';
 import {
   DossierLifecyclePhase,
@@ -54,13 +65,46 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     super(dossierRepository);
   }
 
-  async getStats(filters?: StatsFilterDto): Promise<DossierStatsDto | SingleDossierStatsDto> {
+  async getStats(
+    filters?: StatsFilterDto,
+  ): Promise<DossierStatsDto | SingleDossierStatsDto> {
     if (filters?.dossierId) {
       return this.getStatsForSingleDossier(filters.dossierId);
     }
 
     // Sinon, on retourne les stats globales
     return this.getGlobalStats(filters);
+  }
+
+  /**
+   * Point d'injection unique de la confidentialité dans les statistiques :
+   * TOUTES les requêtes de ce service passent par `applyFilters`, la règle
+   * s'applique donc partout (KPI, répartitions, finances, tendances).
+   *
+   * Deux préoccupations distinctes :
+   *  - sécurité : un appelant non habilité ne doit jamais agréger un dossier
+   *    confidentiel — non négociable, quel que soit le filtre demandé ;
+   *  - confort : l'administration choisit d'inclure ou non les dossiers
+   *    confidentiels dans ses agrégats, via `includeConfidential`. Par défaut
+   *    ils sont EXCLUS, pour que les chiffres affichés correspondent à ce que
+   *    voit le reste du cabinet.
+   */
+  protected applyFilters(
+    query: SelectQueryBuilder<Dossier>,
+    filters?: StatsFilterDto,
+    alias: string = 'entity',
+  ): SelectQueryBuilder<Dossier> {
+    super.applyFilters(query, filters, alias);
+
+    if (canBypassConfidentiality()) {
+      const includeConfidential = filters?.includeConfidential === true;
+      if (!includeConfidential) {
+        query.andWhere(`${alias}.confidentiality_level = false`);
+      }
+      return query;
+    }
+
+    return addDossierVisibilityCondition(query, alias);
   }
 
   private async getActiveCount(filters?: StatsFilterDto): Promise<number> {
@@ -76,7 +120,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .andWhere('dossier.lifecycle_phase != :closedPhase', {
         closedPhase: DossierLifecyclePhase.CLOSED,
       });
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
     return query.getCount();
   }
 
@@ -84,7 +128,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .where(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS);
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
     return query.getCount();
   }
 
@@ -94,18 +138,20 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .where('dossier.status = :status', {
         status: dossierStatusValue(DossierStatus.ARCHIVED),
       });
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
     return query.getCount();
   }
 
-  private async getDistributionByStatus(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByStatus(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('dossier.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .groupBy('dossier.status');
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
@@ -130,7 +176,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || `Status ${r.status}`,
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -140,14 +186,16 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     }));
   }
 
-  private async getDistributionByDangerLevel(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByDangerLevel(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('dossier.danger_level', 'level')
       .addSelect('COUNT(*)', 'count')
       .groupBy('dossier.danger_level');
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
@@ -166,7 +214,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       [DangerLevel.Critique]: '#ef4444',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: levelLabels[r.level] || `Niveau ${r.level}`,
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -175,14 +223,16 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     }));
   }
 
-  private async getDistributionByPriority(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByPriority(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('dossier.priority_level', 'priority')
       .addSelect('COUNT(*)', 'count')
       .groupBy('dossier.priority_level');
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
@@ -201,7 +251,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       3: '#ef4444',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: priorityLabels[r.priority] || `Priorité ${r.priority}`,
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -210,7 +260,9 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     }));
   }
 
-  private async getDistributionByProcedureType(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByProcedureType(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .leftJoin('dossier.procedure_type', 'procedureType')
@@ -222,12 +274,12 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .orderBy('count', 'DESC')
       .limit(10);
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Non spécifié',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -235,7 +287,9 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     }));
   }
 
-  private async getDistributionByJurisdiction(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByJurisdiction(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .leftJoin('dossier.jurisdiction', 'jurisdiction')
@@ -247,12 +301,12 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .orderBy('count', 'DESC')
       .limit(10);
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Non spécifié',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -260,7 +314,9 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     }));
   }
 
-  private async getDistributionByLawyer(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByLawyer(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.dossierRepository
       .createQueryBuilder('dossier')
       .leftJoin('dossier.lawyer', 'lawyer1')
@@ -273,12 +329,12 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .orderBy('count', 'DESC')
       .limit(10);
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Avocat',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -286,7 +342,9 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     }));
   }
 
-  private async getFinancialStats(filters?: StatsFilterDto): Promise<FinancialStatsDto> {
+  private async getFinancialStats(
+    filters?: StatsFilterDto,
+  ): Promise<FinancialStatsDto> {
     // actual_costs = total des factures du dossier (calculé dynamiquement).
     // On évite toute référence directe à la colonne stockée `actual_costs`
     // pour rester robuste si elle n'a pas encore été synchronisée par TypeORM.
@@ -301,7 +359,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .addSelect(`AVG(${facturesSumExpr})`, 'avgActual')
       .where(`dossier.budget_estimate IS NOT NULL OR ${facturesSumExpr} > 0`);
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const totals = await query.getRawOne();
 
@@ -336,22 +394,28 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       averageBudgetPerDossier: parseFloat(totals?.avgBudget || 0),
       averageCostPerDossier: parseFloat(totals?.avgActual || 0),
       budgetVsActual: totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0,
-      byStatus: byStatus.map(s => ({
+      byStatus: byStatus.map((s) => ({
         status: statusLabels[s.status] || `Status ${s.status}`,
         budgetEstimate: parseFloat(s.budgetEstimate || 0),
         actualCosts: parseFloat(s.actualCosts || 0),
-        difference: parseFloat(s.actualCosts || 0) - parseFloat(s.budgetEstimate || 0),
+        difference:
+          parseFloat(s.actualCosts || 0) - parseFloat(s.budgetEstimate || 0),
       })),
     };
   }
 
-  private async getTimelineStats(filters?: StatsFilterDto): Promise<TimelineStatsDto> {
+  private async getTimelineStats(
+    filters?: StatsFilterDto,
+  ): Promise<TimelineStatsDto> {
     const closedQuery = this.dossierRepository
       .createQueryBuilder('dossier')
       .select('dossier.id')
       .addSelect('dossier.opening_date', 'openingDate')
       .addSelect('dossier.closing_date', 'closingDate')
-      .addSelect('DATEDIFF(dossier.closing_date, dossier.opening_date)', 'duration')
+      .addSelect(
+        'DATEDIFF(dossier.closing_date, dossier.opening_date)',
+        'duration',
+      )
       .where(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS)
       .andWhere('dossier.opening_date IS NOT NULL')
       .andWhere('dossier.closing_date IS NOT NULL');
@@ -360,16 +424,22 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
 
     const closedDossiers = await closedQuery.getRawMany();
 
-    const durations = closedDossiers.map(d => parseInt(d.duration)).filter(d => !isNaN(d));
-    const avgDuration = durations.length > 0 
-      ? durations.reduce((a, b) => a + b, 0) / durations.length 
-      : 0;
+    const durations = closedDossiers
+      .map((d) => parseInt(d.duration))
+      .filter((d) => !isNaN(d));
+    const avgDuration =
+      durations.length > 0
+        ? durations.reduce((a, b) => a + b, 0) / durations.length
+        : 0;
 
     const byProcedureQuery = this.dossierRepository
       .createQueryBuilder('dossier')
       .leftJoin('dossier.procedure_type', 'procedureType')
       .select('procedureType.name', 'procedureType')
-      .addSelect('AVG(DATEDIFF(dossier.closing_date, dossier.opening_date))', 'avgDuration')
+      .addSelect(
+        'AVG(DATEDIFF(dossier.closing_date, dossier.opening_date))',
+        'avgDuration',
+      )
       .addSelect('COUNT(*)', 'count')
       .where(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS)
       .andWhere('dossier.opening_date IS NOT NULL')
@@ -381,13 +451,17 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
 
     const byProcedure = await byProcedureQuery.getRawMany();
 
-    const { startDate = this.getDefaultStartDate(), endDate = new Date() } = filters || {};
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
 
     const openingTrendQuery = this.dossierRepository
       .createQueryBuilder('dossier')
       .select("DATE_FORMAT(dossier.opening_date, '%Y-%m')", 'month')
       .addSelect('COUNT(*)', 'count')
-      .where('dossier.opening_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .where('dossier.opening_date BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(dossier.opening_date, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -399,7 +473,10 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .createQueryBuilder('dossier')
       .select("DATE_FORMAT(dossier.closing_date, '%Y-%m')", 'month')
       .addSelect('COUNT(*)', 'count')
-      .where('dossier.closing_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .where('dossier.closing_date BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .andWhere(CLOSED_DOSSIER_FILTER, CLOSED_DOSSIER_PARAMETERS)
       .groupBy("DATE_FORMAT(dossier.closing_date, '%Y-%m')")
       .orderBy('month', 'ASC');
@@ -412,16 +489,16 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       averageDuration: Math.round(avgDuration),
       shortestDuration: durations.length > 0 ? Math.min(...durations) : 0,
       longestDuration: durations.length > 0 ? Math.max(...durations) : 0,
-      byProcedureType: byProcedure.map(p => ({
+      byProcedureType: byProcedure.map((p) => ({
         procedureType: p.procedureType,
         averageDuration: Math.round(parseFloat(p.avgDuration)),
         count: parseInt(p.count),
       })),
-      openingTrend: openingTrend.map(o => ({
+      openingTrend: openingTrend.map((o) => ({
         month: o.month,
         count: parseInt(o.count),
       })),
-      closingTrend: closingTrend.map(c => ({
+      closingTrend: closingTrend.map((c) => ({
         month: c.month,
         count: parseInt(c.count),
       })),
@@ -446,11 +523,11 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .orderBy('dossier.opening_date', 'DESC')
       .limit(10);
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getMany();
 
-    return results.map(d => ({
+    return results.map((d) => ({
       id: d.id,
       dossierNumber: d.dossier_number,
       object: d.object,
@@ -490,13 +567,13 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       .addOrderBy('dossier.opening_date', 'ASC')
       .limit(10);
 
-    this.applyFilters(query, filters, 'dossier'); ;
+    this.applyFilters(query, filters, 'dossier');
 
     const results = await query.getMany();
 
-    return results.map(d => {
-      const nextAudience = d.audiences?.find(a => 
-        a.status === 1 && new Date(a.full_datetime) > new Date()
+    return results.map((d) => {
+      const nextAudience = d.audiences?.find(
+        (a) => a.status === 1 && new Date(a.full_datetime) > new Date(),
       );
 
       return {
@@ -509,7 +586,8 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
         nextAudience: nextAudience?.full_datetime,
         daysUntilDeadline: nextAudience
           ? Math.ceil(
-              (new Date(nextAudience.full_datetime).getTime() - new Date().getTime()) /
+              (new Date(nextAudience.full_datetime).getTime() -
+                new Date().getTime()) /
                 (1000 * 60 * 60 * 24),
             )
           : undefined,
@@ -517,21 +595,15 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     });
   }
 
-
-
-
-
-
-
-
-
-  private async getStatsForSingleDossier(dossierId: number): Promise<SingleDossierStatsDto> {
+  private async getStatsForSingleDossier(
+    dossierId: number,
+  ): Promise<SingleDossierStatsDto> {
     const dossier = await this.dossierRepository.findOne({
       where: { id: dossierId },
       relations: [
-        'client', 
-        'lawyer', 
-        'procedure_type', 
+        'client',
+        'lawyer',
+        'procedure_type',
         'jurisdiction',
         'audiences',
         'audiences.jurisdiction',
@@ -541,7 +613,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
         'diligences',
         'diligences.assigned_lawyer',
         // 'diligences.assigned_lawyer.user'
-      ]
+      ],
     });
 
     if (!dossier) {
@@ -552,7 +624,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       dossier: {
         id: dossier.id,
         numero: dossier.dossier_number,
-        objet: dossier.object,
+        objet: dossier.object || 'Sans intitulé',
         client: dossier.client?.full_name || 'Client inconnu',
         avocat: dossier.lawyer?.full_name || 'Avocat non assigné',
         statut: dossier.status,
@@ -567,13 +639,15 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     };
   }
 
-  private getDocumentsStats(documents: any[]): SingleDossierStatsDto['documents'] {
+  private getDocumentsStats(
+    documents: any[],
+  ): SingleDossierStatsDto['documents'] {
     const total = documents.length;
     const totalSize = documents.reduce((sum, d) => sum + (d.file_size || 0), 0);
 
     // Stats par statut
     const byStatusMap = new Map<number, number>();
-    documents.forEach(d => {
+    documents.forEach((d) => {
       const status = d.status || 0;
       byStatusMap.set(status, (byStatusMap.get(status) || 0) + 1);
     });
@@ -594,16 +668,18 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       [DocumentCustomerStatus.ARCHIVED]: '#9ca3af',
     };
 
-    const byStatus = Array.from(byStatusMap.entries()).map(([status, count]) => ({
-      name: statusLabels[status] || 'Inconnu',
-      value: count,
-      percentage: Math.round((count / total) * 100),
-      color: statusColors[status] || '#6b7280',
-    }));
+    const byStatus = Array.from(byStatusMap.entries()).map(
+      ([status, count]) => ({
+        name: statusLabels[status] || 'Inconnu',
+        value: count,
+        percentage: Math.round((count / total) * 100),
+        color: statusColors[status] || '#6b7280',
+      }),
+    );
 
     // Stats par type
     const byTypeMap = new Map<string, number>();
-    documents.forEach(d => {
+    documents.forEach((d) => {
       const type = d.document_type?.name || 'Non spécifié';
       byTypeMap.set(type, (byTypeMap.get(type) || 0) + 1);
     });
@@ -616,9 +692,12 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
 
     // Documents récents (5 derniers)
     const recent = [...documents]
-      .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime(),
+      )
       .slice(0, 5)
-      .map(d => ({
+      .map((d) => ({
         id: d.id,
         nom: d.name,
         type: d.document_type?.name || 'Inconnu',
@@ -637,39 +716,62 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     };
   }
 
-  private getAudiencesStats(audiences: any[]): SingleDossierStatsDto['audiences'] {
+  private getAudiencesStats(
+    audiences: any[],
+  ): SingleDossierStatsDto['audiences'] {
     const total = audiences.length;
     const maintenant = new Date();
 
-    const passees = audiences.filter(a => new Date(a.full_datetime) < maintenant).length;
-    const aVenir = audiences.filter(a => new Date(a.full_datetime) >= maintenant && a.status === AudienceStatus.SCHEDULED).length;
-    const annulees = audiences.filter(a => a.status === AudienceStatus.CANCELLED).length;
+    const passees = audiences.filter(
+      (a) => new Date(a.full_datetime) < maintenant,
+    ).length;
+    const aVenir = audiences.filter(
+      (a) =>
+        new Date(a.full_datetime) >= maintenant &&
+        a.status === AudienceStatus.SCHEDULED,
+    ).length;
+    const annulees = audiences.filter(
+      (a) => a.status === AudienceStatus.CANCELLED,
+    ).length;
 
     // Prochaine audience
     const prochaines = audiences
-      .filter(a => new Date(a.full_datetime) >= maintenant && a.status === AudienceStatus.SCHEDULED)
-      .sort((a, b) => new Date(a.full_datetime).getTime() - new Date(b.full_datetime).getTime());
+      .filter(
+        (a) =>
+          new Date(a.full_datetime) >= maintenant &&
+          a.status === AudienceStatus.SCHEDULED,
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.full_datetime).getTime() -
+          new Date(b.full_datetime).getTime(),
+      );
 
-    const prochaine = prochaines.length > 0 ? {
-      id: prochaines[0].id,
-      titre: prochaines[0].title,
-      date: prochaines[0].full_datetime,
-      jurisdiction: prochaines[0].jurisdiction?.name || 'Inconnue',
-      statut: prochaines[0].status,
-    } : undefined;
+    const prochaine =
+      prochaines.length > 0
+        ? {
+            id: prochaines[0].id,
+            titre: prochaines[0].title,
+            date: prochaines[0].full_datetime,
+            jurisdiction: prochaines[0].jurisdiction?.name || 'Inconnue',
+            statut: prochaines[0].status,
+          }
+        : undefined;
 
     // Stats par juridiction
     const byJuridictionMap = new Map<string, number>();
-    audiences.forEach(a => {
+    audiences.forEach((a) => {
       const jur = a.jurisdiction?.name || 'Inconnue';
       byJuridictionMap.set(jur, (byJuridictionMap.get(jur) || 0) + 1);
     });
 
-    const parJuridiction = Array.from(byJuridictionMap.entries()).map(([name, count]) => ({
-      name,
-      value: count,
-      percentage: Math.round((count / total) * 100),
-    }));
+    const parJuridiction = Array.from(byJuridictionMap.entries()).map(
+      ([name, count]) => ({
+        name,
+        value: count,
+        percentage: Math.round((count / total) * 100),
+      }),
+    );
 
     return {
       total,
@@ -681,34 +783,54 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     };
   }
 
-  private getDiligencesStats(diligences: any[]): SingleDossierStatsDto['diligences'] {
+  private getDiligencesStats(
+    diligences: any[],
+  ): SingleDossierStatsDto['diligences'] {
     const total = diligences.length;
     const maintenant = new Date();
 
-    const enCours = diligences.filter(d => 
-      d.status === DiligenceStatus.IN_PROGRESS || d.status === DiligenceStatus.REVIEW
+    const enCours = diligences.filter(
+      (d) =>
+        d.status === DiligenceStatus.IN_PROGRESS ||
+        d.status === DiligenceStatus.REVIEW,
     ).length;
 
-    const terminees = diligences.filter(d => d.status === DiligenceStatus.COMPLETED).length;
-
-    const enRetard = diligences.filter(d => 
-      d.status !== DiligenceStatus.COMPLETED && 
-      d.status !== DiligenceStatus.CANCELLED &&
-      new Date(d.deadline) < maintenant
+    const terminees = diligences.filter(
+      (d) => d.status === DiligenceStatus.COMPLETED,
     ).length;
 
-    const progressionMoyenne = total > 0 
-      ? Math.round(diligences.reduce((sum, d) => sum + (d.progress_percentage || 0), 0) / total)
-      : 0;
+    const enRetard = diligences.filter(
+      (d) =>
+        d.status !== DiligenceStatus.COMPLETED &&
+        d.status !== DiligenceStatus.CANCELLED &&
+        new Date(d.deadline) < maintenant,
+    ).length;
+
+    const progressionMoyenne =
+      total > 0
+        ? Math.round(
+            diligences.reduce(
+              (sum, d) => sum + (d.progress_percentage || 0),
+              0,
+            ) / total,
+          )
+        : 0;
 
     // Échéances à venir
     const echeances = diligences
-      .filter(d => d.status !== DiligenceStatus.COMPLETED && d.status !== DiligenceStatus.CANCELLED)
-      .map(d => ({
+      .filter(
+        (d) =>
+          d.status !== DiligenceStatus.COMPLETED &&
+          d.status !== DiligenceStatus.CANCELLED,
+      )
+      .map((d) => ({
         id: d.id,
         titre: d.title,
         deadline: d.deadline,
-        joursRestants: Math.ceil((new Date(d.deadline).getTime() - maintenant.getTime()) / (1000 * 60 * 60 * 24)),
+        joursRestants: Math.ceil(
+          (new Date(d.deadline).getTime() - maintenant.getTime()) /
+            (1000 * 60 * 60 * 24),
+        ),
         priorite: this.getPriorityLabel(d.priority),
         progression: d.progress_percentage || 0,
       }))
@@ -727,16 +849,20 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
 
   private getFacturesStats(factures: any[]): SingleDossierStatsDto['factures'] {
     const total = factures.length;
-    const montantTotal = factures.reduce((sum, f) => sum + (parseFloat(f.montantTTC) || 0), 0);
+    const montantTotal = factures.reduce(
+      (sum, f) => sum + (parseFloat(f.montantTTC) || 0),
+      0,
+    );
     const montantPaye = factures
-      .filter(f => f.status === StatutFacture.PAYEE)
+      .filter((f) => f.status === StatutFacture.PAYEE)
       .reduce((sum, f) => sum + (parseFloat(f.montantTTC) || 0), 0);
     const montantImpaye = montantTotal - montantPaye;
-    const tauxRecouvrement = montantTotal > 0 ? Math.round((montantPaye / montantTotal) * 100) : 0;
+    const tauxRecouvrement =
+      montantTotal > 0 ? Math.round((montantPaye / montantTotal) * 100) : 0;
 
     // Stats par statut
     const byStatusMap = new Map<number, { count: number; montant: number }>();
-    factures.forEach(f => {
+    factures.forEach((f) => {
       const status = f.status || 0;
       const current = byStatusMap.get(status) || { count: 0, montant: 0 };
       byStatusMap.set(status, {
@@ -754,18 +880,23 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       [StatutFacture.ANNULEE]: 'Annulée',
     };
 
-    const parStatut = Array.from(byStatusMap.entries()).map(([status, data]) => ({
-      name: statusLabels[status] || 'Inconnu',
-      value: data.count,
-      montant: data.montant,
-      percentage: Math.round((data.count / total) * 100),
-    }));
+    const parStatut = Array.from(byStatusMap.entries()).map(
+      ([status, data]) => ({
+        name: statusLabels[status] || 'Inconnu',
+        value: data.count,
+        montant: data.montant,
+        percentage: Math.round((data.count / total) * 100),
+      }),
+    );
 
     // Factures récentes
     const recentes = [...factures]
-      .sort((a, b) => new Date(b.dateFacture).getTime() - new Date(a.dateFacture).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.dateFacture).getTime() - new Date(a.dateFacture).getTime(),
+      )
       .slice(0, 5)
-      .map(f => ({
+      .map((f) => ({
         id: f.id,
         numero: f.numero,
         date: f.dateFacture,
@@ -808,7 +939,9 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
   }
 
   // Méthode existante pour les stats globales
-  private async getGlobalStats(filters?: StatsFilterDto): Promise<DossierStatsDto> {
+  private async getGlobalStats(
+    filters?: StatsFilterDto,
+  ): Promise<DossierStatsDto> {
     const [
       total,
       activeCount,
@@ -862,6 +995,4 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
       urgentDossiers,
     };
   }
-
-  
 }

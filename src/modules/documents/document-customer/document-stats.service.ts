@@ -4,7 +4,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
-import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+import {
+  DocumentCustomer,
+  DocumentCustomerStatus,
+} from './entities/document-customer.entity';
 import { DocumentStatsDto } from './dto/document-stats.dto';
 import { SingleDocumentStatsDto } from './dto/single-document-stats.dto';
 import { ProcedureInstanceService } from 'src/modules/procedure/services/procedure-instance.service';
@@ -21,7 +24,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     super(documentRepository);
   }
 
-  async getStats(filters?: StatsFilterDto): Promise<DocumentStatsDto | SingleDocumentStatsDto> {
+  async getStats(
+    filters?: StatsFilterDto,
+  ): Promise<DocumentStatsDto | SingleDocumentStatsDto> {
     // Si un documentId est fourni, on retourne les stats détaillées de ce document
     if (filters?.documentId) {
       return this.getStatsForSingleDocument(filters.documentId);
@@ -32,7 +37,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   }
 
   // Méthode pour un document spécifique
-  private async getStatsForSingleDocument(documentId: number): Promise<SingleDocumentStatsDto> {
+  private async getStatsForSingleDocument(
+    documentId: number,
+  ): Promise<SingleDocumentStatsDto> {
     const document = await this.documentRepository.findOne({
       where: { id: documentId },
       relations: [
@@ -49,8 +56,8 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
         'audiences.jurisdiction',
         'diligences',
         'findings',
-        'subStages'
-      ]
+        'subStages',
+      ],
     });
 
     if (!document) {
@@ -61,7 +68,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const versionsPrecedentes = await this.documentRepository.find({
       where: { previous_version: { id: documentId } },
       relations: ['uploaded_by'],
-      order: { version: 'DESC' }
+      order: { version: 'DESC' },
     });
 
     const statusLabels = {
@@ -94,7 +101,8 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
         taille: document.file_size || 0,
         tailleFormatee: this.formatFileSize(document.file_size),
         mimetype: document.file_mimetype,
-        extension: this.getFileExtension(document.file_mimetype, document.name) || 'N/A',
+        extension:
+          this.getFileExtension(document.file_mimetype, document.name) || 'N/A',
       },
       // dossier: document.dossier ? {
       //   id: document.dossier.id,
@@ -115,26 +123,28 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
       //   email: document.uploaded_by.email,
       //   dateUpload: document.uploaded_at,
       // } : null,
-      metadonnees: document.metadata ? {
-        motsCles: document.metadata.keywords,
-        nombrePages: document.metadata.page_count,
-        langue: document.metadata.language,
-        nomOriginal: document.metadata.original_filename,
-      } : {},
-      versionsPrecedentes: versionsPrecedentes.map(v => ({
+      metadonnees: document.metadata
+        ? {
+            motsCles: document.metadata.keywords,
+            nombrePages: document.metadata.page_count,
+            langue: document.metadata.language,
+            nomOriginal: document.metadata.original_filename,
+          }
+        : {},
+      versionsPrecedentes: versionsPrecedentes.map((v) => ({
         id: v.id,
         version: v.version,
         dateUpload: v.uploaded_at,
         uploader: v.uploaded_by?.full_name || 'Inconnu',
         taille: this.formatFileSize(v.file_size),
       })),
-      audiences: (document.audiences || []).map(a => ({
+      audiences: (document.audiences || []).map((a) => ({
         id: a.id,
         titre: 'N/A',
         date: a.full_datetime,
         jurisdiction: a.jurisdiction?.name,
       })),
-      diligences: (document.diligences || []).map(d => ({
+      diligences: (document.diligences || []).map((d) => ({
         id: d.id,
         titre: d.title,
         statut: d.status,
@@ -144,28 +154,33 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     };
   }
 
-  private getFileExtension(mimetype: string, filename: string): string | undefined {
+  private getFileExtension(
+    mimetype: string,
+    filename: string,
+  ): string | undefined {
     if (filename && filename.includes('.')) {
       return filename.split('.').pop();
     }
-    
+
     const extensionMap = {
       'application/pdf': 'pdf',
       'image/jpeg': 'jpg',
       'image/png': 'png',
       'application/msword': 'doc',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        'docx',
       'application/vnd.ms-excel': 'xls',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        'xlsx',
       'text/plain': 'txt',
       'application/zip': 'zip',
     };
-    
+
     return extensionMap[mimetype] || 'bin';
   }
 
   private buildHistory(document: any): SingleDocumentStatsDto['historique'] {
-    const history : any = [];
+    const history: any = [];
 
     // Upload
     history.push({
@@ -177,10 +192,16 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     // Validation/Rejet
     if (document.date_validation) {
       history.push({
-        action: document.status === DocumentCustomerStatus.ACCEPTED ? 'Validation' : 'Rejet',
+        action:
+          document.status === DocumentCustomerStatus.ACCEPTED
+            ? 'Validation'
+            : 'Rejet',
         utilisateur: 'Système', // À remplacer par l'utilisateur qui a validé
         date: document.date_validation,
-        details: document.status === DocumentCustomerStatus.ACCEPTED ? 'Document validé' : 'Document rejeté',
+        details:
+          document.status === DocumentCustomerStatus.ACCEPTED
+            ? 'Document validé'
+            : 'Document rejeté',
       });
     }
 
@@ -195,7 +216,10 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     }
 
     // Modifications
-    if (document.last_modified && document.last_modified > document.uploaded_at) {
+    if (
+      document.last_modified &&
+      document.last_modified > document.uploaded_at
+    ) {
       history.push({
         action: 'Modification',
         utilisateur: 'Système',
@@ -217,11 +241,15 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     }
 
     // Trier par date (plus récent d'abord)
-    return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return history.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
   }
 
   // Méthode existante pour les stats globales
-  private async getGlobalStats(filters?: StatsFilterDto): Promise<DocumentStatsDto> {
+  private async getGlobalStats(
+    filters?: StatsFilterDto,
+  ): Promise<DocumentStatsDto> {
     const [
       total,
       totalSize,
@@ -305,7 +333,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   private async getPendingCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.documentRepository
       .createQueryBuilder('document')
-      .where('document.status = :status', { status: DocumentCustomerStatus.PENDING });
+      .where('document.status = :status', {
+        status: DocumentCustomerStatus.PENDING,
+      });
     this.applyFilters(query, filters, 'document');
     return query.getCount();
   }
@@ -313,7 +343,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   private async getValidatedCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.documentRepository
       .createQueryBuilder('document')
-      .where('document.status = :status', { status: DocumentCustomerStatus.ACCEPTED });
+      .where('document.status = :status', {
+        status: DocumentCustomerStatus.ACCEPTED,
+      });
     this.applyFilters(query, filters, 'document');
     return query.getCount();
   }
@@ -321,7 +353,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   private async getRejectedCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.documentRepository
       .createQueryBuilder('document')
-      .where('document.status = :status', { status: DocumentCustomerStatus.REFUSED });
+      .where('document.status = :status', {
+        status: DocumentCustomerStatus.REFUSED,
+      });
     this.applyFilters(query, filters, 'document');
     return query.getCount();
   }
@@ -329,12 +363,16 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   private async getExpiredCount(filters?: StatsFilterDto): Promise<number> {
     const query = this.documentRepository
       .createQueryBuilder('document')
-      .where('document.status = :status', { status: DocumentCustomerStatus.EXPIRED });
+      .where('document.status = :status', {
+        status: DocumentCustomerStatus.EXPIRED,
+      });
     this.applyFilters(query, filters, 'document');
     return query.getCount();
   }
 
-  private async getDistributionByType(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByType(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .leftJoin('document.document_type', 'type')
@@ -350,14 +388,16 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Non spécifié',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionByCategory(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByCategory(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .leftJoin('document.category', 'category')
@@ -372,14 +412,16 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Non catégorisé',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionByStatus(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByStatus(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .select('document.status', 'status')
@@ -407,7 +449,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
       [DocumentCustomerStatus.ARCHIVED]: '#9ca3af',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || 'Inconnu',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -416,7 +458,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     }));
   }
 
-  private async getDistributionByMimeType(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByMimeType(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .select('document.file_mimetype', 'mimeType')
@@ -437,13 +481,15 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
       'image/jpeg': 'JPEG',
       'image/png': 'PNG',
       'application/msword': 'Word',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        'Word',
       'application/vnd.ms-excel': 'Excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        'Excel',
       'text/plain': 'Texte',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: mimeTypeLabels[r.mimeType] || r.mimeType,
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -451,7 +497,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     }));
   }
 
-  private async getDistributionByDossier(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByDossier(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .leftJoin('document.dossier', 'dossier')
@@ -467,14 +515,16 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.dossierNumber || 'Dossier inconnu',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionByUploader(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByUploader(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.documentRepository
       .createQueryBuilder('document')
       .leftJoin('document.uploaded_by', 'user')
@@ -491,7 +541,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.userName || 'Utilisateur',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -501,7 +551,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
 
   private async getStorageStats(filters?: StatsFilterDto): Promise<any> {
     const totalSize = await this.getTotalSize(filters);
-    
+
     const largestQuery = this.documentRepository
       .createQueryBuilder('document')
       .leftJoin('document.dossier', 'dossier')
@@ -531,25 +581,33 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
     this.applyFilters(byMimeTypeQuery, filters, 'document');
 
     const byMimeType = await byMimeTypeQuery.getRawMany();
-    const totalMimeSize = byMimeType.reduce((sum, r) => sum + parseFloat(r.totalSize || 0), 0);
+    const totalMimeSize = byMimeType.reduce(
+      (sum, r) => sum + parseFloat(r.totalSize || 0),
+      0,
+    );
 
     return {
       totalSize,
       totalSizeFormatted: this.formatFileSize(totalSize),
       averageSize: await this.getAverageSize(filters),
-      largestDocument: largest ? {
-        id: largest.id,
-        name: largest.name,
-        size: largest.file_size,
-        sizeFormatted: this.formatFileSize(largest.file_size),
-        dossierNumber: largest.dossier?.dossier_number,
-      } : null,
-      byMimeType: byMimeType.map(r => ({
+      largestDocument: largest
+        ? {
+            id: largest.id,
+            name: largest.name,
+            size: largest.file_size,
+            sizeFormatted: this.formatFileSize(largest.file_size),
+            dossierNumber: largest.dossier?.dossier_number,
+          }
+        : null,
+      byMimeType: byMimeType.map((r) => ({
         mimeType: r.mimeType,
         count: parseInt(r.count),
         totalSize: parseFloat(r.totalSize || 0),
         totalSizeFormatted: this.formatFileSize(parseFloat(r.totalSize || 0)),
-        percentage: totalMimeSize > 0 ? Math.round((parseFloat(r.totalSize || 0) / totalMimeSize) * 100) : 0,
+        percentage:
+          totalMimeSize > 0
+            ? Math.round((parseFloat(r.totalSize || 0) / totalMimeSize) * 100)
+            : 0,
       })),
     };
   }
@@ -569,7 +627,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
 
     const results = await query.getMany();
 
-    return results.map(d => ({
+    return results.map((d) => ({
       id: d.id,
       name: d.name,
       dossierNumber: d.dossier?.dossier_number,
@@ -593,7 +651,9 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
       .leftJoinAndSelect('dossier.client', 'client')
       .leftJoinAndSelect('document.document_type', 'type')
       .leftJoinAndSelect('document.uploaded_by', 'user')
-      .where('document.status = :status', { status: DocumentCustomerStatus.PENDING })
+      .where('document.status = :status', {
+        status: DocumentCustomerStatus.PENDING,
+      })
       .orderBy('document.uploaded_at', 'ASC')
       .limit(20);
 
@@ -601,7 +661,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
 
     const results = await query.getMany();
 
-    return results.map(d => ({
+    return results.map((d) => ({
       id: d.id,
       name: d.name,
       dossierNumber: d.dossier?.dossier_number,
@@ -609,19 +669,25 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
       type: d.document_type?.name,
       uploadedBy: d.uploaded_by?.full_name,
       uploadedAt: d.uploaded_at,
-      daysPending: Math.ceil((now.getTime() - d.uploaded_at.getTime()) / (1000 * 60 * 60 * 24)),
+      daysPending: Math.ceil(
+        (now.getTime() - d.uploaded_at.getTime()) / (1000 * 60 * 60 * 24),
+      ),
     }));
   }
 
   private async getUploadTrend(filters?: StatsFilterDto): Promise<any[]> {
-    const { startDate = this.getDefaultStartDate(), endDate = new Date() } = filters || {};
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
 
     const query = this.documentRepository
       .createQueryBuilder('document')
       .select("DATE_FORMAT(document.uploaded_at, '%Y-%m-%d')", 'date')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(document.file_size)', 'totalSize')
-      .where('document.uploaded_at BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .where('document.uploaded_at BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(document.uploaded_at, '%Y-%m-%d')")
       .orderBy('date', 'ASC');
 
@@ -629,7 +695,7 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
 
     const results = await query.getRawMany();
 
-    return results.map(r => ({
+    return results.map((r) => ({
       date: r.date,
       count: parseInt(r.count),
       totalSize: parseFloat(r.totalSize || 0),
@@ -649,43 +715,40 @@ export class DocumentStatsService extends BaseStatsService<DocumentCustomer> {
   }
 
   async linkDocumentsToSubStage(
-  documentIds: number[],
-  subStageId: string
-): Promise<void> {
-  if (!documentIds || documentIds.length === 0) {
-    throw new Error('Aucun document fourni');
+    documentIds: number[],
+    subStageId: string,
+  ): Promise<void> {
+    if (!documentIds || documentIds.length === 0) {
+      throw new Error('Aucun document fourni');
+    }
+
+    // Vérifier que le subStage existe
+    // const subStage = await this.subStageRepository.findOne({
+    //   where: { id: subStageId },
+    // });
+
+    // if (!subStage) {
+    //   throw new Error(`SubStage ${subStageId} non trouvé`);
+    // }
+
+    // 🔗 Ajout en masse (table pivot)
+    await this.documentRepository
+      .createQueryBuilder()
+      .relation('sub_stage_visits')
+      .of(documentIds) // 👈 tableau ici
+      .add(subStageId);
   }
 
-  // Vérifier que le subStage existe
-  // const subStage = await this.subStageRepository.findOne({
-  //   where: { id: subStageId },
-  // });
-
-  // if (!subStage) {
-  //   throw new Error(`SubStage ${subStageId} non trouvé`);
-  // }
-
-  // 🔗 Ajout en masse (table pivot)
-  await this.documentRepository
-    .createQueryBuilder()
-    .relation('sub_stage_visits')
-    .of(documentIds) // 👈 tableau ici
-    .add(subStageId);
-}
-
-async validatefile(documentId: number, validatorId: number): Promise<void> {
-  const document = await this.documentRepository.findOne({
-    where: { id: documentId },
-    relations: ['uploaded_by'],
-  });
-  if (!document) {
-    throw new Error(`Document avec ID ${documentId} non trouvé`);
+  async validatefile(documentId: number, validatorId: number): Promise<void> {
+    const document = await this.documentRepository.findOne({
+      where: { id: documentId },
+      relations: ['uploaded_by'],
+    });
+    if (!document) {
+      throw new Error(`Document avec ID ${documentId} non trouvé`);
+    }
+    document.status = DocumentCustomerStatus.ACCEPTED;
+    document.date_validation = new Date();
+    await this.documentRepository.save(document);
   }
-  document.status = DocumentCustomerStatus.ACCEPTED;
-  document.date_validation = new Date();
-  await this.documentRepository.save(document);
-}
-
-
-
 }

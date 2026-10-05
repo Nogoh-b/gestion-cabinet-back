@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import {
@@ -8,7 +13,11 @@ import {
   serializeCabinet,
 } from './entities/cabinet.entity';
 import { Plan } from '../plans/entities/plan.entity';
-import { applyLogoInput, logoFileToUrl, writeLogoFile } from './cabinet-logo.util';
+import {
+  applyLogoInput,
+  logoFileToUrl,
+  writeLogoFile,
+} from './cabinet-logo.util';
 import { CreateCabinetDto } from './dto/create-cabinet.dto';
 
 @Injectable()
@@ -65,10 +74,12 @@ export class CabinetService implements OnModuleInit {
     const cabinets = await this.repo.find();
     for (const c of cabinets) {
       if (c.logo_file) continue; // déjà migré
-      if (!c.logo || !(c.logo as Buffer).length || !c.logo_mime) continue;
-      const relPath = writeLogoFile(c.id, c.logo as Buffer, c.logo_mime);
+      if (!c.logo || !c.logo.length || !c.logo_mime) continue;
+      const relPath = writeLogoFile(c.id, c.logo, c.logo_mime);
       await this.repo.update(c.id, { logo_file: relPath });
-      this.logger.log(`✅ Logo cabinet #${c.id} exporté en fichier → ${relPath}`);
+      this.logger.log(
+        `✅ Logo cabinet #${c.id} exporté en fichier → ${relPath}`,
+      );
     }
   }
 
@@ -93,7 +104,9 @@ export class CabinetService implements OnModuleInit {
         await this.repo.update(c.id, { plan_id: plan.id });
         updated++;
       } else {
-        this.logger.warn(`Cabinet #${c.id} : plan "${code}" non trouvé dans la table plans`);
+        this.logger.warn(
+          `Cabinet #${c.id} : plan "${code}" non trouvé dans la table plans`,
+        );
       }
     }
     if (updated) {
@@ -109,43 +122,60 @@ export class CabinetService implements OnModuleInit {
    * templates mail/PDF, etc.) dans le contexte du nouveau tenant.
    */
   async create(data: CreateCabinetDto): Promise<Cabinet> {
-    const { logo_url, slogan, brand_color, contact_email, contact_phone,
-            address, website, rccm, nina, bank_account, email_footer,
-            ...rest } = data;
+    const {
+      logo_url,
+      slogan,
+      brand_color,
+      contact_email,
+      contact_phone,
+      address,
+      website,
+      rccm,
+      nina,
+      bank_account,
+      email_footer,
+      ...rest
+    } = data;
 
     // Résoudre le plan_id à partir du code plan (legacy field → FK)
     const planCode = rest.plan ?? 'free';
     let resolvedPlanId: number | null = null;
     try {
-      const planEntity = await this.planRepo.findOne({ where: { code: planCode, is_active: true } });
+      const planEntity = await this.planRepo.findOne({
+        where: { code: planCode, is_active: true },
+      });
       resolvedPlanId = planEntity?.id ?? null;
       if (!resolvedPlanId) {
-        this.logger.warn(`Plan "${planCode}" introuvable — plan_id restera null`);
+        this.logger.warn(
+          `Plan "${planCode}" introuvable — plan_id restera null`,
+        );
       }
     } catch (e) {
-      this.logger.warn(`Erreur lors de la résolution du plan "${planCode}" : ${e.message}`);
+      this.logger.warn(
+        `Erreur lors de la résolution du plan "${planCode}" : ${e.message}`,
+      );
     }
 
     const cabinet = this.repo.create({
-      code:           this.generateCode(),
-      name:           rest.name,
-      status:         'trial',
-      plan:           planCode,
-      plan_id:        resolvedPlanId,
-      routing_mode:   'path',
-      trial_ends_at:  this.trialEnd(30),
+      code: this.generateCode(),
+      name: rest.name,
+      status: 'trial',
+      plan: planCode,
+      plan_id: resolvedPlanId,
+      routing_mode: 'path',
+      trial_ends_at: this.trialEnd(30),
       // Branding & coordonnees
-      slogan:         slogan ?? null,
-      brand_color:    brand_color ?? null,
-      contact_email:  contact_email ?? null,
-      contact_phone:  contact_phone ?? null,
-      address:        address ?? null,
-      website:        website ?? null,
-      email_footer:   email_footer ?? null,
+      slogan: slogan ?? null,
+      brand_color: brand_color ?? null,
+      contact_email: contact_email ?? null,
+      contact_phone: contact_phone ?? null,
+      address: address ?? null,
+      website: website ?? null,
+      email_footer: email_footer ?? null,
       // Informations legales
-      rccm:           rccm ?? null,
-      nina:           nina ?? null,
-      bank_account:   bank_account ?? null,
+      rccm: rccm ?? null,
+      nina: nina ?? null,
+      bank_account: bank_account ?? null,
     });
 
     // Sauver d'abord pour obtenir l'id (nécessaire pour le logo_file)
@@ -185,32 +215,37 @@ export class CabinetService implements OnModuleInit {
    * pour fournir au frontend le branding complet avant authentification.
    */
   async resolveWithSettings(code: string): Promise<{
-    id:           number;
-    code:         string;
-    name:         string;
-    status:       string;
-    plan:         string;
+    id: number;
+    code: string;
+    name: string;
+    status: string;
+    plan: string;
     routing_mode: string;
-    logo:         string | null;
-    slogan:       string | null;
+    logo: string | null;
+    slogan: string | null;
   } | null> {
     const cabinet = await this.findByCode(code);
     if (!cabinet) return null;
 
     return {
-      id:           cabinet.id,
-      code:         cabinet.code,
-      name:         cabinet.name,
-      status:       cabinet.status,
-      plan:         cabinet.plan,
+      id: cabinet.id,
+      code: cabinet.code,
+      name: cabinet.name,
+      status: cabinet.status,
+      plan: cabinet.plan,
       routing_mode: cabinet.routing_mode,
       // URL hébergée en priorité (affichable en e-mail), repli data-URI.
-      logo:         logoFileToUrl(cabinet.logo_file) ?? cabinetLogoToDataUri(cabinet.logo, cabinet.logo_mime),
-      slogan:       cabinet.slogan?.trim() ? cabinet.slogan : null,
+      logo:
+        logoFileToUrl(cabinet.logo_file) ??
+        cabinetLogoToDataUri(cabinet.logo, cabinet.logo_mime),
+      slogan: cabinet.slogan?.trim() ? cabinet.slogan : null,
     };
   }
 
-  async update(id: number, data: Partial<Pick<Cabinet, 'name' | 'status' | 'plan' | 'routing_mode'>>): Promise<Cabinet> {
+  async update(
+    id: number,
+    data: Partial<Pick<Cabinet, 'name' | 'status' | 'plan' | 'routing_mode'>>,
+  ): Promise<Cabinet> {
     await this.repo.update(id, data);
     return this.findById(id);
   }
@@ -221,9 +256,18 @@ export class CabinetService implements OnModuleInit {
     id: number,
     data: {
       logo_url?: string | null;
-    } & Partial<Pick<Cabinet,
-      'brand_color' | 'contact_email' | 'contact_phone' | 'address' | 'website' | 'email_footer' | 'name'
-    >>,
+    } & Partial<
+      Pick<
+        Cabinet,
+        | 'brand_color'
+        | 'contact_email'
+        | 'contact_phone'
+        | 'address'
+        | 'website'
+        | 'email_footer'
+        | 'name'
+      >
+    >,
   ) {
     const cabinet = await this.findById(id);
     const { logo_url, ...rest } = data;

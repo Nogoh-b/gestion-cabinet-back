@@ -23,4 +23,3 @@ export class CreateRegionDto {
   @IsOptional()
   population?: string;
 }
- 

@@ -1,11 +1,20 @@
 // referral-commission-search.dto.ts
 import { Type } from 'class-transformer';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CommissionStatus } from '../entities/referral-commission.entity';
 
 export class ReferralCommissionSearchDto {
-  @ApiPropertyOptional({ description: 'Filtrer par apport (dossier_referral_id)' })
+  @ApiPropertyOptional({
+    description: 'Filtrer par apport (dossier_referral_id)',
+  })
   @IsOptional()
   @IsInt()
   dossier_referral_id?: number;
@@ -50,7 +59,10 @@ export class ReferralCommissionSearchDto {
   @Min(1)
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Champ de tri', example: 'calculation_date' })
+  @ApiPropertyOptional({
+    description: 'Champ de tri',
+    example: 'calculation_date',
+  })
   @IsOptional()
   @IsString()
   sortBy?: string = 'calculation_date';

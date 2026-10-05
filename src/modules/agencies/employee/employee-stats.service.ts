@@ -2,7 +2,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Employee, EmployeePosition, EmployeeStatus } from './entities/employee.entity';
+import {
+  Employee,
+  EmployeePosition,
+  EmployeeStatus,
+} from './entities/employee.entity';
 import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service';
 import { Branch } from './../branch/entities/branch.entity';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
@@ -23,7 +27,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     super(employeeRepository);
   }
 
-  async getStats(filters?: StatsFilterDto): Promise<EmployeeStatsDto | SingleEmployeeStatsDto> {
+  async getStats(
+    filters?: StatsFilterDto,
+  ): Promise<EmployeeStatsDto | SingleEmployeeStatsDto> {
     // Si un employeeId est fourni, on retourne les stats détaillées de cet employé
     if (filters?.employeeId) {
       return this.getStatsForSingleEmployee(filters.employeeId, filters);
@@ -36,7 +42,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
   // Méthode pour un employé spécifique
   private async getStatsForSingleEmployee(
     employeeId: number,
-    filters?: StatsFilterDto
+    filters?: StatsFilterDto,
   ): Promise<SingleEmployeeStatsDto> {
     const employee = await this.employeeRepository.findOne({
       where: { id: employeeId },
@@ -51,8 +57,8 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
         'collaborating_dossiers',
         'collaborating_dossiers.client',
         'assigned_diligences',
-        'assigned_diligences.dossier'
-      ]
+        'assigned_diligences.dossier',
+      ],
     });
 
     if (!employee) {
@@ -94,84 +100,121 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     };
   }
 
-  private getResumeStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['resume'] {
-      // Dossiers gérés (responsable principal)
-      const managedDossiers = employee.managed_dossiers || [];
-      const managedDossiersFiltres = this.filterByDate(managedDossiers, filters, 'created_at');
-      
-      // Dossiers en collaboration
-      const collaboratingDossiers = employee.collaborating_dossiers || [];
-      const collaboratingDossiersFiltres = this.filterByDate(collaboratingDossiers, filters, 'created_at');
-      
-      // Combiner tous les dossiers pour certaines stats globales
-      const tousDossiersFiltres = [...managedDossiersFiltres, ...collaboratingDossiersFiltres];
-      
-      // Stats pour dossiers gérés
-      const managedActifs = managedDossiersFiltres.filter(d => d.is_active);
-      const managedClos = managedDossiersFiltres.filter(d => d.is_closed);
-      
-      // Stats pour dossiers en collaboration
-      const collaboratingActifs = collaboratingDossiersFiltres.filter(
-        d => d.is_active,
-      );
-      const collaboratingClos = collaboratingDossiersFiltres.filter(
-        d => d.is_closed,
-      );
-      
-      // Stats combinées
-      const dossiersActifsTotal = managedActifs.length + collaboratingActifs.length;
-      const dossiersClosTotal = managedClos.length + collaboratingClos.length;
+  private getResumeStats(
+    employee: Employee,
+    filters?: StatsFilterDto,
+  ): SingleEmployeeStatsDto['resume'] {
+    // Dossiers gérés (responsable principal)
+    const managedDossiers = employee.managed_dossiers || [];
+    const managedDossiersFiltres = this.filterByDate(
+      managedDossiers,
+      filters,
+      'created_at',
+    );
 
-      // Audiences (de tous les dossiers)
-      const toutesAudiences = tousDossiersFiltres.flatMap(d => d.audiences || []);
-      const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
-      
-      const audiencesAVenir = audiencesFiltrees.filter(a => 
-        new Date(a.full_datetime) > new Date() && a.status === AudienceStatus.SCHEDULED
-      );
-      const audiencesPassees = audiencesFiltrees.filter(a => 
-        new Date(a.full_datetime) < new Date()
-      );
+    // Dossiers en collaboration
+    const collaboratingDossiers = employee.collaborating_dossiers || [];
+    const collaboratingDossiersFiltres = this.filterByDate(
+      collaboratingDossiers,
+      filters,
+      'created_at',
+    );
 
-      // Diligences assignées (personnelles)
-      const diligences = employee.assigned_diligences || [];
-      const diligencesFiltrees = this.filterByDate(diligences, filters, 'created_at');
-      
-      const diligencesEnCours = diligencesFiltrees.filter(d => 
-        d.status === DiligenceStatus.IN_PROGRESS || d.status === DiligenceStatus.REVIEW
-      );
-      const diligencesTerminees = diligencesFiltrees.filter(d => d.status === DiligenceStatus.COMPLETED);
+    // Combiner tous les dossiers pour certaines stats globales
+    const tousDossiersFiltres = [
+      ...managedDossiersFiltres,
+      ...collaboratingDossiersFiltres,
+    ];
 
-      const maxDossiers = employee.max_dossiers || 50;
-      const tauxOccupation = Math.min(100, Math.round((dossiersActifsTotal / maxDossiers) * 100));
+    // Stats pour dossiers gérés
+    const managedActifs = managedDossiersFiltres.filter((d) => d.is_active);
+    const managedClos = managedDossiersFiltres.filter((d) => d.is_closed);
 
-      return {
-        // Stats globales
-        dossiersActifs: dossiersActifsTotal,
-        dossiersClos: dossiersClosTotal,
-        totalDossiers: tousDossiersFiltres.length,
-        
-        // Détail par type
-        managed: {
-          actifs: managedActifs.length,
-          clos: managedClos.length,
-          total: managedDossiersFiltres.length
-        },
-        collaborating: {
-          actifs: collaboratingActifs.length,
-          clos: collaboratingClos.length,
-          total: collaboratingDossiersFiltres.length
-        },
-      
-        audiencesAVenir: audiencesAVenir.length,
-        audiencesPassees: audiencesPassees.length,
-        diligencesEnCours: diligencesEnCours.length,
-        diligencesTerminees: diligencesTerminees.length,
-        tauxOccupation,
-      };
+    // Stats pour dossiers en collaboration
+    const collaboratingActifs = collaboratingDossiersFiltres.filter(
+      (d) => d.is_active,
+    );
+    const collaboratingClos = collaboratingDossiersFiltres.filter(
+      (d) => d.is_closed,
+    );
+
+    // Stats combinées
+    const dossiersActifsTotal =
+      managedActifs.length + collaboratingActifs.length;
+    const dossiersClosTotal = managedClos.length + collaboratingClos.length;
+
+    // Audiences (de tous les dossiers)
+    const toutesAudiences = tousDossiersFiltres.flatMap(
+      (d) => d.audiences || [],
+    );
+    const audiencesFiltrees = this.filterByDate(
+      toutesAudiences,
+      filters,
+      'created_at',
+    );
+
+    const audiencesAVenir = audiencesFiltrees.filter(
+      (a) =>
+        new Date(a.full_datetime) > new Date() &&
+        a.status === AudienceStatus.SCHEDULED,
+    );
+    const audiencesPassees = audiencesFiltrees.filter(
+      (a) => new Date(a.full_datetime) < new Date(),
+    );
+
+    // Diligences assignées (personnelles)
+    const diligences = employee.assigned_diligences || [];
+    const diligencesFiltrees = this.filterByDate(
+      diligences,
+      filters,
+      'created_at',
+    );
+
+    const diligencesEnCours = diligencesFiltrees.filter(
+      (d) =>
+        d.status === DiligenceStatus.IN_PROGRESS ||
+        d.status === DiligenceStatus.REVIEW,
+    );
+    const diligencesTerminees = diligencesFiltrees.filter(
+      (d) => d.status === DiligenceStatus.COMPLETED,
+    );
+
+    const maxDossiers = employee.max_dossiers || 50;
+    const tauxOccupation = Math.min(
+      100,
+      Math.round((dossiersActifsTotal / maxDossiers) * 100),
+    );
+
+    return {
+      // Stats globales
+      dossiersActifs: dossiersActifsTotal,
+      dossiersClos: dossiersClosTotal,
+      totalDossiers: tousDossiersFiltres.length,
+
+      // Détail par type
+      managed: {
+        actifs: managedActifs.length,
+        clos: managedClos.length,
+        total: managedDossiersFiltres.length,
+      },
+      collaborating: {
+        actifs: collaboratingActifs.length,
+        clos: collaboratingClos.length,
+        total: collaboratingDossiersFiltres.length,
+      },
+
+      audiencesAVenir: audiencesAVenir.length,
+      audiencesPassees: audiencesPassees.length,
+      diligencesEnCours: diligencesEnCours.length,
+      diligencesTerminees: diligencesTerminees.length,
+      tauxOccupation,
+    };
   }
 
-  private getDossiersStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['dossiers'] {
+  private getDossiersStats(
+    employee: Employee,
+    filters?: StatsFilterDto,
+  ): SingleEmployeeStatsDto['dossiers'] {
     const dossiers = employee.managed_dossiers || [];
     const dossiersFiltres = this.filterByDate(dossiers, filters, 'created_at');
     const total = dossiersFiltres.length;
@@ -179,11 +222,19 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     // Dossiers actifs avec prochaine audience
     const actifs = dossiersFiltres
-      .filter(d => d.is_active)
-      .map(d => {
+      .filter((d) => d.is_active)
+      .map((d) => {
         const prochainesAudiences = (d.audiences || [])
-          .filter(a => new Date(a.full_datetime) > maintenant && a.status === AudienceStatus.SCHEDULED)
-          .sort((a, b) => new Date(a.full_datetime).getTime() - new Date(b.full_datetime).getTime());
+          .filter(
+            (a) =>
+              new Date(a.full_datetime) > maintenant &&
+              a.status === AudienceStatus.SCHEDULED,
+          )
+          .sort(
+            (a, b) =>
+              new Date(a.full_datetime).getTime() -
+              new Date(b.full_datetime).getTime(),
+          );
 
         return {
           id: d.id,
@@ -199,9 +250,12 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     // Dossiers récents
     const recents = [...dossiersFiltres]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
       .slice(0, 10)
-      .map(d => ({
+      .map((d) => ({
         id: d.id,
         numero: d.dossier_number,
         client: d.client?.full_name,
@@ -211,7 +265,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     // Répartition par statut
     const byStatusMap = new Map<number, number>();
-    dossiersFiltres.forEach(d => {
+    dossiersFiltres.forEach((d) => {
       byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
     });
 
@@ -235,16 +289,18 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };
 
-    const parStatut = Array.from(byStatusMap.entries()).map(([status, count]) => ({
-      name: statusLabels[status] || 'Inconnu',
-      value: count,
-      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-      color: statusColors[status] || '#6b7280',
-    }));
+    const parStatut = Array.from(byStatusMap.entries()).map(
+      ([status, count]) => ({
+        name: statusLabels[status] || 'Inconnu',
+        value: count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: statusColors[status] || '#6b7280',
+      }),
+    );
 
     // Répartition par type de procédure
     const typeMap = new Map<string, number>();
-    dossiersFiltres.forEach(d => {
+    dossiersFiltres.forEach((d) => {
       const type = d.procedure_type?.name || 'Non spécifié';
       typeMap.set(type, (typeMap.get(type) || 0) + 1);
     });
@@ -266,16 +322,31 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     };
   }
 
-  private getAudiencesStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['audiences'] {
+  private getAudiencesStats(
+    employee: Employee,
+    filters?: StatsFilterDto,
+  ): SingleEmployeeStatsDto['audiences'] {
     const dossiers = employee.managed_dossiers || [];
-    const toutesAudiences = dossiers.flatMap(d => d.audiences || []);
-    const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
+    const toutesAudiences = dossiers.flatMap((d) => d.audiences || []);
+    const audiencesFiltrees = this.filterByDate(
+      toutesAudiences,
+      filters,
+      'created_at',
+    );
     const maintenant = new Date();
 
     const aVenir = audiencesFiltrees
-      .filter(a => new Date(a.full_datetime) > maintenant && a.status === AudienceStatus.SCHEDULED)
-      .sort((a, b) => new Date(a.full_datetime).getTime() - new Date(b.full_datetime).getTime())
-      .map(a => ({
+      .filter(
+        (a) =>
+          new Date(a.full_datetime) > maintenant &&
+          a.status === AudienceStatus.SCHEDULED,
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.full_datetime).getTime() -
+          new Date(b.full_datetime).getTime(),
+      )
+      .map((a) => ({
         id: a.id,
         titre: a.title,
         date: a.full_datetime,
@@ -285,10 +356,14 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       }));
 
     const passees = audiencesFiltrees
-      .filter(a => new Date(a.full_datetime) < maintenant)
-      .sort((a, b) => new Date(b.full_datetime).getTime() - new Date(a.full_datetime).getTime())
+      .filter((a) => new Date(a.full_datetime) < maintenant)
+      .sort(
+        (a, b) =>
+          new Date(b.full_datetime).getTime() -
+          new Date(a.full_datetime).getTime(),
+      )
       .slice(0, 10)
-      .map(a => ({
+      .map((a) => ({
         id: a.id,
         titre: a.title,
         date: a.full_datetime,
@@ -297,9 +372,14 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
         statut: a.status,
       }));
 
-    const audiencesTenues = audiencesFiltrees.filter(a => a.status === AudienceStatus.HELD).length;
+    const audiencesTenues = audiencesFiltrees.filter(
+      (a) => a.status === AudienceStatus.HELD,
+    ).length;
     const totalAudiences = audiencesFiltrees.length;
-    const tauxTenues = totalAudiences > 0 ? Math.round((audiencesTenues / totalAudiences) * 100) : 0;
+    const tauxTenues =
+      totalAudiences > 0
+        ? Math.round((audiencesTenues / totalAudiences) * 100)
+        : 0;
 
     return {
       aVenir,
@@ -309,16 +389,30 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     };
   }
 
-  private getDiligencesStats(employee: Employee, filters?: StatsFilterDto): SingleEmployeeStatsDto['diligences'] {
+  private getDiligencesStats(
+    employee: Employee,
+    filters?: StatsFilterDto,
+  ): SingleEmployeeStatsDto['diligences'] {
     const diligences = employee.assigned_diligences || [];
-    const diligencesFiltrees = this.filterByDate(diligences, filters, 'created_at');
+    const diligencesFiltrees = this.filterByDate(
+      diligences,
+      filters,
+      'created_at',
+    );
     const maintenant = new Date();
 
     const enCours = diligencesFiltrees
-      .filter(d => d.status === DiligenceStatus.IN_PROGRESS || d.status === DiligenceStatus.REVIEW)
-      .map(d => {
-        const deadline = d.deadline instanceof Date ? d.deadline : new Date(d.deadline);
-        const joursRestants = Math.ceil((deadline.getTime() - maintenant.getTime()) / (1000 * 60 * 60 * 24));
+      .filter(
+        (d) =>
+          d.status === DiligenceStatus.IN_PROGRESS ||
+          d.status === DiligenceStatus.REVIEW,
+      )
+      .map((d) => {
+        const deadline =
+          d.deadline instanceof Date ? d.deadline : new Date(d.deadline);
+        const joursRestants = Math.ceil(
+          (deadline.getTime() - maintenant.getTime()) / (1000 * 60 * 60 * 24),
+        );
 
         return {
           id: d.id,
@@ -333,10 +427,14 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .sort((a, b) => a.joursRestants - b.joursRestants);
 
     const terminees = diligencesFiltrees
-      .filter(d => d.status === DiligenceStatus.COMPLETED)
-      .sort((a, b) => new Date(b.completion_date).getTime() - new Date(a.completion_date).getTime())
+      .filter((d) => d.status === DiligenceStatus.COMPLETED)
+      .sort(
+        (a, b) =>
+          new Date(b.completion_date).getTime() -
+          new Date(a.completion_date).getTime(),
+      )
       .slice(0, 10)
-      .map(d => ({
+      .map((d) => ({
         id: d.id,
         titre: d.title,
         dossier: d.dossier?.dossier_number,
@@ -344,9 +442,14 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
         statut: d.status,
       }));
 
-    const diligencesTerminees = diligencesFiltrees.filter(d => d.status === DiligenceStatus.COMPLETED).length;
+    const diligencesTerminees = diligencesFiltrees.filter(
+      (d) => d.status === DiligenceStatus.COMPLETED,
+    ).length;
     const totalDiligences = diligencesFiltrees.length;
-    const tauxCompletion = totalDiligences > 0 ? Math.round((diligencesTerminees / totalDiligences) * 100) : 0;
+    const tauxCompletion =
+      totalDiligences > 0
+        ? Math.round((diligencesTerminees / totalDiligences) * 100)
+        : 0;
 
     return {
       enCours,
@@ -358,16 +461,16 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
   private async getPerformanceStatsForEmployee(
     employee: Employee,
-    filters?: StatsFilterDto
+    filters?: StatsFilterDto,
   ): Promise<SingleEmployeeStatsDto['performance']> {
     const dossiers = employee.managed_dossiers || [];
     const dossiersFiltres = this.filterByDate(dossiers, filters, 'created_at');
-    
+
     // Dossiers clos par mois
-    const dossiersClos = dossiersFiltres.filter(d => d.is_closed);
+    const dossiersClos = dossiersFiltres.filter((d) => d.is_closed);
     const closParMois = new Map<string, number>();
-    
-    dossiersClos.forEach(d => {
+
+    dossiersClos.forEach((d) => {
       if (d.closing_date) {
         const date = new Date(d.closing_date);
         const mois = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -383,41 +486,57 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     // Temps moyen de traitement
     let totalJours = 0;
     let dossiersAvecDuree = 0;
-    
-    dossiersClos.forEach(d => {
+
+    dossiersClos.forEach((d) => {
       if (d.opening_date && d.closing_date) {
         const ouverture = new Date(d.opening_date);
         const cloture = new Date(d.closing_date);
-        const jours = Math.ceil((cloture.getTime() - ouverture.getTime()) / (1000 * 60 * 60 * 24));
+        const jours = Math.ceil(
+          (cloture.getTime() - ouverture.getTime()) / (1000 * 60 * 60 * 24),
+        );
         totalJours += jours;
         dossiersAvecDuree++;
       }
     });
 
-    const tempsMoyenTraitement = dossiersAvecDuree > 0 ? Math.round(totalJours / dossiersAvecDuree) : 0;
+    const tempsMoyenTraitement =
+      dossiersAvecDuree > 0 ? Math.round(totalJours / dossiersAvecDuree) : 0;
 
     // Taux de succès — définition canonique (alignée sur les Rapports avancés) :
     //   gagnés / (gagnés + perdus + transigés), basé sur le champ `outcome`.
     // Les issues `abandoned`/`unknown` sont exclues (ni gagnées ni perdues).
-    const gagnes = dossiersClos.filter(d => (d as any).outcome === 'won').length;
-    const tranches = dossiersClos.filter(d =>
-      ['won', 'lost', 'settled'].includes((d as any).outcome),
+    const gagnes = dossiersClos.filter((d) => d.outcome === 'won').length;
+    const tranches = dossiersClos.filter((d) =>
+      ['won', 'lost', 'settled'].includes(d.outcome),
     ).length;
     const tauxSucces = tranches > 0 ? Math.round((gagnes / tranches) * 100) : 0;
 
     // Audiences
-    const toutesAudiences = dossiers.flatMap(d => d.audiences || []);
-    const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
-    const audiencesTenues = audiencesFiltrees.filter(a => a.status === AudienceStatus.HELD).length;
-    const audiencesAnnulees = audiencesFiltrees.filter(a => a.status === AudienceStatus.CANCELLED).length;
+    const toutesAudiences = dossiers.flatMap((d) => d.audiences || []);
+    const audiencesFiltrees = this.filterByDate(
+      toutesAudiences,
+      filters,
+      'created_at',
+    );
+    const audiencesTenues = audiencesFiltrees.filter(
+      (a) => a.status === AudienceStatus.HELD,
+    ).length;
+    const audiencesAnnulees = audiencesFiltrees.filter(
+      (a) => a.status === AudienceStatus.CANCELLED,
+    ).length;
 
     // Diligences dans les temps
     const diligences = employee.assigned_diligences || [];
-    const diligencesFiltrees = this.filterByDate(diligences, filters, 'created_at');
-    const diligencesDansLesTemps = diligencesFiltrees.filter(d => 
-      d.status === DiligenceStatus.COMPLETED && 
-      d.completion_date && 
-      new Date(d.completion_date) <= new Date(d.deadline)
+    const diligencesFiltrees = this.filterByDate(
+      diligences,
+      filters,
+      'created_at',
+    );
+    const diligencesDansLesTemps = diligencesFiltrees.filter(
+      (d) =>
+        d.status === DiligenceStatus.COMPLETED &&
+        d.completion_date &&
+        new Date(d.completion_date) <= new Date(d.deadline),
     ).length;
 
     return {
@@ -430,14 +549,19 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     };
   }
 
-  private getWorkloadForEmployee(employee: Employee): SingleEmployeeStatsDto['chargeTravail'] {
+  private getWorkloadForEmployee(
+    employee: Employee,
+  ): SingleEmployeeStatsDto['chargeTravail'] {
     const dossiersActifs = (employee.managed_dossiers || []).filter(
-      d => d.is_active,
+      (d) => d.is_active,
     ).length;
-    
+
     const maxLoad = employee.max_dossiers || 50;
     const currentLoad = dossiersActifs;
-    const disponibilite = Math.max(0, Math.round(((maxLoad - currentLoad) / maxLoad) * 100));
+    const disponibilite = Math.max(
+      0,
+      Math.round(((maxLoad - currentLoad) / maxLoad) * 100),
+    );
 
     let recommandation = '';
     if (disponibilite > 70) {
@@ -460,15 +584,19 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
   private async getCollaborationStats(
     employee: Employee,
-    filters?: StatsFilterDto
+    filters?: StatsFilterDto,
   ): Promise<SingleEmployeeStatsDto['collaboration']> {
     const collaboratingDossiers = employee.collaborating_dossiers || [];
-    const dossiersFiltres = this.filterByDate(collaboratingDossiers, filters, 'created_at');
-    
+    const dossiersFiltres = this.filterByDate(
+      collaboratingDossiers,
+      filters,
+      'created_at',
+    );
+
     // Compter les collaborateurs fréquents
     const collaborateurMap = new Map<number, { nom: string; count: number }>();
 
-    dossiersFiltres.forEach(dossier => {
+    dossiersFiltres.forEach((dossier) => {
       if (dossier.lawyer_id && dossier.lawyer_id !== employee.id) {
         const current = collaborateurMap.get(dossier.lawyer_id) || {
           nom: dossier.lawyer?.full_name || 'Inconnu',
@@ -505,19 +633,27 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     return labels[status] || 'Inconnu';
   }
 
-  private filterByDate(items: any[], filters?: StatsFilterDto, dateField: string = 'created_at'): any[] {
+  private filterByDate(
+    items: any[],
+    filters?: StatsFilterDto,
+    dateField: string = 'created_at',
+  ): any[] {
     if (!filters?.startDate && !filters?.endDate) return items;
-    
-    return items.filter(item => {
+
+    return items.filter((item) => {
       const itemDate = new Date(item[dateField]);
-      if (filters?.startDate && itemDate < new Date(filters.startDate)) return false;
-      if (filters?.endDate && itemDate > new Date(filters.endDate)) return false;
+      if (filters?.startDate && itemDate < new Date(filters.startDate))
+        return false;
+      if (filters?.endDate && itemDate > new Date(filters.endDate))
+        return false;
       return true;
     });
   }
 
   // Méthode existante pour les stats globales
-  private async getGlobalStats(filters?: StatsFilterDto): Promise<EmployeeStatsDto> {
+  private async getGlobalStats(
+    filters?: StatsFilterDto,
+  ): Promise<EmployeeStatsDto> {
     const [
       total,
       active,
@@ -613,7 +749,10 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     return query.getCount();
   }
 
-  private async getCountByPosition(position: EmployeePosition, filters?: StatsFilterDto): Promise<number> {
+  private async getCountByPosition(
+    position: EmployeePosition,
+    filters?: StatsFilterDto,
+  ): Promise<number> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .where('employee.position = :position', { position });
@@ -621,7 +760,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     return query.getCount();
   }
 
-  private async getDistributionByPosition(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByPosition(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .select('employee.position', 'position')
@@ -658,7 +799,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       [EmployeePosition.ADMINISTRATIF]: '#6b7280',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: positionLabels[r.position] || r.position,
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -667,7 +808,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     }));
   }
 
-  private async getDistributionByStatus(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByStatus(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .select('employee.status', 'status')
@@ -693,7 +836,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       [EmployeeStatus.VACATION]: '#f59e0b',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || 'Inconnu',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -702,7 +845,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     }));
   }
 
-  private async getDistributionByBranch(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByBranch(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoin('employee.branch', 'branch')
@@ -718,14 +863,16 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Inconnue',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionBySpecialization(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionBySpecialization(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .select(['employee.specialization'])
@@ -734,13 +881,16 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     this.applyFilters(query, filters, 'employee');
 
     const employees = await query.getMany();
-    
+
     const specializationCount = new Map<string, number>();
-    employees.forEach(emp => {
+    employees.forEach((emp) => {
       if (emp.specialization) {
-        const specs = emp.specialization.split(',').map(s => s.trim());
-        specs.forEach(spec => {
-          specializationCount.set(spec, (specializationCount.get(spec) || 0) + 1);
+        const specs = emp.specialization.split(',').map((s) => s.trim());
+        specs.forEach((spec) => {
+          specializationCount.set(
+            spec,
+            (specializationCount.get(spec) || 0) + 1,
+          );
         });
       }
     });
@@ -752,7 +902,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const total = results.reduce((sum, r) => sum + r.count, 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name,
       value: r.count,
       percentage: this.calculatePercentage(r.count, total),
@@ -767,7 +917,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .where('employee.status = :status', { status: EmployeeStatus.ACTIVE })
       .getMany();
 
-    const workloadData = employees.map(emp => {
+    const workloadData = employees.map((emp) => {
       const managedCount = emp.managed_dossiers?.length || 0;
       const collaboratingCount = emp.collaborating_dossiers?.length || 0;
       const totalDossiers = managedCount + collaboratingCount;
@@ -784,9 +934,12 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       };
     });
 
-    const totalDossiers = workloadData.reduce((sum, w) => sum + w.totalDossiers, 0);
-    const overloadedCount = workloadData.filter(w => w.isOverloaded).length;
-    const underloadedCount = workloadData.filter(w => w.isUnderloaded).length;
+    const totalDossiers = workloadData.reduce(
+      (sum, w) => sum + w.totalDossiers,
+      0,
+    );
+    const overloadedCount = workloadData.filter((w) => w.isOverloaded).length;
+    const underloadedCount = workloadData.filter((w) => w.isUnderloaded).length;
 
     const ranges = [
       { min: 0, max: 20, label: '0-20%' },
@@ -797,26 +950,32 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       { min: 101, max: Infinity, label: '> 100%' },
     ];
 
-    const byLoadRange = ranges.map(range => {
-      const employeesInRange = workloadData.filter(w => 
-        w.loadPercentage >= range.min && w.loadPercentage <= range.max
+    const byLoadRange = ranges.map((range) => {
+      const employeesInRange = workloadData.filter(
+        (w) => w.loadPercentage >= range.min && w.loadPercentage <= range.max,
       );
-      const avgLoad = employeesInRange.length > 0
-        ? employeesInRange.reduce((sum, w) => sum + w.loadPercentage, 0) / employeesInRange.length
-        : 0;
+      const avgLoad =
+        employeesInRange.length > 0
+          ? employeesInRange.reduce((sum, w) => sum + w.loadPercentage, 0) /
+            employeesInRange.length
+          : 0;
 
       return {
         range: range.label,
         count: employeesInRange.length,
-        percentage: this.calculatePercentage(employeesInRange.length, employees.length),
+        percentage: this.calculatePercentage(
+          employeesInRange.length,
+          employees.length,
+        ),
         averageLoad: Math.round(avgLoad),
       };
     });
 
     return {
       totalDossiers,
-      averageDossiersPerEmployee: employees.length > 0 ? totalDossiers / employees.length : 0,
-      maxDossiers: Math.max(...workloadData.map(w => w.totalDossiers)),
+      averageDossiersPerEmployee:
+        employees.length > 0 ? totalDossiers / employees.length : 0,
+      maxDossiers: Math.max(...workloadData.map((w) => w.totalDossiers)),
       overloadedEmployees: overloadedCount,
       underloadedEmployees: underloadedCount,
       byLoadRange,
@@ -827,18 +986,35 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     const globalQuery = this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoin('employee.managed_dossiers', 'dossier')
-      .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed', { closed: 5 })
+      .leftJoin(
+        'employee.managed_dossiers',
+        'completedDossier',
+        'completedDossier.status = :closed',
+        { closed: 5 },
+      )
       .leftJoin('employee.managed_dossiers', 'audienceDossier')
       .leftJoin('audienceDossier.audiences', 'audience')
       .leftJoin('employee.assigned_diligences', 'diligence')
       .select('COUNT(DISTINCT dossier.id)', 'totalDossiers')
       .addSelect('COUNT(DISTINCT completedDossier.id)', 'completedDossiers')
-      .addSelect('AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))', 'avgCompletionTime')
+      .addSelect(
+        'AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))',
+        'avgCompletionTime',
+      )
       .addSelect('COUNT(DISTINCT audience.id)', 'totalAudiences')
-      .addSelect('SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END)', 'audiencesHeld')
+      .addSelect(
+        'SUM(CASE WHEN audience.status = :held THEN 1 ELSE 0 END)',
+        'audiencesHeld',
+      )
       .addSelect('COUNT(DISTINCT diligence.id)', 'totalDiligences')
-      .addSelect('SUM(CASE WHEN diligence.status = :completed THEN 1 ELSE 0 END)', 'diligencesCompleted')
-      .addSelect('SUM(CASE WHEN diligence.deadline >= diligence.completion_date THEN 1 ELSE 0 END)', 'diligencesOnTime')
+      .addSelect(
+        'SUM(CASE WHEN diligence.status = :completed THEN 1 ELSE 0 END)',
+        'diligencesCompleted',
+      )
+      .addSelect(
+        'SUM(CASE WHEN diligence.deadline >= diligence.completion_date THEN 1 ELSE 0 END)',
+        'diligencesOnTime',
+      )
       .setParameters({
         held: 'held',
         completed: 'completed',
@@ -853,7 +1029,10 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .select('employee.position', 'position')
       .addSelect('COUNT(DISTINCT employee.id)', 'employeeCount')
       .addSelect('COUNT(DISTINCT dossier.id)', 'totalDossiers')
-      .addSelect('AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))', 'avgCompletionTime')
+      .addSelect(
+        'AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))',
+        'avgCompletionTime',
+      )
       // Taux de succès canonique : gagnés / (gagnés+perdus+transigés).
       // COUNT(DISTINCT CASE…) → immunisé contre l'inflation des jointures.
       .addSelect(
@@ -862,7 +1041,11 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
         'successRate',
       )
       .leftJoin('employee.managed_dossiers', 'dossier')
-      .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed')
+      .leftJoin(
+        'employee.managed_dossiers',
+        'completedDossier',
+        'completedDossier.status = :closed',
+      )
       .setParameter('closed', 5)
       .groupBy('employee.position');
 
@@ -883,20 +1066,28 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     };
 
     return {
-      averageDossierCompletionTime: Math.round(parseFloat(global?.avgCompletionTime || 0)),
+      averageDossierCompletionTime: Math.round(
+        parseFloat(global?.avgCompletionTime || 0),
+      ),
       averageDossierSuccessRate: 75,
       totalAudiences: parseInt(global?.totalAudiences || 0),
       audiencesHeld: parseInt(global?.audiencesHeld || 0),
-      audiencesSuccessRate: parseInt(global?.totalAudiences || 0) > 0
-        ? Math.round((parseInt(global?.audiencesHeld || 0) / parseInt(global?.totalAudiences || 0)) * 100)
-        : 0,
+      audiencesSuccessRate:
+        parseInt(global?.totalAudiences || 0) > 0
+          ? Math.round(
+              (parseInt(global?.audiencesHeld || 0) /
+                parseInt(global?.totalAudiences || 0)) *
+                100,
+            )
+          : 0,
       totalDiligences: parseInt(global?.totalDiligences || 0),
       diligencesCompleted: parseInt(global?.diligencesCompleted || 0),
       diligencesOnTime: parseInt(global?.diligencesOnTime || 0),
-      byPosition: byPosition.map(p => ({
+      byPosition: byPosition.map((p) => ({
         position: positionLabels[p.position] || p.position,
         employeeCount: parseInt(p.employeeCount || 0),
-        averageDossiers: parseInt(p.totalDossiers || 0) / parseInt(p.employeeCount || 1),
+        averageDossiers:
+          parseInt(p.totalDossiers || 0) / parseInt(p.employeeCount || 1),
         averageCompletionTime: Math.round(parseFloat(p.avgCompletionTime || 0)),
         successRate: Math.round(parseFloat(p.successRate || 0)),
       })),
@@ -904,15 +1095,28 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
   }
 
   private async getNewHiresTrend(filters?: StatsFilterDto): Promise<any[]> {
-    const { startDate = this.getDefaultStartDate(), endDate = new Date() } = filters || {};
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
 
     const query = this.employeeRepository
       .createQueryBuilder('employee')
       .select("DATE_FORMAT(employee.hireDate, '%Y-%m')", 'month')
-      .addSelect("SUM(CASE WHEN employee.position = :avocat THEN 1 ELSE 0 END)", 'avocats')
-      .addSelect("SUM(CASE WHEN employee.position = :secretaire THEN 1 ELSE 0 END)", 'secretaires')
-      .addSelect("SUM(CASE WHEN employee.position = :assistant THEN 1 ELSE 0 END)", 'assistants')
-      .addSelect("SUM(CASE WHEN employee.position = :stagiaire THEN 1 ELSE 0 END)", 'stagiaires')
+      .addSelect(
+        'SUM(CASE WHEN employee.position = :avocat THEN 1 ELSE 0 END)',
+        'avocats',
+      )
+      .addSelect(
+        'SUM(CASE WHEN employee.position = :secretaire THEN 1 ELSE 0 END)',
+        'secretaires',
+      )
+      .addSelect(
+        'SUM(CASE WHEN employee.position = :assistant THEN 1 ELSE 0 END)',
+        'assistants',
+      )
+      .addSelect(
+        'SUM(CASE WHEN employee.position = :stagiaire THEN 1 ELSE 0 END)',
+        'stagiaires',
+      )
       .addSelect('COUNT(*)', 'total')
       .setParameters({
         avocat: EmployeePosition.AVOCAT,
@@ -920,7 +1124,10 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
         assistant: EmployeePosition.ASSISTANT,
         stagiaire: EmployeePosition.STAGIAIRE,
       })
-      .where('employee.hireDate BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .where('employee.hireDate BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(employee.hireDate, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -928,7 +1135,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const results = await query.getRawMany();
 
-    return results.map(r => ({
+    return results.map((r) => ({
       month: r.month,
       avocats: parseInt(r.avocats || 0),
       secretaires: parseInt(r.secretaires || 0),
@@ -944,7 +1151,11 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .leftJoinAndSelect('employee.user', 'user')
       .leftJoinAndSelect('employee.branch', 'branch')
       .leftJoin('employee.managed_dossiers', 'dossier')
-      .leftJoin('employee.managed_dossiers', 'completedDossier', 'completedDossier.status = :closed')
+      .leftJoin(
+        'employee.managed_dossiers',
+        'completedDossier',
+        'completedDossier.status = :closed',
+      )
       .leftJoin('dossier.audiences', 'audience')
       .leftJoin('employee.assigned_diligences', 'diligence')
       .select('employee.id', 'id')
@@ -953,13 +1164,24 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .addSelect('branch.name', 'branch')
       .addSelect('COUNT(DISTINCT dossier.id)', 'dossierCount')
       .addSelect('COUNT(DISTINCT completedDossier.id)', 'completedDossiers')
-      .addSelect("COUNT(DISTINCT CASE WHEN dossier.outcome = 'won' THEN dossier.id END)", 'wonCount')
-      .addSelect("COUNT(DISTINCT CASE WHEN dossier.outcome IN ('won','lost','settled') THEN dossier.id END)", 'decidedCount')
-      .addSelect('AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))', 'avgCompletionTime')
+      .addSelect(
+        "COUNT(DISTINCT CASE WHEN dossier.outcome = 'won' THEN dossier.id END)",
+        'wonCount',
+      )
+      .addSelect(
+        "COUNT(DISTINCT CASE WHEN dossier.outcome IN ('won','lost','settled') THEN dossier.id END)",
+        'decidedCount',
+      )
+      .addSelect(
+        'AVG(DATEDIFF(completedDossier.closing_date, completedDossier.opening_date))',
+        'avgCompletionTime',
+      )
       .addSelect('COUNT(DISTINCT audience.id)', 'audienceCount')
       .addSelect('COUNT(DISTINCT diligence.id)', 'diligenceCount')
       .setParameter('closed', 5)
-      .groupBy('employee.id, user.first_name, user.last_name, employee.position, branch.name')
+      .groupBy(
+        'employee.id, user.first_name, user.last_name, employee.position, branch.name',
+      )
       .orderBy('completedDossiers', 'DESC')
       .limit(10);
 
@@ -967,7 +1189,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const results = await query.getRawMany();
 
-    return results.map(r => ({
+    return results.map((r) => ({
       id: parseInt(r.id),
       name: r.name,
       position: r.position,
@@ -975,9 +1197,12 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       dossierCount: parseInt(r.dossierCount || 0),
       completedDossiers: parseInt(r.completedDossiers || 0),
       // Taux de succès canonique : gagnés / (gagnés+perdus+transigés).
-      successRate: parseInt(r.decidedCount || 0) > 0
-        ? Math.round((parseInt(r.wonCount || 0) / parseInt(r.decidedCount || 0)) * 100)
-        : 0,
+      successRate:
+        parseInt(r.decidedCount || 0) > 0
+          ? Math.round(
+              (parseInt(r.wonCount || 0) / parseInt(r.decidedCount || 0)) * 100,
+            )
+          : 0,
       averageCompletionTime: Math.round(parseFloat(r.avgCompletionTime || 0)),
       audienceCount: parseInt(r.audienceCount || 0),
       diligenceCount: parseInt(r.diligenceCount || 0),
@@ -997,7 +1222,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
 
     const results = await query.getMany();
 
-    return results.map(e => ({
+    return results.map((e) => ({
       id: e.id,
       name: e.full_name,
       position: e.position,
@@ -1010,7 +1235,9 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
     }));
   }
 
-  private async getAvailableEmployees(filters?: StatsFilterDto): Promise<any[]> {
+  private async getAvailableEmployees(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const employees = await this.employeeRepository
       .createQueryBuilder('employee')
       .leftJoinAndSelect('employee.user', 'user')
@@ -1020,10 +1247,11 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
       .getMany();
 
     return employees
-      .map(e => {
+      .map((e) => {
         const currentDossierCount = e.managed_dossiers?.length || 0;
         const maxDossiers = e.max_dossiers || 50;
-        const availabilityRate = ((maxDossiers - currentDossierCount) / maxDossiers) * 100;
+        const availabilityRate =
+          ((maxDossiers - currentDossierCount) / maxDossiers) * 100;
 
         return {
           id: e.id,
@@ -1037,7 +1265,7 @@ export class EmployeeStatsService extends BaseStatsService<Employee> {
           isAvailable: e.is_available && availabilityRate > 20,
         };
       })
-      .filter(e => e.isAvailable)
+      .filter((e) => e.isAvailable)
       .sort((a, b) => b.availabilityRate - a.availabilityRate)
       .slice(0, 20);
   }

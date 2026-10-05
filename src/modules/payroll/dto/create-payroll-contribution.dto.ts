@@ -1,6 +1,18 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEnum, IsBoolean, IsInt, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsEnum,
+  IsBoolean,
+  IsInt,
+  Min,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ContributionBase, ContributionPayer } from '../entities/payroll-contribution.entity';
+import {
+  ContributionBase,
+  ContributionPayer,
+} from '../entities/payroll-contribution.entity';
 
 export class CreatePayrollContributionDto {
   @ApiProperty({ example: 'CNPS_PVID' })
@@ -13,12 +25,18 @@ export class CreatePayrollContributionDto {
   @IsNotEmpty()
   label: string;
 
-  @ApiProperty({ example: 4.2, description: 'Pourcentage, ou montant si base = fixed' })
+  @ApiProperty({
+    example: 4.2,
+    description: 'Pourcentage, ou montant si base = fixed',
+  })
   @IsNumber()
   @Min(0)
   rate: number;
 
-  @ApiPropertyOptional({ enum: ContributionBase, default: ContributionBase.GROSS })
+  @ApiPropertyOptional({
+    enum: ContributionBase,
+    default: ContributionBase.GROSS,
+  })
   @IsEnum(ContributionBase)
   @IsOptional()
   base_type?: ContributionBase;
@@ -28,7 +46,10 @@ export class CreatePayrollContributionDto {
   @IsNotEmpty()
   payer: ContributionPayer;
 
-  @ApiPropertyOptional({ example: 750000, description: "Plafond mensuel de l'assiette" })
+  @ApiPropertyOptional({
+    example: 750000,
+    description: "Plafond mensuel de l'assiette",
+  })
   @IsNumber()
   @IsOptional()
   ceiling?: number;

@@ -15,6 +15,8 @@ import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { ExpenseLinesService } from './expense-lines.service';
 import { CreateExpenseLineDto } from './dto/create-expense-line.dto';
 import { UpdateExpenseLineDto } from './dto/update-expense-line.dto';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { User } from '../iam/user/entities/user.entity';
 
 @Controller('expense-lines')
 @ApiBearerAuth()
@@ -25,20 +27,20 @@ export class ExpenseLinesController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_EXPENSES')
   @ApiOperation({ summary: 'Ajouter une ligne de dépense' })
-  create(@Body() dto: CreateExpenseLineDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateExpenseLineDto, @CurrentUser() user: User) {
+    return this.service.create(dto, Number(user.id));
   }
 
   @Get('/report/:reportId')
   @RequirePermissions('')
-  @ApiOperation({ summary: 'Lignes d\'une note de frais' })
+  @ApiOperation({ summary: "Lignes d'une note de frais" })
   findByReport(@Param('reportId') reportId: string) {
     return this.service.findByReport(+reportId);
   }
 
   @Get(':id')
   @RequirePermissions('')
-  @ApiOperation({ summary: 'Détail d\'une ligne de dépense' })
+  @ApiOperation({ summary: "Détail d'une ligne de dépense" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }
@@ -47,15 +49,19 @@ export class ExpenseLinesController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_EXPENSES')
   @ApiOperation({ summary: 'Modifier une ligne de dépense' })
-  update(@Param('id') id: string, @Body() dto: UpdateExpenseLineDto) {
-    return this.service.update(+id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateExpenseLineDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.update(+id, dto, Number(user.id));
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_EXPENSES')
   @ApiOperation({ summary: 'Supprimer une ligne de dépense' })
-  remove(@Param('id') id: string) {
-    return this.service.remove(+id);
+  remove(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.remove(+id, Number(user.id));
   }
 }

@@ -1,5 +1,12 @@
 // src/common/utils/search.utils.ts
-import { FindOptionsWhere, Like, Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import {
+  FindOptionsWhere,
+  Like,
+  Between,
+  In,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+} from 'typeorm';
 import { ObjectLiteral } from 'typeorm';
 
 export interface SearchFilter {
@@ -10,11 +17,11 @@ export interface SearchFilter {
 
 export class SearchUtils {
   static buildWhereConditions<T extends ObjectLiteral>(
-    filters: SearchFilter[]
+    filters: SearchFilter[],
   ): FindOptionsWhere<T> {
     const where: Record<string, any> = {};
 
-    filters.forEach(filter => {
+    filters.forEach((filter) => {
       switch (filter.operator) {
         case 'like':
           where[filter.field] = Like(`%${filter.value}%`);
@@ -43,14 +50,14 @@ export class SearchUtils {
 
   static buildSearchConditions<T extends ObjectLiteral>(
     searchTerm: string,
-    searchableFields: string[]
+    searchableFields: string[],
   ): FindOptionsWhere<T>[] {
     if (!searchTerm || searchableFields.length === 0) {
       return [];
     }
 
-    return searchableFields.map(field => ({
-      [field]: Like(`%${searchTerm}%`)
+    return searchableFields.map((field) => ({
+      [field]: Like(`%${searchTerm}%`),
     })) as FindOptionsWhere<T>[];
   }
 }

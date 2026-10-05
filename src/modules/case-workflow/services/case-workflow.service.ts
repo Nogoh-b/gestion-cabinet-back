@@ -29,7 +29,9 @@ import {
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { DataSource, In, Repository } from 'typeorm';
+import { DossierAccessGrant } from 'src/modules/dossiers/entities/dossier-access-grant.entity';
+import { canBypassConfidentiality } from 'src/modules/dossiers/dossier-visibility';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import {
   BillableItemStatus,
   ClosureReviewStatus,
@@ -132,6 +134,8 @@ export class CaseWorkflowService {
     private readonly dataSource: DataSource,
     @InjectRepository(Dossier)
     private readonly dossierRepository: Repository<Dossier>,
+    @InjectRepository(DossierAccessGrant)
+    private readonly grantRepository: Repository<DossierAccessGrant>,
     @InjectRepository(DossierAction)
     private readonly actionRepository: Repository<DossierAction>,
     @InjectRepository(DossierRecommendation)
@@ -166,18 +170,32 @@ export class CaseWorkflowService {
     private readonly eventService: WorkflowEventService,
   ) {}
 
-  private assertConfidentialAccess(dossier: Dossier, user: User): void {
-    if (!dossier.confidentiality_level || user.role === UserRole.ADMIN) return;
+  /**
+   * Un dossier confidentiel n'est accessible qu'à l'administration et aux
+   * collaborateurs explicitement autorisés (`dossier_access_grant`). Être
+   * l'avocat responsable ou un collaborateur affecté ne suffit pas : c'est
+   * la même règle que celle appliquée aux listes et aux statistiques
+   * (voir dossiers/dossier-visibility.ts), afin qu'un dossier masqué dans
+   * la recherche ne reste pas actionnable par une autre porte d'entrée.
+   */
+  private async assertConfidentialAccess(
+    dossier: Dossier,
+    user: User,
+  ): Promise<void> {
+    if (!dossier.confidentiality_level) return;
+    if (canBypassConfidentiality()) return;
+
     const actorUserId = this.actorId(user);
-    const assigned =
-      dossier.lawyer_id === actorUserId ||
-      dossier.lawyer?.id === actorUserId ||
-      dossier.collaborators?.some(
-        (collaborator) => collaborator.id === actorUserId,
-      );
-    if (!assigned) {
+    const grant = await this.grantRepository.findOne({
+      where: {
+        dossier_id: dossier.id,
+        employee_id: actorUserId,
+        revoked_at: IsNull(),
+      },
+    });
+    if (!grant) {
       throw new ForbiddenException(
-        'Ce dossier confidentiel est réservé à ses membres affectés',
+        "Ce dossier confidentiel nécessite une autorisation d'accès accordée par l'administration",
       );
     }
   }
@@ -223,7 +241,7 @@ export class CaseWorkflowService {
     return this.featureRepository.save(
       this.featureRepository.create({
         tenant_id: tenantId,
-        enabled: false,
+        enabled: true,
         default_for_new_dossiers: false,
       }),
     );
@@ -383,11 +401,24 @@ export class CaseWorkflowService {
         },
         idempotencyKey: `OPENING:${idempotencyKey}`,
       });
-      return { dossier, openingItem };
+      const fixedFeeItem = await this.billingService.createFixedFeeItem(
+        manager,
+        dossier,
+        actorUserId,
+      );
+      return { dossier, openingItem, fixedFeeItem };
     });
 
     await this.billingService.getProfile(dossierId);
     let openingInvoice: Facture | null = null;
+    let fixedFeeInvoice: Facture | null = null;
+    if (result.fixedFeeItem?.status === BillableItemStatus.TO_INVOICE) {
+      fixedFeeInvoice = await this.billingService.invoiceFromItems(
+        { billable_item_ids: [result.fixedFeeItem.id] },
+        `FIXED_FEE:${dossierId}`,
+        actorUserId,
+      );
+    }
     if (result.openingItem?.status === BillableItemStatus.TO_INVOICE) {
       openingInvoice = await this.billingService.invoiceFromItems(
         { billable_item_ids: [result.openingItem.id] },
@@ -404,7 +435,9 @@ export class CaseWorkflowService {
       dossier: result.dossier,
       recommendation,
       openingBillableItem: result.openingItem,
+      fixedFeeBillableItem: result.fixedFeeItem,
       openingInvoice,
+      fixedFeeInvoice,
     };
   }
 
@@ -428,7 +461,7 @@ export class CaseWorkflowService {
     });
     if (!dossier)
       throw new NotFoundException(`Dossier ${dossierId} introuvable`);
-    this.assertConfidentialAccess(dossier, user);
+    await this.assertConfidentialAccess(dossier, user);
     const isV2 = dossier.workflow_engine === WorkflowEngine.ACTIONS_V2;
     let recommendation =
       isV2 && dossier.lifecycle_phase === DossierLifecyclePhase.TREATMENT

@@ -40,7 +40,9 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
     const diligence = loaded ?? entity;
     // En fallback (loaded === null), le dossier n'est pas chargé via la relation,
     // on utilise un objet partiel avec au moins l'id pour le lien.
-    const dossier: any = diligence.dossier ?? (diligence.dossier_id ? { id: diligence.dossier_id } : null);
+    const dossier: any =
+      diligence.dossier ??
+      (diligence.dossier_id ? { id: diligence.dossier_id } : null);
     const notifyClient = this.resolveTransientBoolean(
       'notify_client',
       entity,
@@ -60,8 +62,8 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
         : `/dossiers/diligences/${diligence.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         // L'avocat assigné peut être différent de l'avocat principal du dossier
@@ -87,7 +89,7 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
     );
     if (!change || change.newValue !== DiligenceStatus.COMPLETED) return;
 
-    const id = entity.id ?? (event.databaseEntity as Diligence)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
     const diligence = await this.load(id, event).catch(() => null);
     if (!diligence) return;
@@ -106,8 +108,8 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
       link: `/dossiers/${dossier?.id ?? ''}/diligences/${diligence.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         lawyer_id: diligence.assigned_lawyer_id ?? dossier?.lawyer_id ?? null,
@@ -167,8 +169,12 @@ export class DiligenceSubscriber extends NotifiableSubscriber<Diligence> {
     id: number,
     event?: InsertEvent<Diligence> | UpdateEvent<Diligence>,
   ): Promise<Diligence | null> {
-    return this.loadEntity<Diligence>(id, {
-      relations: ['dossier', 'dossier.client', 'assigned_lawyer'],
-    }, event);
+    return this.loadEntity<Diligence>(
+      id,
+      {
+        relations: ['dossier', 'dossier.client', 'assigned_lawyer'],
+      },
+      event,
+    );
   }
 }

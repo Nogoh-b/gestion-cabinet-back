@@ -1,6 +1,8 @@
 import {
   ActionBillingDecision,
+  ActionDefaultProfessionalTreatment,
   BillingCalculationMode,
+  BillingMode,
   DossierActionStatus,
   RecommendationTrigger,
 } from './case-workflow.enums';
@@ -312,6 +314,34 @@ export interface BillingCalculationInput {
   decisionReason?: string | null;
 }
 
+export function resolveDefaultActionBillingDecision(
+  treatment: ActionDefaultProfessionalTreatment | null | undefined,
+  dossierMode: BillingMode | null | undefined,
+): ActionBillingDecision {
+  switch (treatment) {
+    case ActionDefaultProfessionalTreatment.HOURLY:
+      return ActionBillingDecision.HOURLY;
+    case ActionDefaultProfessionalTreatment.VACATION:
+      return ActionBillingDecision.VACATION;
+    case ActionDefaultProfessionalTreatment.NON_BILLABLE:
+      return ActionBillingDecision.NON_BILLABLE;
+    case ActionDefaultProfessionalTreatment.NEEDS_REVIEW:
+      return ActionBillingDecision.NEEDS_REVIEW;
+    case ActionDefaultProfessionalTreatment.FOLLOW_DOSSIER:
+    default:
+      if (dossierMode === BillingMode.HOURLY) {
+        return ActionBillingDecision.HOURLY;
+      }
+      if (
+        dossierMode === BillingMode.FIXED ||
+        dossierMode === BillingMode.MIXED
+      ) {
+        return ActionBillingDecision.INCLUDED_IN_PACKAGE;
+      }
+      return ActionBillingDecision.NEEDS_REVIEW;
+  }
+}
+
 export interface BillingCalculationResult {
   quantity: number;
   unitPrice: number;
@@ -331,7 +361,10 @@ export function calculateActionBilling(
   let quantity = 1;
   let unitPrice = Number(input.definitionRate ?? 0);
   let reviewReason: string | null = null;
-  if (input.decision === ActionBillingDecision.NEEDS_REVIEW) {
+  if (
+    input.decision === ActionBillingDecision.NEEDS_REVIEW ||
+    input.decision === ActionBillingDecision.NOT_DECIDED
+  ) {
     reviewReason = input.decisionReason || 'Décision tarifaire à confirmer';
   } else if (input.mode === BillingCalculationMode.HOURLY) {
     quantity = Number(input.durationMinutes ?? 0) / 60;

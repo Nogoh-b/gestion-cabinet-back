@@ -3,8 +3,24 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { PaginationQueryDto } from 'src/core/shared/dto/pagination-query.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
-import { Controller, Post, Body, Param, Put, UseGuards, Get, Query, ParseIntPipe } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Body,
+  Param,
+  Put,
+  UseGuards,
+  Get,
+  Query,
+  ParseIntPipe,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { BranchService } from './branch.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { BranchResponseDto } from './dto/response-branch.dto';
@@ -16,8 +32,10 @@ import { BranchStatsService } from './branch-stats.service';
 @ApiTags('branch')
 @ApiBearerAuth()
 export class BranchController {
-  constructor(private readonly branchService: BranchService, 
-    private readonly statsService: BranchStatsService) {}
+  constructor(
+    private readonly branchService: BranchService,
+    private readonly statsService: BranchStatsService,
+  ) {}
 
   @Get('stats')
   // @Roles(UserRole.ADMIN)
@@ -25,11 +43,10 @@ export class BranchController {
     return this.statsService.getStats();
   }
 
-
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'une agence spécifique' })
-  @ApiParam({ name: 'id', description: 'ID de l\'agence' })
+  @ApiOperation({ summary: "Obtenir les statistiques d'une agence spécifique" })
+  @ApiParam({ name: 'id', description: "ID de l'agence" })
   async getStatsForBranch(
     @Param('id', ParseIntPipe) id: number,
     @Query('startDate') startDate?: string,
@@ -53,23 +70,30 @@ export class BranchController {
 
   @Get('search')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
-  @ApiResponse({ status: 200, description: 'Résultats de recherche', type: [BranchResponseDto]  })
+  @ApiResponse({
+    status: 200,
+    description: 'Résultats de recherche',
+    type: [BranchResponseDto],
+  })
   async search(
-
     @Query() searchParams?: SearchBranchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
     // return this.branchService.testSearch()
-    return this.branchService.searchWithTransformer(searchParams as SearchCriteria, BranchResponseDto, paginationParams);
-  } 
-  
+    return this.branchService.searchWithTransformer(
+      searchParams as SearchCriteria,
+      BranchResponseDto,
+      paginationParams,
+    );
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Get all branches' })
   // @UseGuards(JwtAuthGuard, PermissionsGuard)
   // @RequirePermissions('VIEW_BRANCH')
   findAllBranches() {
-    return this.branchService.findAllBranches(); 
+    return this.branchService.findAllBranches();
   }
 
   @Get(':id')
@@ -77,22 +101,19 @@ export class BranchController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   // @RequirePermissions('VIEW_BRANCH')
   findOne(@Param('id') id: number) {
-    return this.branchService.findOne(id,true);
+    return this.branchService.findOne(id, true);
   }
 
   @Get(':id/employees')
   @ApiOperation({ summary: 'Get All Employees of a Branch' })
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   // @RequirePermissions('VIEW_BRANCH')
-  findEmployees(@Param('id') id: number,     @Query() query: PaginationQueryDto
-  ) {
+  findEmployees(@Param('id') id: number, @Query() query: PaginationQueryDto) {
     const { page, limit, term, fields, exact, from, to } = query;
     const fieldList = fields ? fields.split(',') : undefined;
-    const isExact = exact ;
+    const isExact = exact;
     return this.branchService.findEmployeesByBranchId(id);
   }
-
-
 
   @Put(':id')
   @ApiOperation({ summary: 'Update branch' })
@@ -132,6 +153,4 @@ export class BranchController {
   activateBranch(@Param('id') id: number) {
     return this.branchService.activate(id);
   }
-
-
 }

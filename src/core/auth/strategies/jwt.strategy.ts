@@ -20,10 +20,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(req: Request, payload: any) {
-    const jwtTenantId: number      = payload.tenantId ?? 1;
-    const resolvedTenantId: number | undefined = (req as any)['resolvedTenantId'];
-    const permissions: string[]    = payload.permissions ?? [];
-    const isSuperAdmin             = permissions.includes('SUPER_ADMIN');
+    const jwtTenantId: number = payload.tenantId ?? 1;
+    const resolvedTenantId: number | undefined = (req as any)[
+      'resolvedTenantId'
+    ];
+    const permissions: string[] = payload.permissions ?? [];
+    const isSuperAdmin = permissions.includes('SUPER_ADMIN');
 
     // ── Validation cross-tenant (fail-closed) ────────────────────────────────
     // PRINCIPE : sur une route authentifiée, un jeton d'un cabinet A ne doit
@@ -47,7 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       resolvedTenantId !== jwtTenantId
     ) {
       throw new UnauthorizedException(
-        'Accès refusé : vos identifiants n\'appartiennent pas à ce cabinet.',
+        "Accès refusé : vos identifiants n'appartiennent pas à ce cabinet.",
       );
     }
 
@@ -68,14 +70,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     return {
-      id:          payload.sub,
-      userId:      payload.sub,
-      username:    payload.username,
-      email:       payload.email,
-      role:        payload.role,
+      id: payload.sub,
+      userId: payload.sub,
+      username: payload.username,
+      email: payload.email,
+      role: payload.role,
       permissions: payload.permissions ?? [],
-      customerId:  payload.customerId  ?? null,
-      tenantId:    jwtTenantId,
+      customerId: payload.customerId ?? null,
+      tenantId: jwtTenantId,
     };
   }
 }

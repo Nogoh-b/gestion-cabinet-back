@@ -2,7 +2,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProcedureCategoryDto, ProcedureStatsDto } from './dto/procedure-stats.dto';
+import {
+  ProcedureCategoryDto,
+  ProcedureStatsDto,
+} from './dto/procedure-stats.dto';
 import { ProcedureType } from './entities/procedure.entity';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 
@@ -15,9 +18,15 @@ export class ProcedureStatsService {
 
   async getStats(): Promise<ProcedureStatsDto> {
     const total = await this.procedureRepository.count();
-    const mainTypes = await this.procedureRepository.count({ where: { is_subtype: false } });
-    const subTypes = await this.procedureRepository.count({ where: { is_subtype: true } });
-    const active = await this.procedureRepository.count({ where: { is_active: true } });
+    const mainTypes = await this.procedureRepository.count({
+      where: { is_subtype: false },
+    });
+    const subTypes = await this.procedureRepository.count({
+      where: { is_subtype: true },
+    });
+    const active = await this.procedureRepository.count({
+      where: { is_active: true },
+    });
 
     // Stats par catégorie
     const proceduresQB = this.procedureRepository
@@ -30,8 +39,8 @@ export class ProcedureStatsService {
     const procedures = await proceduresQB.getMany();
 
     const categories = new Map<string, ProcedureCategoryDto>();
-    
-    procedures.forEach(p => {
+
+    procedures.forEach((p) => {
       const category = p.category || 'Autre';
       if (!categories.has(category)) {
         categories.set(category, {
@@ -41,7 +50,7 @@ export class ProcedureStatsService {
           dossiers: 0,
         });
       }
-      
+
       const cat = categories.get(category);
       cat!.count++;
       cat!.subtypes += p.subtypes?.length || 0;
@@ -73,7 +82,7 @@ export class ProcedureStatsService {
       subTypes,
       active,
       byCategory: Array.from(categories.values()),
-      mostUsed: mostUsed.map(m => ({
+      mostUsed: mostUsed.map((m) => ({
         id: m.id,
         name: m.name,
         code: m.code,

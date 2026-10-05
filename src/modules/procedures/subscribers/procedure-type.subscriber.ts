@@ -60,7 +60,8 @@ export class ProcedureTypeSubscriber extends BaseEntitySubscriber<ProcedureType>
     const templateName = `Procédure - ${entity.name}`;
 
     // Vérifier si un template existe déjà avec ce nom (dédup)
-    const existingTemplate = await this.templateService.findByName(templateName);
+    const existingTemplate =
+      await this.templateService.findByName(templateName);
     if (existingTemplate) {
       entity.procedure_template_id = existingTemplate.id;
       this.logger.log(
@@ -78,14 +79,16 @@ export class ProcedureTypeSubscriber extends BaseEntitySubscriber<ProcedureType>
     if (!defaultTemplate) {
       this.logger.warn(
         `ProcedureType "${entity.name}" (${entity.code}) créé sans template — ` +
-        `le template générique "${DEFAULT_PROCEDURE_TEMPLATE_NAME}" est introuvable en base. ` +
-        `Exécutez DefaultProcedureTemplateSeeder.`,
+          `le template générique "${DEFAULT_PROCEDURE_TEMPLATE_NAME}" est introuvable en base. ` +
+          `Exécutez DefaultProcedureTemplateSeeder.`,
       );
       return;
     }
 
     // Charger les transitions du template générique
-    const fullDefaultTemplate = await this.templateService.findOne(defaultTemplate.id);
+    const fullDefaultTemplate = await this.templateService.findOne(
+      defaultTemplate.id,
+    );
 
     // Créer un nouveau template par copie
     const newTemplate = await this.templateService.duplicateTemplate(
@@ -119,18 +122,32 @@ export class ProcedureTypeSubscriber extends BaseEntitySubscriber<ProcedureType>
    * ProcedureTypeWriteHandler.generateCode).
    */
   private generateCode(name: string): string {
-    const STOP_WORDS = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'et', 'ou', 'en', 'au', 'aux', 'un', 'une']);
+    const STOP_WORDS = new Set([
+      'de',
+      'du',
+      'des',
+      'la',
+      'le',
+      'les',
+      'et',
+      'ou',
+      'en',
+      'au',
+      'aux',
+      'un',
+      'une',
+    ]);
     return name
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')   // supprimer les accents
+      .replace(/[\u0300-\u036f]/g, '') // supprimer les accents
       .toUpperCase()
-      .replace(/[^A-Z0-9\s]/g, '')       // garder lettres + chiffres + espaces
+      .replace(/[^A-Z0-9\s]/g, '') // garder lettres + chiffres + espaces
       .split(/\s+/)
       .filter((w) => w.length > 1 && !STOP_WORDS.has(w.toLowerCase()))
-      .slice(0, 3)                       // max 3 mots
-      .map((w) => w.slice(0, 5))         // max 5 caractères par mot
+      .slice(0, 3) // max 3 mots
+      .map((w) => w.slice(0, 5)) // max 5 caractères par mot
       .join('-')
-      .slice(0, 50);                     // longueur max colonne
+      .slice(0, 50); // longueur max colonne
   }
 
   /**

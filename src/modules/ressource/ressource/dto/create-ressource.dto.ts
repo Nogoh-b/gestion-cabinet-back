@@ -1,16 +1,6 @@
 import { IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
-
-
-
-
-
-
-
-
-
-
 export enum RessourceChannel {
   BRANCH = 'BRANCH',
   OM = 'OM',
@@ -32,9 +22,12 @@ export class CreateRessourceDto {
   @IsNumber()
   quantity: number;
 
-
-  @ApiProperty({ required: false, enum: RessourceChannel, example: RessourceChannel.BRANCH })
-  channel?: RessourceChannel; 
+  @ApiProperty({
+    required: false,
+    enum: RessourceChannel,
+    example: RessourceChannel.BRANCH,
+  })
+  channel?: RessourceChannel;
 
   // @ApiProperty({ required: false, example: 1 })
   status?: number;

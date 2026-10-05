@@ -17,7 +17,6 @@ import { PlansModule } from '../plans/plans.module';
 import { UserRole } from '../iam/user-role/entities/user-role.entity';
 import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-role-assignment.entity';
 
-
 @Module({
   imports: [
     forwardRef(() => GeographyModule),
@@ -26,8 +25,21 @@ import { UserRoleAssignment } from '../iam/user-role-assignment/entities/user-ro
     PlansModule,
   ],
   controllers: [BranchController, EmployeeController],
-  providers: [BranchService, EmployeeService, EmployeeStatsService, EmployeeSubscriber, BranchStatsService, EmployeeWriteHandler],
-  exports: [BranchService, EmployeeService, EmployeeStatsService, TypeOrmModule, BranchStatsService],
+  providers: [
+    BranchService,
+    EmployeeService,
+    EmployeeStatsService,
+    EmployeeSubscriber,
+    BranchStatsService,
+    EmployeeWriteHandler,
+  ],
+  exports: [
+    BranchService,
+    EmployeeService,
+    EmployeeStatsService,
+    TypeOrmModule,
+    BranchStatsService,
+  ],
 })
 export class AgenciesModule {
   constructor(

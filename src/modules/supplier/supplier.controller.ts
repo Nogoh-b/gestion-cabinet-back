@@ -36,7 +36,11 @@ export class SuppliersController {
   @Get('/search')
   @RequirePermissions('view_suppliers')
   @ApiOperation({ summary: 'Rechercher les fournisseurs' })
-  @ApiResponse({ status: 200, description: 'Liste des fournisseurs', type: [Supplier] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des fournisseurs',
+    type: [Supplier],
+  })
   async search(
     @Query() searchParams?: SupplierSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
@@ -57,7 +61,7 @@ export class SuppliersController {
 
   @Get(':id')
   @RequirePermissions('view_suppliers')
-  @ApiOperation({ summary: 'Détail d\'un fournisseur' })
+  @ApiOperation({ summary: "Détail d'un fournisseur" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

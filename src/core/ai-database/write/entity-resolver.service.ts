@@ -1,21 +1,27 @@
 // src/core/ai-database/write/entity-resolver.service.ts
 import { DataSource, ILike, Repository } from 'typeorm';
-import { ForbiddenException, Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  Optional,
+  Inject,
+} from '@nestjs/common';
 
-
-import { BUSINESS_METADATA_KEY, BusinessColumnMetadata } from '../../decorators/business-metadata.decorator';
+import {
+  BUSINESS_METADATA_KEY,
+  BusinessColumnMetadata,
+} from '../../decorators/business-metadata.decorator';
 import { AiDatabasePermissionService } from '../ai-database-permission.service';
 import { AI_DATABASE_PROJECT_CONFIG } from '../ai-database.tokens';
 import { AiDatabaseProjectConfig } from '../interfaces/ai-database-project-config.interface';
-
-
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface ResolveMatch<T> {
   entity: T;
-  score: number;       // 0–100
-  matchedOn: string;   // ex: "prénom+nom", "email", "entreprise"
+  score: number; // 0–100
+  matchedOn: string; // ex: "prénom+nom", "email", "entreprise"
 }
 
 export interface ResolveResult<T> {
@@ -23,8 +29,8 @@ export interface ResolveResult<T> {
   best: T | null;
   score: number;
   matchedOn: string;
-  candidates: ResolveMatch<T>[];  // tous les candidats classés
-  ambiguous: boolean;             // true si plusieurs candidats proches
+  candidates: ResolveMatch<T>[]; // tous les candidats classés
+  ambiguous: boolean; // true si plusieurs candidats proches
 }
 
 /**
@@ -100,8 +106,8 @@ function levenshtein(a: string, b: string): number {
     for (let i = 1; i <= a.length; i++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       curr[i] = Math.min(
-        prev[i] + 1,        // suppression
-        curr[i - 1] + 1,    // insertion
+        prev[i] + 1, // suppression
+        curr[i - 1] + 1, // insertion
         prev[i - 1] + cost, // substitution
       );
     }
@@ -140,7 +146,10 @@ function diceCoefficient(a: string, b: string): number {
   let inter = 0;
   for (const bg of B) {
     const c = counts.get(bg) ?? 0;
-    if (c > 0) { inter++; counts.set(bg, c - 1); }
+    if (c > 0) {
+      inter++;
+      counts.set(bg, c - 1);
+    }
   }
   return (2 * inter) / (A.length + B.length);
 }
@@ -247,7 +256,8 @@ export class EntityResolverService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly aiPermissionService: AiDatabasePermissionService,
-    @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
+    @Optional()
+    @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
   ) {}
 
@@ -277,7 +287,7 @@ export class EntityResolverService {
 
     // ── 1. Resolvers spécialisés (injectés via AI_DATABASE_PROJECT_CONFIG) ──
     const specializedResolver = this.projectConfig?.specializedResolvers?.find(
-      r => r.tables.includes(tableName),
+      (r) => r.tables.includes(tableName),
     );
     if (specializedResolver) {
       return specializedResolver.resolve(searchTerm, config);
@@ -285,11 +295,18 @@ export class EntityResolverService {
 
     // ── 2. Résolution générique ──
     const entityMeta = this.dataSource.entityMetadatas.find(
-      m => m.tableName === tableName,
+      (m) => m.tableName === tableName,
     );
     if (!entityMeta) {
       this.logger.warn(`❌ Table inconnue: ${tableName}`);
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: [],
+        ambiguous: false,
+      };
     }
 
     const repo = this.dataSource.getRepository(entityMeta.target);
@@ -297,14 +314,32 @@ export class EntityResolverService {
 
     if (searchFields.length === 0) {
       this.logger.warn(`⚠️ Aucun champ searchable trouvé pour "${tableName}"`);
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: [],
+        ambiguous: false,
+      };
     }
 
     // ── 0. Exact match en priorité (codes structurés : DOS-XXXX, REF-XXX, etc.) ──
-    const exactEntity = await this.tryExactMatch(repo, searchFields, searchTerm, additionalFilters);
+    const exactEntity = await this.tryExactMatch(
+      repo,
+      searchFields,
+      searchTerm,
+      additionalFilters,
+    );
     if (exactEntity) {
-      this.logger.log(`✅ Exact match "${searchTerm}" dans "${tableName}" (ID: ${exactEntity.id})`);
-      const match: ResolveMatch<any> = { entity: exactEntity, score: 100, matchedOn: `correspondance exacte` };
+      this.logger.log(
+        `✅ Exact match "${searchTerm}" dans "${tableName}" (ID: ${exactEntity.id})`,
+      );
+      const match: ResolveMatch<any> = {
+        entity: exactEntity,
+        score: 100,
+        matchedOn: `correspondance exacte`,
+      };
       return {
         found: true,
         best: exactEntity,
@@ -316,27 +351,31 @@ export class EntityResolverService {
     }
 
     const ni = normalize(searchTerm);
-    const tokens = ni.split(' ').filter(t => t.length > 0);
+    const tokens = ni.split(' ').filter((t) => t.length > 0);
 
     // Construire les conditions WHERE : chaque token × chaque champ
     // additionalFilters est mergé sur chaque condition (ex: parent_id pour les sous-types)
     const extra = additionalFilters ?? {};
-    const conditions = searchFields.flatMap(field =>
-      tokens.map(token => ({ [field]: ILike(`%${token}%`), ...extra } as any)),
+    const conditions = searchFields.flatMap((field) =>
+      tokens.map(
+        (token) => ({ [field]: ILike(`%${token}%`), ...extra }) as any,
+      ),
     );
 
     let candidates: any[];
     try {
       candidates = await repo.find({ where: conditions, take: 30 });
     } catch (err) {
-      this.logger.warn(`⚠️ Erreur recherche sur "${tableName}": ${(err as Error).message}`);
+      this.logger.warn(
+        `⚠️ Erreur recherche sur "${tableName}": ${(err as Error).message}`,
+      );
       candidates = [];
     }
 
     // Si aucun résultat, tenter une recherche encore plus large (premier token uniquement)
     if (candidates.length === 0 && tokens.length > 1) {
-      const broadConditions = searchFields.map(field =>
-        ({ [field]: ILike(`%${tokens[0]}%`), ...extra } as any),
+      const broadConditions = searchFields.map(
+        (field) => ({ [field]: ILike(`%${tokens[0]}%`), ...extra }) as any,
       );
       try {
         candidates = await repo.find({ where: broadConditions, take: 30 });
@@ -347,7 +386,7 @@ export class EntityResolverService {
 
     // Scorer chaque candidat sur TOUS les champs searchable
     const scored: ResolveMatch<any>[] = candidates
-      .map(entity => {
+      .map((entity) => {
         let bestScore = 0;
         let bestField = '';
 
@@ -362,7 +401,7 @@ export class EntityResolverService {
 
         // Score composite : combinaison de tous les champs searchable
         const combinedText = searchFields
-          .map(f => String(entity[f] ?? ''))
+          .map((f) => String(entity[f] ?? ''))
           .join(' ');
         const combinedScore = similarityScore(searchTerm, combinedText);
 
@@ -387,7 +426,9 @@ export class EntityResolverService {
    * Détermine les champs "searchable" d'une entité automatiquement.
    * Résultat mis en cache pour performance.
    */
-  private getSearchableFields(entityMeta: import('typeorm').EntityMetadata): string[] {
+  private getSearchableFields(
+    entityMeta: import('typeorm').EntityMetadata,
+  ): string[] {
     const tableName = entityMeta.tableName;
 
     if (this.searchableFieldsCache.has(tableName)) {
@@ -399,18 +440,45 @@ export class EntityResolverService {
 
     // Patterns de noms de colonnes "naturellement searchable"
     const SEARCHABLE_PATTERNS = [
-      /name/i, /nom/i, /prenom/i, /first.?name/i, /last.?name/i,
-      /code/i, /email/i, /label/i, /title/i, /titre/i,
-      /libelle/i, /numero/i, /number/i, /reference/i, /ref/i,
-      /sigle/i, /abbreviation/i, /designation/i, /intitule/i,
-      /company/i, /entreprise/i, /raison.?sociale/i,
-      /description/i, /phone/i, /telephone/i,
+      /name/i,
+      /nom/i,
+      /prenom/i,
+      /first.?name/i,
+      /last.?name/i,
+      /code/i,
+      /email/i,
+      /label/i,
+      /title/i,
+      /titre/i,
+      /libelle/i,
+      /numero/i,
+      /number/i,
+      /reference/i,
+      /ref/i,
+      /sigle/i,
+      /abbreviation/i,
+      /designation/i,
+      /intitule/i,
+      /company/i,
+      /entreprise/i,
+      /raison.?sociale/i,
+      /description/i,
+      /phone/i,
+      /telephone/i,
     ];
 
     // Types de colonnes textuelles
     const TEXT_TYPES = new Set([
-      'varchar', 'text', 'char', 'tinytext', 'mediumtext', 'longtext',
-      'character varying', 'nvarchar', 'nchar', String,
+      'varchar',
+      'text',
+      'char',
+      'tinytext',
+      'mediumtext',
+      'longtext',
+      'character varying',
+      'nvarchar',
+      'nchar',
+      String,
     ]);
 
     for (const column of entityMeta.columns) {
@@ -418,20 +486,42 @@ export class EntityResolverService {
       const propName = column.propertyName;
 
       // Ignorer les colonnes système
-      if (['id', 'created_at', 'updated_at', 'deleted_at', 'created_by', 'updated_by', 'deleted_by', 'password', 'token', 'secret'].includes(dbName)) {
+      if (
+        [
+          'id',
+          'created_at',
+          'updated_at',
+          'deleted_at',
+          'created_by',
+          'updated_by',
+          'deleted_by',
+          'password',
+          'token',
+          'secret',
+        ].includes(dbName)
+      ) {
         continue;
       }
 
       // Vérifier que c'est un type texte
       const colType = String(column.type).toLowerCase();
-      const isText = TEXT_TYPES.has(colType) || colType === 'string' || column.type === String;
+      const isText =
+        TEXT_TYPES.has(colType) ||
+        colType === 'string' ||
+        column.type === String;
       if (!isText) continue;
 
       // Vérifier via @BusinessColumn
       let bCol: BusinessColumnMetadata | undefined;
       try {
-        bCol = Reflect.getMetadata(BUSINESS_METADATA_KEY, prototype, propName) as BusinessColumnMetadata;
-      } catch { /* ignore */ }
+        bCol = Reflect.getMetadata(
+          BUSINESS_METADATA_KEY,
+          prototype,
+          propName,
+        ) as BusinessColumnMetadata;
+      } catch {
+        /* ignore */
+      }
 
       if (bCol?.ignored || bCol?.sensitive) continue;
 
@@ -442,7 +532,7 @@ export class EntityResolverService {
       }
 
       // Priorité 2 : nom de colonne match un pattern searchable
-      if (SEARCHABLE_PATTERNS.some(p => p.test(dbName) || p.test(propName))) {
+      if (SEARCHABLE_PATTERNS.some((p) => p.test(dbName) || p.test(propName))) {
         fields.push(propName);
         continue;
       }
@@ -458,8 +548,18 @@ export class EntityResolverService {
     if (fields.length === 0) {
       for (const column of entityMeta.columns) {
         const colType = String(column.type).toLowerCase();
-        const isText = TEXT_TYPES.has(colType) || colType === 'string' || column.type === String;
-        const isSystem = ['id', 'created_at', 'updated_at', 'deleted_at', 'password', 'token'].includes(column.databaseName);
+        const isText =
+          TEXT_TYPES.has(colType) ||
+          colType === 'string' ||
+          column.type === String;
+        const isSystem = [
+          'id',
+          'created_at',
+          'updated_at',
+          'deleted_at',
+          'password',
+          'token',
+        ].includes(column.databaseName);
         if (isText && !isSystem) {
           fields.push(column.propertyName);
         }
@@ -502,10 +602,17 @@ export class EntityResolverService {
     additionalFilters?: Record<string, any>,
   ): Promise<ResolveOrCreateResult<any>> {
     if (!contextFields) contextFields = {};
-    this.logger.log(`🔄 resolveOrCreateEntity("${tableName}", "${searchTerm}")`);
+    this.logger.log(
+      `🔄 resolveOrCreateEntity("${tableName}", "${searchTerm}")`,
+    );
 
     // 1. D'abord, tenter une résolution normale (avec la config passée)
-    const resolved = await this.resolveAnyEntity(tableName, searchTerm, config, additionalFilters);
+    const resolved = await this.resolveAnyEntity(
+      tableName,
+      searchTerm,
+      config,
+      additionalFilters,
+    );
 
     if (resolved.found && !resolved.ambiguous) {
       // ✅ Trouvé et non ambigu → retourner le résultat
@@ -520,9 +627,11 @@ export class EntityResolverService {
       // ⚠️ Ambiguïté → on ne crée pas, on laisse l'utilisateur décider
       const suggestions = resolved.candidates
         .slice(0, 3)
-        .map(c => `"${c.matchedOn}" (score: ${c.score}%)`)
+        .map((c) => `"${c.matchedOn}" (score: ${c.score}%)`)
         .join(', ');
-      this.logger.warn(`⚠️ Ambiguïté pour "${searchTerm}" dans ${tableName}: ${suggestions}`);
+      this.logger.warn(
+        `⚠️ Ambiguïté pour "${searchTerm}" dans ${tableName}: ${suggestions}`,
+      );
       return {
         resolved,
         created: false,
@@ -533,23 +642,31 @@ export class EntityResolverService {
     // 🚫 Liste des entités qu'on ne crée JAMAIS automatiquement
     // La liste de base (core générique) + additions du projet via projectConfig
     const NEVER_AUTO_CREATE = new Set<string>([
-      'user', 'users', // toujours protégés dans le core
+      'user',
+      'users', // toujours protégés dans le core
       ...(this.projectConfig?.neverAutoCreate ?? []),
     ]);
 
     if (NEVER_AUTO_CREATE.has(tableName)) {
-      this.logger.warn(`⛔ Création automatique refusée pour "${tableName}" (donnée de référence)`);
+      this.logger.warn(
+        `⛔ Création automatique refusée pour "${tableName}" (donnée de référence)`,
+      );
 
       // Chercher les meilleures suggestions sans seuil de score
       // Utilise d'abord les candidats du resolver spécialisé s'ils existent,
       // sinon lance une recherche large (via searchAllCandidates améliorée)
-      const allCandidates = resolved.candidates.length > 0
-        ? resolved.candidates
-        : await this.searchAllCandidates(tableName, searchTerm, additionalFilters);
+      const allCandidates =
+        resolved.candidates.length > 0
+          ? resolved.candidates
+          : await this.searchAllCandidates(
+              tableName,
+              searchTerm,
+              additionalFilters,
+            );
 
       const suggestions = allCandidates
         .slice(0, 3)
-        .map(c => `"${c.matchedOn}" (${c.score}%)`);
+        .map((c) => `"${c.matchedOn}" (${c.score}%)`);
 
       const entityLabel = tableName;
 
@@ -570,23 +687,34 @@ export class EntityResolverService {
     }
 
     // 2. ❌ Non trouvé → créer l'entité automatiquement
-    this.logger.log(`➕ Création automatique de "${searchTerm}" dans ${tableName}`);
+    this.logger.log(
+      `➕ Création automatique de "${searchTerm}" dans ${tableName}`,
+    );
     try {
       await this.aiPermissionService.assertCanWritePlan(userId, {
         transaction: false,
-        operations: [{
-          operation: 'INSERT',
-          entity: tableName,
-          fields: {},
-          humanReadable: `Creation automatique de ${tableName}`,
-        }],
+        operations: [
+          {
+            operation: 'INSERT',
+            entity: tableName,
+            fields: {},
+            humanReadable: `Creation automatique de ${tableName}`,
+          },
+        ],
         humanReadable: `Creation automatique de ${tableName}`,
         confidence: 1,
       });
-      const newEntity = await this.createEntityFromText(tableName, searchTerm, userId, contextFields);
-      const entityId = (newEntity as any).id;
+      const newEntity = await this.createEntityFromText(
+        tableName,
+        searchTerm,
+        userId,
+        contextFields,
+      );
+      const entityId = newEntity.id;
 
-      this.logger.log(`✅ Création automatique réussie: ${tableName} "${searchTerm}" → ID ${entityId}`);
+      this.logger.log(
+        `✅ Création automatique réussie: ${tableName} "${searchTerm}" → ID ${entityId}`,
+      );
 
       // Retourner un ResolveResult simulé
       const createdResult: ResolveResult<any> = {
@@ -619,13 +747,18 @@ export class EntityResolverService {
       );
 
       // Inclure les candidats de la résolution précédente pour suggestions
-      const fallbackCandidates = resolved.candidates.length > 0
-        ? resolved.candidates
-        : await this.searchAllCandidates(tableName, searchTerm, additionalFilters);
+      const fallbackCandidates =
+        resolved.candidates.length > 0
+          ? resolved.candidates
+          : await this.searchAllCandidates(
+              tableName,
+              searchTerm,
+              additionalFilters,
+            );
 
       this.logger.log(
         `🔍 Retour de ${fallbackCandidates.length} suggestions pour "${searchTerm}" dans ${tableName} ` +
-        `(après échec de création)`,
+          `(après échec de création)`,
       );
 
       return {
@@ -638,7 +771,8 @@ export class EntityResolverService {
           ambiguous: false,
         },
         created: false,
-        message: `Impossible de créer "${searchTerm}" dans ${tableName}. ${cleanMessage}` +
+        message:
+          `Impossible de créer "${searchTerm}" dans ${tableName}. ${cleanMessage}` +
           (fallbackCandidates.length > 0
             ? ` Voici les suggestions disponibles (${fallbackCandidates.length} résultat(s)).`
             : ` Aucune correspondance trouvée. Veuillez fournir plus de détails.`),
@@ -662,11 +796,13 @@ export class EntityResolverService {
   ): Promise<ResolveMatch<any>[]> {
     // ── 1. Resolver spécialisé (joins, relations) ──
     const specializedResolver = this.projectConfig?.specializedResolvers?.find(
-      r => r.tables.includes(tableName),
+      (r) => r.tables.includes(tableName),
     );
     if (specializedResolver) {
       try {
-        this.logger.debug(`🔍 searchAllCandidates via resolver spécialisé pour "${tableName}"`);
+        this.logger.debug(
+          `🔍 searchAllCandidates via resolver spécialisé pour "${tableName}"`,
+        );
         const result = await specializedResolver.resolve(searchTerm, {
           mode: ResolveMode.BEST_EFFORT,
           minScore: 0,
@@ -679,37 +815,47 @@ export class EntityResolverService {
           return result.candidates;
         }
       } catch (err) {
-        this.logger.warn(`⚠️ Resolver spécialisé échoué pour "${tableName}": fallback générique`);
+        this.logger.warn(
+          `⚠️ Resolver spécialisé échoué pour "${tableName}": fallback générique`,
+        );
       }
     }
 
     // ── 2. Résolution générique ──
-    const entityMeta = this.dataSource.entityMetadatas.find(m => m.tableName === tableName);
+    const entityMeta = this.dataSource.entityMetadatas.find(
+      (m) => m.tableName === tableName,
+    );
     if (!entityMeta) return [];
 
     const repo = this.dataSource.getRepository(entityMeta.target);
     const searchFields = this.getSearchableFields(entityMeta);
     const ni = normalize(searchTerm);
-    const tokens = ni.split(' ').filter(t => t.length > 0);
+    const tokens = ni.split(' ').filter((t) => t.length > 0);
     const extra = additionalFilters ?? {};
 
     // Chercher avec le premier token uniquement (recherche large)
-    const conditions = searchFields.map(field =>
-      ({ [field]: ILike(`%${tokens[0] ?? searchTerm}%`), ...extra } as any),
+    const conditions = searchFields.map(
+      (field) =>
+        ({ [field]: ILike(`%${tokens[0] ?? searchTerm}%`), ...extra }) as any,
     );
 
     let rows: any[] = [];
     try {
       rows = await repo.find({ where: conditions, take: 10 });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return rows
-      .map(entity => {
+      .map((entity) => {
         let bestScore = 0;
         let bestField = '';
         for (const field of searchFields) {
           const s = similarityScore(searchTerm, String(entity[field] ?? ''));
-          if (s > bestScore) { bestScore = s; bestField = `${field}: ${String(entity[field] ?? '').slice(0, 40)}`; }
+          if (s > bestScore) {
+            bestScore = s;
+            bestField = `${field}: ${String(entity[field] ?? '').slice(0, 40)}`;
+          }
         }
         return { entity, score: bestScore, matchedOn: bestField };
       })
@@ -734,7 +880,7 @@ export class EntityResolverService {
     contextFields?: Record<string, any>,
   ): Promise<any> {
     const entityMeta = this.dataSource.entityMetadatas.find(
-      m => m.tableName === tableName,
+      (m) => m.tableName === tableName,
     );
     if (!entityMeta) {
       throw new Error(`Table "${tableName}" inconnue dans TypeORM`);
@@ -751,7 +897,9 @@ export class EntityResolverService {
     // Ajouter created_by
     fields.created_by = userId;
 
-    this.logger.debug(`📝 Création de ${tableName} avec les champs: ${JSON.stringify(fields)}`);
+    this.logger.debug(
+      `📝 Création de ${tableName} avec les champs: ${JSON.stringify(fields)}`,
+    );
 
     // Créer et sauvegarder
     const record = repo.create(fields);
@@ -777,10 +925,10 @@ export class EntityResolverService {
   ): Record<string, any> {
     const fields: Record<string, any> = {};
     const columns = entityMeta.columns;
-    const columnNames = columns.map(c => c.databaseName);
+    const columnNames = columns.map((c) => c.databaseName);
     const columnSet = new Set(columnNames);
     const normalized = normalize(text);
-    const tokens = normalized.split(' ').filter(t => t.length > 0);
+    const tokens = normalized.split(' ').filter((t) => t.length > 0);
 
     // Détection du type de contenu
     const hasAtSymbol = text.includes('@');
@@ -789,8 +937,11 @@ export class EntityResolverService {
     // --- Regarder dans les relations si la table n'a pas first_name/last_name ---
     // Ex: employee n'a pas first_name directement (c'est dans user)
     // On va chercher à travers les relations pour trouver des champs textuels
-    const hasDirectNameCol = columnSet.has('first_name') || columnSet.has('last_name') || columnSet.has('name');
-    
+    const hasDirectNameCol =
+      columnSet.has('first_name') ||
+      columnSet.has('last_name') ||
+      columnSet.has('name');
+
     // --- Gestion des différents cas ---
 
     // Cas 1: C'est un email
@@ -798,35 +949,50 @@ export class EntityResolverService {
       fields.email = text.trim();
       const emailParts = text.split('@')[0].split('.');
       if (emailParts.length >= 2) {
-        if (columnSet.has('first_name')) fields.first_name = this.capitalize(emailParts[0]);
-        if (columnSet.has('last_name')) fields.last_name = this.capitalize(emailParts.slice(1).join(' '));
+        if (columnSet.has('first_name'))
+          fields.first_name = this.capitalize(emailParts[0]);
+        if (columnSet.has('last_name'))
+          fields.last_name = this.capitalize(emailParts.slice(1).join(' '));
       }
       return fields;
     }
 
     // Cas 2: C'est un nom d'entreprise ou une personne avec prénom + nom
-    const hasNameCol = columnSet.has('first_name') || columnSet.has('last_name');
+    const hasNameCol =
+      columnSet.has('first_name') || columnSet.has('last_name');
     const hasCompanyCol = columnSet.has('company_name');
 
     if (hasNameCol && hasMultipleTokens && tokens.length <= 3) {
       // Probablement une personne: "Jean Dupont", "Dupont Jean", "Jean Marc Dupont"
-      const originalTokens = text.trim().split(/\s+/).filter(t => t.length > 0);
+      const originalTokens = text
+        .trim()
+        .split(/\s+/)
+        .filter((t) => t.length > 0);
 
       if (originalTokens.length === 2) {
         // "Prénom Nom" ou "Nom Prénom"
-        if (columnSet.has('first_name')) fields.first_name = this.capitalize(originalTokens[0]);
-        if (columnSet.has('last_name')) fields.last_name = this.capitalize(originalTokens[1]);
+        if (columnSet.has('first_name'))
+          fields.first_name = this.capitalize(originalTokens[0]);
+        if (columnSet.has('last_name'))
+          fields.last_name = this.capitalize(originalTokens[1]);
       } else if (originalTokens.length >= 3) {
         // "Prénom Nom" avec prénom composé: "Jean Marc Dupont"
-        if (columnSet.has('first_name')) fields.first_name = this.capitalize(originalTokens.slice(0, -1).join(' '));
-        if (columnSet.has('last_name')) fields.last_name = this.capitalize(originalTokens[originalTokens.length - 1]);
+        if (columnSet.has('first_name'))
+          fields.first_name = this.capitalize(
+            originalTokens.slice(0, -1).join(' '),
+          );
+        if (columnSet.has('last_name'))
+          fields.last_name = this.capitalize(
+            originalTokens[originalTokens.length - 1],
+          );
       }
     } else if (hasCompanyCol && tokens.length >= 2) {
       // Texte long → probablement une entreprise
       fields.company_name = text.trim();
     } else if (hasNameCol && tokens.length === 1) {
       // Un seul token → on le met dans last_name si disponible
-      if (columnSet.has('last_name')) fields.last_name = this.capitalize(text.trim());
+      if (columnSet.has('last_name'))
+        fields.last_name = this.capitalize(text.trim());
     }
 
     // 🔥 CORRECTION : Si aucun champ n'a été trouvé MAIS que la table existe
@@ -839,18 +1005,30 @@ export class EntityResolverService {
       else if (columnSet.has('title')) fields.title = text.trim();
       else if (columnSet.has('full_name')) fields.full_name = text.trim();
       else if (columnSet.has('code')) fields.code = text.trim();
-      else if (columnSet.has('last_name')) fields.last_name = this.capitalize(text.trim());
-      else if (columnSet.has('first_name')) fields.first_name = this.capitalize(text.trim());
+      else if (columnSet.has('last_name'))
+        fields.last_name = this.capitalize(text.trim());
+      else if (columnSet.has('first_name'))
+        fields.first_name = this.capitalize(text.trim());
       else {
         // Dernier recours : prendre le premier champ varchar non-système
         for (const col of columns) {
           const dbName = col.databaseName;
           const colType = String(col.type).toLowerCase();
           const isText = ['varchar', 'text', 'char'].includes(colType);
-          const isSystem = ['id', 'created_at', 'updated_at', 'deleted_at', 'password', 'token', 'secret'].includes(dbName);
+          const isSystem = [
+            'id',
+            'created_at',
+            'updated_at',
+            'deleted_at',
+            'password',
+            'token',
+            'secret',
+          ].includes(dbName);
           if (isText && !isSystem && !col.isPrimary) {
             fields[col.propertyName] = text.trim();
-            this.logger.debug(`📝 Fallback: champ "${col.propertyName}" ← "${text}"`);
+            this.logger.debug(
+              `📝 Fallback: champ "${col.propertyName}" ← "${text}"`,
+            );
             break;
           }
         }
@@ -861,8 +1039,8 @@ export class EntityResolverService {
     if (Object.keys(fields).length === 0) {
       throw new Error(
         `Impossible de déterminer les champs à créer pour "${entityMeta.tableName}". ` +
-        `Aucune colonne textuelle (name, label, title, etc.) trouvée. ` +
-        `Veuillez fournir des informations plus précises.`
+          `Aucune colonne textuelle (name, label, title, etc.) trouvée. ` +
+          `Veuillez fournir des informations plus précises.`,
       );
     }
 
@@ -893,20 +1071,20 @@ export class EntityResolverService {
     const tokens = ni.split(' ');
 
     // Construire les conditions WHERE dynamiquement
-    const conditions = searchFields.flatMap(field =>
-      tokens.map(token => ({ [field]: ILike(`%${token}%`) } as any))
+    const conditions = searchFields.flatMap((field) =>
+      tokens.map((token) => ({ [field]: ILike(`%${token}%`) }) as any),
     );
 
     const candidates = await repo.find({ where: conditions, take: 20 });
 
     const scored: ResolveMatch<T>[] = candidates
-      .map(entity => {
-        const texts = labelFields.map(f => String((entity as any)[f] ?? ''));
+      .map((entity) => {
+        const texts = labelFields.map((f) => String((entity as any)[f] ?? ''));
         const combined = texts.join(' ');
         const score = similarityScore(input, combined);
         return { entity, score, matchedOn: combined.slice(0, 40) };
       })
-      .filter(m => m.score >= this.MIN_SCORE)
+      .filter((m) => m.score >= this.MIN_SCORE)
       .sort((a, b) => b.score - a.score);
 
     return this.buildResult(scored, input, repo.metadata.tableName);
@@ -935,9 +1113,13 @@ export class EntityResolverService {
     const extra = additionalFilters ?? {};
     for (const field of searchFields) {
       try {
-        const found = await repo.findOne({ where: { [field]: term, ...extra } });
+        const found = await repo.findOne({
+          where: { [field]: term, ...extra },
+        });
         if (found) return found;
-      } catch { /* colonne incompatible (type), on ignore */ }
+      } catch {
+        /* colonne incompatible (type), on ignore */
+      }
     }
     return null;
   }
@@ -952,7 +1134,14 @@ export class EntityResolverService {
   ): ResolveResult<T> {
     if (scored.length === 0) {
       this.logger.warn(`❌ Aucun ${entityLabel} trouvé pour "${input}"`);
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: [],
+        ambiguous: false,
+      };
     }
 
     const best = scored[0];
@@ -966,32 +1155,45 @@ export class EntityResolverService {
 
     // En BEST_EFFORT, l'ambiguïté est ignorée : on prend toujours le meilleur
     // On réduit aussi le minScore pour être plus tolérant
-    const effectiveMinScore = mode === ResolveMode.BEST_EFFORT ? Math.max(minScore, 20) : minScore;
+    const effectiveMinScore =
+      mode === ResolveMode.BEST_EFFORT ? Math.max(minScore, 20) : minScore;
     const effectiveGap = mode === ResolveMode.BEST_EFFORT ? 0 : ambiguityGap;
 
     // Filtrer les candidats en dessous du score minimum
-    const valid = scored.filter(m => m.score >= effectiveMinScore);
+    const valid = scored.filter((m) => m.score >= effectiveMinScore);
     if (valid.length === 0) {
       // ⚠️ Aucun match concluant → retourner le top 10 comme suggestions
       // pour que l'appelant puisse laisser l'utilisateur choisir
       const suggestions = scored.slice(0, 10);
       this.logger.warn(
         `❌ Aucun ${entityLabel} valide pour "${input}" (score min: ${effectiveMinScore}). ` +
-        `Retour de ${suggestions.length} suggestions (top score: ${suggestions[0]?.score ?? 0}).`,
+          `Retour de ${suggestions.length} suggestions (top score: ${suggestions[0]?.score ?? 0}).`,
       );
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: suggestions, ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: suggestions,
+        ambiguous: false,
+      };
     }
 
     const bestValid = valid[0];
     const secondValid = valid[1];
-    const ambiguous = !!secondValid && (bestValid.score - secondValid.score) < effectiveGap && bestValid.score < 90;
+    const ambiguous =
+      !!secondValid &&
+      bestValid.score - secondValid.score < effectiveGap &&
+      bestValid.score < 90;
 
     if (mode === ResolveMode.BEST_EFFORT) {
       // 🎯 BEST_EFFORT : on prend le meilleur score, ambigu ou pas
       this.logger.log(
         `🎯 ${entityLabel} résolu (BEST_EFFORT): "${input}" → ` +
-        `"${bestValid.matchedOn}" (score: ${bestValid.score})` +
-        (secondValid ? `, 2ème: "${secondValid.matchedOn}" (${secondValid.score})` : ''),
+          `"${bestValid.matchedOn}" (score: ${bestValid.score})` +
+          (secondValid
+            ? `, 2ème: "${secondValid.matchedOn}" (${secondValid.score})`
+            : ''),
       );
       return {
         found: true,
@@ -1007,7 +1209,10 @@ export class EntityResolverService {
     if (ambiguous) {
       this.logger.warn(
         `⚠️ Ambiguïté détectée pour "${input}": ` +
-        valid.slice(0, 3).map(s => `${s.matchedOn}(${s.score})`).join(', '),
+          valid
+            .slice(0, 3)
+            .map((s) => `${s.matchedOn}(${s.score})`)
+            .join(', '),
       );
     } else {
       this.logger.log(

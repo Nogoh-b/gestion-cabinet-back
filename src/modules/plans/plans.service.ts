@@ -38,7 +38,10 @@ export class PlansService extends BaseServiceV1<Plan> {
   }
 
   async findActive(): Promise<Plan[]> {
-    return this.repository.find({ where: { is_active: true }, order: { name: 'ASC' } });
+    return this.repository.find({
+      where: { is_active: true },
+      order: { name: 'ASC' },
+    });
   }
 
   async findByCode(code: string): Promise<Plan | null> {
@@ -65,15 +68,19 @@ export class PlansService extends BaseServiceV1<Plan> {
   /**
    * Assigne un plan à un cabinet.
    */
-  async assignPlanToCabinet(cabinetId: number, planId: number): Promise<Cabinet> {
+  async assignPlanToCabinet(
+    cabinetId: number,
+    planId: number,
+  ): Promise<Cabinet> {
     const [cabinet, plan] = await Promise.all([
       this.cabinetRepo.findOne({ where: { id: cabinetId } }),
       this.findOne(planId),
     ]);
-    if (!cabinet) throw new NotFoundException(`Cabinet #${cabinetId} non trouvé`);
+    if (!cabinet)
+      throw new NotFoundException(`Cabinet #${cabinetId} non trouvé`);
 
     cabinet.plan_id = plan.id;
-    cabinet.plan   = plan.code as any; // synchro champ legacy
+    cabinet.plan = plan.code as any; // synchro champ legacy
     return this.cabinetRepo.save(cabinet);
   }
 
@@ -104,8 +111,8 @@ export class PlansService extends BaseServiceV1<Plan> {
 
     const counts = {
       employees: Number(employees[0]?.cnt ?? 0),
-      clients:   Number(clients[0]?.cnt ?? 0),
-      dossiers:  Number(dossiers[0]?.cnt ?? 0),
+      clients: Number(clients[0]?.cnt ?? 0),
+      dossiers: Number(dossiers[0]?.cnt ?? 0),
       storageBytes: Number(storage[0]?.total ?? 0),
     };
 

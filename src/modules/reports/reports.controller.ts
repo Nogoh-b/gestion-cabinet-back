@@ -13,13 +13,18 @@ export class ReportsController {
   /** Rapport avancé — réservé aux plans incluant le module `reporting`. */
   @Get('advanced')
   @ApiOperation({
-    summary: 'Rapport avancé agrégé (dossiers / audiences / finances) sur une période',
+    summary:
+      'Rapport avancé agrégé (dossiers / audiences / finances) sur une période',
   })
   advanced(
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('compare') compare?: string,
   ) {
-    return this.reports.getAdvanced(from, to, compare === 'true' || compare === '1');
+    return this.reports.getAdvanced(
+      from,
+      to,
+      compare === 'true' || compare === '1',
+    );
   }
 }

@@ -26,9 +26,9 @@ function similarityScore(a: string, b: string): number {
   if (!na || !nb) return 0;
   if (na === nb) return 100;
   if (na.includes(nb) || nb.includes(na)) return 85;
-  const tokensA = new Set(na.split(' ').filter(t => t.length > 1));
-  const tokensB = new Set(nb.split(' ').filter(t => t.length > 1));
-  const common = [...tokensA].filter(t => tokensB.has(t)).length;
+  const tokensA = new Set(na.split(' ').filter((t) => t.length > 1));
+  const tokensB = new Set(nb.split(' ').filter((t) => t.length > 1));
+  const common = [...tokensA].filter((t) => tokensB.has(t)).length;
   const tokenScore = common / Math.max(tokensA.size, tokensB.size, 1);
   const bigrams = (s: string) => {
     const r: string[] = [];
@@ -37,7 +37,7 @@ function similarityScore(a: string, b: string): number {
   };
   const bA = bigrams(na);
   const bB = bigrams(nb);
-  const bi = bA.filter(bg => bB.includes(bg)).length;
+  const bi = bA.filter((bg) => bB.includes(bg)).length;
   const bigramScore = (2 * bi) / (bA.length + bB.length || 1);
   return Math.round(Math.max(tokenScore, bigramScore) * 80);
 }
@@ -52,7 +52,10 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
     private readonly employeeRepo: Repository<Employee>,
   ) {}
 
-  async resolve(input: string, config?: ResolveConfig): Promise<ResolveResult<any>> {
+  async resolve(
+    input: string,
+    config?: ResolveConfig,
+  ): Promise<ResolveResult<any>> {
     const ni = normalize(input);
     const parts = ni.split(' ');
     const first = parts[0];
@@ -60,10 +63,16 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
 
     const orConditions: string[] = [];
     const params: Record<string, string> = {};
-    orConditions.push('LOWER(u.first_name) LIKE :f0', 'LOWER(u.last_name) LIKE :f0');
+    orConditions.push(
+      'LOWER(u.first_name) LIKE :f0',
+      'LOWER(u.last_name) LIKE :f0',
+    );
     params['f0'] = `%${first}%`;
     if (rest) {
-      orConditions.push('LOWER(u.first_name) LIKE :r0', 'LOWER(u.last_name) LIKE :r0');
+      orConditions.push(
+        'LOWER(u.first_name) LIKE :r0',
+        'LOWER(u.last_name) LIKE :r0',
+      );
       params['r0'] = `%${rest}%`;
     }
     orConditions.push('LOWER(e.specialization) LIKE :full');
@@ -86,14 +95,17 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
 
     this.logger.log(
       `🔍 EmployeeAiResolver: ${candidates.length} candidat(s) trouvé(s) pour "${input}" | ` +
-      candidates.slice(0, 5).map(e => {
-        const u = (e as any).user;
-        return `#${e.id}:${u?.first_name ?? '?'} ${u?.last_name ?? '?'}`;
-      }).join(', '),
+        candidates
+          .slice(0, 5)
+          .map((e) => {
+            const u = (e as any).user;
+            return `#${e.id}:${u?.first_name ?? '?'} ${u?.last_name ?? '?'}`;
+          })
+          .join(', '),
     );
 
     const scored: ResolveMatch<Employee>[] = candidates
-      .map(e => {
+      .map((e) => {
         const user = (e as any).user;
         const firstName = user?.first_name ?? '';
         const lastName = user?.last_name ?? '';
@@ -104,21 +116,31 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
           { score: similarityScore(input, reverseName), label: 'nom+prénom' },
           { score: similarityScore(input, firstName), label: 'prénom' },
           { score: similarityScore(input, lastName), label: 'nom' },
-          { score: similarityScore(input, e.specialization), label: 'spécialisation' },
-          { score: similarityScore(input, e.bar_association_city), label: 'ville barreau' },
+          {
+            score: similarityScore(input, e.specialization),
+            label: 'spécialisation',
+          },
+          {
+            score: similarityScore(input, e.bar_association_city),
+            label: 'ville barreau',
+          },
         ];
         const best = scores.reduce((a, b) => (a.score >= b.score ? a : b));
         return {
           entity: e,
           score: best.score,
-          matchedOn: `${best.label}: ${fullName || e.specialization || ''}`.slice(0, 80),
+          matchedOn:
+            `${best.label}: ${fullName || e.specialization || ''}`.slice(0, 80),
         };
       })
       .sort((a, b) => b.score - a.score);
 
     this.logger.log(
       `🔍 EmployeeAiResolver: ${scored.length} candidat(s) scoré(s) | ` +
-      scored.slice(0, 5).map(s => `${s.matchedOn} (score:${s.score})`).join(' | '),
+        scored
+          .slice(0, 5)
+          .map((s) => `${s.matchedOn} (score:${s.score})`)
+          .join(' | '),
     );
 
     return this.buildResult(scored, input, config);
@@ -130,17 +152,32 @@ export class EmployeeAiResolver implements SpecializedEntityResolver {
     config?: ResolveConfig,
   ): ResolveResult<any> {
     if (scored.length === 0) {
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: [],
+        ambiguous: false,
+      };
     }
     const MIN_SCORE = config?.minScore ?? 40;
     const AMBIGUITY_GAP = config?.ambiguityGap ?? 15;
-    const valid = scored.filter(m => m.score >= MIN_SCORE);
+    const valid = scored.filter((m) => m.score >= MIN_SCORE);
     if (valid.length === 0) {
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: scored.slice(0, 10), ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: scored.slice(0, 10),
+        ambiguous: false,
+      };
     }
     const best = valid[0];
     const second = valid[1];
-    const ambiguous = !!second && best.score - second.score < AMBIGUITY_GAP && best.score < 90;
+    const ambiguous =
+      !!second && best.score - second.score < AMBIGUITY_GAP && best.score < 90;
     return {
       found: true,
       best: best.entity,

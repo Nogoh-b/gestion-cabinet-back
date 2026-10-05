@@ -36,17 +36,17 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       this.getDistributionByDossier(filters),
       this.getEvolution(filters, 'audience_date'),
       this.getUpcomingAudiences(filters),
-      this.getPastAudiencesStats(filters),  
+      this.getPastAudiencesStats(filters),
       this.getMonthlyTrend(filters),
       this.getWeeklyDistribution(filters),
     ]);
 
     return {
       total,
-      scheduled: byStatus.find(s => s.name === 'Planifiée')?.value || 0,
-      held: byStatus.find(s => s.name === 'Tenue')?.value || 0,
-      postponed: byStatus.find(s => s.name === 'Reportée')?.value || 0,
-      cancelled: byStatus.find(s => s.name === 'Annulée')?.value || 0,
+      scheduled: byStatus.find((s) => s.name === 'Planifiée')?.value || 0,
+      held: byStatus.find((s) => s.name === 'Tenue')?.value || 0,
+      postponed: byStatus.find((s) => s.name === 'Reportée')?.value || 0,
+      cancelled: byStatus.find((s) => s.name === 'Annulée')?.value || 0,
       byStatus,
       byType,
       byJurisdiction,
@@ -59,7 +59,9 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     };
   }
 
-  private async getDistributionByStatus(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByStatus(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .select('audience.status', 'status')
@@ -85,7 +87,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       [AudienceStatus.CANCELLED]: '#ef4444',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || 'Inconnu',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -94,7 +96,9 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     }));
   }
 
-  private async getDistributionByType(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByType(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .select('audience.audience_type', 'type')
@@ -108,14 +112,16 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.type || 'Non spécifié',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionByJurisdiction(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByJurisdiction(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .leftJoin('audience.jurisdiction', 'jurisdiction')
@@ -131,14 +137,16 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Inconnue',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
     }));
   }
 
-  private async getDistributionByDossier(filters?: StatsFilterDto): Promise<any[]> {
+  private async getDistributionByDossier(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .leftJoin('audience.dossier', 'dossier')
@@ -154,7 +162,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.dossierNumber || 'Dossier inconnu',
       value: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),
@@ -177,7 +185,9 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
         'client',
       ])
       .where('audience.audience_date >= :now', { now: new Date() })
-      .andWhere('audience.status = :status', { status: AudienceStatus.SCHEDULED })
+      .andWhere('audience.status = :status', {
+        status: AudienceStatus.SCHEDULED,
+      })
       .orderBy('audience.audience_date', 'ASC')
       .limit(10);
 
@@ -185,7 +195,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
 
     const results = await query.getMany();
 
-    return results.map(a => ({
+    return results.map((a) => ({
       id: a.id,
       // title: a.title,
       date: a.audience_date,
@@ -197,28 +207,29 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
   }
 
   private async getPastAudiencesStats(filters?: StatsFilterDto): Promise<any> {
-      const query = this.audienceRepository
-        .createQueryBuilder('audience')
-        .select('COUNT(*)', 'total')
-        .addSelect(
-          "SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)",
-          'successRate',
-        )
-        .where('audience.audience_date < :now', { now: new Date() });
+    const query = this.audienceRepository
+      .createQueryBuilder('audience')
+      .select('COUNT(*)', 'total')
+      .addSelect(
+        "SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)",
+        'successRate',
+      )
+      .where('audience.audience_date < :now', { now: new Date() });
 
-      this.applyFilters(query, filters, 'audience');
+    this.applyFilters(query, filters, 'audience');
 
-      const result = await query.getRawOne();
+    const result = await query.getRawOne();
 
-      return {
-        total: parseInt(result?.total || 0),
-        averageDuration: 0, // Valeur par défaut
-        successRate: Math.round(parseFloat(result?.successRate || 0)),
-      };
+    return {
+      total: parseInt(result?.total || 0),
+      averageDuration: 0, // Valeur par défaut
+      successRate: Math.round(parseFloat(result?.successRate || 0)),
+    };
   }
 
   private async getMonthlyTrend(filters?: StatsFilterDto): Promise<any[]> {
-    const { startDate = this.getDefaultStartDate(), endDate = new Date() } = filters || {};
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
 
     const query = this.audienceRepository
       .createQueryBuilder('audience')
@@ -227,8 +238,14 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
         "SUM(CASE WHEN audience.status = 'scheduled' THEN 1 ELSE 0 END)",
         'scheduled',
       )
-      .addSelect("SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)", 'held')
-      .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .addSelect(
+        "SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)",
+        'held',
+      )
+      .where('audience.audience_date BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -237,7 +254,9 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     return query.getRawMany();
   }
 
-  private async getWeeklyDistribution(filters?: StatsFilterDto): Promise<any[]> {
+  private async getWeeklyDistribution(
+    filters?: StatsFilterDto,
+  ): Promise<any[]> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .select('DAYNAME(audience.audience_date)', 'dayOfWeek')
@@ -262,7 +281,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       Sunday: 'Dimanche',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       dayOfWeek: dayNames[r.dayOfWeek] || r.dayOfWeek,
       count: parseInt(r.count),
       percentage: this.calculatePercentage(parseInt(r.count), total),

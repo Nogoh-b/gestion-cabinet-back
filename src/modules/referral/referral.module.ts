@@ -27,11 +27,7 @@ import { ReferralCommissionListener } from './referral-commission.listener';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Referrer,
-      DossierReferral,
-      ReferralCommission,
-    ]),
+    TypeOrmModule.forFeature([Referrer, DossierReferral, ReferralCommission]),
     AgenciesModule,
     CustomerModule,
     DossiersModule,

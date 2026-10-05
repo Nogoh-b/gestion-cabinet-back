@@ -1,6 +1,9 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentMethod, SupplierInvoiceStatus } from '../entities/supplier-invoice.entity';
+import {
+  PaymentMethod,
+  SupplierInvoiceStatus,
+} from '../entities/supplier-invoice.entity';
 
 export class SupplierInvoiceResponseDto {
   @ApiProperty({ example: 1 })
@@ -39,7 +42,10 @@ export class SupplierInvoiceResponseDto {
   @Expose()
   amount_ttc: number;
 
-  @ApiProperty({ enum: SupplierInvoiceStatus, example: SupplierInvoiceStatus.PAID })
+  @ApiProperty({
+    enum: SupplierInvoiceStatus,
+    example: SupplierInvoiceStatus.PAID,
+  })
   @Expose()
   status: SupplierInvoiceStatus;
 
@@ -47,13 +53,21 @@ export class SupplierInvoiceResponseDto {
   @Expose()
   payment_date: Date;
 
-  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.VIREMENT, required: false })
+  @ApiProperty({
+    enum: PaymentMethod,
+    example: PaymentMethod.VIREMENT,
+    required: false,
+  })
   @Expose()
   payment_method: PaymentMethod;
 
   // Relations
   @ApiProperty({
-    example: { id: 1, company_name: 'Orange Business Services', supplier_code: 'SUP-001' },
+    example: {
+      id: 1,
+      company_name: 'Orange Business Services',
+      supplier_code: 'SUP-001',
+    },
   })
   @Expose()
   @Transform(({ obj }) => ({
@@ -62,9 +76,17 @@ export class SupplierInvoiceResponseDto {
     supplier_code: obj.supplier?.supplier_code,
     category: obj.supplier?.category,
   }))
-  supplier: { id: number; company_name: string; supplier_code: string; category: string };
+  supplier: {
+    id: number;
+    company_name: string;
+    supplier_code: string;
+    category: string;
+  };
 
-  @ApiProperty({ example: { id: 2, name: 'Cabinet Principal' }, required: false })
+  @ApiProperty({
+    example: { id: 2, name: 'Cabinet Principal' },
+    required: false,
+  })
   @Expose()
   @Transform(({ obj }) =>
     obj.branch ? { id: obj.branch.id, name: obj.branch.name } : null,
@@ -75,7 +97,10 @@ export class SupplierInvoiceResponseDto {
   @ApiProperty({ example: false })
   @Expose()
   @Transform(({ obj }) => {
-    if (obj.status === SupplierInvoiceStatus.PAID || obj.status === SupplierInvoiceStatus.CANCELLED) {
+    if (
+      obj.status === SupplierInvoiceStatus.PAID ||
+      obj.status === SupplierInvoiceStatus.CANCELLED
+    ) {
       return false;
     }
     const today = new Date();
@@ -86,7 +111,10 @@ export class SupplierInvoiceResponseDto {
   @ApiProperty({ example: 5 })
   @Expose()
   @Transform(({ obj }) => {
-    if (obj.status === SupplierInvoiceStatus.PAID || obj.status === SupplierInvoiceStatus.CANCELLED) {
+    if (
+      obj.status === SupplierInvoiceStatus.PAID ||
+      obj.status === SupplierInvoiceStatus.CANCELLED
+    ) {
       return null;
     }
     const today = new Date();

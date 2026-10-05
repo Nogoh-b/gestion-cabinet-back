@@ -5,7 +5,10 @@ import { Between, Repository } from 'typeorm';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { Dossier } from '../dossiers/entities/dossier.entity';
-import { Audience, AudienceStatus } from '../audiences/entities/audience.entity';
+import {
+  Audience,
+  AudienceStatus,
+} from '../audiences/entities/audience.entity';
 import { Facture } from '../facture/entities/facture.entity';
 import { Paiement } from '../paiement/entities/paiement.entity';
 import { ExpenseReport } from '../supplier/entities/expense-report.entity';
@@ -29,11 +32,16 @@ export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
 
   constructor(
-    @InjectRepository(Dossier) private readonly dossierRepo: Repository<Dossier>,
-    @InjectRepository(Audience) private readonly audienceRepo: Repository<Audience>,
-    @InjectRepository(Facture) private readonly factureRepo: Repository<Facture>,
-    @InjectRepository(Paiement) private readonly paiementRepo: Repository<Paiement>,
-    @InjectRepository(ExpenseReport) private readonly expenseRepo: Repository<ExpenseReport>,
+    @InjectRepository(Dossier)
+    private readonly dossierRepo: Repository<Dossier>,
+    @InjectRepository(Audience)
+    private readonly audienceRepo: Repository<Audience>,
+    @InjectRepository(Facture)
+    private readonly factureRepo: Repository<Facture>,
+    @InjectRepository(Paiement)
+    private readonly paiementRepo: Repository<Paiement>,
+    @InjectRepository(ExpenseReport)
+    private readonly expenseRepo: Repository<ExpenseReport>,
     private readonly planQuota: PlanQuotaService,
   ) {}
 
@@ -43,12 +51,16 @@ export class ReportsService {
     await this.planQuota.checkModuleEnabled(tenantId, 'reporting');
 
     const end = to ? new Date(to) : new Date();
-    const start = from ? new Date(from) : new Date(end.getFullYear(), end.getMonth(), 1);
+    const start = from
+      ? new Date(from)
+      : new Date(end.getFullYear(), end.getMonth(), 1);
     end.setHours(23, 59, 59, 999);
     start.setHours(0, 0, 0, 0);
 
     const current = await this.computeWindow(start, end);
-    const evolution = await this.evolutionSection(start, end).catch((e) => this.fail('evolution', e) && []);
+    const evolution = await this.evolutionSection(start, end).catch(
+      (e) => this.fail('evolution', e) && [],
+    );
 
     let previous: any = null;
     if (compare) {
@@ -70,38 +82,66 @@ export class ReportsService {
   // ── Évolution mensuelle (tendance sur la période) ──────────────────────────
   private async evolutionSection(start: Date, end: Date) {
     const monthCol = (col: string) => `DATE_FORMAT(${col}, '%Y-%m')`;
-    const map = new Map<string, { month: string; opened: number; closed: number; billed: number; collected: number }>();
+    const map = new Map<
+      string,
+      {
+        month: string;
+        opened: number;
+        closed: number;
+        billed: number;
+        collected: number;
+      }
+    >();
     const bucket = (m: string) => {
-      if (!map.has(m)) map.set(m, { month: m, opened: 0, closed: 0, billed: 0, collected: 0 });
+      if (!map.has(m))
+        map.set(m, { month: m, opened: 0, closed: 0, billed: 0, collected: 0 });
       return map.get(m)!;
     };
 
     const opened = await this.scoped(this.dossierRepo, 'd')
-      .select(monthCol('d.opening_date'), 'm').addSelect('COUNT(*)', 'c')
+      .select(monthCol('d.opening_date'), 'm')
+      .addSelect('COUNT(*)', 'c')
       .andWhere('d.opening_date BETWEEN :s AND :e', { s: start, e: end })
-      .groupBy('m').getRawMany();
-    opened.forEach((r) => { if (r.m) bucket(r.m).opened = num(r.c); });
+      .groupBy('m')
+      .getRawMany();
+    opened.forEach((r) => {
+      if (r.m) bucket(r.m).opened = num(r.c);
+    });
 
     const closed = await this.scoped(this.dossierRepo, 'd')
-      .select(monthCol('d.closing_date'), 'm').addSelect('COUNT(*)', 'c')
+      .select(monthCol('d.closing_date'), 'm')
+      .addSelect('COUNT(*)', 'c')
       .andWhere('d.closing_date BETWEEN :s AND :e', { s: start, e: end })
-      .groupBy('m').getRawMany();
-    closed.forEach((r) => { if (r.m) bucket(r.m).closed = num(r.c); });
+      .groupBy('m')
+      .getRawMany();
+    closed.forEach((r) => {
+      if (r.m) bucket(r.m).closed = num(r.c);
+    });
 
     const billed = await this.scoped(this.factureRepo, 'f')
-      .select(monthCol('f.dateFacture'), 'm').addSelect('COALESCE(SUM(f.montantTTC),0)', 's')
+      .select(monthCol('f.dateFacture'), 'm')
+      .addSelect('COALESCE(SUM(f.montantTTC),0)', 's')
       .andWhere('f.dateFacture BETWEEN :s AND :e', { s: start, e: end })
       .andWhere('f.status IN (:...st)', { st: FACTURE_SENT })
-      .groupBy('m').getRawMany();
-    billed.forEach((r) => { if (r.m) bucket(r.m).billed = num(r.s); });
+      .groupBy('m')
+      .getRawMany();
+    billed.forEach((r) => {
+      if (r.m) bucket(r.m).billed = num(r.s);
+    });
 
     const collected = await this.scoped(this.paiementRepo, 'p')
-      .select(monthCol('p.datePaiement'), 'm').addSelect('COALESCE(SUM(p.montant),0)', 's')
+      .select(monthCol('p.datePaiement'), 'm')
+      .addSelect('COALESCE(SUM(p.montant),0)', 's')
       .andWhere('p.datePaiement BETWEEN :s AND :e', { s: start, e: end })
-      .groupBy('m').getRawMany();
-    collected.forEach((r) => { if (r.m) bucket(r.m).collected = num(r.s); });
+      .groupBy('m')
+      .getRawMany();
+    collected.forEach((r) => {
+      if (r.m) bucket(r.m).collected = num(r.s);
+    });
 
-    return Array.from(map.values()).sort((a, b) => (a.month < b.month ? -1 : 1));
+    return Array.from(map.values()).sort((a, b) =>
+      a.month < b.month ? -1 : 1,
+    );
   }
 
   private async computeWindow(start: Date, end: Date) {
@@ -114,7 +154,9 @@ export class ReportsService {
   }
 
   private fail(section: string, e: any) {
-    this.logger.warn(`[Reports] section ${section} échouée: ${e?.message ?? e}`);
+    this.logger.warn(
+      `[Reports] section ${section} échouée: ${e?.message ?? e}`,
+    );
     return {};
   }
 
@@ -142,7 +184,8 @@ export class ReportsService {
       closed += num(r.cnt);
     }
     const won = byOutcome['won'] ?? 0;
-    const decided = won + (byOutcome['lost'] ?? 0) + (byOutcome['settled'] ?? 0);
+    const decided =
+      won + (byOutcome['lost'] ?? 0) + (byOutcome['settled'] ?? 0);
 
     const durRow = await this.scoped(this.dossierRepo, 'd')
       .select('AVG(DATEDIFF(d.closing_date, d.opening_date))', 'avg')
@@ -162,7 +205,10 @@ export class ReportsService {
     const byLawyer = await this.scoped(this.dossierRepo, 'd')
       .leftJoin('d.lawyer', 'emp')
       .leftJoin('emp.user', 'u')
-      .select("TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')))", 'name')
+      .select(
+        "TRIM(CONCAT(COALESCE(u.first_name,''),' ',COALESCE(u.last_name,'')))",
+        'name',
+      )
       .addSelect('COUNT(*)', 'cnt')
       .andWhere('d.opening_date BETWEEN :s AND :e', { s: start, e: end })
       .groupBy('d.lawyer_id')
@@ -176,8 +222,14 @@ export class ReportsService {
       byOutcome,
       successRatePct: pct(won, decided),
       avgDurationDays: Math.round(num(durRow?.avg)),
-      byProcedureType: byProcedure.map((r) => ({ name: r.name ?? '—', count: num(r.cnt) })),
-      byLawyer: byLawyer.map((r) => ({ name: r.name || '—', count: num(r.cnt) })),
+      byProcedureType: byProcedure.map((r) => ({
+        name: r.name ?? '—',
+        count: num(r.cnt),
+      })),
+      byLawyer: byLawyer.map((r) => ({
+        name: r.name || '—',
+        count: num(r.cnt),
+      })),
     };
   }
 
@@ -232,10 +284,22 @@ export class ReportsService {
 
     // Balance âgée des impayés (instantané « à ce jour »).
     const agingRow = await this.scoped(this.factureRepo, 'f')
-      .select('COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) <= 30 THEN f.montantTTC ELSE 0 END),0)', 'd0')
-      .addSelect('COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) BETWEEN 31 AND 60 THEN f.montantTTC ELSE 0 END),0)', 'd30')
-      .addSelect('COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) BETWEEN 61 AND 90 THEN f.montantTTC ELSE 0 END),0)', 'd60')
-      .addSelect('COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) > 90 THEN f.montantTTC ELSE 0 END),0)', 'd90')
+      .select(
+        'COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) <= 30 THEN f.montantTTC ELSE 0 END),0)',
+        'd0',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) BETWEEN 31 AND 60 THEN f.montantTTC ELSE 0 END),0)',
+        'd30',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) BETWEEN 61 AND 90 THEN f.montantTTC ELSE 0 END),0)',
+        'd60',
+      )
+      .addSelect(
+        'COALESCE(SUM(CASE WHEN DATEDIFF(NOW(), f.dateEcheance) > 90 THEN f.montantTTC ELSE 0 END),0)',
+        'd90',
+      )
       .andWhere('f.status IN (:...st)', { st: FACTURE_UNPAID })
       .getRawOne();
     const aging = {
@@ -248,7 +312,10 @@ export class ReportsService {
 
     const byClientRows = await this.scoped(this.factureRepo, 'f')
       .leftJoin('customer', 'c', 'c.id = f.client_id')
-      .select("COALESCE(c.company_name, TRIM(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))))", 'name')
+      .select(
+        "COALESCE(c.company_name, TRIM(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))))",
+        'name',
+      )
       .addSelect('COALESCE(SUM(f.montantTTC),0)', 'sum')
       .andWhere('f.dateFacture BETWEEN :s AND :e', { s: start, e: end })
       .andWhere('f.status IN (:...st)', { st: FACTURE_SENT })
@@ -269,7 +336,10 @@ export class ReportsService {
       recoveryRatePct: pct(collected, billed),
       unpaidTotal,
       aging,
-      byClient: byClientRows.map((r) => ({ name: r.name || '—', amount: num(r.sum) })),
+      byClient: byClientRows.map((r) => ({
+        name: r.name || '—',
+        amount: num(r.sum),
+      })),
       expenses,
       margin: collected - expenses,
     };

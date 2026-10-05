@@ -8,7 +8,7 @@ export class PdfTemplateSearchDto {
   @IsString()
   search?: string;
 
-  @ApiPropertyOptional({ description: 'Filtrer par type d\'entité' })
+  @ApiPropertyOptional({ description: "Filtrer par type d'entité" })
   @IsOptional()
   @IsString()
   entity_type?: string;

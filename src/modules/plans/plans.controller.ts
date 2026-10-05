@@ -10,7 +10,12 @@ import {
   Query,
   Request,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -42,9 +47,17 @@ export class PlansController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_plans')
   @ApiOperation({ summary: 'Lister les plans (paginé)' })
-  @ApiResponse({ status: 200, description: 'Liste paginée des plans', type: [Plan] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste paginée des plans',
+    type: [Plan],
+  })
   async findAll(@Query() params: PlanSearchDto) {
-    return this.service.searchWithTransformer(params as any, Plan, params as any);
+    return this.service.searchWithTransformer(
+      params as any,
+      Plan,
+      params as any,
+    );
   }
 
   @Get('/active')
@@ -61,7 +74,7 @@ export class PlansController {
    */
   @Get('/quota/status')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'État d\'utilisation du plan du cabinet courant' })
+  @ApiOperation({ summary: "État d'utilisation du plan du cabinet courant" })
   async getMyQuotaStatus(@Request() req: any) {
     const cabinetId: number = req.user?.tenantId;
     return this.service.getQuotaStatus(cabinetId);

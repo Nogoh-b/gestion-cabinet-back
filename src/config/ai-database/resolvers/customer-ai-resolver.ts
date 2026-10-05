@@ -26,9 +26,9 @@ function similarityScore(a: string, b: string): number {
   if (!na || !nb) return 0;
   if (na === nb) return 100;
   if (na.includes(nb) || nb.includes(na)) return 85;
-  const tokensA = new Set(na.split(' ').filter(t => t.length > 1));
-  const tokensB = new Set(nb.split(' ').filter(t => t.length > 1));
-  const common = [...tokensA].filter(t => tokensB.has(t)).length;
+  const tokensA = new Set(na.split(' ').filter((t) => t.length > 1));
+  const tokensB = new Set(nb.split(' ').filter((t) => t.length > 1));
+  const common = [...tokensA].filter((t) => tokensB.has(t)).length;
   const tokenScore = common / Math.max(tokensA.size, tokensB.size, 1);
   const bigrams = (s: string) => {
     const r: string[] = [];
@@ -37,7 +37,7 @@ function similarityScore(a: string, b: string): number {
   };
   const bA = bigrams(na);
   const bB = bigrams(nb);
-  const bi = bA.filter(bg => bB.includes(bg)).length;
+  const bi = bA.filter((bg) => bB.includes(bg)).length;
   const bigramScore = (2 * bi) / (bA.length + bB.length || 1);
   return Math.round(Math.max(tokenScore, bigramScore) * 80);
 }
@@ -51,7 +51,10 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
     private readonly customerRepo: Repository<Customer>,
   ) {}
 
-  async resolve(input: string, config?: ResolveConfig): Promise<ResolveResult<any>> {
+  async resolve(
+    input: string,
+    config?: ResolveConfig,
+  ): Promise<ResolveResult<any>> {
     const ni = normalize(input);
     const parts = ni.split(' ');
     const isFullIdentity = parts.length > 1;
@@ -63,7 +66,10 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
         { first_name: ILike(`%${first}%`) },
         { last_name: ILike(`%${first}%`) },
         ...(rest
-          ? [{ first_name: ILike(`%${rest}%`) }, { last_name: ILike(`%${rest}%`) }]
+          ? [
+              { first_name: ILike(`%${rest}%`) },
+              { last_name: ILike(`%${rest}%`) },
+            ]
           : []),
         { company_name: ILike(`%${input}%`) },
         { email: ILike(`%${input}%`) },
@@ -72,28 +78,36 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
     });
 
     if (candidates.length === 0) {
-      const conditions = parts.flatMap(t => [
+      const conditions = parts.flatMap((t) => [
         { first_name: ILike(`%${t}%`) },
         { last_name: ILike(`%${t}%`) },
         { company_name: ILike(`%${t}%`) },
       ]);
-      candidates.push(...(await this.customerRepo.find({ where: conditions, take: 20 })));
+      candidates.push(
+        ...(await this.customerRepo.find({ where: conditions, take: 20 })),
+      );
     }
 
     const scored: ResolveMatch<Customer>[] = candidates
-      .map(c => {
+      .map((c) => {
         const fullName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
         const reverseName = `${c.last_name ?? ''} ${c.first_name ?? ''}`.trim();
         const scores = [
           { score: similarityScore(input, fullName), label: 'prénom+nom' },
           { score: similarityScore(input, reverseName), label: 'nom+prénom' },
-          { score: similarityScore(input, c.company_name), label: 'entreprise' },
+          {
+            score: similarityScore(input, c.company_name),
+            label: 'entreprise',
+          },
           { score: similarityScore(input, c.email), label: 'email' },
           // Avec une identité complète, une égalité sur le seul prénom ou le
           // seul nom n'est jamais suffisante pour attribuer un dossier.
           ...(!isFullIdentity
             ? [
-                { score: similarityScore(input, c.first_name), label: 'prénom' },
+                {
+                  score: similarityScore(input, c.first_name),
+                  label: 'prénom',
+                },
                 { score: similarityScore(input, c.last_name), label: 'nom' },
               ]
             : []),
@@ -102,7 +116,11 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
         return {
           entity: c,
           score: best.score,
-          matchedOn: `${best.label}: ${fullName || c.email || c.company_name || ''}`.slice(0, 80),
+          matchedOn:
+            `${best.label}: ${fullName || c.email || c.company_name || ''}`.slice(
+              0,
+              80,
+            ),
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -116,19 +134,34 @@ export class CustomerAiResolver implements SpecializedEntityResolver {
     config?: ResolveConfig,
   ): ResolveResult<any> {
     if (scored.length === 0) {
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: [], ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: [],
+        ambiguous: false,
+      };
     }
     // Le client est le propriétaire juridique du dossier. On conserve la
     // tolérance aux petites fautes, mais on refuse les rapprochements faibles.
     const MIN_SCORE = config?.minScore ?? 70;
     const AMBIGUITY_GAP = config?.ambiguityGap ?? 15;
-    const valid = scored.filter(m => m.score >= MIN_SCORE);
+    const valid = scored.filter((m) => m.score >= MIN_SCORE);
     if (valid.length === 0) {
-      return { found: false, best: null, score: 0, matchedOn: '', candidates: scored.slice(0, 10), ambiguous: false };
+      return {
+        found: false,
+        best: null,
+        score: 0,
+        matchedOn: '',
+        candidates: scored.slice(0, 10),
+        ambiguous: false,
+      };
     }
     const best = valid[0];
     const second = valid[1];
-    const ambiguous = !!second && best.score - second.score < AMBIGUITY_GAP && best.score < 90;
+    const ambiguous =
+      !!second && best.score - second.score < AMBIGUITY_GAP && best.score < 90;
     return {
       found: true,
       best: best.entity,

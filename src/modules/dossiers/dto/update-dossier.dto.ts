@@ -1,7 +1,13 @@
 // src/modules/dossiers/dto/update-dossier.dto.ts
 import { PartialType } from '@nestjs/mapped-types';
 import { CreateDossierDto } from './create-dossier.dto';
-import { IsEnum, IsOptional, IsDateString, IsBoolean, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsDateString,
+  IsBoolean,
+  IsString,
+} from 'class-validator';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 
 export class UpdateDossierDto extends PartialType(CreateDossierDto) {

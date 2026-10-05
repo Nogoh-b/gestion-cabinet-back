@@ -1,14 +1,17 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
-import { InvoiceType, InvoiceTypeCategory, TaxRate } from '../entities/invoice-type.entity';
+import {
+  InvoiceType,
+  InvoiceTypeCategory,
+  TaxRate,
+} from '../entities/invoice-type.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
-
 
 export default class InvoiceTypeSeeder implements Seeder {
   public async run(
     dataSource: DataSource,
-    factoryManager: SeederFactoryManager
+    factoryManager: SeederFactoryManager,
   ): Promise<any> {
     const repository = dataSource.getRepository(InvoiceType);
 
@@ -28,8 +31,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           default_unit: 'hour' as const, // <-- Correction ici
           default_price: 50000,
           vat_exempt: false,
-          legal_basis: 'Barème des honoraires recommandés par l\'ONBC'
-        }
+          legal_basis: "Barème des honoraires recommandés par l'ONBC",
+        },
       },
       {
         code: 'HON_PROCEDURE',
@@ -45,8 +48,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '706200',
           default_unit: 'fixed' as const,
           default_price: 150000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'HON_PLAIDOIRIE',
@@ -62,13 +65,13 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '706300',
           default_unit: 'day' as const,
           default_price: 250000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'FRAIS_DOSSIER',
         name: 'Frais de Dossier',
-        description: 'Frais d\'ouverture et de gestion de dossier',
+        description: "Frais d'ouverture et de gestion de dossier",
         category: InvoiceTypeCategory.EXPENSES,
         default_tax_rate: TaxRate.STANDARD,
         is_billable: true,
@@ -79,8 +82,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '622100',
           default_unit: 'fixed' as const,
           default_price: 25000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'FRAIS_DEPLACEMENT',
@@ -96,8 +99,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '625100',
           default_unit: 'unit' as const,
           default_price: 0,
-          vat_exempt: true
-        }
+          vat_exempt: true,
+        },
       },
       {
         code: 'FRAIS_COURRIER',
@@ -113,12 +116,12 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '622200',
           default_unit: 'unit' as const,
           default_price: 5000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'FRAIS_EXPERTISE',
-        name: 'Frais d\'Expertise',
+        name: "Frais d'Expertise",
         description: 'Rémunération des experts',
         category: InvoiceTypeCategory.EXPENSES,
         default_tax_rate: TaxRate.STANDARD,
@@ -130,8 +133,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '622300',
           default_unit: 'fixed' as const,
           default_price: 0,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'ACOMPTE',
@@ -147,8 +150,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '419100',
           default_unit: 'fixed' as const,
           default_price: 0,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'REGLEMENT_SOLDE',
@@ -164,8 +167,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '411100',
           default_unit: 'fixed' as const,
           default_price: 0,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'FRAIS_TIMBRES',
@@ -181,13 +184,13 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '622400',
           default_unit: 'unit' as const,
           default_price: 1000,
-          vat_exempt: true
-        }
+          vat_exempt: true,
+        },
       },
       {
         code: 'HON_REDACTION',
         name: 'Honoraires de Rédaction',
-        description: 'Rédaction d\'actes, contrats, conclusions',
+        description: "Rédaction d'actes, contrats, conclusions",
         category: InvoiceTypeCategory.LEGAL_FEES,
         default_tax_rate: TaxRate.STANDARD,
         is_billable: true,
@@ -198,8 +201,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '706400',
           default_unit: 'hour' as const,
           default_price: 35000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'FRAIS_PUBLICATION',
@@ -215,8 +218,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '622500',
           default_unit: 'unit' as const,
           default_price: 15000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'HON_NEGOCIATION',
@@ -232,13 +235,13 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '706500',
           default_unit: 'hour' as const,
           default_price: 45000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'FRAIS_HUISSIER',
-        name: 'Frais d\'Huissier',
-        description: 'Signification d\'actes par huissier',
+        name: "Frais d'Huissier",
+        description: "Signification d'actes par huissier",
         category: InvoiceTypeCategory.EXPENSES,
         default_tax_rate: TaxRate.STANDARD,
         is_billable: true,
@@ -249,8 +252,8 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '622600',
           default_unit: 'unit' as const,
           default_price: 20000,
-          vat_exempt: false
-        }
+          vat_exempt: false,
+        },
       },
       {
         code: 'AUTRES_FRAIS',
@@ -266,13 +269,17 @@ export default class InvoiceTypeSeeder implements Seeder {
           accounting_code: '622700',
           default_unit: 'unit' as const,
           default_price: 0,
-          vat_exempt: false
-        }
-      }
+          vat_exempt: false,
+        },
+      },
     ];
 
     for (const typeData of invoiceTypes) {
-      const existing = await findOneForTenant(repository, 'code', typeData.code);
+      const existing = await findOneForTenant(
+        repository,
+        'code',
+        typeData.code,
+      );
 
       if (!existing) {
         const invoiceType = repository.create(typeData);

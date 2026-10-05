@@ -1,10 +1,18 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-
-
 
 import { CreateRegionDto } from './dto/create-region.dto';
 import { UpdateRegionDto } from './dto/update-region.dto';
@@ -13,9 +21,6 @@ import { Division } from '../divivion/entities/divivion.entity';
 import { Region } from './entities/region.entity';
 import { RegionSearchDto } from './dto/region-search.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-
-
-
 
 @Controller('region')
 @ApiBearerAuth()
@@ -31,14 +36,21 @@ export class RegionController {
 
   @Get('/search')
   @ApiOperation({ summary: 'Rechercher les régions' })
-  @ApiResponse({ status: 200, description: 'Liste des régions', type: [Region] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des régions',
+    type: [Region],
+  })
   async search(
     @Query() searchParams?: RegionSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.regionService.searchWithTransformer(searchParams as any, Region, paginationParams);
+    return this.regionService.searchWithTransformer(
+      searchParams as any,
+      Region,
+      paginationParams,
+    );
   }
-
 
   @Get()
   @RequirePermissions('')

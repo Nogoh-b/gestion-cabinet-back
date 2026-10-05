@@ -1,20 +1,26 @@
 // src/common/dto/pagination-params.dto.ts
-import { IsOptional, IsNumber, Min, Max, IsString, IsEnum } from 'class-validator';
+import {
+  IsOptional,
+  IsNumber,
+  Min,
+  Max,
+  IsString,
+  IsEnum,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
 export enum SortDirection {
   ASC = 'ASC',
-  DESC = 'DESC'
+  DESC = 'DESC',
 }
 
 export class PaginationParamsDto {
-  
   @ApiPropertyOptional({
     description: 'Numéro de page',
     example: 1,
     minimum: 1,
-    default: 1
+    default: 1,
   })
   @IsOptional()
   @Type(() => Number)
@@ -23,11 +29,11 @@ export class PaginationParamsDto {
   page?: number = 1;
 
   @ApiPropertyOptional({
-    description: 'Nombre d\'éléments par page',
+    description: "Nombre d'éléments par page",
     example: 10,
     minimum: 1,
     maximum: 100,
-    default: 10
+    default: 10,
   })
   @IsOptional()
   @Type(() => Number)
@@ -38,7 +44,7 @@ export class PaginationParamsDto {
 
   @ApiPropertyOptional({
     description: 'Champ de tri',
-    example: 'created_at'
+    example: 'created_at',
   })
   @IsOptional()
   @IsString()
@@ -47,7 +53,7 @@ export class PaginationParamsDto {
   @ApiPropertyOptional({
     description: 'Direction du tri',
     enum: SortDirection,
-    example: SortDirection.DESC
+    example: SortDirection.DESC,
   })
   @IsOptional()
   @IsEnum(SortDirection)

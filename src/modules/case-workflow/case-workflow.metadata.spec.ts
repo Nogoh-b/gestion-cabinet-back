@@ -50,11 +50,9 @@ describe('case-workflow MariaDB metadata', () => {
       'COMPLETED ne signifie jamais à lui seul',
     );
     expect(billingDecision.description).toContain(
-      'Seule la valeur BILLABLE',
+      'HOURLY crée un honoraire horaire',
     );
-    expect(itemStatus.description).toContain(
-      'Seul TO_INVOICE signifie',
-    );
+    expect(itemStatus.description).toContain('Seul TO_INVOICE signifie');
   });
 
   it('masque les entités de l’ancien moteur de procédure', () => {

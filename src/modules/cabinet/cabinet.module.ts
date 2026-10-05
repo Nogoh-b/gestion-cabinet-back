@@ -9,9 +9,7 @@ import { CabinetSubscriber } from './subscribers/cabinet.subscriber';
 import { TenantSeederService } from './tenant-seeder.service';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Cabinet, Plan]),
-  ],
+  imports: [TypeOrmModule.forFeature([Cabinet, Plan])],
   providers: [CabinetService, TenantSeederService, CabinetSubscriber],
   controllers: [CabinetController],
   exports: [CabinetService, TenantSeederService],

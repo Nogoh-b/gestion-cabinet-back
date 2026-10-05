@@ -8,7 +8,10 @@ import {
   SearchCriteria,
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
-import { ReferralCommission, CommissionStatus } from './entities/referral-commission.entity';
+import {
+  ReferralCommission,
+  CommissionStatus,
+} from './entities/referral-commission.entity';
 import { CreateReferralCommissionDto } from './dto/create-referral-commission.dto';
 import { UpdateReferralCommissionDto } from './dto/update-referral-commission.dto';
 import { DossierReferral } from './entities/dossier-referral.entity';
@@ -37,8 +40,14 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
   }
 
   /** Émet l'événement de comptabilisation quand une commission passe à « payée ». */
-  private emitIfPaid(previous: CommissionStatus | undefined, commission: ReferralCommission): void {
-    if (previous !== CommissionStatus.PAID && commission.status === CommissionStatus.PAID) {
+  private emitIfPaid(
+    previous: CommissionStatus | undefined,
+    commission: ReferralCommission,
+  ): void {
+    if (
+      previous !== CommissionStatus.PAID &&
+      commission.status === CommissionStatus.PAID
+    ) {
       this.eventEmitter.emit('referral_commission.payee', commission);
     }
   }
@@ -49,18 +58,21 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     const entity = this.repository.create({
       ...dto,
       status: requestedStatus ?? CommissionStatus.CALCULATED,
-      ...(requestedStatus === CommissionStatus.PAID ? { payment_date: new Date() } : {}),
+      ...(requestedStatus === CommissionStatus.PAID
+        ? { payment_date: new Date() }
+        : {}),
     });
 
     // dossier_referral_id est number dans ReferralCommission
     // mais l'ID de DossierReferral est string (UUID)
     // => il faut convertir si nécessaire, ou ajuster selon le vrai type
     const dossierReferral = await this.dossierReferralRepo.findOne({
-      where: { id: dto.dossier_referral_id },  // Retirer le String()
+      where: { id: dto.dossier_referral_id }, // Retirer le String()
       relations: ['referrer', 'dossier'],
     });
-    
-    if (!dossierReferral) throw new NotFoundException('Apport de dossier non trouvé');
+
+    if (!dossierReferral)
+      throw new NotFoundException('Apport de dossier non trouvé');
     entity.dossier_referral = dossierReferral;
 
     if (dto.facture_id) {
@@ -94,8 +106,19 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
         'facture.numero',
         'payment_reference',
       ],
-      exactMatchFields: ['id', 'dossier_referral_id', 'facture_id', 'paiement_id', 'status'],
-      dateRangeFields: ['created_at', 'updated_at', 'calculation_date', 'payment_date'],
+      exactMatchFields: [
+        'id',
+        'dossier_referral_id',
+        'facture_id',
+        'paiement_id',
+        'status',
+      ],
+      dateRangeFields: [
+        'created_at',
+        'updated_at',
+        'calculation_date',
+        'payment_date',
+      ],
       relationFields: [
         'dossier_referral',
         'dossier_referral.dossier',
@@ -132,19 +155,21 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
   }
 
   findAll(): Promise<ReferralCommission[]> {
-    return this.repository.find({
-      relations: [
-        'dossier_referral',
-        'dossier_referral.referrer',
-        'dossier_referral.referrer.employee',
-        'dossier_referral.referrer.employee.user',
-        'dossier_referral.referrer.customer',
-        'dossier_referral.dossier',
-        'facture',
-        'paiement',
-      ],
-      order: { calculation_date: 'DESC' },
-    }).then((items) => items.map((item) => this.enrichCommission(item)));
+    return this.repository
+      .find({
+        relations: [
+          'dossier_referral',
+          'dossier_referral.referrer',
+          'dossier_referral.referrer.employee',
+          'dossier_referral.referrer.employee.user',
+          'dossier_referral.referrer.customer',
+          'dossier_referral.dossier',
+          'facture',
+          'paiement',
+        ],
+        order: { calculation_date: 'DESC' },
+      })
+      .then((items) => items.map((item) => this.enrichCommission(item)));
   }
 
   async findOne(id: number): Promise<ReferralCommission> {
@@ -162,46 +187,54 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     return this.enrichCommission(commission);
   }
 
-  async findByReferral(dossier_referral_id: number): Promise<ReferralCommission[]> {
-    return this.repository.find({
-      where: { dossier_referral_id },
-      relations: [
-        'dossier_referral',
-        'dossier_referral.dossier',
-        'dossier_referral.referrer',
-        'dossier_referral.referrer.employee',
-        'dossier_referral.referrer.employee.user',
-        'dossier_referral.referrer.customer',
-        'facture',
-        'paiement',
-      ],
-      order: { calculation_date: 'DESC' },
-    }).then((items) => items.map((item) => this.enrichCommission(item)));
+  async findByReferral(
+    dossier_referral_id: number,
+  ): Promise<ReferralCommission[]> {
+    return this.repository
+      .find({
+        where: { dossier_referral_id },
+        relations: [
+          'dossier_referral',
+          'dossier_referral.dossier',
+          'dossier_referral.referrer',
+          'dossier_referral.referrer.employee',
+          'dossier_referral.referrer.employee.user',
+          'dossier_referral.referrer.customer',
+          'facture',
+          'paiement',
+        ],
+        order: { calculation_date: 'DESC' },
+      })
+      .then((items) => items.map((item) => this.enrichCommission(item)));
   }
 
   async findByReferrer(referrer_id: number): Promise<ReferralCommission[]> {
-    return this.repository.find({
-      where: {
-        dossier_referral: { referrer_id },
-      },
-      relations: [
-        'dossier_referral',
-        'dossier_referral.dossier',
-        'dossier_referral.referrer',
-        'dossier_referral.referrer.employee',
-        'dossier_referral.referrer.employee.user',
-        'dossier_referral.referrer.customer',
-        'facture',
-        'paiement',
-      ],
-      order: { calculation_date: 'DESC' },
-    }).then((items) => items.map((item) => this.enrichCommission(item)));
+    return this.repository
+      .find({
+        where: {
+          dossier_referral: { referrer_id },
+        },
+        relations: [
+          'dossier_referral',
+          'dossier_referral.dossier',
+          'dossier_referral.referrer',
+          'dossier_referral.referrer.employee',
+          'dossier_referral.referrer.employee.user',
+          'dossier_referral.referrer.customer',
+          'facture',
+          'paiement',
+        ],
+        order: { calculation_date: 'DESC' },
+      })
+      .then((items) => items.map((item) => this.enrichCommission(item)));
   }
 
   async approve(id: number): Promise<ReferralCommission> {
     const commission = await this.findOne(id);
     if (commission.status !== CommissionStatus.CALCULATED) {
-      throw new Error('Seules les commissions calculées peuvent être approuvées');
+      throw new Error(
+        'Seules les commissions calculées peuvent être approuvées',
+      );
     }
     commission.status = CommissionStatus.APPROVED;
     await this.repository.save(commission);
@@ -249,7 +282,8 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
       const dossierReferral = await this.dossierReferralRepo.findOne({
         where: { id: dto.dossier_referral_id },
       });
-      if (!dossierReferral) throw new NotFoundException('Apport de dossier non trouvé');
+      if (!dossierReferral)
+        throw new NotFoundException('Apport de dossier non trouvé');
       commission.dossier_referral = dossierReferral;
     }
 
@@ -276,7 +310,11 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
     }
 
     // Si PAID arrive sans payment_date explicite, on date le paiement.
-    if ((dto as any).status === CommissionStatus.PAID && !commission.payment_date && !(dto as any).payment_date) {
+    if (
+      (dto as any).status === CommissionStatus.PAID &&
+      !commission.payment_date &&
+      !(dto as any).payment_date
+    ) {
       commission.payment_date = new Date();
     }
     await this.repository.save({ ...commission, ...dto });
@@ -294,7 +332,9 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
   ): CreateReferralCommissionDto | UpdateReferralCommissionDto {
     return {
       ...dto,
-      dossier_referral_id: this.toNullableNumber(dto.dossier_referral_id) as any,
+      dossier_referral_id: this.toNullableNumber(
+        dto.dossier_referral_id,
+      ) as any,
       facture_id: this.toNullableString(dto.facture_id) as any,
       paiement_id: this.toNullableString(dto.paiement_id) as any,
       amount: this.toNullableNumber(dto.amount) as any,
@@ -314,13 +354,16 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
   }
 
   private enrichCommission(commission: ReferralCommission): ReferralCommission {
-    const referrer = commission.dossier_referral?.referrer as Referrer | undefined;
+    const referrer = commission.dossier_referral?.referrer as
+      | Referrer
+      | undefined;
 
     return {
       ...commission,
       amount: Number(commission.amount ?? 0),
       status_label: this.getStatusLabel(commission.status),
-      dossier_number: commission.dossier_referral?.dossier?.dossier_number ?? null,
+      dossier_number:
+        commission.dossier_referral?.dossier?.dossier_number ?? null,
       referrer_name: this.getReferrerDisplayName(referrer),
     } as unknown as ReferralCommission;
   }
@@ -340,8 +383,10 @@ export class ReferralCommissionsService extends BaseServiceV1<ReferralCommission
 
     const employeeUser = (referrer as any).employee?.user;
     const employeeName =
-      [employeeUser?.first_name, employeeUser?.last_name].filter(Boolean).join(' ').trim() ||
-      (referrer as any).employee?.full_name;
+      [employeeUser?.first_name, employeeUser?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || (referrer as any).employee?.full_name;
 
     return (
       referrer.company_name ||
