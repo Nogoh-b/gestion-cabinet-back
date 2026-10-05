@@ -37,15 +37,18 @@ import {
   BillingCalculationMode,
   BillingMode,
   BillingTrigger,
+  WorkflowEngine,
 } from '../case-workflow.enums';
 import {
   AdjustBillableItemDto,
   CreateDossierBillingRuleDto,
   CreateManualBillableItemDto,
   GenerateInvoiceFromItemsDto,
+  RecalculateBillableItemsDto,
   ReviewBillableItemDto,
   ReviseDossierBillingRuleDto,
   UpdateBillingProfileDto,
+  ValidateResultFeeDto,
   WaiveBillableItemDto,
 } from '../dto/case-workflow.dto';
 import {
@@ -55,6 +58,7 @@ import {
   InvoiceLine,
 } from '../entities/billing.entity';
 import { DossierAction } from '../entities/dossier-action.entity';
+import { ActionDefinition } from '../entities/action-catalog.entity';
 import { CaseWorkflowEvent } from '../entities/workflow-audit.entity';
 import { WorkflowEventService } from './workflow-event.service';
 import { calculateActionBilling } from '../case-workflow.logic';
@@ -493,6 +497,81 @@ export class CaseBillingService {
     return item;
   }
 
+  async createFixedFeeItem(
+    manager: EntityManager,
+    dossier: Dossier,
+    actorUserId: number,
+  ): Promise<BillableItem | null> {
+    const tenantId = getCurrentTenantId();
+    const profile = await manager
+      .getRepository(DossierBillingProfile)
+      .findOne({
+        where: { tenant_id: tenantId, dossier_id: dossier.id },
+      });
+    const mode = profile?.mode ?? BillingMode.FIXED;
+    if (mode === BillingMode.HOURLY) return null;
+    const repository = manager.getRepository(BillableItem);
+    const sourceEventKey = `DOSSIER:${dossier.id}:FIXED_FEE`;
+    const existing = await repository.findOne({
+      where: { tenant_id: tenantId, source_event_key: sourceEventKey },
+    });
+    if (existing) return existing;
+    const amount =
+      profile?.fixed_fee != null ? Number(profile.fixed_fee) : null;
+    const taxRate = Number(profile?.vat_rate ?? 0);
+    const reviewReason =
+      amount == null || amount <= 0
+        ? 'Montant du forfait manquant'
+        : null;
+    const net = reviewReason ? 0 : this.round(amount as number);
+    const tax = this.round((net * taxRate) / 100);
+    const item = await repository.save(
+      repository.create({
+        tenant_id: tenantId,
+        dossier_id: dossier.id,
+        client_id: dossier.client_id,
+        source_type: BillableSourceType.MILESTONE,
+        category: BillableCategory.HONORARIUM,
+        calculation_mode: BillingCalculationMode.FIXED,
+        source_id: String(dossier.id),
+        action_id: null,
+        billing_rule_id: null,
+        source_event_key: sourceEventKey,
+        occurred_at: new Date(),
+        label: 'Forfait principal du dossier',
+        unit_label: null,
+        quantity: 1,
+        unit_price: net,
+        net_amount: net,
+        tax_rate: taxRate,
+        tax_amount: tax,
+        gross_amount: this.round(net + tax),
+        currency: profile?.currency ?? 'XAF',
+        status: reviewReason
+          ? BillableItemStatus.NEEDS_REVIEW
+          : BillableItemStatus.TO_INVOICE,
+        calculation_snapshot: {
+          mode: BillingCalculationMode.FIXED,
+          fixedFee: amount,
+          taxRate,
+        },
+        review_reason: reviewReason,
+        reserved_at: null,
+        invoice_line_id: null,
+      }),
+    );
+    await this.eventService.append(manager, {
+      dossierId: dossier.id,
+      eventType: 'BILLABLE_ITEM_CREATED',
+      aggregateType: 'BillableItem',
+      aggregateId: item.id,
+      actorUserId,
+      payload: { sourceType: item.source_type, amount: item.gross_amount },
+      idempotencyKey: `EVENT:${sourceEventKey}`,
+    });
+    return item;
+  }
+
   async createForCompletedAction(
     manager: EntityManager,
     action: DossierAction,
@@ -739,6 +818,8 @@ export class CaseBillingService {
       where: { id: expenseLine.dossier_id, tenant_id: tenantId },
     });
     if (!dossier) return existing ?? null;
+    if (dossier.workflow_engine !== WorkflowEngine.ACTIONS_V2)
+      return existing ?? null;
 
     const category = isDisbursement
       ? BillableCategory.DISBURSEMENT
@@ -1129,6 +1210,21 @@ export class CaseBillingService {
         'Seules une prestation manuelle ou une diligence peuvent être saisies ici',
       );
     }
+    const category = dto.category ?? null;
+    if (!category) {
+      throw new ConflictException(
+        'La catégorie est obligatoire pour une saisie manuelle',
+      );
+    }
+    if (
+      ![BillableCategory.HONORARIUM, BillableCategory.VACATION].includes(
+        category,
+      )
+    ) {
+      throw new ConflictException(
+        'Seules les catégories Honoraires et Vacation peuvent être saisies manuellement',
+      );
+    }
     const sourceEventKey = `MANUAL:${idempotencyKey}`;
     const existing = await this.itemRepository.findOne({
       where: { tenant_id: tenantId, source_event_key: sourceEventKey },
@@ -1146,7 +1242,7 @@ export class CaseBillingService {
         client_id: dossier.client_id,
         source_type: sourceType,
         source_id: idempotencyKey,
-        category: dto.category ?? BillableCategory.HONORARIUM,
+        category,
         calculation_mode:
           dto.calculation_mode ?? BillingCalculationMode.FIXED,
         unit_label: dto.unit_label?.trim() || null,
@@ -1405,6 +1501,7 @@ export class CaseBillingService {
     search?: string;
     status?: BillableItemStatus;
     source_type?: BillableSourceType;
+    category?: BillableCategory;
     dossier_id?: number;
     client_id?: number;
     from?: string;
@@ -1468,6 +1565,11 @@ export class CaseBillingService {
     if (filters.source_type) {
       query.andWhere('item.source_type = :sourceType', {
         sourceType: filters.source_type,
+      });
+    }
+    if (filters.category) {
+      query.andWhere('item.category = :category', {
+        category: filters.category,
       });
     }
     if (Number(filters.dossier_id) > 0) {
@@ -1764,6 +1866,352 @@ export class CaseBillingService {
       });
       return saved;
     });
+  }
+
+  async validateResultFee(
+    dossierId: number,
+    dto: ValidateResultFeeDto,
+    idempotencyKey: string,
+    actorUserId: number,
+  ): Promise<BillableItem> {
+    const tenantId = getCurrentTenantId();
+    const dossier = await this.assertDossier(dossierId, tenantId);
+    const profile = await this.getProfile(dossierId);
+    if (dossier.workflow_engine !== WorkflowEngine.ACTIONS_V2) {
+      throw new ConflictException(
+        'Ce dossier n’est pas éligible au nouveau moteur de facturation',
+      );
+    }
+    if (
+      !profile.result_fee_enabled ||
+      profile.result_fee_rate == null ||
+      Number(profile.result_fee_rate) <= 0
+    ) {
+      throw new ConflictException(
+        "L'honoraire de résultat n'est pas configuré sur ce dossier",
+      );
+    }
+    const hasBaseRemuneration =
+      (profile.fixed_fee != null && Number(profile.fixed_fee) > 0) ||
+      (profile.hourly_rate != null && Number(profile.hourly_rate) > 0) ||
+      (profile.default_vacation_rate != null &&
+        Number(profile.default_vacation_rate) > 0);
+    if (!hasBaseRemuneration) {
+      throw new ConflictException(
+        "L'honoraire de résultat ne peut pas être la seule rémunération professionnelle du dossier",
+      );
+    }
+    const rate = Number(profile.result_fee_rate);
+    const base = this.round(Number(dto.base_amount));
+    const net = this.round((base * rate) / 100);
+    const taxRate = Number(profile.vat_rate ?? 0);
+    const tax = this.round((net * taxRate) / 100);
+    const snapshot = {
+      mode: BillingCalculationMode.PERCENTAGE,
+      baseAmount: base,
+      rate,
+      resultReference: dto.result_reference.trim(),
+      occurredAt: dto.occurred_at ?? null,
+      actorUserId,
+      note: dto.note?.trim() || null,
+      idempotencyKey,
+    };
+    const sourceEventKey = `DOSSIER:${dossierId}:RESULT_FEE`;
+    const existing = await this.itemRepository.findOne({
+      where: { tenant_id: tenantId, source_event_key: sourceEventKey },
+    });
+    if (existing) {
+      if (
+        ![
+          BillableItemStatus.NEEDS_REVIEW,
+          BillableItemStatus.TO_INVOICE,
+        ].includes(existing.status)
+      ) {
+        throw new ConflictException(
+          "L'honoraire de résultat est déjà réservé ou facturé : utilisez un ajustement ou un avoir",
+        );
+      }
+      existing.quantity = rate / 100;
+      existing.unit_price = base;
+      existing.net_amount = net;
+      existing.tax_rate = taxRate;
+      existing.tax_amount = tax;
+      existing.gross_amount = this.round(net + tax);
+      existing.occurred_at = dto.occurred_at
+        ? new Date(dto.occurred_at)
+        : existing.occurred_at;
+      existing.status = BillableItemStatus.TO_INVOICE;
+      existing.review_reason = null;
+      existing.calculation_snapshot = snapshot;
+      return this.itemRepository.save(existing);
+    }
+    const item = await this.itemRepository.save(
+      this.itemRepository.create({
+        tenant_id: tenantId,
+        dossier_id: dossierId,
+        client_id: dossier.client_id,
+        source_type: BillableSourceType.RESULT,
+        category: BillableCategory.RESULT_FEE,
+        calculation_mode: BillingCalculationMode.PERCENTAGE,
+        source_id: String(dossierId),
+        action_id: null,
+        billing_rule_id: null,
+        source_event_key: sourceEventKey,
+        occurred_at: dto.occurred_at ? new Date(dto.occurred_at) : new Date(),
+        label: `Honoraire de résultat — ${dto.result_reference.trim()}`,
+        unit_label: null,
+        quantity: rate / 100,
+        unit_price: base,
+        net_amount: net,
+        tax_rate: taxRate,
+        tax_amount: tax,
+        gross_amount: this.round(net + tax),
+        currency: profile.currency,
+        status: BillableItemStatus.TO_INVOICE,
+        calculation_snapshot: snapshot,
+        review_reason: null,
+        reserved_at: null,
+        invoice_line_id: null,
+      }),
+    );
+    await this.eventService.append(this.itemRepository.manager, {
+      dossierId,
+      eventType: 'BILLABLE_ITEM_CREATED',
+      aggregateType: 'BillableItem',
+      aggregateId: item.id,
+      actorUserId,
+      payload: { sourceType: item.source_type, amount: item.gross_amount },
+      idempotencyKey: `EVENT:${sourceEventKey}`,
+    });
+    return item;
+  }
+
+  async recalculateItems(
+    dto: RecalculateBillableItemsDto,
+    idempotencyKey: string,
+    actorUserId: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    if (!dto.billable_item_ids?.length) {
+      throw new BadRequestException(
+        'Sélectionnez au moins un élément à recalculer',
+      );
+    }
+    const dryRun = dto.dry_run ?? true;
+    const tenantId = getCurrentTenantId();
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(BillableItem);
+      const results: Array<Record<string, unknown>> = [];
+      for (const id of dto.billable_item_ids) {
+        const item = await repository.findOne({
+          where: { id, tenant_id: tenantId },
+        });
+        if (!item) {
+          results.push({
+            billable_item_id: id,
+            changed: false,
+            skipped_reason: 'Élément introuvable',
+          });
+          continue;
+        }
+        if (
+          ![
+            BillableItemStatus.NEEDS_REVIEW,
+            BillableItemStatus.TO_INVOICE,
+          ].includes(item.status)
+        ) {
+          results.push({
+            billable_item_id: id,
+            changed: false,
+            skipped_reason: 'Élément réservé, facturé ou clôturé',
+          });
+          continue;
+        }
+        if (item.source_type !== BillableSourceType.ACTION) {
+          results.push({
+            billable_item_id: id,
+            changed: false,
+            skipped_reason: 'Source non recalculable automatiquement',
+          });
+          continue;
+        }
+        const action = await manager.getRepository(DossierAction).findOne({
+          where: {
+            id: item.action_id ?? item.source_id,
+            tenant_id: tenantId,
+          },
+        });
+        if (!action) {
+          results.push({
+            billable_item_id: id,
+            changed: false,
+            skipped_reason: 'Action source introuvable',
+          });
+          continue;
+        }
+        const pricing = await this.resolveActionPricing(manager, action);
+        if (!pricing) {
+          results.push({
+            billable_item_id: id,
+            changed: false,
+            skipped_reason: 'Action devenue non facturable',
+          });
+          continue;
+        }
+        const before = {
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          net_amount: Number(item.net_amount),
+          tax_rate: Number(item.tax_rate),
+          tax_amount: Number(item.tax_amount),
+          gross_amount: Number(item.gross_amount),
+          status: item.status,
+          category: item.category,
+        };
+        const after = {
+          quantity: pricing.calculation.quantity,
+          unit_price: pricing.calculation.unitPrice,
+          net_amount: pricing.calculation.net,
+          tax_rate: pricing.taxRate,
+          tax_amount: pricing.calculation.tax,
+          gross_amount: pricing.calculation.gross,
+          status: pricing.calculation.reviewReason
+            ? BillableItemStatus.NEEDS_REVIEW
+            : BillableItemStatus.TO_INVOICE,
+          category: pricing.category,
+        };
+        const changed = (Object.keys(after) as Array<keyof typeof after>).some(
+          (key) => before[key] !== after[key],
+        );
+        if (!dryRun && changed) {
+          item.quantity = after.quantity;
+          item.unit_price = after.unit_price;
+          item.net_amount = after.net_amount;
+          item.tax_rate = after.tax_rate;
+          item.tax_amount = after.tax_amount;
+          item.gross_amount = after.gross_amount;
+          item.status = after.status;
+          item.category = after.category;
+          item.calculation_mode =
+            pricing.calculationMode ?? BillingCalculationMode.FIXED;
+          item.billing_rule_id = pricing.rule?.id ?? item.billing_rule_id;
+          item.review_reason = pricing.calculation.reviewReason;
+          item.calculation_snapshot = {
+            ...(item.calculation_snapshot ?? {}),
+            recalculatedAt: new Date().toISOString(),
+            recalculatedBy: actorUserId,
+            recalculationKey: idempotencyKey,
+            billingRuleId: pricing.rule?.id ?? null,
+            billingRuleVersion: pricing.rule?.version ?? null,
+            quantity: after.quantity,
+            unitPrice: after.unit_price,
+            taxRate: after.tax_rate,
+          };
+          await repository.save(item);
+          await this.eventService.append(manager, {
+            dossierId: item.dossier_id,
+            eventType: 'BILLABLE_ITEM_RECALCULATED',
+            aggregateType: 'BillableItem',
+            aggregateId: item.id,
+            actorUserId,
+            payload: { before, after },
+            idempotencyKey: `EVENT:RECALC:${idempotencyKey}:${item.id}`,
+          });
+        }
+        results.push({ billable_item_id: id, changed, before, after });
+      }
+      return results;
+    });
+  }
+
+  /**
+   * Rejoue la tarification d'une action avec les règles, le catalogue et le
+   * profil courants. Miroir de la résolution de createForCompletedAction,
+   * sans toucher au chemin de création.
+   */
+  private async resolveActionPricing(
+    manager: EntityManager,
+    action: DossierAction,
+  ): Promise<{
+    rule: DossierBillingRule | null;
+    calculationMode: BillingCalculationMode | null;
+    category: BillableCategory;
+    taxRate: number;
+    calculation: {
+      quantity: number;
+      unitPrice: number;
+      net: number;
+      tax: number;
+      gross: number;
+      reviewReason: string | null;
+    };
+  } | null> {
+    if (
+      action.billing_decision === ActionBillingDecision.NON_BILLABLE ||
+      action.billing_decision === ActionBillingDecision.INCLUDED_IN_PACKAGE
+    )
+      return null;
+    const tenantId = getCurrentTenantId();
+    const [profile, definition] = await Promise.all([
+      manager.getRepository(DossierBillingProfile).findOne({
+        where: { tenant_id: tenantId, dossier_id: action.dossier_id },
+      }),
+      action.definition_id
+        ? manager.getRepository(ActionDefinition).findOne({
+            where: { id: action.definition_id },
+          })
+        : null,
+    ]);
+    const rule = await this.applicableRule(
+      manager,
+      action.dossier_id,
+      BillingTrigger.ACTION_COMPLETED,
+      action.definition_code,
+    );
+    const calculationMode =
+      action.billing_decision === ActionBillingDecision.HOURLY
+        ? BillingCalculationMode.HOURLY
+        : action.billing_decision === ActionBillingDecision.VACATION
+          ? BillingCalculationMode.UNIT
+          : (rule?.calculation_mode ?? definition?.billing_mode ?? null);
+    const category =
+      action.billing_decision === ActionBillingDecision.VACATION
+        ? BillableCategory.VACATION
+        : rule?.category === BillableCategory.VACATION
+          ? BillableCategory.VACATION
+          : BillableCategory.HONORARIUM;
+    const taxRate = Number(profile?.vat_rate ?? 0);
+    const ruleBase = this.valueAtPath(
+      action.specific_data,
+      rule?.base_field ?? null,
+    );
+    const calculation = calculateActionBilling({
+      decision: action.billing_decision,
+      mode: calculationMode,
+      durationMinutes: action.duration_minutes,
+      definitionRate:
+        rule?.rate ??
+        definition?.default_rate ??
+        (category === BillableCategory.VACATION
+          ? profile?.default_vacation_rate
+          : null),
+      hourlyRate:
+        calculationMode === BillingCalculationMode.HOURLY && rule?.rate != null
+          ? rule.rate
+          : profile?.hourly_rate,
+      fixedFee:
+        calculationMode === BillingCalculationMode.FIXED && rule?.rate != null
+          ? rule.rate
+          : profile?.fixed_fee,
+      percentageRate:
+        calculationMode === BillingCalculationMode.PERCENTAGE &&
+        rule?.rate != null
+          ? rule.rate
+          : profile?.percentage_rate,
+      percentageBase: ruleBase ?? profile?.percentage_base,
+      taxRate,
+      decisionReason: action.billing_reason,
+    });
+    return { rule, calculationMode, category, taxRate, calculation };
   }
 
   async invoiceFromItems(

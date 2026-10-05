@@ -876,6 +876,36 @@ export class CreateLegacyWorkflowMappingDto {
   is_active?: boolean;
 }
 
+export class ValidateResultFeeDto {
+  @IsNumber()
+  @Min(0)
+  base_amount: number;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  result_reference: string;
+
+  @IsOptional()
+  @IsDateString()
+  occurred_at?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class RecalculateBillableItemsDto {
+  @IsArray()
+  @IsUUID('4', { each: true })
+  billable_item_ids: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  dry_run?: boolean;
+}
+
 export class ReviseLegacyWorkflowMappingDto {
   @IsOptional()
   @IsString()

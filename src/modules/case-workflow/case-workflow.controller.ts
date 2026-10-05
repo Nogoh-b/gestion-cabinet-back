@@ -17,7 +17,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { BillableItemStatus, BillableSourceType } from './case-workflow.enums';
+import { BillableCategory, BillableItemStatus, BillableSourceType } from './case-workflow.enums';
 import {
   ActionTransitionDto,
   ApplyWorkflowMigrationDto,
@@ -35,6 +35,7 @@ import {
   ExtendDossierActionDeadlineDto,
   GenerateInvoiceFromItemsDto,
   ReviewBillableItemDto,
+  RecalculateBillableItemsDto,
   ReopenDossierDto,
   ReviseDossierBillingRuleDto,
   ReviseActionDefinitionDto,
@@ -44,6 +45,7 @@ import {
   UpdateDossierActionDetailsDto,
   UpdateActionFamilyDto,
   UpdateCaseWorkflowFeatureDto,
+  ValidateResultFeeDto,
   WaiveBillableItemDto,
 } from './dto/case-workflow.dto';
 import { ActionCatalogService } from './services/action-catalog.service';
@@ -252,6 +254,22 @@ export class DossierWorkspaceController {
     @CurrentUser() user: User,
   ) {
     return this.billingService.createManualItem(
+      id,
+      dto,
+      requireIdempotencyKey(key),
+      actorId(user),
+    );
+  }
+
+  @Post(':id/result-fee')
+  @RequirePermissions('manage_billable_items')
+  validateResultFee(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ValidateResultFeeDto,
+    @Headers('idempotency-key') key: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.billingService.validateResultFee(
       id,
       dto,
       requireIdempotencyKey(key),
@@ -575,6 +593,7 @@ export class BillableItemsController {
       search?: string;
       status?: BillableItemStatus;
       source_type?: BillableSourceType;
+      category?: BillableCategory;
       dossier_id?: number;
       client_id?: number;
       from?: string;
@@ -584,6 +603,20 @@ export class BillableItemsController {
     },
   ) {
     return this.billingService.searchItems(query);
+  }
+
+  @Post('recalculate')
+  @RequirePermissions('manage_billable_items')
+  recalculate(
+    @Body() dto: RecalculateBillableItemsDto,
+    @Headers('idempotency-key') key: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.billingService.recalculateItems(
+      dto,
+      requireIdempotencyKey(key),
+      actorId(user),
+    );
   }
 
   @Get('summary')

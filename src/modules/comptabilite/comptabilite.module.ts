@@ -14,6 +14,8 @@ import { Paiement } from '../paiement/entities/paiement.entity';
 import { SupplierInvoice } from '../supplier/entities/supplier-invoice.entity';
 import { ExpenseReport } from '../supplier/entities/expense-report.entity';
 import { Payslip } from '../payroll/entities/payslip.entity';
+import { InvoiceLine } from '../case-workflow/entities/billing.entity';
+import { Cabinet } from '../cabinet/entities/cabinet.entity';
 
 import { EcrituresService } from './services/ecritures.service';
 import { ComptesService } from './services/comptes.service';
@@ -55,6 +57,8 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
       SupplierInvoice,
       ExpenseReport,
       Payslip,
+      InvoiceLine,
+      Cabinet,
     ]),
     AiDatabaseModule,
   ],

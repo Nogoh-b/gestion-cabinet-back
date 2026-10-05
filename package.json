@@ -24,6 +24,7 @@
     "migration": "ts-node migration-cli.ts migrate generate",
     "diag:login": "node scripts/diag-login-password.js",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
+    "billing:reconcile": "ts-node -r tsconfig-paths/register src/scripts/billing-reconcile.ts",
     "mig:run": "npx typeorm migration:run",
     "seed:migrate": "ts-node scripts/seed-with-migration.ts",
     "migration:generate": "npm run typeorm migration:generate -- -d src/data-source.ts",

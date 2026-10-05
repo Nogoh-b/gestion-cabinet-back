@@ -14,6 +14,7 @@ import {
   BillableCategory,
   BillableItemStatus,
   BillingCalculationMode,
+  WorkflowEngine,
 } from '../case-workflow.enums';
 import {
   BillableItem,
@@ -103,7 +104,11 @@ function managerFor(options: {
       }
       if (entity === Dossier) {
         return {
-          findOne: jest.fn(async () => ({ id: 74, client_id: 67 })),
+          findOne: jest.fn(async () => ({
+            id: 74,
+            client_id: 67,
+            workflow_engine: WorkflowEngine.ACTIONS_V2,
+          })),
         };
       }
       if (entity === DossierAction) {

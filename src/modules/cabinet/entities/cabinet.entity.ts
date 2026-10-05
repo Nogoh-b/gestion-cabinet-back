@@ -376,6 +376,9 @@ export class Cabinet {
   @Column({ type: 'json', nullable: true, name: 'ai_config' })
   ai_config: AiCabinetConfig | null;
 
+  @Column({ type: 'json', nullable: true, name: 'billing_account_mapping' })
+  billing_account_mapping: Record<string, string> | null;
+
   @CreateDateColumn()
   created_at: Date;
 

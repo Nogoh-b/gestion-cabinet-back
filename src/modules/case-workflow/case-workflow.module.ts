@@ -49,6 +49,7 @@ import {
 } from './entities/workflow-audit.entity';
 import { ActionCatalogService } from './services/action-catalog.service';
 import { CaseBillingService } from './services/case-billing.service';
+import { BillingReconciliationService } from './services/billing-reconciliation.service';
 import { CaseWorkflowService } from './services/case-workflow.service';
 import { CaseWorkflowNotificationsService } from './services/case-workflow-notifications.service';
 import { DossierActionService } from './services/dossier-action.service';
@@ -110,12 +111,13 @@ const ENTITIES = [
     ActionCatalogService,
     RecommendationService,
     CaseBillingService,
+    BillingReconciliationService,
     DossierActionService,
     CaseWorkflowNotificationsService,
     CaseWorkflowService,
     CaseWorkflowScheduler,
     CaseWorkflowSourceEventsService,
   ],
-  exports: [CaseWorkflowService, CaseBillingService, DossierActionService],
+  exports: [CaseWorkflowService, CaseBillingService, DossierActionService, BillingReconciliationService],
 })
 export class CaseWorkflowModule {}

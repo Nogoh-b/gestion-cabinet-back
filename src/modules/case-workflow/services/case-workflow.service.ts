@@ -241,7 +241,7 @@ export class CaseWorkflowService {
     return this.featureRepository.save(
       this.featureRepository.create({
         tenant_id: tenantId,
-        enabled: false,
+        enabled: true,
         default_for_new_dossiers: false,
       }),
     );
@@ -401,11 +401,24 @@ export class CaseWorkflowService {
         },
         idempotencyKey: `OPENING:${idempotencyKey}`,
       });
-      return { dossier, openingItem };
+      const fixedFeeItem = await this.billingService.createFixedFeeItem(
+        manager,
+        dossier,
+        actorUserId,
+      );
+      return { dossier, openingItem, fixedFeeItem };
     });
 
     await this.billingService.getProfile(dossierId);
     let openingInvoice: Facture | null = null;
+    let fixedFeeInvoice: Facture | null = null;
+    if (result.fixedFeeItem?.status === BillableItemStatus.TO_INVOICE) {
+      fixedFeeInvoice = await this.billingService.invoiceFromItems(
+        { billable_item_ids: [result.fixedFeeItem.id] },
+        `FIXED_FEE:${dossierId}`,
+        actorUserId,
+      );
+    }
     if (result.openingItem?.status === BillableItemStatus.TO_INVOICE) {
       openingInvoice = await this.billingService.invoiceFromItems(
         { billable_item_ids: [result.openingItem.id] },
@@ -422,7 +435,9 @@ export class CaseWorkflowService {
       dossier: result.dossier,
       recommendation,
       openingBillableItem: result.openingItem,
+      fixedFeeBillableItem: result.fixedFeeItem,
       openingInvoice,
+      fixedFeeInvoice,
     };
   }
 

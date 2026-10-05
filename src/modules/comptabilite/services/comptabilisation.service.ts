@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
+import { InvoiceLine } from 'src/modules/case-workflow/entities/billing.entity';
+import { Repository } from 'typeorm';
 import { EcrituresService } from './ecritures.service';
 import { Ecriture } from '../entities/ecriture.entity';
 import { SourceModule, TypeJournal } from '../enums/comptabilite.enums';
@@ -41,11 +45,29 @@ const COMPTE_CHARGE_NOTE_FRAIS: Record<string, string> = {
   OTHER: '628',
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  OPENING_FEE: 'Frais d’ouverture',
+  HONORARIUM: 'Honoraires',
+  VACATION: 'Vacations',
+  EXPENSE: 'Frais',
+  DISBURSEMENT: 'Débours',
+  RESULT_FEE: 'Honoraires de résultat',
+  ADJUSTMENT: 'Ajustement',
+};
+
+const COMPTE_PRODUIT_DEFAUT = '706';
+
 @Injectable()
 export class ComptabilisationService {
   private readonly logger = new Logger(ComptabilisationService.name);
 
-  constructor(private readonly ecritures: EcrituresService) {}
+  constructor(
+    private readonly ecritures: EcrituresService,
+    @InjectRepository(InvoiceLine)
+    private readonly lineRepo: Repository<InvoiceLine>,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepo: Repository<Cabinet>,
+  ) {}
 
   // ── Factures clients ─────────────────────────────────────────────────────────
 
@@ -73,12 +95,7 @@ export class ComptabilisationService {
             credit: 0,
             libelle: `Client — ${facture.numero}`,
           },
-          {
-            numeroCompte: '706',
-            debit: 0,
-            credit: ht,
-            libelle: `Honoraires — ${facture.numero}`,
-          },
+          ...(await this.lignesProduitParCategorie(facture, ht, false)),
           {
             numeroCompte: '445',
             debit: 0,
@@ -109,12 +126,7 @@ export class ComptabilisationService {
             credit: ttc,
             libelle: `Extourne client — ${facture.numero}`,
           },
-          {
-            numeroCompte: '706',
-            debit: ht,
-            credit: 0,
-            libelle: `Extourne honoraires — ${facture.numero}`,
-          },
+          ...(await this.lignesProduitParCategorie(facture, ht, true)),
           {
             numeroCompte: '445',
             debit: tva,
@@ -125,6 +137,87 @@ export class ComptabilisationService {
       },
       true,
     );
+  }
+
+  /**
+   * Ventile le HT de la facture par catégorie de ligne (source officielle :
+   * `InvoiceLine.category`). Chaque catégorie est imputée sur le compte
+   * configuré par le cabinet, avec repli sur 706 + avertissement d'audit.
+   * En cas d'absence de lignes ou d'écart avec le HT facture, repli global
+   * sur une seule ligne 706 pour garantir l'équilibre.
+   */
+  private async lignesProduitParCategorie(
+    facture: any,
+    ht: number,
+    extourne: boolean,
+  ): Promise<any[]> {
+    const fallback = () => [
+      {
+        numeroCompte: COMPTE_PRODUIT_DEFAUT,
+        debit: extourne ? ht : 0,
+        credit: extourne ? 0 : ht,
+        libelle: `${extourne ? 'Extourne honoraires' : 'Honoraires'} — ${facture.numero}`,
+      },
+    ];
+    const tenantId =
+      facture.tenant_id != null ? Number(facture.tenant_id) : null;
+    const lines = await this.lineRepo.find({
+      where: {
+        facture_id: String(facture.id),
+        ...(tenantId != null ? { tenant_id: tenantId } : {}),
+      },
+      order: { display_order: 'ASC' },
+    });
+    if (lines.length === 0) {
+      this.logger.warn(
+        `[compta] Facture ${facture.numero} : sans lignes détaillées, repli ${COMPTE_PRODUIT_DEFAUT}`,
+      );
+      return fallback();
+    }
+    const totals = new Map<string, number>();
+    for (const line of lines) {
+      const key = (line.category ?? 'UNCATEGORIZED') as string;
+      totals.set(key, (totals.get(key) ?? 0) + Number(line.net_amount ?? 0));
+    }
+    const groups = [...totals.entries()].map(([category, total]) => ({
+      category,
+      ht: Math.round(total * 100) / 100,
+    }));
+    const sumGroups = groups.reduce((sum, group) => sum + group.ht, 0);
+    if (Math.abs(sumGroups - ht) > 0.005) {
+      this.logger.warn(
+        `[compta] Facture ${facture.numero} : total lignes (${sumGroups}) ≠ HT facture (${ht}), repli ${COMPTE_PRODUIT_DEFAUT}`,
+      );
+      return fallback();
+    }
+    // Absorbe l'écart d'arrondi sur le dernier groupe → équilibre exact.
+    const roundingGap =
+      Math.round((ht - sumGroups) * 100) / 100;
+    if (groups.length > 0) {
+      groups[groups.length - 1].ht =
+        Math.round((groups[groups.length - 1].ht + roundingGap) * 100) / 100;
+    }
+    const mapping =
+      tenantId != null
+        ? (
+            await this.cabinetRepo.findOne({ where: { id: tenantId } })
+          )?.billing_account_mapping ?? {}
+        : {};
+    return groups.map((group) => {
+      const configured = mapping?.[group.category]?.trim();
+      if (!configured) {
+        this.logger.warn(
+          `[compta] Facture ${facture.numero} : catégorie ${group.category} sans correspondance comptable, repli ${COMPTE_PRODUIT_DEFAUT}`,
+        );
+      }
+      const label = CATEGORY_LABELS[group.category] ?? 'Prestations';
+      return {
+        numeroCompte: configured || COMPTE_PRODUIT_DEFAUT,
+        debit: extourne ? group.ht : 0,
+        credit: extourne ? 0 : group.ht,
+        libelle: `${extourne ? 'Extourne ' : ''}${label} — ${facture.numero}`,
+      };
+    });
   }
 
   // ── Paiements clients ────────────────────────────────────────────────────────
