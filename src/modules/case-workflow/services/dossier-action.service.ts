@@ -51,7 +51,10 @@ import {
   DossierActionRelation,
 } from '../entities/dossier-action.entity';
 import { DossierRecommendation } from '../entities/recommendation.entity';
-import { BillableItem } from '../entities/billing.entity';
+import {
+  BillableItem,
+  DossierBillingProfile,
+} from '../entities/billing.entity';
 import { CaseWorkflowEvent } from '../entities/workflow-audit.entity';
 import { CaseBillingService } from './case-billing.service';
 import { CaseWorkflowNotificationsService } from './case-workflow-notifications.service';
@@ -61,6 +64,7 @@ import {
   validateDeadlineExtension,
   validateDynamicPayload,
   validateRequiredRelations,
+  resolveDefaultActionBillingDecision,
 } from '../case-workflow.logic';
 import {
   AUDIENCE_BINDABLE_FIELDS,
@@ -1551,7 +1555,22 @@ export class DossierActionService {
       action.result_notes = dto.result_notes ?? null;
       action.duration_minutes = dto.duration_minutes ?? null;
       action.specific_data = dto.specific_data ?? action.specific_data;
-      action.billing_decision = dto.billing_decision;
+      if (dto.billing_decision) {
+        action.billing_decision = dto.billing_decision;
+      } else {
+        const profile = await manager
+          .getRepository(DossierBillingProfile)
+          .findOne({
+            where: {
+              tenant_id: tenantId,
+              dossier_id: action.dossier_id,
+            },
+          });
+        action.billing_decision = resolveDefaultActionBillingDecision(
+          action.definition.default_professional_treatment,
+          profile?.mode,
+        );
+      }
       action.billing_reason = dto.billing_reason ?? null;
       const saved = await repository.save(action);
       await this.syncLinkedDiligence(manager, saved);

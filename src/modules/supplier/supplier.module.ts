@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
@@ -30,6 +30,7 @@ import { ExpenseLineWriteHandler } from './expense-line-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
+import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { PlansModule } from '../plans/plans.module';
     DossiersModule,
     AiDatabaseModule,
     PlansModule,
+    forwardRef(() => CaseWorkflowModule),
   ],
   controllers: [
     SuppliersController,

@@ -19,6 +19,8 @@ import { UpdateExpenseReportDto } from './dto/update-expense-report.dto';
 import { ExpenseReport } from './entities/expense-report.entity';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { ExpenseReportSearchDto } from './dto/expense-report-search.dto';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { User } from '../iam/user/entities/user.entity';
 
 @Controller('expense-reports')
 @ApiBearerAuth()
@@ -77,8 +79,8 @@ export class ExpenseReportsController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('validate_expense_report')
   @ApiOperation({ summary: 'Approuver une note de frais' })
-  approve(@Param('id') id: string, @Body('userId') userId: number) {
-    return this.service.approve(+id, userId);
+  approve(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.approve(+id, Number(user.id));
   }
 
   @Patch(':id/reject')
@@ -87,26 +89,30 @@ export class ExpenseReportsController {
   @ApiOperation({ summary: 'Rejeter une note de frais' })
   reject(
     @Param('id') id: string,
-    @Body('userId') userId: number,
     @Body('notes') notes: string,
+    @CurrentUser() user: User,
   ) {
-    return this.service.reject(+id, userId, notes);
+    return this.service.reject(+id, Number(user.id), notes);
   }
 
   @Patch(':id/reimburse')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('reimburse_expense_report')
   @ApiOperation({ summary: 'Marquer comme remboursée' })
-  markReimbursed(@Param('id') id: string) {
-    return this.service.markReimbursed(+id);
+  markReimbursed(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.markReimbursed(+id, Number(user.id));
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_expense_report')
   @ApiOperation({ summary: 'Modifier une note de frais' })
-  update(@Param('id') id: string, @Body() dto: UpdateExpenseReportDto) {
-    return this.service.update(+id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateExpenseReportDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.update(+id, dto, Number(user.id));
   }
 
   @Delete(':id')

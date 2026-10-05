@@ -87,12 +87,36 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity: Dossier,
     event: InsertEvent<Dossier>,
   ): Promise<void> {
-    await this.createConversation(entity, event);
+    // Chaque effet de bord est isolé dans son propre try/catch : une panne
+    // de conversation, de procédure ou de facturation d'ouverture ne doit
+    // JAMAIS empêcher `notifyDossierCreated()` de s'exécuter. Avant ce
+    // correctif, `createConversation`/`createProcedureInstance` n'étaient pas
+    // protégés : une erreur y interrompait silencieusement toute la chaîne
+    // `onAfterCreate` (rattrapée seulement par le catch générique
+    // `afterInsert` de `BaseEntitySubscriber`), empêchant la notification de
+    // création de dossier de partir — sans aucune erreur visible côté
+    // utilisateur, puisque le dossier lui-même est déjà inséré.
+    try {
+      await this.createConversation(entity, event);
+    } catch (err) {
+      this.logger.error(
+        `createConversation a échoué pour le dossier ${entity.dossier_number} : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
     // Un dossier V2 ne doit jamais amorcer en parallèle l'ancien moteur.
     // Ses frais d'ouverture sont créés, tracés puis facturés au moment de la
     // validation explicite de l'ouverture par CaseWorkflowService.
     if (entity.workflow_engine !== WorkflowEngine.ACTIONS_V2) {
-      await this.createProcedureInstance(entity, event);
+      try {
+        await this.createProcedureInstance(entity, event);
+      } catch (err) {
+        this.logger.error(
+          `createProcedureInstance a échoué pour le dossier ${entity.dossier_number} : ${(err as Error).message}`,
+          (err as Error).stack,
+        );
+      }
+      // createOpeningFeeInvoice gère déjà son propre try/catch en interne.
       await this.createOpeningFeeInvoice(entity, event);
     }
     await this.notifyDossierCreated(entity, event);

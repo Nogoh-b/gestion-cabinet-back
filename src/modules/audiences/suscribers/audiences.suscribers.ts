@@ -115,18 +115,31 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     }
   }
 
+  /**
+   * Émet l'événement source du case-workflow. Toujours appelé AVANT
+   * `this.notify(...)` dans les hooks ci-dessus : une exception ici (listener
+   * `case-workflow.source.*` synchrone en défaut, ou `EventEmitter2.emit`
+   * lui-même) ne doit jamais empêcher la notification métier de partir.
+   */
   private emitWorkflowSourceEvent(
     kind: 'created' | 'held' | 'postponed',
     audience: Audience,
   ): void {
-    const dossierId = Number(audience.dossier_id ?? audience.dossier?.id);
-    const tenantId = Number(audience.tenant_id);
-    if (!dossierId || !tenantId) return;
-    this.eventEmitter.emit(`case-workflow.source.audience-${kind}`, {
-      tenantId,
-      dossierId,
-      audienceId: audience.id,
-    });
+    try {
+      const dossierId = Number(audience.dossier_id ?? audience.dossier?.id);
+      const tenantId = Number(audience.tenant_id);
+      if (!dossierId || !tenantId) return;
+      this.eventEmitter.emit(`case-workflow.source.audience-${kind}`, {
+        tenantId,
+        dossierId,
+        audienceId: audience.id,
+      });
+    } catch (err) {
+      this.logger.error(
+        `emitWorkflowSourceEvent(audience-${kind}) a échoué pour l'audience ${audience.id} : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
   }
 
   private async dispatchHeld(

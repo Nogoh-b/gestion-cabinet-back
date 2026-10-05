@@ -209,5 +209,5 @@ export class ExpenseLine extends TenantEntity {
     importance: 'medium',
     group: 'document',
   })
-  attachment_url: string;
+  attachment_url: string | null;
 }

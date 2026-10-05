@@ -93,9 +93,13 @@ export class DossierResponseDto {
   @Expose()
   estimated_duration?: number;
 
-  @ApiProperty({ example: 'confidentiel' })
+  @ApiProperty({
+    example: false,
+    description: 'Niveau de confidentialité (true si confidentiel)',
+  })
   @Expose()
-  confidentiality_level: string;
+  @Transform(({ obj }) => Boolean(obj.confidentiality_level))
+  confidentiality_level: boolean;
 
   @ApiProperty({
     example: 2,

@@ -10,6 +10,7 @@ import { isDuplicateKeyError } from 'src/core/shared/utils/db-error.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import {
+  ActionDefaultProfessionalTreatment,
   ActionPriority,
   BillingCalculationMode,
   RecommendationTrigger,
@@ -1087,6 +1088,15 @@ export class ActionCatalogService {
               default_priority: item.priority ?? ActionPriority.NORMAL,
               is_required: false,
               billable_by_default: item.billable ?? false,
+              default_professional_treatment: !item.billable
+                ? ActionDefaultProfessionalTreatment.NON_BILLABLE
+                : item.billingMode === BillingCalculationMode.HOURLY
+                  ? ActionDefaultProfessionalTreatment.HOURLY
+                  : item.billingMode === BillingCalculationMode.FIXED
+                    ? ActionDefaultProfessionalTreatment.VACATION
+                    : ActionDefaultProfessionalTreatment.NEEDS_REVIEW,
+              may_have_expenses: false,
+              may_have_disbursements: false,
               billing_mode: item.billingMode ?? null,
               default_rate: null,
               is_active: true,
@@ -1534,8 +1544,11 @@ export class ActionCatalogService {
       );
     }
 
-    const build = (definitionCode: string) =>
-      this.definitionRepository.create({
+    const build = (definitionCode: string) => {
+      const professionalTreatment =
+        dto.default_professional_treatment ??
+        ActionDefaultProfessionalTreatment.FOLLOW_DOSSIER;
+      return this.definitionRepository.create({
         tenant_id: tenantId,
         family_id: family.id,
         code: definitionCode,
@@ -1550,14 +1563,18 @@ export class ActionCatalogService {
         default_due_days: dto.default_due_days ?? null,
         default_priority: dto.default_priority ?? ActionPriority.NORMAL,
         is_required: dto.is_required ?? false,
-        billable_by_default: dto.billable_by_default ?? false,
-        default_professional_treatment: dto.default_professional_treatment,
+        billable_by_default:
+          dto.billable_by_default ??
+          professionalTreatment !==
+            ActionDefaultProfessionalTreatment.NON_BILLABLE,
+        default_professional_treatment: professionalTreatment,
         may_have_expenses: dto.may_have_expenses ?? false,
         may_have_disbursements: dto.may_have_disbursements ?? false,
         billing_mode: dto.billing_mode ?? null,
         default_rate: dto.default_rate ?? null,
         is_active: true,
       });
+    };
 
     try {
       return await this.definitionRepository.save(build(code));
@@ -1642,7 +1659,10 @@ export class ActionCatalogService {
           may_have_disbursements:
             dto.may_have_disbursements ?? source.may_have_disbursements,
           billing_mode: dto.billing_mode ?? source.billing_mode,
-          default_rate: dto.default_rate ?? source.default_rate,
+          default_rate:
+            dto.default_rate !== undefined
+              ? dto.default_rate
+              : source.default_rate,
           is_active: dto.is_active ?? true,
         }),
       );

@@ -20,6 +20,11 @@ import { Customer } from 'src/modules/customer/customer/entities/customer.entity
 import { FactureService } from 'src/modules/facture/facture.service';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import {
+  ExpenseLine,
+  ExpenseRebillingType,
+} from 'src/modules/supplier/entities/expense-line.entity';
+import { ExpenseReportStatus } from 'src/modules/supplier/entities/expense-report.entity';
+import {
   StatutFacture,
   TypeFacture,
 } from 'src/modules/facture/dto/create-facture.dto';
@@ -111,6 +116,12 @@ export class CaseBillingService {
     ]);
     if (!dossier)
       throw new NotFoundException(`Dossier ${dossierId} introuvable`);
+    const openingFee =
+      dossier.procedure_costs != null
+        ? Number(dossier.procedure_costs)
+        : cabinet?.dossier_opening_fee_enabled
+          ? Number(cabinet.dossier_opening_fee)
+          : null;
     try {
       return await this.profileRepository.save(
         this.profileRepository.create({
@@ -125,12 +136,16 @@ export class CaseBillingService {
           percentage_base: null,
           // Le montant saisi à l'ouverture appartient au dossier et prime
           // toujours sur le tarif par défaut du cabinet.
-          opening_fee:
-            dossier.procedure_costs != null
-              ? Number(dossier.procedure_costs)
-              : cabinet?.dossier_opening_fee_enabled
-                ? Number(cabinet.dossier_opening_fee)
-                : null,
+          opening_fee: openingFee,
+          opening_fee_enabled:
+            openingFee != null && Number(openingFee) > 0,
+          opening_fee_included_in_fixed_fee: false,
+          default_vacation_rate: null,
+          result_fee_enabled: false,
+          result_fee_rate: null,
+          rebill_expenses: true,
+          rebill_disbursements: true,
+          require_disbursement_receipt: true,
           is_confirmed: false,
         }),
       );
@@ -357,6 +372,13 @@ export class CaseBillingService {
     const profile = await manager.getRepository(DossierBillingProfile).findOne({
       where: { tenant_id: tenantId, dossier_id: dossier.id },
     });
+    if (
+      profile &&
+      (!profile.opening_fee_enabled ||
+        profile.opening_fee_included_in_fixed_fee)
+    ) {
+      return null;
+    }
     const configuredAmount =
       profile?.opening_fee ??
       (dossier.procedure_costs != null
@@ -476,7 +498,10 @@ export class CaseBillingService {
     action: DossierAction,
     actorUserId: number,
   ): Promise<BillableItem | null> {
-    if (action.billing_decision === ActionBillingDecision.NON_BILLABLE)
+    if (
+      action.billing_decision === ActionBillingDecision.NON_BILLABLE ||
+      action.billing_decision === ActionBillingDecision.INCLUDED_IN_PACKAGE
+    )
       return null;
     const tenantId = getCurrentTenantId();
     const repository = manager.getRepository(BillableItem);
@@ -502,7 +527,17 @@ export class CaseBillingService {
       action.definition_code,
     );
     const calculationMode =
-      rule?.calculation_mode ?? definition?.billing_mode ?? null;
+      action.billing_decision === ActionBillingDecision.HOURLY
+        ? BillingCalculationMode.HOURLY
+        : action.billing_decision === ActionBillingDecision.VACATION
+          ? BillingCalculationMode.UNIT
+          : (rule?.calculation_mode ?? definition?.billing_mode ?? null);
+    const category =
+      action.billing_decision === ActionBillingDecision.VACATION
+        ? BillableCategory.VACATION
+        : rule?.category === BillableCategory.VACATION
+          ? BillableCategory.VACATION
+          : BillableCategory.HONORARIUM;
     const taxRate = Number(profile?.vat_rate ?? 0);
     const ruleBase = this.valueAtPath(
       action.specific_data,
@@ -512,7 +547,12 @@ export class CaseBillingService {
       decision: action.billing_decision,
       mode: calculationMode,
       durationMinutes: action.duration_minutes,
-      definitionRate: rule?.rate ?? definition?.default_rate,
+      definitionRate:
+        rule?.rate ??
+        definition?.default_rate ??
+        (category === BillableCategory.VACATION
+          ? profile?.default_vacation_rate
+          : null),
       hourlyRate:
         calculationMode === BillingCalculationMode.HOURLY && rule?.rate != null
           ? rule.rate
@@ -536,7 +576,7 @@ export class CaseBillingService {
         dossier_id: dossier.id,
         client_id: dossier.client_id,
         source_type: BillableSourceType.ACTION,
-        category: rule?.category ?? BillableCategory.HONORARIUM,
+        category,
         calculation_mode: calculationMode ?? BillingCalculationMode.FIXED,
         source_id: action.id,
         action_id: action.id,
@@ -545,7 +585,11 @@ export class CaseBillingService {
         occurred_at: action.completed_at ?? new Date(),
         label: action.definition_label,
         unit_label:
-          calculationMode === BillingCalculationMode.HOURLY ? 'heure' : null,
+          calculationMode === BillingCalculationMode.HOURLY
+            ? 'heure'
+            : calculationMode === BillingCalculationMode.UNIT
+              ? 'vacation'
+              : null,
         quantity: calculation.quantity,
         unit_price: calculation.unitPrice,
         net_amount: calculation.net,
@@ -562,6 +606,8 @@ export class CaseBillingService {
           billingRuleId: rule?.id ?? null,
           billingRuleVersion: rule?.version ?? null,
           feeType: rule?.fee_type ?? null,
+          billingDecision: action.billing_decision,
+          category,
           mode: calculationMode,
           durationMinutes: action.duration_minutes,
           quantity: calculation.quantity,
@@ -587,6 +633,228 @@ export class CaseBillingService {
       idempotencyKey: `EVENT:${sourceEventKey}`,
     });
     return item;
+  }
+
+  async syncExpenseLineById(
+    expenseLineId: number,
+    actorUserId: number | null,
+  ): Promise<BillableItem | null> {
+    const tenantId = getCurrentTenantId();
+    return this.dataSource.transaction(async (manager) => {
+      const expenseLine = await manager.getRepository(ExpenseLine).findOne({
+        where: { id: expenseLineId, tenant_id: tenantId },
+        relations: ['expense_report'],
+      });
+      if (!expenseLine) {
+        throw new NotFoundException(
+          `Ligne de dépense ${expenseLineId} introuvable`,
+        );
+      }
+      return this.syncExpenseLineToBillableItem(
+        manager,
+        expenseLine,
+        actorUserId,
+      );
+    });
+  }
+
+  async syncExpenseLineToBillableItem(
+    manager: EntityManager,
+    expenseLine: ExpenseLine,
+    actorUserId: number | null,
+    reportApproved?: boolean,
+  ): Promise<BillableItem | null> {
+    const tenantId = getCurrentTenantId();
+    const repository = manager.getRepository(BillableItem);
+    const sourceEventKey = `EXPENSE:${expenseLine.id}:APPROVED`;
+    const existing = await repository.findOne({
+      where: { tenant_id: tenantId, source_event_key: sourceEventKey },
+    });
+    const approved =
+      reportApproved ??
+      [
+        ExpenseReportStatus.APPROVED,
+        ExpenseReportStatus.REIMBURSED,
+      ].includes(expenseLine.expense_report?.status);
+    const profile = expenseLine.dossier_id
+      ? await manager.getRepository(DossierBillingProfile).findOne({
+          where: {
+            tenant_id: tenantId,
+            dossier_id: expenseLine.dossier_id,
+          },
+        })
+      : null;
+    const isDisbursement =
+      expenseLine.rebilling_type === ExpenseRebillingType.DISBURSEMENT;
+    const policyAllowsRebilling = isDisbursement
+      ? profile?.rebill_disbursements !== false
+      : profile?.rebill_expenses !== false;
+    let ineligibleReason: string | null = null;
+    if (!approved) ineligibleReason = 'La note de frais n’est pas approuvée';
+    else if (!expenseLine.is_rebillable)
+      ineligibleReason = 'La dépense n’est plus refacturable';
+    else if (!expenseLine.dossier_id)
+      ineligibleReason = 'Aucun dossier client n’est associé';
+    else if (!policyAllowsRebilling)
+      ineligibleReason = isDisbursement
+        ? 'La refacturation des débours est désactivée pour ce dossier'
+        : 'La refacturation des frais est désactivée pour ce dossier';
+
+    if (ineligibleReason) {
+      if (!existing) return null;
+      if (
+        ![
+          BillableItemStatus.NEEDS_REVIEW,
+          BillableItemStatus.TO_INVOICE,
+          BillableItemStatus.WAIVED,
+        ].includes(existing.status)
+      ) {
+        return existing;
+      }
+      existing.status = BillableItemStatus.WAIVED;
+      existing.review_reason = ineligibleReason;
+      const waived = await repository.save(existing);
+      await this.appendExpenseSyncEvent(
+        manager,
+        expenseLine,
+        waived,
+        actorUserId,
+        'BILLABLE_ITEM_WAIVED',
+      );
+      return waived;
+    }
+
+    if (
+      existing &&
+      [
+        BillableItemStatus.RESERVED,
+        BillableItemStatus.INVOICED,
+        BillableItemStatus.ADJUSTED,
+      ].includes(existing.status)
+    ) {
+      return existing;
+    }
+
+    const dossier = await manager.getRepository(Dossier).findOne({
+      where: { id: expenseLine.dossier_id, tenant_id: tenantId },
+    });
+    if (!dossier) return existing ?? null;
+
+    const category = isDisbursement
+      ? BillableCategory.DISBURSEMENT
+      : BillableCategory.EXPENSE;
+    const net = this.round(Number(expenseLine.amount_ht ?? 0));
+    const gross = this.round(Number(expenseLine.amount_ttc ?? 0));
+    const tax = this.round(Math.max(0, gross - net));
+    const reviewReasons: string[] = [];
+    if (gross <= 0 || net < 0 || gross < net) {
+      reviewReasons.push('Montant réel de la dépense incohérent');
+    }
+    if (
+      isDisbursement &&
+      profile?.require_disbursement_receipt !== false &&
+      !expenseLine.attachment_url
+    ) {
+      reviewReasons.push('Justificatif obligatoire pour ce débours');
+    }
+    if (expenseLine.action_id) {
+      const action = await manager.getRepository(DossierAction).findOne({
+        where: {
+          id: expenseLine.action_id,
+          tenant_id: tenantId,
+          dossier_id: expenseLine.dossier_id,
+        },
+      });
+      if (!action) {
+        reviewReasons.push('Action associée introuvable dans ce dossier');
+      }
+    }
+    const reviewReason = reviewReasons.length
+      ? reviewReasons.join('. ')
+      : null;
+    const values: Partial<BillableItem> = {
+      tenant_id: tenantId,
+      dossier_id: dossier.id,
+      client_id: dossier.client_id,
+      source_type: BillableSourceType.EXPENSE,
+      category,
+      calculation_mode: BillingCalculationMode.ACTUAL_COST,
+      source_id: String(expenseLine.id),
+      action_id: expenseLine.action_id ?? null,
+      billing_rule_id: null,
+      source_event_key: sourceEventKey,
+      occurred_at: new Date(expenseLine.expense_date),
+      label: `${isDisbursement ? 'Débours' : 'Frais'} - ${expenseLine.description}`,
+      unit_label: null,
+      quantity: 1,
+      unit_price: net,
+      net_amount: net,
+      tax_rate: Number(expenseLine.tax_rate ?? 0),
+      tax_amount: tax,
+      gross_amount: gross,
+      currency: expenseLine.currency || profile?.currency || 'XAF',
+      status: reviewReason
+        ? BillableItemStatus.NEEDS_REVIEW
+        : BillableItemStatus.TO_INVOICE,
+      calculation_snapshot: {
+        mode: BillingCalculationMode.ACTUAL_COST,
+        expenseLineId: expenseLine.id,
+        expenseReportId: expenseLine.expense_report_id,
+        rebillingType: expenseLine.rebilling_type,
+        category: expenseLine.category,
+        amountHt: net,
+        taxRate: Number(expenseLine.tax_rate ?? 0),
+        amountTtc: gross,
+        attachmentUrl: expenseLine.attachment_url ?? null,
+        actionId: expenseLine.action_id ?? null,
+      },
+      review_reason: reviewReason,
+      reserved_at: null,
+      invoice_line_id: null,
+    };
+    const item = await repository.save(
+      existing
+        ? Object.assign(existing, values)
+        : repository.create(values),
+    );
+    await this.appendExpenseSyncEvent(
+      manager,
+      expenseLine,
+      item,
+      actorUserId,
+      existing ? 'BILLABLE_ITEM_UPDATED' : 'BILLABLE_ITEM_CREATED',
+    );
+    return item;
+  }
+
+  private async appendExpenseSyncEvent(
+    manager: EntityManager,
+    expenseLine: ExpenseLine,
+    item: BillableItem,
+    actorUserId: number | null,
+    eventType:
+      | 'BILLABLE_ITEM_CREATED'
+      | 'BILLABLE_ITEM_UPDATED'
+      | 'BILLABLE_ITEM_WAIVED',
+  ): Promise<void> {
+    const sourceVersion = expenseLine.updated_at
+      ? new Date(expenseLine.updated_at).getTime()
+      : 'initial';
+    await this.eventService.append(manager, {
+      dossierId: item.dossier_id,
+      eventType,
+      aggregateType: 'BillableItem',
+      aggregateId: item.id,
+      actorUserId,
+      payload: {
+        expenseLineId: expenseLine.id,
+        actionId: expenseLine.action_id ?? null,
+        category: item.category,
+        status: item.status,
+        amount: item.gross_amount,
+      },
+      idempotencyKey: `EVENT:EXPENSE:${expenseLine.id}:${eventType}:${sourceVersion}`,
+    });
   }
 
   async syncAudienceItems(dossierId: number): Promise<void> {

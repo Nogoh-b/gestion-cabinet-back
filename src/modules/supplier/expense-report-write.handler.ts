@@ -14,6 +14,8 @@ import {
   WriteableFieldSchema,
   ValidationResult,
 } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import { ExpenseLine } from './entities/expense-line.entity';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
 
 /**
  * Handler custom pour les notes de frais.
@@ -33,6 +35,9 @@ export class ExpenseReportWriteHandler extends BaseWriteHandler {
     entityResolver: EntityResolverService,
     @InjectRepository(ExpenseReport)
     private readonly reportRepo: Repository<ExpenseReport>,
+    @InjectRepository(ExpenseLine)
+    private readonly lineRepo: Repository<ExpenseLine>,
+    private readonly caseBillingService: CaseBillingService,
   ) {
     super('expense_report', dataSource, schemaMetadata, entityResolver);
   }
@@ -141,6 +146,9 @@ export class ExpenseReportWriteHandler extends BaseWriteHandler {
     }
 
     const saved = await this.reportRepo.save(report);
+    if (safeFields.status !== undefined) {
+      await this.syncReportLines(saved.id, userId);
+    }
     return {
       success: true,
       operation: 'UPDATE',
@@ -149,5 +157,24 @@ export class ExpenseReportWriteHandler extends BaseWriteHandler {
       data: saved,
       message: `Note de frais ${entityId} mise à jour`,
     };
+  }
+
+  private async syncReportLines(
+    reportId: number,
+    userId: string,
+  ): Promise<void> {
+    const lines = await this.lineRepo.find({
+      where: { expense_report_id: reportId },
+      select: { id: true },
+    });
+    const actorUserId = this.actorId(userId);
+    for (const line of lines) {
+      await this.caseBillingService.syncExpenseLineById(line.id, actorUserId);
+    }
+  }
+
+  private actorId(userId: string): number | null {
+    const value = Number(userId);
+    return Number.isInteger(value) && value > 0 ? value : null;
   }
 }

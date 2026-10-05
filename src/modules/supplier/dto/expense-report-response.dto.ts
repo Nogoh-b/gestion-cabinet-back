@@ -31,6 +31,10 @@ export class ExpenseLineResponseDto {
   @Expose()
   amount_ttc: number;
 
+  @ApiProperty({ example: 19.25 })
+  @Expose()
+  tax_rate: number;
+
   @ApiProperty({ example: true })
   @Expose()
   is_rebillable: boolean;
@@ -52,6 +56,14 @@ export class ExpenseLineResponseDto {
   @ApiProperty({ example: 'XAF' })
   @Expose()
   currency: string;
+
+  @ApiProperty({ example: 15, required: false })
+  @Expose()
+  dossier_id: number | null;
+
+  @ApiProperty({ example: 'https://example.test/recu.pdf', required: false })
+  @Expose()
+  attachment_url: string | null;
 
   @ApiProperty({
     example: { id: 15, dossier_number: 'DOS-2026-015' },
@@ -148,8 +160,14 @@ export class ExpenseReportResponseDto {
       description: line.description,
       category: line.category,
       amount_ht: line.amount_ht,
+      tax_rate: line.tax_rate,
       amount_ttc: line.amount_ttc,
       is_rebillable: line.is_rebillable,
+      rebilling_type: line.rebilling_type,
+      action_id: line.action_id,
+      currency: line.currency,
+      dossier_id: line.dossier_id,
+      attachment_url: line.attachment_url,
       dossier: line.dossier
         ? { id: line.dossier.id, dossier_number: line.dossier.dossier_number }
         : null,

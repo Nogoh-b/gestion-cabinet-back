@@ -1,5 +1,5 @@
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
+import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
 import { Repository } from 'typeorm';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -23,6 +23,29 @@ export class ReferrersService extends BaseServiceV1<Referrer> {
     private customerRepo: Repository<Customer>,
   ) {
     super(repository, paginationService);
+  }
+
+  protected getDefaultSearchOptions(): SearchOptions {
+    return {
+      searchFields: [
+        'company_name',
+        'contact_name',
+        'email',
+        'phone',
+        'address',
+        'referrer_code',
+        'bank_name',
+        'bank_account_holder',
+        'notes',
+        'employee.user.first_name',
+        'employee.user.last_name',
+        'customer.first_name',
+        'customer.last_name',
+        'customer.company_name',
+      ],
+      exactMatchFields: ['referrer_type', 'is_internal', 'payment_method', 'status'],
+      dateRangeFields: ['created_at', 'updated_at'],
+    };
   }
 
   async create(dto: CreateReferrerDto): Promise<Referrer> {

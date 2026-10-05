@@ -85,15 +85,27 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
     if (doc) this.emitWorkflowSourceEvent(doc);
   }
 
+  /**
+   * Émet l'événement source du case-workflow. Appelé AVANT `this.notify(...)`
+   * dans `onAfterCreate` : une exception ici ne doit jamais empêcher la
+   * notification « document uploadé » de partir.
+   */
   private emitWorkflowSourceEvent(document: DocumentCustomer): void {
-    const dossierId = Number(document.dossier_id ?? document.dossier?.id);
-    const tenantId = Number(document.tenant_id);
-    if (!dossierId || !tenantId) return;
-    this.eventEmitter.emit('case-workflow.source.document-changed', {
-      tenantId,
-      dossierId,
-      documentId: document.id,
-    });
+    try {
+      const dossierId = Number(document.dossier_id ?? document.dossier?.id);
+      const tenantId = Number(document.tenant_id);
+      if (!dossierId || !tenantId) return;
+      this.eventEmitter.emit('case-workflow.source.document-changed', {
+        tenantId,
+        dossierId,
+        documentId: document.id,
+      });
+    } catch (err) {
+      this.logger.error(
+        `emitWorkflowSourceEvent(document-changed) a échoué pour le document ${document.id} : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
   }
 
   private load(

@@ -277,7 +277,7 @@ export class DossierAction extends TenantEntity {
   @BusinessColumn({
     label: 'Décision de facturation',
     description:
-      'Décision explicite : INCLUDED_IN_PACKAGE=incluse au forfait, HOURLY=horaire, VACATION=vacation, NON_BILLABLE=non facturable, NOT_DECIDED=aucune décision, NEEDS_REVIEW=à vérifier. BILLABLE reste la valeur historique. Seule la valeur BILLABLE autorise actuellement à présenter l’action comme « à facturer ».',
+      'Décision appliquée à la clôture : INCLUDED_IN_PACKAGE conserve le temps sans supplément, HOURLY crée un honoraire horaire, VACATION crée une vacation, NON_BILLABLE ne crée rien et NEEDS_REVIEW crée un élément à contrôler. BILLABLE reste la valeur historique.',
     example: 'BILLABLE',
     importance: 'critical',
     group: 'facturation',

@@ -14,6 +14,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -165,7 +166,7 @@ export class CreateActionDefinitionDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  default_rate?: number;
+  default_rate?: number | null;
 }
 
 export class ReviseActionDefinitionDto {
@@ -228,7 +229,7 @@ export class ReviseActionDefinitionDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  default_rate?: number;
+  default_rate?: number | null;
 
   @IsOptional()
   @IsBoolean()
@@ -475,8 +476,9 @@ export class CompleteDossierActionDto extends ActionTransitionDto {
   @IsObject()
   specific_data?: Record<string, unknown>;
 
+  @IsOptional()
   @IsEnum(ActionBillingDecision)
-  billing_decision: ActionBillingDecision;
+  billing_decision?: ActionBillingDecision;
 
   @IsOptional()
   @IsString()
@@ -568,6 +570,7 @@ export class UpdateBillingProfileDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(100)
   result_fee_rate?: number;
 
   @IsOptional()

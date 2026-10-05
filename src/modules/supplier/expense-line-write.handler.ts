@@ -16,6 +16,7 @@ import {
   WriteableFieldSchema,
   ValidationResult,
 } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
 
 /**
  * Handler custom pour les lignes de note de frais.
@@ -35,6 +36,7 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
     private readonly lineRepo: Repository<ExpenseLine>,
     @InjectRepository(ExpenseReport)
     private readonly reportRepo: Repository<ExpenseReport>,
+    private readonly caseBillingService: CaseBillingService,
   ) {
     super('expense_line', dataSource, schemaMetadata, entityResolver);
   }
@@ -68,6 +70,23 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
       is_rebillable: {
         description: '1=refacturable au client, 0=non',
         example: '0',
+      },
+      rebilling_type: {
+        description: "Nature client : 'EXPENSE' (frais) ou 'DISBURSEMENT' (d\u00e9bours)",
+        example: 'EXPENSE',
+      },
+      dossier_id: {
+        description: 'Dossier client obligatoire lorsque la ligne est refacturable',
+        example: '15',
+      },
+      action_id: {
+        description: 'Action du dossier ayant occasionn\u00e9 la d\u00e9pense',
+        example: '0cfce36d-9aec-4ff2-83b8-f20d63866d22',
+      },
+      currency: { description: 'Devise de refacturation', example: 'XAF' },
+      attachment_url: {
+        description: 'Lien du justificatif, notamment requis pour un d\u00e9bours',
+        example: 'https://storage.example/justificatif.pdf',
       },
     };
     for (const f of fields) {
@@ -126,10 +145,20 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
           : false,
     };
 
+    if (data.is_rebillable && !safeFields.dossier_id) {
+      throw new BadRequestException(
+        'Un dossier est obligatoire pour refacturer une d\u00e9pense',
+      );
+    }
+
     const record = this.lineRepo.create(data);
     const saved = (await this.lineRepo.save(record)) as unknown as ExpenseLine;
 
     await this.recomputeReportTotal(saved.expense_report_id);
+    await this.caseBillingService.syncExpenseLineById(
+      saved.id,
+      this.actorId(userId),
+    );
 
     return {
       success: true,
@@ -157,6 +186,12 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
     );
     Object.assign(line, safeFields);
 
+    if (line.is_rebillable && !line.dossier_id) {
+      throw new BadRequestException(
+        'Un dossier est obligatoire pour refacturer une d\u00e9pense',
+      );
+    }
+
     if (
       safeFields.amount_ht !== undefined ||
       safeFields.tax_rate !== undefined
@@ -171,6 +206,10 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
 
     const saved = await this.lineRepo.save(line);
     await this.recomputeReportTotal(saved.expense_report_id);
+    await this.caseBillingService.syncExpenseLineById(
+      saved.id,
+      this.actorId(userId),
+    );
 
     return {
       success: true,
@@ -197,5 +236,10 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
         `📊 Note de frais ${reportId} recalculée: total=${report.total_amount} €`,
       );
     }
+  }
+
+  private actorId(userId: string): number | null {
+    const value = Number(userId);
+    return Number.isInteger(value) && value > 0 ? value : null;
   }
 }
