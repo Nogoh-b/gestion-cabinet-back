@@ -18,4 +18,3 @@ export class CreateCountryDto {
   @IsOptional()
   population?: string;
 }
-

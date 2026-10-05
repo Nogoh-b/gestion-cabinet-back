@@ -1,8 +1,13 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddConversationMessageReferences1782100001000 implements MigrationInterface {
+export class AddConversationMessageReferences1782100001000
+  implements MigrationInterface
+{
   public async up(queryRunner: QueryRunner): Promise<void> {
-    const hasReferences = await queryRunner.hasColumn('conversation_messages', 'references');
+    const hasReferences = await queryRunner.hasColumn(
+      'conversation_messages',
+      'references',
+    );
     if (!hasReferences) {
       await queryRunner.query(`
         ALTER TABLE conversation_messages
@@ -12,7 +17,10 @@ export class AddConversationMessageReferences1782100001000 implements MigrationI
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const hasReferences = await queryRunner.hasColumn('conversation_messages', 'references');
+    const hasReferences = await queryRunner.hasColumn(
+      'conversation_messages',
+      'references',
+    );
     if (hasReferences) {
       await queryRunner.query(`
         ALTER TABLE conversation_messages

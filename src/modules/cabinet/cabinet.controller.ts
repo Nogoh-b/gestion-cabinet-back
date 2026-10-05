@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Patch, Param, Body, ParseIntPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  ParseIntPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CabinetService } from './cabinet.service';
 import { Cabinet, serializeCabinet } from './entities/cabinet.entity';
@@ -25,8 +34,11 @@ export class CabinetController {
    *  pour la page de login (avant authentification).
    *  La configuration vit directement dans la table `cabinets`. */
   @Get('resolve/:code')
-  @Public()                      // pas d'auth requise
-  @ApiOperation({ summary: 'Résoudre un code cabinet → branding complet (nom, logo, slogan, statut)' })
+  @Public() // pas d'auth requise
+  @ApiOperation({
+    summary:
+      'Résoudre un code cabinet → branding complet (nom, logo, slogan, statut)',
+  })
   async resolve(@Param('code') code: string) {
     const merged = await this.service.resolveWithSettings(code);
     if (!merged) return { found: false };
@@ -51,7 +63,10 @@ export class CabinetController {
 
   @Post()
   @RequirePermissions('manage_cabinets')
-  @ApiOperation({ summary: 'Créer un nouveau cabinet (onboarding) avec branding, coordonnees et seed des donnees de reference' })
+  @ApiOperation({
+    summary:
+      'Créer un nouveau cabinet (onboarding) avec branding, coordonnees et seed des donnees de reference',
+  })
   async create(@Body() body: CreateCabinetDto) {
     const cabinet = await this.service.create(body);
     return serializeCabinet(cabinet);
@@ -59,10 +74,14 @@ export class CabinetController {
 
   @Patch(':id/branding')
   @RequirePermissions('manage_cabinets')
-  @ApiOperation({ summary: 'Mettre à jour le branding du cabinet (logo, couleur, coordonnées e-mail)' })
+  @ApiOperation({
+    summary:
+      'Mettre à jour le branding du cabinet (logo, couleur, coordonnées e-mail)',
+  })
   updateBranding(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: {
+    @Body()
+    body: {
       logo_url?: string;
       brand_color?: string;
       contact_email?: string;

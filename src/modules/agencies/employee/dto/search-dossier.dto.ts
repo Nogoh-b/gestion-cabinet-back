@@ -1,15 +1,19 @@
 // src/modules/dossiers/dto/search-dossier.dto.ts
 
 import { Type } from 'class-transformer';
-import { IsOptional, IsInt, IsEnum, IsDateString, IsBoolean } from 'class-validator';
+import {
+  IsOptional,
+  IsInt,
+  IsEnum,
+  IsDateString,
+  IsBoolean,
+} from 'class-validator';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { DangerLevel } from 'src/modules/dossiers/entities/dossier.entity';
 
-
-export class SearchEmployeeDto extends PaginationParamsDto  {
-
-e
+export class SearchEmployeeDto extends PaginationParamsDto {
+  e;
 
   /* ============================
    * FILTRES PRINCIPAUX

@@ -20,7 +20,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Aucun risque de doublon lors de la création de l'index composite : l'ancien
  * index global garantissait déjà l'unicité de `numero` seul.
  */
-export class FactureNumeroUniquePerTenant1782500000000 implements MigrationInterface {
+export class FactureNumeroUniquePerTenant1782500000000
+  implements MigrationInterface
+{
   private async singleColumnUniqueIndexes(
     queryRunner: QueryRunner,
     column: string,
@@ -38,7 +40,10 @@ export class FactureNumeroUniquePerTenant1782500000000 implements MigrationInter
     return rows.map((r) => r.INDEX_NAME);
   }
 
-  private async indexExists(queryRunner: QueryRunner, name: string): Promise<boolean> {
+  private async indexExists(
+    queryRunner: QueryRunner,
+    name: string,
+  ): Promise<boolean> {
     const rows: Array<unknown> = await queryRunner.query(
       `SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
         WHERE TABLE_SCHEMA = DATABASE()
@@ -58,7 +63,10 @@ export class FactureNumeroUniquePerTenant1782500000000 implements MigrationInter
     }
 
     // 2. Supprimer l'ancien index unique global sur numero seul.
-    for (const name of await this.singleColumnUniqueIndexes(queryRunner, 'numero')) {
+    for (const name of await this.singleColumnUniqueIndexes(
+      queryRunner,
+      'numero',
+    )) {
       await queryRunner.query(`DROP INDEX \`${name}\` ON factures`);
     }
   }
@@ -72,7 +80,10 @@ export class FactureNumeroUniquePerTenant1782500000000 implements MigrationInter
        ) t`,
     );
     // Ne pas recréer l'unicité globale si des doublons cross-tenant existent.
-    if (rows[0]?.c === 0 && !(await this.indexExists(queryRunner, 'IDX_numero_global'))) {
+    if (
+      rows[0]?.c === 0 &&
+      !(await this.indexExists(queryRunner, 'IDX_numero_global'))
+    ) {
       await queryRunner.query(
         `CREATE UNIQUE INDEX IDX_numero_global ON factures (numero)`,
       );

@@ -1,5 +1,9 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -36,11 +40,15 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
       dto.invoice_number = generateEntityCode('FF');
     }
     const entity = this.repository.create(dto);
-    const supplier = await this.supplierRepo.findOne({ where: { id: dto.supplier_id } });
+    const supplier = await this.supplierRepo.findOne({
+      where: { id: dto.supplier_id },
+    });
     if (!supplier) throw new NotFoundException('Fournisseur non trouvé');
     entity.supplier = supplier;
     if (dto.branch_id) {
-      const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
+      const branch = await this.branchRepo.findOne({
+        where: { id: dto.branch_id },
+      });
       if (!branch) throw new NotFoundException('Agence non trouvée');
       entity.branch = branch;
     }
@@ -74,7 +82,8 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
       where: { id },
       relations: ['supplier', 'branch', 'created_by'],
     });
-    if (!invoice) throw new NotFoundException('Facture fournisseur non trouvée');
+    if (!invoice)
+      throw new NotFoundException('Facture fournisseur non trouvée');
     return invoice;
   }
 
@@ -86,16 +95,23 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
     });
   }
 
-  async update(id: number, dto: UpdateSupplierInvoiceDto): Promise<SupplierInvoice> {
+  async update(
+    id: number,
+    dto: UpdateSupplierInvoiceDto,
+  ): Promise<SupplierInvoice> {
     const invoice = await this.findOne(id);
     const previousStatus = invoice.status;
     if (dto.supplier_id) {
-      const supplier = await this.supplierRepo.findOne({ where: { id: dto.supplier_id } });
+      const supplier = await this.supplierRepo.findOne({
+        where: { id: dto.supplier_id },
+      });
       if (!supplier) throw new NotFoundException('Fournisseur non trouvé');
       invoice.supplier = supplier;
     }
     if (dto.branch_id) {
-      const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
+      const branch = await this.branchRepo.findOne({
+        where: { id: dto.branch_id },
+      });
       if (!branch) throw new NotFoundException('Agence non trouvée');
       invoice.branch = branch;
     }
@@ -116,7 +132,9 @@ export class SupplierInvoicesService extends BaseServiceV1<SupplierInvoice> {
   async approve(id: number): Promise<SupplierInvoice> {
     const invoice = await this.findOne(id);
     if (invoice.status === 'paid' || invoice.status === 'cancelled') {
-      throw new BadRequestException('Facture déjà payée ou annulée : approbation impossible.');
+      throw new BadRequestException(
+        'Facture déjà payée ou annulée : approbation impossible.',
+      );
     }
     return this.update(id, { status: 'approved' } as any);
   }

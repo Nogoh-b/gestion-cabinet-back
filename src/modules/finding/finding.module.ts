@@ -9,7 +9,11 @@ import { DocumentsModule } from '../documents/documents.module';
 @Module({
   controllers: [FindingsController],
   providers: [FindingsService],
-  exports: [FindingsService], 
-  imports: [forwardRef(() => DiligenceModule),  DocumentsModule, TypeOrmModule.forFeature([Finding])],
+  exports: [FindingsService],
+  imports: [
+    forwardRef(() => DiligenceModule),
+    DocumentsModule,
+    TypeOrmModule.forFeature([Finding]),
+  ],
 })
 export class FindingModule {}

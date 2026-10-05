@@ -1,9 +1,22 @@
 // create-user.dto.ts
-import { IsInt, IsString, IsEmail, IsNotEmpty, IsDateString, IsOptional, IsArray, IsBoolean, Min, IsNumber, IsEnum } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { EmployeePosition } from 'src/modules/agencies/employee/entities/employee.entity';
+import {
+  IsInt,
+  IsString,
+  IsEmail,
+  IsDateString,
+  IsOptional,
+  IsArray,
+  IsBoolean,
+  Min,
+  IsNumber,
+  IsEnum,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  EmployeePosition,
+  MaritalStatus,
+} from 'src/modules/agencies/employee/entities/employee.entity';
 import { UserRole } from 'src/core/enums/user-role.enum';
-
 
 export class ResetPasswordRequestDto {
   // au moins l'un des deux doit être fourni
@@ -13,38 +26,66 @@ export class ResetPasswordRequestDto {
   id?: number;
 }
 
-
 export class CreateUserDto {
-
-
-  @ApiProperty({ required: true, example: 'John' })
+  /**
+   * Nom et prénom en un seul champ — c'est ce que les formulaires de création
+   * envoient désormais. `first_name`/`last_name` restent acceptés (compat
+   * ascendante) et, si fournis seuls, priment ; le service dérive le champ
+   * manquant via `splitFullName`/`joinFullName`. Au moins l'un des deux doit
+   * permettre de reconstituer un nom — voir `EmployeeService.createEmployee`.
+   */
+  @ApiPropertyOptional({
+    example: 'John Doe',
+    description: 'Nom et prénom (champ unique)',
+  })
   @IsString()
-  @IsNotEmpty()
-  first_name: string;
+  @IsOptional()
+  full_name?: string;
 
-  @ApiProperty({ required: true, example: 'Doe' })
+  @ApiPropertyOptional({ example: 'John' })
   @IsString()
-  @IsNotEmpty()
-  last_name: string;
+  @IsOptional()
+  first_name?: string;
 
-  @ApiProperty({ required: true, example: 'john.doe@cabinet-juridique.com' })
+  @ApiPropertyOptional({ example: 'Doe' })
+  @IsString()
+  @IsOptional()
+  last_name?: string;
+
+  /**
+   * Facultatif : création minimale (depuis un select « + Créer », uniquement
+   * `full_name`) laisse l'email vide — `EmployeeService.createEmployee`
+   * génère alors un identifiant de connexion (`username`) à partir du nom et
+   * laisse `email` à `NULL` (champ « à compléter » sur la fiche employé).
+   */
+  @ApiPropertyOptional({ example: 'john.doe@cabinet-juridique.com' })
   @IsString()
   @IsEmail()
-  email: string;
+  @IsOptional()
+  email?: string;
 
-  @ApiProperty({ required: true, example: 'Password123!' })
+  @ApiPropertyOptional({
+    example: 'Password123!',
+    description:
+      'Ignoré à la création : un mot de passe temporaire est toujours généré par le service.',
+  })
   @IsString()
-  @IsNotEmpty()
-  password: string;
+  @IsOptional()
+  password?: string;
 
   @ApiProperty({ required: false, example: '+33123456789' })
   @IsString()
   @IsOptional()
   phone_number?: string;
 
-  @ApiProperty({ enum: EmployeePosition, example: EmployeePosition.AVOCAT })
+  @ApiPropertyOptional({
+    enum: EmployeePosition,
+    example: EmployeePosition.AVOCAT,
+    description: 'Fonction. Défaut : collaborateur.',
+  })
   @IsEnum(EmployeePosition)
-  position: EmployeePosition;
+  @IsOptional()
+  position?: EmployeePosition;
 
   @ApiProperty({
     required: false,
@@ -56,9 +97,13 @@ export class CreateUserDto {
   @IsOptional()
   role?: UserRole;
 
-  @ApiProperty({ required: true, example: 1 })
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Agence de rattachement. Défaut : première agence active.',
+  })
   @IsInt()
-  branch_id: number;
+  @IsOptional()
+  branch_id?: number;
 
   @ApiProperty({ required: false, example: '2024-01-15' })
   @IsDateString()
@@ -87,13 +132,17 @@ export class CreateUserDto {
   @IsOptional()
   years_of_experience?: number;
 
-  @ApiProperty({ required: false, example: 150.00 })
+  @ApiProperty({ required: false, example: 150.0 })
   @IsNumber()
   @Min(0)
   @IsOptional()
   hourly_rate?: number;
 
-  @ApiProperty({ required: false, example: 350000, description: 'Salaire mensuel de base' })
+  @ApiProperty({
+    required: false,
+    example: 350000,
+    description: 'Salaire mensuel de base',
+  })
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -110,7 +159,10 @@ export class CreateUserDto {
   @IsOptional()
   max_dossiers?: number;
 
-  @ApiProperty({ required: false, example: 'Avocat spécialisé en droit commercial...' })
+  @ApiProperty({
+    required: false,
+    example: 'Avocat spécialisé en droit commercial...',
+  })
   @IsString()
   @IsOptional()
   bio?: string;
@@ -131,6 +183,40 @@ export class CreateUserDto {
   @IsDateString()
   @IsOptional()
   birth_date?: string;
+
+  @ApiProperty({ required: false, example: 'Douala' })
+  @IsString()
+  @IsOptional()
+  birth_place?: string;
+
+  @ApiProperty({
+    required: false,
+    example: 'Akwa, Douala',
+    description: 'Ville / adresse personnelle',
+  })
+  @IsString()
+  @IsOptional()
+  home_address?: string;
+
+  @ApiProperty({ required: false, example: '+237 690 00 00 00' })
+  @IsString()
+  @IsOptional()
+  personal_phone?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: MaritalStatus,
+    example: MaritalStatus.MARRIED,
+  })
+  @IsEnum(MaritalStatus)
+  @IsOptional()
+  marital_status?: MaritalStatus;
+
+  @ApiProperty({ required: false, example: 2 })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  children_count?: number;
 
   @ApiProperty({ required: false, example: '123 Rue du Palais, 75001 Paris' })
   @IsString()

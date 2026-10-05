@@ -31,14 +31,14 @@ export class ExpenseLinesController {
 
   @Get('/report/:reportId')
   @RequirePermissions('')
-  @ApiOperation({ summary: 'Lignes d\'une note de frais' })
+  @ApiOperation({ summary: "Lignes d'une note de frais" })
   findByReport(@Param('reportId') reportId: string) {
     return this.service.findByReport(+reportId);
   }
 
   @Get(':id')
   @RequirePermissions('')
-  @ApiOperation({ summary: 'Détail d\'une ligne de dépense' })
+  @ApiOperation({ summary: "Détail d'une ligne de dépense" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

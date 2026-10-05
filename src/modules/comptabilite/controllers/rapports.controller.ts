@@ -1,5 +1,17 @@
-import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -29,7 +41,10 @@ export class RapportsController {
     @Param('compteId', ParseIntPipe) compteId: number,
     @Query('exerciceId') exerciceId?: number,
   ) {
-    return this.service.getGrandLivre(compteId, exerciceId ? +exerciceId : undefined);
+    return this.service.getGrandLivre(
+      compteId,
+      exerciceId ? +exerciceId : undefined,
+    );
   }
 
   @Get('resultat')

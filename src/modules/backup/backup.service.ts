@@ -1,9 +1,22 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import { createReadStream, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'fs';
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from 'fs';
 import { join, basename } from 'path';
 
 const execFileAsync = promisify(execFile);
@@ -34,7 +47,8 @@ export interface BackupScope {
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
-  private readonly dir = process.env.BACKUP_DIR || join(process.cwd(), 'backups');
+  private readonly dir =
+    process.env.BACKUP_DIR || join(process.cwd(), 'backups');
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
@@ -54,7 +68,8 @@ export class BackupService {
    * usuels (XAMPP, WAMP, Laragon, MySQL/MariaDB Server) → PATH système.
    */
   private resolveBin(bin: 'mysqldump' | 'mysql'): string {
-    const envPath = bin === 'mysqldump' ? process.env.MYSQLDUMP_PATH : process.env.MYSQL_PATH;
+    const envPath =
+      bin === 'mysqldump' ? process.env.MYSQLDUMP_PATH : process.env.MYSQL_PATH;
     if (envPath && existsSync(envPath)) return envPath;
 
     const win = process.platform === 'win32';
@@ -84,7 +99,11 @@ export class BackupService {
         }
       }
     } else {
-      candidates.push(`/usr/bin/${bin}`, `/usr/local/bin/${bin}`, `/opt/homebrew/bin/${bin}`);
+      candidates.push(
+        `/usr/bin/${bin}`,
+        `/usr/local/bin/${bin}`,
+        `/opt/homebrew/bin/${bin}`,
+      );
     }
 
     for (const c of candidates) {
@@ -147,7 +166,15 @@ export class BackupService {
     const name = `${this.prefix(scope)}${stamp}.sql`;
     const file = join(this.dir, name);
 
-    const args = ['-h', c.host, '-P', c.port, '-u', c.user, '--single-transaction'];
+    const args = [
+      '-h',
+      c.host,
+      '-P',
+      c.port,
+      '-u',
+      c.user,
+      '--single-transaction',
+    ];
     if (scope.full) {
       args.push('--routines', '--result-file', file, c.name);
     } else {
@@ -157,7 +184,13 @@ export class BackupService {
         throw new BadRequestException('Aucune donnée de cabinet à exporter');
       }
       // --where s'applique à toutes les tables listées (toutes ont tenant_id).
-      args.push(`--where=tenant_id=${scope.tenantId}`, '--result-file', file, c.name, ...tables);
+      args.push(
+        `--where=tenant_id=${scope.tenantId}`,
+        '--result-file',
+        file,
+        c.name,
+        ...tables,
+      );
     }
 
     try {
@@ -170,7 +203,9 @@ export class BackupService {
       const hint = /ENOENT/.test(String(e?.message))
         ? " — binaire 'mysqldump' introuvable. Renseignez MYSQLDUMP_PATH dans le .env (ex: C:\\xampp\\mysql\\bin\\mysqldump.exe)."
         : '';
-      throw new BadRequestException(`Échec de la sauvegarde : ${e?.message ?? e}${hint}`);
+      throw new BadRequestException(
+        `Échec de la sauvegarde : ${e?.message ?? e}${hint}`,
+      );
     }
     const st = statSync(file);
     this.logger.log(
@@ -182,34 +217,45 @@ export class BackupService {
   streamFor(name: string, scope: BackupScope) {
     this.assertOwnership(name, scope);
     const path = this.safePath(name);
-    if (!existsSync(path)) throw new NotFoundException('Sauvegarde introuvable');
+    if (!existsSync(path))
+      throw new NotFoundException('Sauvegarde introuvable');
     return { stream: createReadStream(path), name: basename(path) };
   }
 
   remove(name: string, scope: BackupScope): void {
     this.assertOwnership(name, scope);
     const path = this.safePath(name);
-    if (!existsSync(path)) throw new NotFoundException('Sauvegarde introuvable');
+    if (!existsSync(path))
+      throw new NotFoundException('Sauvegarde introuvable');
     unlinkSync(path);
   }
 
   /** Restauration de la base entière (SUPER_ADMIN uniquement, géré au contrôleur). */
   async restore(name: string): Promise<{ success: boolean }> {
     const path = this.safePath(name);
-    if (!existsSync(path)) throw new NotFoundException('Sauvegarde introuvable');
+    if (!existsSync(path))
+      throw new NotFoundException('Sauvegarde introuvable');
     const c = this.cfg();
     await new Promise<void>((resolve, reject) => {
-      const proc = spawn(this.resolveBin('mysql'), ['-h', c.host, '-P', c.port, '-u', c.user, c.name], {
-        env: { ...process.env, MYSQL_PWD: c.pass },
-      });
+      const proc = spawn(
+        this.resolveBin('mysql'),
+        ['-h', c.host, '-P', c.port, '-u', c.user, c.name],
+        {
+          env: { ...process.env, MYSQL_PWD: c.pass },
+        },
+      );
       createReadStream(path).pipe(proc.stdin);
       let err = '';
       proc.stderr.on('data', (d) => (err += d.toString()));
       proc.on('error', reject);
-      proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err || `mysql code ${code}`))));
+      proc.on('close', (code) =>
+        code === 0 ? resolve() : reject(new Error(err || `mysql code ${code}`)),
+      );
     }).catch((e) => {
       this.logger.error(`[Backup] restore échec: ${e?.message ?? e}`);
-      throw new BadRequestException(`Échec de la restauration : ${e?.message ?? e}`);
+      throw new BadRequestException(
+        `Échec de la restauration : ${e?.message ?? e}`,
+      );
     });
     this.logger.warn(`[Backup] restauration effectuée depuis ${name}`);
     return { success: true };

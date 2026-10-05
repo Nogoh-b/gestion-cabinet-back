@@ -1,6 +1,13 @@
 // src/chat/dto/create-conversation.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsNotEmpty, IsOptional, IsBoolean, IsString, IsNumber } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsString,
+  IsNumber,
+} from 'class-validator';
 
 export class CreateConversationDto {
   @ApiProperty({
@@ -20,7 +27,7 @@ export class CreateConversationDto {
   name?: string;
 
   @ApiPropertyOptional({
-    description: 'Indique si c\'est une conversation de groupe',
+    description: "Indique si c'est une conversation de groupe",
     example: false,
     default: false,
   })
@@ -28,7 +35,6 @@ export class CreateConversationDto {
   @IsBoolean()
   isGroup?: boolean;
 }
-
 
 // src/chat/dto/send-message.dto.ts
 
@@ -65,7 +71,6 @@ export class SendMessageDto {
   @IsOptional()
   @IsArray()
   references?: ChatReferenceDto[];
-
 }
 
 export interface ChatReferenceDto {
@@ -81,8 +86,6 @@ export interface ChatReferenceDto {
     date?: string;
   };
 }
-
-
 
 // src/chat/dto/create-group.dto.ts
 

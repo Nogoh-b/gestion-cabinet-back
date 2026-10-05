@@ -1,10 +1,10 @@
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsEnum,
-    IsInt,
-    IsBoolean,
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsInt,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SupplierCategory } from '../entities/supplier.entity';
@@ -69,7 +69,7 @@ export class CreateSupplierDto {
 
   @ApiPropertyOptional({
     example: 2,
-    description: 'ID de l\'agence concernée',
+    description: "ID de l'agence concernée",
   })
   @IsInt()
   @IsOptional()

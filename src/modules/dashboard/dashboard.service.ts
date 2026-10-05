@@ -9,7 +9,6 @@ import { CustomerStatsService } from '../customer/customer/customer-stats.servic
 import { EmployeeStatsService } from '../agencies/employee/employee-stats.service';
 import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
 
-
 @Injectable()
 export class DashboardService {
   constructor(
@@ -44,19 +43,37 @@ export class DashboardService {
 
     return {
       summary: this.buildSummary({
-        dossiers, audiences, diligences, documents, factures, clients, employes
+        dossiers,
+        audiences,
+        diligences,
+        documents,
+        factures,
+        clients,
+        employes,
       }),
       alerts: this.buildAlerts({
-        dossiers, diligences, factures, documents, audiences
+        dossiers,
+        diligences,
+        factures,
+        documents,
+        audiences,
       }),
       byStatus: this.buildByStatus({
-        dossiers, audiences, diligences
+        dossiers,
+        audiences,
+        diligences,
       }),
       trends: await this.buildTrends({
-        dossiers, audiences, factures
+        dossiers,
+        audiences,
+        factures,
       }),
       recentActivity: this.buildRecentActivity({
-        dossiers, audiences, diligences, documents, factures
+        dossiers,
+        audiences,
+        diligences,
+        documents,
+        factures,
       }),
       topPerformers: this.buildTopPerformers(employes),
       financial: this.buildFinancial(factures),
@@ -87,40 +104,46 @@ export class DashboardService {
   }
 
   private buildActions(data: any): DashboardOverviewDto['actions'] {
-    const diligencesEnRetard = (data.diligences?.expiredDeadlines || []).slice(0, 8).map((d: any) => ({
-      id: d.id,
-      title: d.title,
-      dossierNumber: d.dossierNumber,
-      clientName: d.clientName,
-      lawyerName: d.lawyerName,
-      deadline: d.deadline,
-      daysOverdue: d.daysOverdue ?? 0,
-      priority: d.priority,
-      dossierId: d.dossierId ?? null,
-      sourceActionId: d.sourceActionId ?? null,
-    }));
+    const diligencesEnRetard = (data.diligences?.expiredDeadlines || [])
+      .slice(0, 8)
+      .map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        dossierNumber: d.dossierNumber,
+        clientName: d.clientName,
+        lawyerName: d.lawyerName,
+        deadline: d.deadline,
+        daysOverdue: d.daysOverdue ?? 0,
+        priority: d.priority,
+        dossierId: d.dossierId ?? null,
+        sourceActionId: d.sourceActionId ?? null,
+      }));
 
-    const echeancesProches = (data.diligences?.upcomingDeadlines || []).slice(0, 8).map((d: any) => ({
-      id: d.id,
-      title: d.title,
-      dossierNumber: d.dossierNumber,
-      clientName: d.clientName,
-      lawyerName: d.lawyerName,
-      deadline: d.deadline,
-      daysRemaining: d.daysRemaining ?? 0,
-      priority: d.priority,
-      dossierId: d.dossierId ?? null,
-      sourceActionId: d.sourceActionId ?? null,
-    }));
+    const echeancesProches = (data.diligences?.upcomingDeadlines || [])
+      .slice(0, 8)
+      .map((d: any) => ({
+        id: d.id,
+        title: d.title,
+        dossierNumber: d.dossierNumber,
+        clientName: d.clientName,
+        lawyerName: d.lawyerName,
+        deadline: d.deadline,
+        daysRemaining: d.daysRemaining ?? 0,
+        priority: d.priority,
+        dossierId: d.dossierId ?? null,
+        sourceActionId: d.sourceActionId ?? null,
+      }));
 
-    const prochainesAudiences = (data.audiences?.upcomingAudiences || []).slice(0, 5).map((a: any) => ({
-      id: a.id,
-      date: a.date,
-      jurisdiction: a.jurisdiction,
-      dossierNumber: a.dossierNumber,
-      clientName: a.clientName,
-      status: a.status,
-    }));
+    const prochainesAudiences = (data.audiences?.upcomingAudiences || [])
+      .slice(0, 5)
+      .map((a: any) => ({
+        id: a.id,
+        date: a.date,
+        jurisdiction: a.jurisdiction,
+        dossierNumber: a.dossierNumber,
+        clientName: a.clientName,
+        status: a.status,
+      }));
 
     return { diligencesEnRetard, echeancesProches, prochainesAudiences };
   }
@@ -133,21 +156,27 @@ export class DashboardService {
     };
   }
 
-  private async buildTrends(data: any): Promise<DashboardOverviewDto['trends']> {
+  private async buildTrends(
+    data: any,
+  ): Promise<DashboardOverviewDto['trends']> {
     return {
       dossiers: (data.dossiers?.evolution || []).slice(-30),
       audiences: (data.audiences?.evolution || []).slice(-30),
-      factures: (data.factures?.monthlyRevenue || []).slice(-6).map((m: any) => ({
-        month: m.month,
-        totalTTC: parseFloat(m.totalTTC || 0),
-        totalHT: parseFloat(m.totalHT || 0),
-        totalPaid: parseFloat(m.totalPaid || 0),
-      })),
+      factures: (data.factures?.monthlyRevenue || [])
+        .slice(-6)
+        .map((m: any) => ({
+          month: m.month,
+          totalTTC: parseFloat(m.totalTTC || 0),
+          totalHT: parseFloat(m.totalHT || 0),
+          totalPaid: parseFloat(m.totalPaid || 0),
+        })),
     };
   }
 
-  private buildRecentActivity(data: any): DashboardOverviewDto['recentActivity'] {
-    const activities : any = [];
+  private buildRecentActivity(
+    data: any,
+  ): DashboardOverviewDto['recentActivity'] {
+    const activities: any = [];
 
     // Ajouter les dossiers récents
     if (data.dossiers?.recentDossiers) {
@@ -230,7 +259,9 @@ export class DashboardService {
       .slice(0, 10);
   }
 
-  private buildTopPerformers(employes: any): DashboardOverviewDto['topPerformers'] {
+  private buildTopPerformers(
+    employes: any,
+  ): DashboardOverviewDto['topPerformers'] {
     if (!employes?.topPerformers) return [];
 
     return employes.topPerformers.slice(0, 20).map((p: any) => ({

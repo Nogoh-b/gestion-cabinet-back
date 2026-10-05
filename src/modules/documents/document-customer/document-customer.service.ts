@@ -2,10 +2,16 @@ import { plainToInstance } from 'class-transformer';
 import * as fs from 'fs';
 import * as path from 'path';
 import { join } from 'path';
-import { UPLOAD_DOCS_PATH, UPLOAD_PATH } from 'src/core/common/constants/constants';
+import {
+  UPLOAD_DOCS_PATH,
+  UPLOAD_PATH,
+} from 'src/core/common/constants/constants';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { FilesUtil, UploadedFileInfo } from 'src/core/shared/utils/file.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
@@ -32,35 +38,27 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-
-
-
-
 import { DocumentType } from '../document-type/entities/document-type.entity';
 
-
 import { CreateDocumentCustomerDto } from './dto/create-document-customer.dto';
-import { CreateDocumentFromCotiDto, KycSyncDto } from './dto/create-document-from-coti.dto';
+import {
+  CreateDocumentFromCotiDto,
+  KycSyncDto,
+} from './dto/create-document-from-coti.dto';
 import { DocumentCustomerResponseDto } from './dto/document-customer-response.dto';
 import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
-import { DocumentCustomer, DocumentCustomerStatus } from './entities/document-customer.entity';
+import {
+  DocumentCustomer,
+  DocumentCustomerStatus,
+} from './entities/document-customer.entity';
 
-
-
-
-
-
-
-
-
-export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  {
+export class DocumentCustomerService extends BaseServiceV1<DocumentCustomer> {
   constructor(
     @InjectRepository(DocumentCustomer)
     private docRepository: Repository<DocumentCustomer>,
-    
+
     @InjectRepository(DocumentType)
-    private docTypeRepository: Repository<DocumentType>,    
+    private docTypeRepository: Repository<DocumentType>,
     private procedureInstanceService: ProcedureInstanceService,
     @InjectRepository(SubStageVisit)
     private subStageVisitRepository: Repository<SubStageVisit>,
@@ -77,7 +75,7 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
     private cabinetService: CabinetService,
     private planQuotaService: PlanQuotaService,
   ) {
-        super(docRepository, paginationService);
+    super(docRepository, paginationService);
   }
 
   /** Volume total déjà stocké (octets) par le cabinet courant. */
@@ -105,9 +103,9 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
         'dossier.object',
         'uploaded_by.first_name',
         'uploaded_by.last_name',
-        'metadata.keywords'
+        'metadata.keywords',
       ],
-      
+
       // Champs pour recherche exacte
       exactMatchFields: [
         'id',
@@ -121,52 +119,52 @@ export class DocumentCustomerService   extends BaseServiceV1<DocumentCustomer>  
         'dossier_id',
         'customer_id',
         'uploaded_by_id',
-        'previous_version_id'
+        'previous_version_id',
       ],
-      
+
       // Champs pour ranges de dates
       dateRangeFields: [
         'uploaded_at',
         'last_modified',
         'date_validation',
         'date_ejected',
-        'date_expired'
+        'date_expired',
       ],
-      
-  
-      
+
       // Champs de relations pour filtrage
       relationFields: [
         'document_type',
-        'customer', 
-        'category', 
+        'customer',
+        'category',
         'dossier',
         'uploaded_by',
         'previous_version',
         'stageVisits',
-        'sub_stage_visits'
+        'sub_stage_visits',
       ],
-  
     };
   }
 
-
-async findOne(id: number): Promise<DocumentCustomerResponseDto> {
+  async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     const document = await this.repository.findOne({
       where: { id },
-      relations: ['customer', 'document_type', 'uploaded_by', 'dossier', 'category'], // si tu veux inclure les relations
+      relations: [
+        'customer',
+        'document_type',
+        'uploaded_by',
+        'dossier',
+        'category',
+      ], // si tu veux inclure les relations
     });
 
     if (!document) {
       throw new NotFoundException(`Document avec l'ID ${id} introuvable`);
     }
 
-
     return plainToInstance(DocumentCustomerResponseDto, document);
   }
 
-
-/**
+  /**
    * Recherche avancée de documents avec jointures
    */
   private async searchDocuments(params: {
@@ -175,7 +173,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     status?: DocumentCustomerStatus | DocumentCustomerStatus[];
   }): Promise<DocumentCustomer[]> {
     const { documentTypeId, customerId, status } = params;
-    
+
     const query = this.docRepository
       .createQueryBuilder('doc')
       .leftJoinAndSelect('doc.document_type', 'document_type')
@@ -204,13 +202,12 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     return query.getMany();
   }
 
-
   /**
    * Crée un nouveau document client
    */
   async create(
     createDto: CreateDocumentCustomerDto & { file: Express.Multer.File },
-    uploadedByUserId?: number 
+    uploadedByUserId?: number,
   ): Promise<DocumentCustomerResponseDto | any> {
     const {
       document_type_id,
@@ -225,7 +222,10 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
 
     try {
       // 1. Validation du dossier : le client est déduit de cette relation.
-      const dossier : DossierResponseDto = await this.validateDossier(dossier_id, strict);
+      const dossier: DossierResponseDto = await this.validateDossier(
+        dossier_id,
+        strict,
+      );
       if (!dossier && !strict) return null;
 
       // 2. Le type et la catégorie sont des informations complémentaires.
@@ -257,7 +257,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         throw new BadRequestException('Aucun fichier uploadé');
       }
       if (!file && !strict) return null;
-      
+
       // 7. Récupération du nom du cabinet depuis le tenant
       const tenantId = getCurrentTenantId();
 
@@ -283,39 +283,39 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
 
       const categoryName = category?.name ?? 'Documents non classés';
       const typeName = docType?.name ?? 'Pièces diverses';
-      const dir = `${cabinetName}/${dossier.dossier_number}/${categoryName}/${typeName}`
+      const dir = `${cabinetName}/${dossier.dossier_number}/${categoryName}/${typeName}`;
       // 8. Upload du fichier
       const docName = restDto.name || path.parse(file.originalname).name;
       const uploadedFile = await this.uploadFile(file, dir, docName);
 
-        // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
-    // let procedureInstance: ProcedureInstance | null = null;
-    // let subStage: SubStage | null = null;
+      // 🔍 RÉCUPÉRATION DE L'INSTANCE DE PROCÉDURE ACTIVE
+      // let procedureInstance: ProcedureInstance | null = null;
+      // let subStage: SubStage | null = null;
 
-    // if (dossier.procedureInstance) {
-    //   // Sinon, prendre l'instance active du dossier
-    //   procedureInstance =  dossier.procedureInstance;
-    // }
+      // if (dossier.procedureInstance) {
+      //   // Sinon, prendre l'instance active du dossier
+      //   procedureInstance =  dossier.procedureInstance;
+      // }
 
-    // // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
-    // if (procedureInstance && procedureInstance.currentStage) {
-    //   // Option: prendre la première sous-étape obligatoire non complétée
-    //   const currentStage = procedureInstance.currentStage;
-    //   const completedSubStages = procedureInstance.completedSubStages || [];
-      
-    //   subStage = currentStage.subStages?.find(
-    //     (ss: SubStage) => 
-    //       ss.isMandatory && 
-    //       !completedSubStages.includes(ss.id)
-    //   ) || currentStage.subStages?.[0];
-    // }
+      // // 🔍 RÉCUPÉRATION DE LA SOUS-ÉTAPE CORRESPONDANTE
+      // if (procedureInstance && procedureInstance.currentStage) {
+      //   // Option: prendre la première sous-étape obligatoire non complétée
+      //   const currentStage = procedureInstance.currentStage;
+      //   const completedSubStages = procedureInstance.completedSubStages || [];
+
+      //   subStage = currentStage.subStages?.find(
+      //     (ss: SubStage) =>
+      //       ss.isMandatory &&
+      //       !completedSubStages.includes(ss.id)
+      //   ) || currentStage.subStages?.[0];
+      // }
 
       // 8. Création du document
       const document = await this.createDocument({
         ...restDto,
         document_type: docType ?? undefined,
         customer,
-        status : DocumentCustomerStatus.ACCEPTED,
+        status: DocumentCustomerStatus.ACCEPTED,
         category: category
           ? plainToInstance(DocumentCategory, category)
           : undefined,
@@ -323,41 +323,43 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         notify_client: !!createDto.notify_client,
         uploadedFile,
 
-        uploadedByUserId
+        uploadedByUserId,
       });
 
-        // const currentStep = await this.stepsService.getCurrentStep(createDto.dossier_id);
-  
-        // // Lier automatiquement le document à l'étape courante (Many-to-Many)
-        // if (currentStep) {
-        //   await this.stepsService.linkDocumentToStep(document.id, currentStep.id);
-        // }
-        // if (currentStep) {
-        //   await this.stepsService.syncActionWithStep('document', document.id, currentStep.id);
-        // }
-        // Si des diligences ou audiences sont spécifiées dans le formulaire
-        // if (createDto.diligence_ids?.length) {
-        //   await this.stepsService.linkDocumentToMultipleEntities(document.id, {
-        //     diligenceIds: createDto.diligence_ids
-        //   });
-        // }
-        
-        // if (createDto.audience_ids?.length) {
-        //   await this.stepsService.linkDocumentToMultipleEntities(document.id, {
-        //     audienceIds: createDto.audience_ids
-        //   });
-        // }
+      // const currentStep = await this.stepsService.getCurrentStep(createDto.dossier_id);
+
+      // // Lier automatiquement le document à l'étape courante (Many-to-Many)
+      // if (currentStep) {
+      //   await this.stepsService.linkDocumentToStep(document.id, currentStep.id);
+      // }
+      // if (currentStep) {
+      //   await this.stepsService.syncActionWithStep('document', document.id, currentStep.id);
+      // }
+      // Si des diligences ou audiences sont spécifiées dans le formulaire
+      // if (createDto.diligence_ids?.length) {
+      //   await this.stepsService.linkDocumentToMultipleEntities(document.id, {
+      //     diligenceIds: createDto.diligence_ids
+      //   });
+      // }
+
+      // if (createDto.audience_ids?.length) {
+      //   await this.stepsService.linkDocumentToMultipleEntities(document.id, {
+      //     audienceIds: createDto.audience_ids
+      //   });
+      // }
 
       // 9. Validation automatique si demandée
       // if (createDto.status === DocumentCustomerStatus.ACCEPTED) {
       //   await this.stepsService.updateStepMetrics(document.id);
       // }
-      if(createDto.sub_stage_visit_id){
-        await this.linkDocumentsToSubStage([document.id], createDto.sub_stage_visit_id);
+      if (createDto.sub_stage_visit_id) {
+        await this.linkDocumentsToSubStage(
+          [document.id],
+          createDto.sub_stage_visit_id,
+        );
       }
 
       return plainToInstance(DocumentCustomerResponseDto, document);
-
     } catch (error) {
       if (!strict) return null;
       throw error;
@@ -401,9 +403,10 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
         : null;
       const category = existing.category;
       const docType = existing.document_type;
-      const dir = dossier && category && docType
-        ? `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType.name}`
-        : `${cabinetName}/documents`;
+      const dir =
+        dossier && category && docType
+          ? `${cabinetName}/${dossier.dossier_number}/${category.name}/${docType.name}`
+          : `${cabinetName}/documents`;
 
       const docName = restDto.name || existing.name;
       const uploadedFile = await this.uploadFile(file, dir, docName);
@@ -414,8 +417,14 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     }
 
     // 2. Si document_type_id change, valider le nouveau type
-    if (updateDto.document_type_id && updateDto.document_type_id !== existing.document_type_id) {
-      const docType = await this.validateDocumentType(updateDto.document_type_id, true);
+    if (
+      updateDto.document_type_id &&
+      updateDto.document_type_id !== existing.document_type_id
+    ) {
+      const docType = await this.validateDocumentType(
+        updateDto.document_type_id,
+        true,
+      );
       if (docType) {
         existing.document_type = docType;
         existing.document_type_id = docType.id;
@@ -432,7 +441,10 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     }
 
     // 4. Si customer_id change, valider le nouveau client
-    if (updateDto.customer_id && updateDto.customer_id !== existing.customer_id) {
+    if (
+      updateDto.customer_id &&
+      updateDto.customer_id !== existing.customer_id
+    ) {
       const customer = await this.validateCustomer(
         updateDto.customer_id,
         existing.document_type_id ?? 0,
@@ -445,8 +457,13 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     }
 
     // 5. Si category_id change, valider la nouvelle catégorie
-    if (updateDto.category_id && updateDto.category_id !== existing.category_id) {
-      const category = await this.documentCategoryService.findOne(updateDto.category_id);
+    if (
+      updateDto.category_id &&
+      updateDto.category_id !== existing.category_id
+    ) {
+      const category = await this.documentCategoryService.findOne(
+        updateDto.category_id,
+      );
       if (category) {
         existing.category = plainToInstance(DocumentCategory, category);
         existing.category_id = category.id;
@@ -455,15 +472,19 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
 
     // 6. Mise à jour des champs simples
     if (updateDto.name !== undefined) existing.name = updateDto.name;
-    if (updateDto.description !== undefined) existing.description = updateDto.description;
-    if (updateDto.required_for_hearing !== undefined) existing.required_for_hearing = updateDto.required_for_hearing;
-    if (updateDto.is_confidential !== undefined) existing.is_confidential = updateDto.is_confidential;
+    if (updateDto.description !== undefined)
+      existing.description = updateDto.description;
+    if (updateDto.required_for_hearing !== undefined)
+      existing.required_for_hearing = updateDto.required_for_hearing;
+    if (updateDto.is_confidential !== undefined)
+      existing.is_confidential = updateDto.is_confidential;
     if (updateDto.status !== undefined) existing.status = updateDto.status;
     if (updateDto.metadata !== undefined) {
       try {
-        existing.metadata = typeof updateDto.metadata === 'string'
-          ? JSON.parse(updateDto.metadata)
-          : updateDto.metadata;
+        existing.metadata =
+          typeof updateDto.metadata === 'string'
+            ? JSON.parse(updateDto.metadata)
+            : updateDto.metadata;
       } catch {
         // existing.metadata = { error: 'Invalid JSON format' };
       }
@@ -483,7 +504,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
    */
   private async validateDocumentType(
     documentTypeId: number,
-    strict: boolean
+    strict: boolean,
   ): Promise<DocumentType | null> {
     const docType = await this.docTypeRepository.findOne({
       where: { id: documentTypeId },
@@ -502,11 +523,11 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   private async validateCustomer(
     customerId: number,
     documentTypeId: number,
-    strict: boolean
+    strict: boolean,
   ): Promise<Customer | any> {
     const customer = await this.customerRepository.findOne({
       where: { id: customerId },
-      relations: ['type_customer', 'type_customer.requiredDocuments']
+      relations: ['type_customer', 'type_customer.requiredDocuments'],
     });
 
     if (!customer && strict) {
@@ -516,7 +537,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
 
     // Vérification si le type de document est autorisé pour ce type de client
     const isDocumentAllowed = customer.type_customer?.requiredDocuments?.some(
-      doc => doc.id === documentTypeId
+      (doc) => doc.id === documentTypeId,
     );
 
     // if (!isDocumentAllowed && strict) {
@@ -533,7 +554,10 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   /**
    * Valide le dossier
    */
-  private async validateDossier(dossierId: number, strict: boolean): Promise<Dossier | any> {
+  private async validateDossier(
+    dossierId: number,
+    strict: boolean,
+  ): Promise<Dossier | any> {
     const dossier = await this.dossierService.findOne(dossierId);
 
     if (!dossier && strict) {
@@ -543,19 +567,17 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     return dossier;
   }
 
- 
-
   /**
    * Vérifie l'existence de documents similaires
    */
   private async checkSimilarDocuments(
     documentTypeId: number,
-    customerId: number
+    customerId: number,
   ): Promise<boolean> {
     const similarDocs = await this.searchDocuments({
       documentTypeId,
       customerId,
-      status: [DocumentCustomerStatus.ACCEPTED, DocumentCustomerStatus.PENDING]
+      status: [DocumentCustomerStatus.ACCEPTED, DocumentCustomerStatus.PENDING],
     });
 
     return similarDocs.length > 0;
@@ -567,7 +589,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   private async validateFile(
     file: Express.Multer.File,
     docType: DocumentType,
-    strict: boolean
+    strict: boolean,
   ): Promise<void> {
     if (!file) return;
 
@@ -586,7 +608,7 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
     if (file.size > maxSize) {
       if (strict) {
         throw new BadRequestException(
-          'Le fichier est trop volumineux (max 3MB)'
+          'Le fichier est trop volumineux (max 3MB)',
         );
       }
     }
@@ -598,12 +620,11 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
   private async uploadFile(
     file: Express.Multer.File,
     dir: string,
-    fileName?: string
+    fileName?: string,
   ): Promise<UploadedFileInfo> {
-
     try {
-      console.log(join(UPLOAD_DOCS_PATH, dir))
-      return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, dir),{
+      console.log(join(UPLOAD_DOCS_PATH, dir));
+      return await FilesUtil.uploadFileV1(file, join(UPLOAD_DOCS_PATH, dir), {
         maxSizeKB: 3072, // 3MB
         width: 1600,
         quality: 75,
@@ -611,43 +632,52 @@ async findOne(id: number): Promise<DocumentCustomerResponseDto> {
       });
     } catch (error) {
       throw new InternalServerErrorException(
-        `Erreur lors de l'upload du fichier: ${error.message}`
+        `Erreur lors de l'upload du fichier: ${error.message}`,
       );
     }
   }
 
+  async linkDocumentsToSubStage(
+    documentIds: number[],
+    currentSubStageVisitId: any,
+  ): Promise<void> {
+    if (!documentIds || documentIds.length === 0) {
+      throw new Error('Aucun document fourni');
+    }
 
-async linkDocumentsToSubStage(
-  documentIds: number[],
-  currentSubStageVisitId: any
-): Promise<void> {
-  if (!documentIds || documentIds.length === 0) {
-    throw new Error('Aucun document fourni');
+    // Vérifier que le subStage existe
+    const subStage = await this.subStageVisitRepository.findOne({
+      where: { id: currentSubStageVisitId },
+      relations: ['documents'], // Assurez-vous que la relation est chargée
+    });
+    const nonexistentDocIds = documentIds.filter(
+      (id) =>
+        !subStage?.documents.some((doc) => doc.id.toString() === id.toString()),
+    );
+    console.log(
+      'SubStage trouvé:',
+      subStage?.documents.map((doc) => doc.id),
+      ' pour les documents à lier:',
+      documentIds,
+      ' - Non trouvés:',
+      nonexistentDocIds,
+    );
+    // if (nonexistentDocIds.length > 0) {
+    //   throw new NotFoundException(`Documents avec les IDs ${nonexistentDocIds.join(', ')} non trouvés pour ce subStage`);
+    // }
+    console.log('Documents à lier:', nonexistentDocIds);
+
+    if (!currentSubStageVisitId) {
+      throw new NotFoundException(`Sous étape non trouvé`);
+    }
+
+    // 🔗 Ajout en masse (table pivot)
+    await this.repository
+      .createQueryBuilder()
+      .relation('sub_stage_visits')
+      .of(nonexistentDocIds) // 👈 tableau ici
+      .add(currentSubStageVisitId);
   }
-
-  // Vérifier que le subStage existe
-  const subStage = await this.subStageVisitRepository.findOne({
-    where: { id: currentSubStageVisitId },
-    relations: ['documents'] // Assurez-vous que la relation est chargée
-  });
-  const nonexistentDocIds = documentIds.filter(id => !subStage?.documents.some(doc => doc.id.toString() === id.toString()));
-  console.log('SubStage trouvé:', subStage?.documents.map(doc => doc.id) , ' pour les documents à lier:', documentIds , ' - Non trouvés:', nonexistentDocIds);
-  // if (nonexistentDocIds.length > 0) {
-  //   throw new NotFoundException(`Documents avec les IDs ${nonexistentDocIds.join(', ')} non trouvés pour ce subStage`);
-  // }
-  console.log('Documents à lier:', nonexistentDocIds);
-
-  if (!currentSubStageVisitId) {
-    throw new NotFoundException(`Sous étape non trouvé`);
-  }
-
-  // 🔗 Ajout en masse (table pivot)
-  await this.repository
-    .createQueryBuilder()
-    .relation('sub_stage_visits')
-    .of(nonexistentDocIds) // 👈 tableau ici
-    .add(currentSubStageVisitId);
-}
   /**
    * Crée l'entité document
    */
@@ -694,9 +724,10 @@ async linkDocumentsToSubStage(
     // Gestion des métadonnées
     if (restParams.metadata) {
       try {
-        documentData.metadata = typeof restParams.metadata === 'string' 
-          ? JSON.parse(restParams.metadata)
-          : restParams.metadata;
+        documentData.metadata =
+          typeof restParams.metadata === 'string'
+            ? JSON.parse(restParams.metadata)
+            : restParams.metadata;
       } catch (error) {
         documentData.metadata = { error: 'Invalid JSON format' };
       }
@@ -708,29 +739,21 @@ async linkDocumentsToSubStage(
     return this.docRepository.save(document);
   }
 
-
   async createMany(dto: CreateDocumentCustomerDto[] | any[]): Promise<any> {
-    let savedDocs : DocumentCustomerResponseDto []  = [];
+    const savedDocs: DocumentCustomerResponseDto[] = [];
     for (const doc of dto) {
-      await validateDto(CreateDocumentFromCotiDto, doc)
-      savedDocs.push(await this.create(doc))
+      await validateDto(CreateDocumentFromCotiDto, doc);
+      savedDocs.push(await this.create(doc));
     }
-    return savedDocs
-
-
+    return savedDocs;
   }
-
-
-
 
   async findCustomerByCode(code: string): Promise<CustomerResponseDto> {
-    return await  this.customerService.findOneByCode(code)
+    return await this.customerService.findOneByCode(code);
   }
 
-
   async findByCustomer(customerId: number, accepted = false): Promise<any[]> {
-
-    let where = accepted
+    const where = accepted
       ? {
           customer: { id: customerId },
           status: DocumentCustomerStatus.ACCEPTED,
@@ -742,87 +765,99 @@ async linkDocumentsToSubStage(
     });
   }
 
-  async findByCustomerCode(customer_code: string, accepted = false, strict = true): Promise<any[]> {
-    const customer = await this.customerService.findOneByCode(customer_code,strict)
-    if(customer)
-      return await this.findByCustomer(customer?.id, accepted)
-    return []
+  async findByCustomerCode(
+    customer_code: string,
+    accepted = false,
+    strict = true,
+  ): Promise<any[]> {
+    const customer = await this.customerService.findOneByCode(
+      customer_code,
+      strict,
+    );
+    if (customer) return await this.findByCustomer(customer?.id, accepted);
+    return [];
   }
 
   async findByType(typeCode: string): Promise<DocumentCustomer | null> {
-    let where = {name: typeCode }
+    const where = { name: typeCode };
     return this.docRepository.findOne({
       where,
       relations: ['document_type'],
     });
   }
-  async findByTypeId(id_customer: number , id_type = 3): Promise<DocumentCustomer | null> {
+  async findByTypeId(
+    id_customer: number,
+    id_type = 3,
+  ): Promise<DocumentCustomer | null> {
     return this.docRepository.findOne({
       where: {
         document_type: {
-          id: id_type
+          id: id_type,
         },
-        customer : {
-          id: id_customer
-        }
+        customer: {
+          id: id_customer,
+        },
       },
-      relations: ['document_type','customer'],
+      relations: ['document_type', 'customer'],
     });
   }
 
-  async findByIds(documentIds: number[]){
-      const documents = await this.repository.findByIds(documentIds);
-      return documents
+  async findByIds(documentIds: number[]) {
+    const documents = await this.repository.findByIds(documentIds);
+    return documents;
   }
-
-
-
 
   async validate(document_id: number): Promise<DocumentCustomer | any> {
     const doc = await this.docRepository.findOne({
-      where :{ id: document_id },
-      relations: ['customer'] },
-    );
-    console.log('findByCustomer', await this.findByCustomer(49, true))
-    
-    if(!doc)
-      throw new  NotFoundException("Document non trouvé");
-      console.log('doccccc ', doc)
-    if(doc.status !== DocumentCustomerStatus.PENDING)
-      throw new  NotFoundException("Document déja traité");
+      where: { id: document_id },
+      relations: ['customer'],
+    });
+    console.log('findByCustomer', await this.findByCustomer(49, true));
 
-    this.docRepository.update(document_id, { status: DocumentCustomerStatus.ACCEPTED, date_validation: new Date() } as any)
+    if (!doc) throw new NotFoundException('Document non trouvé');
+    console.log('doccccc ', doc);
+    if (doc.status !== DocumentCustomerStatus.PENDING)
+      throw new NotFoundException('Document déja traité');
+
+    this.docRepository.update(document_id, {
+      status: DocumentCustomerStatus.ACCEPTED,
+      date_validation: new Date(),
+    } as any);
     doc.status = DocumentCustomerStatus.ACCEPTED;
     doc.date_validation = new Date();
-    await this.docRepository.save(doc)
-    const customer  = await this.customerRepository.findOne({ where: { id: doc.customer.id }, relations: ['type_customer', 'type_customer.requiredDocuments'] });
+    await this.docRepository.save(doc);
+    const customer = await this.customerRepository.findOne({
+      where: { id: doc.customer.id },
+      relations: ['type_customer', 'type_customer.requiredDocuments'],
+    });
     const validateDocs = await this.findByCustomer(customer!.id, true);
-    console.log('validateDocs.length', validateDocs.length)
-    console.log('customer?.type_customer.requiredDocuments.length', customer?.type_customer.requiredDocuments.length)
+    console.log('validateDocs.length', validateDocs.length);
+    console.log(
+      'customer?.type_customer.requiredDocuments.length',
+      customer?.type_customer.requiredDocuments.length,
+    );
     // if (validateDocs.length === customer?.type_customer.requiredDocuments.length) {
     //     await this.customerRepository.update(customer.id, {
     //       status: CustomerStatus.ACTIVE,
     //     })
     // }
-  
+
     return doc;
   }
 
-
   async refuse(document_id: number): Promise<DocumentCustomer | null> {
     const doc = await this.docRepository.findOne({
-      where :{ id: document_id },
-      relations: ['customer'] },
-    );
-    if(!doc)
-      throw new  NotFoundException("Document non trouvé");
-    console.log('doc------- ',doc)
-    if(doc.status != DocumentCustomerStatus.PENDING)
-      throw new  NotFoundException("Document déja traité");
-    doc.status = DocumentCustomerStatus.REFUSED
-    doc.date_ejected = new Date()
+      where: { id: document_id },
+      relations: ['customer'],
+    });
+    if (!doc) throw new NotFoundException('Document non trouvé');
+    console.log('doc------- ', doc);
+    if (doc.status != DocumentCustomerStatus.PENDING)
+      throw new NotFoundException('Document déja traité');
+    doc.status = DocumentCustomerStatus.REFUSED;
+    doc.date_ejected = new Date();
 
-    await this.docRepository.save(doc)
+    await this.docRepository.save(doc);
     // this.docRepository.update(document_id, { status: DocumentCustomerStatus.REFUSED, date_ejected: new Date() } as any)
     return await this.docRepository.findOneBy({ id: document_id });
   }
@@ -831,12 +866,12 @@ async linkDocumentsToSubStage(
     return this.docRepository;
   }
 
-  async sync(dto : KycSyncDto){
-    let r : any  = []
+  async sync(dto: KycSyncDto) {
+    const r: any = [];
     // for (const data of dto.items) {
     //     const docs = plainToInstance(DocumentCustomerResponseDto , await this.findByCustomerCode(data.code_customer,true, false))
     //     if(docs && docs.length > 0){
-    //       r.push(docs) 
+    //       r.push(docs)
     //       for (const doc of docs) {
     //         console.log('doc ' ,doc.document_type_id , process.env[`DOC_${doc.document_type_id}`] )
     //         if(process.env[`DOC_${doc.document_type_id}`])
@@ -845,36 +880,43 @@ async linkDocumentsToSubStage(
 
     //     }
     // }
-    return r
+    return r;
   }
 
-
-    async getDocumentStream(id: any, userId: any): Promise<{ stream: fs.ReadStream; mimeType: string; fileName: string }> {
+  async getDocumentStream(
+    id: any,
+    userId: any,
+  ): Promise<{ stream: fs.ReadStream; mimeType: string; fileName: string }> {
     const document = await this.findOne(id);
-    
+
     // const uploadPath = this.configService.get('UPLOAD_PATH', './uploads');
-    const filePath = document.file_path ?? path.join(UPLOAD_PATH, document?.filename || '');
-    
+    const filePath =
+      document.file_path ?? path.join(UPLOAD_PATH, document?.filename || '');
+
     if (!fs.existsSync(filePath)) {
-      console.log('Fichier physique non trouvé ' +filePath , ' ',document.file_path )
+      console.log(
+        'Fichier physique non trouvé ' + filePath,
+        ' ',
+        document.file_path,
+      );
       throw new NotFoundException('Fichier physique non trouvé ' + filePath);
     }
 
     const stream = fs.createReadStream(filePath);
     const mimeType = this.getMimeType(document.file_mimetype || '');
-    
+
     return { stream, mimeType, fileName: document.original_name };
   }
 
   getMimeType(fileType: string): string {
     const mimeTypes = {
-      'pdf': 'application/pdf',
-      'doc': 'application/msword',
-      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
     };
     return mimeTypes[fileType] || 'application/octet-stream';
   }
@@ -882,11 +924,18 @@ async linkDocumentsToSubStage(
   /**
    * Returns the base64 encoded content of a document file.
    */
-  async getBase64(id: number): Promise<{ base64: string; mimeType: string; fileName: string; fileSize?: number }> {
+  async getBase64(id: number): Promise<{
+    base64: string;
+    mimeType: string;
+    fileName: string;
+    fileSize?: number;
+  }> {
     const document = await this.findOne(id);
 
     if (!document || !document.file_path) {
-      throw new NotFoundException(`Document avec l'ID ${id} introuvable ou fichier manquant`);
+      throw new NotFoundException(
+        `Document avec l'ID ${id} introuvable ou fichier manquant`,
+      );
     }
 
     let filePath = document.file_path;
@@ -898,11 +947,11 @@ async linkDocumentsToSubStage(
 
     const fileBuffer = fs.readFileSync(filePath);
     const base64 = fileBuffer.toString('base64');
-    const mimeType = document.file_mimetype || this.getMimeType(path.extname(filePath).replace('.', ''));
+    const mimeType =
+      document.file_mimetype ||
+      this.getMimeType(path.extname(filePath).replace('.', ''));
     const fileName = document.original_name || path.basename(filePath);
 
     return { base64, mimeType, fileName, fileSize: document.file_size ?? 0 };
   }
-
-  
 }

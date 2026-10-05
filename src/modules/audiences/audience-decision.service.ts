@@ -1,9 +1,16 @@
 // src/modules/audiences/audience-decision.service.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { Audience, AudienceStatus } from './entities/audience.entity';
-import { DecisionAudienceDto, AddDecisionResponseDto } from './dto/decision-audience.dto';
+import {
+  DecisionAudienceDto,
+  AddDecisionResponseDto,
+} from './dto/decision-audience.dto';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
 import { DossiersService } from '../dossiers/dossiers.service';
 import { plainToInstance } from 'class-transformer';
@@ -25,8 +32,8 @@ export class AudienceDecisionService {
     decisionDto: DecisionAudienceDto,
     entityManager?: EntityManager,
   ): Promise<AddDecisionResponseDto> {
-    const repo = entityManager 
-      ? entityManager.getRepository(Audience) 
+    const repo = entityManager
+      ? entityManager.getRepository(Audience)
       : this.audienceRepository;
 
     const audience = await repo.findOne({
@@ -41,24 +48,34 @@ export class AudienceDecisionService {
     // Vérifier que l'audience a bien eu lieu
     if (audience.status !== AudienceStatus.HELD) {
       throw new BadRequestException(
-        `Impossible d'ajouter une décision car l'audience n'est pas encore tenue. Statut actuel: ${audience.status}`
+        `Impossible d'ajouter une décision car l'audience n'est pas encore tenue. Statut actuel: ${audience.status}`,
       );
     }
 
     // Mettre à jour les champs de décision (tous optionnels)
     const notes = decisionDto.decision_notes ?? decisionDto.notes;
-    if (decisionDto.decision !== undefined)      audience.decision_text    = decisionDto.decision;
-    if (decisionDto.outcome !== undefined)       audience.decision_outcome = decisionDto.outcome;
-    if (decisionDto.decision_date !== undefined) audience.decision_date    = decisionDto.decision_date;
-    if (notes !== undefined)                     audience.decision_notes   = notes;
+    if (decisionDto.decision !== undefined)
+      audience.decision_text = decisionDto.decision;
+    if (decisionDto.outcome !== undefined)
+      audience.decision_outcome = decisionDto.outcome;
+    if (decisionDto.decision_date !== undefined)
+      audience.decision_date = decisionDto.decision_date;
+    if (notes !== undefined) audience.decision_notes = notes;
 
     // Gérer les documents de décision
-    if (decisionDto.document_decision_ids && decisionDto.document_decision_ids.length > 0) {
+    if (
+      decisionDto.document_decision_ids &&
+      decisionDto.document_decision_ids.length > 0
+    ) {
       const documents = await this.documentCustomerService.findByIds(
-        decisionDto.document_decision_ids
+        decisionDto.document_decision_ids,
       );
       audience.decision_documents = documents;
-      console.log(documents.map(doc => doc.id) ,  ' ', decisionDto.document_decision_ids );
+      console.log(
+        documents.map((doc) => doc.id),
+        ' ',
+        decisionDto.document_decision_ids,
+      );
     }
 
     // Mettre à jour le statut de l'audience si nécessaire
@@ -84,7 +101,9 @@ export class AudienceDecisionService {
   /**
    * Mettre à jour le dossier en fonction de la décision
    */
-  private async updateDossierBasedOnDecision(audience: Audience): Promise<void> {
+  private async updateDossierBasedOnDecision(
+    audience: Audience,
+  ): Promise<void> {
     const dossier = audience.dossier;
     if (!dossier) return;
 
@@ -174,9 +193,12 @@ export class AudienceDecisionService {
     }
 
     // Gérer l'ajout de nouveaux documents
-    if (decisionDto.document_decision_ids && decisionDto.document_decision_ids.length > 0) {
+    if (
+      decisionDto.document_decision_ids &&
+      decisionDto.document_decision_ids.length > 0
+    ) {
       const newDocuments = await this.documentCustomerService.findByIds(
-        decisionDto.document_decision_ids
+        decisionDto.document_decision_ids,
       );
       audience.decision_documents = [
         ...(audience.decision_documents || []),
@@ -201,7 +223,11 @@ export class AudienceDecisionService {
   async getDecision(audienceId: number): Promise<any> {
     const audience = await this.audienceRepository.findOne({
       where: { id: audienceId },
-      relations: ['decision_documents', 'decision_documents.document_type', 'dossier'],
+      relations: [
+        'decision_documents',
+        'decision_documents.document_type',
+        'dossier',
+      ],
     });
 
     if (!audience) {
@@ -238,7 +264,7 @@ export class AudienceDecisionService {
     }
 
     audience.decision_documents = audience.decision_documents.filter(
-      (doc) => doc.id !== documentId
+      (doc) => doc.id !== documentId,
     );
 
     await this.audienceRepository.save(audience);

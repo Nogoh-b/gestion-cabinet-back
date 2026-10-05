@@ -2,8 +2,6 @@ import { Type } from 'class-transformer';
 import { IsOptional, IsString, IsInt, Min, Max } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-
-
 export class SearchBranchDto {
   @ApiPropertyOptional({ example: 'BR-001' })
   @IsOptional()
@@ -40,5 +38,4 @@ export class SearchBranchDto {
   @Min(0)
   @Max(23)
   closing_hour?: number;
-
 }

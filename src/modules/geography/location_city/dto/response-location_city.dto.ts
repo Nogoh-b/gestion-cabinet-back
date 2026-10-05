@@ -5,15 +5,7 @@ import { CreateCustomerDto } from 'src/modules/customer/customer/dto/create-cust
 import { ApiProperty, PartialType } from '@nestjs/swagger';
 import { District } from '../../district/entities/district.entity';
 
-
-
-
-
-
-
-
-
-export class ResponseLocationCityDto  extends PartialType(CreateCustomerDto) {
+export class ResponseLocationCityDto extends PartialType(CreateCustomerDto) {
   @Expose()
   @IsString()
   @ApiProperty()
@@ -30,8 +22,10 @@ export class ResponseLocationCityDto  extends PartialType(CreateCustomerDto) {
       obj.district?.name,
       obj.district?.division?.name,
       obj.district?.division?.region?.name,
-      obj.district?.division?.region?.country?.name
-    ].filter(Boolean).join(', ');
+      obj.district?.division?.region?.country?.name,
+    ]
+      .filter(Boolean)
+      .join(', ');
   })
   @ApiProperty()
   fullAddress: string;

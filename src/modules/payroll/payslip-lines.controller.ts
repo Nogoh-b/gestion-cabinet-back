@@ -32,7 +32,7 @@ export class PayslipLinesController {
   @Get('/payslip/:payslipId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Lignes d\'une fiche de paie' })
+  @ApiOperation({ summary: "Lignes d'une fiche de paie" })
   findByPayslip(@Param('payslipId') payslipId: string) {
     return this.service.findByPayslip(+payslipId);
   }
@@ -40,7 +40,7 @@ export class PayslipLinesController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Détail d\'une ligne de paie' })
+  @ApiOperation({ summary: "Détail d'une ligne de paie" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

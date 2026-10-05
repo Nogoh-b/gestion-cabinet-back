@@ -15,7 +15,6 @@ export interface PaginatedResult<T> {
   meta: PaginationMeta;
 }
 
-
 export interface SearchOptions {
   /** Terme à rechercher */
   term: string;

@@ -179,7 +179,9 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         (dossier as any)?.procedure_costs ?? (entity as any)?.procedure_costs,
       );
       const montantHT =
-        dossierOverride > 0 ? dossierOverride : Number(cabinet.dossier_opening_fee);
+        dossierOverride > 0
+          ? dossierOverride
+          : Number(cabinet.dossier_opening_fee);
       const tauxTVA = Number(cabinet.dossier_opening_fee_tva ?? 0);
       const montantTVA = Math.round(montantHT * tauxTVA) / 100;
       const montantTTC = montantHT + montantTVA;
@@ -491,11 +493,11 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     );
     if (!change) return;
 
-    const id = entity.id ?? (event.databaseEntity as Dossier)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
 
     const loaded = await this.load(id, event).catch(() => null);
-    const dossier = loaded ?? (event.databaseEntity as Dossier);
+    const dossier = loaded ?? event.databaseEntity;
     if (!dossier) return;
     const notifyClient = this.resolveTransientBoolean(
       'notify_client',
@@ -549,9 +551,9 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity: Partial<Dossier>,
     event: UpdateEvent<Dossier>,
   ): Promise<void> {
-    const dossierId = entity.id ?? (event.databaseEntity as Dossier)?.id;
+    const dossierId = entity.id ?? event.databaseEntity?.id;
     this.logger.log(
-      `🔄 syncCollaboratorsToConversation START | dossierId=${dossierId} | entity.id=${entity.id} | dbEntity.id=${(event.databaseEntity as Dossier)?.id}`,
+      `🔄 syncCollaboratorsToConversation START | dossierId=${dossierId} | entity.id=${entity.id} | dbEntity.id=${event.databaseEntity?.id}`,
     );
     if (!dossierId) {
       this.logger.warn(`🔄 syncCollaborators SKIP — no dossierId`);

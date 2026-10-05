@@ -1,10 +1,30 @@
 import {
-  Controller, Post, Get, Body, HttpCode, HttpStatus,
-  Query, UseGuards, Req, UnauthorizedException, NotFoundException, Param,
-  Logger, UseInterceptors, UploadedFile, Res,
+  Controller,
+  Post,
+  Get,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Query,
+  UseGuards,
+  Req,
+  UnauthorizedException,
+  NotFoundException,
+  Param,
+  Logger,
+  UseInterceptors,
+  UploadedFile,
+  Res,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { AiDatabaseService } from './ai-database.service';
 import { AskQuestionDto } from './dto/ask-question.dto';
 import { AnalysisResponseDto, WritePlan } from './dto/analysis-response.dto';
@@ -19,8 +39,7 @@ import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
-  @UseGuards(JwtAuthGuard)
-
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AiDatabaseController {
   private readonly logger = new Logger(AiDatabaseController.name);
@@ -42,7 +61,10 @@ export class AiDatabaseController {
       properties: {
         question: { type: 'string' },
         conversationId: { type: 'string' },
-        documentIds: { type: 'string', description: 'JSON array ou liste separee par virgules' },
+        documentIds: {
+          type: 'string',
+          description: 'JSON array ou liste separee par virgules',
+        },
         intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat'] },
         file: { type: 'string', format: 'binary' },
       },
@@ -52,11 +74,15 @@ export class AiDatabaseController {
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
     @Req() req,
-    @UploadedFile() file?: Express.Multer.File
+    @UploadedFile() file?: Express.Multer.File,
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(dto, user, file, req?.aiRequestLogId);
+    return this.aiDbService.analyzeQuestion(
+      dto,
+      user,
+      file,
+      req?.aiRequestLogId,
+    );
   }
-
 
   // ── Streaming SSE ───────────────────────────────────────────────────────────
 
@@ -93,21 +119,25 @@ export class AiDatabaseController {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-store');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');   // désactive le buffer nginx
+    res.setHeader('X-Accel-Buffering', 'no'); // désactive le buffer nginx
     res.setHeader('Transfer-Encoding', 'chunked');
-    res.flushHeaders();                          // flush immédiat vers le client
+    res.flushHeaders(); // flush immédiat vers le client
 
     let tokenEmitCount = 0;
     const sendEvent = (event: string, data: any) => {
-      if (res.writableEnded) return;             // connexion déjà fermée
+      if (res.writableEnded) return; // connexion déjà fermée
 
       if (event === 'token') {
         tokenEmitCount++;
         if (tokenEmitCount <= 3 || tokenEmitCount % 20 === 0) {
-          this.logger.debug(`📤 SSE → [token #${tokenEmitCount}] "${(data?.text ?? '').toString().substring(0, 30)}"`);
+          this.logger.debug(
+            `📤 SSE → [token #${tokenEmitCount}] "${(data?.text ?? '').toString().substring(0, 30)}"`,
+          );
         }
       } else {
-        this.logger.debug(`📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`);
+        this.logger.debug(
+          `📤 SSE → [${event}] ${JSON.stringify(data).substring(0, 100)}`,
+        );
       }
 
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -126,12 +156,20 @@ export class AiDatabaseController {
     try {
       sendEvent('status', { message: 'Connexion IA etablie...' });
       await this.tenantContext.run(tenantId, () =>
-        this.aiDbService.analyzeQuestionStream(dto, user, file, sendEvent, (res.req as any)?.aiRequestLogId),
+        this.aiDbService.analyzeQuestionStream(
+          dto,
+          user,
+          file,
+          sendEvent,
+          (res.req as any)?.aiRequestLogId,
+        ),
       );
     } catch (err) {
       sendEvent('error', { message: err?.message ?? String(err) });
     } finally {
-      this.logger.debug(`📤 SSE → [done] (${tokenEmitCount} tokens, +${Date.now() - t0}ms)`);
+      this.logger.debug(
+        `📤 SSE → [done] (${tokenEmitCount} tokens, +${Date.now() - t0}ms)`,
+      );
       sendEvent('done', {});
       res.end();
     }
@@ -141,10 +179,10 @@ export class AiDatabaseController {
 
   @Post('write/confirm')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Confirme une opération d\'écriture' })
+  @ApiOperation({ summary: "Confirme une opération d'écriture" })
   async confirmWrite(
     @Body('pendingIntent') pendingIntent: WritePlan,
-    @CurrentUser() user
+    @CurrentUser() user,
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.confirmWrite(pendingIntent, user);
   }
@@ -176,7 +214,9 @@ export class AiDatabaseController {
    */
   @Post('write/resolve-ambiguity')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reprend un plan d\'écriture après résolution d\'ambiguïté' })
+  @ApiOperation({
+    summary: "Reprend un plan d'écriture après résolution d'ambiguïté",
+  })
   async resolveAmbiguity(
     @Body('pendingWritePlan') pendingWritePlan: WritePlan,
     @Body('operationIndex') operationIndex: number,
@@ -213,60 +253,68 @@ export class AiDatabaseController {
   }
 
   @Get('health')
-  @ApiOperation({ summary: 'Vérifie l\'état de l\'agent IA' })
+  @ApiOperation({ summary: "Vérifie l'état de l'agent IA" })
   async healthCheck() {
     return {
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      agentReady: true
+      agentReady: true,
     };
   }
 
   @Get('schema-json')
-  @ApiOperation({ 
-    summary: 'Récupère le schéma complet de la base de données avec métadonnées métier',
-    description: 'Retourne la structure de toutes les tables avec libellés, descriptions, types, relations...'
+  @ApiOperation({
+    summary:
+      'Récupère le schéma complet de la base de données avec métadonnées métier',
+    description:
+      'Retourne la structure de toutes les tables avec libellés, descriptions, types, relations...',
   })
   @ApiResponse({ status: 200, description: 'Schéma retourné avec succès' })
   async getDatabaseSchemaJSON() {
     return this.aiDbService.getFullDatabaseSchema();
   }
   @Get('schema')
-  @ApiOperation({ 
-    summary: 'Récupère le schéma complet de la base de données avec métadonnées métier',
-    description: 'Retourne la structure de toutes les tables avec libellés, descriptions, types, relations...'
+  @ApiOperation({
+    summary:
+      'Récupère le schéma complet de la base de données avec métadonnées métier',
+    description:
+      'Retourne la structure de toutes les tables avec libellés, descriptions, types, relations...',
   })
   @ApiResponse({ status: 200, description: 'Schéma retourné avec succès' })
   async getDatabaseSchema() {
-        // const allTables = this.schemaMetadata.getAllVisibleTables();
+    // const allTables = this.schemaMetadata.getAllVisibleTables();
     // const schemaJSON = await this.aiDbService.getCompleteSchemaJson(allTables);
     return await this.aiDbService.preloadSystemPrompt();
   }
 
-   @Post('analyze')
+  @Post('analyze')
   async analyze(@Body() dto: AskQuestionDto, @Req() req) {
     const userId = req.user?.id || 'anonymous'; // Ton système d'auth
     return this.aiDbService.analyzeQuestion(dto, userId);
   }
-  
+
   @Get('conversations')
   async getConversations(@Req() req) {
     const userId = req.user?.id || 'anonymous';
     return this.conversationManager.getUserConversations(userId);
-  } 
+  }
 
   @Post('conversations')
   async createConversation(@Req() req) {
     const userId = req.user?.id || 'anonymous';
     return this.conversationManager.createConversation(userId);
   }
-  
+
   @Get('conversations/:id/messages')
-  async getConversationMessages(@Param('id') conversationId: string, @Req() req) {
+  async getConversationMessages(
+    @Param('id') conversationId: string,
+    @Req() req,
+  ) {
     const userId = req.user?.id || 'anonymous';
 
     // Cherche la conversation sans filtre de statut pour distinguer 404 vs 403
-    const conversation = await this.conversationManager.getConversationAny(conversationId);
+    const conversation =
+      await this.conversationManager.getConversationAny(conversationId);
 
     if (!conversation) {
       throw new NotFoundException(`Conversation ${conversationId} introuvable`);
@@ -275,25 +323,32 @@ export class AiDatabaseController {
     // Si la conversation était créée en mode anonyme et que l'utilisateur est maintenant authentifié,
     // on ré-associe automatiquement la conversation à l'utilisateur connecté.
     if (conversation.userId === 'anonymous' && userId !== 'anonymous') {
-      await this.conversationManager.reassignConversation(conversationId, String(userId));
+      await this.conversationManager.reassignConversation(
+        conversationId,
+        String(userId),
+      );
     } else if (conversation.userId.toString() !== userId.toString()) {
       this.logger.warn(
         `⚠️ Accès refusé à la conversation ${conversationId}: ` +
-        `owner=${conversation.userId}, requester=${userId}`
+          `owner=${conversation.userId}, requester=${userId}`,
       );
-      throw new UnauthorizedException('Cette conversation ne vous appartient pas.');
+      throw new UnauthorizedException(
+        'Cette conversation ne vous appartient pas.',
+      );
     }
 
     return this.conversationManager.getFullHistory(conversationId);
   }
 
-
   @Get('prompt-schema')
-  @ApiOperation({ 
-    summary: 'Récupère le schéma envoyé à l\'IA pour une question donnée',
-    description: 'Visualise exactement ce que l\'IA reçoit comme contexte'
+  @ApiOperation({
+    summary: "Récupère le schéma envoyé à l'IA pour une question donnée",
+    description: "Visualise exactement ce que l'IA reçoit comme contexte",
   })
-  async getPromptSchema(@Query('question') question: string, @Query('tables') tables?: string) {
+  async getPromptSchema(
+    @Query('question') question: string,
+    @Query('tables') tables?: string,
+  ) {
     const specificTables = tables ? tables.split(',') : undefined;
     return this.aiDbService.getPromptSchema(question, specificTables);
   }
@@ -301,15 +356,15 @@ export class AiDatabaseController {
   @Get('visible-tables')
   @ApiOperation({ summary: 'Liste les tables visibles (avec métadonnées)' })
   async getVisibleTables() {
-    const tables = this.schemaMetadata.getAllVisibleTables()
+    const tables = this.schemaMetadata.getAllVisibleTables();
     return {
       count: this.schemaMetadata.getVisibleTablesCount(),
       tables,
       schemaJSON: await this.aiDbService.getCompleteSchemaJson(tables),
-      details: this.schemaMetadata.getAllVisibleTables().map(table => ({
+      details: this.schemaMetadata.getAllVisibleTables().map((table) => ({
         name: table,
-        metadata: this.schemaMetadata.getTableMetadataForPrompt(table)
-      }))
+        metadata: this.schemaMetadata.getTableMetadataForPrompt(table),
+      })),
     };
   }
 }

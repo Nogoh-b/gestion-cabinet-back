@@ -7,7 +7,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { StatutFacture, TypeFacture } from './create-facture.dto';
 import { InvoiceType } from 'src/modules/invoice-type/entities/invoice-type.entity';
 
-
 export class FactureResponseDto {
   @ApiProperty({ description: 'ID de la facture' })
   @Expose()

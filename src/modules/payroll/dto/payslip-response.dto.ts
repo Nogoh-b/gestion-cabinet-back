@@ -24,10 +24,15 @@ export class PayslipLineResponseDto {
   @Expose()
   is_taxable: boolean;
 
-  @ApiProperty({ example: { id: 15, dossier_number: 'DOS-2026-015' }, required: false })
+  @ApiProperty({
+    example: { id: 15, dossier_number: 'DOS-2026-015' },
+    required: false,
+  })
   @Expose()
   @Transform(({ obj }) =>
-    obj.dossier ? { id: obj.dossier.id, dossier_number: obj.dossier.dossier_number } : null,
+    obj.dossier
+      ? { id: obj.dossier.id, dossier_number: obj.dossier.dossier_number }
+      : null,
   )
   dossier: { id: number; dossier_number: string } | null;
 
@@ -96,7 +101,12 @@ export class PayslipResponseDto {
   };
 
   @ApiProperty({
-    example: { id: 3, label: 'Paie Mars 2026', start_date: '2026-03-01', end_date: '2026-03-31' },
+    example: {
+      id: 3,
+      label: 'Paie Mars 2026',
+      start_date: '2026-03-01',
+      end_date: '2026-03-31',
+    },
   })
   @Expose()
   @Transform(({ obj }) => ({
@@ -138,16 +148,21 @@ export class PayslipResponseDto {
 
   @ApiProperty({ example: 500.0 })
   @Expose()
-  @Transform(({ obj }) =>
-    obj.lines
-      ?.filter((l: any) => l.line_type === 'internal_commission')
-      .reduce((sum: number, l: any) => sum + Number(l.amount), 0) || 0,
+  @Transform(
+    ({ obj }) =>
+      obj.lines
+        ?.filter((l: any) => l.line_type === 'internal_commission')
+        .reduce((sum: number, l: any) => sum + Number(l.amount), 0) || 0,
   )
   total_commissions: number;
 
   @ApiProperty({ example: 35000, required: false })
   @Expose()
-  @Transform(({ obj }) => (obj.total_employer_charges != null ? Number(obj.total_employer_charges) : null))
+  @Transform(({ obj }) =>
+    obj.total_employer_charges != null
+      ? Number(obj.total_employer_charges)
+      : null,
+  )
   total_employer_charges: number | null;
 
   @ApiProperty({ example: 'Payée' })

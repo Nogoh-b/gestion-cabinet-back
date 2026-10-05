@@ -17,10 +17,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import {
-  BillableItemStatus,
-  BillableSourceType,
-} from './case-workflow.enums';
+import { BillableItemStatus, BillableSourceType } from './case-workflow.enums';
 import {
   ActionTransitionDto,
   ApplyWorkflowMigrationDto,
@@ -398,10 +395,7 @@ export class DossierActionsController {
 
   @Get(':id/deadline-history')
   @RequirePermissions('view_dossier_actions')
-  deadlineHistory(
-    @Param('id') id: string,
-    @CurrentUser() user: User,
-  ) {
+  deadlineHistory(@Param('id') id: string, @CurrentUser() user: User) {
     return this.actionService.getDeadlineHistory(id, actorId(user));
   }
 

@@ -1,7 +1,13 @@
-
 // src/paiement/dto/search-paiement.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsDate, IsNumber, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsDate,
+  IsNumber,
+  IsArray,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ModePaiement, StatutPaiement } from './create-paiement.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
@@ -27,7 +33,10 @@ export class SearchPaiementDto extends PaginationParamsDto {
   @IsOptional()
   mode?: ModePaiement;
 
-  @ApiPropertyOptional({ enum: StatutPaiement, description: 'Statut du paiement' })
+  @ApiPropertyOptional({
+    enum: StatutPaiement,
+    description: 'Statut du paiement',
+  })
   @IsEnum(StatutPaiement)
   @IsOptional()
   statut?: StatutPaiement;
@@ -43,7 +52,7 @@ export class SearchPaiementDto extends PaginationParamsDto {
   @IsOptional()
   datePaiement_from?: Date;
 
-  @ApiPropertyOptional({ description: 'Date de paiement jusqu\'à' })
+  @ApiPropertyOptional({ description: "Date de paiement jusqu'à" })
   @IsDate()
   @Type(() => Date)
   @IsOptional()

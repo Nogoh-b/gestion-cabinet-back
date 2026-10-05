@@ -1,6 +1,6 @@
-import { User } from "src/modules/iam/user/entities/user.entity";
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
-import { Step } from "./step.entity";
+import { User } from 'src/modules/iam/user/entities/user.entity';
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Step } from './step.entity';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 // entities/step-action.entity.ts
@@ -8,14 +8,14 @@ export enum ActionType {
   DILIGENCE = 'diligence',
   DOCUMENT = 'document',
   AUDIENCE = 'audience',
-  FACTURE = 'facture'
+  FACTURE = 'facture',
 }
 
 export enum ActionStatus {
   PENDING = 'pending',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
-  CANCELLED = 'cancelled'
+  CANCELLED = 'cancelled',
 }
 
 @Entity()
@@ -47,7 +47,7 @@ export class StepAction extends TenantEntity {
   @Column('simple-json', { nullable: true })
   result: any; // Résultat de l'action (ex: document généré, décision de l'audience, etc.)
 
-  @ManyToOne(() => Step, step => step.actions)
+  @ManyToOne(() => Step, (step) => step.actions)
   step: Step;
 
   @ManyToOne(() => User, { nullable: true })

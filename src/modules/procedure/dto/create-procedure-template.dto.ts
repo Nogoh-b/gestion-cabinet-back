@@ -1,5 +1,13 @@
 // dto/create-procedure-template.dto.ts
-import { IsString, IsOptional, IsBoolean, IsArray, ValidateNested, IsObject, IsNumber } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+  IsObject,
+  IsNumber,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 // DTO pour les sous-stages

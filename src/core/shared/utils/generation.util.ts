@@ -10,7 +10,6 @@ export class GenCOde {
     return `${prefix}${shortHash}`;
   }
 
-
   static randomDigits(length: number): string {
     let result = '';
     for (let i = 0; i < length; i++) {
@@ -18,9 +17,4 @@ export class GenCOde {
     }
     return result;
   }
-
-
-
-
-  
 }

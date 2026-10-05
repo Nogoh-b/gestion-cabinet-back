@@ -8,7 +8,9 @@ describe('IntentDetectionService local classifier', () => {
   } as any);
 
   it('detects help before write for dossier procedure questions', () => {
-    expect(service.classifyLocal('je veux creer un dossier comment faire ?')).toBe('HELP');
+    expect(
+      service.classifyLocal('je veux creer un dossier comment faire ?'),
+    ).toBe('HELP');
   });
 
   it('detects help for client procedure questions', () => {
@@ -16,20 +18,28 @@ describe('IntentDetectionService local classifier', () => {
   });
 
   it('detects advice requests outside database search', () => {
-    expect(service.classifyLocal("que peut tu me conseiller d'ajjouter encore ?")).toBe('ADVICE');
+    expect(
+      service.classifyLocal("que peut tu me conseiller d'ajjouter encore ?"),
+    ).toBe('ADVICE');
   });
 
   it('detects recommendation requests as advice', () => {
-    expect(service.classifyLocal('quelles suggestions peux-tu me proposer ?')).toBe('ADVICE');
+    expect(
+      service.classifyLocal('quelles suggestions peux-tu me proposer ?'),
+    ).toBe('ADVICE');
   });
 
   it('detects obvious write without LLM', () => {
-    expect(service.classifyLocal('Crée un nouveau dossier pour Jean')).toBe('WRITE');
+    expect(service.classifyLocal('Crée un nouveau dossier pour Jean')).toBe(
+      'WRITE',
+    );
   });
 
   it('detects audience creation on a referenced dossier as write', () => {
     expect(
-      service.classifyLocal('#DOS1-202606-0001 ajoute une audience preliminaire pour le lundi 20 juillet a 15 h'),
+      service.classifyLocal(
+        '#DOS1-202606-0001 ajoute une audience preliminaire pour le lundi 20 juillet a 15 h',
+      ),
     ).toBe('WRITE');
   });
 

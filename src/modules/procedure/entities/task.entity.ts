@@ -1,22 +1,26 @@
 // entities/task.entity.ts
 import {
-    Entity,
-    Column,
-    PrimaryGeneratedColumn,
-    ManyToOne,
-    JoinColumn,
-    CreateDateColumn,
-    UpdateDateColumn,
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { ProcedureInstance } from './procedure-instance.entity';
 import { TaskStatus } from './enums/instance-status.enum';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('tasks')
 @BusinessTable({
   label: 'Tâches',
-  description: 'Tâches associées à une instance de procédure. Actions à réaliser avec échéance et assignation.',
+  description:
+    'Tâches associées à une instance de procédure. Actions à réaliser avec échéance et assignation.',
   icon: '✅',
   category: 'procedure',
   ignored: true,
@@ -35,7 +39,7 @@ export class Task extends BaseEntity {
   @Column()
   @BusinessColumn({
     label: 'Instance',
-    description: 'Identifiant de l\'instance de procédure',
+    description: "Identifiant de l'instance de procédure",
     importance: 'high',
     group: 'relation',
     ignored: true,
@@ -68,7 +72,7 @@ export class Task extends BaseEntity {
 
   @Column({ nullable: true })
   @BusinessColumn({
-    label: 'Date d\'échéance',
+    label: "Date d'échéance",
     description: 'Date limite pour réaliser la tâche',
     format: 'date',
     example: '2025-12-31',
@@ -80,7 +84,7 @@ export class Task extends BaseEntity {
   @Column({ nullable: true })
   @BusinessColumn({
     label: 'Assigné à',
-    description: 'Identifiant de l\'utilisateur assigné à la tâche',
+    description: "Identifiant de l'utilisateur assigné à la tâche",
     importance: 'high',
     group: 'relation',
   })
@@ -89,7 +93,8 @@ export class Task extends BaseEntity {
   @Column({ type: 'enum', enum: TaskStatus, default: TaskStatus.PENDING })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'pending'=En attente, 'in_progress'=En cours, 'completed'=Terminée, 'overdue'=En retard.",
+    description:
+      "BD: 'pending'=En attente, 'in_progress'=En cours, 'completed'=Terminée, 'overdue'=En retard.",
     importance: 'critical',
     group: 'état',
   })

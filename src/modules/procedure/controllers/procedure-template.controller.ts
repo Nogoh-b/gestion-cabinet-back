@@ -36,7 +36,9 @@ export class ProcedureTemplateController {
   @RequirePermissions('view_dossiers')
   async findAll(@Query('activeOnly') activeOnly?: string) {
     const activeFilter =
-      activeOnly === undefined ? undefined : ['true', '1', 'yes'].includes(String(activeOnly).toLowerCase());
+      activeOnly === undefined
+        ? undefined
+        : ['true', '1', 'yes'].includes(String(activeOnly).toLowerCase());
     return this.templateService.findAll(activeFilter);
   }
 
@@ -48,7 +50,10 @@ export class ProcedureTemplateController {
 
   @Put(':id')
   @RequirePermissions('manage_settings')
-  async update(@Param('id') id: string, @Body() dto: Partial<CreateProcedureTemplateDto>) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: Partial<CreateProcedureTemplateDto>,
+  ) {
     return this.templateService.update(id, dto);
   }
 
@@ -63,10 +68,7 @@ export class ProcedureTemplateController {
 
   @Post(':id/duplicate')
   @RequirePermissions('manage_settings')
-  async duplicate(
-    @Param('id') id: string,
-    @Body('name') name: string,
-  ) {
+  async duplicate(@Param('id') id: string, @Body('name') name: string) {
     return this.templateService.duplicate(id, name);
   }
 

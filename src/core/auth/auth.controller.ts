@@ -1,7 +1,24 @@
-import { Controller, Post, UseGuards, HttpCode, Req, HttpStatus, Request, Get, Body } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  UseGuards,
+  HttpCode,
+  Req,
+  HttpStatus,
+  Request,
+  Get,
+  Body,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
-import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'; // Ajouter
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBody,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiSecurity,
+} from '@nestjs/swagger'; // Ajouter
 import { AuthService } from './auth.service';
 import { LoginUserDto } from './dto/login-user.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -23,20 +40,19 @@ export class AuthController {
   @UseGuards(AuthGuard('local'))
   @Post('login')
   @ApiOperation({ summary: 'Authentification utilisateur' })
-  @ApiBody({ 
+  @ApiBody({
     type: LoginUserDto,
-    description: 'Credentials utilisateur' 
+    description: 'Credentials utilisateur',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
     description: 'Connexion réussie',
-    type: LoginResponseDto
+    type: LoginResponseDto,
   })
   /*@ApiResponse({ status: 401, description: 'Non autorisé' })
   async login(@Body() loginUserDto: LoginUserDto) {
     return this.authService.login(loginUserDto);
   }*/
-
   @Public()
   @UseGuards(LocalAuthGuard)
   @Post('login')
@@ -79,7 +95,7 @@ export class AuthController {
   async getProfile(@Request() req) {
     // req.user.sub est undefined ici : JwtStrategy remmappe payload.sub → id/userId.
     // On utilise req.user.userId (= employee ID) pour relire les permissions en DB.
-    const userId   = req.user.userId ?? req.user.id;
+    const userId = req.user.userId ?? req.user.id;
     const roleCode = req.user.role ?? null; // issu du JWT — évite un SELECT user inutile
     const fresh = await this.authService.getFreshProfile(userId, roleCode);
     return { ...req.user, ...fresh };
@@ -87,14 +103,16 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me/permissions')
-  @ApiOperation({ summary: 'Récupérer les permissions de l\'utilisateur connecté' })
+  @ApiOperation({
+    summary: "Récupérer les permissions de l'utilisateur connecté",
+  })
   async getMyPermissions(@Request() req) {
-    const userId   = req.user.userId ?? req.user.id;
+    const userId = req.user.userId ?? req.user.id;
     const roleCode = req.user.role ?? null;
     const fresh = await this.authService.getFreshProfile(userId, roleCode);
     return { permissions: fresh.permissions };
   }
-  
+
   @Public()
   @UseGuards(AuthGuard('refresh'))
   @Post('refresh')
@@ -108,7 +126,6 @@ export class AuthController {
   async logout(@Req() req: Request) {
     // await this.authService.logout(req.user.sub);
   }
-
 
   @Public()
   @Post('forgot-password')

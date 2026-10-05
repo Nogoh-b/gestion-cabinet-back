@@ -49,12 +49,8 @@ describe('case-workflow MariaDB metadata', () => {
     expect(actionStatus.description).toContain(
       'COMPLETED ne signifie jamais à lui seul',
     );
-    expect(billingDecision.description).toContain(
-      'Seule la valeur BILLABLE',
-    );
-    expect(itemStatus.description).toContain(
-      'Seul TO_INVOICE signifie',
-    );
+    expect(billingDecision.description).toContain('Seule la valeur BILLABLE');
+    expect(itemStatus.description).toContain('Seul TO_INVOICE signifie');
   });
 
   it('masque les entités de l’ancien moteur de procédure', () => {

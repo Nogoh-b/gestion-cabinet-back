@@ -11,7 +11,9 @@ describe('ActivitiesSavingsAccountController', () => {
       providers: [ActivitiesSavingsAccountService],
     }).compile();
 
-    controller = module.get<ActivitiesSavingsAccountController>(ActivitiesSavingsAccountController);
+    controller = module.get<ActivitiesSavingsAccountController>(
+      ActivitiesSavingsAccountController,
+    );
   });
 
   it('should be defined', () => {

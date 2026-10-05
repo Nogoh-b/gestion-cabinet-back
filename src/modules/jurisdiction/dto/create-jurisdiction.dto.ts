@@ -1,18 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsEnum,
-    IsBoolean,
-    IsEmail,
-    IsPhoneNumber
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+  IsEmail,
+  IsPhoneNumber,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { JurisdictionLevel, JurisdictionType } from '../entities/jurisdiction.entity';
+import {
+  JurisdictionLevel,
+  JurisdictionType,
+} from '../entities/jurisdiction.entity';
 
 export class CreateJurisdictionDto {
-  @ApiPropertyOptional({ description: 'Code unique. Généré automatiquement si non fourni.' })
+  @ApiPropertyOptional({
+    description: 'Code unique. Généré automatiquement si non fourni.',
+  })
   @IsOptional()
   @IsString()
   code?: string;
@@ -27,19 +32,21 @@ export class CreateJurisdictionDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({
     enum: JurisdictionLevel,
-    description: 'Niveau de la juridiction' 
+    description: 'Niveau de la juridiction. Défaut : regional.',
   })
+  @IsOptional()
   @IsEnum(JurisdictionLevel)
-  level: JurisdictionLevel;
+  level?: JurisdictionLevel;
 
-  @ApiProperty({ 
+  @ApiPropertyOptional({
     enum: JurisdictionType,
-    description: 'Type de juridiction' 
+    description: 'Type de juridiction. Défaut : civil.',
   })
+  @IsOptional()
   @IsEnum(JurisdictionType)
-  jurisdiction_type: JurisdictionType;
+  jurisdiction_type?: JurisdictionType;
 
   @ApiPropertyOptional({ description: 'Ville' })
   @IsOptional()
@@ -78,12 +85,14 @@ export class CreateJurisdictionDto {
 
   @ApiPropertyOptional({ description: 'ID de la juridiction parente' })
   @IsOptional()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   parent_id?: number;
 
   @ApiPropertyOptional({ description: 'Métadonnées JSON' })
   @IsOptional()
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? JSON.parse(value) : value,
+  )
   metadata?: Record<string, any>;
 
   @ApiPropertyOptional({ description: 'Actif', default: true })

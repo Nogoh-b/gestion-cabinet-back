@@ -9,7 +9,12 @@ import { IS_PUBLIC_KEY } from 'src/core/decorators/public.decorator';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { SubscriptionsService } from 'src/modules/subscriptions/subscriptions.service';
 import { Repository } from 'typeorm';
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 

@@ -18,7 +18,7 @@ function loadDatabase() {
     entities: [join(__dirname, '../../**/*.entity{.ts,.js}')],
     migrations: [join(__dirname, 'migrations/*{.ts,.js}')],
     migrationsRun: true,
-  })
+  });
   return {
     type: process.env.DB_TYPE || 'mysql',
     host: process.env.DB_HOST,

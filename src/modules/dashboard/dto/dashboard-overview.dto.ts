@@ -31,7 +31,12 @@ export class DashboardOverviewDto {
   trends: {
     dossiers: Array<{ date: string; count: number }>;
     audiences: Array<{ date: string; count: number }>;
-    factures: Array<{ month: string; totalTTC: number; totalHT: number; totalPaid: number }>;
+    factures: Array<{
+      month: string;
+      totalTTC: number;
+      totalHT: number;
+      totalPaid: number;
+    }>;
   };
 
   // Activité récente - pour RecentActivity

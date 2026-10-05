@@ -13,19 +13,21 @@ export class DossierReferralSearchDto {
   @IsInt()
   referrer_id?: number;
 
-  @ApiPropertyOptional({ description: 'Date d\'apport minimum' })
+  @ApiPropertyOptional({ description: "Date d'apport minimum" })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   referral_date_from?: Date;
 
-  @ApiPropertyOptional({ description: 'Date d\'apport maximum' })
+  @ApiPropertyOptional({ description: "Date d'apport maximum" })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   referral_date_to?: Date;
 
-  @ApiPropertyOptional({ description: 'Recherche texte (nom dossier, apporteur)' })
+  @ApiPropertyOptional({
+    description: 'Recherche texte (nom dossier, apporteur)',
+  })
   @IsOptional()
   @IsString()
   search?: string;
@@ -44,7 +46,10 @@ export class DossierReferralSearchDto {
   @Min(1)
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Champ de tri', example: 'referral_date' })
+  @ApiPropertyOptional({
+    description: 'Champ de tri',
+    example: 'referral_date',
+  })
   @IsOptional()
   @IsString()
   sortBy?: string = 'referral_date';

@@ -1,7 +1,10 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { ExpenseReportStatus } from '../entities/expense-report.entity';
-import { ExpenseCategory } from '../entities/expense-line.entity';
+import {
+  ExpenseCategory,
+  ExpenseRebillingType,
+} from '../entities/expense-line.entity';
 
 export class ExpenseLineResponseDto {
   @ApiProperty({ example: 1 })
@@ -32,10 +35,33 @@ export class ExpenseLineResponseDto {
   @Expose()
   is_rebillable: boolean;
 
-  @ApiProperty({ example: { id: 15, dossier_number: 'DOS-2026-015' }, required: false })
+  @ApiProperty({
+    enum: ExpenseRebillingType,
+    example: ExpenseRebillingType.EXPENSE,
+  })
+  @Expose()
+  rebilling_type: ExpenseRebillingType;
+
+  @ApiProperty({
+    example: '0cfce36d-9aec-4ff2-83b8-f20d63866d22',
+    required: false,
+  })
+  @Expose()
+  action_id: string | null;
+
+  @ApiProperty({ example: 'XAF' })
+  @Expose()
+  currency: string;
+
+  @ApiProperty({
+    example: { id: 15, dossier_number: 'DOS-2026-015' },
+    required: false,
+  })
   @Expose()
   @Transform(({ obj }) =>
-    obj.dossier ? { id: obj.dossier.id, dossier_number: obj.dossier.dossier_number } : null,
+    obj.dossier
+      ? { id: obj.dossier.id, dossier_number: obj.dossier.dossier_number }
+      : null,
   )
   dossier: { id: number; dossier_number: string } | null;
 
@@ -65,11 +91,14 @@ export class ExpenseReportResponseDto {
   @Expose()
   title: string;
 
-  @ApiProperty({ enum: ExpenseReportStatus, example: ExpenseReportStatus.APPROVED })
+  @ApiProperty({
+    enum: ExpenseReportStatus,
+    example: ExpenseReportStatus.APPROVED,
+  })
   @Expose()
   status: ExpenseReportStatus;
 
-  @ApiProperty({ example: 245.50 })
+  @ApiProperty({ example: 245.5 })
   @Expose()
   total_amount: number;
 
@@ -83,7 +112,11 @@ export class ExpenseReportResponseDto {
 
   // Relations
   @ApiProperty({
-    example: { id: 5, full_name: 'Maître Sophie Martin', employee_number: 'EMP-005' },
+    example: {
+      id: 5,
+      full_name: 'Maître Sophie Martin',
+      employee_number: 'EMP-005',
+    },
   })
   @Expose()
   @Transform(({ obj }) => ({
@@ -99,7 +132,9 @@ export class ExpenseReportResponseDto {
   })
   @Expose()
   @Transform(({ obj }) =>
-    obj.approved_by ? { id: obj.approved_by.id, full_name: obj.approved_by.full_name } : null,
+    obj.approved_by
+      ? { id: obj.approved_by.id, full_name: obj.approved_by.full_name }
+      : null,
   )
   approved_by: { id: number; full_name: string } | null;
 
@@ -130,10 +165,11 @@ export class ExpenseReportResponseDto {
 
   @ApiProperty({ example: 100.0 })
   @Expose()
-  @Transform(({ obj }) =>
-    obj.lines
-      ?.filter((l: any) => l.is_rebillable)
-      .reduce((sum: number, l: any) => sum + Number(l.amount_ttc), 0) || 0,
+  @Transform(
+    ({ obj }) =>
+      obj.lines
+        ?.filter((l: any) => l.is_rebillable)
+        .reduce((sum: number, l: any) => sum + Number(l.amount_ttc), 0) || 0,
   )
   total_rebillable: number;
 

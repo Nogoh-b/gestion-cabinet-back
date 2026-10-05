@@ -1,6 +1,9 @@
 import { DataSource } from 'typeorm';
 import { Seeder } from 'typeorm-extension';
-import { DocumentType, DocumentTypeStatus } from '../entities/document-type.entity';
+import {
+  DocumentType,
+  DocumentTypeStatus,
+} from '../entities/document-type.entity';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
 
@@ -11,7 +14,7 @@ export default class DocumentTypeSeeder implements Seeder {
 
     // Récupérer toutes les catégories existantes
     const categories = await categoryRepository.find();
-    const categoryMap = new Map(categories.map(cat => [cat.code, cat]));
+    const categoryMap = new Map(categories.map((cat) => [cat.code, cat]));
 
     console.log(`📁 ${categories.length} catégories trouvées`);
 
@@ -20,13 +23,19 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'ACTE_AUTHENTIQUE',
         name: 'Acte authentique',
-        description: 'Rédigé par officier public (notaire, huissier, greffier, officier d\'état civil). Force probante très forte + force exécutoire.',
+        description:
+          "Rédigé par officier public (notaire, huissier, greffier, officier d'état civil). Force probante très forte + force exécutoire.",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '20971520',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['REAL_ESTATE', 'CONTRACT_COMPLEX', 'GOVERNANCE_BOARD', 'ARCHIVE_PERMANENT'],
+        documentCategoryCodes: [
+          'REAL_ESTATE',
+          'CONTRACT_COMPLEX',
+          'GOVERNANCE_BOARD',
+          'ARCHIVE_PERMANENT',
+        ],
       },
       {
         code: 'ACTE_VENTE_IMMOBILIERE',
@@ -42,7 +51,7 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'HYPOTHEQUE',
         name: 'Hypothèque',
-        description: 'Acte authentique d\'hypothèque',
+        description: "Acte authentique d'hypothèque",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '20971520',
@@ -66,13 +75,20 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'ACTE_SOUS_SEING_PRIVE',
         name: 'Acte sous seing privé',
-        description: 'Rédigé par les parties sans officier public. Force probante moyenne (entre parties).',
+        description:
+          'Rédigé par les parties sans officier public. Force probante moyenne (entre parties).',
         validityDuration: null,
         mimetype: 'application/pdf,application/msword,image/jpeg',
         max_size: '10485760',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['CONTRACT_BASIC', 'CONTRACT_COMPLEX', 'HR_CONTRACTS', 'CONTRACT_AMENDMENT', 'CONFIDENTIALITY_NDA'],
+        documentCategoryCodes: [
+          'CONTRACT_BASIC',
+          'CONTRACT_COMPLEX',
+          'HR_CONTRACTS',
+          'CONTRACT_AMENDMENT',
+          'CONFIDENTIALITY_NDA',
+        ],
       },
       {
         code: 'CONTRAT_VENTE_SSP',
@@ -122,8 +138,9 @@ export default class DocumentTypeSeeder implements Seeder {
       // ==================== ACTE D'AVOCAT ====================
       {
         code: 'ACTE_AVOCAT',
-        name: 'Acte d\'avocat',
-        description: 'Rédigé et contresigné par avocat. Force probante renforcée.',
+        name: "Acte d'avocat",
+        description:
+          'Rédigé et contresigné par avocat. Force probante renforcée.',
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -147,13 +164,18 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'JUGEMENT_ARRET_ORDONNANCE',
         name: 'Jugement / Arrêt / Ordonnance',
-        description: 'Décision de justice. Autorité de la chose jugée + force exécutoire.',
+        description:
+          'Décision de justice. Autorité de la chose jugée + force exécutoire.',
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['JUDGMENTS', 'APPEALS', 'LITIGATION_INITIATION'],
+        documentCategoryCodes: [
+          'JUDGMENTS',
+          'APPEALS',
+          'LITIGATION_INITIATION',
+        ],
       },
       {
         code: 'JUGEMENT_TRIBUNAL',
@@ -168,8 +190,8 @@ export default class DocumentTypeSeeder implements Seeder {
       },
       {
         code: 'ARRET_COUR_APPEL',
-        name: 'Arrêt de cour d\'appel',
-        description: 'Décision rendue par une cour d\'appel',
+        name: "Arrêt de cour d'appel",
+        description: "Décision rendue par une cour d'appel",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -188,12 +210,16 @@ export default class DocumentTypeSeeder implements Seeder {
         max_size: '10485760',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['LITIGATION_INITIATION', 'LITIGATION_MOTIONS', 'APPEALS'],
+        documentCategoryCodes: [
+          'LITIGATION_INITIATION',
+          'LITIGATION_MOTIONS',
+          'APPEALS',
+        ],
       },
       {
         code: 'ASSIGNATION',
         name: 'Assignation',
-        description: 'Acte introductif d\'instance',
+        description: "Acte introductif d'instance",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -204,7 +230,7 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'CONCLUSIONS',
         name: 'Conclusions',
-        description: 'Conclusions d\'avocat',
+        description: "Conclusions d'avocat",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -214,8 +240,8 @@ export default class DocumentTypeSeeder implements Seeder {
       },
       {
         code: 'APPEL',
-        name: 'Déclaration d\'appel',
-        description: 'Acte de saisine de la cour d\'appel',
+        name: "Déclaration d'appel",
+        description: "Acte de saisine de la cour d'appel",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -234,12 +260,16 @@ export default class DocumentTypeSeeder implements Seeder {
         max_size: '10485760',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['GOVERNANCE_BOARD', 'EVIDENCE_TESTIMONIAL', 'HR_DISCIPLINARY'],
+        documentCategoryCodes: [
+          'GOVERNANCE_BOARD',
+          'EVIDENCE_TESTIMONIAL',
+          'HR_DISCIPLINARY',
+        ],
       },
       {
         code: 'PV_AG',
-        name: 'Procès-verbal d\'Assemblée Générale',
-        description: 'PV d\'AG ordinaire ou extraordinaire',
+        name: "Procès-verbal d'Assemblée Générale",
+        description: "PV d'AG ordinaire ou extraordinaire",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '20971520',
@@ -249,8 +279,8 @@ export default class DocumentTypeSeeder implements Seeder {
       },
       {
         code: 'PV_AUDITION',
-        name: 'Procès-verbal d\'audition',
-        description: 'PV d\'audition de témoin',
+        name: "Procès-verbal d'audition",
+        description: "PV d'audition de témoin",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -260,7 +290,7 @@ export default class DocumentTypeSeeder implements Seeder {
       },
       {
         code: 'CONSTAT_HUISSIER',
-        name: 'Constat d\'huissier',
+        name: "Constat d'huissier",
         description: 'Procès-verbal de constat par huissier',
         validityDuration: null,
         mimetype: 'application/pdf',
@@ -272,7 +302,7 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'PV_DISCIPLINAIRE',
         name: 'Procès-verbal disciplinaire',
-        description: 'PV d\'entretien disciplinaire',
+        description: "PV d'entretien disciplinaire",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -285,13 +315,18 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'DOCUMENT_ADMINISTRATIF',
         name: 'Document administratif',
-        description: 'Émis par une autorité administrative. Force probante variable (recours possible).',
+        description:
+          'Émis par une autorité administrative. Force probante variable (recours possible).',
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['LICENSES_PERMITS', 'REGULATORY_COMPLIANCE', 'GOVERNMENT_CORRESPONDENCE'],
+        documentCategoryCodes: [
+          'LICENSES_PERMITS',
+          'REGULATORY_COMPLIANCE',
+          'GOVERNMENT_CORRESPONDENCE',
+        ],
       },
       {
         code: 'PERMIS_CONSTRUIRE',
@@ -307,7 +342,7 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'AGREMENT',
         name: 'Agrément administratif',
-        description: 'Autorisation d\'exercer une activité réglementée',
+        description: "Autorisation d'exercer une activité réglementée",
         validityDuration: 60,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -319,19 +354,24 @@ export default class DocumentTypeSeeder implements Seeder {
       // ==================== RAPPORT D'EXPERTISE ====================
       {
         code: 'RAPPORT_EXPERTISE',
-        name: 'Rapport d\'expertise',
-        description: 'Expertise judiciaire ou amiable. Force probante variable selon nomination.',
+        name: "Rapport d'expertise",
+        description:
+          'Expertise judiciaire ou amiable. Force probante variable selon nomination.',
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '52428800',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['EVIDENCE_EXPERT', 'TECHNICAL_REPORTS', 'TECHNICAL_INSPECTION'],
+        documentCategoryCodes: [
+          'EVIDENCE_EXPERT',
+          'TECHNICAL_REPORTS',
+          'TECHNICAL_INSPECTION',
+        ],
       },
       {
         code: 'RAPPORT_EXPERT_JUDICIAIRE',
-        name: 'Rapport d\'expert judiciaire',
-        description: 'Rapport d\'expert désigné par le tribunal',
+        name: "Rapport d'expert judiciaire",
+        description: "Rapport d'expert désigné par le tribunal",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '52428800',
@@ -343,8 +383,8 @@ export default class DocumentTypeSeeder implements Seeder {
       // ==================== ACTE D'ÉTAT CIVIL ====================
       {
         code: 'ACTE_ETAT_CIVIL',
-        name: 'Acte d\'état civil',
-        description: 'Établi par officier d\'état civil. Preuve absolue.',
+        name: "Acte d'état civil",
+        description: "Établi par officier d'état civil. Preuve absolue.",
         validityDuration: null,
         mimetype: 'application/pdf,image/jpeg',
         max_size: '10485760',
@@ -355,7 +395,7 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'ACTE_NAISSANCE',
         name: 'Acte de naissance',
-        description: 'Extrait d\'acte de naissance',
+        description: "Extrait d'acte de naissance",
         validityDuration: null,
         mimetype: 'application/pdf,image/jpeg',
         max_size: '5242880',
@@ -366,7 +406,7 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'ACTE_MARIAGE',
         name: 'Acte de mariage',
-        description: 'Extrait d\'acte de mariage',
+        description: "Extrait d'acte de mariage",
         validityDuration: null,
         mimetype: 'application/pdf,image/jpeg',
         max_size: '5242880',
@@ -379,7 +419,8 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'PREUVE_ELECTRONIQUE_QUALIFIEE',
         name: 'Preuve électronique qualifiée',
-        description: 'Document avec signature électronique qualifiée. Force équivalente à l\'écrit papier.',
+        description:
+          "Document avec signature électronique qualifiée. Force équivalente à l'écrit papier.",
         validityDuration: null,
         mimetype: 'application/pdf,message/rfc822',
         max_size: '10485760',
@@ -390,7 +431,8 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'EMAIL_SIGNATURE_QUALIFIEE',
         name: 'Email avec signature qualifiée',
-        description: 'Email signé avec signature électronique qualifiée (eIDAS)',
+        description:
+          'Email signé avec signature électronique qualifiée (eIDAS)',
         validityDuration: null,
         mimetype: 'message/rfc822,application/pdf',
         max_size: '10485760',
@@ -403,7 +445,7 @@ export default class DocumentTypeSeeder implements Seeder {
       {
         code: 'ACCORD_TRANSACTIONNEL',
         name: 'Transaction / Accord transactionnel',
-        description: 'Sous seing privé ou acte d\'avocat. Met fin à un litige.',
+        description: "Sous seing privé ou acte d'avocat. Met fin à un litige.",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -413,8 +455,8 @@ export default class DocumentTypeSeeder implements Seeder {
       },
       {
         code: 'PROTOCOLE_ACCORD',
-        name: 'Protocole d\'accord',
-        description: 'Protocole d\'accord transactionnel',
+        name: "Protocole d'accord",
+        description: "Protocole d'accord transactionnel",
         validityDuration: null,
         mimetype: 'application/pdf',
         max_size: '10485760',
@@ -433,7 +475,11 @@ export default class DocumentTypeSeeder implements Seeder {
         max_size: '10485760',
         isRequired: false,
         status: DocumentTypeStatus.ACCEPTED,
-        documentCategoryCodes: ['FINANCIAL_INVOICES', 'FINANCIAL_STATEMENTS', 'FINANCIAL_TAX'],
+        documentCategoryCodes: [
+          'FINANCIAL_INVOICES',
+          'FINANCIAL_STATEMENTS',
+          'FINANCIAL_TAX',
+        ],
       },
       {
         code: 'FACTURE',
@@ -459,7 +505,7 @@ export default class DocumentTypeSeeder implements Seeder {
       },
       {
         code: 'DECLARATION_IMPOT',
-        name: 'Déclaration d\'impôt',
+        name: "Déclaration d'impôt",
         description: 'Déclaration fiscale annuelle',
         validityDuration: null,
         mimetype: 'application/pdf',
@@ -477,35 +523,44 @@ export default class DocumentTypeSeeder implements Seeder {
     for (const docTypeData of documentTypes) {
       const { documentCategoryCodes: categoryCodes, ...docData } = docTypeData;
 
-      const existing = await findOneForTenant(documentTypeRepository, 'code', docTypeData.code);
+      const existing = await findOneForTenant(
+        documentTypeRepository,
+        'code',
+        docTypeData.code,
+      );
 
       if (!existing) {
         const documentType = new DocumentType();
-        
+
         documentType.code = docData.code;
         documentType.name = docData.name;
         documentType.description = docData.description;
-        documentType.validityDuration = docData.validityDuration === null ? 0 : docData.validityDuration;
+        documentType.validityDuration =
+          docData.validityDuration === null ? 0 : docData.validityDuration;
         documentType.mimetype = docData.mimetype;
         documentType.max_size = docData.max_size;
         documentType.isRequired = docData.isRequired;
         documentType.status = docData.status;
-        
+
         // Sauvegarder d'abord le document type
         await documentTypeRepository.save(documentType);
-        
+
         // Associer les catégories (Many-to-Many)
         if (categoryCodes && categoryCodes.length > 0) {
           const categoriesToLink = categoryCodes
-            .map(code => categoryMap.get(code))
-            .filter(cat => cat !== undefined);
-          
+            .map((code) => categoryMap.get(code))
+            .filter((cat) => cat !== undefined);
+
           if (categoriesToLink.length > 0) {
             documentType.categories = categoriesToLink;
             await documentTypeRepository.save(documentType);
-            console.log(`✅ DocumentType créé: ${documentType.name} avec ${categoriesToLink.length} catégories`);
+            console.log(
+              `✅ DocumentType créé: ${documentType.name} avec ${categoriesToLink.length} catégories`,
+            );
           } else {
-            console.log(`✅ DocumentType créé: ${documentType.name} (aucune catégorie trouvée)`);
+            console.log(
+              `✅ DocumentType créé: ${documentType.name} (aucune catégorie trouvée)`,
+            );
           }
         }
         createdCount++;
@@ -515,6 +570,8 @@ export default class DocumentTypeSeeder implements Seeder {
       }
     }
 
-    console.log(`\n📊 Résumé: ${createdCount} créés, ${skippedCount} existants, ${documentTypes.length} total`);
+    console.log(
+      `\n📊 Résumé: ${createdCount} créés, ${skippedCount} existants, ${documentTypes.length} total`,
+    );
   }
 }

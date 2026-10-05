@@ -1,9 +1,9 @@
 import {
-    Entity,
-    Column,
-    PrimaryGeneratedColumn,
-    ManyToOne,
-    JoinColumn,
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { ProcedureInstance } from './procedure-instance.entity';
@@ -29,8 +29,8 @@ export class Decision extends TenantEntity {
   @JoinColumn({ name: 'fromStageId' })
   fromStage: Stage;
 
-//   @Column()
-//   transitionId: string;
+  //   @Column()
+  //   transitionId: string;
 
   @ManyToOne(() => Transition)
   @JoinColumn({ name: 'transitionId' })
@@ -43,7 +43,7 @@ export class Decision extends TenantEntity {
   userId: string | null;
 
   @Column({ nullable: true, type: 'text' })
-  comment: string | null;  // Ajouter | null
+  comment: string | null; // Ajouter | null
 
   // created_at, updated_at, deleted_at, tenant_id hérités de TenantEntity
 }

@@ -15,6 +15,8 @@ import {
 } from 'src/modules/audiences/entities/audience.entity';
 import { postponeAudienceWithManager } from 'src/modules/audiences/audience-workflow';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { DossierAccessGrant } from 'src/modules/dossiers/entities/dossier-access-grant.entity';
+import { canBypassConfidentiality } from 'src/modules/dossiers/dossier-visibility';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
@@ -23,7 +25,7 @@ import {
   DiligenceStatus,
   DiligenceType,
 } from 'src/modules/diligence/entities/diligence.entity';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import {
   ActionLinkRole,
   ActionPriority,
@@ -52,6 +54,7 @@ import { DossierRecommendation } from '../entities/recommendation.entity';
 import { BillableItem } from '../entities/billing.entity';
 import { CaseWorkflowEvent } from '../entities/workflow-audit.entity';
 import { CaseBillingService } from './case-billing.service';
+import { CaseWorkflowNotificationsService } from './case-workflow-notifications.service';
 import { RecommendationService } from './recommendation.service';
 import { WorkflowEventService } from './workflow-event.service';
 import {
@@ -78,6 +81,7 @@ export class DossierActionService {
     private readonly recommendationService: RecommendationService,
     private readonly billingService: CaseBillingService,
     private readonly eventService: WorkflowEventService,
+    private readonly workflowNotifications: CaseWorkflowNotificationsService,
   ) {}
 
   async list(
@@ -110,11 +114,16 @@ export class DossierActionService {
       .split(',')
       .map((value) => value.trim())
       .filter((value) =>
-        Object.values(DossierActionStatus).includes(value as DossierActionStatus),
+        Object.values(DossierActionStatus).includes(
+          value as DossierActionStatus,
+        ),
       );
-    if (statuses.length) query.andWhere('action.status IN (:...statuses)', { statuses });
+    if (statuses.length)
+      query.andWhere('action.status IN (:...statuses)', { statuses });
     if (filters.familyId?.trim()) {
-      query.andWhere('family.id = :familyId', { familyId: filters.familyId.trim() });
+      query.andWhere('family.id = :familyId', {
+        familyId: filters.familyId.trim(),
+      });
     }
     if (filters.search?.trim()) {
       query.andWhere(
@@ -147,9 +156,15 @@ export class DossierActionService {
     return {
       data: actions.map((action) => ({
         ...action,
-        document_links: documentLinks.filter((link) => link.action_id === action.id),
-        audience_links: audienceLinks.filter((link) => link.action_id === action.id),
-        relation_links: relationLinks.filter((link) => link.action_id === action.id),
+        document_links: documentLinks.filter(
+          (link) => link.action_id === action.id,
+        ),
+        audience_links: audienceLinks.filter(
+          (link) => link.action_id === action.id,
+        ),
+        relation_links: relationLinks.filter(
+          (link) => link.action_id === action.id,
+        ),
       })),
       meta: {
         page,
@@ -318,21 +333,21 @@ export class DossierActionService {
     });
     if (!dossier) throw new NotFoundException('Dossier introuvable');
     if (!dossier.confidentiality_level) return dossier;
-    const actor = await manager.getRepository(User).findOne({
-      where: { id: actorUserId, tenant_id: tenantId },
+    if (canBypassConfidentiality()) return dossier;
+
+    // Même règle que les listes et les statistiques : seule une autorisation
+    // nominative ouvre un dossier confidentiel. L'affectation au dossier
+    // (avocat responsable, collaborateurs) ne vaut pas droit d'accès.
+    const grant = await manager.getRepository(DossierAccessGrant).findOne({
+      where: {
+        dossier_id: dossier.id,
+        employee_id: actorUserId,
+        revoked_at: IsNull(),
+      },
     });
-    const assigned =
-      dossier.lawyer_id === actorUserId ||
-      dossier.lawyer?.id === actorUserId ||
-      dossier.lawyer?.user?.id === actorUserId ||
-      dossier.collaborators?.some(
-        (collaborator) =>
-          collaborator.id === actorUserId ||
-          collaborator.user?.id === actorUserId,
-      );
-    if (actor?.role !== UserRole.ADMIN && !assigned) {
+    if (!grant) {
       throw new ForbiddenException(
-        'Ce dossier confidentiel est réservé à ses membres affectés',
+        "Ce dossier confidentiel nécessite une autorisation d'accès accordée par l'administration",
       );
     }
     return dossier;
@@ -545,7 +560,9 @@ export class DossierActionService {
         'audience_time',
       ]);
       if (!reason) {
-        throw new BadRequestException(`Le motif du report d'audience est obligatoire.`);
+        throw new BadRequestException(
+          `Le motif du report d'audience est obligatoire.`,
+        );
       }
       if (!audienceDate || !audienceTime) {
         throw new BadRequestException(
@@ -628,16 +645,20 @@ export class DossierActionService {
       }),
     ]);
     if (!dossier) throw new NotFoundException('Dossier introuvable');
-    const assigned =
-      dossier.lawyer_id === actorUserId ||
-      dossier.lawyer?.id === actorUserId ||
-      dossier.collaborators?.some(
-        (collaborator) => collaborator.id === actorUserId,
-      );
-    const canAccessConfidential = actor?.role === UserRole.ADMIN || assigned;
+    // Règle unique (voir dossiers/dossier-visibility.ts) : administration ou
+    // autorisation nominative. L'affectation au dossier ne suffit pas.
+    const canAccessConfidential =
+      canBypassConfidentiality() ||
+      !!(await manager.getRepository(DossierAccessGrant).findOne({
+        where: {
+          dossier_id: dossier.id,
+          employee_id: actorUserId,
+          revoked_at: IsNull(),
+        },
+      }));
     if (dossier.confidentiality_level && !canAccessConfidential) {
       throw new ForbiddenException(
-        'Ce dossier confidentiel est réservé à ses membres affectés',
+        "Ce dossier confidentiel nécessite une autorisation d'accès accordée par l'administration",
       );
     }
     const documentIds = [
@@ -1142,6 +1163,7 @@ export class DossierActionService {
     dto: ActionTransitionDto,
     idempotencyKey: string,
     actorUserId: number,
+    meta?: { replayed?: boolean },
   ): Promise<DossierAction> {
     const tenantId = getCurrentTenantId();
     return this.dataSource.transaction(async (manager) => {
@@ -1155,7 +1177,12 @@ export class DossierActionService {
         const existing = await manager
           .getRepository(DossierAction)
           .findOne({ where: { id: actionId, tenant_id: tenantId } });
-        if (existing) return existing;
+        if (existing) {
+          // Rejeu idempotent : la transition a déjà eu lieu (et a déjà été
+          // notifiée) — ne pas renotifier.
+          if (meta) meta.replayed = true;
+          return existing;
+        }
       }
       const repository = manager.getRepository(DossierAction);
       const action = await repository
@@ -1231,13 +1258,47 @@ export class DossierActionService {
     });
   }
 
+  /**
+   * Applique la transition puis prévient le responsable de l'action (jamais
+   * l'auteur du geste), une fois la transaction commitée. Un rejeu idempotent
+   * ne renotifie pas.
+   */
+  private async transitionAndNotify(
+    id: string,
+    target: DossierActionStatus,
+    dto: ActionTransitionDto,
+    key: string,
+    userId: number,
+  ): Promise<DossierAction> {
+    const meta: { replayed?: boolean } = {};
+    const action = await this.transition(id, target, dto, key, userId, meta);
+    if (meta.replayed) return action;
+
+    if (target === DossierActionStatus.IN_PROGRESS) {
+      await this.workflowNotifications.actionStarted(action, userId);
+    } else if (target === DossierActionStatus.ON_HOLD) {
+      await this.workflowNotifications.actionHeld(
+        action,
+        userId,
+        dto.reason ?? null,
+      );
+    } else if (target === DossierActionStatus.CANCELLED) {
+      await this.workflowNotifications.actionCancelled(
+        action,
+        userId,
+        dto.reason ?? null,
+      );
+    }
+    return action;
+  }
+
   start(
     id: string,
     dto: ActionTransitionDto,
     key: string,
     userId: number,
   ): Promise<DossierAction> {
-    return this.transition(
+    return this.transitionAndNotify(
       id,
       DossierActionStatus.IN_PROGRESS,
       dto,
@@ -1252,7 +1313,13 @@ export class DossierActionService {
     key: string,
     userId: number,
   ): Promise<DossierAction> {
-    return this.transition(id, DossierActionStatus.ON_HOLD, dto, key, userId);
+    return this.transitionAndNotify(
+      id,
+      DossierActionStatus.ON_HOLD,
+      dto,
+      key,
+      userId,
+    );
   }
 
   cancel(
@@ -1261,7 +1328,13 @@ export class DossierActionService {
     key: string,
     userId: number,
   ): Promise<DossierAction> {
-    return this.transition(id, DossierActionStatus.CANCELLED, dto, key, userId);
+    return this.transitionAndNotify(
+      id,
+      DossierActionStatus.CANCELLED,
+      dto,
+      key,
+      userId,
+    );
   }
 
   async extendDeadline(
@@ -1271,7 +1344,11 @@ export class DossierActionService {
     actorUserId: number,
   ): Promise<DossierAction> {
     const tenantId = getCurrentTenantId();
-    return this.dataSource.transaction(async (manager) => {
+    // Suivi hors transaction : permet de notifier après le commit, une seule fois.
+    let replayed = false;
+    let deadlineBefore: Date | null = null;
+
+    const saved = await this.dataSource.transaction(async (manager) => {
       const eventKey = `ACTION_DEADLINE_EXTEND:${idempotencyKey}`;
       const priorEvent = await manager
         .getRepository(CaseWorkflowEvent)
@@ -1282,7 +1359,11 @@ export class DossierActionService {
         const existing = await manager.getRepository(DossierAction).findOne({
           where: { id: actionId, tenant_id: tenantId },
         });
-        if (existing) return existing;
+        if (existing) {
+          // Rejeu idempotent : le report a déjà été appliqué et notifié.
+          replayed = true;
+          return existing;
+        }
       }
 
       const repository = manager.getRepository(DossierAction);
@@ -1341,6 +1422,7 @@ export class DossierActionService {
       }
 
       const previousDueAt = action.due_at;
+      deadlineBefore = previousDueAt;
       action.due_at = proposedDueAt;
       action.remind_at = proposedRemindAt;
       action.reminder_sent_at = null;
@@ -1365,6 +1447,15 @@ export class DossierActionService {
       });
       return saved;
     });
+
+    if (!replayed) {
+      await this.workflowNotifications.actionDeadlineExtended(
+        saved,
+        actorUserId,
+        deadlineBefore,
+      );
+    }
+    return saved;
   }
 
   async complete(

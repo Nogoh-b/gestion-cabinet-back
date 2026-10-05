@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { DataSource, LessThan, Repository, In } from 'typeorm';
@@ -61,13 +67,21 @@ export class SubscriptionsService {
   ) {}
 
   /** Une période exige un paiement amont si elle est payante et hors essai. */
-  private requiresUpfrontPayment(period: { is_trial: boolean; amount: number }): boolean {
+  private requiresUpfrontPayment(period: {
+    is_trial: boolean;
+    amount: number;
+  }): boolean {
     return !period.is_trial && Number(period.amount) > 0;
   }
 
   /** Met le cabinet en attente de paiement (pas d'accès tant que non réglé). */
-  private async holdCabinetForPayment(cabinetId: number, planId: number): Promise<void> {
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+  private async holdCabinetForPayment(
+    cabinetId: number,
+    planId: number,
+  ): Promise<void> {
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: cabinetId },
+    });
     if (!cabinet) return;
     cabinet.status = 'suspended';
     if (planId) cabinet.plan_id = planId;
@@ -109,7 +123,8 @@ export class SubscriptionsService {
     //    reprend ses droits dès la confirmation du paiement.
     //  - sinon → politique standard (paiement seulement si payant ET sans essai).
     const paidPlan = !isFreePlan(plan) && Number(period.amount) > 0;
-    const gated = (opts?.gateAllPaid && paidPlan) || this.requiresUpfrontPayment(period);
+    const gated =
+      (opts?.gateAllPaid && paidPlan) || this.requiresUpfrontPayment(period);
 
     const sub = this.subRepo.create({
       cabinet_id: cabinetId,
@@ -128,7 +143,12 @@ export class SubscriptionsService {
     });
     const saved = await this.subRepo.save(sub);
 
-    const payment = await this.createPaymentForPeriod(saved, period.amount, startedAt, period.ends_at);
+    const payment = await this.createPaymentForPeriod(
+      saved,
+      period.amount,
+      startedAt,
+      period.ends_at,
+    );
     if (gated) {
       await this.gateway.initiate(payment); // session de paiement (provider + url)
       await this.holdCabinetForPayment(cabinetId, saved.plan_id);
@@ -164,7 +184,10 @@ export class SubscriptionsService {
 
     // Clore l'abonnement échu/suspendu en cours.
     await this.subRepo.update(
-      { cabinet_id: cabinetId, status: In(['trial', 'active', 'expired', 'suspended']) },
+      {
+        cabinet_id: cabinetId,
+        status: In(['trial', 'active', 'expired', 'suspended']),
+      },
       { status: 'cancelled' },
     );
 
@@ -190,7 +213,12 @@ export class SubscriptionsService {
     });
     const saved = await this.subRepo.save(sub);
 
-    const payment = await this.createPaymentForPeriod(saved, period.amount, startedAt, period.ends_at);
+    const payment = await this.createPaymentForPeriod(
+      saved,
+      period.amount,
+      startedAt,
+      period.ends_at,
+    );
     if (gated) {
       await this.gateway.initiate(payment);
       // Le cabinet reste suspendu jusqu'à confirmation du paiement.
@@ -255,7 +283,8 @@ export class SubscriptionsService {
     sub: Subscription,
     cycle: BillingCycle,
   ): Promise<Subscription> {
-    const plan = sub.plan ?? (await this.planRepo.findOne({ where: { id: sub.plan_id } }));
+    const plan =
+      sub.plan ?? (await this.planRepo.findOne({ where: { id: sub.plan_id } }));
 
     sub.billing_cycle = cycle;
     if (sub.is_trial && sub.trial_ends_at) {
@@ -295,7 +324,13 @@ export class SubscriptionsService {
     return this.subRepo.findOne({
       where: {
         cabinet_id: cabinetId,
-        status: In(['trial', 'active', 'expired', 'suspended', 'pending_payment']),
+        status: In([
+          'trial',
+          'active',
+          'expired',
+          'suspended',
+          'pending_payment',
+        ]),
       },
       order: { created_at: 'DESC' },
     });
@@ -308,15 +343,19 @@ export class SubscriptionsService {
     // Vérification paresseuse de l'échéance
     if (sub) sub = await this.expireIfDue(sub);
 
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: cabinetId },
+    });
     // Pendant l'essai, le décompte vise la fin d'essai ; sinon la fin de période.
-    const countdownTarget =
-      sub?.is_trial ? sub.trial_ends_at ?? sub.ends_at ?? null : sub?.ends_at ?? null;
+    const countdownTarget = sub?.is_trial
+      ? (sub.trial_ends_at ?? sub.ends_at ?? null)
+      : (sub?.ends_at ?? null);
     const remaining = daysRemaining(countdownTarget);
     const requiresPayment = sub?.status === 'pending_payment';
     const isExpired =
       !requiresPayment &&
-      (sub?.status === 'expired' || sub?.status === 'suspended' ||
+      (sub?.status === 'expired' ||
+        sub?.status === 'suspended' ||
         (remaining !== null && remaining < 0));
 
     // Échéance à régler (pour afficher le bouton « Payer » + l'URL passerelle).
@@ -343,7 +382,10 @@ export class SubscriptionsService {
       plan: sub?.plan ?? null,
       days_remaining: requiresPayment ? null : remaining,
       is_expiring:
-        !isExpired && !requiresPayment && remaining !== null && remaining <= EXPIRING_SOON_THRESHOLD_DAYS,
+        !isExpired &&
+        !requiresPayment &&
+        remaining !== null &&
+        remaining <= EXPIRING_SOON_THRESHOLD_DAYS,
       is_expired: isExpired,
       cabinet_status: cabinet?.status ?? null,
       requires_payment: requiresPayment,
@@ -389,7 +431,9 @@ export class SubscriptionsService {
     });
     if (!payment) throw new BadRequestException('Aucune échéance à régler');
     if (Number(payment.amount) <= 0) {
-      throw new BadRequestException('Cette échéance ne nécessite pas de paiement');
+      throw new BadRequestException(
+        'Cette échéance ne nécessite pas de paiement',
+      );
     }
     const res = await this.gateway.initiate(payment);
     return {
@@ -404,7 +448,9 @@ export class SubscriptionsService {
    * Confirme un encaissement : marque l'échéance payée, active l'abonnement
    * (pending_payment → active) et réactive le cabinet. Idempotent.
    */
-  async confirmPayment(payment: SubscriptionPayment): Promise<Subscription | null> {
+  async confirmPayment(
+    payment: SubscriptionPayment,
+  ): Promise<Subscription | null> {
     if (payment.status !== 'paid') {
       payment.status = 'paid';
       payment.paid_at = new Date();
@@ -412,7 +458,9 @@ export class SubscriptionsService {
       await this.payRepo.save(payment);
     }
 
-    const sub = await this.subRepo.findOne({ where: { id: payment.subscription_id } });
+    const sub = await this.subRepo.findOne({
+      where: { id: payment.subscription_id },
+    });
     if (sub && sub.status !== 'cancelled') {
       // Paiement confirmé → on lève le verrou. Si le plan comporte un essai, on
       // (re)passe en 'trial' (l'essai s'applique après paiement) ; sinon 'active'.
@@ -430,7 +478,10 @@ export class SubscriptionsService {
   }
 
   /** Webhook passerelle : confirme/échoue un paiement via sa référence. */
-  async handleWebhook(reference: string, status: 'paid' | 'failed' = 'paid'): Promise<void> {
+  async handleWebhook(
+    reference: string,
+    status: 'paid' | 'failed' = 'paid',
+  ): Promise<void> {
     if (!reference) throw new BadRequestException('Référence manquante');
     const payment = await this.payRepo.findOne({ where: { reference } });
     if (!payment) throw new NotFoundException('Paiement introuvable');
@@ -446,9 +497,14 @@ export class SubscriptionsService {
    * [TEST] Simule un encaissement réussi pour une échéance du cabinet.
    * Disponible uniquement avec la passerelle de test.
    */
-  async simulatePayment(cabinetId: number, paymentId?: number): Promise<CurrentSubscription> {
+  async simulatePayment(
+    cabinetId: number,
+    paymentId?: number,
+  ): Promise<CurrentSubscription> {
     if (!this.gateway.isTest) {
-      throw new ForbiddenException('Simulation indisponible : passerelle réelle active');
+      throw new ForbiddenException(
+        'Simulation indisponible : passerelle réelle active',
+      );
     }
     const where = paymentId
       ? { id: paymentId, cabinet_id: cabinetId }
@@ -500,7 +556,11 @@ export class SubscriptionsService {
     // ── Phase 2 : fin de la période payante → suspension ──────────────────────
     if (!sub.ends_at) return sub; // illimité
     if (new Date(sub.ends_at).getTime() > now) return sub; // pas encore échu
-    if (sub.status === 'expired' || sub.status === 'suspended' || sub.status === 'cancelled') {
+    if (
+      sub.status === 'expired' ||
+      sub.status === 'suspended' ||
+      sub.status === 'cancelled'
+    ) {
       return sub;
     }
 
@@ -533,7 +593,9 @@ export class SubscriptionsService {
       ],
     });
     if (!due.length) return;
-    this.logger.log(`[Subscriptions] ${due.length} abonnement(s) à traiter (essai/échéance)…`);
+    this.logger.log(
+      `[Subscriptions] ${due.length} abonnement(s) à traiter (essai/échéance)…`,
+    );
     for (const sub of due) {
       await this.expireIfDue(sub);
     }
@@ -556,12 +618,16 @@ export class SubscriptionsService {
     });
     if (!stale.length) return;
 
-    this.logger.warn(`[Cleanup] ${stale.length} cabinet(s) non payé(s) à purger (> ${days} j)`);
+    this.logger.warn(
+      `[Cleanup] ${stale.length} cabinet(s) non payé(s) à purger (> ${days} j)`,
+    );
     for (const sub of stale) {
       try {
         await this.purgeUnpaidCabinet(sub.cabinet_id);
       } catch (e: any) {
-        this.logger.error(`[Cleanup] échec cabinet=${sub.cabinet_id}: ${e?.message ?? e}`);
+        this.logger.error(
+          `[Cleanup] échec cabinet=${sub.cabinet_id}: ${e?.message ?? e}`,
+        );
       }
     }
   }
@@ -580,7 +646,9 @@ export class SubscriptionsService {
   /** Purge complète d'un cabinet jamais payé (données tenant + users + abonnement). */
   private async purgeUnpaidCabinet(cabinetId: number): Promise<void> {
     // Sécurité absolue : ne jamais supprimer un cabinet ayant déjà payé.
-    const paid = await this.payRepo.count({ where: { cabinet_id: cabinetId, status: 'paid' } });
+    const paid = await this.payRepo.count({
+      where: { cabinet_id: cabinetId, status: 'paid' },
+    });
     if (paid > 0) return;
 
     const tables = await this.tenantTables();
@@ -596,13 +664,20 @@ export class SubscriptionsService {
       await m.query('SET FOREIGN_KEY_CHECKS=0');
       try {
         for (const t of tables) {
-          await m.query(`DELETE FROM \`${t}\` WHERE tenant_id = ?`, [cabinetId]);
+          await m.query(`DELETE FROM \`${t}\` WHERE tenant_id = ?`, [
+            cabinetId,
+          ]);
         }
         if (empIds.length) {
           await m.query('DELETE FROM `user` WHERE id IN (?)', [empIds]);
         }
-        await m.query('DELETE FROM subscription_payments WHERE cabinet_id = ?', [cabinetId]);
-        await m.query('DELETE FROM subscriptions WHERE cabinet_id = ?', [cabinetId]);
+        await m.query(
+          'DELETE FROM subscription_payments WHERE cabinet_id = ?',
+          [cabinetId],
+        );
+        await m.query('DELETE FROM subscriptions WHERE cabinet_id = ?', [
+          cabinetId,
+        ]);
         await m.query('DELETE FROM cabinets WHERE id = ?', [cabinetId]);
       } finally {
         await m.query('SET FOREIGN_KEY_CHECKS=1');
@@ -636,8 +711,13 @@ export class SubscriptionsService {
   }
 
   /** Aligne le cabinet (status + trial_ends_at) sur l'abonnement courant. */
-  private async syncCabinet(cabinetId: number, sub: Subscription): Promise<void> {
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+  private async syncCabinet(
+    cabinetId: number,
+    sub: Subscription,
+  ): Promise<void> {
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: cabinetId },
+    });
     if (!cabinet) return;
     cabinet.status = sub.is_trial ? 'trial' : 'active';
     cabinet.trial_ends_at = sub.ends_at; // null = illimité
@@ -646,14 +726,18 @@ export class SubscriptionsService {
   }
 
   private async suspendCabinet(cabinetId: number): Promise<void> {
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: cabinetId },
+    });
     if (!cabinet || cabinet.status === 'suspended') return;
     cabinet.status = 'suspended';
     await this.cabinetRepo.save(cabinet);
   }
 
   private async resolveCurrency(cabinetId: number): Promise<string> {
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: cabinetId },
+    });
     return cabinet?.currency ?? 'XAF';
   }
 
@@ -661,7 +745,9 @@ export class SubscriptionsService {
 
   private assertDev(): void {
     if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException('Outils de développement indisponibles en production');
+      throw new ForbiddenException(
+        'Outils de développement indisponibles en production',
+      );
     }
   }
 
@@ -669,7 +755,10 @@ export class SubscriptionsService {
    * Force la date de fin de l'abonnement courant à `now + days` (days négatif
    * = passé). Permet de tester la bannière « expire bientôt » / l'expiration.
    */
-  async devSetEndsIn(cabinetId: number, days: number): Promise<CurrentSubscription> {
+  async devSetEndsIn(
+    cabinetId: number,
+    days: number,
+  ): Promise<CurrentSubscription> {
     this.assertDev();
     const sub = await this.getRawCurrent(cabinetId);
     if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
@@ -701,7 +790,9 @@ export class SubscriptionsService {
     const sub = await this.getRawCurrent(cabinetId);
     if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
     if (!sub.is_trial || !sub.trial_ends_at) {
-      throw new ForbiddenException("L'abonnement courant n'est pas en période d'essai");
+      throw new ForbiddenException(
+        "L'abonnement courant n'est pas en période d'essai",
+      );
     }
     sub.trial_ends_at = new Date(Date.now() - 1000);
     await this.subRepo.save(sub);

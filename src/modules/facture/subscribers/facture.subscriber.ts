@@ -4,14 +4,24 @@ import { NotifiableSubscriber } from 'src/core/subscribers/notifiable.subscriber
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { buildEntityMailContext } from 'src/modules/mail-template/mail-variables';
-import { DataSource, In, InsertEvent, RemoveEvent, Repository, UpdateEvent } from 'typeorm';
+import {
+  DataSource,
+  In,
+  InsertEvent,
+  RemoveEvent,
+  Repository,
+  UpdateEvent,
+} from 'typeorm';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { StatutFacture } from '../dto/create-facture.dto';
 import { Facture } from '../entities/facture.entity';
-import { BillableItem, InvoiceLine } from 'src/modules/case-workflow/entities/billing.entity';
+import {
+  BillableItem,
+  InvoiceLine,
+} from 'src/modules/case-workflow/entities/billing.entity';
 import { BillableItemStatus } from 'src/modules/case-workflow/case-workflow.enums';
 
 /**
@@ -36,12 +46,14 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
   /** Symbole de la devise active (ex: "FCFA", "€"). */
   private async getCurrencySymbol(): Promise<string> {
-    const cabinet = await this.cabinetRepo.findOne({ where: { id: getCurrentTenantId() } }).catch(() => null);
+    const cabinet = await this.cabinetRepo
+      .findOne({ where: { id: getCurrentTenantId() } })
+      .catch(() => null);
     return cabinet?.currency_symbol ?? cabinet?.currency ?? 'XAF';
   }
 
   listenTo() {
-    return Facture; 
+    return Facture;
   }
 
   protected async onAfterCreate(
@@ -54,10 +66,17 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     if (!facture) return;
 
     // Resync actual_costs on parent dossier
-    await this.syncDossierActualCosts(facture.dossier_id ?? (facture.dossier as any)?.id, event);
+    await this.syncDossierActualCosts(
+      facture.dossier_id ?? (facture.dossier as any)?.id,
+      event,
+    );
     this.emitAccountingLifecycleEvents(null, facture);
 
-    const notifyClient = this.resolveTransientBoolean('notify_client', entity, facture as any);
+    const notifyClient = this.resolveTransientBoolean(
+      'notify_client',
+      entity,
+      facture as any,
+    );
 
     const currencySymbol = await this.getCurrencySymbol();
 
@@ -105,7 +124,7 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     );
     if (!change) return;
 
-    const id = entity.id ?? (event.databaseEntity as Facture)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
     const facture = await this.load(id, event).catch(() => null);
     if (!facture) return;
@@ -120,13 +139,23 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
 
     const newStatus = Number(change.newValue);
     const oldStatus = Number(change.oldValue);
-    if (newStatus === StatutFacture.ANNULEE && oldStatus === StatutFacture.BROUILLON) {
+    if (
+      newStatus === StatutFacture.ANNULEE &&
+      oldStatus === StatutFacture.BROUILLON
+    ) {
       const lineRepository = event.manager.getRepository(InvoiceLine);
       const lines = await lineRepository.find({ where: { facture_id: id } });
       if (lines.length) {
         await event.manager.getRepository(BillableItem).update(
-          { id: In(lines.map((line) => line.billable_item_id)), status: BillableItemStatus.INVOICED },
-          { status: BillableItemStatus.TO_INVOICE, invoice_line_id: null, reserved_at: null },
+          {
+            id: In(lines.map((line) => line.billable_item_id)),
+            status: BillableItemStatus.INVOICED,
+          },
+          {
+            status: BillableItemStatus.TO_INVOICE,
+            invoice_line_id: null,
+            reserved_at: null,
+          },
         );
         await lineRepository.delete({ facture_id: id });
       }
@@ -190,9 +219,13 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     id: string | number,
     event?: InsertEvent<Facture> | UpdateEvent<Facture>,
   ): Promise<Facture | null> {
-    return this.loadEntity<Facture>(id, {
-      relations: ['client', 'dossier'],
-    }, event);
+    return this.loadEntity<Facture>(
+      id,
+      {
+        relations: ['client', 'dossier'],
+      },
+      event,
+    );
   }
 
   /**
@@ -231,12 +264,18 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     facture: Facture,
   ): void {
     const nextStatus = this.normalizeStatus(facture.status);
-    const previous = previousStatus === null || previousStatus === undefined
-      ? null
-      : this.normalizeStatus(previousStatus);
+    const previous =
+      previousStatus === null || previousStatus === undefined
+        ? null
+        : this.normalizeStatus(previousStatus);
 
-    if (this.isBillableStatus(nextStatus) && (previous === null || !this.isBillableStatus(previous))) {
-      this.logger.log(`📣 facture.envoyee | facture=${facture.id} | status=${nextStatus}`);
+    if (
+      this.isBillableStatus(nextStatus) &&
+      (previous === null || !this.isBillableStatus(previous))
+    ) {
+      this.logger.log(
+        `📣 facture.envoyee | facture=${facture.id} | status=${nextStatus}`,
+      );
       this.eventEmitter.emit('facture.envoyee', facture);
       return;
     }
@@ -247,7 +286,9 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
       previous !== StatutFacture.ANNULEE &&
       this.isBillableStatus(previous)
     ) {
-      this.logger.log(`📣 facture.annulee | facture=${facture.id} | previous=${previous}`);
+      this.logger.log(
+        `📣 facture.annulee | facture=${facture.id} | previous=${previous}`,
+      );
       this.eventEmitter.emit('facture.annulee', facture);
     }
   }
@@ -261,10 +302,14 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
     ].includes(status);
   }
 
-  private normalizeStatus(value: StatutFacture | number | string): StatutFacture {
+  private normalizeStatus(
+    value: StatutFacture | number | string,
+  ): StatutFacture {
     if (typeof value === 'number') return value as StatutFacture;
     const numeric = Number(value);
-    return Number.isNaN(numeric) ? (value as unknown as StatutFacture) : numeric as StatutFacture;
+    return Number.isNaN(numeric)
+      ? (value as unknown as StatutFacture)
+      : (numeric as StatutFacture);
   }
 }
 
@@ -277,7 +322,5 @@ function formatMoney(v: any, currencySymbol = 'XAF'): string {
 function formatDate(v: any): string {
   if (!v) return '';
   const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime())
-    ? String(v)
-    : d.toLocaleDateString('fr-FR');
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('fr-FR');
 }

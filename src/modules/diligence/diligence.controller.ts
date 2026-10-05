@@ -15,8 +15,14 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags, ApiConsumes } from '@nestjs/swagger';
-
+import {
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+  ApiConsumes,
+} from '@nestjs/swagger';
 
 import { DiligenceStatsService } from './diligence-stats.service';
 import { DiligencesService } from './diligence.service';
@@ -25,16 +31,13 @@ import { DiligenceResponseDto } from './dto/response-diligence.dto';
 import { DiligenceSearchDto } from './dto/search-diligence.dto';
 import { UpdateDiligenceDto } from './dto/update-diligence.dto';
 
-
-
 @ApiTags('Diligences')
 @Controller('diligences')
 export class DiligencesController {
-  constructor(private readonly diligencesService: DiligencesService,
-  private readonly statsService: DiligenceStatsService) {}
-
-
-
+  constructor(
+    private readonly diligencesService: DiligencesService,
+    private readonly statsService: DiligenceStatsService,
+  ) {}
 
   @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
@@ -59,7 +62,9 @@ export class DiligencesController {
 
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'une diligence spécifique' })
+  @ApiOperation({
+    summary: "Obtenir les statistiques d'une diligence spécifique",
+  })
   @ApiParam({ name: 'id', description: 'ID de la diligence' })
   async getStatsForDiligence(
     @Param('id', ParseIntPipe) id: number,
@@ -81,7 +86,6 @@ export class DiligencesController {
     return (stats as any).expiredDeadlines;
   }
 
-  
   @Post()
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({ summary: 'Créer une nouvelle mission de diligence' })
@@ -91,7 +95,10 @@ export class DiligencesController {
     @Body() createDiligenceDto: CreateDiligenceDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    console.log('Données reçues pour création de diligence:', createDiligenceDto);
+    console.log(
+      'Données reçues pour création de diligence:',
+      createDiligenceDto,
+    );
     if (file) {
       console.log('Fichier reçu:', file.originalname, file.mimetype, file.size);
     }
@@ -177,7 +184,10 @@ export class DiligencesController {
     @Param('id', ParseIntPipe) id: number,
     @Body('documentIds') documentIds: number[],
   ) {
-    return await this.diligencesService.addDocumentsToDiligence(id, documentIds);
+    return await this.diligencesService.addDocumentsToDiligence(
+      id,
+      documentIds,
+    );
   }
 
   @Get('upcoming/deadlines')
@@ -193,6 +203,4 @@ export class DiligencesController {
   async findOverdue() {
     return await this.diligencesService.findOverdue();
   }
-
-
 }

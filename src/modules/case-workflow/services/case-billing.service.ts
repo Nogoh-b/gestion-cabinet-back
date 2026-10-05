@@ -26,6 +26,7 @@ import {
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   ActionBillingDecision,
+  BillableCategory,
   BillableItemStatus,
   BillableSourceType,
   BillingCalculationMode,
@@ -197,6 +198,7 @@ export class CaseBillingService {
         code,
         version: 1,
         trigger: dto.trigger,
+        category: dto.category ?? null,
         calculation_mode: dto.calculation_mode,
         rate: dto.rate ?? null,
         base_field: dto.base_field?.trim() || null,
@@ -231,6 +233,7 @@ export class CaseBillingService {
       }
       const next = {
         trigger: dto.trigger ?? current.trigger,
+        category: dto.category ?? current.category,
         calculation_mode: dto.calculation_mode ?? current.calculation_mode,
         rate: dto.rate === undefined ? current.rate : dto.rate,
         base_field:
@@ -392,11 +395,16 @@ export class CaseBillingService {
         dossier_id: dossier.id,
         client_id: dossier.client_id,
         source_type: BillableSourceType.OPENING_FEE,
+        category: BillableCategory.OPENING_FEE,
+        calculation_mode: BillingCalculationMode.FIXED,
         source_id: String(dossier.id),
+        action_id: null,
+        billing_rule_id: null,
         source_event_key: sourceEventKey,
         occurred_at: new Date(),
         label:
           cabinet?.dossier_opening_fee_label ?? 'Frais d’ouverture du dossier',
+        unit_label: null,
         quantity: 1,
         unit_price: net,
         net_amount: net,
@@ -426,6 +434,11 @@ export class CaseBillingService {
           facture_id: openingInvoice.id,
           dossier_id: dossier.id,
           billable_item_id: item.id,
+          category: item.category,
+          calculation_mode: item.calculation_mode,
+          unit_label: item.unit_label,
+          action_id: item.action_id,
+          billing_rule_id: item.billing_rule_id,
           display_order: 1,
           label: item.label,
           quantity: item.quantity,
@@ -523,10 +536,16 @@ export class CaseBillingService {
         dossier_id: dossier.id,
         client_id: dossier.client_id,
         source_type: BillableSourceType.ACTION,
+        category: rule?.category ?? BillableCategory.HONORARIUM,
+        calculation_mode: calculationMode ?? BillingCalculationMode.FIXED,
         source_id: action.id,
+        action_id: action.id,
+        billing_rule_id: rule?.id ?? null,
         source_event_key: sourceEventKey,
         occurred_at: action.completed_at ?? new Date(),
         label: action.definition_label,
+        unit_label:
+          calculationMode === BillingCalculationMode.HOURLY ? 'heure' : null,
         quantity: calculation.quantity,
         unit_price: calculation.unitPrice,
         net_amount: calculation.net,
@@ -669,10 +688,18 @@ export class CaseBillingService {
             dossier_id: dossierId,
             client_id: dossier.client_id,
             source_type: BillableSourceType.DILIGENCE,
+            category: rule.category ?? BillableCategory.HONORARIUM,
+            calculation_mode: rule.calculation_mode,
             source_id: String(diligence.id),
+            action_id: null,
+            billing_rule_id: rule.id,
             source_event_key: sourceEventKey,
             occurred_at: diligence.completion_date ?? new Date(),
             label: diligence.title,
+            unit_label:
+              rule.calculation_mode === BillingCalculationMode.HOURLY
+                ? 'heure'
+                : null,
             quantity,
             unit_price: unitPrice,
             net_amount: net,
@@ -760,7 +787,11 @@ export class CaseBillingService {
         dossier_id: dossierId,
         client_id: dossier.client_id,
         source_type: BillableSourceType.AUDIENCE,
+        category: rule.category ?? BillableCategory.HONORARIUM,
+        calculation_mode: rule.calculation_mode,
         source_id: String(audience.id),
+        action_id: null,
+        billing_rule_id: rule.id,
         source_event_key: sourceEventKey,
         occurred_at:
           trigger === BillingTrigger.AUDIENCE_CREATED
@@ -770,6 +801,10 @@ export class CaseBillingService {
           trigger === BillingTrigger.AUDIENCE_CREATED
             ? `CrÃ©ation de l'audience du ${new Date(audience.audience_date).toLocaleDateString('fr-FR')}`
             : `Audience du ${new Date(audience.audience_date).toLocaleDateString('fr-FR')}`,
+        unit_label:
+          rule.calculation_mode === BillingCalculationMode.HOURLY
+            ? 'heure'
+            : null,
         quantity,
         unit_price: unitPrice,
         net_amount: net,
@@ -843,6 +878,12 @@ export class CaseBillingService {
         client_id: dossier.client_id,
         source_type: sourceType,
         source_id: idempotencyKey,
+        category: dto.category ?? BillableCategory.HONORARIUM,
+        calculation_mode:
+          dto.calculation_mode ?? BillingCalculationMode.FIXED,
+        unit_label: dto.unit_label?.trim() || null,
+        action_id: dto.action_id ?? null,
+        billing_rule_id: null,
         source_event_key: sourceEventKey,
         occurred_at: dto.occurred_at ? new Date(dto.occurred_at) : new Date(),
         label: dto.label.trim(),
@@ -957,10 +998,15 @@ export class CaseBillingService {
           dossier_id: original.dossier_id,
           client_id: original.client_id,
           source_type: BillableSourceType.ADJUSTMENT,
+          category: BillableCategory.ADJUSTMENT,
+          calculation_mode: BillingCalculationMode.FIXED,
           source_id: original.id,
+          action_id: original.action_id,
+          billing_rule_id: original.billing_rule_id,
           source_event_key: sourceEventKey,
           occurred_at: new Date(),
           label: `Ajustement — ${original.label}`,
+          unit_label: original.unit_label,
           quantity: 1,
           unit_price: net,
           net_amount: net,
@@ -1176,8 +1222,7 @@ export class CaseBillingService {
       const to = new Date(filters.to);
       if (Number.isNaN(to.getTime()))
         throw new BadRequestException('Date de fin invalide');
-      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.to))
-        to.setHours(23, 59, 59, 999);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(filters.to)) to.setHours(23, 59, 59, 999);
       query.andWhere('item.occurred_at <= :to', { to });
     }
 
@@ -1191,8 +1236,10 @@ export class CaseBillingService {
       client_name: 'customer.last_name',
       invoice_number: 'invoice.numero',
     };
-    const sortColumn = sortColumns[filters.sort_by ?? 'occurred_at'] ?? 'item.occurred_at';
-    const sortDirection = filters.sort_direction?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    const sortColumn =
+      sortColumns[filters.sort_by ?? 'occurred_at'] ?? 'item.occurred_at';
+    const sortDirection =
+      filters.sort_direction?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
     const total = await query.getCount();
     // Avec des jointures, TypeORM enveloppe getRawAndEntities + skip/take dans
     // un SELECT DISTINCT dont les alias ne correspondent plus aux colonnes
@@ -1214,27 +1261,29 @@ export class CaseBillingService {
       : { entities: [], raw: [] };
     const pageOrder = new Map(pageIds.map((id, index) => [id, index]));
 
-    const data = entities.map((item, index) => {
-      const row = raw[index] as Record<string, unknown>;
-      const companyName = String(row.client_company_name ?? '').trim();
-      const personalName = [row.client_first_name, row.client_last_name]
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-      return Object.assign(item, {
-        dossier_number: row.dossier_number,
-        dossier_object: row.dossier_object,
-        client_name: companyName || personalName || 'Client non renseigné',
-        action_title: row.action_title ?? null,
-        action_status: row.action_status ?? null,
-        invoice_id: row.invoice_id ?? null,
-        invoice_number: row.invoice_number ?? null,
-      });
-    }).sort(
-      (left, right) =>
-        (pageOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
-        (pageOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
-    );
+    const data = entities
+      .map((item, index) => {
+        const row = raw[index] as Record<string, unknown>;
+        const companyName = String(row.client_company_name ?? '').trim();
+        const personalName = [row.client_first_name, row.client_last_name]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        return Object.assign(item, {
+          dossier_number: row.dossier_number,
+          dossier_object: row.dossier_object,
+          client_name: companyName || personalName || 'Client non renseigné',
+          action_title: row.action_title ?? null,
+          action_status: row.action_status ?? null,
+          invoice_id: row.invoice_id ?? null,
+          invoice_number: row.invoice_number ?? null,
+        });
+      })
+      .sort(
+        (left, right) =>
+          (pageOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+          (pageOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+      );
     const totalPages = Math.ceil(total / limit);
     return {
       data,
@@ -1286,10 +1335,7 @@ export class CaseBillingService {
       string,
       { value: string; label: string; subtitle?: string }
     >();
-    const clients = new Map<
-      string,
-      { value: string; label: string }
-    >();
+    const clients = new Map<string, { value: string; label: string }>();
 
     rows.forEach((row) => {
       const dossierId = String(row.dossier_id);
@@ -1334,7 +1380,11 @@ export class CaseBillingService {
       .addSelect('COALESCE(SUM(item.gross_amount), 0)', 'amount')
       .where('item.tenant_id = :tenantId', { tenantId })
       .groupBy('item.status')
-      .getRawMany<{ status: BillableItemStatus; count: string; amount: string }>();
+      .getRawMany<{
+        status: BillableItemStatus;
+        count: string;
+        amount: string;
+      }>();
     const byStatus = Object.values(BillableItemStatus).reduce(
       (summary, status) => {
         summary[status] = { count: 0, amount: 0 };
@@ -1610,6 +1660,11 @@ export class CaseBillingService {
             facture_id: facture.id,
             dossier_id: item.dossier_id,
             billable_item_id: item.id,
+            category: item.category,
+            calculation_mode: item.calculation_mode,
+            unit_label: item.unit_label,
+            action_id: item.action_id,
+            billing_rule_id: item.billing_rule_id,
             display_order: index + 1,
             label: item.label,
             quantity: item.quantity,

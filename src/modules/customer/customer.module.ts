@@ -24,7 +24,12 @@ import { PlansModule } from '../plans/plans.module';
     forwardRef(() => DocumentsModule),
     AgenciesModule,
     GeographyModule,
-    TypeOrmModule.forFeature([TypeCustomer, Customer, DocumentType, CustomerCommunication]),
+    TypeOrmModule.forFeature([
+      TypeCustomer,
+      Customer,
+      DocumentType,
+      CustomerCommunication,
+    ]),
     AiDatabaseModule,
     PlansModule,
   ],
@@ -37,7 +42,13 @@ import { PlansModule } from '../plans/plans.module';
     TypeCustomerStatsService,
     CustomerWriteHandler,
   ],
-  exports: [TypeCustomersService, CustomersService, TypeOrmModule, CustomerStatsService, TypeCustomerStatsService],
+  exports: [
+    TypeCustomersService,
+    CustomersService,
+    TypeOrmModule,
+    CustomerStatsService,
+    TypeCustomerStatsService,
+  ],
 })
 export class CustomerModule {
   constructor(

@@ -14,7 +14,15 @@ import { ExportController } from './export.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Dossier, DocumentCustomer, Facture, Paiement, Audience, Diligence, Step]),
+    TypeOrmModule.forFeature([
+      Dossier,
+      DocumentCustomer,
+      Facture,
+      Paiement,
+      Audience,
+      Diligence,
+      Step,
+    ]),
     IamModule, // PermissionsGuard a besoin des services IAM
   ],
   controllers: [ExportController],

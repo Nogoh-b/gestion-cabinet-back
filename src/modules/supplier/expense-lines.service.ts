@@ -27,7 +27,9 @@ export class ExpenseLinesService {
       throw new NotFoundException('Note de frais non trouvée');
     entity.expense_report = expenseReport;
     if (dto.dossier_id) {
-      const dossier = await this.dossierRepo.findOne({ where: { id: dto.dossier_id } });
+      const dossier = await this.dossierRepo.findOne({
+        where: { id: dto.dossier_id },
+      });
       if (!dossier) throw new NotFoundException('Dossier non trouvé');
       entity.dossier = dossier;
     }
@@ -62,7 +64,9 @@ export class ExpenseLinesService {
       line.expense_report = expenseReport;
     }
     if (dto.dossier_id) {
-      const dossier = await this.dossierRepo.findOne({ where: { id: dto.dossier_id } });
+      const dossier = await this.dossierRepo.findOne({
+        where: { id: dto.dossier_id },
+      });
       if (!dossier) throw new NotFoundException('Dossier non trouvé');
       line.dossier = dossier;
     }

@@ -29,7 +29,8 @@ export async function findOneForTenant<T extends ObjectLiteral>(
   value: any,
   alias = 'e',
 ): Promise<T | null> {
-  const qb = repo.createQueryBuilder(alias)
+  const qb = repo
+    .createQueryBuilder(alias)
     .where(`${alias}.${column} = :val`, { val: value });
 
   // Filtre tenant exact (pas de fallback vers tenant_id=1)

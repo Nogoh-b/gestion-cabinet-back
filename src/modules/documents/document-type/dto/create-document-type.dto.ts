@@ -6,7 +6,8 @@ export class CreateDocumentTypeDto {
   @IsString()
   @ApiProperty({
     example: 'front_cni',
-    description: 'Code de type de document. Généré automatiquement si non fourni.',
+    description:
+      'Code de type de document. Généré automatiquement si non fourni.',
     required: false,
   })
   @IsOptional()
@@ -36,7 +37,6 @@ export class CreateDocumentTypeDto {
   })
   // @IsOptional()
   // type_customer_id?: number;
-
   @IsNumber()
   @ApiProperty({
     example: 1,
@@ -48,7 +48,7 @@ export class CreateDocumentTypeDto {
 
   @ApiProperty({
     example: true,
-    description: 'Id\'s categories',
+    description: "Id's categories",
   })
   @IsOptional()
   categoryIds?: string[];

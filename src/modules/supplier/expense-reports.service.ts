@@ -42,10 +42,16 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
         .where('e.created_at >= :start', { start: monthStart });
       qb = addTenantCondition(qb, 'e');
       const currentCount = await qb.getCount();
-      await this.planQuotaService.checkLimit(tenantId, 'expenses', currentCount);
+      await this.planQuotaService.checkLimit(
+        tenantId,
+        'expenses',
+        currentCount,
+      );
     }
 
-    const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
+    const employee = await this.employeeRepo.findOne({
+      where: { id: dto.employee_id },
+    });
     if (!employee) throw new NotFoundException('Employé non trouvé');
     const entity = this.repository.create(dto);
     entity.employee = employee;
@@ -85,7 +91,11 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
     return this.repository.save(report);
   }
 
-  async reject(id: number, userId: number, notes: string): Promise<ExpenseReport> {
+  async reject(
+    id: number,
+    userId: number,
+    notes: string,
+  ): Promise<ExpenseReport> {
     const report = await this.findOne(id);
     const user = await this.userRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('Utilisateur non trouvé');
@@ -100,15 +110,20 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
     report.status = 'reimbursed' as any;
     report.reimbursement_date = new Date();
     const saved = await this.repository.save(report);
-    const full  = await this.findOne(saved.id);
+    const full = await this.findOne(saved.id);
     this.eventEmitter.emit('expense_report.remboursee', full);
     return saved;
   }
 
-  async update(id: number, dto: UpdateExpenseReportDto): Promise<ExpenseReport> {
+  async update(
+    id: number,
+    dto: UpdateExpenseReportDto,
+  ): Promise<ExpenseReport> {
     const report = await this.findOne(id);
     if (dto.employee_id) {
-      const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
+      const employee = await this.employeeRepo.findOne({
+        where: { id: dto.employee_id },
+      });
       if (!employee) throw new NotFoundException('Employé non trouvé');
       report.employee = employee;
     }

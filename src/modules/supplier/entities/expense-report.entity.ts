@@ -7,7 +7,10 @@ import {
   OneToMany,
 } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { ExpenseLine } from './expense-line.entity';
 
@@ -67,10 +70,15 @@ export class ExpenseReport extends TenantEntity {
   })
   title: string;
 
-  @Column({ type: 'enum', enum: ExpenseReportStatus, default: ExpenseReportStatus.DRAFT })
+  @Column({
+    type: 'enum',
+    enum: ExpenseReportStatus,
+    default: ExpenseReportStatus.DRAFT,
+  })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'draft'=Brouillon, 'submitted'=Soumise, 'approved'=Approuvée, 'rejected'=Rejetée, 'reimbursed'=Remboursée.",
+    description:
+      "BD: 'draft'=Brouillon, 'submitted'=Soumise, 'approved'=Approuvée, 'rejected'=Rejetée, 'reimbursed'=Remboursée.",
     importance: 'high',
     group: 'statut',
   })
@@ -139,5 +147,4 @@ export class ExpenseReport extends TenantEntity {
 
   @OneToMany(() => ExpenseLine, (line) => line.expense_report)
   lines: ExpenseLine[];
-
 }

@@ -15,7 +15,9 @@ export class ActivitiesSavingsAccountService {
   ) {}
 
   // Crée une nouvelle activité
-  create(dto: CreateActivitiesSavingsAccountDto): Promise<ActivitiesSavingsAccount> {
+  create(
+    dto: CreateActivitiesSavingsAccountDto,
+  ): Promise<ActivitiesSavingsAccount> {
     const entity = this.repo.create(dto);
     return this.repo.save(entity);
   }
@@ -36,7 +38,10 @@ export class ActivitiesSavingsAccountService {
   }
 
   // Met à jour une activité existante
-  async update(id: number, dto: UpdateActivitiesSavingsAccountDto): Promise<ActivitiesSavingsAccount> {
+  async update(
+    id: number,
+    dto: UpdateActivitiesSavingsAccountDto,
+  ): Promise<ActivitiesSavingsAccount> {
     await this.repo.update(id, dto as any);
     return this.findOne(id);
   }

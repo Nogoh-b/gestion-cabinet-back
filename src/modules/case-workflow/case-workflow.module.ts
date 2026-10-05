@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { DossierAccessGrant } from 'src/modules/dossiers/entities/dossier-access-grant.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { FactureModule } from 'src/modules/facture/facture.module';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
@@ -49,6 +50,7 @@ import {
 import { ActionCatalogService } from './services/action-catalog.service';
 import { CaseBillingService } from './services/case-billing.service';
 import { CaseWorkflowService } from './services/case-workflow.service';
+import { CaseWorkflowNotificationsService } from './services/case-workflow-notifications.service';
 import { DossierActionService } from './services/dossier-action.service';
 import { RecommendationService } from './services/recommendation.service';
 import { WorkflowEventService } from './services/workflow-event.service';
@@ -59,6 +61,7 @@ import { CaseWorkflowSourceEventsService } from './services/case-workflow-source
 
 const ENTITIES = [
   Dossier,
+  DossierAccessGrant,
   User,
   Audience,
   DocumentCustomer,
@@ -108,6 +111,7 @@ const ENTITIES = [
     RecommendationService,
     CaseBillingService,
     DossierActionService,
+    CaseWorkflowNotificationsService,
     CaseWorkflowService,
     CaseWorkflowScheduler,
     CaseWorkflowSourceEventsService,

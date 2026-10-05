@@ -12,7 +12,12 @@ import {
   UseGuards,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import { CreatePdfTemplateDto } from './dto/create-pdf-template.dto';
 import { PdfTemplateSearchDto } from './dto/pdf-template-search.dto';
@@ -40,7 +45,11 @@ export class PdfTemplatesController {
   @ApiOperation({ summary: 'Lister les modèles PDF (paginé)' })
   @ApiResponse({ status: 200, type: [PdfTemplate] })
   async findAll(@Query() params: PdfTemplateSearchDto) {
-    return this.service.searchWithTransformer(params as any, PdfTemplate, params as any);
+    return this.service.searchWithTransformer(
+      params as any,
+      PdfTemplate,
+      params as any,
+    );
   }
 
   @Get('/active')
@@ -52,7 +61,7 @@ export class PdfTemplatesController {
 
   @Get('/by-entity/:entityType')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Modèles actifs d\'un type d\'entité (ex. facture)' })
+  @ApiOperation({ summary: "Modèles actifs d'un type d'entité (ex. facture)" })
   findByEntity(@Param('entityType') entityType: string) {
     return this.service.findByEntity(entityType);
   }

@@ -1,19 +1,21 @@
 import { Transform } from 'class-transformer';
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsEnum,
-    IsBoolean,
-    IsNumber
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+  IsNumber,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 import { InvoiceTypeCategory, TaxRate } from '../entities/invoice-type.entity';
 
-
 export class CreateInvoiceTypeDto {
-  @ApiProperty({ description: 'Code unique. Généré automatiquement si non fourni.', required: false })
+  @ApiProperty({
+    description: 'Code unique. Généré automatiquement si non fourni.',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   code?: string;
@@ -28,16 +30,16 @@ export class CreateInvoiceTypeDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     enum: InvoiceTypeCategory,
-    description: 'Catégorie de la facture' 
+    description: 'Catégorie de la facture',
   })
   @IsEnum(InvoiceTypeCategory)
   category: InvoiceTypeCategory;
 
-  @ApiProperty({ 
+  @ApiProperty({
     enum: TaxRate,
-    description: 'Taux de TVA par défaut' 
+    description: 'Taux de TVA par défaut',
   })
   @IsEnum(TaxRate)
   default_tax_rate: TaxRate;
@@ -54,7 +56,10 @@ export class CreateInvoiceTypeDto {
   @Transform(({ value }) => value === 'true' || value === true)
   requires_approval?: boolean = true;
 
-  @ApiPropertyOptional({ description: 'Délai de paiement par défaut', default: 30 })
+  @ApiPropertyOptional({
+    description: 'Délai de paiement par défaut',
+    default: 30,
+  })
   @IsOptional()
   @IsNumber()
   @Transform(({ value }) => parseInt(value) || 30)
@@ -73,7 +78,7 @@ export class CreateInvoiceTypeDto {
   @ApiPropertyOptional({ description: 'Prix par défaut' })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseFloat(value) : undefined)
+  @Transform(({ value }) => (value ? parseFloat(value) : undefined))
   default_price?: number;
 
   @ApiPropertyOptional({ description: 'Exonéré de TVA', default: false })

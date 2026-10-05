@@ -63,7 +63,12 @@ export class Plan {
   @Column({ type: 'tinyint', default: 0, name: 'reporting_enabled' })
   reporting_enabled: boolean;
 
-  @Column({ type: 'varchar', length: 30, default: 'community', name: 'support_level' })
+  @Column({
+    type: 'varchar',
+    length: 30,
+    default: 'community',
+    name: 'support_level',
+  })
   support_level: string;
 
   // ── Intelligence artificielle ─────────────────────────────────────────────
@@ -76,10 +81,22 @@ export class Plan {
 
   // ── Tarification ──────────────────────────────────────────────────────────
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0, name: 'price_monthly' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    name: 'price_monthly',
+  })
   price_monthly: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, name: 'price_yearly' })
+  @Column({
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    nullable: true,
+    name: 'price_yearly',
+  })
   price_yearly: number | null;
 
   // ── Fonctionnalités ───────────────────────────────────────────────────────

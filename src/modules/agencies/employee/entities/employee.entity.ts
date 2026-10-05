@@ -1,5 +1,8 @@
 import { Expose } from 'class-transformer';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
@@ -19,7 +22,6 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { Branch } from '../../branch/entities/branch.entity';
 
-
 export enum EmployeePosition {
   AVOCAT = 'avocat',
   COLLABORATEUR = 'collaborateur',
@@ -30,6 +32,8 @@ export enum EmployeePosition {
   STAGIAIRE = 'stagiaire',
   HUISSIER = 'huissier',
   ADMINISTRATIF = 'administratif',
+  SUPPORT = 'support',
+  APPORTEUR_AFFAIRE = 'apporteur_affaire',
 }
 
 export enum EmployeeStatus {
@@ -39,21 +43,31 @@ export enum EmployeeStatus {
   VACATION = 2,
 }
 
+/** Situation de famille, utilisée notamment par la paie (charges sociales). */
+export enum MaritalStatus {
+  SINGLE = 'celibataire',
+  MARRIED = 'marie',
+  DIVORCED = 'divorce',
+  WIDOWED = 'veuf',
+  COHABITING = 'union_libre',
+}
+
 @Entity('employee')
 @BusinessTable({
   label: 'Collaborateurs',
-  description: '⚠️ LECTURE ET MODIFICATION UNIQUEMENT — la création est impossible via l\'IA (nécessite un compte User avec authentification). Modification autorisée : position, spécialisation, taux horaire, disponibilité, statut. ⚠️ ATTENTION COLONNES : La table employee ne contient PAS les colonnes "last_name" ni "first_name". Pour obtenir le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec la table "user" sur user.id = employee.id, puis sélectionner user.last_name et user.first_name.',
+  description:
+    '⚠️ LECTURE ET MODIFICATION UNIQUEMENT — la création est impossible via l\'IA (nécessite un compte User avec authentification). Modification autorisée : position, spécialisation, taux horaire, disponibilité, statut. ⚠️ ATTENTION COLONNES : La table employee ne contient PAS les colonnes "last_name" ni "first_name". Pour obtenir le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec la table "user" sur user.id = employee.id, puis sélectionner user.last_name et user.first_name.',
   icon: '👥',
-  category: 'ressources'
+  category: 'ressources',
 })
 export class Employee extends BaseEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant technique',
-    description: 'Numéro unique lié à l\'utilisateur',
+    description: "Numéro unique lié à l'utilisateur",
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
@@ -67,7 +81,7 @@ export class Employee extends BaseEntity {
     label: 'Agence',
     description: 'Agence/succursale à laquelle le collaborateur est rattaché',
     importance: 'high',
-    group: 'rattachement'
+    group: 'rattachement',
   })
   branch?: Branch;
 
@@ -78,10 +92,11 @@ export class Employee extends BaseEntity {
   @Column({ type: 'enum', enum: EmployeePosition })
   @BusinessColumn({
     label: 'Fonction',
-    description: "BD: 'avocat', 'collaborateur', 'juriste', 'comptable', 'secretaire', 'assistant', 'stagiaire', 'huissier', 'administratif'.",
+    description:
+      "BD: 'avocat', 'collaborateur', 'juriste', 'comptable', 'secretaire', 'assistant', 'stagiaire', 'huissier', 'administratif', 'support', 'apporteur_affaire'.",
     example: 'avocat',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   position: EmployeePosition;
 
@@ -92,7 +107,7 @@ export class Employee extends BaseEntity {
     description: 'Date de début du contrat',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   hireDate: Date;
 
@@ -100,10 +115,11 @@ export class Employee extends BaseEntity {
   @Column({ type: 'tinyint', default: EmployeeStatus.ACTIVE })
   @BusinessColumn({
     label: 'Statut',
-    description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=SUSPENDED/Suspendu, 2=VACATION.',
+    description:
+      'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=SUSPENDED/Suspendu, 2=VACATION.',
     example: '1 = Actif',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   status: EmployeeStatus;
 
@@ -115,7 +131,7 @@ export class Employee extends BaseEntity {
     description: "Domaine de spécialisation de l'avocat",
     example: 'Droit des affaires, Droit pénal, Droit de la famille',
     importance: 'high',
-    group: 'compétences'
+    group: 'compétences',
   })
   specialization: string;
 
@@ -126,18 +142,18 @@ export class Employee extends BaseEntity {
     description: "Numéro d'inscription au barreau",
     example: 'A123456',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   bar_association_number: string;
 
   @ApiProperty({ example: 'Paris' })
   @Column({ name: 'bar_association_city', length: 100, nullable: true })
   @BusinessColumn({
-    label: "Ville du barreau",
+    label: 'Ville du barreau',
     description: "Ville d'inscription au barreau",
     example: 'Paris, Douala, Dakar',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   bar_association_city: string;
 
@@ -148,31 +164,43 @@ export class Employee extends BaseEntity {
     description: "Nombre d'années de pratique",
     unit: 'années',
     importance: 'high',
-    group: 'compétences'
+    group: 'compétences',
   })
   years_of_experience: number;
 
-  @ApiProperty({ example: 150.00 })
-  @Column({ name: 'hourly_rate', type: 'decimal', precision: 8, scale: 2, nullable: true })
+  @ApiProperty({ example: 150.0 })
+  @Column({
+    name: 'hourly_rate',
+    type: 'decimal',
+    precision: 8,
+    scale: 2,
+    nullable: true,
+  })
   @BusinessColumn({
     label: 'Taux horaire',
     description: 'Tarif horaire facturé au client',
     unit: '€',
     format: 'currency',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   hourly_rate: number;
 
   @ApiProperty({ example: 350000 })
-  @Column({ name: 'salary', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({
+    name: 'salary',
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    nullable: true,
+  })
   @BusinessColumn({
     label: 'Salaire mensuel',
     description: 'Salaire de base mensuel du collaborateur',
     unit: 'FCFA',
     format: 'currency',
     importance: 'high',
-    group: 'financier'
+    group: 'financier',
   })
   salary: number;
 
@@ -182,7 +210,7 @@ export class Employee extends BaseEntity {
     label: 'Disponible',
     description: 'True = disponible pour de nouveaux dossiers',
     importance: 'high',
-    group: 'disponibilité'
+    group: 'disponibilité',
   })
   is_available: boolean;
 
@@ -193,7 +221,7 @@ export class Employee extends BaseEntity {
     description: 'Nombre maximum de dossiers pouvant être gérés simultanément',
     unit: 'dossiers',
     importance: 'medium',
-    group: 'charge'
+    group: 'charge',
   })
   max_dossiers: number;
 
@@ -203,7 +231,7 @@ export class Employee extends BaseEntity {
     label: 'Biographie',
     description: 'Présentation professionnelle du collaborateur',
     importance: 'low',
-    group: 'présentation'
+    group: 'présentation',
   })
   bio: string;
 
@@ -214,29 +242,31 @@ export class Employee extends BaseEntity {
     description: 'Langues parlées par le collaborateur',
     example: 'Français, Anglais, Espagnol',
     importance: 'medium',
-    group: 'compétences'
+    group: 'compétences',
   })
   languages: string[];
 
-  @ApiProperty({ example: ['Droit des sociétés', 'Contrats', 'Propriété intellectuelle'] })
+  @ApiProperty({
+    example: ['Droit des sociétés', 'Contrats', 'Propriété intellectuelle'],
+  })
   @Column({ name: 'expertise_areas', type: 'simple-json', nullable: true })
   @BusinessColumn({
     label: "Domaines d'expertise",
-    description: "Spécialités juridiques maîtrisées",
+    description: 'Spécialités juridiques maîtrisées',
     example: 'Droit des sociétés, Contrats, Propriété intellectuelle',
     importance: 'high',
-    group: 'compétences'
+    group: 'compétences',
   })
   expertise_areas: string[];
 
   @ApiProperty({ example: 'EMP-2024-001' })
   @Column({ name: 'employee_number', length: 50, unique: true, nullable: true })
   @BusinessColumn({
-    label: "Matricule",
+    label: 'Matricule',
     description: "Numéro unique d'identification du collaborateur",
     example: 'EMP-AVOC-2024-001',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   employee_number: string;
 
@@ -247,9 +277,70 @@ export class Employee extends BaseEntity {
     description: 'Date de naissance du collaborateur',
     format: 'date',
     importance: 'medium',
-    group: 'identification'
+    group: 'identification',
   })
   birth_date: Date;
+
+  @ApiProperty({ example: 'Douala' })
+  @Column({ name: 'birth_place', length: 150, nullable: true })
+  @BusinessColumn({
+    label: 'Lieu de naissance',
+    description: 'Ville ou localité de naissance du collaborateur',
+    example: 'Douala',
+    importance: 'medium',
+    group: 'identification',
+  })
+  birth_place: string;
+
+  @ApiProperty({ example: 'Akwa, Douala' })
+  @Column({ name: 'home_address', type: 'text', nullable: true })
+  @BusinessColumn({
+    label: 'Ville / adresse personnelle',
+    description: 'Lieu de résidence du collaborateur (distinct du bureau)',
+    example: 'Akwa, Douala',
+    importance: 'medium',
+    group: 'coordonnées',
+  })
+  home_address: string;
+
+  @ApiProperty({ example: '+237 690 00 00 00' })
+  @Column({ name: 'personal_phone', length: 20, nullable: true })
+  @BusinessColumn({
+    label: 'Téléphone personnel',
+    description: 'Numéro de téléphone personnel du collaborateur',
+    format: 'phone',
+    importance: 'medium',
+    group: 'coordonnées',
+  })
+  personal_phone: string;
+
+  @ApiProperty({ enum: MaritalStatus, example: MaritalStatus.MARRIED })
+  @Column({
+    name: 'marital_status',
+    type: 'enum',
+    enum: MaritalStatus,
+    nullable: true,
+  })
+  @BusinessColumn({
+    label: 'Statut social',
+    description:
+      "BD: 'celibataire', 'marie', 'divorce', 'veuf', 'union_libre'.",
+    example: 'marie',
+    importance: 'medium',
+    group: 'situation familiale',
+  })
+  marital_status: MaritalStatus;
+
+  @ApiProperty({ example: 2 })
+  @Column({ name: 'children_count', type: 'int', nullable: true, default: 0 })
+  @BusinessColumn({
+    label: "Nombre d'enfants",
+    description: "Nombre d'enfants à charge (utilisé par la paie)",
+    unit: 'enfants',
+    importance: 'medium',
+    group: 'situation familiale',
+  })
+  children_count: number;
 
   @ApiProperty({ example: '123 Rue du Palais, 75001 Paris' })
   @Column({ name: 'professional_address', type: 'text', nullable: true })
@@ -257,7 +348,7 @@ export class Employee extends BaseEntity {
     label: 'Adresse professionnelle',
     description: 'Adresse du cabinet ou bureau',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   professional_address: string;
 
@@ -268,7 +359,7 @@ export class Employee extends BaseEntity {
     description: 'Numéro de téléphone du bureau',
     format: 'phone',
     importance: 'medium',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   professional_phone: string;
 
@@ -279,7 +370,7 @@ export class Employee extends BaseEntity {
     description: "Numéro d'identification de l'entreprise",
     importance: 'low',
     group: 'administratif',
-    ignored: true
+    ignored: true,
   })
   siret_number: string;
 
@@ -290,7 +381,7 @@ export class Employee extends BaseEntity {
     description: "Numéro d'identification à la TVA",
     importance: 'low',
     group: 'administratif',
-    ignored: true
+    ignored: true,
   })
   tva_number: string;
 
@@ -298,10 +389,10 @@ export class Employee extends BaseEntity {
   @OneToMany(() => Dossier, (dossier) => dossier.lawyer)
   managed_dossiers: Dossier[];
 
-  @ManyToMany(() => Dossier, dossier => dossier.collaborators)
+  @ManyToMany(() => Dossier, (dossier) => dossier.collaborators)
   collaborating_dossiers: Dossier[];
 
-  @OneToMany(() => Diligence, diligence => diligence.assigned_lawyer)
+  @OneToMany(() => Diligence, (diligence) => diligence.assigned_lawyer)
   assigned_diligences: Diligence[];
 
   // ==================== GETTERS MÉTIER ====================
@@ -319,9 +410,10 @@ export class Employee extends BaseEntity {
   @Expose()
   @BusinessColumn({
     label: 'Nom complet',
-    description: "Prénom et nom du collaborateur (depuis l'utilisateur associé)",
+    description:
+      "Prénom et nom du collaborateur (depuis l'utilisateur associé)",
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   get full_name(): string {
     return this.user?.full_name || '';
@@ -333,7 +425,7 @@ export class Employee extends BaseEntity {
     description: 'Adresse email professionnelle',
     format: 'email',
     importance: 'high',
-    group: 'coordonnées'
+    group: 'coordonnées',
   })
   get email(): string {
     return this.user?.email || '';
@@ -359,7 +451,7 @@ export class Employee extends BaseEntity {
     label: 'Avocat',
     description: 'True si le collaborateur est avocat',
     importance: 'high',
-    group: 'identification'
+    group: 'identification',
   })
   get is_avocat(): boolean {
     return this.position === EmployeePosition.AVOCAT;
@@ -378,21 +470,21 @@ export class Employee extends BaseEntity {
   @Expose()
   @BusinessColumn({
     label: 'Dossiers en cours',
-    description: "Nombre de dossiers actuellement gérés",
+    description: 'Nombre de dossiers actuellement gérés',
     unit: 'dossiers',
     importance: 'high',
-    group: 'charge'
+    group: 'charge',
   })
   get current_dossier_count(): number {
-    return this.managed_dossiers?.filter(d => d.is_active).length || 0;
+    return this.managed_dossiers?.filter((d) => d.is_active).length || 0;
   }
 
   @Expose()
   @BusinessColumn({
     label: 'Peut accepter plus de dossiers',
-    description: 'True si la capacité maximale de dossiers n\'est pas atteinte',
+    description: "True si la capacité maximale de dossiers n'est pas atteinte",
     importance: 'medium',
-    group: 'charge'
+    group: 'charge',
   })
   get can_accept_more_dossiers(): boolean {
     return this.current_dossier_count < this.max_dossiers;
@@ -406,9 +498,10 @@ export class Employee extends BaseEntity {
   @Expose()
   @BusinessColumn({
     label: "Niveau d'expérience",
-    description: 'Débutant (<3 ans), Junior (3-8 ans), Confirmé (>8 ans), Senior',
+    description:
+      'Débutant (<3 ans), Junior (3-8 ans), Confirmé (>8 ans), Senior',
     importance: 'medium',
-    group: 'compétences'
+    group: 'compétences',
   })
   get experience_level(): string {
     if (!this.years_of_experience) return 'Débutant';

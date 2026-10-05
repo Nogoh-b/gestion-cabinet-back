@@ -5,12 +5,20 @@ import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { DateUtils } from 'src/core/shared/utils/date.util.';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
-import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
 
 import { EmployeeService } from '../agencies/employee/employee.service';
 import { AudienceTypeService } from '../audience-type/audience-type.service';
@@ -22,19 +30,22 @@ import { StepsService } from '../dossiers/step.service';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { JurisdictionService } from '../jurisdiction/jurisdiction.service';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
-import { AudienceStatsDto, UpcomingAudienceDto } from './dto/audience-stats.dto';
+import {
+  AudienceStatsDto,
+  UpcomingAudienceDto,
+} from './dto/audience-stats.dto';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import { AudienceResponseDto } from './dto/response-audience.dto';
 import { UpdateAudienceDto } from './dto/update-audience.dto';
-import { Audience, AudienceStatus, AudienceType1, } from './entities/audience.entity';
+import {
+  Audience,
+  AudienceStatus,
+  AudienceType1,
+} from './entities/audience.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { postponeAudienceWithManager } from './audience-workflow';
-
-
-
-
 
 @Injectable()
 export class AudiencesService extends BaseServiceV1<Audience> {
@@ -61,16 +72,37 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    */
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['jurisdiction', 'judge_name', 'room', 'outcome', 'notes', 'dossier', 'dossier.client','audience_type'],
-      exactMatchFields: ['status', 'type', 'jurisdiction_id' , 'dossier_id', 'audience_type_id'],
+      searchFields: [
+        'jurisdiction',
+        'judge_name',
+        'room',
+        'outcome',
+        'notes',
+        'dossier',
+        'dossier.client',
+        'audience_type',
+      ],
+      exactMatchFields: [
+        'status',
+        'type',
+        'jurisdiction_id',
+        'dossier_id',
+        'audience_type_id',
+      ],
       dateRangeFields: ['audience_date', 'postponed_to', 'created_at'],
       relationFields: [
-        'dossier', 'dossier.client', 'dossier.collaborators',
-        'jurisdiction','audience_type',
-        'documents', 'documents.document_type', 'documents.category',
+        'dossier',
+        'dossier.client',
+        'dossier.collaborators',
+        'jurisdiction',
+        'audience_type',
+        'documents',
+        'documents.document_type',
+        'documents.category',
         'subStage',
         // Filiation report : parent + enfants (audiences de remplacement)
-        'parent_audience', 'children_audiences',
+        'parent_audience',
+        'children_audiences',
       ],
     };
   }
@@ -78,12 +110,18 @@ export class AudiencesService extends BaseServiceV1<Audience> {
   /**
    * ➕ Création d'une audience
    */
-  async create(dto: CreateAudienceDto): Promise<AudienceResponseDto | Audience | null> {
+  async create(
+    dto: CreateAudienceDto,
+  ): Promise<AudienceResponseDto | Audience | null> {
     // ── Vérification quota plan (audiences) ────────────────────────────────
     const tenantId = getCurrentTenantId();
     if (tenantId) {
       const currentCount = await this.repository.count();
-      await this.planQuotaService.checkLimit(tenantId, 'audiences', currentCount);
+      await this.planQuotaService.checkLimit(
+        tenantId,
+        'audiences',
+        currentCount,
+      );
     }
 
     const dossier = await this.dossierService.findOne(dto.dossier_id);
@@ -95,7 +133,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       throw new NotFoundException('Dossier non trouvé');
     }
     if (dto.audience_type_id && !audience_type) {
-      throw new NotFoundException('Type d\'audience non trouvé');
+      throw new NotFoundException("Type d'audience non trouvé");
     }
 
     const reason = dto.reason?.trim();
@@ -108,7 +146,9 @@ export class AudiencesService extends BaseServiceV1<Audience> {
         })
       : null;
     if (dto.parent_audience_id && !parentAudience) {
-      throw new NotFoundException("L'audience renvoyée est introuvable dans ce dossier");
+      throw new NotFoundException(
+        "L'audience renvoyée est introuvable dans ce dossier",
+      );
     }
     if (parentAudience && !reason) {
       throw new BadRequestException('Le motif du renvoi est obligatoire');
@@ -130,7 +170,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     let stageVisitId: string | undefined = dto.stage_visit_id;
 
     if (!subStageVisitId && procedureInstance?.currentVisit) {
-      subStageVisitId = procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
+      subStageVisitId =
+        procedureInstance.currentVisit.currentSubStageVisitId ?? undefined;
     }
     if (!stageVisitId && procedureInstance?.currentVisit) {
       stageVisitId = procedureInstance.currentVisit.id ?? undefined;
@@ -141,8 +182,8 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     // retombe sur celle du dossier si elle n'est pas fournie.
     const resolvedJurisdictionId =
       dto.jurisdiction_id ??
-      (dossier as any).jurisdiction_id ??
-      (dossier as any).jurisdiction?.id ??
+      dossier.jurisdiction_id ??
+      dossier.jurisdiction?.id ??
       null;
     const audienceTime = dto.audience_time?.trim() || '09:00';
 
@@ -157,7 +198,10 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       duration_minutes: dto.duration_minutes,
       judge_name: dto.judge_name,
       notes: parentAudience
-        ? [dto.notes, `Audience issue du renvoi de #${parentAudience.id}. Motif : ${reason}`]
+        ? [
+            dto.notes,
+            `Audience issue du renvoi de #${parentAudience.id}. Motif : ${reason}`,
+          ]
             .filter(Boolean)
             .join('\n')
         : dto.notes,
@@ -175,74 +219,98 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     (audience as any).notify_client = !!dto.notify_client;
 
     if (dto?.document_ids) {
-      const documents = await this.documentCustomerService.findByIds(dto?.document_ids);
+      const documents = await this.documentCustomerService.findByIds(
+        dto?.document_ids,
+      );
       audience.documents = documents;
     }
 
-    let aud = await this.repository.save(audience);
+    const aud = await this.repository.save(audience);
 
     if (parentAudience) {
       parentAudience.status = AudienceStatus.POSTPONED;
       parentAudience.postponed_to = new Date(
         `${String(dto.audience_date).slice(0, 10)}T${audienceTime}`,
       );
-      parentAudience.notes = `${parentAudience.notes || ''}\nReporté: ${reason}`.trim();
+      parentAudience.notes =
+        `${parentAudience.notes || ''}\nReporté: ${reason}`.trim();
       await this.repository.save(parentAudience);
     }
-    
+
     // ✅ Mettre à jour le dossier si nécessaire (ex: première audience en contentieux)
     await this.updateDossierStatusOnAudience(aud, dossier);
 
     const currentStep = await this.stepsService.getCurrentStep(dto.dossier_id);
-  
+
     // Lier l'audience à l'étape (Many-to-One)
     // if (currentStep) {
-    //   await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id); 
+    //   await this.stepsService.syncActionWithStep('audience', aud.id, currentStep.id);
     // }
-    return await this.findOneV1(aud.id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
+    return await this.findOneV1(
+      aud.id,
+      this.getDefaultSearchOptions().relationFields,
+      AudienceResponseDto,
+    );
   }
 
-/**
- * ✅ Valider si l'audience est compatible avec le statut du dossier
- */
-private validateAudienceForDossierStatus(dossier: Dossier, audienceType: AudienceType1): void {
-  const dossierStatus = dossier.status;
-  
-  // Audience de conciliation uniquement en phase transactionnelle ou préliminaire
-  if (audienceType === AudienceType1.CONCILIATION) {
-    if (dossierStatus !== DossierStatus.AMICABLE && dossierStatus !== DossierStatus.PRELIMINARY_ANALYSIS) {
-      throw new BadRequestException(
-        `Les audiences de conciliation ne sont possibles qu'en phase transactionnelle. Statut actuel: ${dossierStatus}`
-      );
-    }
-  }
-  
-  // Audience de jugement uniquement en phase contentieuse
-  if (audienceType === AudienceType1.JUDGMENT) {
-    if (dossierStatus !== DossierStatus.LITIGATION && dossierStatus !== DossierStatus.APPEAL) {
-      throw new BadRequestException(
-        `Les audiences de jugement ne sont possibles qu'en phase contentieuse. Statut actuel: ${dossierStatus}`
-      );
-    }
-  }
-  
-  // Audience d'appel uniquement en phase d'appel
-  if (audienceType === AudienceType1.DELIBERATION && dossierStatus === DossierStatus.APPEAL) {
-    // C'est valide
-  }
-}
+  /**
+   * ✅ Valider si l'audience est compatible avec le statut du dossier
+   */
+  private validateAudienceForDossierStatus(
+    dossier: Dossier,
+    audienceType: AudienceType1,
+  ): void {
+    const dossierStatus = dossier.status;
 
-/**
- * ✅ Mettre à jour le statut du dossier lors de la première audience
- */
-private async updateDossierStatusOnAudience(audience: Audience, dossier: Dossier): Promise<void> {
-  // Si c'est la première audience en contentieux et que le dossier est encore en préliminaire
-  if (dossier.status === DossierStatus.PRELIMINARY_ANALYSIS && 
-      audience.type === AudienceType1.HEARING) {
-    // Option: on pourrait automatiquement passer en contentieux si décision déjà prise
-    // ou laisser le workflow normal via processClientDecision
+    // Audience de conciliation uniquement en phase transactionnelle ou préliminaire
+    if (audienceType === AudienceType1.CONCILIATION) {
+      if (
+        dossierStatus !== DossierStatus.AMICABLE &&
+        dossierStatus !== DossierStatus.PRELIMINARY_ANALYSIS
+      ) {
+        throw new BadRequestException(
+          `Les audiences de conciliation ne sont possibles qu'en phase transactionnelle. Statut actuel: ${dossierStatus}`,
+        );
+      }
+    }
+
+    // Audience de jugement uniquement en phase contentieuse
+    if (audienceType === AudienceType1.JUDGMENT) {
+      if (
+        dossierStatus !== DossierStatus.LITIGATION &&
+        dossierStatus !== DossierStatus.APPEAL
+      ) {
+        throw new BadRequestException(
+          `Les audiences de jugement ne sont possibles qu'en phase contentieuse. Statut actuel: ${dossierStatus}`,
+        );
+      }
+    }
+
+    // Audience d'appel uniquement en phase d'appel
+    if (
+      audienceType === AudienceType1.DELIBERATION &&
+      dossierStatus === DossierStatus.APPEAL
+    ) {
+      // C'est valide
+    }
   }
-}
+
+  /**
+   * ✅ Mettre à jour le statut du dossier lors de la première audience
+   */
+  private async updateDossierStatusOnAudience(
+    audience: Audience,
+    dossier: Dossier,
+  ): Promise<void> {
+    // Si c'est la première audience en contentieux et que le dossier est encore en préliminaire
+    if (
+      dossier.status === DossierStatus.PRELIMINARY_ANALYSIS &&
+      audience.type === AudienceType1.HEARING
+    ) {
+      // Option: on pourrait automatiquement passer en contentieux si décision déjà prise
+      // ou laisser le workflow normal via processClientDecision
+    }
+  }
   /**
    * 📄 Récupération de toutes les audiences (avec relations)
    */
@@ -268,80 +336,104 @@ private async updateDossierStatusOnAudience(audience: Audience, dossier: Dossier
     }
 
     // return audience;
-    return plainToInstance(AudienceResponseDto,audience);
+    return plainToInstance(AudienceResponseDto, audience);
   }
 
   /**
    * ✏️ Mise à jour d'une audience
    */
   // Dans votre service
-async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceResponseDto | any> {
-  const audience = await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, Audience);
+  async update(
+    id: number,
+    dto: UpdateAudienceDto,
+  ): Promise<Audience | AudienceResponseDto | any> {
+    const audience = await this.findOneV1(
+      id,
+      this.getDefaultSearchOptions().relationFields,
+      Audience,
+    );
 
-  if (!audience) {
-    return null;
-  }
+    if (!audience) {
+      return null;
+    }
 
-  // ✅ VERROU : une audience reportée est figée — toute modification est refusée
-  // (sauf consultation et ajout/édition du rapport via les endpoints dédiés).
-  if (audience.status === AudienceStatus.POSTPONED) {
-    throw new BadRequestException(
-      `Cette audience a été reportée et ne peut plus être modifiée. ` +
-      `Consultez l'audience de remplacement.`
+    // ✅ VERROU : une audience reportée est figée — toute modification est refusée
+    // (sauf consultation et ajout/édition du rapport via les endpoints dédiés).
+    if (audience.status === AudienceStatus.POSTPONED) {
+      throw new BadRequestException(
+        `Cette audience a été reportée et ne peut plus être modifiée. ` +
+          `Consultez l'audience de remplacement.`,
+      );
+    }
+
+    // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
+    if (dto.status !== undefined && dto.status === AudienceStatus.HELD) {
+      const now = new Date();
+      const audienceDateTime = new Date(
+        `${audience.audience_date}T${audience.audience_time}`,
+      );
+
+      // Vérifier si la date de l'audience n'est pas encore passée
+      if (audienceDateTime > now) {
+        throw new BadRequestException(
+          `Impossible de marquer l'audience comme tenue car elle n'a pas encore eu lieu. ` +
+            `Date de l'audience: ${audience.audience_date} à ${audience.audience_time}`,
+        );
+      }
+    }
+
+    // Gestion pour jurisdiction_id - ignorer si null
+    if (dto.jurisdiction_id !== undefined && dto.jurisdiction_id !== null) {
+      audience.jurisdiction = plainToInstance(
+        Jurisdiction,
+        await this.jurisdictionService.findOne(dto.jurisdiction_id),
+      );
+    }
+
+    if (dto.audience_type_id !== undefined && dto.audience_type_id !== null) {
+      audience.audience_type = plainToInstance(
+        AudienceType,
+        await this.audienceTypeService.findOne(dto.audience_type_id),
+      );
+    }
+
+    // Gestion spéciale pour document_ids
+    if (dto.document_ids !== undefined && dto.document_ids !== null) {
+      const documents = await this.documentCustomerService.findByIds(
+        dto.document_ids,
+      );
+      audience.documents = documents;
+    }
+
+    // Pour les autres champs, exclure document_ids et jurisdiction_id déjà traités
+    const otherFields = { ...dto };
+    delete otherFields.document_ids;
+    delete otherFields.jurisdiction_id;
+    delete otherFields.audience_type_id;
+
+    // 🔥 IMPORTANT: Assigner les autres champs
+    Object.assign(audience, otherFields);
+    if (dto.notify_client !== undefined) {
+      (audience as any).notify_client = !!dto.notify_client;
+    }
+
+    const resp = plainToInstance(
+      AudienceResponseDto,
+      await this.repository.save(audience),
+    );
+    return await this.findOneV1(
+      id,
+      this.getDefaultSearchOptions().relationFields,
+      AudienceResponseDto,
     );
   }
 
-  // ✅ VÉRIFICATION: Si on tente de marquer l'audience comme tenue (HELD)
-  if (dto.status !== undefined && dto.status === AudienceStatus.HELD) {
-    const now = new Date();
-    const audienceDateTime = new Date(`${audience.audience_date}T${audience.audience_time}`);
-    
-    // Vérifier si la date de l'audience n'est pas encore passée
-    if (audienceDateTime > now) {
-      throw new BadRequestException(
-        `Impossible de marquer l'audience comme tenue car elle n'a pas encore eu lieu. ` +
-        `Date de l'audience: ${audience.audience_date} à ${audience.audience_time}`
-      );
-    }
-  }
-  
-  // Gestion pour jurisdiction_id - ignorer si null
-  if (dto.jurisdiction_id !== undefined && dto.jurisdiction_id !== null) {
-    audience.jurisdiction = plainToInstance(Jurisdiction, await this.jurisdictionService.findOne(dto.jurisdiction_id));
-  }
-  
-  if (dto.audience_type_id !== undefined && dto.audience_type_id !== null) {
-    audience.audience_type = plainToInstance(AudienceType, await this.audienceTypeService.findOne(dto.audience_type_id));
-  }
-  
-  // Gestion spéciale pour document_ids
-  if (dto.document_ids !== undefined && dto.document_ids !== null) {
-    const documents = await this.documentCustomerService.findByIds(dto.document_ids);
-    audience.documents = documents;
-  }
-  
-  // Pour les autres champs, exclure document_ids et jurisdiction_id déjà traités
-  const otherFields = { ...dto };
-  delete otherFields.document_ids;
-  delete otherFields.jurisdiction_id;
-  delete otherFields.audience_type_id;
-  
-  // 🔥 IMPORTANT: Assigner les autres champs
-  Object.assign(audience, otherFields);
-  if (dto.notify_client !== undefined) {
-    (audience as any).notify_client = !!dto.notify_client;
-  }
-  
-  const resp = plainToInstance(AudienceResponseDto, await this.repository.save(audience));
-  return await this.findOneV1(id, this.getDefaultSearchOptions().relationFields, AudienceResponseDto);
-}
-
   /**
-   * ❌ Suppression d'une audience 
+   * ❌ Suppression d'une audience
    */
   async remove(id: number): Promise<void> {
-    const audience = await this.findOne(id); 
-    await this.repository.remove(plainToInstance(Audience,audience));
+    const audience = await this.findOne(id);
+    await this.repository.remove(plainToInstance(Audience, audience));
   }
 
   /**
@@ -356,7 +448,10 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
    * Renvoie un objet { original, replacement } pour que le front puisse afficher
    * les deux.
    */
-  async postpone(id: number, dto: UpdateAudienceDto): Promise<{ original: Audience; replacement: Audience }> {
+  async postpone(
+    id: number,
+    dto: UpdateAudienceDto,
+  ): Promise<{ original: Audience; replacement: Audience }> {
     return this.repository.manager.transaction((manager) =>
       postponeAudienceWithManager(manager, id, {
         audience_date: dto.audience_date as Date,
@@ -375,7 +470,12 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
    */
   async addReport(
     id: number,
-    payload: { report_content: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+    payload: {
+      report_content: string;
+      report_date?: Date;
+      report_author_id?: string;
+      document_ids?: number[];
+    },
   ): Promise<Audience> {
     const audience = await this.repository.findOne({
       where: { id },
@@ -383,13 +483,19 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
     });
     if (!audience) throw new NotFoundException(`Audience ${id} introuvable`);
 
-    audience.report_content   = payload.report_content;
-    audience.report_date      = payload.report_date ?? new Date();
-    audience.report_author_id = payload.report_author_id ?? audience.report_author_id;
+    audience.report_content = payload.report_content;
+    audience.report_date = payload.report_date ?? new Date();
+    audience.report_author_id =
+      payload.report_author_id ?? audience.report_author_id;
 
     if (payload.document_ids?.length) {
-      const docs = await this.documentCustomerService.findByIds(payload.document_ids);
-      audience.report_documents = [...(audience.report_documents ?? []), ...docs];
+      const docs = await this.documentCustomerService.findByIds(
+        payload.document_ids,
+      );
+      audience.report_documents = [
+        ...(audience.report_documents ?? []),
+        ...docs,
+      ];
     }
 
     return this.repository.save(audience);
@@ -397,7 +503,12 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
 
   async updateReport(
     id: number,
-    payload: { report_content?: string; report_date?: Date; report_author_id?: string; document_ids?: number[] },
+    payload: {
+      report_content?: string;
+      report_date?: Date;
+      report_author_id?: string;
+      document_ids?: number[];
+    },
   ): Promise<Audience> {
     const audience = await this.repository.findOne({
       where: { id },
@@ -405,12 +516,17 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
     });
     if (!audience) throw new NotFoundException(`Audience ${id} introuvable`);
 
-    if (payload.report_content !== undefined)   audience.report_content   = payload.report_content;
-    if (payload.report_date    !== undefined)   audience.report_date      = payload.report_date;
-    if (payload.report_author_id !== undefined) audience.report_author_id = payload.report_author_id;
+    if (payload.report_content !== undefined)
+      audience.report_content = payload.report_content;
+    if (payload.report_date !== undefined)
+      audience.report_date = payload.report_date;
+    if (payload.report_author_id !== undefined)
+      audience.report_author_id = payload.report_author_id;
 
     if (payload.document_ids) {
-      audience.report_documents = await this.documentCustomerService.findByIds(payload.document_ids);
+      audience.report_documents = await this.documentCustomerService.findByIds(
+        payload.document_ids,
+      );
     }
 
     return this.repository.save(audience);
@@ -428,22 +544,26 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
     });
     if (!audience) throw new NotFoundException(`Audience ${id} introuvable`);
     return {
-      report_content:    audience.report_content,
-      report_date:       audience.report_date,
-      report_author_id:  audience.report_author_id,
-      report_documents:  audience.report_documents ?? [],
+      report_content: audience.report_content,
+      report_date: audience.report_date,
+      report_author_id: audience.report_author_id,
+      report_documents: audience.report_documents ?? [],
     };
   }
 
   /**
    * ✅ Marquer une audience comme tenue
    */
-  async markAsHeld(id: number, decision?: string, outcome?: string): Promise<Audience> {
+  async markAsHeld(
+    id: number,
+    decision?: string,
+    outcome?: string,
+  ): Promise<Audience> {
     const audience = await this.findOne(id);
     const audienceInstance = plainToInstance(Audience, audience);
 
-    (audienceInstance).mark_as_held(decision, outcome);
-    return this.repository.save((audienceInstance));
+    audienceInstance.mark_as_held(decision, outcome);
+    return this.repository.save(audienceInstance);
   }
 
   /**
@@ -453,8 +573,8 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
     const audience = await this.findOne(id);
     const audienceInstance = plainToInstance(Audience, audience);
 
-    (audienceInstance).cancel(reason);
-    return this.repository.save((audienceInstance));
+    audienceInstance.cancel(reason);
+    return this.repository.save(audienceInstance);
   }
 
   /**
@@ -468,7 +588,6 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
       order: { audience_date: 'ASC' },
     });
   }
-
 
   /**
    * ⏰ Récupérer les audiences nécessitant un rappel (48h avant)
@@ -487,54 +606,56 @@ async update(id: number, dto: UpdateAudienceDto): Promise<Audience | AudienceRes
   async markReminderSent(id: number): Promise<Audience> {
     const audience = await this.findOne(id);
     audience.reminder_sent = true;
-    (audience).reminder_sent_at = new Date();
-    return this.repository.save((audience));
+    audience.reminder_sent_at = new Date();
+    return this.repository.save(audience);
   }
 
+  // audiences.service.ts
+  async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
+    const audience = await this.repository.findOne({
+      where: { id: audienceId },
+      relations: this.getDefaultSearchOptions().relationFields,
+    });
 
-// audiences.service.ts
-async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
-  const audience = await this.repository.findOne({
-    where: { id: audienceId },
-    relations: this.getDefaultSearchOptions().relationFields,
-  });
+    if (!audience) throw new NotFoundException('Audience non trouvée');
+    if (!documentIds) return audience;
 
-  if (!audience) throw new NotFoundException('Audience non trouvée');
-  if(!documentIds) return audience
+    const documents = await this.documentCustomerService.findByIds(documentIds);
 
-  const documents = await this.documentCustomerService.findByIds(documentIds);
-
-  audience.documents = [...(audience.documents || []), ...documents];
-  return await this.repository.save(audience);
-}
-// audiences.service.ts
+    audience.documents = [...(audience.documents || []), ...documents];
+    return await this.repository.save(audience);
+  }
+  // audiences.service.ts
   async sendEmails(audienceId: number, entityManager?: EntityManager) {
     try {
+      const repo = entityManager
+        ? entityManager.getRepository(Audience)
+        : this.repository;
 
-      const repo = entityManager ? entityManager.getRepository(Audience) : this.repository;
-      
       const dataQB = repo
-      .createQueryBuilder('audience')
-      .leftJoinAndSelect('audience.documents', 'documents')
-      .leftJoinAndSelect('audience.dossier', 'dossier')
-      .leftJoinAndSelect('dossier.client', 'client')
-      .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
-      .leftJoinAndSelect('audience.audience_type', 'audience_type')
-      .leftJoinAndSelect('documents.document_type', 'document_type')
-      .leftJoinAndSelect('documents.category', 'category')
-      .where('audience.id = :id', { id: audienceId });
+        .createQueryBuilder('audience')
+        .leftJoinAndSelect('audience.documents', 'documents')
+        .leftJoinAndSelect('audience.dossier', 'dossier')
+        .leftJoinAndSelect('dossier.client', 'client')
+        .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
+        .leftJoinAndSelect('audience.audience_type', 'audience_type')
+        .leftJoinAndSelect('documents.document_type', 'document_type')
+        .leftJoinAndSelect('documents.category', 'category')
+        .where('audience.id = :id', { id: audienceId });
       // Isolation multi-tenant.
       addTenantCondition(dataQB, 'audience');
       const data = await dataQB.getOne();
-      const audience = plainToInstance(AudienceResponseDto,data)
-// 'dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'
+      const audience = plainToInstance(AudienceResponseDto, data);
+      // 'dossier', 'dossier.client', 'jurisdiction','audience_type', 'documents', 'documents.document_type', 'documents.category'
       // console.log('QueryBuilder result - documents count:', audience?.documents?.length);
       // console.log('QueryBuilder result - documents:', audience?.status_label);
       if (!audience) {
         throw new Error(`Audience ${audienceId} non trouvée`);
       }
 
-      const users = await this.employeeService.findAllV1(undefined,undefined, ['user']);
+      const users = await this.employeeService.findAllV1(undefined, undefined, [
+        'user',
+      ]);
       const attachments = await this.prepareAttachments(audience.documents);
 
       // Destinataire : le client concerné par l'audience ; à défaut, les
@@ -544,46 +665,50 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
         ? [clientEmail]
         : users.map((u) => u.email).filter(Boolean);
 
-      let mailDto = new CreateMailDto()
+      const mailDto = new CreateMailDto();
       const deduplicationKey = `commande-${audience.id}-confirmation-${audience.status}`;
-      mailDto.templateName = "entities/audience/audience-created"
-      mailDto.context = audience
-      mailDto.to = recipients
-      mailDto.subject = "Creation de l'audience Concernant le dossier " + audience?.dossier_details?.dossier_number
+      mailDto.templateName = 'entities/audience/audience-created';
+      mailDto.context = audience;
+      mailDto.to = recipients;
+      mailDto.subject =
+        "Creation de l'audience Concernant le dossier " +
+        audience?.dossier_details?.dossier_number;
       mailDto.attachments = attachments; // Ajouter les pièces jointes
 
       // console.log(mailDto.context.documents)
-      await this.sendMail(mailDto, deduplicationKey)
+      await this.sendMail(mailDto, deduplicationKey);
       const deduplicationKey1 = `commande-${audience.id}-confirmation-${audience.status}-3`;
-      mailDto.templateName = "entities/audience/audience-remider-3"
-      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(audience.audience_date, 3)
-      await this.sendMail(mailDto, deduplicationKey1)
+      mailDto.templateName = 'entities/audience/audience-remider-3';
+      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(
+        audience.audience_date,
+        3,
+      );
+      await this.sendMail(mailDto, deduplicationKey1);
       const deduplicationKey2 = `commande-${audience.id}-confirmation-${audience.status}-1`;
-      mailDto.templateName = "entities/audience/audience-remider-1"
-      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(audience.audience_date, 1)
-      await this.sendMail(mailDto, deduplicationKey2)
-
-    } catch (error) { 
-      console.log(error.message)  
+      mailDto.templateName = 'entities/audience/audience-remider-1';
+      mailDto.scheduledAt = DateUtils.getDateNJoursAvant(
+        audience.audience_date,
+        1,
+      );
+      await this.sendMail(mailDto, deduplicationKey2);
+    } catch (error) {
+      console.log(error.message);
     }
   }
 
   private prepareAttachments(documents: any[]): any[] {
-    if (!documents || documents.length === 0) { 
-      return []; 
+    if (!documents || documents.length === 0) {
+      return [];
     }
-    
-    return documents.map(doc => ({
+
+    return documents.map((doc) => ({
       filename: doc.name || 'document.pdf',
       href: doc.file_url, // L'URL accessible du document
-      contentType: doc.file_mimetype, 
+      contentType: doc.file_mimetype,
     }));
   }
 
-
-
-
-   async getStats(filters?: {
+  async getStats(filters?: {
     startDate?: Date;
     endDate?: Date;
     lawyerId?: number;
@@ -596,7 +721,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       upcoming,
       pastStats,
       monthlyTrend,
-      weeklyDist
+      weeklyDist,
     ] = await Promise.all([
       this.getTotalCount(filters),
       this.getDistributionByStatus(filters),
@@ -609,10 +734,10 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
     return {
       total,
-      scheduled: byStatus.find(s => s.name === 'Planifiée')?.value || 0,
-      held: byStatus.find(s => s.name === 'Tenue')?.value || 0,
-      postponed: byStatus.find(s => s.name === 'Reportée')?.value || 0,
-      cancelled: byStatus.find(s => s.name === 'Annulée')?.value || 0,
+      scheduled: byStatus.find((s) => s.name === 'Planifiée')?.value || 0,
+      held: byStatus.find((s) => s.name === 'Tenue')?.value || 0,
+      postponed: byStatus.find((s) => s.name === 'Reportée')?.value || 0,
+      cancelled: byStatus.find((s) => s.name === 'Annulée')?.value || 0,
       byStatus,
       byType: await this.getDistributionByType(filters),
       byJurisdiction: await this.getDistributionByJurisdiction(filters),
@@ -632,7 +757,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByStatus(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('audience.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .groupBy('audience.status');
@@ -656,7 +782,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
       [AudienceStatus.CANCELLED]: '#ef4444', // rouge
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: statusLabels[r.status] || 'Inconnu',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -666,7 +792,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByType(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('audience.audience_type', 'type')
       .addSelect('COUNT(*)', 'count')
       .groupBy('audience.audience_type');
@@ -676,7 +803,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.type || 'Non spécifié',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -684,7 +811,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByJurisdiction(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .leftJoin('audience.jurisdiction', 'jurisdiction')
       .select('jurisdiction.name', 'name')
       .addSelect('COUNT(*)', 'count')
@@ -698,7 +826,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.name || 'Inconnue',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -706,7 +834,8 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getDistributionByDossier(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .leftJoin('audience.dossier', 'dossier')
       .select('dossier.dossier_number', 'dossierNumber')
       .addSelect('COUNT(*)', 'count')
@@ -720,7 +849,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const results = await query.getRawMany();
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
-    return results.map(r => ({
+    return results.map((r) => ({
       name: r.dossierNumber || 'Dossier inconnu',
       value: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
@@ -728,14 +857,28 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getEvolution(filters?: any): Promise<any[]> {
-    const { startDate = subMonths(new Date(), 6), endDate = new Date() } = filters || {};
+    const { startDate = subMonths(new Date(), 6), endDate = new Date() } =
+      filters || {};
 
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')", 'date')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.POSTPONED} THEN 1 ELSE 0 END)`, 'postponed')
-      .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`,
+        'scheduled',
+      )
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`,
+        'held',
+      )
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.POSTPONED} THEN 1 ELSE 0 END)`,
+        'postponed',
+      )
+      .where('audience.audience_date BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m-%d')")
       .orderBy('date', 'ASC');
 
@@ -744,8 +887,11 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     return query.getRawMany();
   }
 
-  private async getUpcomingAudiences(filters?: any): Promise<UpcomingAudienceDto[]> {
-    const query = this.repository.createQueryBuilder('audience')
+  private async getUpcomingAudiences(
+    filters?: any,
+  ): Promise<UpcomingAudienceDto[]> {
+    const query = this.repository
+      .createQueryBuilder('audience')
       .leftJoinAndSelect('audience.dossier', 'dossier')
       .leftJoinAndSelect('audience.jurisdiction', 'jurisdiction')
       .leftJoinAndSelect('dossier.client', 'client')
@@ -755,10 +901,12 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
         'audience.status',
         'jurisdiction.name',
         'dossier.dossier_number',
-        'client'
+        'client',
       ])
       .where('audience.audience_date >= :now', { now: new Date() })
-      .andWhere('audience.status = :status', { status: AudienceStatus.SCHEDULED })
+      .andWhere('audience.status = :status', {
+        status: AudienceStatus.SCHEDULED,
+      })
       .orderBy('audience.audience_date', 'ASC')
       .limit(10);
     // Isolation multi-tenant.
@@ -768,7 +916,7 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
 
     const results = await query.getMany();
 
-    return results.map(a => ({
+    return results.map((a) => ({
       id: a.id,
       date: a.audience_date,
       jurisdiction: a.jurisdiction?.name || 'Inconnue',
@@ -779,10 +927,14 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getPastAudiencesStats(filters?: any): Promise<any> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('COUNT(*)', 'total')
       .addSelect('AVG(audience.duration_minutes)', 'avgDuration')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END) / COUNT(*) * 100`, 'successRate')
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END) / COUNT(*) * 100`,
+        'successRate',
+      )
       .where('audience.audience_date < :now', { now: new Date() });
 
     this.applyFilters(query, filters);
@@ -797,13 +949,24 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getMonthlyTrend(filters?: any): Promise<any[]> {
-    const { startDate = subMonths(new Date(), 12), endDate = new Date() } = filters || {};
+    const { startDate = subMonths(new Date(), 12), endDate = new Date() } =
+      filters || {};
 
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m')", 'month')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`, 'scheduled')
-      .addSelect(`SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`, 'held')
-      .where('audience.audience_date BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.SCHEDULED} THEN 1 ELSE 0 END)`,
+        'scheduled',
+      )
+      .addSelect(
+        `SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END)`,
+        'held',
+      )
+      .where('audience.audience_date BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy("DATE_FORMAT(audience.audience_date, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -813,11 +976,14 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
   }
 
   private async getWeeklyDistribution(filters?: any): Promise<any[]> {
-    const query = this.repository.createQueryBuilder('audience')
+    const query = this.repository
+      .createQueryBuilder('audience')
       .select('DAYNAME(audience.audience_date)', 'dayOfWeek')
       .addSelect('COUNT(*)', 'count')
       .groupBy('DAYNAME(audience.audience_date)')
-      .orderBy("FIELD(DAYNAME(audience.audience_date), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')");
+      .orderBy(
+        "FIELD(DAYNAME(audience.audience_date), 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')",
+      );
 
     this.applyFilters(query, filters);
 
@@ -825,31 +991,39 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     const total = results.reduce((sum, r) => sum + parseInt(r.count), 0);
 
     const dayNames = {
-      'Monday': 'Lundi',
-      'Tuesday': 'Mardi',
-      'Wednesday': 'Mercredi',
-      'Thursday': 'Jeudi',
-      'Friday': 'Vendredi',
-      'Saturday': 'Samedi',
-      'Sunday': 'Dimanche'
+      Monday: 'Lundi',
+      Tuesday: 'Mardi',
+      Wednesday: 'Mercredi',
+      Thursday: 'Jeudi',
+      Friday: 'Vendredi',
+      Saturday: 'Samedi',
+      Sunday: 'Dimanche',
     };
 
-    return results.map(r => ({
+    return results.map((r) => ({
       dayOfWeek: dayNames[r.dayOfWeek] || r.dayOfWeek,
       count: parseInt(r.count),
       percentage: total > 0 ? Math.round((parseInt(r.count) / total) * 100) : 0,
     }));
   }
 
-  private applyFilters(query: any, filters?: any, alias: string = 'audience'): void {
+  private applyFilters(
+    query: any,
+    filters?: any,
+    alias: string = 'audience',
+  ): void {
     if (!filters) return;
 
     if (filters.startDate) {
-      query.andWhere(`${alias}.audience_date >= :startDate`, { startDate: filters.startDate });
+      query.andWhere(`${alias}.audience_date >= :startDate`, {
+        startDate: filters.startDate,
+      });
     }
 
     if (filters.endDate) {
-      query.andWhere(`${alias}.audience_date <= :endDate`, { endDate: filters.endDate });
+      query.andWhere(`${alias}.audience_date <= :endDate`, {
+        endDate: filters.endDate,
+      });
     }
 
     if (filters.lawyerId) {
@@ -861,9 +1035,9 @@ async addDocumentsToAudience(audienceId: number, documentIds: number[]) {
     }
 
     if (filters.dossierId) {
-      query.andWhere(`${alias}.dossier_id = :dossierId`, { dossierId: filters.dossierId });
+      query.andWhere(`${alias}.dossier_id = :dossierId`, {
+        dossierId: filters.dossierId,
+      });
     }
   }
-
-
 }

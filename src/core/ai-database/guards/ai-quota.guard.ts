@@ -47,14 +47,17 @@ export class AiQuotaGuard implements CanActivate {
       if (used >= limit) {
         throw new ForbiddenException(
           `Quota de requêtes IA atteint (${used}/${limit} ce mois). ` +
-          `Veuillez mettre à niveau votre plan${plan?.name ? ` "${plan.name}"` : ''}.`,
+            `Veuillez mettre à niveau votre plan${plan?.name ? ` "${plan.name}"` : ''}.`,
         );
       }
     }
 
     // Enregistre la requête (comptée comme une tentative).
     const log = await this.repo.save(
-      this.repo.create({ tenant_id: tenantId, user_id: req.user?.userId ?? null }),
+      this.repo.create({
+        tenant_id: tenantId,
+        user_id: req.user?.userId ?? null,
+      }),
     );
     req.aiRequestLogId = log.id;
     return true;

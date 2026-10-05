@@ -39,9 +39,9 @@ describe('SchemaMetadataService', () => {
   });
 
   it('retire les identifiants techniques des résultats destinés au chat', () => {
-    const service = new SchemaMetadataService(
-      { entityMetadatas: [] } as unknown as DataSource,
-    );
+    const service = new SchemaMetadataService({
+      entityMetadatas: [],
+    } as unknown as DataSource);
 
     expect(
       service.transformRowToBusiness(

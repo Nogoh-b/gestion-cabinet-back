@@ -79,7 +79,7 @@ export class DocumentCustomerSubscriber extends NotifiableSubscriber<DocumentCus
     entity: Partial<DocumentCustomer>,
     event: UpdateEvent<DocumentCustomer>,
   ): Promise<void> {
-    const id = entity.id ?? (event.databaseEntity as DocumentCustomer)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
     const doc = await this.load(id, event).catch(() => null);
     if (doc) this.emitWorkflowSourceEvent(doc);

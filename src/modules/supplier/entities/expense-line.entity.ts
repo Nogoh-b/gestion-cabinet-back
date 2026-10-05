@@ -1,8 +1,17 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { ExpenseReport } from './expense-report.entity';
 import { Dossier } from '../../dossiers/entities/dossier.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 export enum ExpenseCategory {
   TRANSPORT = 'transport',
@@ -12,6 +21,11 @@ export enum ExpenseCategory {
   COURT_FEES = 'court_fees',
   OFFICE_SUPPLIES = 'office_supplies',
   OTHER = 'other',
+}
+
+export enum ExpenseRebillingType {
+  EXPENSE = 'EXPENSE',
+  DISBURSEMENT = 'DISBURSEMENT',
 }
 
 @Entity('expense_line')
@@ -76,7 +90,8 @@ export class ExpenseLine extends TenantEntity {
   @Column({ type: 'enum', enum: ExpenseCategory })
   @BusinessColumn({
     label: 'Catégorie',
-    description: "BD: 'transport', 'accommodation', 'meal', 'bailiff', 'court_fees', 'office_supplies', 'other'.",
+    description:
+      "BD: 'transport', 'accommodation', 'meal', 'bailiff', 'court_fees', 'office_supplies', 'other'.",
     importance: 'high',
     group: 'identification',
   })
@@ -93,7 +108,13 @@ export class ExpenseLine extends TenantEntity {
   })
   amount_ht: number;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0, name: 'tax_rate' })
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    name: 'tax_rate',
+  })
   @BusinessColumn({
     label: 'Taux TVA',
     description: 'Taux de TVA appliqué',
@@ -124,6 +145,38 @@ export class ExpenseLine extends TenantEntity {
   })
   is_rebillable: boolean;
 
+  @Column({
+    type: 'enum',
+    enum: ExpenseRebillingType,
+    default: ExpenseRebillingType.EXPENSE,
+    name: 'rebilling_type',
+  })
+  @BusinessColumn({
+    label: 'Nature de la refacturation',
+    description: 'Frais du cabinet ou dÃ©bours payÃ© pour le compte du client.',
+    importance: 'high',
+    group: 'financier',
+  })
+  rebilling_type: ExpenseRebillingType;
+
+  @Column({ type: 'varchar', length: 36, nullable: true, name: 'action_id' })
+  @BusinessColumn({
+    label: 'Action associÃ©e',
+    description: 'Action du dossier Ã  lâ€™origine de ce frais ou dÃ©bours.',
+    importance: 'medium',
+    group: 'relation',
+  })
+  action_id: string | null;
+
+  @Column({ type: 'varchar', length: 10, default: 'XAF', name: 'currency' })
+  @BusinessColumn({
+    label: 'Devise',
+    description: 'Devise du frais ou dÃ©bours.',
+    importance: 'high',
+    group: 'financier',
+  })
+  currency: string;
+
   @Column({ type: 'int', nullable: true, name: 'dossier_id' })
   @BusinessColumn({
     label: 'Dossier associé',
@@ -144,7 +197,12 @@ export class ExpenseLine extends TenantEntity {
   })
   dossier: Dossier;
 
-  @Column({ type: 'varchar', length: 500, nullable: true, name: 'attachment_url' })
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+    name: 'attachment_url',
+  })
   @BusinessColumn({
     label: 'Justificatif',
     description: 'Lien vers le justificatif scanné (ticket, facture)',

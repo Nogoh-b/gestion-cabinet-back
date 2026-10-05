@@ -155,6 +155,11 @@ export const ROLES_CONFIG: {
       'edit_payslip',
       'download_payslip',
       'email_payslip',
+      // Demandes des collaborateurs
+      'request_leave',
+      'request_salary_advance',
+      'view_employee_requests',
+      'manage_employee_requests',
       // Dépenses
       'view_expenses',
       'view_suppliers',
@@ -196,7 +201,9 @@ export const ROLES_CONFIG: {
       'create_dossier',
       'edit_dossier',
       'assign_dossier',
-      'view_dossier_confidential',
+      // `view_dossier_confidential` est volontairement réservé à l'admin :
+      // un dossier confidentiel ne s'ouvre à un avocat que par autorisation
+      // nominative (table dossier_access_grant).
       'view_dossier_actions',
       'create_dossier_action',
       'update_dossier_action',
@@ -266,6 +273,9 @@ export const ROLES_CONFIG: {
       'view_payroll_periods',
       'view_payslips',
       'download_payslip',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
       // Dépenses (consultation + notes de frais)
       'view_expenses',
       'view_suppliers',
@@ -320,6 +330,9 @@ export const ROLES_CONFIG: {
       'send_message',
       'view_reports',
       'view_dashboard',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
     ],
   },
 
@@ -361,6 +374,9 @@ export const ROLES_CONFIG: {
       'open_exercice',
       'close_exercice',
       'view_accounting_reports',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
     ],
   },
 
@@ -452,6 +468,11 @@ export const ROLES_CONFIG: {
       'generate_payslip',
       'download_payslip',
       'email_payslip',
+      // Demandes des collaborateurs
+      'request_leave',
+      'request_salary_advance',
+      'view_employee_requests',
+      'manage_employee_requests',
       // Dépenses
       'view_expenses',
       'view_suppliers',
@@ -510,6 +531,9 @@ export const ROLES_CONFIG: {
       // Dépenses (lecture)
       'view_expenses',
       'view_expense_reports',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
     ],
   },
 
@@ -541,6 +565,64 @@ export const ROLES_CONFIG: {
       // Communications
       'view_messages',
       'send_message',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+    ],
+  },
+
+  {
+    code: 'support',
+    name: 'Personnel de support',
+    description: 'Appui logistique et administratif, sans accès financier',
+    isSystemRole: true,
+    permissions: [
+      // Dossiers (lecture seule)
+      'view_dossiers',
+      'view_dossier_actions',
+      // Audiences (lecture)
+      'view_audiences',
+      'export_audience',
+      // Clients (lecture)
+      'view_clients',
+      // Documents
+      'view_documents',
+      'upload_document',
+      'download_document',
+      // Agenda
+      'view_agenda',
+      'create_event',
+      'edit_event',
+      // Diligences (lecture)
+      'view_diligences',
+      'view_diligence_findings',
+      // Communications
+      'view_messages',
+      'send_message',
+      // Tableau de bord
+      'view_dashboard',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
+    ],
+  },
+
+  {
+    code: 'apporteur_affaire',
+    name: "Apporteur d'affaire",
+    description:
+      'Consultation de ses propres apports et commissions uniquement',
+    isSystemRole: true,
+    permissions: [
+      'view_dashboard',
+      'view_messages',
+      'send_message',
+      // Apporteurs : uniquement la consultation de ses apports/commissions
+      'view_dossier_referrals',
+      'view_referral_commissions',
+      // Demandes personnelles
+      'request_leave',
+      'request_salary_advance',
     ],
   },
 
@@ -595,7 +677,15 @@ export class RoleSeeder {
     private readonly rolePermissionRepo: Repository<RolePermission>,
   ) {}
 
-  async seed() {
+  /**
+   * @param newlyCreatedPermissionCodes — codes de permission tout juste créés
+   * par `PermissionSeeder.seed()` dans le même appel (voir son retour). Pour
+   * les rôles DÉJÀ existants, seuls ces codes-là sont accordés automatiquement
+   * (aucun admin n'a pu les configurer manuellement puisqu'ils n'existaient
+   * pas avant) — tout le reste des permissions déjà présentes reste sous le
+   * contrôle exclusif des modifications manuelles faites via l'UI.
+   */
+  async seed(newlyCreatedPermissionCodes: string[] = []) {
     this.logger.log('Seeding roles & role-permissions...');
 
     for (const config of ROLES_CONFIG) {
@@ -616,12 +706,49 @@ export class RoleSeeder {
         this.logger.log(`Rôle créé : ${config.code}`);
       }
 
-      // 2. N'assigner les permissions par défaut QUE pour les nouveaux rôles.
-      //    Pour les rôles existants, les modifications manuelles (via l'UI) sont
-      //    la source de vérité — on ne les écrase jamais au redémarrage.
+      // 2. Pour un rôle existant : top-up additif, uniquement les permissions
+      //    tout juste créées (jamais celles déjà en base, potentiellement
+      //    désactivées volontairement par un admin).
       if (!isNew) {
+        const topUpCodes = config.permissions.filter((c) =>
+          newlyCreatedPermissionCodes.includes(c),
+        );
+        if (!topUpCodes.length) {
+          this.logger.log(
+            `Rôle "${config.code}" : déjà existant, rien de nouveau à accorder.`,
+          );
+          continue;
+        }
+
+        const qbTopUp = this.permissionRepo
+          .createQueryBuilder('p')
+          .where('p.code IN (:...codes)', { codes: topUpCodes });
+        if (hasActiveTenant()) {
+          qbTopUp.andWhere('p.tenant_id = :tid', {
+            tid: getCurrentTenantId(),
+          });
+        }
+        const topUpPermissions = await qbTopUp.getMany();
+
+        let grantedCount = 0;
+        for (const permission of topUpPermissions) {
+          const alreadyLinked = await this.rolePermissionRepo.findOneBy({
+            role_id: role!.id,
+            permission_id: permission.id,
+          });
+          if (alreadyLinked) continue;
+          await this.rolePermissionRepo.save(
+            this.rolePermissionRepo.create({
+              role_id: role!.id,
+              permission_id: permission.id,
+              status: 1,
+            }),
+          );
+          grantedCount++;
+        }
+
         this.logger.log(
-          `Rôle "${config.code}" : déjà existant, permissions non modifiées.`,
+          `Rôle "${config.code}" (existant) : ${grantedCount} nouvelle(s) permission(s) accordée(s) (${topUpCodes.join(', ')}).`,
         );
         continue;
       }

@@ -2,7 +2,7 @@
 export class BranchStatsDto {
   total: number;
   active: number;
-  
+
   employeesByBranch: BranchEmployeeCountDto[];
   customersByBranch: BranchCustomerCountDto[];
   dossiersByBranch: BranchDossierCountDto[];

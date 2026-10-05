@@ -1,13 +1,12 @@
 // services/steps.service.ts
 import { plainToInstance } from 'class-transformer';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
-
-
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 
 import { Repository } from 'typeorm';
-
-
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -16,7 +15,10 @@ import { AudienceStatus } from '../audiences/entities/audience.entity';
 import { DiligencesService } from '../diligence/diligence.service';
 import { DiligenceStatus } from '../diligence/entities/diligence.entity';
 import { DocumentCustomerService } from '../documents/document-customer/document-customer.service';
-import { DocumentCustomer, DocumentCustomerStatus } from '../documents/document-customer/entities/document-customer.entity';
+import {
+  DocumentCustomer,
+  DocumentCustomerStatus,
+} from '../documents/document-customer/entities/document-customer.entity';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { StatutFacture } from '../facture/dto/create-facture.dto';
 import { FactureService } from '../facture/facture.service';
@@ -24,13 +26,6 @@ import { User } from '../iam/user/entities/user.entity';
 import { UsersService } from '../iam/user/user.service';
 import { CreateStepDto } from './dto/create-step.dto';
 import { Step, StepStatus, StepType } from './entities/step.entity';
-
-
-
-
-
-
-
 
 @Injectable()
 export class StepsService extends BaseServiceV1<Step> {
@@ -44,41 +39,52 @@ export class StepsService extends BaseServiceV1<Step> {
     private diligencesService: DiligencesService,
     private usersService: UsersService,
     protected readonly paginationService: PaginationServiceV1,
-
   ) {
     super(stepsRepository, paginationService);
-
   }
-
 
   protected getDefaultSearchOptions(): SearchOptions {
     return {
       searchFields: [],
       exactMatchFields: [],
       dateRangeFields: [],
-      relationFields: ['actions', 'documents', 'diligences', 'audiences', 'factures', 'diligences.documents', 'audiences.documents'],
+      relationFields: [
+        'actions',
+        'documents',
+        'diligences',
+        'audiences',
+        'factures',
+        'diligences.documents',
+        'audiences.documents',
+      ],
     };
   }
 
-   // Nouvelle méthode pour créer une étape personnalisée
-  async createStep(dossierId: number, createStepDto: CreateStepDto): Promise<Step> {
+  // Nouvelle méthode pour créer une étape personnalisée
+  async createStep(
+    dossierId: number,
+    createStepDto: CreateStepDto,
+  ): Promise<Step> {
     const dossier = await this.dossierRepository.findOne({
-      where: { id: dossierId }
+      where: { id: dossierId },
     });
 
     if (!dossier) {
-      throw new NotFoundException('Dossier non trouvé '+ dossierId);
+      throw new NotFoundException('Dossier non trouvé ' + dossierId);
     }
 
-    let assignedTo : User| null = null;
+    let assignedTo: User | null = null;
     if (createStepDto.assignedToId) {
-      assignedTo = plainToInstance(User,await this.usersService.findOne(parseInt(createStepDto.assignedToId)));
+      assignedTo = plainToInstance(
+        User,
+        await this.usersService.findOne(parseInt(createStepDto.assignedToId)),
+      );
     }
 
     const step = this.stepsRepository.create({
       ...createStepDto,
       dossier,
-      assignedTo
+      assignedTo,
     });
 
     return this.stepsRepository.save(step);
@@ -87,46 +93,51 @@ export class StepsService extends BaseServiceV1<Step> {
   // Dans steps.service.ts
 
   /**
-  * Créer une étape directement à partir d'une entité Step
-  */
-  async createStepFromEntityVO(dossierId: number, stepEntity: Partial<Step>): Promise<Step> {
+   * Créer une étape directement à partir d'une entité Step
+   */
+  async createStepFromEntityVO(
+    dossierId: number,
+    stepEntity: Partial<Step>,
+  ): Promise<Step> {
     const dossier = await this.dossierRepository.findOne({
-      where: { id: dossierId }
+      where: { id: dossierId },
     });
 
     if (!dossier) {
       throw new NotFoundException('Dossier non trouvé ' + dossierId);
     }
-    
+
     const step = this.stepsRepository.create({
       ...stepEntity,
-      dossier
+      dossier,
     });
-    console.log('creation du step : ' , stepEntity.dossier?.id)
-
+    console.log('creation du step : ', stepEntity.dossier?.id);
 
     return this.stepsRepository.save(stepEntity);
   }
 
-  async createStepFromEntity(dossierId: number, stepEntity: Partial<Step>): Promise<Step> {
-  const step = this.stepsRepository.create({
-    ...stepEntity,
-    dossier: { id: dossierId } as Dossier   // fake entity juste pour la relation
-  });
+  async createStepFromEntity(
+    dossierId: number,
+    stepEntity: Partial<Step>,
+  ): Promise<Step> {
+    const step = this.stepsRepository.create({
+      ...stepEntity,
+      dossier: { id: dossierId } as Dossier, // fake entity juste pour la relation
+    });
 
-  return this.stepsRepository.save(step);
-}
+    return this.stepsRepository.save(step);
+  }
 
   // Méthode pour récupérer l'étape courante
   async getCurrentStep(dossierId: number): Promise<any> {
     const step = await this.stepsRepository.findOne({
-      where: { 
+      where: {
         dossier: { id: dossierId },
-        status: StepStatus.IN_PROGRESS
+        status: StepStatus.IN_PROGRESS,
       },
-      relations: this.getDefaultSearchOptions().relationFields
+      relations: this.getDefaultSearchOptions().relationFields,
     });
-    console.log(step)
+    console.log(step);
 
     if (!step) {
       // throw new NotFoundException('Aucune étape en cours pour ce dossier');
@@ -138,7 +149,7 @@ export class StepsService extends BaseServiceV1<Step> {
   // Créer les étapes initiales pour un nouveau dossier
   async createInitialSteps(dossierId: number): Promise<Step[]> {
     const dossier = await this.dossierRepository.findOne({
-      where: { id: dossierId }
+      where: { id: dossierId },
     });
 
     if (!dossier) {
@@ -152,15 +163,15 @@ export class StepsService extends BaseServiceV1<Step> {
         description: 'Création du dossier et enregistrement initial',
         status: StepStatus.COMPLETED,
         dossier,
-        metadata: {}
+        metadata: {},
       },
       {
         type: StepType.AMIABLE,
         title: 'Phase amiable',
-        description: 'Tentative de résolution à l\'amiable',
+        description: "Tentative de résolution à l'amiable",
         status: StepStatus.PENDING,
         dossier,
-        metadata: {}
+        metadata: {},
       },
       {
         type: StepType.CONTENTIOUS,
@@ -168,7 +179,7 @@ export class StepsService extends BaseServiceV1<Step> {
         description: 'Procédure judiciaire',
         status: StepStatus.PENDING,
         dossier,
-        metadata: {}
+        metadata: {},
       },
       {
         type: StepType.DECISION,
@@ -176,7 +187,7 @@ export class StepsService extends BaseServiceV1<Step> {
         description: 'Analyse et notification de la décision',
         status: StepStatus.PENDING,
         dossier,
-        metadata: {}
+        metadata: {},
       },
       {
         type: StepType.CLOSURE,
@@ -184,24 +195,29 @@ export class StepsService extends BaseServiceV1<Step> {
         description: 'Archivage et facturation finale',
         status: StepStatus.PENDING,
         dossier,
-        metadata: {}
-      }
+        metadata: {},
+      },
     ];
 
     return this.stepsRepository.save(initialSteps);
   }
 
   // Passer à l'étape suivante
-  async moveToNextStep(dossierId: number, currentStepType: StepType): Promise<Step> {
+  async moveToNextStep(
+    dossierId: number,
+    currentStepType: StepType,
+  ): Promise<Step> {
     const steps = await this.stepsRepository.find({
       where: { dossier: { id: dossierId } },
-      order: { created_at: 'ASC' }
+      order: { created_at: 'ASC' },
     });
 
-    const currentStepIndex = steps.findIndex(step => step.type === currentStepType);
-    
+    const currentStepIndex = steps.findIndex(
+      (step) => step.type === currentStepType,
+    );
+
     if (currentStepIndex === -1 || currentStepIndex >= steps.length - 1) {
-      throw new Error('Impossible de passer à l\'étape suivante');
+      throw new Error("Impossible de passer à l'étape suivante");
     }
 
     // Marquer l'étape courante comme terminée
@@ -217,12 +233,15 @@ export class StepsService extends BaseServiceV1<Step> {
   }
 
   // Gestion spécifique de la phase amiable
-  async handleAmiablePhase(dossierId: number, agreementReached: boolean): Promise<Step> {
+  async handleAmiablePhase(
+    dossierId: number,
+    agreementReached: boolean,
+  ): Promise<Step> {
     const amiableStep = await this.stepsRepository.findOne({
-      where: { 
+      where: {
         dossier: { id: dossierId },
-        type: StepType.AMIABLE
-      }
+        type: StepType.AMIABLE,
+      },
     });
 
     if (!amiableStep) {
@@ -233,7 +252,7 @@ export class StepsService extends BaseServiceV1<Step> {
     amiableStep.completedDate = new Date();
     amiableStep.metadata = {
       ...amiableStep.metadata,
-      agreementReached
+      agreementReached,
     };
 
     await this.stepsRepository.save(amiableStep);
@@ -250,30 +269,28 @@ export class StepsService extends BaseServiceV1<Step> {
   // Gestion des voies de recours
   async initiateAppeal(dossierId: number, appealType: string): Promise<Step> {
     let appealStep = await this.stepsRepository.findOne({
-      where: { 
+      where: {
         dossier: { id: dossierId },
-        type: StepType.APPEAL
-      }
+        type: StepType.APPEAL,
+      },
     });
 
     if (!appealStep) {
-      console.log('Pas d\'appel trouvé sur ce dossier ', dossierId)
+      console.log("Pas d'appel trouvé sur ce dossier ", dossierId);
 
       // Créer l'étape de recours si elle n'existe pas
       const dossier = await this.dossierRepository.findOne({
-        where: { id: dossierId }
+        where: { id: dossierId },
       });
-      if(!dossier)
-        throw new NotFoundException('Dossier inexistant');
-      
+      if (!dossier) throw new NotFoundException('Dossier inexistant');
 
       appealStep = this.stepsRepository.create({
         type: StepType.APPEAL,
-        title : 'Pourvoi en cassation',
-        description : 'Cassation engagée devant la Cour de cassation',
+        title: 'Pourvoi en cassation',
+        description: 'Cassation engagée devant la Cour de cassation',
         status: StepStatus.IN_PROGRESS,
         dossier,
-        metadata: { appealType }
+        metadata: { appealType },
       });
     } else {
       appealStep.status = StepStatus.IN_PROGRESS;
@@ -286,10 +303,10 @@ export class StepsService extends BaseServiceV1<Step> {
   // Clôture directe du dossier
   async moveToClosure(dossierId: number): Promise<Step> {
     const closureStep = await this.stepsRepository.findOne({
-      where: { 
+      where: {
         dossier: { id: dossierId },
-        type: StepType.CLOSURE
-      }
+        type: StepType.CLOSURE,
+      },
     });
 
     if (!closureStep) {
@@ -298,11 +315,14 @@ export class StepsService extends BaseServiceV1<Step> {
 
     // Marquer toutes les étapes intermédiaires comme annulées ou complétées
     const steps = await this.stepsRepository.find({
-      where: { dossier: { id: dossierId } }
+      where: { dossier: { id: dossierId } },
     });
 
     for (const step of steps) {
-      if (step.type !== StepType.CLOSURE && step.status === StepStatus.PENDING) {
+      if (
+        step.type !== StepType.CLOSURE &&
+        step.status === StepStatus.PENDING
+      ) {
         step.status = StepStatus.CANCELLED;
         await this.stepsRepository.save(step);
       }
@@ -317,14 +337,14 @@ export class StepsService extends BaseServiceV1<Step> {
     return this.stepsRepository.find({
       where: { dossier: { id: dossierId } },
       relations: this.getDefaultSearchOptions().relationFields,
-      order: { created_at: 'ASC' }
+      order: { created_at: 'ASC' },
     });
   }
 
   // Mettre à jour une étape
   async updateStep(stepId: number, updateData: Partial<Step>): Promise<Step> {
     const step = await this.stepsRepository.findOne({
-      where: { id: stepId }
+      where: { id: stepId },
     });
 
     if (!step) {
@@ -334,12 +354,6 @@ export class StepsService extends BaseServiceV1<Step> {
     Object.assign(step, updateData);
     return this.stepsRepository.save(step);
   }
-
-
-
-
-
-
 
   /**
    * Synchronise une action avec son étape
@@ -351,19 +365,25 @@ export class StepsService extends BaseServiceV1<Step> {
   ): Promise<void> {
     switch (actionType) {
       case 'diligence':
-        await this.diligencesService.update(actionId, { step_id: stepId } as any);
+        await this.diligencesService.update(actionId, {
+          step_id: stepId,
+        } as any);
         break;
       case 'audience':
-        await this.diligencesService.update(actionId, { step_id: stepId } as any);
+        await this.diligencesService.update(actionId, {
+          step_id: stepId,
+        } as any);
         break;
       case 'facture':
-        await this.factureService.updateV1(actionId, { step_id: stepId } as any);
+        await this.factureService.updateV1(actionId, {
+          step_id: stepId,
+        } as any);
         break;
       case 'document':
         await this.linkDocumentToStep(actionId, stepId);
         break;
     }
-    
+
     // Mettre à jour les métriques de l'étape
     await this.updateStepMetrics(stepId);
   }
@@ -374,27 +394,37 @@ export class StepsService extends BaseServiceV1<Step> {
   async updateStepMetrics(stepId: number): Promise<void> {
     const step = await this.findOneV1(stepId);
 
-    console.log(step?.documents)
+    console.log(step?.documents);
 
     if (!step) return;
 
     const metrics = {
       // Documents
       totalDocuments: step.documents?.length || 0,
-      validatedDocuments: step.documents?.filter(d => d.status === DocumentCustomerStatus.ACCEPTED).length || 0,
-      
+      validatedDocuments:
+        step.documents?.filter(
+          (d) => d.status === DocumentCustomerStatus.ACCEPTED,
+        ).length || 0,
+
       // Diligences
       totalDiligences: step.diligences?.length || 0,
-      completedDiligences: step.diligences?.filter(d => d.status === DiligenceStatus.COMPLETED).length || 0,
-      
+      completedDiligences:
+        step.diligences?.filter((d) => d.status === DiligenceStatus.COMPLETED)
+          .length || 0,
+
       // Audiences
       totalAudiences: step.audiences?.length || 0,
-      heldAudiences: step.audiences?.filter(a => a.status === AudienceStatus.HELD).length || 0,
-      
+      heldAudiences:
+        step.audiences?.filter((a) => a.status === AudienceStatus.HELD)
+          .length || 0,
+
       // Factures
       totalFactures: step.factures?.length || 0,
-      paidFactures: step.factures?.filter(f => f.statut_paiement === StatutFacture.PAYEE).length || 0,
-      totalAmount: step.factures?.reduce((sum, f) => sum + Number(f.montantTTC), 0) || 0,
+      paidFactures:
+        step.factures?.filter((f) => f.statut_paiement === StatutFacture.PAYEE)
+          .length || 0,
+      totalAmount:
+        step.factures?.reduce((sum, f) => sum + Number(f.montantTTC), 0) || 0,
     };
 
     step.metrics = metrics;
@@ -404,9 +434,12 @@ export class StepsService extends BaseServiceV1<Step> {
   /**
    * Génère les actions suggérées pour une étape
    */
-  async generateSuggestedActions(stepType: StepType, dossierId: number): Promise<any[]> {
+  async generateSuggestedActions(
+    stepType: StepType,
+    dossierId: number,
+  ): Promise<any[]> {
     const suggestions: any = [];
-    
+
     switch (stepType) {
       case StepType.OPENING:
         suggestions.push(
@@ -414,66 +447,66 @@ export class StepsService extends BaseServiceV1<Step> {
             type: 'document',
             title: 'Convention de mandat',
             description: 'Rédiger et faire signer la convention de mandat',
-            tooltip: 'Document obligatoire pour l\'ouverture du dossier'
+            tooltip: "Document obligatoire pour l'ouverture du dossier",
           },
           {
             type: 'facture',
             title: 'Provision initiale',
             description: 'Émettre la facture de provision',
-            tooltip: 'Facturer la provision conformément à la convention'
-          }
+            tooltip: 'Facturer la provision conformément à la convention',
+          },
         );
         break;
-        
+
       case StepType.AMIABLE:
         suggestions.push(
           {
             type: 'diligence',
             title: 'Analyse du dossier',
             description: 'Analyser les pièces et préparer la stratégie',
-            tooltip: 'Identifier les points clés et les risques'
+            tooltip: 'Identifier les points clés et les risques',
           },
           {
             type: 'document',
             title: 'Courrier de mise en demeure',
             description: 'Rédiger et envoyer la mise en demeure',
-            tooltip: 'Document officiel pour la phase amiable'
+            tooltip: 'Document officiel pour la phase amiable',
           },
           {
             type: 'audience',
             title: 'Réunion de médiation',
             description: 'Organiser la réunion de médiation',
-            tooltip: 'Tenter une résolution à l\'amiable'
-          }
+            tooltip: "Tenter une résolution à l'amiable",
+          },
         );
         break;
-        
+
       case StepType.CONTENTIOUS:
         suggestions.push(
           {
             type: 'diligence',
             title: 'Préparation de la procédure',
             description: 'Préparer les conclusions et assignations',
-            tooltip: 'Rédiger les actes de procédure'
+            tooltip: 'Rédiger les actes de procédure',
           },
           {
             type: 'document',
             title: 'Assignation',
-            description: 'Rédiger et déposer l\'assignation',
-            tooltip: 'Acte introductif d\'instance'
+            description: "Rédiger et déposer l'assignation",
+            tooltip: "Acte introductif d'instance",
           },
           {
             type: 'audience',
             title: 'Audience de plaidoirie',
-            description: 'Préparer et assister à l\'audience',
-            tooltip: 'Présenter les arguments devant le tribunal'
-          }
+            description: "Préparer et assister à l'audience",
+            tooltip: 'Présenter les arguments devant le tribunal',
+          },
         );
         break;
-        
+
       // Ajouter les autres cas...
     }
-    
+
     return suggestions;
   }
 
@@ -487,7 +520,13 @@ export class StepsService extends BaseServiceV1<Step> {
   }> {
     const step = await this.stepsRepository.findOne({
       where: { id: stepId },
-      relations: ['diligences', 'audiences', 'factures', 'documents', 'dossier']
+      relations: [
+        'diligences',
+        'audiences',
+        'factures',
+        'documents',
+        'dossier',
+      ],
     });
 
     const errors: any = [];
@@ -501,44 +540,48 @@ export class StepsService extends BaseServiceV1<Step> {
     const allActions = [
       ...(step.diligences || []),
       ...(step.audiences || []),
-      ...(step.factures || [])
+      ...(step.factures || []),
     ];
 
     for (const action of allActions) {
       if (action.dossier_id !== step.dossier?.id) {
-        errors.push(`Action ${action.id} does not belong to the same dossier as step`);
+        errors.push(
+          `Action ${action.id} does not belong to the same dossier as step`,
+        );
       }
     }
 
     // Vérifier que les documents sont liés aux bonnes diligences/audiences
     for (const document of step.documents || []) {
       if (document.dossier_id !== step.dossier?.id) {
-        warnings.push(`Document ${document.id} is linked to a different dossier`);
+        warnings.push(
+          `Document ${document.id} is linked to a different dossier`,
+        );
       }
     }
 
     return {
       isValid: errors.length === 0,
       errors,
-      warnings
+      warnings,
     };
   }
 
   async linkDocumentToStep(documentId: number, stepId: number): Promise<void> {
     const document = await this.documentService.findOneV1(documentId);
     const step = await this.findOneV1(stepId);
-    
+
     if (!document || !step) {
       throw new NotFoundException('Document ou étape non trouvé');
     }
-    
+
     // Vérifier si le document a déjà la propriété steps
     if (!document.steps) {
       document.steps = [];
     }
-    
+
     // Éviter les doublons
-    if (!document.steps.some(s => s.id === stepId)) {
+    if (!document.steps.some((s) => s.id === stepId)) {
       document.steps.push(step);
       await this.documentService.createV1(document);
     }
@@ -559,8 +602,8 @@ export class StepsService extends BaseServiceV1<Step> {
         'diligences',
         'diligences.documents',
         'audiences',
-        'audiences.documents'
-      ]
+        'audiences.documents',
+      ],
     });
 
     if (!step) {
@@ -569,8 +612,10 @@ export class StepsService extends BaseServiceV1<Step> {
 
     return {
       stepDocuments: step.documents || [],
-      diligenceDocuments: step.diligences?.flatMap(d => d.documents || []) || [],
-      audienceDocuments: step.audiences?.flatMap(a => a.documents || []) || []
+      diligenceDocuments:
+        step.diligences?.flatMap((d) => d.documents || []) || [],
+      audienceDocuments:
+        step.audiences?.flatMap((a) => a.documents || []) || [],
     };
   }
 
@@ -580,7 +625,7 @@ export class StepsService extends BaseServiceV1<Step> {
   async generateStepDocumentReport(stepId: number): Promise<any> {
     const step = await this.stepsRepository.findOne({
       where: { id: stepId },
-      relations: ['documents', 'diligences.documents', 'audiences.documents']
+      relations: ['documents', 'diligences.documents', 'audiences.documents'],
     });
 
     if (!step) {
@@ -589,13 +634,13 @@ export class StepsService extends BaseServiceV1<Step> {
 
     const allDocuments = [
       ...(step.documents || []),
-      ...(step.diligences?.flatMap(d => d.documents || []) || []),
-      ...(step.audiences?.flatMap(a => a.documents || []) || [])
+      ...(step.diligences?.flatMap((d) => d.documents || []) || []),
+      ...(step.audiences?.flatMap((a) => a.documents || []) || []),
     ];
 
     // Dédupliquer par ID
     const uniqueDocuments = Array.from(
-      new Map(allDocuments.map(doc => [doc.id, doc])).values()
+      new Map(allDocuments.map((doc) => [doc.id, doc])).values(),
     );
 
     return {
@@ -603,19 +648,28 @@ export class StepsService extends BaseServiceV1<Step> {
         id: step.id,
         title: step.title,
         type: step.type,
-        status: step.status
+        status: step.status,
       },
       statistics: {
         total: uniqueDocuments.length,
         byStatus: {
-          pending: uniqueDocuments.filter(d => d.status === DocumentCustomerStatus.PENDING).length,
-          accepted: uniqueDocuments.filter(d => d.status === DocumentCustomerStatus.ACCEPTED).length,
-          refused: uniqueDocuments.filter(d => d.status === DocumentCustomerStatus.REFUSED).length
+          pending: uniqueDocuments.filter(
+            (d) => d.status === DocumentCustomerStatus.PENDING,
+          ).length,
+          accepted: uniqueDocuments.filter(
+            (d) => d.status === DocumentCustomerStatus.ACCEPTED,
+          ).length,
+          refused: uniqueDocuments.filter(
+            (d) => d.status === DocumentCustomerStatus.REFUSED,
+          ).length,
         },
         byCategory: this.groupDocumentsByCategory(uniqueDocuments),
-        totalSize: uniqueDocuments.reduce((sum, d) => sum + (d.file_size || 0), 0)
+        totalSize: uniqueDocuments.reduce(
+          (sum, d) => sum + (d.file_size || 0),
+          0,
+        ),
       },
-      documents: uniqueDocuments.map(doc => ({
+      documents: uniqueDocuments.map((doc) => ({
         id: doc.id,
         name: doc.name,
         type: doc.document_type?.name,
@@ -624,14 +678,18 @@ export class StepsService extends BaseServiceV1<Step> {
         uploadedAt: doc.uploaded_at,
         size: doc.file_size_formatted,
         associations: {
-          diligence: doc.diligences?.map(d => d.title),
-          audience: doc.audiences?.map(a => `${a.audience_date} - ${a.audience_time}`)
-        }
-      }))
+          diligence: doc.diligences?.map((d) => d.title),
+          audience: doc.audiences?.map(
+            (a) => `${a.audience_date} - ${a.audience_time}`,
+          ),
+        },
+      })),
     };
   }
 
-  private groupDocumentsByCategory(documents: DocumentCustomer[]): Record<string, number> {
+  private groupDocumentsByCategory(
+    documents: DocumentCustomer[],
+  ): Record<string, number> {
     const groups: Record<string, number> = {};
     for (const doc of documents) {
       const category = doc.category?.name || 'Sans catégorie';
@@ -640,35 +698,27 @@ export class StepsService extends BaseServiceV1<Step> {
     return groups;
   }
 
-
-
   async createAmicableStep(dossier: Dossier): Promise<any> {
-      // Ne pas instancier Step, passer un objet simple
-      const stepData = {
-        type: StepType.AMIABLE,
-        title: 'Phase transactionnelle',
-        description: 'Négociation avec la partie adverse',
-        status: StepStatus.IN_PROGRESS,
-        metadata: {
-          type: 'AMICABLE',
-          startDate: new Date(),
-          recommendation: dossier.recommendation
-        }
-      };
-      
-      console.log('decision du client11 : ', dossier.id);
-      
-        const step = this.stepsRepository.create({
-          ...stepData,
-          dossier: { id: dossier.id } as Dossier   // fake entity juste pour la relation
-        });
+    // Ne pas instancier Step, passer un objet simple
+    const stepData = {
+      type: StepType.AMIABLE,
+      title: 'Phase transactionnelle',
+      description: 'Négociation avec la partie adverse',
+      status: StepStatus.IN_PROGRESS,
+      metadata: {
+        type: 'AMICABLE',
+        startDate: new Date(),
+        recommendation: dossier.recommendation,
+      },
+    };
 
-        return this.stepsRepository.save(step);
-      
- 
+    console.log('decision du client11 : ', dossier.id);
+
+    const step = this.stepsRepository.create({
+      ...stepData,
+      dossier: { id: dossier.id } as Dossier, // fake entity juste pour la relation
+    });
+
+    return this.stepsRepository.save(step);
   }
-  
-
-  
-
 }

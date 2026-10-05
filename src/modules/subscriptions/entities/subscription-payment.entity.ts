@@ -82,7 +82,12 @@ export class SubscriptionPayment {
   provider: string | null;
 
   /** URL de paiement (page de la passerelle) à présenter au client. */
-  @Column({ type: 'varchar', length: 512, nullable: true, name: 'checkout_url' })
+  @Column({
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+    name: 'checkout_url',
+  })
   checkout_url: string | null;
 
   @CreateDateColumn({ name: 'created_at' })

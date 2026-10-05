@@ -13,9 +13,6 @@ import {
 import { Type } from 'class-transformer';
 import { ClientSatisfaction, DossierOutcome } from '../entities/dossier.entity';
 
-
-
-
 export class CloseDossierDto {
   @IsEnum(DossierOutcome)
   outcome: DossierOutcome;
@@ -47,19 +44,19 @@ export class CloseDossierDto {
   @IsBoolean()
   appeal_possibility?: boolean;
 
-  @ValidateIf(o => o.appeal_possibility === true)
+  @ValidateIf((o) => o.appeal_possibility === true)
   @IsDateString()
   @Type(() => Date)
   @IsOptional()
   appeal_deadline?: string;
 
-  @ValidateIf(o => o.outcome === DossierOutcome.SETTLED)
+  @ValidateIf((o) => o.outcome === DossierOutcome.SETTLED)
   @IsNumber()
   @Min(0)
   @IsOptional()
   settlement_amount?: number;
 
-  @ValidateIf(o => o.outcome === DossierOutcome.SETTLED)
+  @ValidateIf((o) => o.outcome === DossierOutcome.SETTLED)
   @IsString()
   @IsOptional()
   settlement_terms?: string;

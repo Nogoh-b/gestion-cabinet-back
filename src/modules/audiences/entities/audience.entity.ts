@@ -10,8 +10,20 @@ import { StageVisit } from 'src/modules/procedure/entities/stage-visit.entity';
 import { Stage } from 'src/modules/procedure/entities/stage.entity';
 import { SubStageVisit } from 'src/modules/procedure/entities/sub-stage-visit.entity';
 import { SubStage } from 'src/modules/procedure/entities/sub-stage.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, ManyToMany, JoinTable } from 'typeorm';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+  ManyToMany,
+  JoinTable,
+} from 'typeorm';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 export enum AudienceStatus {
   SCHEDULED = 0,
@@ -30,9 +42,10 @@ export enum AudienceType1 {
 @Entity('audiences')
 @BusinessTable({
   label: 'Audiences',
-  description: 'Gestion des audiences programmées devant les tribunals. Une audience peut être de différents types (plaidoirie, délibération, jugement, conciliation) et peut être programmée, tenue, reportée ou annulée.',
+  description:
+    'Gestion des audiences programmées devant les tribunals. Une audience peut être de différents types (plaidoirie, délibération, jugement, conciliation) et peut être programmée, tenue, reportée ou annulée.',
   icon: '🏛️',
-  category: 'procedure'
+  category: 'procedure',
 })
 export class Audience extends BaseEntity {
   /** Transient — lu par l'AudienceSubscriber pour notifier le client. */
@@ -41,93 +54,100 @@ export class Audience extends BaseEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'audience',
+    description: "Identifiant unique de l'audience",
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   id: number;
 
   @Column({ name: 'audience_date', type: 'date', nullable: false })
   @BusinessColumn({
-    label: 'Date de l\'audience',
-    description: 'Date à laquelle l\'audience est programmée',
+    label: "Date de l'audience",
+    description: "Date à laquelle l'audience est programmée",
     format: 'date',
     importance: 'critical',
-    group: 'dates'
+    group: 'dates',
   })
   audience_date: Date;
 
   @Column({ name: 'dossier_id', type: 'int', nullable: true })
   dossier_id: string;
 
-  @Column({ name: 'audience_time', length: 10, nullable: false, default: '09:00' })
+  @Column({
+    name: 'audience_time',
+    length: 10,
+    nullable: false,
+    default: '09:00',
+  })
   @BusinessColumn({
-    label: 'Heure de l\'audience',
-    description: 'Horaire de début de l\'audience (format HH:MM)',
+    label: "Heure de l'audience",
+    description: "Horaire de début de l'audience (format HH:MM)",
     example: '14:30',
     importance: 'critical',
-    group: 'dates'
+    group: 'dates',
   })
   audience_time: string;
 
   @Column({ nullable: true, default: null })
   @BusinessColumn({
     label: 'Juridiction',
-    description: 'Identifiant de la juridiction où se tient l\'audience',
+    description: "Identifiant de la juridiction où se tient l'audience",
     importance: 'high',
     group: 'localisation',
-    ignored: true
+    ignored: true,
   })
   jurisdiction_id: number | null;
 
   @Column({ name: 'room', length: 50, nullable: true })
   @BusinessColumn({
     label: 'Salle',
-    description: 'Numéro ou nom de la salle d\'audience',
+    description: "Numéro ou nom de la salle d'audience",
     example: 'Salle 14, Grande Chambre, Cabinet 3',
     importance: 'medium',
-    group: 'localisation'
+    group: 'localisation',
   })
   room: string;
 
   @Column({
     type: 'enum',
     enum: AudienceType1,
-    default: AudienceType1.HEARING
+    default: AudienceType1.HEARING,
   })
   @BusinessColumn({
-    label: 'Type d\'audience',
-    description: 'BD: 0=HEARING/Plaidoirie, 1=DELIBERATION, 2=JUDGMENT, 3=CONCILIATION.',
+    label: "Type d'audience",
+    description:
+      'BD: 0=HEARING/Plaidoirie, 1=DELIBERATION, 2=JUDGMENT, 3=CONCILIATION.',
     example: '0 = Audience de plaidoirie',
     importance: 'critical',
-    group: 'classification'
+    group: 'classification',
   })
   type: AudienceType1;
 
   @Column({
     type: 'enum',
     enum: AudienceStatus,
-    default: AudienceStatus.SCHEDULED
+    default: AudienceStatus.SCHEDULED,
   })
   @BusinessColumn({
     label: 'Statut',
-    description: 'BD: 0=SCHEDULED/Programmée, 1=HELD/Tenue, 2=POSTPONED/Reportée, 3=CANCELLED/Annulée.',
+    description:
+      'BD: 0=SCHEDULED/Programmée, 1=HELD/Tenue, 2=POSTPONED/Reportée, 3=CANCELLED/Annulée.',
     importance: 'critical',
-    group: 'état'
+    group: 'état',
   })
   status: AudienceStatus;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Notes',
-    description: 'Observations et commentaires sur l\'audience',
+    description: "Observations et commentaires sur l'audience",
     importance: 'medium',
-    group: 'contenu'
+    group: 'contenu',
   })
   notes: string;
 
-  @ManyToOne(() => Step, step => step.audiences, { nullable: true })
+  @ManyToOne(() => Step, (step) => step.audiences, { nullable: true })
   @JoinColumn({ name: 'step_id' })
   step: Step;
 
@@ -137,19 +157,19 @@ export class Audience extends BaseEntity {
   @Column({ name: 'decision', type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Décision',
-    description: 'Décision rendue lors de l\'audience',
+    description: "Décision rendue lors de l'audience",
     importance: 'high',
-    group: 'résultat'
+    group: 'résultat',
   })
   decision: string;
 
   @Column({ name: 'postponed_to', type: 'timestamp', nullable: true })
   @BusinessColumn({
     label: 'Reportée à',
-    description: 'Nouvelle date et heure si l\'audience a été reportée',
+    description: "Nouvelle date et heure si l'audience a été reportée",
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   postponed_to: Date;
 
@@ -162,20 +182,20 @@ export class Audience extends BaseEntity {
   @Column({ name: 'duration_minutes', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Durée',
-    description: 'Durée prévue ou réelle de l\'audience en minutes',
+    description: "Durée prévue ou réelle de l'audience en minutes",
     unit: 'minutes',
     importance: 'medium',
-    group: 'planification'
+    group: 'planification',
   })
   duration_minutes: number;
 
   @Column({ name: 'judge_name', length: 255, nullable: true })
   @BusinessColumn({
     label: 'Juge',
-    description: 'Nom du juge ou magistrat présidant l\'audience',
+    description: "Nom du juge ou magistrat présidant l'audience",
     example: 'Madame la Présidente Dupont, Monsieur le Juge Martin',
     importance: 'high',
-    group: 'personnes'
+    group: 'personnes',
   })
   judge_name: string;
 
@@ -185,10 +205,11 @@ export class Audience extends BaseEntity {
   @Column({ name: 'outcome', length: 100, nullable: true })
   @BusinessColumn({
     label: 'Issue',
-    description: 'Résultat de l\'audience: favorable, défavorable, partiel, reporté',
+    description:
+      "Résultat de l'audience: favorable, défavorable, partiel, reporté",
     example: 'favorable, unfavorable, partial, postponed',
     importance: 'high',
-    group: 'résultat'
+    group: 'résultat',
   })
   outcome: string;
 
@@ -197,23 +218,27 @@ export class Audience extends BaseEntity {
   @JoinColumn({ name: 'dossier_id' })
   @BusinessColumn({
     label: 'Dossier',
-    description: 'Dossier juridique concerné par l\'audience',
+    description: "Dossier juridique concerné par l'audience",
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   dossier: Dossier;
 
-  @ManyToOne(() => Jurisdiction, (jurisdiction) => jurisdiction.audiences, { nullable: true })
+  @ManyToOne(() => Jurisdiction, (jurisdiction) => jurisdiction.audiences, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'jurisdiction_id' })
   @BusinessColumn({
     label: 'Tribunal',
-    description: 'Juridiction où se tient l\'audience',
+    description: "Juridiction où se tient l'audience",
     importance: 'high',
-    group: 'localisation'
+    group: 'localisation',
   })
   jurisdiction: Jurisdiction;
 
-  @ManyToOne(() => AudienceType, (audienceType) => audienceType.audiences, { nullable: true })
+  @ManyToOne(() => AudienceType, (audienceType) => audienceType.audiences, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'audience_type_id' })
   audience_type: AudienceType;
 
@@ -228,25 +253,47 @@ export class Audience extends BaseEntity {
   documents: DocumentCustomer[];
 
   @Column({ name: 'sub_stage_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_id: string;
 
   @Column({ name: 'sub_stage_visit_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   sub_stage_visit_id: string;
 
-  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, { nullable: true })
+  @ManyToOne(() => SubStageVisit, (subStageVisit) => subStageVisit.factures, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'sub_stage_visit_id' })
-  @BusinessColumn({ label: 'Ancienne visite de sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite de sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStageVisit: SubStageVisit;
 
   @Column({ name: 'stageVisit_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit_id: string;
 
   @ManyToOne(() => StageVisit)
   @JoinColumn({ name: 'stageVisit_id' })
-  @BusinessColumn({ label: 'Ancienne visite d’étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne visite d’étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stageVisit: StageVisit;
 
   @Column({ name: 'decision_text', type: 'text', nullable: true })
@@ -254,7 +301,7 @@ export class Audience extends BaseEntity {
     label: 'Texte de la décision',
     description: 'Texte complet de la décision rendue',
     importance: 'high',
-    group: 'résultat'
+    group: 'résultat',
   })
   decision_text: string;
 
@@ -264,7 +311,7 @@ export class Audience extends BaseEntity {
     description: 'Date à laquelle la décision a été rendue',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   decision_date: Date;
 
@@ -273,7 +320,7 @@ export class Audience extends BaseEntity {
     label: 'Issue de la décision',
     description: 'favorable, défavorable, partiel',
     importance: 'high',
-    group: 'résultat'
+    group: 'résultat',
   })
   decision_outcome: string;
 
@@ -282,13 +329,17 @@ export class Audience extends BaseEntity {
     label: 'Notes décision',
     description: 'Commentaires supplémentaires sur la décision',
     importance: 'medium',
-    group: 'résultat'
+    group: 'résultat',
   })
   decision_notes: string;
 
-  @ManyToMany(() => DocumentCustomer, (document) => document.decision_audiences, {
-    cascade: true,
-  })
+  @ManyToMany(
+    () => DocumentCustomer,
+    (document) => document.decision_audiences,
+    {
+      cascade: true,
+    },
+  )
   @JoinTable({
     name: 'audience_decision_documents',
     joinColumn: { name: 'audience_id', referencedColumnName: 'id' },
@@ -298,34 +349,55 @@ export class Audience extends BaseEntity {
 
   @ManyToOne(() => Stage)
   @JoinColumn({ name: 'stage_id' })
-  @BusinessColumn({ label: 'Ancienne étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   stage: Stage;
 
-  @ManyToOne(() => SubStage, (subStage) => subStage.audiences, { nullable: true })
+  @ManyToOne(() => SubStage, (subStage) => subStage.audiences, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'sub_stage_id' })
-  @BusinessColumn({ label: 'Ancienne sous-étape', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne sous-étape',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   subStage: SubStage;
 
   @Column({ name: 'procedure_instance_id', type: 'varchar', nullable: true })
-  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedure_instance_id: string;
 
   @ManyToOne(() => ProcedureInstance, { nullable: true })
   @JoinColumn({ name: 'procedure_instance_id' })
-  @BusinessColumn({ label: 'Ancienne instance de procédure', description: 'Lien legacy', ignored: true })
+  @BusinessColumn({
+    label: 'Ancienne instance de procédure',
+    description: 'Lien legacy',
+    ignored: true,
+  })
   procedureInstance: ProcedureInstance;
 
   // ── Filiation : audience née d'un report ─────────────────────────────────
   @Column({ name: 'parent_audience_id', type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Audience parente',
-    description: 'Audience d\'origine si celle-ci a été créée suite à un report',
+    description: "Audience d'origine si celle-ci a été créée suite à un report",
     importance: 'medium',
     group: 'relation',
   })
   parent_audience_id: number;
 
-  @ManyToOne(() => Audience, (a) => a.children_audiences, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Audience, (a) => a.children_audiences, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'parent_audience_id' })
   parent_audience: Audience;
 
@@ -336,8 +408,8 @@ export class Audience extends BaseEntity {
   // ── Rapport d'audience (procès-verbal — distinct de la décision) ─────────
   @Column({ name: 'report_content', type: 'text', nullable: true })
   @BusinessColumn({
-    label: 'Rapport d\'audience',
-    description: 'Procès-verbal détaillé du déroulement de l\'audience',
+    label: "Rapport d'audience",
+    description: "Procès-verbal détaillé du déroulement de l'audience",
     importance: 'high',
     group: 'résultat',
   })
@@ -346,7 +418,7 @@ export class Audience extends BaseEntity {
   @Column({ name: 'report_date', type: 'timestamp', nullable: true })
   @BusinessColumn({
     label: 'Date du rapport',
-    description: 'Date à laquelle le rapport d\'audience a été rédigé',
+    description: "Date à laquelle le rapport d'audience a été rédigé",
     format: 'date',
     importance: 'medium',
     group: 'dates',
@@ -356,7 +428,7 @@ export class Audience extends BaseEntity {
   @Column({ name: 'report_author_id', length: 64, nullable: true })
   @BusinessColumn({
     label: 'Auteur du rapport',
-    description: 'Identifiant de l\'utilisateur ayant rédigé le rapport',
+    description: "Identifiant de l'utilisateur ayant rédigé le rapport",
     importance: 'medium',
     group: 'personnes',
   })
@@ -374,33 +446,37 @@ export class Audience extends BaseEntity {
 
   @BusinessColumn({
     label: 'Est passée',
-    description: 'True si l\'audience a déjà eu lieu',
+    description: "True si l'audience a déjà eu lieu",
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get is_past(): boolean {
     const today = new Date();
-    const audienceDateTime = new Date(`${this.audience_date}T${this.audience_time}`);
+    const audienceDateTime = new Date(
+      `${this.audience_date}T${this.audience_time}`,
+    );
     return audienceDateTime < today;
   }
 
   @BusinessColumn({
     label: 'Est à venir',
-    description: 'True si l\'audience est programmée dans le futur',
+    description: "True si l'audience est programmée dans le futur",
     importance: 'medium',
-    group: 'état'
+    group: 'état',
   })
   get is_upcoming(): boolean {
     const today = new Date();
-    const audienceDateTime = new Date(`${this.audience_date}T${this.audience_time}`);
+    const audienceDateTime = new Date(
+      `${this.audience_date}T${this.audience_time}`,
+    );
     return audienceDateTime > today;
   }
 
   @BusinessColumn({
-    label: 'Est aujourd\'hui',
-    description: 'True si l\'audience est prévue pour aujourd\'hui',
+    label: "Est aujourd'hui",
+    description: "True si l'audience est prévue pour aujourd'hui",
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get is_today(): boolean {
     const today = new Date().toDateString();
@@ -416,13 +492,13 @@ export class Audience extends BaseEntity {
     label: 'Date complète',
     description: 'Date et heure formatées pour affichage',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   get display_datetime_formatted(): string {
     const date = this.display_datetime;
     return date.toLocaleString('fr-FR', {
       dateStyle: 'full',
-      timeStyle: 'short'
+      timeStyle: 'short',
     });
   }
 
@@ -430,7 +506,8 @@ export class Audience extends BaseEntity {
     if (this.reminder_sent || this.is_past) return false;
     const audienceDateTime = this.full_datetime;
     const now = new Date();
-    const diffHours = (audienceDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const diffHours =
+      (audienceDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
     return diffHours <= 48;
   }
 
@@ -444,7 +521,10 @@ export class Audience extends BaseEntity {
   get display_time(): string {
     if (this.status === AudienceStatus.POSTPONED && this.postponed_to) {
       const hours = this.postponed_to.getHours().toString().padStart(2, '0');
-      const minutes = this.postponed_to.getMinutes().toString().padStart(2, '0');
+      const minutes = this.postponed_to
+        .getMinutes()
+        .toString()
+        .padStart(2, '0');
       return `${hours}:${minutes}`;
     }
     return this.audience_time;
@@ -459,9 +539,9 @@ export class Audience extends BaseEntity {
 
   @BusinessColumn({
     label: 'Est reportée',
-    description: 'True si l\'audience a été reportée',
+    description: "True si l'audience a été reportée",
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get is_postponed(): boolean {
     return this.status === AudienceStatus.POSTPONED && !!this.postponed_to;
@@ -471,30 +551,30 @@ export class Audience extends BaseEntity {
     label: 'Statut libellé',
     description: 'Libellé lisible du statut',
     importance: 'high',
-    group: 'état'
+    group: 'état',
   })
   get status_label(): string {
     const labels = {
       [AudienceStatus.SCHEDULED]: 'Programmée',
       [AudienceStatus.HELD]: 'Tenue',
       [AudienceStatus.POSTPONED]: 'Reportée',
-      [AudienceStatus.CANCELLED]: 'Annulée'
+      [AudienceStatus.CANCELLED]: 'Annulée',
     };
     return labels[this.status] || 'Inconnu';
   }
 
   @BusinessColumn({
     label: 'Type libellé',
-    description: 'Libellé lisible du type d\'audience',
+    description: "Libellé lisible du type d'audience",
     importance: 'high',
-    group: 'classification'
+    group: 'classification',
   })
   get type_label(): string {
     const labels = {
       [AudienceType1.HEARING]: 'Plaidoirie',
       [AudienceType1.DELIBERATION]: 'Délibération',
       [AudienceType1.JUDGMENT]: 'Jugement',
-      [AudienceType1.CONCILIATION]: 'Conciliation'
+      [AudienceType1.CONCILIATION]: 'Conciliation',
     };
     return labels[this.type] || 'Inconnu';
   }

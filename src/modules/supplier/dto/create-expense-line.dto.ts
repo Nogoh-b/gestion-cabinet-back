@@ -7,10 +7,15 @@ import {
   IsEnum,
   IsDateString,
   IsBoolean,
+  IsUUID,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ExpenseCategory } from '../entities/expense-line.entity';
+import {
+  ExpenseCategory,
+  ExpenseRebillingType,
+} from '../entities/expense-line.entity';
 
 export class CreateExpenseLineDto {
   @ApiProperty({
@@ -81,6 +86,33 @@ export class CreateExpenseLineDto {
   @IsBoolean()
   @IsOptional()
   is_rebillable?: boolean;
+
+  @ApiPropertyOptional({
+    enum: ExpenseRebillingType,
+    example: ExpenseRebillingType.EXPENSE,
+    description: 'Nature de la refacturation : frais ou dÃ©bours',
+  })
+  @IsEnum(ExpenseRebillingType)
+  @IsOptional()
+  rebilling_type?: ExpenseRebillingType;
+
+  @ApiPropertyOptional({
+    example: '0cfce36d-9aec-4ff2-83b8-f20d63866d22',
+    description: 'Action du dossier associÃ©e Ã  la dÃ©pense',
+  })
+  @IsUUID()
+  @IsOptional()
+  action_id?: string;
+
+  @ApiPropertyOptional({
+    example: 'XAF',
+    description: 'Devise de la dÃ©pense',
+    default: 'XAF',
+  })
+  @IsString()
+  @MaxLength(10)
+  @IsOptional()
+  currency?: string;
 
   @ApiPropertyOptional({
     example: 15,

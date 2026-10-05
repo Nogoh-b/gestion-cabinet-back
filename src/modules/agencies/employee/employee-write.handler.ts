@@ -1,15 +1,21 @@
 // src/modules/agencies/employee/employee-write.handler.ts
-import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import {
+  WriteableFieldSchema,
+  ValidationResult,
+} from 'src/core/ai-database/interface/entity-write-handler.interface';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { DataSource, Repository } from 'typeorm';
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Employee } from './entities/employee.entity';
-
 
 /**
  * Handler custom pour les collaborateurs (Employee).
@@ -40,14 +46,30 @@ export class EmployeeWriteHandler extends BaseWriteHandler {
     const fields = await super.getWriteableFieldsSchema();
     // Annoter clairement que INSERT n'est pas possible
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
-      position: { description: 'avocat, collaborateur, juriste, comptable, secretaire, assistant, stagiaire, huissier, administratif' },
-      specialization: { description: 'Spécialisation juridique', example: 'Droit des affaires' },
-      bar_association_number: { description: "Numéro d'inscription au barreau" },
-      bar_association_city: { description: "Ville d'inscription au barreau", example: 'Paris' },
+      position: {
+        description:
+          'avocat, collaborateur, juriste, comptable, secretaire, assistant, stagiaire, huissier, administratif',
+      },
+      specialization: {
+        description: 'Spécialisation juridique',
+        example: 'Droit des affaires',
+      },
+      bar_association_number: {
+        description: "Numéro d'inscription au barreau",
+      },
+      bar_association_city: {
+        description: "Ville d'inscription au barreau",
+        example: 'Paris',
+      },
       hourly_rate: { description: 'Tarif horaire (€)', example: '150.00' },
-      is_available: { description: '1=disponible pour nouveaux dossiers, 0=indisponible' },
+      is_available: {
+        description: '1=disponible pour nouveaux dossiers, 0=indisponible',
+      },
       max_dossiers: { description: 'Capacité max de dossiers simultanés' },
-      status: { description: 'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=SUSPENDED/Suspendu, 2=VACATION.' },
+      status: {
+        description:
+          'BD: 1=ACTIVE/Actif, 0=INACTIVE/Inactif, -1=SUSPENDED/Suspendu, 2=VACATION.',
+      },
       branch_id: { description: 'ID agence. Peut fournir "branch".' },
     };
     for (const f of fields) {
@@ -64,26 +86,32 @@ export class EmployeeWriteHandler extends BaseWriteHandler {
     if (operation === 'INSERT') {
       // 🚫 INSERT interdit via IA
       errors.push(
-        'La création d\'un collaborateur n\'est pas possible via l\'IA. ' +
-        'Un Employee dépend d\'un User existant (authentification, rôles, mot de passe). ' +
-        'Veuillez créer le collaborateur via l\'interface RH dédiée.',
+        "La création d'un collaborateur n'est pas possible via l'IA. " +
+          "Un Employee dépend d'un User existant (authentification, rôles, mot de passe). " +
+          "Veuillez créer le collaborateur via l'interface RH dédiée.",
       );
     }
     if (operation === 'UPDATE') {
       if (fields.hourly_rate !== undefined && Number(fields.hourly_rate) < 0) {
         errors.push('Le taux horaire ne peut pas être négatif');
       }
-      if (fields.max_dossiers !== undefined && Number(fields.max_dossiers) < 0) {
+      if (
+        fields.max_dossiers !== undefined &&
+        Number(fields.max_dossiers) < 0
+      ) {
         errors.push('La capacité maximale ne peut pas être négative');
       }
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
 
-  protected async doInsert(fields: Record<string, any>, userId: string): Promise<WriteResult> {
+  protected async doInsert(
+    fields: Record<string, any>,
+    userId: string,
+  ): Promise<WriteResult> {
     // Sécurité : on bloque même si quelqu'un by-pass validateFields
     throw new BadRequestException(
-      'Création de collaborateur refusée : utilisez l\'interface RH pour créer un User puis un Employee.',
+      "Création de collaborateur refusée : utilisez l'interface RH pour créer un User puis un Employee.",
     );
   }
 
@@ -96,15 +124,30 @@ export class EmployeeWriteHandler extends BaseWriteHandler {
       where: { id: entityId as any },
       relations: ['user'],
     });
-    if (!employee) throw new NotFoundException(`Collaborateur ${entityId} introuvable`);
+    if (!employee)
+      throw new NotFoundException(`Collaborateur ${entityId} introuvable`);
 
     // Champs autorisés pour la mise à jour métier
     const ALLOWED_UPDATE_FIELDS = new Set([
-      'position', 'specialization', 'bar_association_number', 'bar_association_city',
-      'years_of_experience', 'hourly_rate', 'salary', 'is_available', 'max_dossiers',
-      'bio', 'languages', 'expertise_areas', 'birth_date',
-      'professional_address', 'professional_phone',
-      'status', 'branch_id', 'hireDate', 'hire_date',
+      'position',
+      'specialization',
+      'bar_association_number',
+      'bar_association_city',
+      'years_of_experience',
+      'hourly_rate',
+      'salary',
+      'is_available',
+      'max_dossiers',
+      'bio',
+      'languages',
+      'expertise_areas',
+      'birth_date',
+      'professional_address',
+      'professional_phone',
+      'status',
+      'branch_id',
+      'hireDate',
+      'hire_date',
     ]);
 
     const safeFields: Record<string, any> = {};

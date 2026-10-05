@@ -34,8 +34,29 @@ export enum ActionLinkRole {
 export enum ActionBillingDecision {
   NOT_DECIDED = 'NOT_DECIDED',
   BILLABLE = 'BILLABLE',
+  INCLUDED_IN_PACKAGE = 'INCLUDED_IN_PACKAGE',
+  HOURLY = 'HOURLY',
+  VACATION = 'VACATION',
   NON_BILLABLE = 'NON_BILLABLE',
   NEEDS_REVIEW = 'NEEDS_REVIEW',
+}
+
+/**
+ * Traitement professionnel proposÃ© par une dÃ©finition d'action.
+ * Les frais et dÃ©bours restent des Ã©lÃ©ments indÃ©pendants et multiples.
+ */
+export enum ActionDefaultProfessionalTreatment {
+  FOLLOW_DOSSIER = 'FOLLOW_DOSSIER',
+  HOURLY = 'HOURLY',
+  VACATION = 'VACATION',
+  NON_BILLABLE = 'NON_BILLABLE',
+  NEEDS_REVIEW = 'NEEDS_REVIEW',
+}
+
+export enum BillingResultEffect {
+  BILL = 'BILL',
+  DO_NOT_BILL = 'DO_NOT_BILL',
+  REVIEW = 'REVIEW',
 }
 
 export enum RecommendationStatus {
@@ -79,6 +100,18 @@ export enum BillingCalculationMode {
   HOURLY = 'HOURLY',
   PERCENTAGE = 'PERCENTAGE',
   EXPENSE = 'EXPENSE',
+  UNIT = 'UNIT',
+  ACTUAL_COST = 'ACTUAL_COST',
+}
+
+export enum BillableCategory {
+  OPENING_FEE = 'OPENING_FEE',
+  HONORARIUM = 'HONORARIUM',
+  VACATION = 'VACATION',
+  EXPENSE = 'EXPENSE',
+  DISBURSEMENT = 'DISBURSEMENT',
+  RESULT_FEE = 'RESULT_FEE',
+  ADJUSTMENT = 'ADJUSTMENT',
 }
 
 export enum BillableItemStatus {
@@ -95,6 +128,9 @@ export enum BillableSourceType {
   ACTION = 'ACTION',
   AUDIENCE = 'AUDIENCE',
   DILIGENCE = 'DILIGENCE',
+  MILESTONE = 'MILESTONE',
+  EXPENSE = 'EXPENSE',
+  RESULT = 'RESULT',
   MANUAL = 'MANUAL',
   ADJUSTMENT = 'ADJUSTMENT',
 }

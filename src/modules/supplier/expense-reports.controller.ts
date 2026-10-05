@@ -54,7 +54,7 @@ export class ExpenseReportsController {
 
   @Get('/employee/:employeeId')
   @RequirePermissions('view_expense_reports')
-  @ApiOperation({ summary: 'Notes de frais d\'un employé' })
+  @ApiOperation({ summary: "Notes de frais d'un employé" })
   findByEmployee(@Param('employeeId') employeeId: string) {
     return this.service.findByEmployee(+employeeId);
   }
@@ -68,7 +68,7 @@ export class ExpenseReportsController {
 
   @Get(':id')
   @RequirePermissions('view_expense_reports')
-  @ApiOperation({ summary: 'Détail d\'une note de frais' })
+  @ApiOperation({ summary: "Détail d'une note de frais" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }

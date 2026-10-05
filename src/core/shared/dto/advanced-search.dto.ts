@@ -13,15 +13,14 @@ import {
   IsEnum,
   IsNotEmpty,
   IsNumber,
-  IsIn
+  IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
 
 class OrderByDto {
   @ApiProperty({
     description: 'Field to sort by (supports nested relations)',
-    example: 'created_at'
+    example: 'created_at',
   })
   @IsString()
   field: string;
@@ -29,7 +28,7 @@ class OrderByDto {
   @ApiPropertyOptional({
     enum: ['ASC', 'DESC'],
     description: 'Sort direction',
-    default: 'ASC'
+    default: 'ASC',
   })
   @IsEnum(['ASC', 'DESC'])
   @IsOptional()
@@ -39,7 +38,7 @@ class OrderByDto {
 export class AdvancedSearchOptionsDto {
   @ApiProperty({
     description: 'Main entity alias',
-    example: 'user'
+    example: 'user',
   })
   @IsString()
   @IsNotEmpty()
@@ -48,7 +47,7 @@ export class AdvancedSearchOptionsDto {
   @ApiProperty({
     type: [String],
     description: 'Fields to search in (supports nested relations)',
-    example: ["last_name", "location_city.name"]
+    example: ['last_name', 'location_city.name'],
   })
   @IsArray()
   @ArrayNotEmpty()
@@ -57,7 +56,7 @@ export class AdvancedSearchOptionsDto {
 
   @ApiProperty({
     description: 'Search term to look for',
-    example: 'D'
+    example: 'D',
   })
   @IsString()
   @IsNotEmpty()
@@ -65,7 +64,7 @@ export class AdvancedSearchOptionsDto {
 
   @ApiPropertyOptional({
     description: 'Enable exact match search',
-    default: false
+    default: false,
   })
   @IsBoolean()
   @IsOptional()
@@ -74,7 +73,7 @@ export class AdvancedSearchOptionsDto {
   @ApiPropertyOptional({
     description: 'Number of results to skip',
     minimum: 0,
-    example: 0
+    example: 0,
   })
   @IsInt()
   @Min(0)
@@ -84,7 +83,7 @@ export class AdvancedSearchOptionsDto {
   @ApiPropertyOptional({
     description: 'Number of results to take',
     minimum: 1,
-    example: 1
+    example: 1,
   })
   @IsInt()
   @Min(1)
@@ -93,14 +92,13 @@ export class AdvancedSearchOptionsDto {
 
   @ApiPropertyOptional({
     type: OrderByDto,
-    description: 'Sorting criteria'
+    description: 'Sorting criteria',
   })
   @ValidateNested()
   @Type(() => OrderByDto)
   @IsOptional()
   orderBy?: OrderByDto;
 }
-
 
 export class SearchQueryDto {
   @IsString()

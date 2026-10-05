@@ -6,7 +6,10 @@ import { Repository } from 'typeorm';
 /** Empêche toute nouvelle écriture dans l'ancien moteur après confirmation V2. */
 @Injectable()
 export class LegacyWorkflowMutationGuard {
-  constructor(@InjectRepository(Dossier) private readonly dossierRepository: Repository<Dossier>) {}
+  constructor(
+    @InjectRepository(Dossier)
+    private readonly dossierRepository: Repository<Dossier>,
+  ) {}
 
   async assertMutable(procedureInstanceId: string): Promise<void> {
     const dossier = await this.dossierRepository.findOne({
@@ -20,4 +23,3 @@ export class LegacyWorkflowMutationGuard {
     }
   }
 }
-

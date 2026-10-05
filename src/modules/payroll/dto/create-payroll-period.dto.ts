@@ -45,7 +45,7 @@ export class CreatePayrollPeriodDto {
 
   @ApiPropertyOptional({
     example: 2,
-    description: 'ID de l\'agence concernée',
+    description: "ID de l'agence concernée",
   })
   @IsInt()
   @IsOptional()

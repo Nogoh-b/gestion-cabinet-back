@@ -4,10 +4,12 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsNumber, IsOptional } from 'class-validator';
 import { CreateProcedureTypeDto } from './create-procedure.dto';
 
-export class UpdateProcedureTypeDto extends PartialType(CreateProcedureTypeDto) {
+export class UpdateProcedureTypeDto extends PartialType(
+  CreateProcedureTypeDto,
+) {
   @ApiPropertyOptional({
     description: 'ID du type parent (pour les sous-types)',
-    example: 2
+    example: 2,
   })
   @IsOptional()
   @IsNumber()

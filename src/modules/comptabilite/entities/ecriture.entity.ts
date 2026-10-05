@@ -1,15 +1,26 @@
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SourceModule } from '../enums/comptabilite.enums';
 import { JournalComptable } from './journal.entity';
 import { ExerciceComptable } from './exercice.entity';
 import { LigneEcriture } from './ligne-ecriture.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('ecritures_comptables')
 @BusinessTable({
   label: 'Écritures comptables',
-  description: 'Écritures du journal comptable (en partie double). Chaque écriture appartient à un journal et un exercice, et contient une ou plusieurs lignes (débit/crédit) qui doivent toujours être équilibrées (total débit = total crédit).',
+  description:
+    'Écritures du journal comptable (en partie double). Chaque écriture appartient à un journal et un exercice, et contient une ou plusieurs lignes (débit/crédit) qui doivent toujours être équilibrées (total débit = total crédit).',
   icon: '🧾',
   category: 'finance',
 })
@@ -17,7 +28,7 @@ export class Ecriture extends TenantEntity {
   @PrimaryGeneratedColumn()
   @BusinessColumn({
     label: 'Identifiant',
-    description: 'Identifiant unique de l\'écriture',
+    description: "Identifiant unique de l'écriture",
     importance: 'low',
     group: 'technique',
     ignored: true,
@@ -27,7 +38,8 @@ export class Ecriture extends TenantEntity {
   @Column({ unique: true, length: 30 })
   @BusinessColumn({
     label: 'Numéro',
-    description: 'Numéro unique de l\'écriture (généré automatiquement, ex: VTE-2026-00001)',
+    description:
+      "Numéro unique de l'écriture (généré automatiquement, ex: VTE-2026-00001)",
     importance: 'critical',
     group: 'identification',
     ignored: true,
@@ -36,8 +48,8 @@ export class Ecriture extends TenantEntity {
 
   @Column({ name: 'date_ecriture', type: 'date' })
   @BusinessColumn({
-    label: 'Date de l\'écriture',
-    description: 'Date à laquelle l\'écriture est comptabilisée',
+    label: "Date de l'écriture",
+    description: "Date à laquelle l'écriture est comptabilisée",
     format: 'date',
     importance: 'critical',
     group: 'dates',
@@ -47,7 +59,7 @@ export class Ecriture extends TenantEntity {
   @Column({ length: 500 })
   @BusinessColumn({
     label: 'Libellé',
-    description: 'Libellé général de l\'écriture',
+    description: "Libellé général de l'écriture",
     example: 'Facture client n°123, Achat de fournitures',
     importance: 'critical',
     group: 'contenu',
@@ -61,7 +73,7 @@ export class Ecriture extends TenantEntity {
   @JoinColumn({ name: 'journal_id' })
   @BusinessColumn({
     label: 'Journal',
-    description: 'Journal comptable dans lequel l\'écriture est enregistrée',
+    description: "Journal comptable dans lequel l'écriture est enregistrée",
     importance: 'critical',
     group: 'relation',
   })
@@ -74,16 +86,22 @@ export class Ecriture extends TenantEntity {
   @JoinColumn({ name: 'exercice_id' })
   @BusinessColumn({
     label: 'Exercice',
-    description: 'Exercice comptable concerné par l\'écriture',
+    description: "Exercice comptable concerné par l'écriture",
     importance: 'high',
     group: 'relation',
   })
   exercice: ExerciceComptable;
 
-  @Column({ name: 'source_module', type: 'enum', enum: SourceModule, default: SourceModule.MANUEL })
+  @Column({
+    name: 'source_module',
+    type: 'enum',
+    enum: SourceModule,
+    default: SourceModule.MANUEL,
+  })
   @BusinessColumn({
     label: 'Module source',
-    description: "BD: 'facture', 'paiement', 'supplier_invoice', 'expense_report', 'payslip', 'salary_advance', 'referral_commission', 'manuel'.",
+    description:
+      "BD: 'facture', 'paiement', 'supplier_invoice', 'expense_report', 'payslip', 'salary_advance', 'referral_commission', 'manuel'.",
     importance: 'medium',
     group: 'classification',
   })
@@ -92,7 +110,8 @@ export class Ecriture extends TenantEntity {
   @Column({ name: 'source_id', nullable: true, length: 100 })
   @BusinessColumn({
     label: 'ID source',
-    description: 'Identifiant du document source (facture, paiement...) ayant généré l\'écriture',
+    description:
+      "Identifiant du document source (facture, paiement...) ayant généré l'écriture",
     importance: 'low',
     group: 'classification',
     ignored: true,
@@ -102,7 +121,8 @@ export class Ecriture extends TenantEntity {
   @Column({ name: 'is_auto_generated', default: false })
   @BusinessColumn({
     label: 'Générée automatiquement',
-    description: 'True si l\'écriture a été générée automatiquement par un autre module',
+    description:
+      "True si l'écriture a été générée automatiquement par un autre module",
     importance: 'low',
     group: 'état',
   })
@@ -111,16 +131,20 @@ export class Ecriture extends TenantEntity {
   @Column({ name: 'is_locked', default: false })
   @BusinessColumn({
     label: 'Verrouillée',
-    description: 'True si l\'écriture est verrouillée et ne peut plus être modifiée',
+    description:
+      "True si l'écriture est verrouillée et ne peut plus être modifiée",
     importance: 'medium',
     group: 'état',
   })
   isLocked: boolean;
 
-  @OneToMany(() => LigneEcriture, l => l.ecriture, { cascade: true, eager: true })
+  @OneToMany(() => LigneEcriture, (l) => l.ecriture, {
+    cascade: true,
+    eager: true,
+  })
   @BusinessColumn({
     label: 'Lignes',
-    description: 'Lignes de débit/crédit composant l\'écriture',
+    description: "Lignes de débit/crédit composant l'écriture",
     importance: 'critical',
     group: 'contenu',
   })
@@ -130,7 +154,8 @@ export class Ecriture extends TenantEntity {
 
   @BusinessColumn({
     label: 'Total débit',
-    description: 'Somme des débits des lignes de l\'écriture (champ calculé, ne PAS l\'utiliser dans une clause SQL — ce n\'est pas une colonne de la table)',
+    description:
+      "Somme des débits des lignes de l'écriture (champ calculé, ne PAS l'utiliser dans une clause SQL — ce n'est pas une colonne de la table)",
     importance: 'medium',
     group: 'résultat',
   })
@@ -140,7 +165,8 @@ export class Ecriture extends TenantEntity {
 
   @BusinessColumn({
     label: 'Total crédit',
-    description: 'Somme des crédits des lignes de l\'écriture (champ calculé, ne PAS l\'utiliser dans une clause SQL — ce n\'est pas une colonne de la table)',
+    description:
+      "Somme des crédits des lignes de l'écriture (champ calculé, ne PAS l'utiliser dans une clause SQL — ce n'est pas une colonne de la table)",
     importance: 'medium',
     group: 'résultat',
   })
@@ -150,7 +176,8 @@ export class Ecriture extends TenantEntity {
 
   @BusinessColumn({
     label: 'Équilibrée',
-    description: 'True si total débit = total crédit (champ calculé, ne PAS l\'utiliser dans une clause SQL — ce n\'est pas une colonne de la table)',
+    description:
+      "True si total débit = total crédit (champ calculé, ne PAS l'utiliser dans une clause SQL — ce n'est pas une colonne de la table)",
     importance: 'medium',
     group: 'résultat',
   })

@@ -41,7 +41,11 @@ export class PayrollPeriodsController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payroll_periods')
   @ApiOperation({ summary: 'Rechercher les périodes de paie' })
-  @ApiResponse({ status: 200, description: 'Liste des périodes', type: [PayrollPeriod] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des périodes',
+    type: [PayrollPeriod],
+  })
   async search(
     @Query() searchParams?: PayrollPeriodSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
@@ -64,7 +68,7 @@ export class PayrollPeriodsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payroll_periods')
-  @ApiOperation({ summary: 'Détail d\'une période de paie' })
+  @ApiOperation({ summary: "Détail d'une période de paie" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }
@@ -80,9 +84,14 @@ export class PayrollPeriodsController {
   @Post(':id/generate')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('generate_payslip')
-  @ApiOperation({ summary: 'Générer les bulletins de la période (option: ?branchId=)' })
+  @ApiOperation({
+    summary: 'Générer les bulletins de la période (option: ?branchId=)',
+  })
   generate(@Param('id') id: string, @Query('branchId') branchId?: string) {
-    return this.generation.generateForPeriod(+id, branchId ? +branchId : undefined);
+    return this.generation.generateForPeriod(
+      +id,
+      branchId ? +branchId : undefined,
+    );
   }
 
   @Post(':id/close')

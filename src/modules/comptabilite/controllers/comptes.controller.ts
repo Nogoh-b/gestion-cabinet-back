@@ -19,7 +19,8 @@ export class ComptesController {
   @RequirePermissions('view_accounting')
   @ApiOperation({ summary: 'Liste tous les comptes du plan comptable' })
   findAll(@Query('classe') classe?: number) {
-    if (classe) return this.service.findByClasse(Number(classe) as ClasseCompte);
+    if (classe)
+      return this.service.findByClasse(Number(classe) as ClasseCompte);
     return this.service.findAll();
   }
 

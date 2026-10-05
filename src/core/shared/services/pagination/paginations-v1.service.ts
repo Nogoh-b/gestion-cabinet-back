@@ -5,12 +5,11 @@ import {
   FindOptionsWhere,
   ObjectLiteral,
   FindManyOptions,
-  FindOptionsOrder
+  FindOptionsOrder,
 } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
 import { PaginationParamsDto } from '../../dto/pagination-params.dto';
-
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -31,26 +30,36 @@ export class PaginationServiceV1 {
     paginationParams: PaginationParamsDto,
     where?: FindOptionsWhere<T> | FindOptionsWhere<T>[],
     relations: string[] = [],
-    additionalOptions: FindManyOptions<T> = {}
+    additionalOptions: FindManyOptions<T> = {},
   ): Promise<PaginatedResult<T>> {
     const page = Number(paginationParams.page) ?? 1;
     const limit = Number(paginationParams.limit) ?? 10;
-    
+
     console.log('Pagination params:', page, '*', limit);
-    
-    const validSortBy = this.getValidSortBy(repository, paginationParams.sort_by);
+
+    const validSortBy = this.getValidSortBy(
+      repository,
+      paginationParams.sort_by,
+    );
     const invalidSortRequested = !!paginationParams.sort_by && !validSortBy;
-    const safePaginationParams = Object.assign(new PaginationParamsDto(), paginationParams, {
-      sort_by: validSortBy,
-      sort_direction: validSortBy ? paginationParams.sort_direction : undefined,
-    });
+    const safePaginationParams = Object.assign(
+      new PaginationParamsDto(),
+      paginationParams,
+      {
+        sort_by: validSortBy,
+        sort_direction: validSortBy
+          ? paginationParams.sort_direction
+          : undefined,
+      },
+    );
 
     // Un ordre dérivé d'un sort_by invalide doit aussi être écarté.
     const order = this.buildOrderFromParams(
       safePaginationParams,
       invalidSortRequested ? undefined : additionalOptions.order,
     );
-    const { order: _ignoredOrder, ...safeAdditionalOptions } = additionalOptions;
+    const { order: _ignoredOrder, ...safeAdditionalOptions } =
+      additionalOptions;
 
     const [data, total] = await repository.findAndCount({
       ...safeAdditionalOptions,
@@ -85,9 +94,12 @@ export class PaginationServiceV1 {
   ): string | undefined {
     if (!sortBy) return undefined;
 
-    if (repository.metadata.columns.some(
-      (column) => column.propertyName === sortBy || column.propertyPath === sortBy,
-    )) {
+    if (
+      repository.metadata.columns.some(
+        (column) =>
+          column.propertyName === sortBy || column.propertyPath === sortBy,
+      )
+    ) {
       return sortBy;
     }
 
@@ -105,7 +117,8 @@ export class PaginationServiceV1 {
 
     const property = parts[parts.length - 1];
     return metadata.columns.some(
-      (column) => column.propertyName === property || column.propertyPath === property,
+      (column) =>
+        column.propertyName === property || column.propertyPath === property,
     )
       ? sortBy
       : undefined;
@@ -116,37 +129,42 @@ export class PaginationServiceV1 {
    */
   private buildOrderFromParams<T>(
     paginationParams: PaginationParamsDto,
-    defaultOrder?: FindOptionsOrder<T>
+    defaultOrder?: FindOptionsOrder<T>,
   ): FindOptionsOrder<T> {
     if (!paginationParams.sort_by) {
-      return defaultOrder || ({ created_at: 'ASC' } as unknown as FindOptionsOrder<T>);
+      return (
+        defaultOrder ||
+        ({ created_at: 'ASC' } as unknown as FindOptionsOrder<T>)
+      );
     }
 
     const sortBy = paginationParams.sort_by;
-    const sortDirection = (paginationParams.sort_direction || 'ASC').toUpperCase();
+    const sortDirection = (
+      paginationParams.sort_direction || 'ASC'
+    ).toUpperCase();
 
     // Vérifier si le tri concerne une relation (contient un point)
     if (sortBy.includes('.')) {
       const parts = sortBy.split('.');
-      
+
       // Reconstruire l'objet order de manière récursive
       // Ex: 'procedure_subtype.name' -> { procedure_subtype: { name: 'ASC' } }
-      let orderObj: any = {};
+      const orderObj: any = {};
       let current = orderObj;
-      
+
       for (let i = 0; i < parts.length - 1; i++) {
         current[parts[i]] = {};
         current = current[parts[i]];
       }
-      
+
       current[parts[parts.length - 1]] = sortDirection;
-      
+
       return orderObj as FindOptionsOrder<T>;
     }
 
     // Tri simple sur un champ direct
     return {
-      [sortBy]: sortDirection
+      [sortBy]: sortDirection,
     } as FindOptionsOrder<T>;
   }
 
@@ -162,10 +180,15 @@ export class PaginationServiceV1 {
     additionalOptions: FindManyOptions<T> = {},
     dtoClass?: new (...args: any[]) => R,
   ): Promise<PaginatedResult<R>> {
-    
     // S'assurer que les relations nécessaires sont incluses pour le tri
-    const validSortBy = this.getValidSortBy(repository, paginationParams.sort_by);
-    const finalRelations = this.ensureRelationsForSorting(relations, validSortBy);
+    const validSortBy = this.getValidSortBy(
+      repository,
+      paginationParams.sort_by,
+    );
+    const finalRelations = this.ensureRelationsForSorting(
+      relations,
+      validSortBy,
+    );
 
     const result = await this.paginate(
       repository,
@@ -194,8 +217,8 @@ export class PaginationServiceV1 {
    * S'assure que les relations nécessaires pour le tri sont incluses
    */
   private ensureRelationsForSorting(
-    existingRelations: string[], 
-    sortBy?: string
+    existingRelations: string[],
+    sortBy?: string,
   ): string[] {
     if (!sortBy || !sortBy.includes('.')) {
       return existingRelations;
@@ -203,7 +226,7 @@ export class PaginationServiceV1 {
 
     const relations = [...existingRelations];
     const relationPath = sortBy.split('.')[0]; // Prendre seulement la première partie
-    
+
     if (!relations.includes(relationPath)) {
       relations.push(relationPath);
     }

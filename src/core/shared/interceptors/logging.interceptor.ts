@@ -1,7 +1,11 @@
 import { Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
-import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
-
+import {
+  Injectable,
+  NestInterceptor,
+  ExecutionContext,
+  CallHandler,
+} from '@nestjs/common';
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
@@ -11,12 +15,12 @@ export class LoggingInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap(() => console.log(`← Réponse envoyée pour ${request.url}`)),
-      catchError(err => {
+      catchError((err) => {
         // ici on loggue la stack complète ou juste le message
         console.error(
           `‼ Erreur sur ${request.method} ${request.url} :`,
           err.name,
-          err.message
+          err.message,
         );
         return throwError(() => err);
       }),

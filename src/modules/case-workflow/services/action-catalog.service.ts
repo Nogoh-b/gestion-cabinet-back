@@ -1105,8 +1105,9 @@ export class ActionCatalogService {
       if (
         definition &&
         item.code === 'WRITE_HEARING_REPORT' &&
-        (definition.allowed_results ?? []).map((result) => result.code).join(',') ===
-          STANDARD_RESULTS.map((result) => result.code).join(',')
+        (definition.allowed_results ?? [])
+          .map((result) => result.code)
+          .join(',') === STANDARD_RESULTS.map((result) => result.code).join(',')
       ) {
         definition.specific_fields_schema = item.fields ?? {
           type: 'object',
@@ -1550,6 +1551,9 @@ export class ActionCatalogService {
         default_priority: dto.default_priority ?? ActionPriority.NORMAL,
         is_required: dto.is_required ?? false,
         billable_by_default: dto.billable_by_default ?? false,
+        default_professional_treatment: dto.default_professional_treatment,
+        may_have_expenses: dto.may_have_expenses ?? false,
+        may_have_disbursements: dto.may_have_disbursements ?? false,
         billing_mode: dto.billing_mode ?? null,
         default_rate: dto.default_rate ?? null,
         is_active: true,
@@ -1630,6 +1634,13 @@ export class ActionCatalogService {
           is_required: dto.is_required ?? source.is_required,
           billable_by_default:
             dto.billable_by_default ?? source.billable_by_default,
+          default_professional_treatment:
+            dto.default_professional_treatment ??
+            source.default_professional_treatment,
+          may_have_expenses:
+            dto.may_have_expenses ?? source.may_have_expenses,
+          may_have_disbursements:
+            dto.may_have_disbursements ?? source.may_have_disbursements,
           billing_mode: dto.billing_mode ?? source.billing_mode,
           default_rate: dto.default_rate ?? source.default_rate,
           is_active: dto.is_active ?? true,

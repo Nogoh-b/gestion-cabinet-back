@@ -41,12 +41,16 @@ export class ReferralCommissionListener {
         return;
       }
 
-      this.logger.debug(`[facture.envoyee] Recherche apport dossier | dossier_id=${dossierId}`);
+      this.logger.debug(
+        `[facture.envoyee] Recherche apport dossier | dossier_id=${dossierId}`,
+      );
       const referral = await this.dossierReferralRepo.findOne({
         where: { dossier_id: dossierId },
       });
       if (!referral) {
-        this.logger.warn(`[facture.envoyee] Ignore: aucun apporteur lie au dossier | dossier_id=${dossierId}`);
+        this.logger.warn(
+          `[facture.envoyee] Ignore: aucun apporteur lie au dossier | dossier_id=${dossierId}`,
+        );
         return;
       }
 
@@ -124,7 +128,10 @@ export class ReferralCommissionListener {
         `[facture.envoyee] Commission auto-calculee OK | commission=${commission.id} | amount=${amount} | referral=${referral.id} | facture=${factureId}`,
       );
     } catch (err) {
-      this.logger.error('[facture.envoyee] Echec du calcul automatique de commission', err as any);
+      this.logger.error(
+        '[facture.envoyee] Echec du calcul automatique de commission',
+        err,
+      );
     }
   }
 
@@ -147,12 +154,16 @@ export class ReferralCommissionListener {
         return;
       }
 
-      this.logger.debug(`[paiement.valide] Recherche apport dossier | dossier_id=${dossierId}`);
+      this.logger.debug(
+        `[paiement.valide] Recherche apport dossier | dossier_id=${dossierId}`,
+      );
       const referral = await this.dossierReferralRepo.findOne({
         where: { dossier_id: dossierId },
       });
       if (!referral) {
-        this.logger.warn(`[paiement.valide] Ignore: aucun apporteur lie au dossier | dossier_id=${dossierId}`);
+        this.logger.warn(
+          `[paiement.valide] Ignore: aucun apporteur lie au dossier | dossier_id=${dossierId}`,
+        );
         return;
       }
 
@@ -170,7 +181,9 @@ export class ReferralCommissionListener {
         return;
       }
 
-      this.logger.debug(`[paiement.valide] Verification commission existante | paiement_id=${paiementId}`);
+      this.logger.debug(
+        `[paiement.valide] Verification commission existante | paiement_id=${paiementId}`,
+      );
       const existing = await this.commissionRepo.findOne({
         where: { paiement_id: paiementId },
       });
@@ -230,15 +243,23 @@ export class ReferralCommissionListener {
         `[paiement.valide] Commission auto-calculee OK | commission=${commission.id} | amount=${amount} | referral=${referral.id} | paiement=${paiementId}`,
       );
     } catch (err) {
-      this.logger.error('[paiement.valide] Echec du calcul automatique de commission', err as any);
+      this.logger.error(
+        '[paiement.valide] Echec du calcul automatique de commission',
+        err,
+      );
     }
   }
 
-  private calculateCommissionAmount(referral: DossierReferral, base: number): number {
+  private calculateCommissionAmount(
+    referral: DossierReferral,
+    base: number,
+  ): number {
     if (referral.commission_mode === CommissionMode.FIXED_AMOUNT) {
       const amount = Number(referral.commission_amount ?? 0);
       if (amount <= 0) {
-        this.logger.warn(`[commission] Ignore: montant fixe invalide | referral=${referral.id} | amount=${amount}`);
+        this.logger.warn(
+          `[commission] Ignore: montant fixe invalide | referral=${referral.id} | amount=${amount}`,
+        );
         return 0;
       }
       return amount;
@@ -246,7 +267,9 @@ export class ReferralCommissionListener {
 
     const rate = Number(referral.commission_rate ?? 0);
     if (rate <= 0) {
-      this.logger.warn(`[commission] Ignore: taux commission invalide | referral=${referral.id} | rate=${rate}`);
+      this.logger.warn(
+        `[commission] Ignore: taux commission invalide | referral=${referral.id} | rate=${rate}`,
+      );
       return 0;
     }
     return Math.round(base * rate) / 100;

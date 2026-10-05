@@ -20,7 +20,12 @@ export type QuotaResource =
   | 'payslips'
   | 'expenses';
 
-export type PlanModule = 'payroll' | 'expenses' | 'invoicing' | 'reporting' | 'ai';
+export type PlanModule =
+  | 'payroll'
+  | 'expenses'
+  | 'invoicing'
+  | 'reporting'
+  | 'ai';
 
 export interface QuotaUsage {
   resource: QuotaResource;
@@ -69,7 +74,12 @@ export class PlanQuotaService {
 
   async getUsageStatus(
     cabinetId: number,
-    counts: { employees: number; clients: number; dossiers: number; storageBytes: number },
+    counts: {
+      employees: number;
+      clients: number;
+      dossiers: number;
+      storageBytes: number;
+    },
   ): Promise<PlanUsageStatus> {
     const plan = await this.getCabinetPlan(cabinetId);
 
@@ -80,9 +90,9 @@ export class PlanQuotaService {
         hasPlan: false,
         quota: {
           employees: this.buildUsage('employees', counts.employees, null),
-          clients:   this.buildUsage('clients',   counts.clients,   null),
-          dossiers:  this.buildUsage('dossiers',  counts.dossiers,  null),
-          storage:   this.buildStorageUsage(counts.storageBytes, null),
+          clients: this.buildUsage('clients', counts.clients, null),
+          dossiers: this.buildUsage('dossiers', counts.dossiers, null),
+          storage: this.buildStorageUsage(counts.storageBytes, null),
         },
       };
     }
@@ -91,10 +101,21 @@ export class PlanQuotaService {
       plan,
       hasPlan: true,
       quota: {
-        employees: this.buildUsage('employees', counts.employees, plan.max_employees),
-        clients:   this.buildUsage('clients',   counts.clients,   plan.max_clients),
-        dossiers:  this.buildUsage('dossiers',  counts.dossiers,  plan.max_dossiers),
-        storage:   this.buildStorageUsage(counts.storageBytes, plan.max_storage_gb),
+        employees: this.buildUsage(
+          'employees',
+          counts.employees,
+          plan.max_employees,
+        ),
+        clients: this.buildUsage('clients', counts.clients, plan.max_clients),
+        dossiers: this.buildUsage(
+          'dossiers',
+          counts.dossiers,
+          plan.max_dossiers,
+        ),
+        storage: this.buildStorageUsage(
+          counts.storageBytes,
+          plan.max_storage_gb,
+        ),
       },
     };
   }
@@ -111,30 +132,35 @@ export class PlanQuotaService {
 
     const limitMap: Record<QuotaResource, number | null> = {
       employees: plan.max_employees,
-      clients:   plan.max_clients,
-      dossiers:  plan.max_dossiers,
-      branches:  plan.max_branches,
+      clients: plan.max_clients,
+      dossiers: plan.max_dossiers,
+      branches: plan.max_branches,
       audiences: plan.max_audiences,
-      payslips:  plan.max_payslips_per_month,
-      expenses:  plan.max_expenses_per_month,
+      payslips: plan.max_payslips_per_month,
+      expenses: plan.max_expenses_per_month,
     };
 
     const labelMap: Record<QuotaResource, string> = {
       employees: 'collaborateurs',
-      clients:   'clients',
-      dossiers:  'dossiers',
-      branches:  'agences',
+      clients: 'clients',
+      dossiers: 'dossiers',
+      branches: 'agences',
       audiences: 'audiences',
-      payslips:  'bulletins de paie',
-      expenses:  'dépenses',
+      payslips: 'bulletins de paie',
+      expenses: 'dépenses',
     };
 
     const max = limitMap[resource];
     // -1 signifie illimité (plan Enterprise) → aucune vérification
-    if (max !== null && max !== undefined && max !== -1 && currentCount >= max) {
+    if (
+      max !== null &&
+      max !== undefined &&
+      max !== -1 &&
+      currentCount >= max
+    ) {
       throw new ForbiddenException(
         `Limite de ${labelMap[resource]} atteinte (${currentCount}/${max}). ` +
-        `Veuillez mettre à niveau votre plan "${plan.name}" pour continuer.`,
+          `Veuillez mettre à niveau votre plan "${plan.name}" pour continuer.`,
       );
     }
   }
@@ -161,41 +187,47 @@ export class PlanQuotaService {
       const usedGb = (currentBytes / (1024 * 1024 * 1024)).toFixed(2);
       throw new ForbiddenException(
         `Espace de stockage insuffisant (${usedGb} Go / ${maxGb} Go utilisés). ` +
-        `Veuillez libérer de l'espace ou mettre à niveau votre plan "${plan.name}".`,
+          `Veuillez libérer de l'espace ou mettre à niveau votre plan "${plan.name}".`,
       );
     }
   }
 
   // ── Vérifie qu'un module est activé sur le plan du cabinet ───────────────
 
-  async isModuleEnabled(cabinetId: number, module: PlanModule): Promise<boolean> {
+  async isModuleEnabled(
+    cabinetId: number,
+    module: PlanModule,
+  ): Promise<boolean> {
     const plan = await this.getCabinetPlan(cabinetId);
     if (!plan) return true; // aucun plan → on n'empêche rien
 
     const map: Record<PlanModule, boolean> = {
-      payroll:   !!plan.payroll_enabled,
-      expenses:  !!plan.expenses_enabled,
+      payroll: !!plan.payroll_enabled,
+      expenses: !!plan.expenses_enabled,
       invoicing: !!plan.invoicing_enabled,
       reporting: !!plan.reporting_enabled,
-      ai:        !!plan.ai_enabled,
+      ai: !!plan.ai_enabled,
     };
     return map[module];
   }
 
-  async checkModuleEnabled(cabinetId: number, module: PlanModule): Promise<void> {
+  async checkModuleEnabled(
+    cabinetId: number,
+    module: PlanModule,
+  ): Promise<void> {
     const enabled = await this.isModuleEnabled(cabinetId, module);
     if (!enabled) {
       const plan = await this.getCabinetPlan(cabinetId);
       const labelMap: Record<PlanModule, string> = {
-        payroll:   'la paie',
-        expenses:  'la gestion des dépenses',
+        payroll: 'la paie',
+        expenses: 'la gestion des dépenses',
         invoicing: 'la facturation',
         reporting: 'les rapports avancés',
-        ai:        "l'assistant IA",
+        ai: "l'assistant IA",
       };
       throw new ForbiddenException(
         `Le module "${labelMap[module]}" n'est pas inclus dans votre plan ` +
-        `"${plan?.name ?? ''}". Veuillez mettre à niveau votre abonnement.`,
+          `"${plan?.name ?? ''}". Veuillez mettre à niveau votre abonnement.`,
       );
     }
   }
@@ -208,8 +240,10 @@ export class PlanQuotaService {
     max: number | null,
   ): QuotaUsage {
     const unlimited = max === null || max === -1;
-    const effectiveMax = unlimited ? -1 : max!;
-    const percentage = unlimited ? 0 : Math.min(100, Math.round((current / effectiveMax) * 100));
+    const effectiveMax = unlimited ? -1 : max;
+    const percentage = unlimited
+      ? 0
+      : Math.min(100, Math.round((current / effectiveMax) * 100));
     return {
       resource,
       current,
@@ -224,7 +258,7 @@ export class PlanQuotaService {
     maxGb: number | null,
   ): StorageUsage {
     const unlimited = maxGb === null || maxGb === -1;
-    const effectiveMaxGb = unlimited ? -1 : maxGb!;
+    const effectiveMaxGb = unlimited ? -1 : maxGb;
     const maxBytes = effectiveMaxGb * 1024 * 1024 * 1024;
     const percentage =
       unlimited || maxBytes <= 0

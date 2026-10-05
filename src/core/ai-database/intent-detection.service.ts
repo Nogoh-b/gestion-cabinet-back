@@ -13,7 +13,10 @@ type IntentClass = 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CHAT';
 export class IntentDetectionService {
   private readonly logger = new Logger(IntentDetectionService.name);
   private readonly CACHE_TTL = 2 * 60 * 1000;
-  private readonly classificationCache = new Map<string, { value: IntentClass; timestamp: number }>();
+  private readonly classificationCache = new Map<
+    string,
+    { value: IntentClass; timestamp: number }
+  >();
   private writeSchemaCache: { value: string; timestamp: number } | null = null;
 
   /**
@@ -26,11 +29,13 @@ export class IntentDetectionService {
    * Pronoms/références anaphoriques qui signalent une question de suivi.
    * Agnostique du domaine métier — seule la grammaire française est encodée ici.
    */
-  private readonly FOLLOW_UP_SIGNALS = /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|le(?:s)?\s+(?:dernier|premier|meme)|la\s+(?:derniere|premiere|meme)|l[ea]\s+(?:plus|moins|seul|premier|dernier)|parmi\s+(?:eux|elles|ces|les)|dans\s+(?:cette|ce|ces|la)\s+liste)\b/;
+  private readonly FOLLOW_UP_SIGNALS =
+    /\b(cell?(?:e|ui)(?:[- ](?:ci|la))?|ceux|celles|le(?:s)?\s+(?:dernier|premier|meme)|la\s+(?:derniere|premiere|meme)|l[ea]\s+(?:plus|moins|seul|premier|dernier)|parmi\s+(?:eux|elles|ces|les)|dans\s+(?:cette|ce|ces|la)\s+liste)\b/;
 
   constructor(
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
-    @Optional() @Inject(AI_DATABASE_PROJECT_CONFIG)
+    @Optional()
+    @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
   ) {
     this.buildDomainKeywordsRegex();
@@ -44,15 +49,26 @@ export class IntentDetectionService {
     const keywords = this.projectConfig?.domainKeywords;
     if (keywords?.length) {
       // Échapper les caractères regex spéciaux dans les mots-clés
-      const escaped = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      this.domainKeywordsRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i');
+      const escaped = keywords.map((k) =>
+        k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      );
+      this.domainKeywordsRegex = new RegExp(
+        `\\b(${escaped.join('|')})\\b`,
+        'i',
+      );
       return;
     }
     // Fallback : noms des essentialTables
-    const tables = this.projectConfig?.databaseTablesConfig?.essentialTables ?? [];
+    const tables =
+      this.projectConfig?.databaseTablesConfig?.essentialTables ?? [];
     if (tables.length) {
-      const escaped = tables.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      this.domainKeywordsRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i');
+      const escaped = tables.map((t) =>
+        t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      );
+      this.domainKeywordsRegex = new RegExp(
+        `\\b(${escaped.join('|')})\\b`,
+        'i',
+      );
       return;
     }
     // Dernier recours : regex qui ne matche jamais
@@ -67,14 +83,19 @@ export class IntentDetectionService {
       forceWrite?: boolean;
       history?: string;
       plannerLlm?: ChatOpenAI;
-      onLlmCall?: (info: { profile: 'fast' | 'quality'; input: unknown; modelName?: string }) => void;
+      onLlmCall?: (info: {
+        profile: 'fast' | 'quality';
+        input: unknown;
+        modelName?: string;
+      }) => void;
       classifierModelName?: string;
       plannerModelName?: string;
     } = {},
   ): Promise<IntentDetectionResult> {
-
     // 1️⃣ Pré-filtre rapide : éviter un appel LLM pour les WRITE évidents
-    const localClass = options.forceWrite ? 'WRITE' : this.classifyLocal(question);
+    const localClass = options.forceWrite
+      ? 'WRITE'
+      : this.classifyLocal(question);
     const isObviousWrite = options.forceWrite || localClass === 'WRITE';
 
     if (localClass === 'HELP') {
@@ -96,7 +117,10 @@ export class IntentDetectionService {
     if (!isObviousWrite) {
       // 1b. Classification légère via LLM : READ | WRITE | CHAT
       //     (plus fiable que des heuristiques statiques)
-      const lightClass = await this.lightClassify(question, llm, { ...options, history: options.history });
+      const lightClass = await this.lightClassify(question, llm, {
+        ...options,
+        history: options.history,
+      });
       this.logger.log(`🏷️ Light classify → ${lightClass}`);
 
       if (lightClass === 'HELP') {
@@ -120,13 +144,22 @@ export class IntentDetectionService {
 
     // 2️⃣ Générer le schéma d'écriture
     const handlers = this.writeHandlerRegistry.getAllHandlers();
-    this.logger.log(`📝 Handlers enregistrés: ${handlers.length} → [${handlers.map(h => h.entityName).join(', ')}]`);
+    this.logger.log(
+      `📝 Handlers enregistrés: ${handlers.length} → [${handlers.map((h) => h.entityName).join(', ')}]`,
+    );
 
     const writeSchema = await this.getCachedWriteSchema();
-    this.logger.log(`📝 Schéma d'écriture généré (${writeSchema.length} chars)`);
+    this.logger.log(
+      `📝 Schéma d'écriture généré (${writeSchema.length} chars)`,
+    );
 
     // 3️⃣ Prompt amélioré pour les plans complexes
-    const prompt = this.buildAdvancedDetectionPrompt(question, readSchema, writeSchema, options.history);
+    const prompt = this.buildAdvancedDetectionPrompt(
+      question,
+      readSchema,
+      writeSchema,
+      options.history,
+    );
     const planner = options.plannerLlm ?? llm;
 
     // « Tout faire » pour honorer une demande WRITE avant d'abandonner — surtout
@@ -151,26 +184,32 @@ export class IntentDetectionService {
     const maxAttempts = 3;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       if (attempt > 0 && lastWasConnectionError) {
-        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
       }
-      const attemptPrompt = attempt === 0 || lastWasConnectionError
-        ? prompt
-        : lastWasTruncated
-          ? `${prompt}\n\n⚠️ Ta reponse precedente a ete COUPEE avant la fin (JSON incomplet) car trop longue. Reponds UNIQUEMENT avec le JSON, SANS aucun texte de reflexion avant/apres, avec des "humanReadable" TRES courts (moins de 15 mots). Va droit au but.`
-          : `${prompt}\n\n⚠️ Ta reponse precedente etait invalide (${lastError}). Reponds UNIQUEMENT avec un JSON strictement valide, sans commentaire ni texte autour, en respectant exactement le format demande.`;
+      const attemptPrompt =
+        attempt === 0 || lastWasConnectionError
+          ? prompt
+          : lastWasTruncated
+            ? `${prompt}\n\n⚠️ Ta reponse precedente a ete COUPEE avant la fin (JSON incomplet) car trop longue. Reponds UNIQUEMENT avec le JSON, SANS aucun texte de reflexion avant/apres, avec des "humanReadable" TRES courts (moins de 15 mots). Va droit au but.`
+            : `${prompt}\n\n⚠️ Ta reponse precedente etait invalide (${lastError}). Reponds UNIQUEMENT avec un JSON strictement valide, sans commentaire ni texte autour, en respectant exactement le format demande.`;
       let isTruncated = false;
       try {
         const input = [{ role: 'user', content: attemptPrompt }];
-        options.onLlmCall?.({ profile: 'quality', input, modelName: options.plannerModelName });
+        options.onLlmCall?.({
+          profile: 'quality',
+          input,
+          modelName: options.plannerModelName,
+        });
         const response = await planner.invoke(input);
         const content = this.extractLlmText(response);
-        const finishReason = (response as any)?.response_metadata?.finish_reason
-          ?? (response as any)?.generationInfo?.finish_reason;
+        const finishReason =
+          (response as any)?.response_metadata?.finish_reason ??
+          (response as any)?.generationInfo?.finish_reason;
         isTruncated = finishReason === 'length';
 
         this.logger.debug(
           `📥 Réponse LLM (tentative ${attempt + 1}, ${content.length} chars, finish_reason=${finishReason ?? '?'}): ` +
-          `${content.substring(0, 500)}...`,
+            `${content.substring(0, 500)}...`,
         );
         if (isTruncated) {
           this.logger.warn(
@@ -193,11 +232,13 @@ export class IntentDetectionService {
         // Valider et enrichir le plan
         const validatedPlan = this.validateAndEnrichPlan(result.writePlan);
 
-        const requiresConfirmation = validatedPlan.confidence < 0.85 ||
-                                      validatedPlan.operations.length > 1 ||
-                                      validatedPlan.operations.some(op => op.operation === 'DELETE');
+        const requiresConfirmation =
+          validatedPlan.confidence < 0.85 ||
+          validatedPlan.operations.length > 1 ||
+          validatedPlan.operations.some((op) => op.operation === 'DELETE');
 
-        if (attempt > 0) this.logger.log(`✅ Plan WRITE généré à la tentative ${attempt + 1}`);
+        if (attempt > 0)
+          this.logger.log(`✅ Plan WRITE généré à la tentative ${attempt + 1}`);
         return {
           type: 'WRITE',
           writePlan: validatedPlan,
@@ -209,12 +250,14 @@ export class IntentDetectionService {
         lastError = (error as Error).message;
         this.logger.warn(
           `⚠️ Génération du plan WRITE — tentative ${attempt + 1} échouée` +
-          `${lastWasConnectionError ? ' (erreur de connexion)' : lastWasTruncated ? ' (reponse tronquee)' : ''}: ${lastError}`,
+            `${lastWasConnectionError ? ' (erreur de connexion)' : lastWasTruncated ? ' (reponse tronquee)' : ''}: ${lastError}`,
         );
       }
     }
 
-    this.logger.error(`❌ Génération du plan WRITE impossible après ${maxAttempts} tentatives: ${lastError}`);
+    this.logger.error(
+      `❌ Génération du plan WRITE impossible après ${maxAttempts} tentatives: ${lastError}`,
+    );
 
     if (options.forceWrite) {
       // L'utilisateur a explicitement demandé l'écriture : ne JAMAIS masquer
@@ -223,8 +266,8 @@ export class IntentDetectionService {
       const humanMessage = lastWasConnectionError
         ? 'Le service IA est temporairement injoignable (erreur de connexion). Réessayez dans quelques instants.'
         : lastWasTruncated
-          ? 'La demande est trop complexe pour être traitée en une seule fois. Essayez de la découper en plusieurs étapes (ex: créer d\'abord le dossier avec le client et l\'avocat, puis ajouter la procédure et les autres détails dans un second message).'
-          : (lastError || 'Le plan d\'ecriture n\'a pas pu etre genere.');
+          ? "La demande est trop complexe pour être traitée en une seule fois. Essayez de la découper en plusieurs étapes (ex: créer d'abord le dossier avec le client et l'avocat, puis ajouter la procédure et les autres détails dans un second message)."
+          : lastError || "Le plan d'ecriture n'a pas pu etre genere.";
       return {
         type: 'WRITE',
         requiresConfirmation: false,
@@ -244,7 +287,12 @@ export class IntentDetectionService {
    * (pas de prompt correctif "ta réponse était invalide" dans ce cas).
    */
   private isConnectionError(error: unknown): boolean {
-    const err = error as { constructor?: { name?: string }; name?: string; message?: string; code?: string };
+    const err = error as {
+      constructor?: { name?: string };
+      name?: string;
+      message?: string;
+      code?: string;
+    };
     const ctorName = err?.constructor?.name || '';
     const name = err?.name || '';
     const message = err?.message || '';
@@ -274,18 +322,25 @@ export class IntentDetectionService {
     }
 
     // Verbes de lecture (liste, affiche, montre, combien, quel…)
-    const readVerbPattern = /^(liste|lister|affiche|afficher|montre|montrer|cherche|chercher|trouve|trouver|combien|quels?|quelles?|qui|donne moi|donnez moi)\b/;
+    const readVerbPattern =
+      /^(liste|lister|affiche|afficher|montre|montrer|cherche|chercher|trouve|trouver|combien|quels?|quelles?|qui|donne moi|donnez moi)\b/;
     // Mots interrogatifs génériques (nombre, total, statut) suivis d'un ?
     const readQuestionPattern = /\b(nombre|total|statut)\b.*\?/;
 
-    if (readVerbPattern.test(normalized)
-        || (readQuestionPattern.test(normalized) && this.domainKeywordsRegex.test(normalized))) {
+    if (
+      readVerbPattern.test(normalized) ||
+      (readQuestionPattern.test(normalized) &&
+        this.domainKeywordsRegex.test(normalized))
+    ) {
       return 'READ';
     }
 
     // Questions de suivi avec pronom anaphorique + mot-clé métier
     // Ex: "donne moi celle qui est totalement payée" → READ
-    if (this.FOLLOW_UP_SIGNALS.test(normalized) && this.domainKeywordsRegex.test(normalized)) {
+    if (
+      this.FOLLOW_UP_SIGNALS.test(normalized) &&
+      this.domainKeywordsRegex.test(normalized)
+    ) {
       return 'READ';
     }
 
@@ -298,7 +353,10 @@ export class IntentDetectionService {
 
   private async getCachedWriteSchema(): Promise<string> {
     const now = Date.now();
-    if (this.writeSchemaCache && now - this.writeSchemaCache.timestamp < this.CACHE_TTL) {
+    if (
+      this.writeSchemaCache &&
+      now - this.writeSchemaCache.timestamp < this.CACHE_TTL
+    ) {
       return this.writeSchemaCache.value;
     }
     const value = await this.writeHandlerRegistry.generateGlobalWriteSchema(
@@ -308,7 +366,12 @@ export class IntentDetectionService {
     return value;
   }
 
-  private buildAdvancedDetectionPrompt(question: string, readSchema: string, writeSchema: string, history?: string): string {
+  private buildAdvancedDetectionPrompt(
+    question: string,
+    readSchema: string,
+    writeSchema: string,
+    history?: string,
+  ): string {
     const genericWriteExample = `{
   "type": "WRITE",
   "writePlan": {
@@ -430,34 +493,38 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     }
 
     // Enrichir chaque opération
-    const enrichedOperations: WriteOperation[] = plan.operations.map((op: any, index: number) => {
-      // Nettoyer les champs
-      const cleanedFields: Record<string, any> = {};
-      for (const [key, value] of Object.entries(op.fields || {})) {
-        // Nettoyer les valeurs
-        if (typeof value === 'string') {
-          cleanedFields[key] = value.trim();
-        } else {
-          cleanedFields[key] = value;
+    const enrichedOperations: WriteOperation[] = plan.operations.map(
+      (op: any, index: number) => {
+        // Nettoyer les champs
+        const cleanedFields: Record<string, any> = {};
+        for (const [key, value] of Object.entries(op.fields || {})) {
+          // Nettoyer les valeurs
+          if (typeof value === 'string') {
+            cleanedFields[key] = value.trim();
+          } else {
+            cleanedFields[key] = value;
+          }
         }
-      }
 
-            return {
-        operation: op.operation,
-        entity: op.entity.toLowerCase(),
-        entityId: op.entityId ?? op.fields?.id ?? op.fields?.entityId ?? null,
-        fields: cleanedFields,
-        tempId: op.tempId || `op_${index}`,
-        dependsOn: op.dependsOn || [],
-        // ✅ Préserver resolveConfig si fourni par le LLM
-        resolveConfig: op.resolveConfig || undefined,
-      };
-    });
+        return {
+          operation: op.operation,
+          entity: op.entity.toLowerCase(),
+          entityId: op.entityId ?? op.fields?.id ?? op.fields?.entityId ?? null,
+          fields: cleanedFields,
+          tempId: op.tempId || `op_${index}`,
+          dependsOn: op.dependsOn || [],
+          // ✅ Préserver resolveConfig si fourni par le LLM
+          resolveConfig: op.resolveConfig || undefined,
+        };
+      },
+    );
 
     return {
       transaction: plan.transaction !== false, // true par défaut
       operations: enrichedOperations,
-      humanReadable: plan.humanReadable || `Exécution de ${enrichedOperations.length} opération(s)`,
+      humanReadable:
+        plan.humanReadable ||
+        `Exécution de ${enrichedOperations.length} opération(s)`,
       confidence: Math.min(plan.confidence || 0.8, 1),
     };
   }
@@ -474,7 +541,11 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
    */
   private isChatIntent(normalized: string): boolean {
     // 1️⃣ Salutations et formules courtes
-    if (/^(bonjour|bonsoir|salut|hello|hi|hey|coucou|merci|ok|d'accord|dac|ca va|bien|super|genial|cool|top|parfait|entendu|compris|c'est note|pas de souci|bonne journee|bonne soiree|a bientot|au revoir|bye|oui|non|exactement|tout a fait)[\s!.?,]*$/i.test(normalized)) {
+    if (
+      /^(bonjour|bonsoir|salut|hello|hi|hey|coucou|merci|ok|d'accord|dac|ca va|bien|super|genial|cool|top|parfait|entendu|compris|c'est note|pas de souci|bonne journee|bonne soiree|a bientot|au revoir|bye|oui|non|exactement|tout a fait)[\s!.?,]*$/i.test(
+        normalized,
+      )
+    ) {
       return true;
     }
 
@@ -516,14 +587,18 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       /\b(recette|cuisine|cuisinier|ingredient|sport|football|basket|tennis|musique|film|cinema|serie|livre|auteur|artiste|chanteur|acteur|peintre|sculpteur)\b/,
     ];
 
-    if (chatMarkers.some(pattern => pattern.test(normalized))) {
+    if (chatMarkers.some((pattern) => pattern.test(normalized))) {
       return true;
     }
 
     // 4️⃣ Questions très courtes sans mot-clé métier : probablement du chat
     // ex: "comment ca marche ?", "c'est possible ?", "tu peux m'aider ?"
     const words = normalized.split(/\s+/).length;
-    if (words <= 4 && /\?$/.test(normalized.trim()) && !this.domainKeywordsRegex.test(normalized)) {
+    if (
+      words <= 4 &&
+      /\?$/.test(normalized.trim()) &&
+      !this.domainKeywordsRegex.test(normalized)
+    ) {
       return true;
     }
 
@@ -547,7 +622,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       /guide\s+pour/,
     ];
 
-    return patterns.some(pattern => pattern.test(normalized));
+    return patterns.some((pattern) => pattern.test(normalized));
   }
 
   private isAdviceIntent(question: string): boolean {
@@ -567,7 +642,7 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
       /\bprochaine?s?\s+etapes?\b/,
     ];
 
-    return patterns.some(pattern => pattern.test(normalized));
+    return patterns.some((pattern) => pattern.test(normalized));
   }
 
   private isWriteIntent(question: string): boolean {
@@ -575,31 +650,77 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
 
     // ✅ Mots-clés SANS accents (car normalizeText supprime les accents)
     const strongWriteKeywords = [
-      'cree', 'creer', 'creation', 'nouveau', 'nouvelle',
-      'ajoute', 'ajouter', 'ajout', 'ajoute',
-      'modifie', 'modifier', 'modification', 'modifie',
-      'supprime', 'supprimer', 'suppression', 'supprime',
-      'enregistre', 'enregistrer', 'enregistre',
-      'ouvre', 'ouvrir',
-      'ferme', 'fermer', 'ferme',
-      'archive', 'archiver', 'archive',
-      'cloture', 'cloturer', 'cloture',
-      'assigne', 'assigner', 'assigne',
-      'attribue', 'attribuer', 'attribue',
-      'mettre a jour', 'mise a jour', 'met a jour',
-      'changer', 'change',
-      'inserer', 'insere', 'insertion',
+      'cree',
+      'creer',
+      'creation',
+      'nouveau',
+      'nouvelle',
+      'ajoute',
+      'ajouter',
+      'ajout',
+      'ajoute',
+      'modifie',
+      'modifier',
+      'modification',
+      'modifie',
+      'supprime',
+      'supprimer',
+      'suppression',
+      'supprime',
+      'enregistre',
+      'enregistrer',
+      'enregistre',
+      'ouvre',
+      'ouvrir',
+      'ferme',
+      'fermer',
+      'ferme',
+      'archive',
+      'archiver',
+      'archive',
+      'cloture',
+      'cloturer',
+      'cloture',
+      'assigne',
+      'assigner',
+      'assigne',
+      'attribue',
+      'attribuer',
+      'attribue',
+      'mettre a jour',
+      'mise a jour',
+      'met a jour',
+      'changer',
+      'change',
+      'inserer',
+      'insere',
+      'insertion',
       // Vocabulaire comptable (création/modification d'écritures, comptes, journaux…)
-      'comptabilise', 'comptabiliser',
-      'passe une ecriture', 'passer une ecriture', 'passe ecriture', 'saisis une ecriture', 'saisir une ecriture',
-      'saisis', 'saisir', 'saisie',
-      'debite', 'debiter', 'crediter', 'credite',
-      'lettrer', 'lettrage', 'rapproche', 'rapprocher',
+      'comptabilise',
+      'comptabiliser',
+      'passe une ecriture',
+      'passer une ecriture',
+      'passe ecriture',
+      'saisis une ecriture',
+      'saisir une ecriture',
+      'saisis',
+      'saisir',
+      'saisie',
+      'debite',
+      'debiter',
+      'crediter',
+      'credite',
+      'lettrer',
+      'lettrage',
+      'rapproche',
+      'rapprocher',
     ];
 
     for (const keyword of strongWriteKeywords) {
       if (normalized.includes(keyword)) {
-        this.logger.debug(`🔍 Mot-clé WRITE détecté: "${keyword}" dans "${normalized.substring(0, 60)}..."`);
+        this.logger.debug(
+          `🔍 Mot-clé WRITE détecté: "${keyword}" dans "${normalized.substring(0, 60)}..."`,
+        );
         return true;
       }
     }
@@ -641,7 +762,11 @@ Réponds UNIQUEMENT avec le JSON, rien d'autre.`;
     question: string,
     llm: ChatOpenAI,
     options: {
-      onLlmCall?: (info: { profile: 'fast' | 'quality'; input: unknown; modelName?: string }) => void;
+      onLlmCall?: (info: {
+        profile: 'fast' | 'quality';
+        input: unknown;
+        modelName?: string;
+      }) => void;
       classifierModelName?: string;
       history?: string;
     } = {},
@@ -677,18 +802,25 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
 
     try {
       const input = [{ role: 'user', content: prompt }];
-      options.onLlmCall?.({ profile: 'fast', input, modelName: options.classifierModelName });
+      options.onLlmCall?.({
+        profile: 'fast',
+        input,
+        modelName: options.classifierModelName,
+      });
       const response = await llm.invoke(input);
-      const raw = this.extractLlmText(response).trim().toUpperCase().replace(/[^A-Z]/g, '');
+      const raw = this.extractLlmText(response)
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '');
       const value: IntentClass = raw.startsWith('WRITE')
         ? 'WRITE'
         : raw.startsWith('HELP')
           ? 'HELP'
-        : raw.startsWith('ADVICE')
-          ? 'ADVICE'
-        : raw.startsWith('CHAT')
-          ? 'CHAT'
-          : 'READ';
+          : raw.startsWith('ADVICE')
+            ? 'ADVICE'
+            : raw.startsWith('CHAT')
+              ? 'CHAT'
+              : 'READ';
       this.classificationCache.set(cacheKey, { value, timestamp: Date.now() });
       return value;
     } catch {
@@ -701,14 +833,18 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
    * Le prompt système est fourni par projectConfig.conversationalSystemPrompt (logique métier externe).
    * Un prompt générique est utilisé si aucune config n'est fournie.
    */
-  private async generateConversationalResponse(question: string, llm: ChatOpenAI): Promise<string> {
-    const systemPrompt = this.projectConfig?.conversationalSystemPrompt
-      ?? `Tu es un assistant IA. Réponds aux questions générales et aux salutations de façon courtoise et professionnelle.`;
+  private async generateConversationalResponse(
+    question: string,
+    llm: ChatOpenAI,
+  ): Promise<string> {
+    const systemPrompt =
+      this.projectConfig?.conversationalSystemPrompt ??
+      `Tu es un assistant IA. Réponds aux questions générales et aux salutations de façon courtoise et professionnelle.`;
 
     try {
       const response = await llm.invoke([
         { role: 'system', content: systemPrompt },
-        { role: 'user',   content: question },
+        { role: 'user', content: question },
       ]);
       return this.extractLlmText(response);
     } catch {
@@ -726,7 +862,9 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
     const content = response?.content ?? response;
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
-      return content.map((item: any) => item?.text ?? item?.content ?? item ?? '').join('');
+      return content
+        .map((item: any) => item?.text ?? item?.content ?? item ?? '')
+        .join('');
     }
     return String(content ?? '');
   }
@@ -749,17 +887,17 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
   private parseResponse(content: string): any {
     // Nettoyer le contenu
     let clean = content.trim();
-    
+
     // Enlever les balises code
     clean = clean.replace(/```json\s*/g, '');
     clean = clean.replace(/```\s*/g, '');
-    
+
     // Extraire le JSON (au cas où il y aurait du texte autour)
     const jsonMatch = clean.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       clean = jsonMatch[0];
     }
-    
+
     return JSON.parse(clean);
   }
 }

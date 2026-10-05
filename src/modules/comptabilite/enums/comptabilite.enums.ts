@@ -1,7 +1,7 @@
 export enum TypeCompte {
-  ACTIF   = 'ACTIF',
-  PASSIF  = 'PASSIF',
-  CHARGE  = 'CHARGE',
+  ACTIF = 'ACTIF',
+  PASSIF = 'PASSIF',
+  CHARGE = 'CHARGE',
   PRODUIT = 'PRODUIT',
 }
 
@@ -21,21 +21,21 @@ export enum TypeJournal {
   ACHATS = 'ACHATS',
   CAISSE = 'CAISSE',
   BANQUE = 'BANQUE',
-  OD     = 'OD',
+  OD = 'OD',
 }
 
 export enum StatutExercice {
-  OUVERT  = 'OUVERT',
+  OUVERT = 'OUVERT',
   CLOTURE = 'CLOTURE',
 }
 
 export enum SourceModule {
-  FACTURE             = 'facture',
-  PAIEMENT            = 'paiement',
-  SUPPLIER_INVOICE    = 'supplier_invoice',
-  EXPENSE_REPORT      = 'expense_report',
-  PAYSLIP             = 'payslip',
-  SALARY_ADVANCE      = 'salary_advance',
+  FACTURE = 'facture',
+  PAIEMENT = 'paiement',
+  SUPPLIER_INVOICE = 'supplier_invoice',
+  EXPENSE_REPORT = 'expense_report',
+  PAYSLIP = 'payslip',
+  SALARY_ADVANCE = 'salary_advance',
   REFERRAL_COMMISSION = 'referral_commission',
-  MANUEL              = 'manuel',
+  MANUEL = 'manuel',
 }

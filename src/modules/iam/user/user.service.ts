@@ -1,20 +1,17 @@
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { plainToInstance } from 'class-transformer';
 import { CreateEmployeeDto } from 'src/modules/agencies/employee/dto/create-employee.dto';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Repository } from 'typeorm';
 
-
-
-
-
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
-
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
 
 import { UserRole } from '../user-role/entities/user-role.entity';
 import { UserRolesService } from '../user-role/user-role.service';
@@ -23,35 +20,26 @@ import { UserResponseDto } from './dto/user-response.dto';
 import { User } from './entities/user.entity';
 import { EmailService } from 'src/core/shared/services/email/email.service copy';
 
-
-
-
-
-
-
-
-
-
-
-
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
-    private userRepository: Repository<User>,    
+    private userRepository: Repository<User>,
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
-    private roleService : UserRolesService,
+    private roleService: UserRolesService,
     private mailerService: EmailService,
 
     // @Inject(forwardRef(() => UserRolesService))
     // private employeeService : EmployeeService
-    
   ) {
-        // console.log(forwardRef)
+    // console.log(forwardRef)
   }
 
-  async create(createUserDto: CreateUserDto , is_strict = true): Promise<UserResponseDto> {
+  async create(
+    createUserDto: CreateUserDto,
+    is_strict = true,
+  ): Promise<UserResponseDto> {
     //await validateDto(CreateUserDto, createUserDto)
     /*const customer = await this.customerRepository.findOneBy({id:createUserDto.customer_id})
     if (!customer &&  is_strict) {
@@ -69,18 +57,23 @@ export class UsersService {
     if (existingUserName) {
       throw new ConflictException('Username already exists');
     }
- 
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+
+    // `password` est désormais facultatif dans le DTO (création minimale
+    // employé, depuis un select) : à défaut, un mot de passe aléatoire est
+    // généré — ce chemin reste accessible via réinitialisation.
+    const plainPassword =
+      createUserDto.password ?? crypto.randomBytes(9).toString('base64');
+    const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
     const user = this.userRepository.create({
       ...createUserDto,
-      password: hashedPassword, 
-      status : 1
+      password: hashedPassword,
+      status: 1,
     });
 
     const savedUser = await this.userRepository.save(user);
-    let dtoE = new CreateEmployeeDto
-    const {hire_date, branch_id} = createUserDto
+    const dtoE = new CreateEmployeeDto();
+    const { hire_date, branch_id } = createUserDto;
     // await this.employeeService.createEmployee({hire_date, branch_id, user_id : savedUser.id})
 
     return plainToInstance(UserResponseDto, savedUser);
@@ -88,17 +81,20 @@ export class UsersService {
 
   async findAll() {
     const users = await this.userRepository
-    .createQueryBuilder('user')
-    .leftJoinAndSelect('user.customer', 'customer')
-    .leftJoinAndSelect('user.employee', 'employee')
-    .leftJoinAndSelect('employee.branch', 'branch')
-    .leftJoinAndSelect('user.roleAssignments', 'roleAssignment', 'roleAssignment.status = 1')
-    .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
-    .where('user.status = 1')
-    .getMany();
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.customer', 'customer')
+      .leftJoinAndSelect('user.employee', 'employee')
+      .leftJoinAndSelect('employee.branch', 'branch')
+      .leftJoinAndSelect(
+        'user.roleAssignments',
+        'roleAssignment',
+        'roleAssignment.status = 1',
+      )
+      .leftJoinAndSelect('roleAssignment.role', 'role', 'role.status = 1')
+      .where('user.status = 1')
+      .getMany();
     return users.map((user) => plainToInstance(UserResponseDto, user));
   }
-
 
   async findOne(id: number): Promise<UserResponseDto> {
     const user = await this.userRepository.findOne({
@@ -170,7 +166,10 @@ export class UsersService {
     });
   }
 
-  async findByEmailForPasswordReset(email: string, tenantId?: number): Promise<any | null> {
+  async findByEmailForPasswordReset(
+    email: string,
+    tenantId?: number,
+  ): Promise<any | null> {
     let qb = this.userRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.customer', 'customer')
@@ -193,9 +192,7 @@ export class UsersService {
     return user;
   }
 
-  async getUserPermissions(
-    userId: number
-  ): Promise<any> {
+  async getUserPermissions(userId: number): Promise<any> {
     const role = (await this.findOne(userId))?.role;
     return this.roleService.getPermissionsByCode(role);
   }
@@ -209,9 +206,6 @@ export class UsersService {
     return this.roleService.getPermissionsByCode(roleCode);
   }
 
-  
-
-
   async updateRefreshToken(
     userId: number,
     refreshToken: string | undefined,
@@ -221,10 +215,7 @@ export class UsersService {
       refreshToken: refreshToken,
     });
   }
-  async update(
-    userId: number,
-    data,
-  ): Promise<void> {
+  async update(userId: number, data): Promise<void> {
     // Assuming you are using TypeORM or similar ORM
     await this.userRepository.update(userId, data);
   }
@@ -234,7 +225,10 @@ export class UsersService {
   }
 
   /** État relu à chaque requête protégée pour appliquer un blocage sans délai. */
-  async findSessionState(userId: number, tenantId: number): Promise<User | null> {
+  async findSessionState(
+    userId: number,
+    tenantId: number,
+  ): Promise<User | null> {
     return this.userRepository.findOne({
       where: { id: userId, tenant_id: tenantId },
       relations: ['employee'],
@@ -262,17 +256,17 @@ export class UsersService {
 
   async descativeUser(id: number): Promise<any> {
     await this.userRepository.update(id, { status: 0 });
-    return
+    return;
   }
   async activateUser(id: number): Promise<any> {
     await this.userRepository.update(id, { status: 1 });
-    return
+    return;
   }
 
-
-    // Génère un mot de passe temporaire (alphanum + caractères spéciaux)
+  // Génère un mot de passe temporaire (alphanum + caractères spéciaux)
   private generate_temp_password(length = 12): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*?';
+    const chars =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*?';
     let pwd = '';
     for (let i = 0; i < length; i++) {
       pwd += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -281,15 +275,20 @@ export class UsersService {
   }
 
   /**
-  * Réinitialise le mot de passe d'un utilisateur et envoie le nouveau par email.
-  * - On accepte soit un id, soit un email pour identifier l'utilisateur.
-  * - Le mot de passe est hashé en base et le clair est envoyé par email.
-  * - À utiliser comme mot de passe temporaire (l'utilisateur devra le changer après connexion).
-  */
-  async send_new_password(params: { id?: number; email?: string }): Promise<{ message: string }> {
+   * Réinitialise le mot de passe d'un utilisateur et envoie le nouveau par email.
+   * - On accepte soit un id, soit un email pour identifier l'utilisateur.
+   * - Le mot de passe est hashé en base et le clair est envoyé par email.
+   * - À utiliser comme mot de passe temporaire (l'utilisateur devra le changer après connexion).
+   */
+  async send_new_password(params: {
+    id?: number;
+    email?: string;
+  }): Promise<{ message: string }> {
     // 1) Vérifications de base
     if (!params?.id && !params?.email) {
-      throw new NotFoundException('Veuillez fournir un identifiant (id) ou un email utilisateur.');
+      throw new NotFoundException(
+        'Veuillez fournir un identifiant (id) ou un email utilisateur.',
+      );
     }
 
     // 2) Récupération utilisateur
@@ -310,13 +309,12 @@ export class UsersService {
     // 4) Sauvegarde en base
     await this.userRepository.update(user.id, { password: hashed_password });
 
-    const html =
-    `<p>Bonjour,</p>
+    const html = `<p>Bonjour,</p>
     <p>Votre mot de passe a été réinitialisé.</p>
     <p><strong>Nouveau mot de passe temporaire :</strong> ${plain_password}</p>
     <p>Par mesure de sécurité, merci de le changer dès votre prochaine connexion.</p>
-    <p>— Support</p>`
-    await this.mailerService.sendPasswordResetEmail(user.email, html)
+    <p>— Support</p>`;
+    await this.mailerService.sendPasswordResetEmail(user.email, html);
     /*await this.mailerService.sendMail({
       to: user.email,
       subject: 'Votre nouveau mot de passe',
@@ -340,5 +338,4 @@ export class UsersService {
     // 6) Retour clair en français
     return { message: 'Mot de passe réinitialisé et envoyé par email.' };
   }
-
 }

@@ -88,7 +88,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Partial<Audience>,
     event: UpdateEvent<Audience>,
   ): Promise<void> {
-    const id = entity.id ?? (event.databaseEntity as Audience)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
 
     if (this.hasColumnChanged(event, 'status')) {
@@ -154,8 +154,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       link: `/audiences/${audience.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
@@ -200,8 +200,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       link: `/audiences/${audience.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
@@ -243,8 +243,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       link: `/audiences/${audience.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,

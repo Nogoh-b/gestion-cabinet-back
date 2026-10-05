@@ -35,9 +35,12 @@ import ProcedureTemplateSeeder from 'src/modules/procedure/seeder/procedure-temp
 import ProcedureSubtypeSeeder from 'src/modules/procedures/seeder/procedure-subtype.seeder';
 import ProcedureTypeSeeder from 'src/modules/procedures/seeder/procedure-type.seeder';
 import TemplateBlockSeeder from 'src/modules/template-blocks/seeder/template-block.seeder';
-import { DataSource } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { runSeeders } from 'typeorm-extension';
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { Cabinet } from './entities/cabinet.entity';
 
 @Injectable()
 export class TenantSeederService {
@@ -48,20 +51,21 @@ export class TenantSeederService {
     private readonly dataSource: DataSource,
     private readonly permissionSeeder: PermissionSeeder,
     private readonly roleSeeder: RoleSeeder,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepo: Repository<Cabinet>,
   ) {}
 
   /**
-   * Seed toutes les données de référence pour un nouveau cabinet.
-   *
-   * @param cabinetId — ID du cabinet (= tenant_id).
+   * Seed toutes les données de référence pour un cabinet (nouveau OU déjà
+   * existant — tous les seeders listés ici sont idempotents par tenant :
+   * ils ne créent que ce qui manque, jamais de doublon). Exécuté dans le
+   * contexte tenant du cabinet ciblé.
    */
-  async seedForNewCabinet(cabinetId: number): Promise<void> {
-    this.logger.log(`🚀 Seeding de référence pour cabinet #${cabinetId}…`);
-
+  private async seedReferenceData(cabinetId: number): Promise<void> {
     await this.tenantContext.run(cabinetId, async () => {
       // ── 1. IAM : permissions puis rôles (les rôles dépendent des permissions) ──
-      await this.permissionSeeder.seed();
-      await this.roleSeeder.seed();
+      const createdCodes = await this.permissionSeeder.seed();
+      await this.roleSeeder.seed(createdCodes);
 
       // ── 2. Données de référence métier ──────────────────────────────────────
       await runSeeders(this.dataSource, {
@@ -80,7 +84,7 @@ export class TenantSeederService {
           DefaultProcedureTemplateSeeder,
           ProcedureTemplateSeeder,
           // Templates (mail, PDF, blocs)
-          PdfTemplateSeeder, 
+          PdfTemplateSeeder,
           MailTemplateSeeder,
           MailComposerTemplateSeeder,
           TemplateBlockSeeder,
@@ -89,7 +93,52 @@ export class TenantSeederService {
         ],
       });
     });
+  }
 
+  /**
+   * Seed toutes les données de référence pour un nouveau cabinet.
+   *
+   * @param cabinetId — ID du cabinet (= tenant_id).
+   */
+  async seedForNewCabinet(cabinetId: number): Promise<void> {
+    this.logger.log(`🚀 Seeding de référence pour cabinet #${cabinetId}…`);
+    await this.seedReferenceData(cabinetId);
     this.logger.log(`✅ Seeding terminé pour cabinet #${cabinetId}`);
+  }
+
+  /**
+   * Re-synchronise les données de référence de TOUS les cabinets existants
+   * (y compris le cabinet #1, jamais couvert par `CabinetSubscriber` qui
+   * l'ignore volontairement — voir son commentaire).
+   *
+   * Comble l'écart qui apparaît chaque fois qu'une permission, un rôle ou un
+   * template est ajouté au code APRÈS la création d'un cabinet : ces
+   * seeders ne tournaient jusqu'ici qu'une seule fois, à la création du
+   * cabinet, et n'étaient donc jamais rejoués pour les cabinets déjà actifs.
+   * Sans danger à ré-exécuter : chaque seeder ne crée que ce qui manque
+   * (vérifié par tenant), et `RoleSeeder` n'accorde aux rôles déjà existants
+   * QUE les permissions tout juste créées — jamais celles déjà en base,
+   * potentiellement désactivées manuellement par un admin.
+   */
+  async syncReferenceDataForAllTenants(): Promise<void> {
+    const cabinets = await this.cabinetRepo.find({ select: ['id'] });
+    this.logger.log(
+      `🔄 Re-synchronisation des données de référence pour ${cabinets.length} cabinet(s)…`,
+    );
+
+    for (const { id } of cabinets) {
+      try {
+        await this.seedReferenceData(id);
+        this.logger.log(`✅ Cabinet #${id} : données de référence à jour.`);
+      } catch (err) {
+        // Un échec sur un cabinet ne doit jamais empêcher la synchronisation
+        // des autres (ni bloquer le démarrage de l'application).
+        this.logger.error(
+          `❌ Échec de la synchronisation pour le cabinet #${id} : ${(err as Error)?.message ?? err}`,
+        );
+      }
+    }
+
+    this.logger.log('🔄 Re-synchronisation des données de référence terminée.');
   }
 }

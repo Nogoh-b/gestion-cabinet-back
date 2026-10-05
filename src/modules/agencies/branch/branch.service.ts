@@ -1,18 +1,14 @@
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { LocationCitiesService } from 'src/modules/geography/location_city/location_city.service';
 import { Repository } from 'typeorm';
 
-
-
 import { forwardRef, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-
-
-
-
-
 
 import { EmployeeResponseDto } from '../employee/dto/response-employee.dto';
 import { EmployeeService } from '../employee/employee.service';
@@ -24,71 +20,68 @@ import { plainToInstance } from 'class-transformer';
 import { PlanQuotaService } from 'src/modules/plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
-
-
-
-
-
-
-
-
 @Injectable()
-export class BranchService  extends BaseServiceV1<Branch> {
+export class BranchService extends BaseServiceV1<Branch> {
   constructor(
     @InjectRepository(Branch)
     private branchRepository: Repository<Branch>,
     private locationCityService: LocationCitiesService,
     private employeeService: EmployeeService,
     protected readonly paginationService: PaginationServiceV1,
-    private readonly planQuotaService: PlanQuotaService,) {
-        super(branchRepository, paginationService);
+    private readonly planQuotaService: PlanQuotaService,
+  ) {
+    super(branchRepository, paginationService);
   }
 
+  protected getDefaultSearchOptions(): SearchOptions {
+    return {
+      // Champs pour la recherche globale
+      searchFields: ['id', 'code', 'name', 'location_city.name', 'status'],
 
-    protected getDefaultSearchOptions(): SearchOptions {
-      return {
-        // Champs pour la recherche globale
-        searchFields: [
-          'id',
-          'code',
-          'name',
-          'location_city.name',
-          'status',
-        ],
-        
-        // Champs pour recherche exacte
-        exactMatchFields: [
-          'id',
-          'status',
-          'confidentiality_level',
-          'priority_level',
-          'budget_estimate',
-          'danger_level'
-        ],
-        
-        // Champs pour ranges de dates
-        /*dateRangeFields: [
+      // Champs pour recherche exacte
+      exactMatchFields: [
+        'id',
+        'status',
+        'confidentiality_level',
+        'priority_level',
+        'budget_estimate',
+        'danger_level',
+      ],
+
+      // Champs pour ranges de dates
+      /*dateRangeFields: [
           'created_at',
           'updated_at',
           'opening_date',
           'closing_date'
         ],*/
-        
-        // Champs de relations pour filtrage
-        relationFields: ['employees', 'customers', 'location_city','location_city.district','location_city.district.division','location_city.district.division.region','location_city.district.division.region.country']
-      };
-    }
 
+      // Champs de relations pour filtrage
+      relationFields: [
+        'employees',
+        'customers',
+        'location_city',
+        'location_city.district',
+        'location_city.district.division',
+        'location_city.district.division.region',
+        'location_city.district.division.region.country',
+      ],
+    };
+  }
 
-    async testSearch() {
-  const result = await this.branchRepository.find({
-    relations: ['location_city', 'location_city.district', 'location_city.district.division', 'employees']
-  });
-  console.log('First branch location_city:', result[0]?.location_city);
-  console.log('First branch district:', result[0]?.location_city?.district);
-  return result;
-}
-
+  async testSearch() {
+    const result = await this.branchRepository.find({
+      relations: [
+        'location_city',
+        'location_city.district',
+        'location_city.district.division',
+        'employees',
+      ],
+    });
+    console.log('First branch location_city:', result[0]?.location_city);
+    console.log('First branch district:', result[0]?.location_city?.district);
+    return result;
+  }
 
   // Branches
   async createBranch(dto: CreateBranchDto): Promise<Branch> {
@@ -96,7 +89,11 @@ export class BranchService  extends BaseServiceV1<Branch> {
     const tenantId = getCurrentTenantId();
     if (tenantId) {
       const currentCount = await this.branchRepository.count();
-      await this.planQuotaService.checkLimit(tenantId, 'branches', currentCount);
+      await this.planQuotaService.checkLimit(
+        tenantId,
+        'branches',
+        currentCount,
+      );
     }
 
     // Vérification de l'existence de la ville
@@ -168,17 +165,24 @@ export class BranchService  extends BaseServiceV1<Branch> {
   }
 
   async findOne(id: number, all = false): Promise<BranchResponseDto> {
-    const relations = all ? ['employees', 'employees.user', 'customers', 'location_city',
-    'location_city.district',
-        'location_city.district.division',
-        'location_city.district.division.region',
-        'location_city.district.division.region.country',] : [];
-    const branch = await this.branchRepository.findOne({ 
+    const relations = all
+      ? [
+          'employees',
+          'employees.user',
+          'customers',
+          'location_city',
+          'location_city.district',
+          'location_city.district.division',
+          'location_city.district.division.region',
+          'location_city.district.division.region.country',
+        ]
+      : [];
+    const branch = await this.branchRepository.findOne({
       where: { id, status: 1 },
       relations,
     });
     if (!branch) throw new NotFoundException('Branch inexistante');
-    return plainToInstance(BranchResponseDto,branch);
+    return plainToInstance(BranchResponseDto, branch);
   }
 
   async findEmployeesByBranchId(id: number): Promise<EmployeeResponseDto[]> {
@@ -209,9 +213,6 @@ export class BranchService  extends BaseServiceV1<Branch> {
     branch?.save();
     return branch;
   }
-
-
-
 
   /**
    * Génère le prochain code de branche incrémental sur 3 chiffres (000 à 999).

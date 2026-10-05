@@ -1,5 +1,8 @@
 import { TenantContext } from 'src/core/tenant/tenant.context';
-import { Audience, AudienceStatus } from 'src/modules/audiences/entities/audience.entity';
+import {
+  Audience,
+  AudienceStatus,
+} from 'src/modules/audiences/entities/audience.entity';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
@@ -32,10 +35,14 @@ export class ReminderScheduler {
   private readonly logger = new Logger(ReminderScheduler.name);
 
   constructor(
-    @InjectRepository(Cabinet) private readonly cabinetRepo: Repository<Cabinet>,
-    @InjectRepository(Audience) private readonly audienceRepo: Repository<Audience>,
-    @InjectRepository(Diligence) private readonly diligenceRepo: Repository<Diligence>,
-    @InjectRepository(Dossier) private readonly dossierRepo: Repository<Dossier>,
+    @InjectRepository(Cabinet)
+    private readonly cabinetRepo: Repository<Cabinet>,
+    @InjectRepository(Audience)
+    private readonly audienceRepo: Repository<Audience>,
+    @InjectRepository(Diligence)
+    private readonly diligenceRepo: Repository<Diligence>,
+    @InjectRepository(Dossier)
+    private readonly dossierRepo: Repository<Dossier>,
     private readonly notifications: NotificationService,
     private readonly tenantContext: TenantContext,
   ) {}
@@ -45,7 +52,9 @@ export class ReminderScheduler {
   /** Rappels d'audience — toutes les heures (fenêtre de 48 h, une seule fois). */
   @Cron(CronExpression.EVERY_HOUR)
   async runAudienceReminders(): Promise<void> {
-    await this.forEachActiveCabinet((cabinetId) => this.remindAudiences(cabinetId));
+    await this.forEachActiveCabinet((cabinetId) =>
+      this.remindAudiences(cabinetId),
+    );
   }
 
   /** Échéances (diligences + délais de recours) — chaque jour à 7 h. */
@@ -71,7 +80,9 @@ export class ReminderScheduler {
       try {
         await this.tenantContext.run(c.id, () => fn(c.id));
       } catch (e: any) {
-        this.logger.error(`[Reminder] cabinet=${c.id} échec: ${e?.message ?? e}`);
+        this.logger.error(
+          `[Reminder] cabinet=${c.id} échec: ${e?.message ?? e}`,
+        );
       }
     }
   }
@@ -123,7 +134,9 @@ export class ReminderScheduler {
     }
 
     if (due.length) {
-      this.logger.log(`[Reminder] cabinet=${cabinetId} — ${due.length} rappel(s) d'audience`);
+      this.logger.log(
+        `[Reminder] cabinet=${cabinetId} — ${due.length} rappel(s) d'audience`,
+      );
     }
   }
 
@@ -154,15 +167,23 @@ export class ReminderScheduler {
           content: overdue
             ? `La diligence « ${d.title ?? d.id} » est en retard (échéance ${this.fmtDate(d.deadline)}).`
             : `La diligence « ${d.title ?? d.id} » arrive à échéance ${this.relDay(left)} (${this.fmtDate(d.deadline)}).`,
-          data: { diligenceId: d.id, dossierId: d.dossier_id, overdue, daysLeft: left },
+          data: {
+            diligenceId: d.id,
+            dossierId: d.dossier_id,
+            overdue,
+            daysLeft: left,
+          },
           link: `/dossiers/${d.dossier_id}`,
-          priority: overdue ? 'URGENT' : 'HIGH', 
+          priority: overdue ? 'URGENT' : 'HIGH',
         },
         SYSTEM_SENDER_ID,
       );
       sent++;
     }
-    if (sent) this.logger.log(`[Reminder] cabinet=${cabinetId} — ${sent} alerte(s) diligence`);
+    if (sent)
+      this.logger.log(
+        `[Reminder] cabinet=${cabinetId} — ${sent} alerte(s) diligence`,
+      );
   }
 
   // ── Délais de recours (appel / cassation) ────────────────────────────────
@@ -171,16 +192,25 @@ export class ReminderScheduler {
     const { startToday, inDays } = this.dateWindow(7);
 
     const appeals = await this.dossierRepo.find({
-      where: { appeal_filed: false, appeal_deadline: Between(startToday, inDays) },
+      where: {
+        appeal_filed: false,
+        appeal_deadline: Between(startToday, inDays),
+      },
     });
     const cassations = await this.dossierRepo.find({
-      where: { cassation_filed: false, cassation_deadline: Between(startToday, inDays) },
+      where: {
+        cassation_filed: false,
+        cassation_deadline: Between(startToday, inDays),
+      },
     });
 
     let sent = 0;
     sent += await this.notifyRecourse(appeals, 'appeal', startToday);
     sent += await this.notifyRecourse(cassations, 'cassation', startToday);
-    if (sent) this.logger.log(`[Reminder] cabinet=${cabinetId} — ${sent} alerte(s) de recours`);
+    if (sent)
+      this.logger.log(
+        `[Reminder] cabinet=${cabinetId} — ${sent} alerte(s) de recours`,
+      );
   }
 
   private async notifyRecourse(
@@ -191,7 +221,8 @@ export class ReminderScheduler {
     const label = kind === 'appeal' ? "d'appel" : 'de cassation';
     let sent = 0;
     for (const d of dossiers) {
-      const deadline = kind === 'appeal' ? d.appeal_deadline : d.cassation_deadline;
+      const deadline =
+        kind === 'appeal' ? d.appeal_deadline : d.cassation_deadline;
       if (!deadline) continue;
       const left = this.daysUntil(deadline, startToday);
       if (!ALERT_DAYS_BEFORE.has(left)) continue;
@@ -236,7 +267,11 @@ export class ReminderScheduler {
 
   private dateWindow(days: number): { startToday: Date; inDays: Date } {
     const now = new Date();
-    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
     const inDays = new Date(startToday);
     inDays.setDate(inDays.getDate() + days);
     return { startToday, inDays };

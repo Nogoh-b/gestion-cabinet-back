@@ -3,17 +3,29 @@ import { plainToInstance } from 'class-transformer';
 import { join } from 'path';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchCriteria, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchCriteria,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
 import { Repository } from 'typeorm';
 
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { StatutFacture } from '../facture/dto/create-facture.dto';
 import { Facture } from '../facture/entities/facture.entity';
-import { CreatePaiementDto, ModePaiement, StatutPaiement } from './dto/create-paiement.dto';
+import {
+  CreatePaiementDto,
+  ModePaiement,
+  StatutPaiement,
+} from './dto/create-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
@@ -33,9 +45,26 @@ export class PaiementService extends BaseServiceV1<Paiement> {
 
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['reference', 'numeroCheque', 'banque', 'titulaire', 'notes'],
-      exactMatchFields: ['id', 'factureId', 'modePaiement', 'status', 'reference'],
-      dateRangeFields: ['datePaiement', 'dateValeur', 'created_at', 'updated_at'],
+      searchFields: [
+        'reference',
+        'numeroCheque',
+        'banque',
+        'titulaire',
+        'notes',
+      ],
+      exactMatchFields: [
+        'id',
+        'factureId',
+        'modePaiement',
+        'status',
+        'reference',
+      ],
+      dateRangeFields: [
+        'datePaiement',
+        'dateValeur',
+        'created_at',
+        'updated_at',
+      ],
       relationFields: ['facture', 'facture.client', 'facture.dossier'],
     };
   }
@@ -48,7 +77,9 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     this.assertFactureAcceptsPayment(facture);
 
     const montant = this.normalizeAmount(createDto.montant);
-    const status = this.normalizePaymentStatus(createDto.status ?? StatutPaiement.VALIDE);
+    const status = this.normalizePaymentStatus(
+      createDto.status ?? StatutPaiement.VALIDE,
+    );
 
     if (status === StatutPaiement.VALIDE) {
       this.assertNoOverpayment(facture, montant);
@@ -85,13 +116,16 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     await this.updateFactureStatus(factureId);
   }
 
-  async updatePaiement(id: string, updateDto: UpdatePaiementDto): Promise<PaiementResponseDto> {
+  async updatePaiement(
+    id: string,
+    updateDto: UpdatePaiementDto,
+  ): Promise<PaiementResponseDto> {
     const paiement = await this.findOneV1(id, [
       'facture',
       'facture.paiements',
       'facture.client',
       'facture.dossier',
-    ]) as Paiement | null;
+    ]);
 
     if (!paiement) {
       throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
@@ -102,12 +136,14 @@ export class PaiementService extends BaseServiceV1<Paiement> {
 
     this.assertFactureAcceptsPayment(paiement.facture);
 
-    const nextStatus = updateDto.status !== undefined
-      ? this.normalizePaymentStatus(updateDto.status)
-      : paiement.status;
-    const nextMontant = updateDto.montant !== undefined
-      ? this.normalizeAmount(updateDto.montant)
-      : Number(paiement.montant);
+    const nextStatus =
+      updateDto.status !== undefined
+        ? this.normalizePaymentStatus(updateDto.status)
+        : paiement.status;
+    const nextMontant =
+      updateDto.montant !== undefined
+        ? this.normalizeAmount(updateDto.montant)
+        : Number(paiement.montant);
 
     if (nextStatus === StatutPaiement.VALIDE) {
       this.assertNoOverpayment(paiement.facture, nextMontant, paiement.id);
@@ -118,7 +154,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     paiement.montant = nextMontant;
     paiement.status = nextStatus;
 
-    if ((updateDto as any).modePaiement !== undefined || modePaiment !== undefined) {
+    if (
+      (updateDto as any).modePaiement !== undefined ||
+      modePaiment !== undefined
+    ) {
       paiement.modePaiement = this.normalizePaymentMode(updateDto);
     }
     if (notify_client !== undefined) {
@@ -134,7 +173,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   async searchPaiements(searchDto: SearchPaiementDto): Promise<any> {
     const criteria: SearchCriteria = { ...searchDto };
 
-    if (searchDto.montant_min !== undefined || searchDto.montant_max !== undefined) {
+    if (
+      searchDto.montant_min !== undefined ||
+      searchDto.montant_max !== undefined
+    ) {
       criteria.montant = [
         searchDto.montant_min ?? 0,
         searchDto.montant_max ?? Number.MAX_SAFE_INTEGER,
@@ -171,7 +213,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       'facture.paiements',
       'facture.client',
       'facture.dossier',
-    ]) as Paiement | null;
+    ]);
 
     if (!paiement) {
       throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
@@ -181,7 +223,11 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
 
     this.assertFactureAcceptsPayment(paiement.facture);
-    this.assertNoOverpayment(paiement.facture, Number(paiement.montant), paiement.id);
+    this.assertNoOverpayment(
+      paiement.facture,
+      Number(paiement.montant),
+      paiement.id,
+    );
 
     paiement.status = StatutPaiement.VALIDE;
 
@@ -192,7 +238,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   }
 
   async rejeterPaiement(id: string, raison: string): Promise<Paiement> {
-    const paiement = await this.findOneV1(id, ['facture']) as Paiement | null;
+    const paiement = await this.findOneV1(id, ['facture']);
     if (!paiement) {
       throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
     }
@@ -210,7 +256,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   }
 
   async removePaiement(id: string): Promise<Paiement | null> {
-    const paiement = await this.findOneV1(id, ['facture']) as Paiement | null;
+    const paiement = await this.findOneV1(id, ['facture']);
     if (!paiement) {
       throw new NotFoundException(`Paiement avec l'ID ${id} non trouve`);
     }
@@ -222,20 +268,28 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       await this.updateFactureStatus(factureId);
     }
 
-    return removed as Paiement | null;
+    return removed;
   }
 
   async getPaiementsEnAttente(): Promise<Paiement[]> {
-    return this.findAllV1({ status: StatutPaiement.EN_ATTENTE }, undefined, ['facture']);
+    return this.findAllV1({ status: StatutPaiement.EN_ATTENTE }, undefined, [
+      'facture',
+    ]);
   }
 
-  async getStatistiquesPaiementsParPeriode(dateDebut: Date, dateFin: Date): Promise<any> {
+  async getStatistiquesPaiementsParPeriode(
+    dateDebut: Date,
+    dateFin: Date,
+  ): Promise<any> {
     const parModeQB = this.repository
       .createQueryBuilder('paiement')
       .select('paiement.mode', 'mode')
       .addSelect('COUNT(*)', 'nombre')
       .addSelect('SUM(paiement.montant)', 'montantTotal')
-      .where('paiement.datePaiement BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin })
+      .where('paiement.datePaiement BETWEEN :dateDebut AND :dateFin', {
+        dateDebut,
+        dateFin,
+      })
       .andWhere('paiement.statut = :statut', { statut: 'valide' })
       .groupBy('paiement.mode');
     // Isolation multi-tenant.
@@ -245,14 +299,17 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     const totalQB = this.repository
       .createQueryBuilder('paiement')
       .select('SUM(paiement.montant)', 'total')
-      .where('paiement.datePaiement BETWEEN :dateDebut AND :dateFin', { dateDebut, dateFin })
+      .where('paiement.datePaiement BETWEEN :dateDebut AND :dateFin', {
+        dateDebut,
+        dateFin,
+      })
       .andWhere('paiement.statut = :statut', { statut: 'valide' });
     addTenantCondition(totalQB, 'paiement');
     const total = await totalQB.getRawOne();
 
     return {
       total: parseFloat(total?.total) || 0,
-      parMode: result.map(row => ({
+      parMode: result.map((row) => ({
         mode: row.mode,
         nombre: parseInt(row.nombre, 10),
         montantTotal: parseFloat(row.montantTotal),
@@ -274,7 +331,9 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   private normalizeAmount(value: any): number {
     const amount = Number(value);
     if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('Le montant du paiement doit etre strictement positif');
+      throw new BadRequestException(
+        'Le montant du paiement doit etre strictement positif',
+      );
     }
     return amount;
   }
@@ -299,8 +358,11 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     return labels[String(value).toLowerCase()] ?? StatutPaiement.VALIDE;
   }
 
-  private normalizePaymentMode(dto: Partial<CreatePaiementDto> | any): ModePaiement {
-    const value = dto.modePaiement ?? dto.modePaiment ?? dto.mode ?? ModePaiement.VIREMENT;
+  private normalizePaymentMode(
+    dto: Partial<CreatePaiementDto> | any,
+  ): ModePaiement {
+    const value =
+      dto.modePaiement ?? dto.modePaiment ?? dto.mode ?? ModePaiement.VIREMENT;
     if (typeof value === 'number') return value as ModePaiement;
 
     const numeric = Number(value);
@@ -321,17 +383,28 @@ export class PaiementService extends BaseServiceV1<Paiement> {
 
   private assertFactureAcceptsPayment(facture: Facture): void {
     if (facture.status === StatutFacture.ANNULEE) {
-      throw new BadRequestException('Impossible d enregistrer un paiement sur une facture annulee');
+      throw new BadRequestException(
+        'Impossible d enregistrer un paiement sur une facture annulee',
+      );
     }
   }
 
-  private getValidatedPaidAmount(facture: Facture, excludePaymentId?: string): number {
+  private getValidatedPaidAmount(
+    facture: Facture,
+    excludePaymentId?: string,
+  ): number {
     return (facture.paiements ?? [])
-      .filter(p => p.status === StatutPaiement.VALIDE && p.id !== excludePaymentId)
+      .filter(
+        (p) => p.status === StatutPaiement.VALIDE && p.id !== excludePaymentId,
+      )
       .reduce((sum, p) => sum + Number(p.montant ?? 0), 0);
   }
 
-  private assertNoOverpayment(facture: Facture, amount: number, excludePaymentId?: string): void {
+  private assertNoOverpayment(
+    facture: Facture,
+    amount: number,
+    excludePaymentId?: string,
+  ): void {
     const alreadyPaid = this.getValidatedPaidAmount(facture, excludePaymentId);
     const remaining = Number(facture.montantTTC) - alreadyPaid;
 
@@ -342,7 +415,9 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
   }
 
-  private async updateFactureStatus(factureId: string): Promise<Facture | null> {
+  private async updateFactureStatus(
+    factureId: string,
+  ): Promise<Facture | null> {
     const facture = await this.factureRepository.findOne({
       where: { id: factureId },
       relations: ['paiements', 'client', 'dossier'],
@@ -368,5 +443,4 @@ export class PaiementService extends BaseServiceV1<Paiement> {
 
     return facture;
   }
-
 }

@@ -2,12 +2,16 @@ import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { ClasseCompte, TypeCompte } from '../enums/comptabilite.enums';
 import { LigneEcriture } from './ligne-ecriture.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 
 @Entity('comptes_comptables')
 @BusinessTable({
   label: 'Comptes comptables',
-  description: 'Plan comptable du cabinet (SYSCOHADA). Chaque compte a un numéro, un libellé et une classe (1 à 8) et sert à enregistrer les écritures comptables (débit/crédit).',
+  description:
+    'Plan comptable du cabinet (SYSCOHADA). Chaque compte a un numéro, un libellé et une classe (1 à 8) et sert à enregistrer les écritures comptables (débit/crédit).',
   icon: '📒',
   category: 'finance',
 })
@@ -54,7 +58,8 @@ export class CompteComptable extends TenantEntity {
   @Column({ type: 'int' })
   @BusinessColumn({
     label: 'Classe',
-    description: 'BD: 1=Classe 1, 2=Classe 2, 3=Classe 3, 4=Classe 4, 5=Classe 5, 6=Classe 6, 7=Classe 7, 8=Classe 8.',
+    description:
+      'BD: 1=Classe 1, 2=Classe 2, 3=Classe 3, 4=Classe 4, 5=Classe 5, 6=Classe 6, 7=Classe 7, 8=Classe 8.',
     example: '4 = comptes de tiers, 6 = charges, 7 = produits',
     importance: 'high',
     group: 'classification',
@@ -79,6 +84,6 @@ export class CompteComptable extends TenantEntity {
   })
   description: string;
 
-  @OneToMany(() => LigneEcriture, l => l.compte)
+  @OneToMany(() => LigneEcriture, (l) => l.compte)
   lignes: LigneEcriture[];
 }

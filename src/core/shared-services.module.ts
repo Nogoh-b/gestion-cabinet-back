@@ -11,7 +11,6 @@ import { PaginationServiceV1 } from './shared/services/pagination/paginations-v1
 import { MainGateway } from './shared/services/socket/main.gateway';
 import { SocketService } from './shared/services/socket/socket.service';
 
-
 @Global()
 @Module({
   imports: [EmailsModule],

@@ -28,7 +28,10 @@ const RESOURCE_META: Record<string, { object: string; route?: string }> = {
   factures: { object: 'la facture', route: '/facturation/factures' },
   jurisdictions: { object: 'la juridiction', route: '/dossiers/juridiction' },
   suppliers: { object: 'le fournisseur', route: '/suppliers' },
-  'supplier-invoices': { object: 'la facture fournisseur', route: '/supplier-invoices' },
+  'supplier-invoices': {
+    object: 'la facture fournisseur',
+    route: '/supplier-invoices',
+  },
   'expense-reports': { object: 'la note de frais', route: '/expense-reports' },
   referrers: { object: 'l’apporteur', route: '/referrers' },
 };
@@ -75,7 +78,8 @@ export class AuditInterceptor implements NestInterceptor {
     const method = String(req?.method ?? '').toUpperCase();
     const userId: number | undefined = req?.user?.userId ?? req?.user?.id;
     const path: string = req?.originalUrl ?? req?.url ?? req?.path ?? '';
-    const auditable = MUTATING.has(method) || (method === 'GET' && AUDITABLE_READ.test(path));
+    const auditable =
+      MUTATING.has(method) || (method === 'GET' && AUDITABLE_READ.test(path));
     if (!auditable || !userId || SKIP.some((re) => re.test(path))) {
       return next.handle();
     }
@@ -183,8 +187,11 @@ export class AuditInterceptor implements NestInterceptor {
       unblock: `A réactivé ${namedObject}`,
       access_denied: `A tenté d’accéder à ${namedObject}`,
     };
-    const summary = labels[action] ?? `A effectué une action sur ${namedObject}`;
-    return success ? summary : `Échec : ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`;
+    const summary =
+      labels[action] ?? `A effectué une action sur ${namedObject}`;
+    return success
+      ? summary
+      : `Échec : ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`;
   }
 
   private riskFor(
@@ -203,12 +210,14 @@ export class AuditInterceptor implements NestInterceptor {
   private resourceOf(path: string): string | null {
     const seg = path.split('?')[0].split('/').filter(Boolean);
     if (!seg.length) return null;
-    const resource = seg[0] === 'api' && seg[1]
-      ? seg[1]
-      : seg[0] === 't' && seg.length > 2
-        ? seg[2]
-        : seg[0];
-    if (resource === 'activities-user' && seg.includes('members')) return 'user';
+    const resource =
+      seg[0] === 'api' && seg[1]
+        ? seg[1]
+        : seg[0] === 't' && seg.length > 2
+          ? seg[2]
+          : seg[0];
+    if (resource === 'activities-user' && seg.includes('members'))
+      return 'user';
     return resource;
   }
 
@@ -227,10 +236,15 @@ export class AuditInterceptor implements NestInterceptor {
 
   private resourceNameOf(req: any, body: any, res: any): string | null {
     const disposition = String(res?.getHeader?.('content-disposition') ?? '');
-    const filenameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+    const filenameMatch = disposition.match(
+      /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i,
+    );
     if (filenameMatch) {
       try {
-        return decodeURIComponent(filenameMatch[1] ?? filenameMatch[2]).slice(0, 255);
+        return decodeURIComponent(filenameMatch[1] ?? filenameMatch[2]).slice(
+          0,
+          255,
+        );
       } catch {
         return String(filenameMatch[1] ?? filenameMatch[2]).slice(0, 255);
       }
@@ -289,7 +303,10 @@ export class AuditInterceptor implements NestInterceptor {
     return `${meta.route}/${encodeURIComponent(String(resourceId))}`;
   }
 
-  private detailsOf(req: any, resourceName: string | null): Record<string, unknown> | null {
+  private detailsOf(
+    req: any,
+    resourceName: string | null,
+  ): Record<string, unknown> | null {
     const body = req?.body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return resourceName ? { resource_name: resourceName } : null;

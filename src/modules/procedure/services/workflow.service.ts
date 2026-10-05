@@ -1,19 +1,25 @@
 // services/workflow.service.ts
 import * as jsonLogic from 'json-logic-js';
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { ApplyTransitionDto } from '../dto/create-procedure-instance.dto copy';
 import { Decision } from '../entities/decision.entity';
-import { EventType, TransitionType } from '../entities/enums/instance-status.enum';
+import {
+  EventType,
+  TransitionType,
+} from '../entities/enums/instance-status.enum';
 import { HistoryEntry } from '../entities/history-entry.entity';
 import { ProcedureInstance } from '../entities/procedure-instance.entity';
 import { StageVisit } from '../entities/stage-visit.entity';
 import { Stage } from '../entities/stage.entity';
 import { Transition } from '../entities/transition.entity';
 import { TransitionResult } from '../interfaces/transition-result.interface';
-
 
 @Injectable()
 export class WorkflowService {
@@ -37,7 +43,7 @@ export class WorkflowService {
    */
   async getAvailableTransitions(instanceId: string): Promise<Transition[]> {
     const instance = await this.getInstanceWithRelations(instanceId);
-    
+
     const transitions = await this.transitionRepository.find({
       where: {
         fromStageId: instance.currentStageId,
@@ -76,7 +82,9 @@ export class WorkflowService {
     }
 
     if (transition.type !== TransitionType.MANUAL) {
-      throw new BadRequestException('This transition cannot be applied manually');
+      throw new BadRequestException(
+        'This transition cannot be applied manually',
+      );
     }
 
     const instance = await this.getInstanceWithRelations(instanceId);
@@ -87,8 +95,6 @@ export class WorkflowService {
 
     return this.executeTransition(instance, transition, userId, dto?.comment);
   }
-
-
 
   /**
    * Exécute une transition (cœur du workflow)
@@ -140,7 +146,10 @@ export class WorkflowService {
 
     // 4. Exécuter les actions post-transition
     if (transition.onTransition) {
-      await this.executePostTransitionActions(instance, transition.onTransition);
+      await this.executePostTransitionActions(
+        instance,
+        transition.onTransition,
+      );
     }
 
     return {
@@ -150,8 +159,6 @@ export class WorkflowService {
       transition,
     };
   }
-
-
 
   /**
    * Exécute les actions post-transition
@@ -167,10 +174,18 @@ export class WorkflowService {
   /**
    * Récupère une instance avec ses relations
    */
-  private async getInstanceWithRelations(id: string): Promise<ProcedureInstance> {
+  private async getInstanceWithRelations(
+    id: string,
+  ): Promise<ProcedureInstance> {
     const instance = await this.instanceRepository.findOne({
       where: { id },
-      relations: ['template', 'currentStage',  'currentStage.subStages','decisions', 'history'],
+      relations: [
+        'template',
+        'currentStage',
+        'currentStage.subStages',
+        'decisions',
+        'history',
+      ],
     });
     if (!instance) {
       throw new NotFoundException(`Instance with ID ${id} not found`);
@@ -181,169 +196,170 @@ export class WorkflowService {
   /**
    * Évalue une condition stockée en JSON
    */
-    async evaluateCondition(condition: any, context: any): Promise<boolean> {
-        if (!condition) return true;
-        
-        try {
-        // Préparer les variables pour jsonLogic
-        const vars: any = {};
-        
-        if (context.instance) {
-            vars['instance'] = {
-            data: context.instance.data,
-            completedSubStages: context.instance.completedSubStages,
-            };
-        }
-        
-        if (context.subStage) {
-            vars['subStage'] = context.subStage;
-        }  
+  async evaluateCondition(condition: any, context: any): Promise<boolean> {
+    if (!condition) return true;
 
-        if (context.stageVisit) {
-            vars['stageVisit'] = context.stageVisit;
-        }
-        
-        if (context.stage) {
-            vars['stage'] = context.stage;
-        }
-        if (context.event) {
-            vars['event'] = context.event;
-        }
-        
-        // Vérifier si jsonLogic est défini
-        if (!jsonLogic || typeof jsonLogic.apply !== 'function') {
-            console.warn('jsonLogic not properly loaded, returning true for condition');
-            return true;
-        }
-        
-        // Utiliser json-logic-js pour évaluer
-        return jsonLogic.apply(condition, vars);
-        } catch (error) {
-        console.error('Error evaluating condition:', error);
-        console.error('Condition:', JSON.stringify(condition));
-        console.error('Context:', JSON.stringify(context));
-        return false;
-        }
+    try {
+      // Préparer les variables pour jsonLogic
+      const vars: any = {};
+
+      if (context.instance) {
+        vars['instance'] = {
+          data: context.instance.data,
+          completedSubStages: context.instance.completedSubStages,
+        };
+      }
+
+      if (context.subStage) {
+        vars['subStage'] = context.subStage;
+      }
+
+      if (context.stageVisit) {
+        vars['stageVisit'] = context.stageVisit;
+      }
+
+      if (context.stage) {
+        vars['stage'] = context.stage;
+      }
+      if (context.event) {
+        vars['event'] = context.event;
+      }
+
+      // Vérifier si jsonLogic est défini
+      if (!jsonLogic || typeof jsonLogic.apply !== 'function') {
+        console.warn(
+          'jsonLogic not properly loaded, returning true for condition',
+        );
+        return true;
+      }
+
+      // Utiliser json-logic-js pour évaluer
+      return jsonLogic.apply(condition, vars);
+    } catch (error) {
+      console.error('Error evaluating condition:', error);
+      console.error('Condition:', JSON.stringify(condition));
+      console.error('Context:', JSON.stringify(context));
+      return false;
     }
+  }
 
-    // Exemple de méthode de migration (à appeler une seule fois)
-async migrateToStageVisits() {
-  const instances = await this.instanceRepository.find({
-    relations: ['template', 'template.stages', 'template.stages.subStages']
-  });
-
-  for (const instance of instances) {
-    if (!instance.currentStageId) continue;
-
-    const visit = this.stageVisitRepository.create({
-      instanceId: instance.id,
-      stageId: instance.currentStageId,
-      visitNumber: 1,
-      completedSubStages: instance.completedSubStages || [],
-      subStageMetadata: instance.subStageMetadata || {},
-      enteredAt: instance.created_at,
+  // Exemple de méthode de migration (à appeler une seule fois)
+  async migrateToStageVisits() {
+    const instances = await this.instanceRepository.find({
+      relations: ['template', 'template.stages', 'template.stages.subStages'],
     });
 
-    await this.stageVisitRepository.save(visit);
-  }
+    for (const instance of instances) {
+      if (!instance.currentStageId) continue;
 
-  console.log('Migration des StageVisit terminée');
-}
+      const visit = this.stageVisitRepository.create({
+        instanceId: instance.id,
+        stageId: instance.currentStageId,
+        visitNumber: 1,
+        completedSubStages: instance.completedSubStages || [],
+        subStageMetadata: instance.subStageMetadata || {},
+        enteredAt: instance.created_at,
+      });
 
-// Modifier triggerAutomaticTransitions pour accepter queryRunner
-async triggerAutomaticTransitions(
-  instance: ProcedureInstance,
-  eventType: EventType,
-  eventData: any,
-  queryRunner?: any,
-  userId?: string
-): Promise<TransitionResult[]> {
-  const results: TransitionResult[] = [];
-
-  const automaticTransitions = await this.transitionRepository.find({
-    where: {
-      fromStageId: instance.currentStageId,
-      type: TransitionType.AUTOMATIC,
-      triggerEvent: eventType,
-    },
-    relations: ['fromStage', 'toStage'],
-  });
-
-  for (const transition of automaticTransitions) {
-    const context = {
-      instance: { 
-        data: {}, 
-        completedSubStages: instance.completedSubStages 
-      },
-      eventType,
-      eventData,
-    };
-
-    if (await this.evaluateCondition(transition.triggerCondition, context)) {
-      const result = await this.executeTransitionWithQueryRunner(
-        instance,
-        transition,
-        userId || 'system',
-        null,
-        eventData,
-        queryRunner
-      );
-      results.push(result);
+      await this.stageVisitRepository.save(visit);
     }
+
+    console.log('Migration des StageVisit terminée');
   }
 
-  return results;
-}
+  // Modifier triggerAutomaticTransitions pour accepter queryRunner
+  async triggerAutomaticTransitions(
+    instance: ProcedureInstance,
+    eventType: EventType,
+    eventData: any,
+    queryRunner?: any,
+    userId?: string,
+  ): Promise<TransitionResult[]> {
+    const results: TransitionResult[] = [];
 
-// Ajouter méthode avec queryRunner pour les transactions
-private async executeTransitionWithQueryRunner(
-  instance: ProcedureInstance,
-  transition: Transition,
-  userId: string,
-  comment: string | null,
-  eventData: any,
-  queryRunner?: any
-): Promise<TransitionResult> {
-  const repo = queryRunner || this.instanceRepository;
-  
-  // Enregistrer la décision
-  const decision = this.decisionRepository.create({
-    instanceId: instance.id,
-    fromStageId: transition.fromStageId,
-    // transitionId: transition.id,
-    toStageId: transition.toStageId,
-    userId,
-    comment,
-  });
-  await repo.manager.save(decision);
+    const automaticTransitions = await this.transitionRepository.find({
+      where: {
+        fromStageId: instance.currentStageId,
+        type: TransitionType.AUTOMATIC,
+        triggerEvent: eventType,
+      },
+      relations: ['fromStage', 'toStage'],
+    });
 
-  // Quitter le stage courant
-  await this.historyRepository.save({
-    instanceId: instance.id,
-    eventType: EventType.STAGE_EXIT,
-    stageId: transition.fromStageId,
-    userId,
-    metadata: { transitionId: transition.id, eventData },
-  });
+    for (const transition of automaticTransitions) {
+      const context = {
+        instance: {
+          data: {},
+          completedSubStages: instance.completedSubStages,
+        },
+        eventType,
+        eventData,
+      };
 
-  // Entrer dans le nouveau stage
-  instance.currentStageId = transition.toStageId;
-  await repo.manager.save(instance);
+      if (await this.evaluateCondition(transition.triggerCondition, context)) {
+        const result = await this.executeTransitionWithQueryRunner(
+          instance,
+          transition,
+          userId || 'system',
+          null,
+          eventData,
+          queryRunner,
+        );
+        results.push(result);
+      }
+    }
 
-  await this.historyRepository.save({
-    instanceId: instance.id,
-    eventType: EventType.STAGE_ENTER,
-    stageId: transition.toStageId,
-    userId,
-    metadata: { transitionId: transition.id },
-  });
+    return results;
+  }
 
-  return {
-    success: true,
-    fromStage: transition.fromStage,
-    toStage: transition.toStage,
-    transition,
-  };
-}
+  // Ajouter méthode avec queryRunner pour les transactions
+  private async executeTransitionWithQueryRunner(
+    instance: ProcedureInstance,
+    transition: Transition,
+    userId: string,
+    comment: string | null,
+    eventData: any,
+    queryRunner?: any,
+  ): Promise<TransitionResult> {
+    const repo = queryRunner || this.instanceRepository;
 
+    // Enregistrer la décision
+    const decision = this.decisionRepository.create({
+      instanceId: instance.id,
+      fromStageId: transition.fromStageId,
+      // transitionId: transition.id,
+      toStageId: transition.toStageId,
+      userId,
+      comment,
+    });
+    await repo.manager.save(decision);
+
+    // Quitter le stage courant
+    await this.historyRepository.save({
+      instanceId: instance.id,
+      eventType: EventType.STAGE_EXIT,
+      stageId: transition.fromStageId,
+      userId,
+      metadata: { transitionId: transition.id, eventData },
+    });
+
+    // Entrer dans le nouveau stage
+    instance.currentStageId = transition.toStageId;
+    await repo.manager.save(instance);
+
+    await this.historyRepository.save({
+      instanceId: instance.id,
+      eventType: EventType.STAGE_ENTER,
+      stageId: transition.toStageId,
+      userId,
+      metadata: { transitionId: transition.id },
+    });
+
+    return {
+      success: true,
+      fromStage: transition.fromStage,
+      toStage: transition.toStage,
+      transition,
+    };
+  }
 }

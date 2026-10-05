@@ -1,16 +1,9 @@
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
-import {
-  Entity,
-  ManyToOne,
-  JoinColumn,
-  Column,
-  PrimaryColumn,
-} from 'typeorm';
+import { Entity, ManyToOne, JoinColumn, Column, PrimaryColumn } from 'typeorm';
 
 import { Permission } from '../../permission/entities/permission.entity';
 import { UserRole } from '../../user-role/entities/user-role.entity';
-
 
 @SharedAcrossTenants()
 @Entity('role_permission')
@@ -23,14 +16,14 @@ export class RolePermission extends TenantEntity {
 
   @ManyToOne(() => UserRole, (role) => role.permissions, {
     onDelete: 'CASCADE',
-    eager: true
+    eager: true,
   })
   @JoinColumn({ name: 'role_id' })
   role: UserRole;
 
   @ManyToOne(() => Permission, (permission) => permission.roles, {
     onDelete: 'CASCADE',
-    eager: true
+    eager: true,
   })
   @JoinColumn({ name: 'permission_id' })
   permission: Permission;

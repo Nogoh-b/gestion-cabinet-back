@@ -22,12 +22,15 @@ import {
   ClientSatisfaction,
 } from 'src/modules/dossiers/entities/dossier.entity';
 import {
+  ActionDefaultProfessionalTreatment,
   ActionBillingDecision,
   ActionLinkRole,
   ActionPriority,
+  BillableCategory,
   BillableSourceType,
   BillingCalculationMode,
   BillingMode,
+  BillingResultEffect,
   BillingTrigger,
   RecommendationTrigger,
 } from '../case-workflow.enums';
@@ -40,6 +43,10 @@ export class ActionResultDefinitionDto {
   @IsString()
   @MaxLength(200)
   label: string;
+
+  @IsOptional()
+  @IsEnum(BillingResultEffect)
+  billing_effect?: BillingResultEffect;
 }
 
 export class CreateActionFamilyDto {
@@ -140,6 +147,18 @@ export class CreateActionDefinitionDto {
   billable_by_default?: boolean;
 
   @IsOptional()
+  @IsEnum(ActionDefaultProfessionalTreatment)
+  default_professional_treatment?: ActionDefaultProfessionalTreatment;
+
+  @IsOptional()
+  @IsBoolean()
+  may_have_expenses?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  may_have_disbursements?: boolean;
+
+  @IsOptional()
   @IsEnum(BillingCalculationMode)
   billing_mode?: BillingCalculationMode;
 
@@ -189,6 +208,18 @@ export class ReviseActionDefinitionDto {
   @IsOptional()
   @IsBoolean()
   billable_by_default?: boolean;
+
+  @IsOptional()
+  @IsEnum(ActionDefaultProfessionalTreatment)
+  default_professional_treatment?: ActionDefaultProfessionalTreatment;
+
+  @IsOptional()
+  @IsBoolean()
+  may_have_expenses?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  may_have_disbursements?: boolean;
 
   @IsOptional()
   @IsEnum(BillingCalculationMode)
@@ -519,6 +550,40 @@ export class UpdateBillingProfileDto {
 
   @IsOptional()
   @IsBoolean()
+  opening_fee_enabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  opening_fee_included_in_fixed_fee?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  default_vacation_rate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  result_fee_enabled?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  result_fee_rate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  rebill_expenses?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  rebill_disbursements?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  require_disbursement_receipt?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   is_confirmed?: boolean;
 
   @IsOptional()
@@ -590,6 +655,10 @@ export class CreateDossierBillingRuleDto {
   @IsEnum(BillingTrigger)
   trigger: BillingTrigger;
 
+  @IsOptional()
+  @IsEnum(BillableCategory)
+  category?: BillableCategory;
+
   @IsEnum(BillingCalculationMode)
   calculation_mode: BillingCalculationMode;
 
@@ -621,6 +690,10 @@ export class ReviseDossierBillingRuleDto {
   @IsOptional()
   @IsEnum(BillingTrigger)
   trigger?: BillingTrigger;
+
+  @IsOptional()
+  @IsEnum(BillableCategory)
+  category?: BillableCategory;
 
   @IsOptional()
   @IsEnum(BillingCalculationMode)
@@ -663,6 +736,23 @@ export class CreateManualBillableItemDto {
   @IsOptional()
   @IsEnum(BillableSourceType)
   source_type?: BillableSourceType;
+
+  @IsOptional()
+  @IsEnum(BillableCategory)
+  category?: BillableCategory;
+
+  @IsOptional()
+  @IsEnum(BillingCalculationMode)
+  calculation_mode?: BillingCalculationMode;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  unit_label?: string;
+
+  @IsOptional()
+  @IsUUID()
+  action_id?: string;
 
   @IsOptional()
   @IsDateString()

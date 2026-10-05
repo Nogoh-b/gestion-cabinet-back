@@ -30,10 +30,10 @@ export class HistoryService {
     return this.historyRepository.save(entry);
   }
 
-    async create(historyData: Partial<HistoryEntry>): Promise<HistoryEntry> {
-        const entry = this.historyRepository.create(historyData);
-        return this.historyRepository.save(entry);
-    }
+  async create(historyData: Partial<HistoryEntry>): Promise<HistoryEntry> {
+    const entry = this.historyRepository.create(historyData);
+    return this.historyRepository.save(entry);
+  }
 
   async findByInstance(instanceId: string): Promise<HistoryEntry[]> {
     return this.historyRepository.find({
@@ -44,8 +44,8 @@ export class HistoryService {
 
   async getTimeline(instanceId: string): Promise<any[]> {
     const entries = await this.findByInstance(instanceId);
-    
-    return entries.map(entry => ({
+
+    return entries.map((entry) => ({
       date: entry.createdAt,
       event: entry.eventType,
       stageId: entry.stageId,

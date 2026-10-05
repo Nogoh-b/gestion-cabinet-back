@@ -34,7 +34,9 @@ export class PayslipAdvanceRecovery1779400000000 implements MigrationInterface {
     );
 
     if (await queryRunner.hasColumn('payslip', 'advance_recovered_amount')) {
-      await queryRunner.query(`ALTER TABLE payslip DROP COLUMN advance_recovered_amount`);
+      await queryRunner.query(
+        `ALTER TABLE payslip DROP COLUMN advance_recovered_amount`,
+      );
     }
   }
 }

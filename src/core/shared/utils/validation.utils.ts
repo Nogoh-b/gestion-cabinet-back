@@ -1,10 +1,12 @@
 import { ValidationError } from 'class-validator';
 
 export class ValidationUtils {
-  static formatValidationErrors(errors: ValidationError[]): Record<string, string[]> {
+  static formatValidationErrors(
+    errors: ValidationError[],
+  ): Record<string, string[]> {
     const formatted: Record<string, string[]> = {};
 
-    errors.forEach(error => {
+    errors.forEach((error) => {
       if (error.constraints) {
         formatted[error.property] = Object.values(error.constraints);
       }

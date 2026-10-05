@@ -6,7 +6,10 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { DossierReferral } from './dossier-referral.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { Paiement } from 'src/modules/paiement/entities/paiement.entity';
@@ -20,7 +23,7 @@ export enum CommissionStatus {
 
 @Entity('referral_commission')
 @BusinessTable({
-  label: 'Commissions d\'apporteur',
+  label: "Commissions d'apporteur",
   description: 'Commissions calculées, éditées et payées aux apporteurs.',
   icon: '💰',
   category: 'financier',
@@ -39,14 +42,16 @@ export class ReferralCommission extends TenantEntity {
   @Column({ type: 'int', name: 'dossier_referral_id' })
   @BusinessColumn({
     label: 'Apport de dossier',
-    description: 'Identifiant de l\'apport',
+    description: "Identifiant de l'apport",
     importance: 'high',
     group: 'relation',
     ignored: true,
   })
   dossier_referral_id: number;
 
-  @ManyToOne(() => DossierReferral, (referral) => referral.commissions, { nullable: false })
+  @ManyToOne(() => DossierReferral, (referral) => referral.commissions, {
+    nullable: false,
+  })
   @JoinColumn({ name: 'dossier_referral_id' })
   @BusinessColumn({
     label: 'Apport de dossier',
@@ -97,10 +102,15 @@ export class ReferralCommission extends TenantEntity {
   })
   amount: number;
 
-  @Column({ type: 'enum', enum: CommissionStatus, default: CommissionStatus.CALCULATED })
+  @Column({
+    type: 'enum',
+    enum: CommissionStatus,
+    default: CommissionStatus.CALCULATED,
+  })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'calculated'=Calculée, 'approved'=Approuvée, 'paid'=Payée, 'cancelled'=Annulée.",
+    description:
+      "BD: 'calculated'=Calculée, 'approved'=Approuvée, 'paid'=Payée, 'cancelled'=Annulée.",
     importance: 'high',
     group: 'statut',
   })
@@ -126,7 +136,12 @@ export class ReferralCommission extends TenantEntity {
   })
   payment_date: Date;
 
-  @Column({ type: 'varchar', length: 255, nullable: true, name: 'payment_reference' })
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    name: 'payment_reference',
+  })
   @BusinessColumn({
     label: 'Référence du paiement',
     description: 'Numéro de transaction ou référence',
@@ -143,5 +158,4 @@ export class ReferralCommission extends TenantEntity {
     group: 'audit',
   })
   notes: string;
-
 }

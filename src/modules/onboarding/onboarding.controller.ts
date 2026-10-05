@@ -1,4 +1,11 @@
-import { Controller, Post, Get, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from 'src/core/decorators/public.decorator';
 import { OnboardingService } from './onboarding.service';
@@ -11,7 +18,7 @@ import { OnboardingDto } from './onboarding.dto';
  */
 @ApiTags('Onboarding')
 @Controller('onboarding')
-@Public()   // ← classe entière publique
+@Public() // ← classe entière publique
 export class OnboardingController {
   constructor(private readonly service: OnboardingService) {}
 
@@ -32,7 +39,7 @@ export class OnboardingController {
    * GET /plans/active qui exige un token).
    */
   @Get('plans')
-  @ApiOperation({ summary: 'Plans actifs proposés à l\'inscription (public)' })
+  @ApiOperation({ summary: "Plans actifs proposés à l'inscription (public)" })
   listPlans() {
     return this.service.listActivePlans();
   }
