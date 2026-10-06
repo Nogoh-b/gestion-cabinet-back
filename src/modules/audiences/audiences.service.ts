@@ -10,7 +10,7 @@ import {
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
 import { DateUtils } from 'src/core/shared/utils/date.util.';
-import { EntityManager, MoreThan, Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   BadRequestException,
   forwardRef,
@@ -581,12 +581,15 @@ export class AudiencesService extends BaseServiceV1<Audience> {
    * 📅 Récupérer toutes les audiences à venir
    */
   async findUpcoming(): Promise<Audience[]> {
-    const now = new Date();
-    return this.repository.find({
-      where: { audience_date: MoreThan(now) },
-      relations: ['dossier', 'dossier.client'],
-      order: { audience_date: 'ASC' },
-    });
+    // Bornage sur la date du jour : `MoreThan(new Date())` écarterait les
+    // audiences programmées aujourd'hui (la colonne est une DATE).
+    return this.repository
+      .createQueryBuilder('audience')
+      .where('audience.audience_date >= CURDATE()')
+      .leftJoinAndSelect('audience.dossier', 'dossier')
+      .leftJoinAndSelect('dossier.client', 'client')
+      .orderBy('audience.audience_date', 'ASC')
+      .getMany();
   }
 
   /**
@@ -722,6 +725,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       pastStats,
       monthlyTrend,
       weeklyDist,
+      upcomingTotal,
     ] = await Promise.all([
       this.getTotalCount(filters),
       this.getDistributionByStatus(filters),
@@ -730,6 +734,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       this.getPastAudiencesStats(filters),
       this.getMonthlyTrend(filters),
       this.getWeeklyDistribution(filters),
+      this.getUpcomingAudiencesCount(filters),
     ]);
 
     return {
@@ -744,6 +749,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
       byDossier: await this.getDistributionByDossier(filters),
       evolution,
       upcomingAudiences: upcoming,
+      upcomingAudiencesTotal: upcomingTotal,
       pastAudiences: pastStats,
       monthlyTrend,
       weeklyDistribution: weeklyDist,
@@ -903,12 +909,15 @@ export class AudiencesService extends BaseServiceV1<Audience> {
         'dossier.dossier_number',
         'client',
       ])
-      .where('audience.audience_date >= :now', { now: new Date() })
+      // `audience_date` est une DATE et l'enum de statut est stocké en texte :
+      // comparer à la date du jour et lier le statut sous forme de chaîne est
+      // indispensable pour ne pas perdre les audiences du jour.
+      .where('audience.audience_date >= CURDATE()')
       .andWhere('audience.status = :status', {
-        status: AudienceStatus.SCHEDULED,
+        status: String(AudienceStatus.SCHEDULED),
       })
       .orderBy('audience.audience_date', 'ASC')
-      .limit(10);
+      .limit(50);
     // Isolation multi-tenant.
     addTenantCondition(query, 'audience');
 
@@ -926,6 +935,24 @@ export class AudiencesService extends BaseServiceV1<Audience> {
     }));
   }
 
+  /**
+   * Volumétrie des audiences à venir, indépendante du plafond de
+   * `getUpcomingAudiences` : le tableau de bord en affiche 5 et indique
+   * combien d'autres sont programmées.
+   */
+  private async getUpcomingAudiencesCount(filters?: any): Promise<number> {
+    const query = this.repository
+      .createQueryBuilder('audience')
+      .where('audience.audience_date >= CURDATE()')
+      .andWhere('audience.status = :status', {
+        status: String(AudienceStatus.SCHEDULED),
+      });
+
+    addTenantCondition(query, 'audience');
+    this.applyFilters(query, filters);
+    return query.getCount();
+  }
+
   private async getPastAudiencesStats(filters?: any): Promise<any> {
     const query = this.repository
       .createQueryBuilder('audience')
@@ -935,7 +962,7 @@ export class AudiencesService extends BaseServiceV1<Audience> {
         `SUM(CASE WHEN audience.status = ${AudienceStatus.HELD} THEN 1 ELSE 0 END) / COUNT(*) * 100`,
         'successRate',
       )
-      .where('audience.audience_date < :now', { now: new Date() });
+      .where('audience.audience_date < CURDATE()');
 
     this.applyFilters(query, filters);
 

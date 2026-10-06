@@ -111,14 +111,30 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     DELETE: 'delete_diligence_finding',
   },
 
-  // Traitement orienté actions (lecture uniquement via l'IA)
-  case_action_families: { READ: 'view_dossier_actions' },
-  case_action_definitions: { READ: 'view_dossier_actions' },
-  dossier_actions: { READ: 'view_dossier_actions' },
+  // Traitement orienté actions — catalogue (manage_action_catalog) + instances (create/update_dossier_action)
+  case_action_families: {
+    READ: 'view_dossier_actions',
+    INSERT: 'manage_action_catalog',
+    UPDATE: 'manage_action_catalog',
+  },
+  case_action_definitions: {
+    READ: 'view_dossier_actions',
+    INSERT: 'manage_action_catalog',
+    UPDATE: 'manage_action_catalog',
+  },
+  dossier_actions: {
+    READ: 'view_dossier_actions',
+    INSERT: 'create_dossier_action',
+    UPDATE: 'update_dossier_action',
+  },
   dossier_action_document_links: { READ: 'view_dossier_actions' },
   dossier_action_audience_links: { READ: 'view_dossier_actions' },
   dossier_action_relations: { READ: 'view_dossier_actions' },
-  case_recommendation_rules: { READ: 'view_dossier_actions' },
+  case_recommendation_rules: {
+    READ: 'view_dossier_actions',
+    INSERT: 'manage_action_catalog',
+    UPDATE: 'manage_action_catalog',
+  },
   dossier_recommendations: { READ: 'view_dossier_actions' },
 
   // Facturation issue du parcours d'actions (lecture uniquement via l'IA)

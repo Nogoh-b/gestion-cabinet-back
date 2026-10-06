@@ -9,6 +9,10 @@ import {
   ExpenseReport,
   ExpenseReportStatus,
 } from 'src/modules/supplier/entities/expense-report.entity';
+import {
+  SupplierInvoice,
+  SupplierInvoiceStatus,
+} from 'src/modules/supplier/entities/supplier-invoice.entity';
 import { EntityManager } from 'typeorm';
 import {
   BillableCategory,
@@ -65,6 +69,32 @@ function expenseLine(patch: Partial<ExpenseLine> = {}): ExpenseLine {
     attachment_url: 'https://example.test/recu.pdf',
     ...patch,
   } as ExpenseLine;
+}
+
+function supplierInvoice(
+  patch: Partial<SupplierInvoice> = {},
+): SupplierInvoice {
+  return {
+    id: 44,
+    tenant_id: 22,
+    supplier_id: 12,
+    invoice_number: 'FRS-2026-44',
+    description: 'Frais de greffe fournisseur',
+    invoice_date: new Date('2026-10-05'),
+    due_date: new Date('2026-10-20'),
+    amount_ht: 40000,
+    tax_rate: 19.25,
+    amount_tva: 7700,
+    amount_ttc: 47700,
+    status: SupplierInvoiceStatus.APPROVED,
+    is_rebillable: true,
+    rebilling_type: ExpenseRebillingType.EXPENSE,
+    action_id: null,
+    currency: 'XAF',
+    dossier_id: 74,
+    attachment_url: 'https://example.test/facture.pdf',
+    ...patch,
+  } as SupplierInvoice;
 }
 
 function managerFor(options: {
@@ -272,5 +302,55 @@ describe('CaseBillingService - dépenses refacturables', () => {
     expect(item).toBe(existing);
     expect(savedItems).toHaveLength(0);
     expect(eventAppend).not.toHaveBeenCalled();
+  });
+
+  it('crée un seul élément au coût réel pour une facture fournisseur approuvée', async () => {
+    const { service, eventAppend } = createService();
+    const savedItems: BillableItem[] = [];
+    const manager = managerFor({ savedItems });
+
+    const item = await new TenantContext().run(22, () =>
+      service.syncSupplierInvoiceToBillableItem(
+        manager,
+        supplierInvoice(),
+        9,
+        true,
+      ),
+    );
+
+    expect(item).toMatchObject({
+      source_event_key: 'SUPPLIER_INVOICE:44:APPROVED',
+      category: BillableCategory.EXPENSE,
+      calculation_mode: BillingCalculationMode.ACTUAL_COST,
+      net_amount: 40000,
+      tax_amount: 7700,
+      gross_amount: 47700,
+      status: BillableItemStatus.TO_INVOICE,
+    });
+    expect(savedItems).toHaveLength(1);
+    expect(eventAppend).toHaveBeenCalledTimes(1);
+  });
+
+  it('place aussi un débours fournisseur sans justificatif en vérification', async () => {
+    const { service } = createService();
+    const manager = managerFor({});
+
+    const item = await new TenantContext().run(22, () =>
+      service.syncSupplierInvoiceToBillableItem(
+        manager,
+        supplierInvoice({
+          rebilling_type: ExpenseRebillingType.DISBURSEMENT,
+          attachment_url: undefined,
+        }),
+        9,
+        true,
+      ),
+    );
+
+    expect(item).toMatchObject({
+      category: BillableCategory.DISBURSEMENT,
+      status: BillableItemStatus.NEEDS_REVIEW,
+      review_reason: 'Justificatif obligatoire pour ce débours',
+    });
   });
 });

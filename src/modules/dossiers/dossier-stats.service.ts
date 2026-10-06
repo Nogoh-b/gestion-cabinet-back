@@ -572,8 +572,12 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     const results = await query.getMany();
 
     return results.map((d) => {
+      // Prochaine audience = audience PROGRAMMÉE à venir. `AudienceStatus.HELD`
+      // vaut 1 : tester `status === 1` sélectionnait une audience déjà tenue.
       const nextAudience = d.audiences?.find(
-        (a) => a.status === 1 && new Date(a.full_datetime) > new Date(),
+        (a) =>
+          a.status === AudienceStatus.SCHEDULED &&
+          new Date(a.full_datetime) > new Date(),
       );
 
       return {

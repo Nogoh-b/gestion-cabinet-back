@@ -68,8 +68,20 @@ export class DashboardOverviewDto {
     facturesEnRetard: number;
   };
 
-  // Plan d'action de l'avocat - diligences à traiter, échéances, audiences
+  // Plan d'action de l'avocat - diligences à traiter, échéances, audiences.
+  // Chaque liste est tronquée (voir ACTIONS_SECTION_LIMIT) ; `totaux` porte la
+  // volumétrie réelle pour l'indicateur « voir tout » du tableau de bord.
   actions: {
+    /**
+     * Volumétrie réelle de chaque section (indépendante de la troncature des
+     * listes ci-dessous) : elle alimente l'indicateur « voir tout » du
+     * tableau de bord.
+     */
+    totaux: {
+      diligencesEnRetard: number;
+      echeancesProches: number;
+      prochainesAudiences: number;
+    };
     diligencesEnRetard: Array<{
       id: number;
       title: string;

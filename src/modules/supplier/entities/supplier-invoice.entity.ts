@@ -13,6 +13,8 @@ import {
 } from 'src/core/decorators/business-metadata.decorator';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
+import { ExpenseRebillingType } from './expense-line.entity';
 
 export enum SupplierInvoiceStatus {
   RECEIVED = 'received',
@@ -70,6 +72,30 @@ export class SupplierInvoice extends TenantEntity {
     group: 'relation',
   })
   supplier: Supplier;
+
+  @Column({ type: 'int', nullable: true, name: 'dossier_id' })
+  dossier_id: number | null;
+
+  @ManyToOne(() => Dossier, { nullable: true })
+  @JoinColumn({ name: 'dossier_id' })
+  dossier: Dossier | null;
+
+  @Column({ type: 'varchar', length: 36, nullable: true, name: 'action_id' })
+  action_id: string | null;
+
+  @Column({ type: 'tinyint', default: 0, name: 'is_rebillable' })
+  is_rebillable: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: ExpenseRebillingType,
+    default: ExpenseRebillingType.EXPENSE,
+    name: 'rebilling_type',
+  })
+  rebilling_type: ExpenseRebillingType;
+
+  @Column({ type: 'varchar', length: 10, default: 'XAF', name: 'currency' })
+  currency: string;
 
   @Column({ type: 'varchar', length: 100, name: 'invoice_number' })
   @BusinessColumn({

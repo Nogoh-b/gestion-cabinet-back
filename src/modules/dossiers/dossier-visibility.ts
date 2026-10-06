@@ -145,8 +145,10 @@ export function addRelatedDossierVisibilityCondition<T extends ObjectLiteral>(
 
   const fk = `${alias}.${column}`;
   const nullClause = allowNull ? `${fk} IS NULL OR ` : '';
+  // Attention : la table s'appelle `dossiers` (pluriel, cf. @Entity('dossiers')).
+  // Une référence au singulier produit une erreur SQL 1146 « table doesn't exist ».
   const visibleDossiers = `
-    SELECT d.id FROM dossier d
+    SELECT d.id FROM dossiers d
      WHERE d.confidentiality_level = false
   `;
 

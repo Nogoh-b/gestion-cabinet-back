@@ -17,6 +17,7 @@ import { ExpenseLinesService } from './expense-lines.service';
 import { SupplierInvoicesController } from './supplier-invoices.controller';
 import { ExpenseReportsController } from './expense-reports.controller';
 import { ExpenseLinesController } from './expense-lines.controller';
+import { ExpensesController } from './expenses.controller';
 
 // Dépendances externes
 import { AgenciesModule } from '../agencies/agencies.module';
@@ -31,6 +32,7 @@ import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.r
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
 import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
+import { ExpenseWorkspaceService } from './expense-workspace.service';
 
 @Module({
   imports: [
@@ -52,6 +54,7 @@ import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
     SupplierInvoicesController,
     ExpenseReportsController,
     ExpenseLinesController,
+    ExpensesController,
   ],
   providers: [
     PaginationServiceV1,
@@ -59,6 +62,7 @@ import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
     SupplierInvoicesService,
     ExpenseReportsService,
     ExpenseLinesService,
+    ExpenseWorkspaceService,
     SupplierInvoiceWriteHandler,
     ExpenseReportWriteHandler,
     ExpenseLineWriteHandler,
@@ -68,6 +72,7 @@ import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
     SupplierInvoicesService,
     ExpenseReportsService,
     ExpenseLinesService,
+    ExpenseWorkspaceService,
   ],
 })
 export class SupplierModule {

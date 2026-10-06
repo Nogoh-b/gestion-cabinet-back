@@ -6,10 +6,14 @@ import {
   IsNumber,
   IsEnum,
   IsDateString,
+  IsBoolean,
+  IsUUID,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SupplierInvoiceStatus } from '../entities/supplier-invoice.entity';
+import { ExpenseRebillingType } from '../entities/expense-line.entity';
 
 export class CreateSupplierInvoiceDto {
   @ApiProperty({
@@ -19,6 +23,32 @@ export class CreateSupplierInvoiceDto {
   @IsInt()
   @IsNotEmpty()
   supplier_id: number;
+
+  @ApiPropertyOptional({ description: 'Dossier client associé lorsque la dépense est refacturable' })
+  @IsInt()
+  @IsOptional()
+  dossier_id?: number;
+
+  @ApiPropertyOptional({ description: 'Action du dossier à l’origine de la dépense' })
+  @IsUUID()
+  @IsOptional()
+  action_id?: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsBoolean()
+  @IsOptional()
+  is_rebillable?: boolean;
+
+  @ApiPropertyOptional({ enum: ExpenseRebillingType, default: ExpenseRebillingType.EXPENSE })
+  @IsEnum(ExpenseRebillingType)
+  @IsOptional()
+  rebilling_type?: ExpenseRebillingType;
+
+  @ApiPropertyOptional({ example: 'XAF', default: 'XAF' })
+  @IsString()
+  @MaxLength(10)
+  @IsOptional()
+  currency?: string;
 
   @ApiProperty({
     example: 'FAC-2026-0452',

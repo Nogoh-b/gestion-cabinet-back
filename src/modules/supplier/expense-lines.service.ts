@@ -18,6 +18,7 @@ import { CaseBillingService } from '../case-workflow/services/case-billing.servi
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
 import { BillableItemStatus } from '../case-workflow/case-workflow.enums';
+import { BillableItem } from '../case-workflow/entities/billing.entity';
 
 @Injectable()
 export class ExpenseLinesService {
@@ -102,6 +103,7 @@ export class ExpenseLinesService {
       });
       if (!line)
         throw new NotFoundException('Ligne de dépense non trouvée');
+      await this.assertBillableItemMutable(manager, line.id, dto);
       let expenseReport = line.expense_report;
       if (dto.expense_report_id) {
         const nextExpenseReport = await manager
@@ -213,6 +215,45 @@ export class ExpenseLinesService {
     if (!action) {
       throw new BadRequestException(
         'L’action associée n’appartient pas au dossier sélectionné',
+      );
+    }
+  }
+
+  private async assertBillableItemMutable(
+    manager: import('typeorm').EntityManager,
+    expenseLineId: number,
+    dto: UpdateExpenseLineDto,
+  ): Promise<void> {
+    const billingFields = [
+      'amount_ht',
+      'amount_ttc',
+      'tax_rate',
+      'dossier_id',
+      'action_id',
+      'is_rebillable',
+      'rebilling_type',
+      'currency',
+      'description',
+      'expense_date',
+      'attachment_url',
+    ];
+    if (!billingFields.some((field) => field in dto)) return;
+    const item = await manager.getRepository(BillableItem).findOne({
+      where: {
+        tenant_id: getCurrentTenantId(),
+        source_event_key: `EXPENSE:${expenseLineId}:APPROVED`,
+      },
+    });
+    if (
+      item &&
+      [
+        BillableItemStatus.RESERVED,
+        BillableItemStatus.INVOICED,
+        BillableItemStatus.ADJUSTED,
+      ].includes(item.status)
+    ) {
+      throw new ConflictException(
+        'Cette dépense est déjà engagée dans la facturation. Utilisez un ajustement.',
       );
     }
   }

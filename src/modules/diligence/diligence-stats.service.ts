@@ -237,6 +237,7 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
       performance,
       upcomingDeadlines,
       expiredDeadlines,
+      upcomingDeadlinesTotal,
       completionTrend,
       averageTimeByType,
     ] = await Promise.all([
@@ -254,6 +255,7 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
       this.getPerformanceStats(filters),
       this.getUpcomingDeadlines(filters),
       this.getExpiredDeadlines(filters),
+      this.getUpcomingDeadlinesCount(filters),
       this.getCompletionTrend(filters),
       this.getAverageTimeByType(filters),
     ]);
@@ -273,6 +275,8 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
       performance,
       upcomingDeadlines,
       expiredDeadlines,
+      upcomingDeadlinesTotal,
+      expiredDeadlinesTotal: overdue,
       completionTrend,
       averageCompletionTimeByType: averageTimeByType,
     };
@@ -651,19 +655,19 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
 
   private async getUpcomingDeadlines(filters?: StatsFilterDto): Promise<any[]> {
     const now = new Date();
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
+    // `deadline` est une DATE : borner avec des fonctions SQL sur la date du
+    // jour inclut les échéances du jour même, qu'une comparaison à `new Date()`
+    // exclurait (minuit < heure courante).
     const query = this.diligenceRepository
       .createQueryBuilder('diligence')
       .leftJoinAndSelect('diligence.dossier', 'dossier')
       .leftJoinAndSelect('dossier.client', 'client')
       .leftJoinAndSelect('diligence.assigned_lawyer', 'lawyer')
       .leftJoinAndSelect('diligence.findings', 'finding')
-      .where('diligence.deadline BETWEEN :now AND :thirtyDays', {
-        now,
-        thirtyDays: thirtyDaysFromNow,
-      })
+      .where(
+        'diligence.deadline BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)',
+      )
       .andWhere('diligence.status != :completed', {
         completed: DiligenceStatus.COMPLETED,
       })
@@ -671,7 +675,7 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
         cancelled: DiligenceStatus.CANCELLED,
       })
       .orderBy('diligence.deadline', 'ASC')
-      .limit(20);
+      .limit(50);
 
     this.applyFilters(query, filters, 'diligence');
 
@@ -699,6 +703,30 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
     });
   }
 
+  /**
+   * Volumétrie des échéances à venir (30 jours), indépendante du plafond de
+   * `getUpcomingDeadlines` : le tableau de bord en affiche 5 et indique le
+   * nombre restant.
+   */
+  private async getUpcomingDeadlinesCount(
+    filters?: StatsFilterDto,
+  ): Promise<number> {
+    const query = this.diligenceRepository
+      .createQueryBuilder('diligence')
+      .where(
+        'diligence.deadline BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)',
+      )
+      .andWhere('diligence.status != :completed', {
+        completed: DiligenceStatus.COMPLETED,
+      })
+      .andWhere('diligence.status != :cancelled', {
+        cancelled: DiligenceStatus.CANCELLED,
+      });
+
+    this.applyFilters(query, filters, 'diligence');
+    return query.getCount();
+  }
+
   private async getExpiredDeadlines(filters?: StatsFilterDto): Promise<any[]> {
     const now = new Date();
 
@@ -707,7 +735,9 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
       .leftJoinAndSelect('diligence.dossier', 'dossier')
       .leftJoinAndSelect('dossier.client', 'client')
       .leftJoinAndSelect('diligence.assigned_lawyer', 'lawyer')
-      .where('diligence.deadline < :now', { now })
+      // Une échéance du jour n'est pas « en retard » : la journée n'est pas
+      // terminée.
+      .where('diligence.deadline < CURDATE()')
       .andWhere('diligence.status != :completed', {
         completed: DiligenceStatus.COMPLETED,
       })
@@ -715,7 +745,7 @@ export class DiligenceStatsService extends BaseStatsService<Diligence> {
         cancelled: DiligenceStatus.CANCELLED,
       })
       .orderBy('diligence.deadline', 'ASC')
-      .limit(20);
+      .limit(50);
 
     this.applyFilters(query, filters, 'diligence');
 

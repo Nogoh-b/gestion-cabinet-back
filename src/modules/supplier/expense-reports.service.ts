@@ -1,5 +1,5 @@
 import { DataSource, Repository } from 'typeorm';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
@@ -16,6 +16,7 @@ import { PlanQuotaService } from '../plans/plan-quota.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { CaseBillingService } from '../case-workflow/services/case-billing.service';
+import { BillableItemStatus } from '../case-workflow/case-workflow.enums';
 
 @Injectable()
 export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
@@ -203,6 +204,36 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
   }
 
   async remove(id: number): Promise<void> {
-    await this.repository.delete(id);
+    const tenantId = getCurrentTenantId();
+    await this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(ExpenseReport);
+      const report = await repository.findOne({
+        where: { id, tenant_id: tenantId },
+        relations: ['lines'],
+      });
+      if (!report) throw new NotFoundException('Note de frais non trouvée');
+      for (const line of report.lines ?? []) {
+        line.expense_report = report;
+        const item = await this.caseBillingService.syncExpenseLineToBillableItem(
+          manager,
+          line,
+          null,
+          false,
+        );
+        if (
+          item &&
+          [
+            BillableItemStatus.RESERVED,
+            BillableItemStatus.INVOICED,
+            BillableItemStatus.ADJUSTED,
+          ].includes(item.status)
+        ) {
+          throw new ConflictException(
+            'Cette note contient une dépense déjà engagée dans la facturation et ne peut plus être supprimée',
+          );
+        }
+      }
+      await repository.delete({ id, tenant_id: tenantId });
+    });
   }
 }

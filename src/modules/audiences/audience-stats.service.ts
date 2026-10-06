@@ -7,6 +7,15 @@ import { BaseStatsService } from 'src/core/shared/services/stats/base-v1.service
 import { AudienceStatsDto } from './dto/audience-stats.dto';
 import { StatsFilterDto } from 'src/core/types/base-stats.dto';
 
+/**
+ * MariaDB stocke cet enum numérique en texte ('0','1','2','3'). Un paramètre
+ * LIÉ numérique est interprété comme un INDEX d'enum (0 → valeur d'erreur '')
+ * et ne renvoie donc jamais aucune ligne : la valeur doit être liée sous
+ * forme de chaîne. Les littéraux SQL (`status = 0`) ne sont pas concernés.
+ */
+const audienceStatusValue = (status: AudienceStatus): string =>
+  String(status);
+
 @Injectable()
 export class AudienceStatsService extends BaseStatsService<Audience> {
   constructor(
@@ -25,6 +34,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       byDossier,
       evolution,
       upcoming,
+      upcomingTotal,
       pastStats,
       monthlyTrend,
       weeklyDist,
@@ -36,6 +46,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       this.getDistributionByDossier(filters),
       this.getEvolution(filters, 'audience_date'),
       this.getUpcomingAudiences(filters),
+      this.getUpcomingAudiencesCount(filters),
       this.getPastAudiencesStats(filters),
       this.getMonthlyTrend(filters),
       this.getWeeklyDistribution(filters),
@@ -53,6 +64,7 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       byDossier,
       evolution,
       upcomingAudiences: upcoming,
+      upcomingAudiencesTotal: upcomingTotal,
       pastAudiences: pastStats,
       monthlyTrend,
       weeklyDistribution: weeklyDist,
@@ -184,12 +196,14 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
         'dossier.dossier_number',
         'client',
       ])
-      .where('audience.audience_date >= :now', { now: new Date() })
+      // `audience_date` est une DATE : comparer à `new Date()` exclut les
+      // audiences du jour même (minuit < heure courante).
+      .where('audience.audience_date >= CURDATE()')
       .andWhere('audience.status = :status', {
-        status: AudienceStatus.SCHEDULED,
+        status: audienceStatusValue(AudienceStatus.SCHEDULED),
       })
       .orderBy('audience.audience_date', 'ASC')
-      .limit(10);
+      .limit(50);
 
     this.applyFilters(query, filters, 'audience');
 
@@ -206,15 +220,34 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
     }));
   }
 
+  /**
+   * Volumétrie des audiences à venir, indépendante du plafond de
+   * `getUpcomingAudiences` : le tableau de bord en affiche 5 et indique
+   * combien d'autres sont programmées.
+   */
+  private async getUpcomingAudiencesCount(
+    filters?: StatsFilterDto,
+  ): Promise<number> {
+    const query = this.audienceRepository
+      .createQueryBuilder('audience')
+      .where('audience.audience_date >= CURDATE()')
+      .andWhere('audience.status = :status', {
+        status: audienceStatusValue(AudienceStatus.SCHEDULED),
+      });
+
+    this.applyFilters(query, filters, 'audience');
+    return query.getCount();
+  }
+
   private async getPastAudiencesStats(filters?: StatsFilterDto): Promise<any> {
     const query = this.audienceRepository
       .createQueryBuilder('audience')
       .select('COUNT(*)', 'total')
       .addSelect(
-        "SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)",
+        "SUM(CASE WHEN audience.status = '1' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)",
         'successRate',
       )
-      .where('audience.audience_date < :now', { now: new Date() });
+      .where('audience.audience_date < CURDATE()');
 
     this.applyFilters(query, filters, 'audience');
 
@@ -235,11 +268,11 @@ export class AudienceStatsService extends BaseStatsService<Audience> {
       .createQueryBuilder('audience')
       .select("DATE_FORMAT(audience.audience_date, '%Y-%m')", 'month')
       .addSelect(
-        "SUM(CASE WHEN audience.status = 'scheduled' THEN 1 ELSE 0 END)",
+        "SUM(CASE WHEN audience.status = '0' THEN 1 ELSE 0 END)",
         'scheduled',
       )
       .addSelect(
-        "SUM(CASE WHEN audience.status = 'held' THEN 1 ELSE 0 END)",
+        "SUM(CASE WHEN audience.status = '1' THEN 1 ELSE 0 END)",
         'held',
       )
       .where('audience.audience_date BETWEEN :start AND :end', {

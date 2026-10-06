@@ -22,6 +22,12 @@ export class DiligenceStatsDto extends BaseStatsDto {
   // Échéances
   upcomingDeadlines: UpcomingDeadlineDto[];
   expiredDeadlines: ExpiredDeadlineDto[];
+  /**
+   * Volumétrie réelle des listes ci-dessus, qui sont volontairement plafonnées :
+   * elle alimente l'indicateur « voir tout » du tableau de bord.
+   */
+  upcomingDeadlinesTotal: number;
+  expiredDeadlinesTotal: number;
 
   // Statistiques temporelles
   completionTrend: CompletionTrendDto[];

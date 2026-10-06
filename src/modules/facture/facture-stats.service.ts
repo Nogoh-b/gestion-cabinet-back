@@ -42,7 +42,7 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       if (filters?.includeConfidential !== true) {
         query.andWhere(
           `(${alias}.dossier_id IS NULL OR ${alias}.dossier_id IN (
-             SELECT d.id FROM dossier d WHERE d.confidentiality_level = false
+             SELECT d.id FROM dossiers d WHERE d.confidentiality_level = false
            ))`,
         );
       }
