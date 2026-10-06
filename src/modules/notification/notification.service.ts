@@ -294,8 +294,13 @@ export class NotificationService {
     unreadOnly: boolean = false,
   ): Promise<{
     data: NotificationResponseDto[];
-    total: number;
-    unread_count: number;
+    meta: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+      unread_count: number;
+    };
   }> {
     const queryBuilder = this.userNotificationRepository
       .createQueryBuilder('userNotification')
@@ -330,7 +335,16 @@ export class NotificationService {
       }),
     );
 
-    return { data, total, unread_count };
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: limit > 0 ? Math.ceil(total / limit) : 0,
+        unread_count,
+      },
+    };
   }
 
   async findAllUser() {
