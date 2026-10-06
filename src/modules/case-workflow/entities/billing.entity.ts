@@ -570,6 +570,8 @@ export class BillableItem extends TenantEntity {
       "CASE WHEN `category` IN ('HONORARIUM','VACATION') THEN `action_id` ELSE NULL END",
     generatedType: 'STORED',
     select: false,
+    insert: false,
+    update: false,
   })
   professional_action_key: string | null;
 
