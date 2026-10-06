@@ -55,18 +55,21 @@ export class UnifiedSupplierInvoiceDto {
   @Min(0)
   amount_ht: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
-  tax_rate: number;
+  tax_rate?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  amount_tva: number;
+  amount_tva?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  amount_ttc: number;
+  amount_ttc?: number;
 
   @IsOptional()
   @IsEnum(SupplierInvoiceStatus)
@@ -100,14 +103,16 @@ export class UnifiedExpenseLineDto {
   @Min(0)
   amount_ht: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
-  tax_rate: number;
+  tax_rate?: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  amount_ttc: number;
+  amount_ttc?: number;
 
   @IsOptional()
   @IsString()

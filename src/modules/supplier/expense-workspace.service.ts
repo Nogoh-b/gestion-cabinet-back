@@ -18,7 +18,10 @@ import {
   BillableItemStatus,
   BillableSourceType,
 } from '../case-workflow/case-workflow.enums';
-import { BillableItem } from '../case-workflow/entities/billing.entity';
+import {
+  BillableItem,
+  DossierBillingProfile,
+} from '../case-workflow/entities/billing.entity';
 import { DossierAction } from '../case-workflow/entities/dossier-action.entity';
 import { CaseBillingService } from '../case-workflow/services/case-billing.service';
 import {
@@ -329,8 +332,14 @@ export class ExpenseWorkspaceService {
         dto.dossier_id,
         dto.action_id,
       );
+      const dossierDefaults = await this.resolveDossierBillingDefaults(
+        manager,
+        dto.target === ExpenseWorkspaceTarget.DOSSIER
+          ? dto.dossier_id
+          : undefined,
+      );
       const amountHt = this.round(input.amount_ht);
-      const taxRate = Number(input.tax_rate || 0);
+      const taxRate = this.toRate(input.tax_rate ?? dossierDefaults.vat_rate);
       const amountTva = this.round((amountHt * taxRate) / 100);
       const repository = manager.getRepository(SupplierInvoice);
       const invoice = repository.create({
@@ -359,7 +368,7 @@ export class ExpenseWorkspaceService {
         is_rebillable: dto.target === ExpenseWorkspaceTarget.DOSSIER,
         rebilling_type:
           dto.rebilling_type ?? ExpenseRebillingType.EXPENSE,
-        currency: dto.currency || 'XAF',
+        currency: dto.currency || dossierDefaults.currency || 'XAF',
       });
       const result = await repository.save(invoice);
       if (approved && result.is_rebillable) {
@@ -405,9 +414,15 @@ export class ExpenseWorkspaceService {
         dto.dossier_id,
         dto.action_id,
       );
+      const dossierDefaults = await this.resolveDossierBillingDefaults(
+        manager,
+        dto.target === ExpenseWorkspaceTarget.DOSSIER
+          ? dto.dossier_id
+          : undefined,
+      );
       const normalizedLines = input.lines.map((line) => {
         const amountHt = this.round(line.amount_ht);
-        const taxRate = Number(line.tax_rate || 0);
+        const taxRate = this.toRate(line.tax_rate ?? dossierDefaults.vat_rate);
         return {
           ...line,
           amount_ht: amountHt,
@@ -461,7 +476,7 @@ export class ExpenseWorkspaceService {
               dto.target === ExpenseWorkspaceTarget.DOSSIER
                 ? dto.action_id ?? null
                 : null,
-            currency: dto.currency || 'XAF',
+            currency: dto.currency || dossierDefaults.currency || 'XAF',
           }),
         );
         line.expense_report = report;
@@ -554,6 +569,28 @@ export class ExpenseWorkspaceService {
       }
     }
     return dossier;
+  }
+
+  private async resolveDossierBillingDefaults(
+    manager: import('typeorm').EntityManager,
+    dossierId?: number,
+  ): Promise<{ vat_rate: number | null; currency: string | null }> {
+    if (!dossierId) return { vat_rate: null, currency: null };
+    const tenantId = getCurrentTenantId();
+    const profile = await manager
+      .getRepository(DossierBillingProfile)
+      .findOne({ where: { dossier_id: dossierId, tenant_id: tenantId } });
+    const vatRate = profile ? Number(profile.vat_rate) : NaN;
+    return {
+      vat_rate: Number.isFinite(vatRate) ? vatRate : null,
+      currency: profile?.currency?.trim() || null,
+    };
+  }
+
+  private toRate(value: unknown): number {
+    const parsed = Number(value ?? 0);
+    if (!Number.isFinite(parsed) || parsed < 0) return 0;
+    return Math.min(parsed, 100);
   }
 
   private async checkExpenseQuota(tenantId: number): Promise<void> {
