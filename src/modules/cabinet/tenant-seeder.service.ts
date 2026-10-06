@@ -16,7 +16,10 @@
  * démarrage et partagé entre tous les cabinets.
  */
 import { PermissionSeeder } from 'src/core/auth/seeders/permission.seeder';
-import { RoleSeeder } from 'src/core/auth/seeders/role.seeder';
+import {
+  ROLES_CONFIG,
+  RoleSeeder,
+} from 'src/core/auth/seeders/role.seeder';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import AudienceTypeSeeder from 'src/modules/audience-type/seeder/audience-type.seeder';
 // ── Seeders IAM (permissions & rôles par cabinet) ─────────────────────────
@@ -64,8 +67,7 @@ export class TenantSeederService {
   private async seedReferenceData(cabinetId: number): Promise<void> {
     await this.tenantContext.run(cabinetId, async () => {
       // ── 1. IAM : permissions puis rôles (les rôles dépendent des permissions) ──
-      const createdCodes = await this.permissionSeeder.seed();
-      await this.roleSeeder.seed(createdCodes);
+      await this.seedIamReferenceData();
 
       // ── 2. Données de référence métier ──────────────────────────────────────
       await runSeeders(this.dataSource, {
@@ -93,6 +95,19 @@ export class TenantSeederService {
         ],
       });
     });
+  }
+
+  /**
+   * Réconcilie uniquement l'IAM dans le contexte tenant courant.
+   *
+   * Le seeding reste additif : PermissionSeeder ne crée que les permissions
+   * absentes et RoleSeeder ne complète un rôle existant qu'avec les permissions
+   * qui viennent réellement d'être créées. Les choix manuels d'un administrateur
+   * ne sont donc jamais réinitialisés.
+   */
+  private async seedIamReferenceData(): Promise<void> {
+    const createdCodes = await this.permissionSeeder.seed();
+    await this.roleSeeder.seed(createdCodes);
   }
 
   /**
@@ -140,5 +155,50 @@ export class TenantSeederService {
     }
 
     this.logger.log('🔄 Re-synchronisation des données de référence terminée.');
+  }
+
+  /**
+   * Rattrape les permissions et rôles manquants de tous les cabinets existants.
+   *
+   * Cette synchronisation IAM est volontairement séparée du seeding complet :
+   * elle peut être exécutée à chaque démarrage, y compris lorsque RUN_SEEDERS
+   * est désactivé, sans lancer tous les seeders métier plus coûteux.
+   */
+  async syncIamReferenceDataForAllTenants(): Promise<void> {
+    const cabinets = await this.cabinetRepo.find({ select: ['id'] });
+    const existingRoles: Array<{ tenant_id: number; code: string }> =
+      await this.dataSource.query('SELECT tenant_id, code FROM user_role');
+    const roleCodesByTenant = new Map<number, Set<string>>();
+
+    for (const role of existingRoles) {
+      const tenantId = Number(role.tenant_id);
+      const codes = roleCodesByTenant.get(tenantId) ?? new Set<string>();
+      codes.add(role.code);
+      roleCodesByTenant.set(tenantId, codes);
+    }
+
+    const expectedRoleCodes = ROLES_CONFIG.map((role) => role.code);
+    const cabinetsToRepair = cabinets.filter(({ id }) => {
+      const existingCodes = roleCodesByTenant.get(id) ?? new Set<string>();
+      return expectedRoleCodes.some((code) => !existingCodes.has(code));
+    });
+
+    this.logger.log(
+      `🔐 Réconciliation IAM : ${cabinetsToRepair.length}/${cabinets.length} cabinet(s) à réparer…`,
+    );
+
+    for (const { id } of cabinetsToRepair) {
+      try {
+        await this.tenantContext.run(id, () => this.seedIamReferenceData());
+        this.logger.log(`✅ Cabinet #${id} : IAM à jour.`);
+      } catch (err) {
+        // Un cabinet incomplet ne doit pas empêcher les autres d'être réparés.
+        this.logger.error(
+          `❌ Cabinet #${id} : échec de la réconciliation IAM : ${(err as Error)?.message ?? err}`,
+        );
+      }
+    }
+
+    this.logger.log('🔐 Réconciliation IAM terminée.');
   }
 }
