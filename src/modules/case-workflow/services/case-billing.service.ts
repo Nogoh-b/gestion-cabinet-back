@@ -25,9 +25,18 @@ import {
 } from 'src/modules/supplier/entities/expense-line.entity';
 import { ExpenseReportStatus } from 'src/modules/supplier/entities/expense-report.entity';
 import {
+  SupplierInvoice,
+  SupplierInvoiceStatus,
+} from 'src/modules/supplier/entities/supplier-invoice.entity';
+import {
   StatutFacture,
   TypeFacture,
 } from 'src/modules/facture/dto/create-facture.dto';
+import { Paiement } from 'src/modules/paiement/entities/paiement.entity';
+import {
+  ModePaiement,
+  StatutPaiement,
+} from 'src/modules/paiement/dto/create-paiement.dto';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   ActionBillingDecision,
@@ -935,6 +944,202 @@ export class CaseBillingService {
         amount: item.gross_amount,
       },
       idempotencyKey: `EVENT:EXPENSE:${expenseLine.id}:${eventType}:${sourceVersion}`,
+    });
+  }
+
+  async syncSupplierInvoiceToBillableItem(
+    manager: EntityManager,
+    invoice: SupplierInvoice,
+    actorUserId: number | null,
+    invoiceApproved?: boolean,
+  ): Promise<BillableItem | null> {
+    const tenantId = getCurrentTenantId();
+    const repository = manager.getRepository(BillableItem);
+    const sourceEventKey = `SUPPLIER_INVOICE:${invoice.id}:APPROVED`;
+    const existing = await repository.findOne({
+      where: { tenant_id: tenantId, source_event_key: sourceEventKey },
+    });
+    const approved =
+      invoiceApproved ??
+      [SupplierInvoiceStatus.APPROVED, SupplierInvoiceStatus.PAID].includes(
+        invoice.status,
+      );
+    const profile = invoice.dossier_id
+      ? await manager.getRepository(DossierBillingProfile).findOne({
+          where: { tenant_id: tenantId, dossier_id: invoice.dossier_id },
+        })
+      : null;
+    const isDisbursement =
+      invoice.rebilling_type === ExpenseRebillingType.DISBURSEMENT;
+    const policyAllowsRebilling = isDisbursement
+      ? profile?.rebill_disbursements !== false
+      : profile?.rebill_expenses !== false;
+    let ineligibleReason: string | null = null;
+    if (!approved) ineligibleReason = 'La facture fournisseur n’est pas approuvée';
+    else if (!invoice.is_rebillable)
+      ineligibleReason = 'La dépense fournisseur n’est pas refacturable';
+    else if (!invoice.dossier_id)
+      ineligibleReason = 'Aucun dossier client n’est associé';
+    else if (!policyAllowsRebilling)
+      ineligibleReason = isDisbursement
+        ? 'La refacturation des débours est désactivée pour ce dossier'
+        : 'La refacturation des frais est désactivée pour ce dossier';
+
+    if (ineligibleReason) {
+      if (!existing) return null;
+      if (
+        ![
+          BillableItemStatus.NEEDS_REVIEW,
+          BillableItemStatus.TO_INVOICE,
+          BillableItemStatus.WAIVED,
+        ].includes(existing.status)
+      ) {
+        return existing;
+      }
+      existing.status = BillableItemStatus.WAIVED;
+      existing.review_reason = ineligibleReason;
+      const waived = await repository.save(existing);
+      await this.appendSupplierInvoiceSyncEvent(
+        manager,
+        invoice,
+        waived,
+        actorUserId,
+        'BILLABLE_ITEM_WAIVED',
+      );
+      return waived;
+    }
+
+    if (
+      existing &&
+      [
+        BillableItemStatus.RESERVED,
+        BillableItemStatus.INVOICED,
+        BillableItemStatus.ADJUSTED,
+      ].includes(existing.status)
+    ) {
+      return existing;
+    }
+
+    const dossier = await manager.getRepository(Dossier).findOne({
+      where: { id: invoice.dossier_id!, tenant_id: tenantId },
+    });
+    if (!dossier || dossier.workflow_engine !== WorkflowEngine.ACTIONS_V2) {
+      return existing ?? null;
+    }
+
+    const reviewReasons: string[] = [];
+    const net = this.round(Number(invoice.amount_ht ?? 0));
+    const gross = this.round(Number(invoice.amount_ttc ?? 0));
+    const tax = this.round(Number(invoice.amount_tva ?? Math.max(0, gross - net)));
+    if (gross <= 0 || net < 0 || gross < net) {
+      reviewReasons.push('Montant réel de la dépense incohérent');
+    }
+    if (
+      isDisbursement &&
+      profile?.require_disbursement_receipt !== false &&
+      !invoice.attachment_url
+    ) {
+      reviewReasons.push('Justificatif obligatoire pour ce débours');
+    }
+    if (invoice.action_id) {
+      const action = await manager.getRepository(DossierAction).findOne({
+        where: {
+          id: invoice.action_id,
+          tenant_id: tenantId,
+          dossier_id: invoice.dossier_id!,
+        },
+      });
+      if (!action) reviewReasons.push('Action associée introuvable dans ce dossier');
+    }
+
+    const reviewReason = reviewReasons.length ? reviewReasons.join('. ') : null;
+    const category = isDisbursement
+      ? BillableCategory.DISBURSEMENT
+      : BillableCategory.EXPENSE;
+    const values: Partial<BillableItem> = {
+      tenant_id: tenantId,
+      dossier_id: dossier.id,
+      client_id: dossier.client_id,
+      source_type: BillableSourceType.EXPENSE,
+      category,
+      calculation_mode: BillingCalculationMode.ACTUAL_COST,
+      source_id: `SUPPLIER_INVOICE:${invoice.id}`,
+      action_id: invoice.action_id ?? null,
+      billing_rule_id: null,
+      source_event_key: sourceEventKey,
+      occurred_at: new Date(invoice.invoice_date),
+      label: `${isDisbursement ? 'Débours' : 'Frais'} - ${
+        invoice.description?.trim() || invoice.invoice_number
+      }`,
+      unit_label: null,
+      quantity: 1,
+      unit_price: net,
+      net_amount: net,
+      tax_rate: Number(invoice.tax_rate ?? 0),
+      tax_amount: tax,
+      gross_amount: gross,
+      currency: invoice.currency || profile?.currency || 'XAF',
+      status: reviewReason
+        ? BillableItemStatus.NEEDS_REVIEW
+        : BillableItemStatus.TO_INVOICE,
+      calculation_snapshot: {
+        mode: BillingCalculationMode.ACTUAL_COST,
+        supplierInvoiceId: invoice.id,
+        supplierId: invoice.supplier_id,
+        rebillingType: invoice.rebilling_type,
+        amountHt: net,
+        taxRate: Number(invoice.tax_rate ?? 0),
+        amountTva: tax,
+        amountTtc: gross,
+        attachmentUrl: invoice.attachment_url ?? null,
+        actionId: invoice.action_id ?? null,
+      },
+      review_reason: reviewReason,
+      reserved_at: null,
+      invoice_line_id: null,
+    };
+    const item = await repository.save(
+      existing
+        ? Object.assign(existing, values)
+        : repository.create(values),
+    );
+    await this.appendSupplierInvoiceSyncEvent(
+      manager,
+      invoice,
+      item,
+      actorUserId,
+      existing ? 'BILLABLE_ITEM_UPDATED' : 'BILLABLE_ITEM_CREATED',
+    );
+    return item;
+  }
+
+  private async appendSupplierInvoiceSyncEvent(
+    manager: EntityManager,
+    invoice: SupplierInvoice,
+    item: BillableItem,
+    actorUserId: number | null,
+    eventType:
+      | 'BILLABLE_ITEM_CREATED'
+      | 'BILLABLE_ITEM_UPDATED'
+      | 'BILLABLE_ITEM_WAIVED',
+  ): Promise<void> {
+    const sourceVersion = invoice.updated_at
+      ? new Date(invoice.updated_at).getTime()
+      : 'initial';
+    await this.eventService.append(manager, {
+      dossierId: item.dossier_id,
+      eventType,
+      aggregateType: 'BillableItem',
+      aggregateId: item.id,
+      actorUserId,
+      payload: {
+        supplierInvoiceId: invoice.id,
+        actionId: invoice.action_id ?? null,
+        category: item.category,
+        status: item.status,
+        amount: item.gross_amount,
+      },
+      idempotencyKey: `EVENT:SUPPLIER_INVOICE:${invoice.id}:${eventType}:${sourceVersion}`,
     });
   }
 
@@ -2214,26 +2419,49 @@ export class CaseBillingService {
     return { rule, calculationMode, category, taxRate, calculation };
   }
 
+  /**
+   * Facturation transactionnelle : crée la facture ET encaisse en atomique.
+   * - Si initial_payment absent → comportement historique (sans encaissement).
+   * - Si initial_payment présent → création Paiement dans la même transaction DB,
+   *   avec calcul du statut facture (PAYEE / PARTIELLEMENT_PAYEE via total payé validé).
+   * - Idempotent via CaseWorkflowEvent INVOICE:<key>. En cas de rejeu le process
+   *   complet (facture + encaissement) est restauré, pas dupliqué.
+   */
+  private async findExistingInvoiceForIdempotencyKey(
+    manager: EntityManager | null,
+    tenantId: number,
+    idempotencyKey: string,
+    relations: string[] = ['lines', 'paiements'],
+  ): Promise<Facture | null> {
+    const repo = manager
+      ? manager.getRepository(CaseWorkflowEvent)
+      : this.eventRepository;
+    const priorEvent = await repo.findOne({
+      where: { tenant_id: tenantId, idempotency_key: `INVOICE:${idempotencyKey}` },
+    });
+    const priorInvoiceId = (priorEvent?.payload as any)?.invoiceId;
+    if (typeof priorInvoiceId !== 'string') return null;
+    const factureRepo = manager
+      ? manager.getRepository(Facture)
+      : this.factureRepository;
+    return (await factureRepo.findOne({
+      where: { id: priorInvoiceId, tenant_id: tenantId },
+      relations,
+    })) as unknown as Facture | null;
+  }
+
   async invoiceFromItems(
     dto: GenerateInvoiceFromItemsDto,
     idempotencyKey: string,
     actorUserId: number,
   ): Promise<Facture> {
     const tenantId = getCurrentTenantId();
-    const priorEvent = await this.eventRepository.findOne({
-      where: {
-        tenant_id: tenantId,
-        idempotency_key: `INVOICE:${idempotencyKey}`,
-      },
-    });
-    const priorInvoiceId = priorEvent?.payload?.invoiceId;
-    if (typeof priorInvoiceId === 'string') {
-      const prior = await this.factureRepository.findOne({
-        where: { id: priorInvoiceId, tenant_id: tenantId },
-        relations: ['lines'],
-      });
-      if (prior) return prior;
-    }
+    const prior = await this.findExistingInvoiceForIdempotencyKey(
+      null,
+      tenantId,
+      idempotencyKey,
+    );
+    if (prior) return prior;
 
     return this.dataSource.transaction(async (manager) => {
       const itemRepo = manager.getRepository(BillableItem);
@@ -2256,22 +2484,12 @@ export class CaseBillingService {
         );
       }
       if (items.some((item) => item.status !== BillableItemStatus.TO_INVOICE)) {
-        const sameRequest = await manager
-          .getRepository(CaseWorkflowEvent)
-          .findOne({
-            where: {
-              tenant_id: tenantId,
-              idempotency_key: `INVOICE:${idempotencyKey}`,
-            },
-          });
-        const sameInvoiceId = sameRequest?.payload?.invoiceId;
-        if (typeof sameInvoiceId === 'string') {
-          const sameInvoice = await manager.getRepository(Facture).findOne({
-            where: { id: sameInvoiceId, tenant_id: tenantId },
-            relations: ['lines'],
-          });
-          if (sameInvoice) return sameInvoice;
-        }
+        const sameInvoice = await this.findExistingInvoiceForIdempotencyKey(
+          manager,
+          tenantId,
+          idempotencyKey,
+        );
+        if (sameInvoice) return sameInvoice;
         throw new ConflictException(
           'Un élément est déjà réservé, facturé ou doit être revu',
         );
@@ -2402,6 +2620,59 @@ export class CaseBillingService {
         item.invoice_line_id = line.id;
       }
       await itemRepo.save(items);
+
+      // ── Encaissement transactionnel (atomique facture+paiement) ─────
+      // Aucune migration : initial_payment est transient dans la requête.
+      // Le même idempotencyKey couvre facture + paiement : pas de doublon.
+      let initialPaiement: Paiement | null = null;
+      if (dto.initial_payment) {
+        const ip = dto.initial_payment;
+        const montant = Number(ip.montant);
+        if (!Number.isFinite(montant) || montant <= 0) {
+          throw new BadRequestException(
+            'Le montant encaissé doit être strictement positif',
+          );
+        }
+        const totalTtc = this.round(net + tax);
+        if (montant > totalTtc + 0.01) {
+          throw new BadRequestException(
+            `Le montant encaissé (${montant.toFixed(2)}) dépasse le TTC de la facture (${totalTtc.toFixed(2)})`,
+          );
+        }
+        const paiementRepo = manager.getRepository(Paiement);
+        const mode = this.normalizeInitialPaymentMode(ip.mode_paiement);
+        const status = this.normalizeInitialPaymentStatus(ip.status);
+        initialPaiement = await paiementRepo.save(
+          paiementRepo.create({
+            tenant_id: tenantId,
+            factureId: facture.id,
+            montant,
+            modePaiement: mode,
+            status,
+            datePaiement: ip.date_paiement
+              ? new Date(ip.date_paiement)
+              : new Date(),
+            dateValeur: ip.date_paiement
+              ? new Date(ip.date_paiement)
+              : new Date(),
+            reference: ip.reference?.trim() || null,
+            banque: ip.banque?.trim() || null,
+            notes: ip.notes?.trim() || null,
+            // Titulaire/banque hérités du client si non renseignés — non bloquant
+          } as Partial<Paiement>),
+        );
+        // Calcul du statut facture basé uniquement sur le payé VALIDÉ.
+        // Garde cohérence avec PaiementService.updateFactureStatus : on aligne
+        // la facture émise atomiquement sans attendre un second appel.
+        if (status === StatutPaiement.VALIDE) {
+          facture.status =
+            montant >= totalTtc - 0.009
+              ? StatutFacture.PAYEE
+              : StatutFacture.PARTIELLEMENT_PAYEE;
+          await manager.getRepository(Facture).save(facture);
+        }
+      }
+
       await this.eventService.append(manager, {
         dossierId: dossier.id,
         eventType: items.length
@@ -2413,12 +2684,108 @@ export class CaseBillingService {
         payload: {
           invoiceId: facture.id,
           billableItemIds: items.map((item) => item.id),
+          initialPaymentId: initialPaiement?.id ?? null,
+          initialPaymentAmount: initialPaiement
+            ? Number(initialPaiement.montant)
+            : null,
         },
         idempotencyKey: `INVOICE:${idempotencyKey}`,
       });
-      return Object.assign(facture, {
-        lines: await lineRepo.find({ where: { facture_id: facture.id } }),
-      });
+      const lines = await lineRepo.find({ where: { facture_id: facture.id } });
+      const paiements = initialPaiement
+        ? [initialPaiement]
+        : await manager
+            .getRepository(Paiement)
+            .find({ where: { factureId: facture.id as any, tenant_id: tenantId } as any });
+      return Object.assign(facture, { lines, paiements });
     });
+  }
+
+  private normalizeInitialPaymentMode(value?: number): ModePaiement {
+    if (typeof value === 'number' && value >= 0 && value <= 6)
+      return value as ModePaiement;
+    return ModePaiement.VIREMENT;
+  }
+
+  private normalizeInitialPaymentStatus(value?: number): StatutPaiement {
+    if (typeof value === 'number' && [0, 1, 2, 3].includes(value))
+      return value as StatutPaiement;
+    return StatutPaiement.VALIDE;
+  }
+
+  /**
+   * Lecture seule pour l'annexe "Inclus dans le forfait" : aucune écriture,
+   * aucun BillableItem créé. Renvoyé à la demande du front pour affichage
+   * dans la facture / le PDF sans impacter les totaux.
+   */
+  async getIncludedActionsForFacture(
+    factureId: string,
+    tenantId: number,
+  ): Promise<
+    Array<{
+      id: string;
+      dossier_id: number;
+      definition_label: string;
+      title: string;
+      completed_at: Date | null;
+      billing_reason: string | null;
+    }>
+  > {
+    const facture = await this.factureRepository.findOne({
+      where: { id: factureId, tenant_id: tenantId } as any,
+    });
+    if (!facture) throw new NotFoundException('Facture introuvable');
+    const dossierId = (facture as any).dossier_id as number;
+    const rows = await this.dataSource
+      .getRepository(DossierAction)
+      .createQueryBuilder('a')
+      .where('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.dossier_id = :dossierId', { dossierId })
+      .andWhere('a.billing_decision = :decision', {
+        decision: ActionBillingDecision.INCLUDED_IN_PACKAGE,
+      })
+      .andWhere("a.status = 'COMPLETED'")
+      .orderBy('a.completed_at', 'ASC')
+      .getMany();
+    return rows.map((a) => ({
+      id: a.id,
+      dossier_id: a.dossier_id,
+      definition_label: a.definition_label,
+      title: a.title,
+      completed_at: a.completed_at,
+      billing_reason: a.billing_reason,
+    }));
+  }
+
+  async getIncludedActionsForDossier(
+    dossierId: number,
+    tenantId: number,
+  ): Promise<
+    Array<{
+      id: string;
+      dossier_id: number;
+      definition_label: string;
+      title: string;
+      completed_at: Date | null;
+    }>
+  > {
+    const rows = await this.dataSource
+      .getRepository(DossierAction)
+      .createQueryBuilder('a')
+      .where('a.tenant_id = :tenantId', { tenantId })
+      .andWhere('a.dossier_id = :dossierId', { dossierId })
+      .andWhere('a.billing_decision = :decision', {
+        decision: ActionBillingDecision.INCLUDED_IN_PACKAGE,
+      })
+      .andWhere("a.status = 'COMPLETED'")
+      .orderBy('a.completed_at', 'ASC')
+      .getMany();
+    return rows.map((a) => ({
+      id: a.id,
+      dossier_id: a.dossier_id,
+      definition_label: a.definition_label,
+      title: a.title,
+      completed_at: a.completed_at,
+    }));
   }
 }

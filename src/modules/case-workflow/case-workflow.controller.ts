@@ -17,6 +17,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { BillableCategory, BillableItemStatus, BillableSourceType } from './case-workflow.enums';
 import {
   ActionTransitionDto,
@@ -568,6 +569,24 @@ export class CaseInvoicesController {
       dto,
       requireIdempotencyKey(key),
       actorId(user),
+    );
+  }
+
+  @Get('facture/:factureId/included-actions')
+  @RequirePermissions('view_factures')
+  getIncludedActionsForFacture(@Param('factureId') factureId: string) {
+    return this.billingService.getIncludedActionsForFacture(
+      factureId,
+      getCurrentTenantId(),
+    );
+  }
+
+  @Get('dossier/:dossierId/included-actions')
+  @RequirePermissions('view_factures')
+  getIncludedActionsForDossier(@Param('dossierId', ParseIntPipe) dossierId: number) {
+    return this.billingService.getIncludedActionsForDossier(
+      dossierId,
+      getCurrentTenantId(),
     );
   }
 }

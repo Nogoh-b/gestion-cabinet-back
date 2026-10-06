@@ -595,6 +595,43 @@ export class UpdateBillingProfileDto {
   expected_version?: number;
 }
 
+export class InitialPaymentDto {
+  @IsNumber()
+  @Min(0.01)
+  montant: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  mode_paiement?: number;
+
+  @IsOptional()
+  @IsDateString()
+  date_paiement?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  reference?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  banque?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(3)
+  status?: number;
+}
+
 export class GenerateInvoiceFromItemsDto {
   @IsArray()
   @IsUUID('4', { each: true })
@@ -623,6 +660,11 @@ export class GenerateInvoiceFromItemsDto {
   @IsString()
   @MaxLength(2000)
   internal_notes?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialPaymentDto)
+  initial_payment?: InitialPaymentDto;
 }
 
 export class ReviewBillableItemDto {

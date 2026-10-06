@@ -7,6 +7,7 @@ import { DossierAccessGrant } from 'src/modules/dossiers/entities/dossier-access
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { FactureModule } from 'src/modules/facture/facture.module';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
+import { Paiement } from 'src/modules/paiement/entities/paiement.entity';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import {
   ActionCatalogController,
@@ -59,6 +60,12 @@ import { CaseWorkflowScheduler } from './services/case-workflow.scheduler';
 import { NotificationModule } from 'src/modules/notification/notification.module';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { CaseWorkflowSourceEventsService } from './services/case-workflow-source-events.service';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
+import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
+import { ActionFamilyAiWriteHandler } from './ai-write/action-family-ai.handler';
+import { ActionDefinitionAiWriteHandler } from './ai-write/action-definition-ai.handler';
+import { RecommendationRuleAiWriteHandler } from './ai-write/recommendation-rule-ai.handler';
+import { DossierActionAiWriteHandler } from './ai-write/dossier-action-ai.handler';
 
 const ENTITIES = [
   Dossier,
@@ -69,6 +76,7 @@ const ENTITIES = [
   Diligence,
   Cabinet,
   Facture,
+  Paiement,
   ActionFamily,
   ActionDefinition,
   DossierAction,
@@ -94,6 +102,7 @@ const ENTITIES = [
     TypeOrmModule.forFeature(ENTITIES),
     forwardRef(() => FactureModule),
     forwardRef(() => NotificationModule),
+    forwardRef(() => AiDatabaseModule),
   ],
   controllers: [
     ActionCatalogController,
@@ -117,7 +126,27 @@ const ENTITIES = [
     CaseWorkflowService,
     CaseWorkflowScheduler,
     CaseWorkflowSourceEventsService,
+    ActionFamilyAiWriteHandler,
+    ActionDefinitionAiWriteHandler,
+    RecommendationRuleAiWriteHandler,
+    DossierActionAiWriteHandler,
   ],
   exports: [CaseWorkflowService, CaseBillingService, DossierActionService, BillingReconciliationService],
 })
-export class CaseWorkflowModule {}
+export class CaseWorkflowModule {
+  constructor(
+    private readonly writeHandlerRegistry: WriteHandlerRegistry,
+    private readonly actionFamilyAiHandler: ActionFamilyAiWriteHandler,
+    private readonly actionDefinitionAiHandler: ActionDefinitionAiWriteHandler,
+    private readonly recommendationRuleAiHandler: RecommendationRuleAiWriteHandler,
+    private readonly dossierActionAiHandler: DossierActionAiWriteHandler,
+  ) {}
+
+  onModuleInit() {
+    // Handlers custom IA — délégation aux services métier (pas de bypass)
+    this.writeHandlerRegistry.register(this.actionFamilyAiHandler);
+    this.writeHandlerRegistry.register(this.actionDefinitionAiHandler);
+    this.writeHandlerRegistry.register(this.recommendationRuleAiHandler);
+    this.writeHandlerRegistry.register(this.dossierActionAiHandler);
+  }
+}

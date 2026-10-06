@@ -37,6 +37,8 @@ import { SendFactureEmailDto } from './dto/send-facture-email.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { FactureStatsService } from './facture-stats.service';
 import { FactureService } from './facture.service';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 @ApiBearerAuth()
 @ApiTags('factures')
@@ -46,6 +48,7 @@ export class FactureController {
   constructor(
     private readonly factureService: FactureService,
     private readonly statsService: FactureStatsService,
+    private readonly billingService: CaseBillingService,
   ) {}
 
   @Get('stats')
@@ -237,6 +240,20 @@ export class FactureController {
       'lines',
     ]);
     return plainToInstance(FactureResponseDto, facture);
+  }
+
+  @Get(':id/included-actions')
+  @RequirePermissions('view_factures')
+  @ApiOperation({
+    summary: 'Actions incluses dans le forfait pour la facture (annexe 0€)',
+    description:
+      "Aucune écriture ni BillableItem : lecture seule des DossierAction COMPLETED avec billing_decision=INCLUDED_IN_PACKAGE. N'impacte pas les totaux.",
+  })
+  async includedActions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.billingService.getIncludedActionsForFacture(
+      id,
+      getCurrentTenantId(),
+    );
   }
 
   @Post(':id/envoyer')
