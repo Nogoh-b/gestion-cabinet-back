@@ -1408,6 +1408,37 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     return created;
   }
 
+  /**
+   * Archive le document de clôture PDF généré côté frontend dans les
+   * documents du dossier (sans rattachement à une visite de procédure).
+   */
+  async archiveClosureDocument(
+    dossierId: number,
+    file: Express.Multer.File,
+    user: any,
+  ) {
+    if (!file) throw new BadRequestException('Aucun fichier fourni');
+    const dossier = await this.findOne(dossierId, user);
+    const customerId: number = dossier.client?.id ?? dossier.client_id;
+    if (!customerId) {
+      throw new NotFoundException(
+        `Dossier #${dossierId} : client introuvable`,
+      );
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    return this.documentCustomerService.create(
+      {
+        dossier_id: dossierId,
+        customer_id: customerId,
+        name: `Cloture-${dossier.dossier_number ?? dossierId}-${stamp}.pdf`,
+        description: 'Document de clôture du dossier',
+        strict: true,
+        file,
+      },
+      user?.id,
+    );
+  }
+
   async linkDocumentsToSubStage(
     documentIds: number[],
     dossierId: any,

@@ -30,6 +30,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 import { CreatePaiementDto } from './dto/create-paiement.dto';
+import { AllocateDossierPaymentDto } from './dto/allocation-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
@@ -57,6 +58,17 @@ export class PaiementController {
     @UploadedFile() preuve?: Express.Multer.File,
   ) {
     return this.paiementService.createPaiement(createPaiementDto, preuve);
+  }
+
+  @Post('dossier/:dossierId/encaissements')
+  @RequirePermissions('create_paiement')
+  @ApiOperation({ summary: 'Encaisser plusieurs factures d’un dossier' })
+  @ApiParam({ name: 'dossierId', type: Number })
+  async allocateDossierPayment(
+    @Param('dossierId') dossierId: string,
+    @Body() dto: AllocateDossierPaymentDto,
+  ) {
+    return this.paiementService.allocateDossierPayment(+dossierId, dto);
   }
 
   @Get()

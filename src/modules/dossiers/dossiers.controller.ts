@@ -623,6 +623,16 @@ export class DossiersController {
     return this.dossiersService.closeDossier(+id, user, closeDto);
   }
 
+  @Get(':id/closure-recap')
+  @RequirePermissions('view_dossiers')
+  @ApiOperation({ summary: 'Récapitulatif de clôture du dossier' })
+  async closureRecap(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: User,
+  ) {
+    return this.caseWorkflowService.closureRecap(+id, user);
+  }
+
   @Get(':dossierId/stage-visits')
   @RequirePermissions('view_dossiers')
   @ApiOperation({
@@ -703,6 +713,20 @@ export class DossiersController {
     status: 404,
     description: 'Dossier ou type de document introuvable',
   })
+  @Post(':id/closure-document')
+  @RequirePermissions('close_dossier')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Archiver le document de clôture PDF du dossier' })
+  @ApiResponse({ status: 201, description: 'Document archivé avec succès' })
+  async archiveClosureDocument(
+    @Param('id', ParseIntPipe) dossierId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    return this.dossiersService.archiveClosureDocument(dossierId, file, user);
+  }
+
   async uploadDocumentToSubStage(
     @Param('id', ParseIntPipe) dossierId: number,
     @Body() dto: UploadDocumentToSubStageDto,

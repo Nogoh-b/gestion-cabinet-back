@@ -37,6 +37,7 @@ import {
   GenerateInvoiceFromItemsDto,
   ReviewBillableItemDto,
   RecalculateBillableItemsDto,
+  SwitchBillingModeDto,
   ReopenDossierDto,
   ReviseDossierBillingRuleDto,
   ReviseActionDefinitionDto,
@@ -632,6 +633,20 @@ export class BillableItemsController {
     @CurrentUser() user: User,
   ) {
     return this.billingService.recalculateItems(
+      dto,
+      requireIdempotencyKey(key),
+      actorId(user),
+    );
+  }
+
+  @Post('billing-switch')
+  @RequirePermissions('manage_billable_items')
+  recalculateAfterSwitch(
+    @Body() dto: SwitchBillingModeDto,
+    @Headers('idempotency-key') key: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.billingService.switchBillingMode(
       dto,
       requireIdempotencyKey(key),
       actorId(user),

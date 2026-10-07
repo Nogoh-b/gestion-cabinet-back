@@ -28,6 +28,7 @@ import {
 } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { StatutFacture } from 'src/modules/facture/dto/create-facture.dto';
+import { StatutPaiement } from 'src/modules/paiement/dto/create-paiement.dto';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { DossierAccessGrant } from 'src/modules/dossiers/entities/dossier-access-grant.entity';
 import { canBypassConfidentiality } from 'src/modules/dossiers/dossier-visibility';
@@ -1063,6 +1064,141 @@ export class CaseWorkflowService {
       );
     }
     return result;
+  }
+
+  /**
+   * Récapitulatif de clôture : dossier, issue, satisfaction, actions menées,
+   * éléments facturables et factures avec leurs paiements. Sert le document
+   * de clôture PDF (généré côté frontend puis archivé dans le dossier).
+   */
+  async closureRecap(dossierId: number, user?: User) {
+    const tenantId = getCurrentTenantId();
+    const dossier = await this.dossierRepository.findOne({
+      where: { id: dossierId, tenant_id: tenantId },
+      relations: ['client'],
+    });
+    if (!dossier) throw new NotFoundException('Dossier introuvable');
+    if (user) await this.assertConfidentialAccess(dossier, user);
+    const [actions, items, factures] = await Promise.all([
+      this.actionRepository.find({
+        where: { dossier_id: dossierId, tenant_id: tenantId },
+        relations: ['definition', 'definition.family'],
+        order: { completed_at: 'ASC' },
+      }),
+      this.itemRepository.find({
+        where: { dossier_id: dossierId, tenant_id: tenantId },
+        order: { occurred_at: 'ASC' },
+      }),
+      this.factureRepository.find({
+        where: { dossier_id: dossierId, tenant_id: tenantId },
+        relations: ['lines', 'paiements'],
+        order: { dateFacture: 'ASC' },
+      }),
+    ]);
+    const num = (value: unknown): number => Number(value ?? 0);
+    const round = (value: number): number =>
+      Math.round((value + Number.EPSILON) * 100) / 100;
+    const invoices = factures.map((facture) => {
+      const payments = (facture.paiements ?? [])
+        .filter((paiement) => paiement.status === StatutPaiement.VALIDE)
+        .map((paiement) => ({
+          date: paiement.datePaiement,
+          mode: paiement.modePaiement,
+          amount: round(num(paiement.montant)),
+          reference: paiement.reference ?? null,
+        }))
+        .sort((a, b) => +new Date(a.date) - +new Date(b.date));
+      const paid = round(
+        payments.reduce((sum, paiement) => sum + paiement.amount, 0),
+      );
+      const total = round(num(facture.montantTTC));
+      return {
+        id: facture.id,
+        numero: facture.numero,
+        date: facture.dateFacture,
+        due_date: facture.dateEcheance,
+        currency: facture.currency,
+        total,
+        paid,
+        remaining: round(total - paid),
+        type: facture.type,
+        status: facture.status,
+        lines: (facture.lines ?? [])
+          .slice()
+          .sort((a, b) => num(a.display_order) - num(b.display_order))
+          .map((line) => ({
+            label: line.label,
+            category: line.category,
+            calculation_mode: line.calculation_mode,
+            quantity: num(line.quantity),
+            unit_price: round(num(line.unit_price)),
+            net_amount: round(num(line.net_amount)),
+            tax_rate: num(line.tax_rate),
+            gross_amount: round(num(line.gross_amount)),
+            currency: (line as { currency?: string }).currency ?? null,
+          })),
+        payments,
+      };
+    });
+    const openItems = items
+      .filter((item) =>
+        [
+          BillableItemStatus.NEEDS_REVIEW,
+          BillableItemStatus.TO_INVOICE,
+        ].includes(item.status),
+      )
+      .map((item) => ({
+        label: item.label,
+        category: item.category,
+        calculation_mode: item.calculation_mode,
+        quantity: num(item.quantity),
+        unit_price: round(num(item.unit_price)),
+        gross_amount: round(num(item.gross_amount)),
+        currency: item.currency,
+        status: item.status,
+        occurred_at: item.occurred_at,
+      }));
+    const billed = round(
+      invoices.reduce((sum, invoice) => sum + invoice.total, 0),
+    );
+    const paid = round(
+      invoices.reduce((sum, invoice) => sum + invoice.paid, 0),
+    );
+    return {
+      dossier: {
+        id: dossier.id,
+        dossier_number: dossier.dossier_number,
+        object: dossier.object,
+        client_name: dossier.client?.full_name ?? null,
+        lifecycle_phase: dossier.lifecycle_phase,
+        closing_date: dossier.closing_date ?? null,
+        outcome: dossier.outcome ?? null,
+        outcome_notes: dossier.outcome_notes ?? null,
+        outcome_date: dossier.outcome_date ?? null,
+        client_satisfaction: dossier.client_satisfaction ?? null,
+        opened_at: dossier.created_at ?? null,
+      },
+      actions: actions.map((action) => ({
+        id: action.id,
+        title: action.title || action.definition_label,
+        family: action.definition?.family?.label ?? null,
+        status: action.status,
+        completed_at: action.completed_at,
+      })),
+      billing: {
+        invoices,
+        open_items: openItems,
+        totals: {
+          billed,
+          paid,
+          remaining: round(billed - paid),
+          open_amount: round(
+            openItems.reduce((sum, item) => sum + item.gross_amount, 0),
+          ),
+        },
+      },
+      generated_at: new Date().toISOString(),
+    };
   }
 
   async close(

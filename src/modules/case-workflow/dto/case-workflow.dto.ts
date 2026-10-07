@@ -948,6 +948,23 @@ export class RecalculateBillableItemsDto {
   dry_run?: boolean;
 }
 
+export class SwitchBillingModeDto {
+  @IsInt()
+  dossier_id: number;
+
+  @IsIn(['FIXED', 'HOURLY'])
+  target_mode: 'FIXED' | 'HOURLY';
+
+  @IsOptional()
+  @IsDateString()
+  deadline?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 export class ReviseLegacyWorkflowMappingDto {
   @IsOptional()
   @IsString()

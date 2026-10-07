@@ -37,7 +37,7 @@ import {
   ModePaiement,
   StatutPaiement,
 } from 'src/modules/paiement/dto/create-paiement.dto';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import {
   ActionBillingDecision,
   BillableCategory,
@@ -54,6 +54,7 @@ import {
   CreateManualBillableItemDto,
   GenerateInvoiceFromItemsDto,
   RecalculateBillableItemsDto,
+  SwitchBillingModeDto,
   ReviewBillableItemDto,
   ReviseDossierBillingRuleDto,
   UpdateBillingProfileDto,
@@ -2333,6 +2334,127 @@ export class CaseBillingService {
    * profil courants. Miroir de la résolution de createForCompletedAction,
    * sans toucher au chemin de création.
    */
+  /**
+   * Bascule forfait ↔ horaire sur un dossier : met à jour la décision de
+   * facturation des actions liées aux éléments ouverts, puis rejoue le
+   * calcul existant. Seuls les éléments ouverts sont touchés ; le délai
+   * sert de référence contextuelle (défaut : échéance la plus reculée).
+   */
+  async switchBillingMode(
+    dto: SwitchBillingModeDto,
+    idempotencyKey: string,
+    actorUserId: number,
+  ) {
+    const tenantId = getCurrentTenantId();
+    const targetHourly = dto.target_mode === 'HOURLY';
+    const profile = await this.profileRepository.findOne({
+      where: { tenant_id: tenantId, dossier_id: dto.dossier_id },
+    });
+    if (targetHourly && !(Number(profile?.hourly_rate) > 0)) {
+      throw new BadRequestException(
+        "Le taux horaire du dossier n'est pas renseigné",
+      );
+    }
+    if (!targetHourly && !(Number(profile?.fixed_fee) > 0)) {
+      throw new BadRequestException(
+        'Le forfait du dossier n’est pas renseigné',
+      );
+    }
+    let deadline: string | null = dto.deadline ?? null;
+    if (!deadline) {
+      const factures = await this.factureRepository.find({
+        where: { tenant_id: tenantId, dossier_id: dto.dossier_id },
+      });
+      const latest = factures
+        .map((facture) => +new Date(facture.dateEcheance))
+        .filter((time) => Number.isFinite(time))
+        .sort((a, b) => b - a)[0];
+      deadline = latest
+        ? new Date(latest).toISOString().slice(0, 10)
+        : null;
+    }
+    const items = await this.itemRepository.find({
+      where: {
+        tenant_id: tenantId,
+        dossier_id: dto.dossier_id,
+        source_type: BillableSourceType.ACTION,
+        status: In([
+          BillableItemStatus.NEEDS_REVIEW,
+          BillableItemStatus.TO_INVOICE,
+        ]),
+      },
+    });
+    if (!items.length) {
+      throw new BadRequestException(
+        'Aucun élément ouvert à recalculer sur ce dossier',
+      );
+    }
+    const switched: string[] = [];
+    const skipped: Array<{
+      billable_item_id: string;
+      skipped_reason: string;
+    }> = [];
+    await this.dataSource.transaction(async (manager) => {
+      const actionRepository = manager.getRepository(DossierAction);
+      for (const item of items) {
+        const action = await actionRepository.findOne({
+          where: {
+            id: item.action_id ?? item.source_id,
+            tenant_id: tenantId,
+          },
+        });
+        if (!action) {
+          skipped.push({
+            billable_item_id: item.id,
+            skipped_reason: 'Action source introuvable',
+          });
+          continue;
+        }
+        if (
+          [
+            ActionBillingDecision.VACATION,
+            ActionBillingDecision.NON_BILLABLE,
+            ActionBillingDecision.INCLUDED_IN_PACKAGE,
+          ].includes(action.billing_decision)
+        ) {
+          skipped.push({
+            billable_item_id: item.id,
+            skipped_reason: 'Décision de facturation hors forfait/horaire',
+          });
+          continue;
+        }
+        action.billing_decision = targetHourly
+          ? ActionBillingDecision.HOURLY
+          : ActionBillingDecision.BILLABLE;
+        await actionRepository.save(action);
+        switched.push(item.id);
+      }
+      await this.eventService.append(manager, {
+        dossierId: dto.dossier_id,
+        eventType: 'BILLING_MODE_SWITCHED',
+        aggregateType: 'Dossier',
+        aggregateId: String(dto.dossier_id),
+        actorUserId,
+        payload: {
+          target: dto.target_mode,
+          deadline,
+          reason: dto.reason?.trim() || null,
+          items: switched,
+        },
+        idempotencyKey: `SWITCH:${idempotencyKey}`,
+      });
+    });
+    if (!switched.length) {
+      return { target: dto.target_mode, deadline, recalculated: [], skipped };
+    }
+    const recalculated = await this.recalculateItems(
+      { billable_item_ids: switched, dry_run: false },
+      idempotencyKey,
+      actorUserId,
+    );
+    return { target: dto.target_mode, deadline, recalculated, skipped };
+  }
+
   private async resolveActionPricing(
     manager: EntityManager,
     action: DossierAction,

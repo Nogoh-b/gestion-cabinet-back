@@ -10,7 +10,7 @@ import {
 } from 'src/core/shared/services/search/base-v1.service';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
-import { Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 
 import {
   BadRequestException,
@@ -19,8 +19,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { StatutFacture } from '../facture/dto/create-facture.dto';
+import { StatutFacture, TypeFacture } from '../facture/dto/create-facture.dto';
 import { Facture } from '../facture/entities/facture.entity';
+import { FactureService } from '../facture/facture.service';
+import { Dossier } from '../dossiers/entities/dossier.entity';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
+import { AllocateDossierPaymentDto } from './dto/allocation-paiement.dto';
 import {
   CreatePaiementDto,
   ModePaiement,
@@ -39,6 +44,8 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     @InjectRepository(Facture)
     private readonly factureRepository: Repository<Facture>,
     protected readonly paginationService: PaginationServiceV1,
+    private readonly dataSource: DataSource,
+    private readonly factureService: FactureService,
   ) {
     super(repository, paginationService);
   }
@@ -168,6 +175,190 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     await this.updateFactureStatus(saved.factureId);
 
     return plainToInstance(PaiementResponseDto, saved);
+  }
+
+  /**
+   * Encaissement groupé sur un dossier, atomique : soit des factures
+   * cochées avec leur montant, soit un montant global ventilé
+   * automatiquement des échéances les plus anciennes aux plus récentes.
+   * Un trop-perçu est converti en avoir lié à la dernière facture soldée.
+   */
+  async allocateDossierPayment(
+    dossierId: number,
+    dto: AllocateDossierPaymentDto,
+  ) {
+    const tenantId = getCurrentTenantId();
+    const manual =
+      Array.isArray(dto.allocations) && dto.allocations.length > 0;
+    const autoTotal = Number(dto.montant_total ?? 0);
+    if (!manual && !(autoTotal > 0)) {
+      throw new BadRequestException(
+        'Indiquez des factures à encaisser ou un montant global à ventiler',
+      );
+    }
+    if (manual && autoTotal > 0) {
+      throw new BadRequestException(
+        'Choisissez soit des factures cochées, soit un montant global',
+      );
+    }
+    const round = (value: number): number =>
+      Math.round((value + Number.EPSILON) * 100) / 100;
+    const reference = dto.reference?.trim() || generateEntityCode('ENC');
+    const datePaiement = dto.date_paiement
+      ? new Date(dto.date_paiement)
+      : new Date();
+    return this.dataSource.transaction(async (manager) => {
+      const dossier = await manager.getRepository(Dossier).findOne({
+        where: { id: dossierId, tenant_id: tenantId },
+        relations: ['client'],
+      });
+      if (!dossier) {
+        throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+      }
+      const factures = await manager.getRepository(Facture).find({
+        where: {
+          dossier_id: dossierId,
+          tenant_id: tenantId,
+          status: In([
+            StatutFacture.ENVOYEE,
+            StatutFacture.PARTIELLEMENT_PAYEE,
+            StatutFacture.IMPAYEE,
+          ]),
+        },
+        relations: ['paiements'],
+        order: { dateEcheance: 'ASC', dateFacture: 'ASC' },
+      });
+      const eligible = factures.filter(
+        (facture) =>
+          facture.type !== TypeFacture.AVOIR &&
+          this.getRemainingAmount(facture) > 0.009,
+      );
+      if (!eligible.length) {
+        throw new BadRequestException(
+          'Aucune facture à encaisser sur ce dossier',
+        );
+      }
+      const plan: Array<{ facture: Facture; montant: number }> = [];
+      if (manual) {
+        for (const allocation of dto.allocations!) {
+          const facture = eligible.find(
+            (candidate) => candidate.id === allocation.facture_id,
+          );
+          if (!facture) {
+            throw new BadRequestException(
+              `La facture ${allocation.facture_id} n'est pas encaissable`,
+            );
+          }
+          const montant = round(Number(allocation.montant));
+          if (!(montant > 0)) {
+            throw new BadRequestException(
+              'Le montant du paiement doit etre strictement positif',
+            );
+          }
+          const remaining = this.getRemainingAmount(facture);
+          if (montant > remaining + 0.01) {
+            throw new BadRequestException(
+              `Le montant (${montant.toFixed(2)}) depasse le reste à payer de la facture ${facture.numero} (${remaining.toFixed(2)})`,
+            );
+          }
+          plan.push({ facture, montant });
+        }
+      } else {
+        let left = round(autoTotal);
+        for (const facture of eligible) {
+          if (left <= 0.009) break;
+          const take = Math.min(this.getRemainingAmount(facture), left);
+          if (take > 0.009) {
+            plan.push({ facture, montant: round(take) });
+            left = round(left - take);
+          }
+        }
+      }
+      if (!plan.length) {
+        throw new BadRequestException(
+          'Aucune facture à encaisser sur ce dossier',
+        );
+      }
+      const paiementRepo = manager.getRepository(Paiement);
+      const allocations: Array<{
+        facture_id: string;
+        numero: string;
+        montant: number;
+        paid_after: number;
+        remaining_after: number;
+        status: StatutFacture;
+      }> = [];
+      for (const { facture, montant } of plan) {
+        await paiementRepo.save(
+          paiementRepo.create({
+            tenant_id: tenantId,
+            factureId: facture.id,
+            montant,
+            modePaiement: this.normalizePaymentMode(dto),
+            status: StatutPaiement.VALIDE,
+            datePaiement,
+            dateValeur: datePaiement,
+            reference,
+            banque: dto.banque?.trim() || null,
+            titulaire: dto.titulaire?.trim() || null,
+            numeroCheque: dto.numero_cheque?.trim() || null,
+            notes: dto.notes?.trim() || null,
+          } as Partial<Paiement>),
+        );
+        const paidAfter = round(
+          this.getValidatedPaidAmount(facture) + montant,
+        );
+        const totalTtc = round(Number(facture.montantTTC));
+        facture.status =
+          paidAfter >= totalTtc - 0.009
+            ? StatutFacture.PAYEE
+            : StatutFacture.PARTIELLEMENT_PAYEE;
+        await manager.getRepository(Facture).save(facture);
+        allocations.push({
+          facture_id: facture.id,
+          numero: facture.numero,
+          montant,
+          paid_after: paidAfter,
+          remaining_after: round(totalTtc - paidAfter),
+          status: facture.status,
+        });
+      }
+      const totalAllocated = round(
+        allocations.reduce((sum, row) => sum + row.montant, 0),
+      );
+      let avoir: { id: string; numero: string; montant: number } | null = null;
+      const leftover = manual ? 0 : round(autoTotal - totalAllocated);
+      if (leftover > 0.009 && dto.create_avoir !== false) {
+        const last = plan[plan.length - 1].facture;
+        const credit = await this.factureService.createFacture(
+          {
+            dossierId: dossier.id,
+            clientId: dossier.client?.id ?? dossier.client_id,
+            type: TypeFacture.AVOIR,
+            original_facture_id: last.id,
+            dateFacture: datePaiement,
+            dateEcheance: datePaiement,
+            montantHT: -leftover,
+            tauxTVA: 0,
+            montantTVA: 0,
+            montantTTC: -leftover,
+            description: `Trop-perçu de l'encaissement ${reference} — dossier ${dossier.dossier_number}`,
+            statut: StatutFacture.ENVOYEE,
+          } as any,
+          { manager, dossier, client: dossier.client },
+        );
+        avoir = { id: credit.id, numero: credit.numero, montant: leftover };
+      }
+      return { reference, allocations, total_allocated: totalAllocated, avoir };
+    });
+  }
+
+  private getRemainingAmount(facture: Facture): number {
+    const paid = this.getValidatedPaidAmount(facture);
+    return (
+      Math.round((Number(facture.montantTTC) - paid + Number.EPSILON) * 100) /
+      100
+    );
   }
 
   async searchPaiements(searchDto: SearchPaiementDto): Promise<any> {
