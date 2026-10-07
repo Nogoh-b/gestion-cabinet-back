@@ -19,6 +19,8 @@ import { UpdateSupplierInvoiceDto } from './dto/update-supplier-invoice.dto';
 import { SupplierInvoiceSearchDto } from './dto/supplier-invoice-search.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SupplierInvoice } from './entities/supplier-invoice.entity';
+import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { User } from '../iam/user/entities/user.entity';
 
 @Controller('supplier-invoices')
 @ApiBearerAuth()
@@ -29,8 +31,8 @@ export class SupplierInvoicesController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('create_supplier_invoice')
   @ApiOperation({ summary: 'Enregistrer une facture fournisseur' })
-  create(@Body() dto: CreateSupplierInvoiceDto) {
-    return this.service.create(dto);
+  create(@Body() dto: CreateSupplierInvoiceDto, @CurrentUser() user: User) {
+    return this.service.create(dto, Number((user as any).userId ?? user.id));
   }
 
   @Get('/search')
@@ -54,7 +56,7 @@ export class SupplierInvoicesController {
 
   @Get('/supplier/:supplierId')
   @RequirePermissions('view_supplier_invoices')
-  @ApiOperation({ summary: 'Factures d\'un fournisseur' })
+  @ApiOperation({ summary: "Factures d'un fournisseur" })
   findBySupplier(@Param('supplierId') supplierId: string) {
     return this.service.findBySupplier(+supplierId);
   }
@@ -68,7 +70,7 @@ export class SupplierInvoicesController {
 
   @Get(':id')
   @RequirePermissions('view_supplier_invoices')
-  @ApiOperation({ summary: 'Détail d\'une facture fournisseur' })
+  @ApiOperation({ summary: "Détail d'une facture fournisseur" })
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }
@@ -77,24 +79,38 @@ export class SupplierInvoicesController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_supplier_invoice')
   @ApiOperation({ summary: 'Approuver une facture fournisseur' })
-  approve(@Param('id') id: string) {
-    return this.service.approve(+id);
+  approve(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.approve(
+      +id,
+      Number((user as any).userId ?? user.id),
+    );
   }
 
   @Patch(':id/pay')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_supplier_invoice')
   @ApiOperation({ summary: 'Marquer une facture fournisseur comme payée' })
-  pay(@Param('id') id: string) {
-    return this.service.markAsPaid(+id);
+  pay(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.service.markAsPaid(
+      +id,
+      Number((user as any).userId ?? user.id),
+    );
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_supplier_invoice')
   @ApiOperation({ summary: 'Modifier une facture fournisseur' })
-  update(@Param('id') id: string, @Body() dto: UpdateSupplierInvoiceDto) {
-    return this.service.update(+id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateSupplierInvoiceDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.update(
+      +id,
+      dto,
+      Number((user as any).userId ?? user.id),
+    );
   }
 
   @Delete(':id')

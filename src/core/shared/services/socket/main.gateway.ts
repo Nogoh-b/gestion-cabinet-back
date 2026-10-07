@@ -31,7 +31,7 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
 
   private logger = new Logger('MainGateway');
-  
+
   // Maps pour stocker les connexions
   private userSockets: Map<number, Set<string>> = new Map();
   private socketToUser: Map<string, number> = new Map();
@@ -49,7 +49,10 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
         throw new Error('Utilisateur de session invalide');
       }
 
-      const sessionUser = await this.userService.findSessionState(userId, tenantId);
+      const sessionUser = await this.userService.findSessionState(
+        userId,
+        tenantId,
+      );
       const employeeStatus = sessionUser?.employee?.status;
       if (
         !sessionUser ||
@@ -88,12 +91,11 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (unreadNotifications.length > 0) {
         client.emit('unread_notifications', {
           count: unreadNotifications.length,
-          notifications: unreadNotifications
+          notifications: unreadNotifications,
         });
       }
 
       this.logger.log(`✅ Utilisateur ${userId} connecté`);
-
     } catch (error) {
       this.logger.warn(`Connexion socket refusée: ${error?.message ?? error}`);
       client.disconnect(true);
@@ -102,23 +104,22 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleDisconnect(client: Socket) {
     const userId = this.socketToUser.get(client.id);
-    
+
     if (userId) {
       this.removeConnection(client.id);
-      
-      if (!this.isUserOnline(userId)) {
 
+      if (!this.isUserOnline(userId)) {
         client.broadcast.to(`conversation_4`).emit('userOffline', {
           type: 'new_message',
-          room: `conversation_4`, 
+          room: `conversation_4`,
         });
-        const lastSeen  = new Date().toISOString()
+        const lastSeen = new Date().toISOString();
         // Notifier les deux types d'événements
         this.server.emit('userOffline', {
           userId,
           status: 'offline',
           timestamp: new Date().toISOString(),
-          lastSeen
+          lastSeen,
         });
         this.server.emit('user_status_changed', {
           userId,
@@ -128,10 +129,10 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
           lastSeen,
         });
         await this.userService.update(userId, { is_online: false, lastSeen });
-        
+
         // this.server.emit('userOffline', { userId, lastSeen });
       }
-      
+
       this.logger.log(`🔴 User ${userId} déconnecté`);
     }
   }
@@ -146,7 +147,7 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const room = data.room;
     await client.join(room);
     this.addUserRoom(userId, room);
-    if(data.join_parent){
+    if (data.join_parent) {
       await client.join(room.split('_')[0]);
       this.addUserRoom(userId, room.split('_')[0]);
     }
@@ -158,21 +159,20 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const onlineUserIds = Array.from(
       new Set(
         socketsInRoom
-          .map(s => this.getUserIdBySocketId(s.id))
-          .filter(id => id !== undefined)
-      )
+          .map((s) => this.getUserIdBySocketId(s.id))
+          .filter((id) => id !== undefined),
+      ),
     );
-      // ✅ Envoyer uniquement au client qui vient de rejoindre
-      client.emit('room_online_users', {
-        room,
-        users: onlineUserIds
-      });
+    // ✅ Envoyer uniquement au client qui vient de rejoindre
+    client.emit('room_online_users', {
+      room,
+      users: onlineUserIds,
+    });
 
     client.broadcast.to(room).emit('user_joined', {
       userId,
-      room
+      room,
     });
-
   }
 
   // ========== ÉVÉNEMENTS CHAT ==========
@@ -186,11 +186,17 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.logger.log(`📨 sendMessage reçu de user ${userId}:`, data);
 
       // Appeler votre service chat existant
-      const message = await this.chatService.sendMessageWithExistingAttachments(data, userId);
+      const message = await this.chatService.sendMessageWithExistingAttachments(
+        data,
+        userId,
+      );
       // const message = await this.chatService.sendMessage(data, userId);
-      const idsParticipants = await this.chatService.getParticipantIdsExcluding(data.conversationId, userId)
- 
-      idsParticipants.forEach(participantId => {
+      const idsParticipants = await this.chatService.getParticipantIdsExcluding(
+        data.conversationId,
+        userId,
+      );
+
+      idsParticipants.forEach((participantId) => {
         this.server.to(`user_${participantId}`).emit('new_message', {
           type: 'room_message',
           conversationId: data.conversationId,
@@ -208,14 +214,16 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
       //   });
       // });
 
-      client.broadcast.to(`conversation_${data.conversationId}`).emit('room_message', {
-        type: 'new_message',
-        message,
-        room: `conversation_${data.conversationId}`, // ✅ Ajouter la room
-
-      });
-      this.logger.log(`✅ Message envoyé à la conversation ${data.conversationId}`);
-
+      client.broadcast
+        .to(`conversation_${data.conversationId}`)
+        .emit('room_message', {
+          type: 'new_message',
+          message,
+          room: `conversation_${data.conversationId}`, // ✅ Ajouter la room
+        });
+      this.logger.log(
+        `✅ Message envoyé à la conversation ${data.conversationId}`,
+      );
 
       // Notifications via le service notification existant
       await this.notificationService.sendMessageNotification(message, userId);
@@ -229,7 +237,8 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('typing')
   handleTyping(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: {
+    @MessageBody()
+    data: {
       conversationId: number;
       isTyping: boolean;
       room: string;
@@ -250,7 +259,7 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
         conversationId: data.conversationId,
         isTyping: data.isTyping,
         room: data.room,
-        userName: data.userName // Vous pouvez remplacer par le nom réel de l'utilisateur si disponible
+        userName: data.userName, // Vous pouvez remplacer par le nom réel de l'utilisateur si disponible
       });
 
       return { success: true };
@@ -260,208 +269,219 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-
-
-
   // src/shared/gateways/main.gateway.ts (extrait des méthodes à ajouter)
 
-// src/core/shared/services/socket/main.gateway.ts
+  // src/core/shared/services/socket/main.gateway.ts
 
-@SubscribeMessage('send_notification')
-async handleSendNotification(
-  @ConnectedSocket() client: Socket,
-  @MessageBody() data: {
-    user_ids: number[]; // Liste des IDs des utilisateurs à notifier
-    type: NotificationType | string;
-    title: string;
-    content?: string;
-    data?: any;
-    link?: string;
-    priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-    actions?: any[];
-    image_url?: string;
-    exclude_current_user?: boolean; // Optionnel: exclure l'utilisateur qui envoie
-    save_to_db?: boolean; // Optionnel: sauvegarder en base
-  }
-) {
-  try {
-    const senderId = this.getUserIdBySocketId(client.id);
-    // this.logger.log(`🔔 send_notification reçu de user ${senderId}:`, {
-    //   ...data,
-    //   user_ids: data.user_ids
-    // });
+  @SubscribeMessage('send_notification')
+  async handleSendNotification(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      user_ids: number[]; // Liste des IDs des utilisateurs à notifier
+      type: NotificationType | string;
+      title: string;
+      content?: string;
+      data?: any;
+      link?: string;
+      priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+      actions?: any[];
+      image_url?: string;
+      exclude_current_user?: boolean; // Optionnel: exclure l'utilisateur qui envoie
+      save_to_db?: boolean; // Optionnel: sauvegarder en base
+    },
+  ) {
+    try {
+      const senderId = this.getUserIdBySocketId(client.id);
+      // this.logger.log(`🔔 send_notification reçu de user ${senderId}:`, {
+      //   ...data,
+      //   user_ids: data.user_ids
+      // });
 
-    // Validation des données
-    if (!data.user_ids || !Array.isArray(data.user_ids) || data.user_ids.length === 0) {
-      throw new Error('La liste user_ids est requise et doit contenir au moins un ID');
-    }
+      // Validation des données
+      if (
+        !data.user_ids ||
+        !Array.isArray(data.user_ids) ||
+        data.user_ids.length === 0
+      ) {
+        throw new Error(
+          'La liste user_ids est requise et doit contenir au moins un ID',
+        );
+      }
 
-    if (!data.type || !data.title) {
-      throw new Error('Le type et le titre sont requis');
-    }
+      if (!data.type || !data.title) {
+        throw new Error('Le type et le titre sont requis');
+      }
 
-    // Filtrer les utilisateurs cibles
-    let targetUserIds = [...data.user_ids];
+      // Filtrer les utilisateurs cibles
+      let targetUserIds = [...data.user_ids];
 
-    // Exclure l'utilisateur courant si demandé
-    if (data.exclude_current_user && senderId) {
-      targetUserIds = targetUserIds.filter(id => id !== senderId);
-    }
+      // Exclure l'utilisateur courant si demandé
+      if (data.exclude_current_user && senderId) {
+        targetUserIds = targetUserIds.filter((id) => id !== senderId);
+      }
 
-    if (targetUserIds.length === 0) {
-      this.logger.log('Aucun utilisateur à notifier après filtrage');
+      if (targetUserIds.length === 0) {
+        this.logger.log('Aucun utilisateur à notifier après filtrage');
+        client.emit('notification_sent', {
+          success: true,
+          count: 0,
+          message: 'Aucun utilisateur à notifier',
+        });
+        return { success: true, count: 0 };
+      }
+
+      let savedNotifications: NotificationResponseDto[] = [];
+
+      // Sauvegarder en base si demandé (par défaut true)
+      if (data.save_to_db !== false) {
+        // Utiliser la méthode createBulk du service avec la nouvelle architecture
+        savedNotifications = await this.notificationService.createBulk(
+          {
+            user_ids: targetUserIds,
+            type: data.type as NotificationType,
+            title: data.title,
+            content: data.content,
+            data: {
+              ...data.data,
+              senderId: senderId,
+              senderType: 'user',
+              notificationType: 'direct',
+            },
+            link: data.link,
+            priority: data.priority || 'MEDIUM',
+            actions: data.actions || [],
+            image_url: data.image_url,
+          },
+          senderId || 1,
+        );
+      }
+
+      // Émettre en temps réel à chaque utilisateur connecté
+      const deliveryResults = await Promise.all(
+        targetUserIds.map(async (userId) => {
+          const userSockets = this.getUserSockets(userId);
+
+          if (userSockets.length > 0) {
+            // Trouver la notification correspondante si sauvegardée
+            const userNotification = savedNotifications.find(
+              (n) => n && (n as any).user_id === userId,
+            );
+
+            // Préparer le payload
+            const notificationPayload = {
+              type: 'notification',
+              notification: userNotification || {
+                id: `temp_${Date.now()}_${userId}`,
+                type: data.type,
+                title: data.title,
+                content: data.content || data.title,
+                data: {
+                  ...data.data,
+                  senderId: senderId,
+                  timestamp: new Date().toISOString(),
+                },
+                link: data.link,
+                priority: data.priority || 'MEDIUM',
+                actions: data.actions || [],
+                image_url: data.image_url,
+                is_read: false,
+                created_at: new Date().toISOString(),
+              },
+            };
+
+            // Envoyer à tous les sockets de l'utilisateur
+            userSockets.forEach((socketId) => {
+              this.server
+                .to(socketId)
+                .emit('new_notification', notificationPayload);
+            });
+
+            return { userId, delivered: true, socketCount: userSockets.length };
+          }
+
+          return { userId, delivered: false, socketCount: 0 };
+        }),
+      );
+
+      // Statistiques de livraison
+      const deliveredCount = deliveryResults.filter((r) => r.delivered).length;
+      const offlineCount = deliveryResults.filter((r) => !r.delivered).length;
+
+      // Réponse au sender
       client.emit('notification_sent', {
         success: true,
-        count: 0,
-        message: 'Aucun utilisateur à notifier'
-      });
-      return { success: true, count: 0 };
-    }
-
-    let savedNotifications : NotificationResponseDto[] = [];
-
-    // Sauvegarder en base si demandé (par défaut true)
-    if (data.save_to_db !== false) {
-      // Utiliser la méthode createBulk du service avec la nouvelle architecture
-      savedNotifications = await this.notificationService.createBulk({
-        user_ids: targetUserIds,
-        type: data.type as NotificationType,
-        title: data.title,
-        content: data.content,
-        data: {
-          ...data.data,
-          senderId: senderId,
-          senderType: 'user',
-          notificationType: 'direct'
+        count: targetUserIds.length,
+        saved: savedNotifications.length,
+        delivered: deliveredCount,
+        offline: offlineCount,
+        details: {
+          targetUsers: targetUserIds,
+          delivery: deliveryResults,
         },
-        link: data.link,
-        priority: data.priority || 'MEDIUM',
-        actions: data.actions || [],
-        image_url: data.image_url
-      }, senderId || 1);
+      });
+
+      this.logger.log(
+        `✅ Notification envoyée à ${deliveredCount}/${targetUserIds.length} utilisateurs (${offlineCount} hors ligne)`,
+      );
+
+      return {
+        success: true,
+        count: targetUserIds.length,
+        saved: savedNotifications.length,
+        delivered: deliveredCount,
+        offline: offlineCount,
+      };
+    } catch (error) {
+      this.logger.error('❌ Erreur send_notification:', error);
+      client.emit('error', {
+        message: "Erreur lors de l'envoi de la notification",
+        details: error.message,
+      });
+
+      return {
+        success: false,
+        error: error.message,
+      };
     }
+  }
 
-    // Émettre en temps réel à chaque utilisateur connecté
-    const deliveryResults = await Promise.all( 
-      targetUserIds.map(async (userId) => {
-        const userSockets = this.getUserSockets(userId);
-        
-        if (userSockets.length > 0) {
-          // Trouver la notification correspondante si sauvegardée
-          const userNotification = savedNotifications.find(
-            n => n && (n as any).user_id === userId
-          );
+  @SubscribeMessage('broadcast_notification')
+  async handleBroadcastNotification(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      type: NotificationType | string;
+      title: string;
+      content?: string;
+      data?: any;
+      link?: string;
+      priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+      actions?: any[];
+      image_url?: string;
+      roles?: string[]; // Optionnel: filtrer par rôle
+      exclude_user_ids?: number[]; // Optionnel: exclure certains utilisateurs
+      save_to_db?: boolean; // Optionnel: sauvegarder en base ou non
+      exclude_current_user?: boolean; // Exclure l'envoyeur
+    },
+  ) {
+    try {
+      const senderId = this.getUserIdBySocketId(client.id);
+      // this.logger.log(`📢 broadcast_notification reçu de user ${senderId}:`, data);
 
-          // Préparer le payload
-          const notificationPayload = {
-            type: 'notification',
-            notification: userNotification || {
-              id: `temp_${Date.now()}_${userId}`,
-              type: data.type,
-              title: data.title,
-              content: data.content || data.title,
-              data: {
-                ...data.data,
-                senderId: senderId,
-                timestamp: new Date().toISOString()
-              },
-              link: data.link,
-              priority: data.priority || 'MEDIUM',
-              actions: data.actions || [],
-              image_url: data.image_url,
-              is_read: false,
-              created_at: new Date().toISOString()
-            }
-          };
-
-          // Envoyer à tous les sockets de l'utilisateur
-          userSockets.forEach(socketId => {
-            this.server.to(socketId).emit('new_notification', notificationPayload);
-          });
-          
-          return { userId, delivered: true, socketCount: userSockets.length };
-        }
-        
-        return { userId, delivered: false, socketCount: 0 };
-      })
-    );
-
-    // Statistiques de livraison
-    const deliveredCount = deliveryResults.filter(r => r.delivered).length;
-    const offlineCount = deliveryResults.filter(r => !r.delivered).length;
-
-    // Réponse au sender
-    client.emit('notification_sent', {
-      success: true,
-      count: targetUserIds.length,
-      saved: savedNotifications.length,
-      delivered: deliveredCount,
-      offline: offlineCount,
-      details: {
-        targetUsers: targetUserIds,
-        delivery: deliveryResults
+      // Validation
+      if (!data.type || !data.title) {
+        throw new Error('Le type et le titre sont requis');
       }
-    });
 
-    this.logger.log(`✅ Notification envoyée à ${deliveredCount}/${targetUserIds.length} utilisateurs (${offlineCount} hors ligne)`);
-    
-    return { 
-      success: true, 
-      count: targetUserIds.length,
-      saved: savedNotifications.length,
-      delivered: deliveredCount,
-      offline: offlineCount
-    };
+      // Récupérer tous les utilisateurs (à adapter selon votre service)
+      const targetUsers = await this.notificationService.findAllUser();
 
-  } catch (error) {
-    this.logger.error('❌ Erreur send_notification:', error);
-    client.emit('error', { 
-      message: 'Erreur lors de l\'envoi de la notification',
-      details: error.message 
-    });
-    
-    return { 
-      success: false, 
-      error: error.message 
-    };
-  }
-}
+      // Garder une trace du total avant filtrage pour les logs
+      const totalBeforeFilter = targetUsers.length;
 
-@SubscribeMessage('broadcast_notification')
-async handleBroadcastNotification(
-  @ConnectedSocket() client: Socket,
-  @MessageBody() data: {
-    type: NotificationType | string;
-    title: string;
-    content?: string;
-    data?: any;
-    link?: string;
-    priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-    actions?: any[];
-    image_url?: string;
-    roles?: string[]; // Optionnel: filtrer par rôle
-    exclude_user_ids?: number[]; // Optionnel: exclure certains utilisateurs
-    save_to_db?: boolean; // Optionnel: sauvegarder en base ou non
-    exclude_current_user?: boolean; // Exclure l'envoyeur
-  }
-) {
-  try {
-    const senderId = this.getUserIdBySocketId(client.id);
-    // this.logger.log(`📢 broadcast_notification reçu de user ${senderId}:`, data);
-
-    // Validation
-    if (!data.type || !data.title) {
-      throw new Error('Le type et le titre sont requis');
-    }
-
-    // Récupérer tous les utilisateurs (à adapter selon votre service)
-    let targetUsers = await this.notificationService.findAllUser();
-    
-    // Garder une trace du total avant filtrage pour les logs
-    const totalBeforeFilter = targetUsers.length;
-
-    // Appliquer les filtres
-    /*if (!data.include_all) {
+      // Appliquer les filtres
+      /*if (!data.include_all) {
       // Filtrer par rôle si spécifié
       if (data.roles && data.roles.length > 0) {
         targetUsers = targetUsers.filter(user => 
@@ -482,183 +502,204 @@ async handleBroadcastNotification(
       }
     }*/
 
-    // Extraire les IDs des utilisateurs cibles
-    const targetUserIds = targetUsers.map(user => user.id);
+      // Extraire les IDs des utilisateurs cibles
+      const targetUserIds = targetUsers.map((user) => user.id);
 
-    this.logger.log(`👥 Broadcast cible: ${targetUserIds.length}/${totalBeforeFilter} utilisateurs`);
+      this.logger.log(
+        `👥 Broadcast cible: ${targetUserIds.length}/${totalBeforeFilter} utilisateurs`,
+      );
 
-    let savedNotifications : NotificationResponseDto[] = [];
+      let savedNotifications: NotificationResponseDto[] = [];
 
-    // Sauvegarder en base si demandé (par défaut true)
-    // if (data.save_to_db !== false && targetUserIds.length > 0) {
-    if (data.save_to_db !== false) {
-      savedNotifications = await this.notificationService.createBulk({
-        user_ids: targetUserIds,
-        broadcast:true,
-        type: data.type as NotificationType,
-        title: data.title,
-        content: data.content,
-        data: {
-          ...data.data,
-          senderId: senderId,
-          broadcast: true,
-          broadcastFilters: {
-            roles: data.roles,
-            excludeUserIds: data.exclude_user_ids
-          }
-        },
-        link: data.link,
-        priority: data.priority || 'MEDIUM',
-        actions: data.actions || [],
-        image_url: data.image_url
-      }, senderId || 0);
-
-      this.logger.log(`💾 ${savedNotifications.length} notifications sauvegardées en base`);
-    }
-
-    // Préparer la notification à broadcast (sans userIds)
-    const broadcastPayload = {
-      type: 'broadcast_notification',
-      notification: {
-        id: `broadcast_${Date.now()}`,
-        type: data.type,
-        title: data.title,
-        content: data.content || data.title,
-        data: {
-          ...data.data,
-          senderId: senderId,
-          broadcast: true,
-          broadcastFilters: {
-            roles: data.roles,
-            excludeUserIds: data.exclude_user_ids
+      // Sauvegarder en base si demandé (par défaut true)
+      // if (data.save_to_db !== false && targetUserIds.length > 0) {
+      if (data.save_to_db !== false) {
+        savedNotifications = await this.notificationService.createBulk(
+          {
+            user_ids: targetUserIds,
+            broadcast: true,
+            type: data.type as NotificationType,
+            title: data.title,
+            content: data.content,
+            data: {
+              ...data.data,
+              senderId: senderId,
+              broadcast: true,
+              broadcastFilters: {
+                roles: data.roles,
+                excludeUserIds: data.exclude_user_ids,
+              },
+            },
+            link: data.link,
+            priority: data.priority || 'MEDIUM',
+            actions: data.actions || [],
+            image_url: data.image_url,
           },
-          timestamp: new Date().toISOString()
-        },
-        link: data.link,
-        priority: data.priority || 'MEDIUM',
-        actions: data.actions || [],
-        image_url: data.image_url,
-        is_read: false,
-        created_at: new Date().toISOString()
+          senderId || 0,
+        );
+
+        this.logger.log(
+          `💾 ${savedNotifications.length} notifications sauvegardées en base`,
+        );
       }
-    };
 
-    // Broadcast à TOUS les utilisateurs connectés (peu importe les filtres)
-    // Les filtres côté client seront appliqués par l'interface utilisateur
-    this.server.emit('new_notification', broadcastPayload);
+      // Préparer la notification à broadcast (sans userIds)
+      const broadcastPayload = {
+        type: 'broadcast_notification',
+        notification: {
+          id: `broadcast_${Date.now()}`,
+          type: data.type,
+          title: data.title,
+          content: data.content || data.title,
+          data: {
+            ...data.data,
+            senderId: senderId,
+            broadcast: true,
+            broadcastFilters: {
+              roles: data.roles,
+              excludeUserIds: data.exclude_user_ids,
+            },
+            timestamp: new Date().toISOString(),
+          },
+          link: data.link,
+          priority: data.priority || 'MEDIUM',
+          actions: data.actions || [],
+          image_url: data.image_url,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        },
+      };
 
-    // Statistiques de connexion (pour information)
-    const connectedUserIds = Array.from(this.userSockets.keys());
-    const connectedTargetUsers = this.userSockets /*targetUserIds.filter(id => 
+      // Broadcast à TOUS les utilisateurs connectés (peu importe les filtres)
+      // Les filtres côté client seront appliqués par l'interface utilisateur
+      this.server.emit('new_notification', broadcastPayload);
+
+      // Statistiques de connexion (pour information)
+      const connectedUserIds = Array.from(this.userSockets.keys());
+      const connectedTargetUsers =
+        this.userSockets; /*targetUserIds.filter(id => 
       connectedUserIds.includes(id)
     );*/
-    // Réponse au sender avec les statistiques
-    const response = {
-      success: true,
-      stats: {
-        total: targetUserIds.length,
-        connected: connectedTargetUsers.size,
-        offline: targetUserIds.length - connectedTargetUsers.size,
-        saved: savedNotifications.length,
-        filters: {
-          roles: data.roles,
-          excludeUserIds: data.exclude_user_ids,
-          excludeCurrentUser: data.exclude_current_user
-        }
-      },
-      message: `Broadcast envoyé à ${connectedTargetUsers.size} utilisateurs connectés (${targetUserIds.length - connectedTargetUsers.size} hors ligne recevront à la connexion)`,
-      timestamp: new Date().toISOString()
-    };
+      // Réponse au sender avec les statistiques
+      const response = {
+        success: true,
+        stats: {
+          total: targetUserIds.length,
+          connected: connectedTargetUsers.size,
+          offline: targetUserIds.length - connectedTargetUsers.size,
+          saved: savedNotifications.length,
+          filters: {
+            roles: data.roles,
+            excludeUserIds: data.exclude_user_ids,
+            excludeCurrentUser: data.exclude_current_user,
+          },
+        },
+        message: `Broadcast envoyé à ${connectedTargetUsers.size} utilisateurs connectés (${targetUserIds.length - connectedTargetUsers.size} hors ligne recevront à la connexion)`,
+        timestamp: new Date().toISOString(),
+      };
 
-    client.emit('broadcast_sent', response);
+      client.emit('broadcast_sent', response);
 
-    this.logger.log(`✅ Broadcast envoyé - Connectés: ${connectedTargetUsers.size}/${targetUserIds.length}`);
+      this.logger.log(
+        `✅ Broadcast envoyé - Connectés: ${connectedTargetUsers.size}/${targetUserIds.length}`,
+      );
 
-    return { 
-      success: true, 
-      stats: response.stats
-    };
+      return {
+        success: true,
+        stats: response.stats,
+      };
+    } catch (error) {
+      this.logger.error('❌ Erreur broadcast_notification:', error);
+      client.emit('error', {
+        message: 'Erreur lors du broadcast',
+        details: error.message,
+      });
 
-  } catch (error) {
-    this.logger.error('❌ Erreur broadcast_notification:', error);
-    client.emit('error', { 
-      message: 'Erreur lors du broadcast',
-      details: error.message 
-    });
-    
-    return { 
-      success: false, 
-      error: error.message 
-    };
-  }
-}
-
-
-
-// Méthode utilitaire pour récupérer les sockets d'un utilisateur
-
-
-
-private getUserSockets(userId: number): string[] {
-  const sockets: string[] = [];
-  
-  // Parcourir la map socketToUser pour trouver tous les sockets de cet utilisateur
-  for (const [socketId, uid] of this.socketToUser.entries()) {
-    if (uid === userId) {
-      sockets.push(socketId);
+      return {
+        success: false,
+        error: error.message,
+      };
     }
   }
-  
-  return sockets;
-}
-  
 
+  // Méthode utilitaire pour récupérer les sockets d'un utilisateur
 
+  private getUserSockets(userId: number): string[] {
+    const sockets: string[] = [];
 
+    // Parcourir la map socketToUser pour trouver tous les sockets de cet utilisateur
+    for (const [socketId, uid] of this.socketToUser.entries()) {
+      if (uid === userId) {
+        sockets.push(socketId);
+      }
+    }
 
+    return sockets;
+  }
 
   @SubscribeMessage('userReadMessage')
   async handleReadsMessageConversation(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number , roomName: string},
+    @MessageBody() data: { conversationId: number; roomName: string },
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    
-    const lastMessageId = await this.chatService.markMessagesAsRead(data.conversationId, userId);
 
-    client.broadcast.to(data.roomName).emit('messagesReaded', { room: data.roomName, conversationId: data.conversationId, lastMessageId, userId });
-    this.logger.log(`📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`);
+    const lastMessageId = await this.chatService.markMessagesAsRead(
+      data.conversationId,
+      userId,
+    );
 
+    client.broadcast.to(data.roomName).emit('messagesReaded', {
+      room: data.roomName,
+      conversationId: data.conversationId,
+      lastMessageId,
+      userId,
+    });
+    this.logger.log(
+      `📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`,
+    );
   }
 
   @SubscribeMessage('userReceiveMessage')
   async handleUserReceiveMessageConversation(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number , roomName: string},
+    @MessageBody() data: { conversationId: number; roomName: string },
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    
-    const lastMessageId = await this.chatService.markMessagesAsReceive(data.conversationId, userId);
 
-    const idsParticipants = await this.chatService.getParticipantIdsExcluding(data.conversationId, userId)
- 
-    idsParticipants.forEach(participantId => {
-      this.logger.log(`📌 Envoi messagesReceived a  ${participantId} a lu les message de la conversation  ${data.roomName}`);
+    const lastMessageId = await this.chatService.markMessagesAsReceive(
+      data.conversationId,
+      userId,
+    );
+
+    const idsParticipants = await this.chatService.getParticipantIdsExcluding(
+      data.conversationId,
+      userId,
+    );
+
+    idsParticipants.forEach((participantId) => {
+      this.logger.log(
+        `📌 Envoi messagesReceived a  ${participantId} a lu les message de la conversation  ${data.roomName}`,
+      );
 
       this.server.to(`user_${participantId}`).emit('new_message', {
         type: 'messagesReceived',
         conversationId: data.conversationId,
         lastMessageId,
         room: data.roomName, // ✅ Ajouter la room
-        userId
+        userId,
       });
     });
 
-    client.broadcast.to(data.roomName).emit('messagesReceived', 
-      { room: data.roomName, conversationId: data.conversationId, lastMessageId, userId }
+    client.broadcast.to(data.roomName).emit('messagesReceived', {
+      room: data.roomName,
+      conversationId: data.conversationId,
+      lastMessageId,
+      userId,
+    });
+    this.logger.log(
+      `📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`,
     );
-    this.logger.log(`📌 Socket ${userId} a lu les message de la conversation  ${data.roomName}`);
-
   }
 
   // @SubscribeMessage('typing')
@@ -676,18 +717,21 @@ private getUserSockets(userId: number): string[] {
   @SubscribeMessage('messages_read')
   async handleMessagesRead(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: number, lastReadMessageId?: number },
+    @MessageBody() data: { conversationId: number; lastReadMessageId?: number },
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
-    
+
     // Marquer comme lu en DB
     await this.chatService.markMessagesAsRead(data.conversationId, userId);
-    
+
     // Notifier les autres participants
-    const conversation = await this.chatService.getConversation(data.conversationId, userId);
-    const participantIds = conversation.participants.map(p => p.id);
-    
-    participantIds.forEach(participantId => {
+    const conversation = await this.chatService.getConversation(
+      data.conversationId,
+      userId,
+    );
+    const participantIds = conversation.participants.map((p) => p.id);
+
+    participantIds.forEach((participantId) => {
       if (participantId !== userId) {
         this.sendToUser(participantId, 'messages_read', {
           type: 'messages_read',
@@ -700,7 +744,7 @@ private getUserSockets(userId: number): string[] {
           type: 'messages_readA',
           conversationId: data.conversationId,
           readerUserId: userId,
-          readAt: new Date().toISOString()
+          readAt: new Date().toISOString(),
         });
       }
     });
@@ -710,37 +754,41 @@ private getUserSockets(userId: number): string[] {
   @SubscribeMessage('subscribe_to_dossier')
   handleSubscribeToDossier(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { dossierId: number }
+    @MessageBody() data: { dossierId: number },
   ) {
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
     const room = `dossier_${data.dossierId}`;
-    
+
     client.join(room);
     this.addUserRoom(userId, room);
 
-    this.logger.log(`📌 Socket ${client.id} abonné au dossier ${data.dossierId}`);
+    this.logger.log(
+      `📌 Socket ${client.id} abonné au dossier ${data.dossierId}`,
+    );
     return { success: true, room };
   }
 
   @SubscribeMessage('unsubscribe_from_dossier')
   handleUnsubscribeFromDossier(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { dossierId: number }
+    @MessageBody() data: { dossierId: number },
   ) {
     const room = `dossier_${data.dossierId}`;
     client.leave(room);
-    
+
     const userId = this.getUserIdBySocketId(client.id) || 0; // Fallback à 0 si non trouvé
     this.userRooms.get(userId)?.delete(room);
 
-    this.logger.log(`📌 Socket ${client.id} désabonné du dossier ${data.dossierId}`);
+    this.logger.log(
+      `📌 Socket ${client.id} désabonné du dossier ${data.dossierId}`,
+    );
     return { success: true };
   }
 
   @SubscribeMessage('mark_notifications_read')
   async handleMarkNotificationsRead(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { notification_ids?: number[]; mark_all?: boolean }
+    @MessageBody() data: { notification_ids?: number[]; mark_all?: boolean },
   ) {
     const userId = this.getUserIdBySocketId(client.id);
     if (!userId) return;
@@ -754,7 +802,7 @@ private getUserSockets(userId: number): string[] {
     client.emit('notifications_marked_read', {
       success: true,
       notification_ids: data.notification_ids,
-      mark_all: data.mark_all
+      mark_all: data.mark_all,
     });
 
     const unreadCount = await this.notificationService.countUnread(userId);
@@ -764,7 +812,8 @@ private getUserSockets(userId: number): string[] {
   @SubscribeMessage('get_notifications')
   async handleGetNotifications(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { page?: number; limit?: number; unread_only?: boolean }
+    @MessageBody()
+    data: { page?: number; limit?: number; unread_only?: boolean },
   ) {
     const userId = this.getUserIdBySocketId(client.id);
     if (!userId) return;
@@ -773,7 +822,7 @@ private getUserSockets(userId: number): string[] {
       userId,
       data.page || 1,
       data.limit || 20,
-      data.unread_only
+      data.unread_only,
     );
 
     client.emit('notifications_list', notifications);
@@ -801,28 +850,36 @@ private getUserSockets(userId: number): string[] {
    */
   notifyPermissionsUpdated(roleCode: string) {
     const connectedSockets = this.server.sockets.sockets.size;
-    this.logger.log(`🔐 [WS] notifyPermissionsUpdated → roleCode="${roleCode}" | sockets connectés: ${connectedSockets}`);
+    this.logger.log(
+      `🔐 [WS] notifyPermissionsUpdated → roleCode="${roleCode}" | sockets connectés: ${connectedSockets}`,
+    );
 
     if (connectedSockets === 0) {
-      this.logger.warn(`[WS] ⚠️  Aucun socket connecté — l'événement ne sera reçu par personne`);
+      this.logger.warn(
+        `[WS] ⚠️  Aucun socket connecté — l'événement ne sera reçu par personne`,
+      );
     } else {
       // Log détaillé des userId connectés (via socketToUser interne)
       const userIds: number[] = [];
       for (const [, uid] of this.socketToUser.entries()) {
         if (!userIds.includes(uid)) userIds.push(uid);
       }
-      this.logger.log(`[WS] 👥 Utilisateurs connectés: [${userIds.join(', ')}]`);
+      this.logger.log(
+        `[WS] 👥 Utilisateurs connectés: [${userIds.join(', ')}]`,
+      );
     }
 
     this.server.emit('permissions_updated', { roleCode });
-    this.logger.log(`🔐 [WS] ✅ permissions_updated émis à ${connectedSockets} socket(s)`);
+    this.logger.log(
+      `🔐 [WS] ✅ permissions_updated émis à ${connectedSockets} socket(s)`,
+    );
   }
 
   // ========== MÉTHODES D'ENVOI ==========
   async sendToUser(userId: number, event: string, data: any) {
     const room = `user_${userId}`;
     const sockets = await this.server.in(room).fetchSockets();
-    
+
     if (sockets.length > 0) {
       this.server.to(room).emit(event, data);
       this.logger.debug(`📨 ${event} envoyé à user ${userId}`);
@@ -840,7 +897,11 @@ private getUserSockets(userId: number): string[] {
   }
 
   // ========== MÉTHODES SPÉCIFIQUES POUR NOTIFICATIONS ==========
-  async sendNewMessageNotification(conversationId: number, message: any, recipientIds: number[]) {
+  async sendNewMessageNotification(
+    conversationId: number,
+    message: any,
+    recipientIds: number[],
+  ) {
     const notification = {
       type: NotificationType.MESSAGE,
       title: 'Nouveau message',
@@ -849,24 +910,28 @@ private getUserSockets(userId: number): string[] {
         conversationId,
         messageId: message.id,
         senderId: message.sender_id,
-        senderName: message.sender_name
+        senderName: message.sender_name,
       },
       link: `/chat/${conversationId}`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    recipientIds.forEach(userId => {
+    recipientIds.forEach((userId) => {
       this.sendToUser(userId, 'new_notification', notification);
     });
 
     this.sendToRoom(`conversation_${conversationId}`, 'conversation_activity', {
       type: 'new_message',
       message,
-      notification
+      notification,
     });
   }
 
-  async sendDossierUpdateNotification(dossierId: number, update: any, userIds: number[]) {
+  async sendDossierUpdateNotification(
+    dossierId: number,
+    update: any,
+    userIds: number[],
+  ) {
     const notification = {
       type: NotificationType.DOSSIER_UPDATED,
       title: 'Mise à jour de dossier',
@@ -874,20 +939,20 @@ private getUserSockets(userId: number): string[] {
       data: {
         dossierId,
         updateType: update.type,
-        updatedBy: update.updated_by
+        updatedBy: update.updated_by,
       },
       link: `/dossiers/${dossierId}`,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    userIds.forEach(userId => {
+    userIds.forEach((userId) => {
       this.sendToUser(userId, 'new_notification', notification);
     });
 
     this.sendToRoom(`dossier_${dossierId}`, 'dossier_activity', {
       type: 'update',
       update,
-      notification
+      notification,
     });
   }
 
@@ -924,7 +989,10 @@ private getUserSockets(userId: number): string[] {
   }
 
   private isUserOnline(userId: number): boolean {
-    return this.userSockets.has(userId) && (this.userSockets.get(userId)?.size ?? 0) > 0;
+    return (
+      this.userSockets.has(userId) &&
+      (this.userSockets.get(userId)?.size ?? 0) > 0
+    );
   }
 
   /** Instantané des utilisateurs ayant au moins une connexion ouverte. */

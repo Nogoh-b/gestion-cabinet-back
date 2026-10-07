@@ -1,6 +1,11 @@
 // permissions.controller.ts
 import { Controller, Post, Body, Get, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { Permission } from './entities/permission.entity';
 import { PermissionsService } from './permission.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
@@ -9,16 +14,19 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 @ApiTags('Gestion des Permissions')
-@ApiBearerAuth() 
+@ApiBearerAuth()
 @Controller('permissions')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-
 export class PermissionsController {
   constructor(private readonly service: PermissionsService) {}
 
   @Post()
   @ApiOperation({ summary: 'Créer une nouvelle permission' })
-  @ApiResponse({ status: 201, description: 'Permission créée', type: Permission })
+  @ApiResponse({
+    status: 201,
+    description: 'Permission créée',
+    type: Permission,
+  })
   @RequirePermissions('permissions.create')
   create(@Body() dto: CreatePermissionDto): Promise<Permission> {
     return this.service.create(dto);

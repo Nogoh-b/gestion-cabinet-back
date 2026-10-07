@@ -4,15 +4,21 @@ import { Employee } from 'src/modules/agencies/employee/entities/employee.entity
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { In, Repository } from 'typeorm';
-import { BadRequestException, forwardRef, Injectable, NotFoundException } from '@nestjs/common';
-
-
-
+import {
+  BadRequestException,
+  forwardRef,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { InjectRepository } from '@nestjs/typeorm';
 
-
-import { CreateConversationDto, SendMessageDto, CreateGroupDto, ChatReferenceDto } from '../../dto/create-conversation.dto';
+import {
+  CreateConversationDto,
+  SendMessageDto,
+  CreateGroupDto,
+  ChatReferenceDto,
+} from '../../dto/create-conversation.dto';
 import { MessageResponseDto } from '../../dto/message-response.dto';
 import { Conversation } from '../../entities/conversation.entity';
 import { Message } from '../../entities/messages.entity';
@@ -21,12 +27,6 @@ import { EmployeeService } from 'src/modules/agencies/employee/employee.service'
 import { Attachment } from '../../entities/attachment.entity';
 import { FilesUtil } from 'src/core/shared/utils/file.util';
 import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
-
-
-
-
-
-
 
 @Injectable()
 export class ChatService {
@@ -42,24 +42,32 @@ export class ChatService {
     private userRepository: Repository<Employee>,
     @InjectRepository(Attachment)
     private attachmentRepository: Repository<Attachment>,
-
   ) {
-    console.log(forwardRef)
+    console.log(forwardRef);
   }
 
-  private sanitizeReferences(references?: ChatReferenceDto[]): ChatReferenceDto[] {
+  private sanitizeReferences(
+    references?: ChatReferenceDto[],
+  ): ChatReferenceDto[] {
     if (!Array.isArray(references)) return [];
 
-    const cleanText = (value: unknown): string => String(value ?? '')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const cleanText = (value: unknown): string =>
+      String(value ?? '')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
 
-    const allowedMetaKeys = new Set(['reference', 'numero', 'email', 'phone', 'date']);
+    const allowedMetaKeys = new Set([
+      'reference',
+      'numero',
+      'email',
+      'phone',
+      'date',
+    ]);
     const allowedTypes = new Set([
       'client',
       'customer',
@@ -77,15 +85,29 @@ export class ChatService {
       'referrer',
     ]);
     return references
-      .filter(ref => ref && ref.type && allowedTypes.has(String(ref.type).toLowerCase()) && ref.id !== undefined && ref.id !== null && ref.label)
+      .filter(
+        (ref) =>
+          ref &&
+          ref.type &&
+          allowedTypes.has(String(ref.type).toLowerCase()) &&
+          ref.id !== undefined &&
+          ref.id !== null &&
+          ref.label,
+      )
       .slice(0, 10)
-      .map(ref => {
+      .map((ref) => {
         const type = String(ref.type).toLowerCase();
         const meta: NonNullable<ChatReferenceDto['meta']> = {};
         if (ref.meta && typeof ref.meta === 'object') {
           for (const [key, value] of Object.entries(ref.meta)) {
-            if (!allowedMetaKeys.has(key) || value === undefined || value === null) continue;
-            meta[key as keyof NonNullable<ChatReferenceDto['meta']>] = cleanText(value).slice(0, 200);
+            if (
+              !allowedMetaKeys.has(key) ||
+              value === undefined ||
+              value === null
+            )
+              continue;
+            meta[key as keyof NonNullable<ChatReferenceDto['meta']>] =
+              cleanText(value).slice(0, 200);
           }
         }
 
@@ -95,17 +117,24 @@ export class ChatService {
           label: cleanText(ref.label).slice(0, 200),
         };
 
-        if (ref.href && String(ref.href).startsWith('/')) clean.href = String(ref.href).slice(0, 500);
+        if (ref.href && String(ref.href).startsWith('/'))
+          clean.href = String(ref.href).slice(0, 500);
         if (Object.keys(meta).length) clean.meta = meta;
         return clean;
       });
   }
 
-  async createConversation(dto: CreateConversationDto, creatorId: number): Promise<Conversation> {
-    const ids = [...dto.participantIds , creatorId]
-    console.log('Creating conversation with DTO:', dto, 'and creatorId:', [...dto.participantIds , creatorId]);
+  async createConversation(
+    dto: CreateConversationDto,
+    creatorId: number,
+  ): Promise<Conversation> {
+    const ids = [...dto.participantIds, creatorId];
+    console.log('Creating conversation with DTO:', dto, 'and creatorId:', [
+      ...dto.participantIds,
+      creatorId,
+    ]);
     const participants = await this.userRepository.findByIds(ids);
-    
+
     if (participants.length !== ids.length) {
       // throw new NotFoundException('Certains utilisateurs n\'existent pas');
     }
@@ -119,10 +148,18 @@ export class ChatService {
     return await this.conversationRepository.save(conversation);
   }
 
-  async createGroup(dto: CreateGroupDto, creatorId: number): Promise<Conversation> {
-    const creator = await this.userRepository.findOne({ where: { id: creatorId } });
-    const participants = await this.userRepository.findByIds([creatorId, ...dto.participantIds]);
-    
+  async createGroup(
+    dto: CreateGroupDto,
+    creatorId: number,
+  ): Promise<Conversation> {
+    const creator = await this.userRepository.findOne({
+      where: { id: creatorId },
+    });
+    const participants = await this.userRepository.findByIds([
+      creatorId,
+      ...dto.participantIds,
+    ]);
+
     const conversation = this.conversationRepository.create({
       name: dto.name,
       isGroup: true,
@@ -131,78 +168,83 @@ export class ChatService {
 
     const group = await this.conversationRepository.save(conversation);
 
-    return group
+    return group;
   }
 
   async sendMessage(dto: SendMessageDto, senderId: number): Promise<any> {
-      const references = this.sanitizeReferences(dto.references);
-      const conversation = await this.conversationRepository.findOne({
-          where: { id: dto.conversationId },
-          relations: ['participants', 'participants.user'],
-      });
+    const references = this.sanitizeReferences(dto.references);
+    const conversation = await this.conversationRepository.findOne({
+      where: { id: dto.conversationId },
+      relations: ['participants', 'participants.user'],
+    });
 
-      if (!conversation) {
-          throw new NotFoundException('Conversation non trouvée');
-      }
+    if (!conversation) {
+      throw new NotFoundException('Conversation non trouvée');
+    }
 
-      const sender = await this.userService.findOne(senderId);
+    const sender = await this.userService.findOne(senderId);
 
-      if (!sender) {
-          throw new NotFoundException(`Utilisateur avec l'ID ${senderId} non trouvé`);
-      }
+    if (!sender) {
+      throw new NotFoundException(
+        `Utilisateur avec l'ID ${senderId} non trouvé`,
+      );
+    }
 
-      const message = this.messageRepository.create({
-          content: dto.content ?? '',
-          sender,
-          conversation,
-          references,
-      });
+    const message = this.messageRepository.create({
+      content: dto.content ?? '',
+      sender,
+      conversation,
+      references,
+    });
 
-      const savedMessage = await this.messageRepository.save(message);
+    const savedMessage = await this.messageRepository.save(message);
 
-      // ✅ METTRE À JOUR lastMessageData (la vraie colonne)
-      await this.conversationRepository.update(dto.conversationId, {
-          lastMessageAt: new Date(),
-          lastMessageData: {  // ← Utiliser lastMessageData, pas lastMessage
-              content: dto.content ?? '',
-              createdAt: new Date().toISOString(),
-              senderId: senderId,
-              senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
-              referencesCount: references.length,
-          }
-      });
+    // ✅ METTRE À JOUR lastMessageData (la vraie colonne)
+    await this.conversationRepository.update(dto.conversationId, {
+      lastMessageAt: new Date(),
+      lastMessageData: {
+        // ← Utiliser lastMessageData, pas lastMessage
+        content: dto.content ?? '',
+        createdAt: new Date().toISOString(),
+        senderId: senderId,
+        senderName:
+          sender.user?.full_name || sender.user?.username || 'Utilisateur',
+        referencesCount: references.length,
+      },
+    });
 
-      const finalMessage = await this.messageRepository.findOne({
-          where: { id: savedMessage.id },
-          relations: ['sender', 'sender.user', 'conversation', 'reads'],
-      });
+    const finalMessage = await this.messageRepository.findOne({
+      where: { id: savedMessage.id },
+      relations: ['sender', 'sender.user', 'conversation', 'reads'],
+    });
 
-      if (!finalMessage) {
-          throw new NotFoundException('Le message enregistré est introuvable');
-      }
+    if (!finalMessage) {
+      throw new NotFoundException('Le message enregistré est introuvable');
+    }
 
-      const reads = conversation.participants.map(p => ({
-          message: savedMessage,
-          reader: p,
-          isRead: p.id === senderId,
-          isReceive: p.id === senderId,
-      }));
+    const reads = conversation.participants.map((p) => ({
+      message: savedMessage,
+      reader: p,
+      isRead: p.id === senderId,
+      isReceive: p.id === senderId,
+    }));
 
-      await this.messageReadRepository.save(reads);
+    await this.messageReadRepository.save(reads);
 
-      return plainToInstance(MessageResponseDto, finalMessage);
+    return plainToInstance(MessageResponseDto, finalMessage);
   }
 
-
   async sendMessageWithAttachments(
-    dto: SendMessageDto, 
-    senderId: number, 
-    files: Express.Multer.File[]
+    dto: SendMessageDto,
+    senderId: number,
+    files: Express.Multer.File[],
   ): Promise<MessageResponseDto> {
     const references = this.sanitizeReferences(dto.references);
     // Validation de base
     if (!dto.content && files.length === 0) {
-      throw new BadRequestException('Un message doit avoir du contenu ou des pièces jointes');
+      throw new BadRequestException(
+        'Un message doit avoir du contenu ou des pièces jointes',
+      );
     }
 
     // 1. Récupération et validation de la conversation
@@ -218,17 +260,24 @@ export class ChatService {
     // 2. Validation de l'expéditeur
     const sender = await this.userService.findOne(senderId);
     if (!sender) {
-      throw new NotFoundException(`Utilisateur avec l'ID ${senderId} non trouvé`);
+      throw new NotFoundException(
+        `Utilisateur avec l'ID ${senderId} non trouvé`,
+      );
     }
 
     // 3. Validation des fichiers
     // const validatedFiles = await this.validateFiles(files);
-    
+
     // 4. Upload des fichiers
-    const uploadedAttachments = await FilesUtil.uploadFiles(files, UPLOAD_DOCS_PATH, 'docType.mimetype', {
-            maxSizeKB: 300, // 3MB
-            quality: 70,
-          });
+    const uploadedAttachments = await FilesUtil.uploadFiles(
+      files,
+      UPLOAD_DOCS_PATH,
+      'docType.mimetype',
+      {
+        maxSizeKB: 300, // 3MB
+        quality: 70,
+      },
+    );
 
     // 5. Création du message
     const message = this.messageRepository.create({
@@ -243,11 +292,11 @@ export class ChatService {
 
     // 6. Création des attachments liés au message
     if (uploadedAttachments.length > 0) {
-      const attachments = uploadedAttachments.map(fileInfo => 
+      const attachments = uploadedAttachments.map((fileInfo) =>
         this.attachmentRepository.create({
           ...fileInfo,
           message: savedMessage,
-        })
+        }),
       );
       await this.attachmentRepository.save(attachments);
       savedMessage.attachments = attachments;
@@ -258,14 +307,17 @@ export class ChatService {
       content: dto.content || (files.length > 0 ? '📎 Pièce jointe' : ''),
       createdAt: new Date().toISOString(),
       senderId: senderId,
-      senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
+      senderName:
+        sender.user?.full_name || sender.user?.username || 'Utilisateur',
       referencesCount: references.length,
     };
 
     if (uploadedAttachments.length > 0) {
       lastMessageData.hasAttachments = true;
       lastMessageData.attachmentsCount = uploadedAttachments.length;
-      lastMessageData.attachmentsTypes = [...new Set(uploadedAttachments.map(a => a.fileMimeType))];
+      lastMessageData.attachmentsTypes = [
+        ...new Set(uploadedAttachments.map((a) => a.fileMimeType)),
+      ];
     }
 
     await this.conversationRepository.update(dto.conversationId, {
@@ -274,7 +326,7 @@ export class ChatService {
     });
 
     // 8. Création des entrées de lecture
-    const reads = conversation.participants.map(p => ({
+    const reads = conversation.participants.map((p) => ({
       message: savedMessage,
       reader: p,
       isRead: p.id === senderId,
@@ -286,22 +338,29 @@ export class ChatService {
     // 9. Récupération du message final avec toutes ses relations
     const finalMessage = await this.messageRepository.findOne({
       where: { id: savedMessage.id },
-      relations: ['sender', 'sender.user', 'conversation', 'reads', 'attachments'],
+      relations: [
+        'sender',
+        'sender.user',
+        'conversation',
+        'reads',
+        'attachments',
+      ],
     });
 
     return plainToInstance(MessageResponseDto, finalMessage);
   }
 
-
   async sendMessageWithExistingAttachments(
-    dto: SendMessageDto, 
-    senderId: number, 
+    dto: SendMessageDto,
+    senderId: number,
   ): Promise<MessageResponseDto> {
     // Validation de base
     const attachmentIds = dto.attachmentIds ?? [];
     const references = this.sanitizeReferences(dto.references);
     if (!dto.content && attachmentIds.length === 0) {
-      throw new BadRequestException('Un message doit avoir du contenu ou des pièces jointes');
+      throw new BadRequestException(
+        'Un message doit avoir du contenu ou des pièces jointes',
+      );
     }
 
     // 1. Récupération et validation de la conversation
@@ -317,27 +376,35 @@ export class ChatService {
     // 2. Validation de l'expéditeur
     const sender = await this.userService.findOne(senderId);
     if (!sender) {
-      throw new NotFoundException(`Utilisateur avec l'ID ${senderId} non trouvé`);
+      throw new NotFoundException(
+        `Utilisateur avec l'ID ${senderId} non trouvé`,
+      );
     }
 
     // 3. Récupération des attachments existants par leurs IDs
     let attachments: Attachment[] = [];
     if (attachmentIds.length > 0) {
       attachments = await this.attachmentRepository.findByIds(attachmentIds);
-      
+
       // Vérifier que tous les IDs sont valides
       if (attachments.length !== attachmentIds.length) {
-        const foundIds = attachments.map(a => a.id);
-        const missingIds = attachmentIds.filter(id => !foundIds.includes(id));
-        throw new NotFoundException(`Attachments non trouvés: ${missingIds.join(', ')}`);
+        const foundIds = attachments.map((a) => a.id);
+        const missingIds = attachmentIds.filter((id) => !foundIds.includes(id));
+        throw new NotFoundException(
+          `Attachments non trouvés: ${missingIds.join(', ')}`,
+        );
       }
 
-      console.log(attachments)
+      console.log(attachments);
 
       // Optionnel: Vérifier que les attachments n'appartiennent pas déjà à un message
-      const alreadyLinked = attachments.some(a => a.message !== null && a.message !== undefined );
+      const alreadyLinked = attachments.some(
+        (a) => a.message !== null && a.message !== undefined,
+      );
       if (alreadyLinked) {
-        throw new BadRequestException('Certains attachments sont déjà liés à un message');
+        throw new BadRequestException(
+          'Certains attachments sont déjà liés à un message',
+        );
       }
     }
 
@@ -355,29 +422,35 @@ export class ChatService {
     // 5. Liaison des attachments au message
     if (attachments.length > 0) {
       // Mettre à jour chaque attachment avec le message
-      await Promise.all(attachments.map(attachment => 
-        this.attachmentRepository.update(attachment.id, {
-          message: savedMessage
-        })
-      ));
-      
+      await Promise.all(
+        attachments.map((attachment) =>
+          this.attachmentRepository.update(attachment.id, {
+            message: savedMessage,
+          }),
+        ),
+      );
+
       // Mettre à jour la relation pour le retour
       savedMessage.attachments = attachments;
     }
 
     // 6. Mise à jour de la conversation
     const lastMessageData: any = {
-      content: dto.content || (attachmentIds.length > 0 ? '📎 Pièce jointe' : ''),
+      content:
+        dto.content || (attachmentIds.length > 0 ? '📎 Pièce jointe' : ''),
       createdAt: new Date().toISOString(),
       senderId: senderId,
-      senderName: sender.user?.full_name || sender.user?.username || 'Utilisateur',
+      senderName:
+        sender.user?.full_name || sender.user?.username || 'Utilisateur',
       referencesCount: references.length,
     };
 
     if (attachments.length > 0) {
       lastMessageData.hasAttachments = true;
       lastMessageData.attachmentsCount = attachments.length;
-      lastMessageData.attachmentsTypes = [...new Set(attachments.map(a => a.mimeType))];
+      lastMessageData.attachmentsTypes = [
+        ...new Set(attachments.map((a) => a.mimeType)),
+      ];
       lastMessageData.attachmentIds = attachmentIds; // Optionnel: stocker les IDs
     }
 
@@ -387,7 +460,7 @@ export class ChatService {
     });
 
     // 7. Création des entrées de lecture
-    const reads = conversation.participants.map(p => ({
+    const reads = conversation.participants.map((p) => ({
       message: savedMessage,
       reader: p,
       isRead: p.id === senderId,
@@ -399,17 +472,22 @@ export class ChatService {
     // 8. Récupération du message final avec toutes ses relations
     const finalMessage = await this.messageRepository.findOne({
       where: { id: savedMessage.id },
-      relations: ['sender', 'sender.user', 'conversation', 'reads', 'attachments'],
+      relations: [
+        'sender',
+        'sender.user',
+        'conversation',
+        'reads',
+        'attachments',
+      ],
     });
 
     return plainToInstance(MessageResponseDto, finalMessage);
   }
 
   async uploadAttachments(
-    senderId: number, 
-    files: Express.Multer.File[]
+    senderId: number,
+    files: Express.Multer.File[],
   ): Promise<number[]> {
-
     const uploadedAttachments = await FilesUtil.uploadFiles(
       files,
       UPLOAD_DOCS_PATH,
@@ -417,7 +495,7 @@ export class ChatService {
       {
         maxSizeKB: 300,
         quality: 70,
-      }
+      },
     );
 
     if (!uploadedAttachments.length) {
@@ -425,19 +503,18 @@ export class ChatService {
     }
 
     // créer les entités
-    const attachments = uploadedAttachments.map(fileInfo =>
+    const attachments = uploadedAttachments.map((fileInfo) =>
       this.attachmentRepository.create({
         ...fileInfo,
-      })
+      }),
     );
 
     // ⚠️ save retourne les entités AVEC leurs ids
     const savedAttachments = await this.attachmentRepository.save(attachments);
 
     // ✅ extraire les ids
-    return savedAttachments.map(att => att.id);
+    return savedAttachments.map((att) => att.id);
   }
-  
 
   // private async validateFiles(files: Express.Multer.File[]): Promise<Express.Multer.File[]> {
   //   const maxSize = this.configService.get<number>('MAX_FILE_SIZE', 10 * 1024 * 1024); // 10MB par défaut
@@ -467,124 +544,138 @@ export class ChatService {
   //   return files;
   // }
 
+  async getUserConversations(userId: number): Promise<Conversation[]> {
+    const conversationsQB = this.conversationRepository
+      .createQueryBuilder('conversation')
+      .leftJoinAndSelect('conversation.participants', 'participant')
+      .leftJoinAndSelect('participant.user', 'user')
+      .loadRelationCountAndMap(
+        'conversation.unreadCount',
+        'conversation.messages',
+        'unreadMessages',
+        (qb) =>
+          qb
+            .leftJoin('unreadMessages.reads', 'read')
+            .where('read.readerId = :userId', { userId })
+            .andWhere('read.isRead = :isRead', { isRead: false }),
+      )
+      .where(
+        'EXISTS (SELECT 1 FROM conversation_participants_employee cp WHERE cp.conversationId = conversation.id AND cp.employeeId = :userId)',
+        { userId },
+      )
+      .orderBy('conversation.lastMessageAt', 'DESC');
+    // Isolation multi-tenant : limite aux conversations du cabinet courant.
+    addTenantCondition(conversationsQB, 'conversation');
+    const conversations = await conversationsQB.getMany();
 
-async getUserConversations(userId: number): Promise<Conversation[]> {
-  const conversationsQB = this.conversationRepository
-    .createQueryBuilder('conversation')
-    .leftJoinAndSelect('conversation.participants', 'participant')
-    .leftJoinAndSelect('participant.user', 'user')
-    .loadRelationCountAndMap(
-      'conversation.unreadCount',
-      'conversation.messages',
-      'unreadMessages',
-      (qb) => qb
-        .leftJoin('unreadMessages.reads', 'read')
-        .where('read.readerId = :userId', { userId })
-        .andWhere('read.isRead = :isRead', { isRead: false })
-    )
-    .where('EXISTS (SELECT 1 FROM conversation_participants_employee cp WHERE cp.conversationId = conversation.id AND cp.employeeId = :userId)', { userId })
-    .orderBy('conversation.lastMessageAt', 'DESC');
-  // Isolation multi-tenant : limite aux conversations du cabinet courant.
-  addTenantCondition(conversationsQB, 'conversation');
-  const conversations = await conversationsQB.getMany();
+    // Récupérer les derniers messages avec leurs pièces jointes
+    const conversationIds = conversations.map((c) => c.id);
 
-  // Récupérer les derniers messages avec leurs pièces jointes
-  const conversationIds = conversations.map(c => c.id);
-  
-  if (conversationIds.length === 0) {
-    return plainToInstance(Conversation, conversations, {
-      excludeExtraneousValues: false,
-    });
-  }
-
-  // Requête corrigée - ne pas utiliser la notation pointée dans select
-  const lastMessagesQB = this.messageRepository
-    .createQueryBuilder('message')
-    .leftJoinAndSelect('message.attachments', 'attachments')
-    .leftJoin('message.sender', 'sender')
-    .leftJoin('sender.user', 'user')
-    .addSelect([
-      // Sélectionner les colonnes de sender
-      'sender.id',
-      // Sélectionner les colonnes de user
-      'user.id',
-      'user.first_name',
-      'user.last_name',
-      'user.username'
-    ])
-    .where('message.conversationId IN (:...ids)', { ids: conversationIds })
-    .andWhere(qb => {
-      const subQuery = qb.subQuery()
-        .select('MAX(m.createdAt)')
-        .from('message', 'm')
-        .where('m.conversationId = message.conversationId')
-        .getQuery();
-      return 'message.createdAt = ' + subQuery;
-    });
-  // Isolation multi-tenant.
-  addTenantCondition(lastMessagesQB, 'message');
-  const lastMessages = await lastMessagesQB.getMany();
-
-  // Créer un map des derniers messages par conversation
-  const lastMessagesMap = new Map();
-  lastMessages.forEach(msg => {
-    lastMessagesMap.set(msg.conversationId, msg);
-  });
-
-  // Enrichir les conversations avec les données du dernier message
-  const enrichedConversations = conversations.map(conv => {
-    const lastMsg = lastMessagesMap.get(conv.id);
-    
-    if (lastMsg) {
-      // Construire le nom complet de l'expéditeur
-      let senderName = 'Utilisateur';
-      if (lastMsg.sender?.user) {
-        const user = lastMsg.sender.user;
-        if (user.first_name && user.last_name) {
-          senderName = `${user.first_name} ${user.last_name}`;
-        } else if (user.username) {
-          senderName = user.username;
-        }
-      }
-
-      // Traiter les pièces jointes
-      const attachments = lastMsg.attachments || [];
-      const hasAttachments = attachments.length > 0;
-      const attachmentsTypes = hasAttachments 
-        ? [...new Set(attachments.map(a => a.mimeType || a.type).filter(Boolean))]
-        : [];
-      const attachmentIds = attachments.map(a => a.id).filter(Boolean);
-
-      // Ajouter les données du dernier message à la conversation
-      Object.assign(conv, {
-        lastMessageData: {
-          content: lastMsg.content || '',
-          createdAt: lastMsg.createdAt.toISOString(),
-          senderId: lastMsg.sender?.id,
-          senderName: senderName,
-          hasAttachments: hasAttachments,
-          attachmentsCount: attachments.length,
-          attachmentsTypes: attachmentsTypes,
-          attachmentIds: attachmentIds,
-          referencesCount: lastMsg.references?.length || 0,
-        }
+    if (conversationIds.length === 0) {
+      return plainToInstance(Conversation, conversations, {
+        excludeExtraneousValues: false,
       });
     }
 
-    return conv;
-  });
+    // Requête corrigée - ne pas utiliser la notation pointée dans select
+    const lastMessagesQB = this.messageRepository
+      .createQueryBuilder('message')
+      .leftJoinAndSelect('message.attachments', 'attachments')
+      .leftJoin('message.sender', 'sender')
+      .leftJoin('sender.user', 'user')
+      .addSelect([
+        // Sélectionner les colonnes de sender
+        'sender.id',
+        // Sélectionner les colonnes de user
+        'user.id',
+        'user.first_name',
+        'user.last_name',
+        'user.username',
+      ])
+      .where('message.conversationId IN (:...ids)', { ids: conversationIds })
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('MAX(m.createdAt)')
+          .from('message', 'm')
+          .where('m.conversationId = message.conversationId')
+          .getQuery();
+        return 'message.createdAt = ' + subQuery;
+      });
+    // Isolation multi-tenant.
+    addTenantCondition(lastMessagesQB, 'message');
+    const lastMessages = await lastMessagesQB.getMany();
 
-  return plainToInstance(Conversation, enrichedConversations, {
-    excludeExtraneousValues: false,
-  });
-}
-  async getConversationMessages(conversationId: number, userId: number): Promise<Message[]> {
+    // Créer un map des derniers messages par conversation
+    const lastMessagesMap = new Map();
+    lastMessages.forEach((msg) => {
+      lastMessagesMap.set(msg.conversationId, msg);
+    });
+
+    // Enrichir les conversations avec les données du dernier message
+    const enrichedConversations = conversations.map((conv) => {
+      const lastMsg = lastMessagesMap.get(conv.id);
+
+      if (lastMsg) {
+        // Construire le nom complet de l'expéditeur
+        let senderName = 'Utilisateur';
+        if (lastMsg.sender?.user) {
+          const user = lastMsg.sender.user;
+          if (user.first_name && user.last_name) {
+            senderName = `${user.first_name} ${user.last_name}`;
+          } else if (user.username) {
+            senderName = user.username;
+          }
+        }
+
+        // Traiter les pièces jointes
+        const attachments = lastMsg.attachments || [];
+        const hasAttachments = attachments.length > 0;
+        const attachmentsTypes = hasAttachments
+          ? [
+              ...new Set(
+                attachments.map((a) => a.mimeType || a.type).filter(Boolean),
+              ),
+            ]
+          : [];
+        const attachmentIds = attachments.map((a) => a.id).filter(Boolean);
+
+        // Ajouter les données du dernier message à la conversation
+        Object.assign(conv, {
+          lastMessageData: {
+            content: lastMsg.content || '',
+            createdAt: lastMsg.createdAt.toISOString(),
+            senderId: lastMsg.sender?.id,
+            senderName: senderName,
+            hasAttachments: hasAttachments,
+            attachmentsCount: attachments.length,
+            attachmentsTypes: attachmentsTypes,
+            attachmentIds: attachmentIds,
+            referencesCount: lastMsg.references?.length || 0,
+          },
+        });
+      }
+
+      return conv;
+    });
+
+    return plainToInstance(Conversation, enrichedConversations, {
+      excludeExtraneousValues: false,
+    });
+  }
+  async getConversationMessages(
+    conversationId: number,
+    userId: number,
+  ): Promise<Message[]> {
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId },
       relations: ['participants', 'attachments'],
     });
 
-    if (!conversation || !conversation.participants.some(p => p.id === userId)) {
+    if (
+      !conversation ||
+      !conversation.participants.some((p) => p.id === userId)
+    ) {
       throw new NotFoundException('Conversation non trouvée');
     }
 
@@ -595,78 +686,86 @@ async getUserConversations(userId: number): Promise<Conversation[]> {
     });
   }
 
-async getConversation(conversationId: number, userId?: number) {
-  const conversationQB = this.conversationRepository
-    .createQueryBuilder('conversation')
-    .leftJoinAndSelect('conversation.participants', 'participant')
-    .leftJoinAndSelect('participant.user', 'user')
-    .leftJoinAndSelect('conversation.messages', 'message')
-    .leftJoinAndSelect('message.sender', 'sender')
-    .leftJoinAndSelect('message.attachments', 'attachments')
-    .leftJoinAndSelect('message.reads', 'reads')
-    .leftJoinAndSelect('reads.reader', 'reader')
-    .leftJoinAndSelect('sender.user', 'senderUser')
-    .addSelect(['reads.id', 'reads.isRead', 'reads.readAt', 'reader.id'])
-    .where('conversation.id = :id', { id: conversationId });
-  // Isolation multi-tenant.
-  addTenantCondition(conversationQB, 'conversation');
-  const conversation = await conversationQB.getOne();
+  async getConversation(conversationId: number, userId?: number) {
+    const conversationQB = this.conversationRepository
+      .createQueryBuilder('conversation')
+      .leftJoinAndSelect('conversation.participants', 'participant')
+      .leftJoinAndSelect('participant.user', 'user')
+      .leftJoinAndSelect('conversation.messages', 'message')
+      .leftJoinAndSelect('message.sender', 'sender')
+      .leftJoinAndSelect('message.attachments', 'attachments')
+      .leftJoinAndSelect('message.reads', 'reads')
+      .leftJoinAndSelect('reads.reader', 'reader')
+      .leftJoinAndSelect('sender.user', 'senderUser')
+      .addSelect(['reads.id', 'reads.isRead', 'reads.readAt', 'reader.id'])
+      .where('conversation.id = :id', { id: conversationId });
+    // Isolation multi-tenant.
+    addTenantCondition(conversationQB, 'conversation');
+    const conversation = await conversationQB.getOne();
 
-  if (
-    !conversation ||
-    !conversation.participants.some(p => p.id === userId)
-  ) {
-    throw new NotFoundException('Conversation non trouvée');
-  }
+    if (
+      !conversation ||
+      !conversation.participants.some((p) => p.id === userId)
+    ) {
+      throw new NotFoundException('Conversation non trouvée');
+    }
 
     // Transformer pour que reader soit directement l'ID
-  if (conversation.messages) {
-    conversation.messages.forEach(message => {
-      if (message.reads) {
-        message.reads = message.reads.map(read => ({
-          ...read,
-          reader: read.reader?.id
-        })) as any; // 👈 Force le type
-      }
+    if (conversation.messages) {
+      conversation.messages.forEach((message) => {
+        if (message.reads) {
+          message.reads = message.reads.map((read) => ({
+            ...read,
+            reader: read.reader?.id,
+          })) as any; // 👈 Force le type
+        }
+      });
+    }
+
+    return plainToInstance(Conversation, conversation, {
+      excludeExtraneousValues: false,
     });
   }
 
-  return plainToInstance(Conversation, conversation, {
-    excludeExtraneousValues: false,
-  });
-}
-
-  async getParticipantIdsExcluding(conversationId: number, excludeUserId: number): Promise<number[]> {
+  async getParticipantIdsExcluding(
+    conversationId: number,
+    excludeUserId: number,
+  ): Promise<number[]> {
     const conversation = await this.conversationRepository.findOne({
       where: { id: conversationId },
       relations: ['participants'],
     });
 
     if (!conversation) {
-      throw new NotFoundException(`Conversation avec l'ID ${conversationId} non trouvée`);
+      throw new NotFoundException(
+        `Conversation avec l'ID ${conversationId} non trouvée`,
+      );
     }
 
     return conversation.participants
-      .filter(participant => participant.id !== excludeUserId)
-      .map(participant => participant.id);
+      .filter((participant) => participant.id !== excludeUserId)
+      .map((participant) => participant.id);
   }
 
   // for one user, mark all messages as read in a conversation
-  async markMessagesAsRead(conversationId: number, userId: number): Promise<any> {
+  async markMessagesAsRead(
+    conversationId: number,
+    userId: number,
+  ): Promise<any> {
     const messages = await this.messageRepository.find({
       where: { conversation: { id: conversationId } },
-      select: ['id']
+      select: ['id'],
     });
 
-    const messageIds = messages.map(m => m.id);
+    const messageIds = messages.map((m) => m.id);
     if (messageIds.length === 0) return;
 
     // 1️⃣ count BEFORE
     const before = await this.messageReadRepository.count({
       where: {
         isRead: false,
-        message: { id: In(messageIds) }
-      }
+        message: { id: In(messageIds) },
+      },
     });
 
     if (before === 0) return; // rien à changer → inutile d’update
@@ -690,32 +789,35 @@ async getConversation(conversationId: number, userId?: number) {
     const after = await this.messageReadRepository.count({
       where: {
         isRead: false,
-        message: { id: In(messageIds) }
-      }
+        message: { id: In(messageIds) },
+      },
     });
 
     // 4️⃣ compare
     if (after < before) {
       // this.chatGateway.emitMessagesRead(conversationId, userId);
     }
-    return messageIds[0]
+    return messageIds[0];
   }
   // for one user, mark all messages as read in a conversation
-  async markMessagesAsReceive(conversationId: number, userId: number): Promise<any> {
+  async markMessagesAsReceive(
+    conversationId: number,
+    userId: number,
+  ): Promise<any> {
     const messages = await this.messageRepository.find({
       where: { conversation: { id: conversationId } },
-      select: ['id']
+      select: ['id'],
     });
 
-    const messageIds = messages.map(m => m.id);
+    const messageIds = messages.map((m) => m.id);
     if (messageIds.length === 0) return;
 
     // 1️⃣ count BEFORE
     const before = await this.messageReadRepository.count({
       where: {
         isReceive: false,
-        message: { id: In(messageIds) }
-      }
+        message: { id: In(messageIds) },
+      },
     });
 
     if (before === 0) return; // rien à changer → inutile d’update
@@ -737,18 +839,20 @@ async getConversation(conversationId: number, userId?: number) {
     const after = await this.messageReadRepository.count({
       where: {
         isReceive: false,
-        message: { id: In(messageIds) }
-      }
+        message: { id: In(messageIds) },
+      },
     });
 
     // 4️⃣ compare
     if (after < before) {
       // this.chatGateway.emitMessagesRead(conversationId, userId);
     }
-    return messageIds[0]
+    return messageIds[0];
   }
 
-async setReceiveMessagesWithCount(userId: number): Promise<{ updated: number }> {
+  async setReceiveMessagesWithCount(
+    userId: number,
+  ): Promise<{ updated: number }> {
     const result = await this.messageReadRepository
       .createQueryBuilder()
       .update(MessageRead)
@@ -761,5 +865,4 @@ async setReceiveMessagesWithCount(userId: number): Promise<{ updated: number }> 
 
     return { updated: result.affected || 0 };
   }
-
 }

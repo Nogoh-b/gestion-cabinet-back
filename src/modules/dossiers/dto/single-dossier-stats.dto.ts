@@ -18,7 +18,12 @@ export class SingleDossierStatsDto {
     total: number;
     totalSize: number;
     totalSizeFormatted: string;
-    byStatus: Array<{ name: string; value: number; percentage: number; color?: string }>;
+    byStatus: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
     byType: Array<{ name: string; value: number; percentage: number }>;
     recent: Array<{
       id: number;
@@ -70,7 +75,12 @@ export class SingleDossierStatsDto {
     montantPaye: number;
     montantImpaye: number;
     tauxRecouvrement: number;
-    parStatut: Array<{ name: string; value: number; montant: number; percentage: number }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      montant: number;
+      percentage: number;
+    }>;
     recentes: Array<{
       id: string;
       numero: string;

@@ -20,7 +20,10 @@ import { WriteHandlerRegistry } from './write-handler.registry';
 import { BaseWriteHandler } from './base-write-handler';
 import { SchemaMetadataService } from '../schema-metadata.service';
 import { EntityResolverService } from './entity-resolver.service';
-import { BUSINESS_METADATA_KEY, BusinessTableMetadata } from '../../decorators/business-metadata.decorator';
+import {
+  BUSINESS_METADATA_KEY,
+  BusinessTableMetadata,
+} from '../../decorators/business-metadata.decorator';
 
 @Injectable()
 export class AutoHandlerFactory implements OnModuleInit {
@@ -48,7 +51,7 @@ export class AutoHandlerFactory implements OnModuleInit {
     // NestJS initialise les modules dans l'ordre d'import, mais les onModuleInit
     // des providers d'un même module s'exécutent en parallèle.
     // On utilise setTimeout(0) pour se placer en fin de microtask queue.
-    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await this.registerAutoHandlers();
   }
 
@@ -73,7 +76,10 @@ export class AutoHandlerFactory implements OnModuleInit {
       // 1. Vérifier si l'entité a @BusinessTable
       let tableMeta: BusinessTableMetadata | undefined;
       try {
-        tableMeta = Reflect.getMetadata(BUSINESS_METADATA_KEY, entityClass) as BusinessTableMetadata;
+        tableMeta = Reflect.getMetadata(
+          BUSINESS_METADATA_KEY,
+          entityClass,
+        ) as BusinessTableMetadata;
       } catch {
         // pas de métadonnées → skip
       }
@@ -126,11 +132,11 @@ export class AutoHandlerFactory implements OnModuleInit {
 
     this.logger.log(
       `\n📊 AutoHandlerFactory — Résumé:\n` +
-      `   ✅ ${registered} handlers auto-générés\n` +
-      `   🎯 ${skippedCustom} handlers custom préservés\n` +
-      `   ⏭️  ${skippedIgnored} tables ignorées (@BusinessTable.ignored)\n` +
-      `   📦 ${skippedNoDecorator} tables sans @BusinessTable\n` +
-      `   📝 Total handlers actifs: ${this.registry.getAllHandlers().length}`,
+        `   ✅ ${registered} handlers auto-générés\n` +
+        `   🎯 ${skippedCustom} handlers custom préservés\n` +
+        `   ⏭️  ${skippedIgnored} tables ignorées (@BusinessTable.ignored)\n` +
+        `   📦 ${skippedNoDecorator} tables sans @BusinessTable\n` +
+        `   📝 Total handlers actifs: ${this.registry.getAllHandlers().length}`,
     );
   }
 

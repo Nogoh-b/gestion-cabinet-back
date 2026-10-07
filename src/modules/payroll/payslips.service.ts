@@ -1,5 +1,8 @@
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { Repository } from 'typeorm';
@@ -19,7 +22,10 @@ import { UpdatePayslipDto } from './dto/update-payslip.dto';
 import { PayrollPeriod } from './entities/payroll-period.entity';
 import { PayslipLine, PayslipLineType } from './entities/payslip-line.entity';
 import { Payslip, PayslipStatus } from './entities/payslip.entity';
-import { SalaryAdvance, SalaryAdvanceStatus } from './entities/salary-advance.entity';
+import {
+  SalaryAdvance,
+  SalaryAdvanceStatus,
+} from './entities/salary-advance.entity';
 import { PayrollCalculatorService } from './services/payroll-calculator.service';
 import { PayrollGenerationService } from './services/payroll-generation.service';
 
@@ -65,12 +71,20 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
         .where('p.created_at >= :start', { start: monthStart });
       qb = addTenantCondition(qb, 'p');
       const currentCount = await qb.getCount();
-      await this.planQuotaService.checkLimit(tenantId, 'payslips', currentCount);
+      await this.planQuotaService.checkLimit(
+        tenantId,
+        'payslips',
+        currentCount,
+      );
     }
 
-    const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
+    const employee = await this.employeeRepo.findOne({
+      where: { id: dto.employee_id },
+    });
     if (!employee) throw new NotFoundException('Employé non trouvé');
-    const period = await this.periodRepo.findOne({ where: { id: dto.period_id } });
+    const period = await this.periodRepo.findOne({
+      where: { id: dto.period_id },
+    });
     if (!period) throw new NotFoundException('Période de paie non trouvée');
 
     // ── Une seule fiche de paie par (collaborateur, période) ──────────────────
@@ -102,14 +116,21 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     // ── Formulaire = salaire de base uniquement → le back génère le reste ──────
     // Ligne de base + barème de cotisations + récupération d'avances + brut/net.
     if (baseSalary > 0) {
-      await this.generationService.applyBaseSalaryLines(saved.id, baseSalary, period.label);
+      await this.generationService.applyBaseSalaryLines(
+        saved.id,
+        baseSalary,
+        period.label,
+      );
     }
 
     // ── Honorer le statut demandé via le cycle de vie contrôlé ────────────────
     // On ne force jamais le statut « en dur » : on rejoue les transitions
     // officielles pour préserver snapshot d'audit + écritures comptables.
     const requested = dto.status;
-    if (requested === PayslipStatus.VALIDATED || requested === PayslipStatus.PAID) {
+    if (
+      requested === PayslipStatus.VALIDATED ||
+      requested === PayslipStatus.PAID
+    ) {
       await this.validate(saved.id);
       if (requested === PayslipStatus.PAID) {
         await this.pay(saved.id); // émet payslip.payee → comptabilisation de la paie
@@ -129,7 +150,13 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
   async findOne(id: number): Promise<Payslip> {
     const payslip = await this.repository.findOne({
       where: { id },
-      relations: ['employee', 'employee.user', 'period', 'lines', 'lines.dossier'],
+      relations: [
+        'employee',
+        'employee.user',
+        'period',
+        'lines',
+        'lines.dossier',
+      ],
     });
     if (!payslip) throw new NotFoundException('Fiche de paie non trouvée');
     return payslip;
@@ -185,7 +212,9 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
   async validate(id: number): Promise<Payslip> {
     const payslip = await this.findOne(id);
     if (payslip.status !== PayslipStatus.DRAFT) {
-      throw new BadRequestException('Seul un brouillon peut être validé. ' + payslip.status);
+      throw new BadRequestException(
+        'Seul un brouillon peut être validé. ' + payslip.status,
+      );
     }
     const lines = payslip.lines ?? [];
     if (lines.length > 0) {
@@ -194,7 +223,9 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
       payslip.net_amount = totals.net_amount;
     }
     if (Number(payslip.gross_amount) <= 0) {
-      throw new BadRequestException('Le salaire brut doit être strictement positif pour valider.');
+      throw new BadRequestException(
+        'Le salaire brut doit être strictement positif pour valider.',
+      );
     }
     payslip.status = PayslipStatus.VALIDATED;
     payslip.snapshot = this.buildSnapshot(payslip);
@@ -208,7 +239,9 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
       throw new BadRequestException('Fiche déjà payée.');
     }
     if (payslip.status !== PayslipStatus.VALIDATED) {
-      throw new BadRequestException('La fiche doit être validée avant paiement.');
+      throw new BadRequestException(
+        'La fiche doit être validée avant paiement.',
+      );
     }
     payslip.status = PayslipStatus.PAID;
     payslip.payment_date = new Date();
@@ -235,15 +268,20 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
 
     let remaining = recovery;
     const advances = await this.advanceRepo.find({
-      where: { employee_id: payslip.employee_id, status: SalaryAdvanceStatus.PAID },
+      where: {
+        employee_id: payslip.employee_id,
+        status: SalaryAdvanceStatus.PAID,
+      },
       order: { id: 'ASC' },
     });
     for (const adv of advances) {
       if (remaining <= 0) break;
-      const outstanding = Number(adv.amount || 0) - Number(adv.recovered_amount || 0);
+      const outstanding =
+        Number(adv.amount || 0) - Number(adv.recovered_amount || 0);
       if (outstanding <= 0) continue;
       const take = Math.min(outstanding, remaining);
-      adv.recovered_amount = Math.round((Number(adv.recovered_amount || 0) + take) * 100) / 100;
+      adv.recovered_amount =
+        Math.round((Number(adv.recovered_amount || 0) + take) * 100) / 100;
       // Avance entièrement remboursée → statut « récupérée ».
       if (adv.recovered_amount >= Number(adv.amount || 0) - 0.005) {
         adv.status = SalaryAdvanceStatus.RECOVERED;
@@ -262,7 +300,9 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
   async revertToDraft(id: number): Promise<Payslip> {
     const payslip = await this.findOne(id);
     if (payslip.status === PayslipStatus.PAID) {
-      throw new ForbiddenException('Une fiche payée ne peut pas être annulée (impact comptable).');
+      throw new ForbiddenException(
+        'Une fiche payée ne peut pas être annulée (impact comptable).',
+      );
     }
     payslip.status = PayslipStatus.DRAFT;
     payslip.snapshot = null;
@@ -291,13 +331,17 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
     this.assertMutable(payslip);
 
     if (dto.employee_id) {
-      const employee = await this.employeeRepo.findOne({ where: { id: dto.employee_id } });
+      const employee = await this.employeeRepo.findOne({
+        where: { id: dto.employee_id },
+      });
       if (!employee) throw new NotFoundException('Employé non trouvé');
       payslip.employee = employee;
     }
 
     if (dto.period_id) {
-      const period = await this.periodRepo.findOne({ where: { id: dto.period_id } });
+      const period = await this.periodRepo.findOne({
+        where: { id: dto.period_id },
+      });
       if (!period) throw new NotFoundException('Période de paie non trouvée');
       payslip.period = period;
     }
@@ -308,7 +352,9 @@ export class PayslipsService extends BaseServiceV1<Payslip> {
   async remove(id: number): Promise<void> {
     const payslip = await this.findOne(id);
     if (payslip.status === PayslipStatus.PAID) {
-      throw new ForbiddenException('Une fiche payée ne peut pas être supprimée.');
+      throw new ForbiddenException(
+        'Une fiche payée ne peut pas être supprimée.',
+      );
     }
     await this.repository.softDelete(id);
   }

@@ -12,16 +12,22 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { FactureSubscriber } from './subscribers/facture.subscriber';
 import { InvoiceType } from '../invoice-type/entities/invoice-type.entity';
-
+import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Facture, Cabinet, InvoiceType]),
     forwardRef(() => DossiersModule),
+    forwardRef(() => CaseWorkflowModule),
     AiDatabaseModule,
   ],
   controllers: [FactureController],
-  providers: [FactureService, FactureStatsService, FactureWriteHandler, FactureSubscriber],
+  providers: [
+    FactureService,
+    FactureStatsService,
+    FactureWriteHandler,
+    FactureSubscriber,
+  ],
   exports: [FactureService, FactureStatsService, TypeOrmModule],
 })
 export class FactureModule {

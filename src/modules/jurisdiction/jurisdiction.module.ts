@@ -6,13 +6,9 @@ import { JurisdictionController } from './jurisdiction.controller';
 import { JurisdictionService } from './jurisdiction.service';
 import { JurisdictionStatsService } from './jurisdiction-stats.service';
 
-
 @Module({
-    imports : [
-          TypeOrmModule.forFeature([Jurisdiction]),
-      
-    ],
-  exports :[JurisdictionService, JurisdictionStatsService],
+  imports: [TypeOrmModule.forFeature([Jurisdiction])],
+  exports: [JurisdictionService, JurisdictionStatsService],
   controllers: [JurisdictionController],
   providers: [JurisdictionService, JurisdictionStatsService],
 })

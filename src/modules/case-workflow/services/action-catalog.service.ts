@@ -8,8 +8,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import { isDuplicateKeyError } from 'src/core/shared/utils/db-error.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import {
+  DataSource,
+  FindOptionsWhere,
+  ObjectLiteral,
+  Repository,
+} from 'typeorm';
+import {
+  ActionDefaultProfessionalTreatment,
   ActionPriority,
   BillingCalculationMode,
   RecommendationTrigger,
@@ -1037,9 +1043,19 @@ export class ActionCatalogService {
     const families = new Map<string, ActionFamily>();
     for (let index = 0; index < FAMILY_DEFAULTS.length; index++) {
       const [code, label] = FAMILY_DEFAULTS[index];
-      let family = await this.familyRepository.findOne({
-        where: { tenant_id: tenantId, code },
-      });
+      let family = await this.findIncludingDeleted(this.familyRepository, {
+        tenant_id: tenantId,
+        code,
+      } as FindOptionsWhere<ActionFamily>);
+      if (family?.deleted_at) {
+        // Famille système supprimée logiquement : elle reste invisible tout en
+        // occupant son code, donc la recréer échouerait. On la restaure.
+        family = await this.restoreSoftDeleted(this.familyRepository, family, {
+          label,
+          description: null,
+          is_active: true,
+        });
+      }
       if (!family) {
         try {
           family = await this.familyRepository.save(
@@ -1054,10 +1070,18 @@ export class ActionCatalogService {
           );
         } catch (error) {
           if (!this.isDuplicate(error)) throw error;
-          family = await this.familyRepository.findOne({
-            where: { tenant_id: tenantId, code },
-          });
+          family = await this.findIncludingDeleted(this.familyRepository, {
+            tenant_id: tenantId,
+            code,
+          } as FindOptionsWhere<ActionFamily>);
           if (!family) throw error;
+          if (family.deleted_at) {
+            family = await this.restoreSoftDeleted(
+              this.familyRepository,
+              family,
+              { label, description: null, is_active: true },
+            );
+          }
         }
       }
       families.set(code, family);
@@ -1065,9 +1089,23 @@ export class ActionCatalogService {
 
     const definitions = new Map<string, ActionDefinition>();
     for (const item of ALL_DEFINITION_DEFAULTS) {
-      let definition = await this.definitionRepository.findOne({
-        where: { tenant_id: tenantId, code: item.code, version: 1 },
-      });
+      let definition = await this.findIncludingDeleted(
+        this.definitionRepository,
+        {
+          tenant_id: tenantId,
+          code: item.code,
+          version: 1,
+        } as FindOptionsWhere<ActionDefinition>,
+      );
+      if (definition?.deleted_at) {
+        // Définition système supprimée logiquement : on la restaure, sinon le
+        // code reste réservé par l'index UNIQUE et la recréation échoue.
+        definition = await this.restoreSoftDeleted(
+          this.definitionRepository,
+          definition,
+          { label: item.label, is_active: true },
+        );
+      }
       if (!definition) {
         try {
           definition = await this.definitionRepository.save(
@@ -1087,6 +1125,15 @@ export class ActionCatalogService {
               default_priority: item.priority ?? ActionPriority.NORMAL,
               is_required: false,
               billable_by_default: item.billable ?? false,
+              default_professional_treatment: !item.billable
+                ? ActionDefaultProfessionalTreatment.NON_BILLABLE
+                : item.billingMode === BillingCalculationMode.HOURLY
+                  ? ActionDefaultProfessionalTreatment.HOURLY
+                  : item.billingMode === BillingCalculationMode.FIXED
+                    ? ActionDefaultProfessionalTreatment.VACATION
+                    : ActionDefaultProfessionalTreatment.NEEDS_REVIEW,
+              may_have_expenses: false,
+              may_have_disbursements: false,
               billing_mode: item.billingMode ?? null,
               default_rate: null,
               is_active: true,
@@ -1094,10 +1141,22 @@ export class ActionCatalogService {
           );
         } catch (error) {
           if (!this.isDuplicate(error)) throw error;
-          definition = await this.definitionRepository.findOne({
-            where: { tenant_id: tenantId, code: item.code, version: 1 },
-          });
+          definition = await this.findIncludingDeleted(
+            this.definitionRepository,
+            {
+              tenant_id: tenantId,
+              code: item.code,
+              version: 1,
+            } as FindOptionsWhere<ActionDefinition>,
+          );
           if (!definition) throw error;
+          if (definition.deleted_at) {
+            definition = await this.restoreSoftDeleted(
+              this.definitionRepository,
+              definition,
+              { label: item.label, is_active: true },
+            );
+          }
         }
       }
       // Upgrade only the untouched v1 hearing-report default. Definitions
@@ -1105,8 +1164,9 @@ export class ActionCatalogService {
       if (
         definition &&
         item.code === 'WRITE_HEARING_REPORT' &&
-        (definition.allowed_results ?? []).map((result) => result.code).join(',') ===
-          STANDARD_RESULTS.map((result) => result.code).join(',')
+        (definition.allowed_results ?? [])
+          .map((result) => result.code)
+          .join(',') === STANDARD_RESULTS.map((result) => result.code).join(',')
       ) {
         definition.specific_fields_schema = item.fields ?? {
           type: 'object',
@@ -1120,9 +1180,19 @@ export class ActionCatalogService {
     }
 
     for (const item of RULE_DEFAULTS) {
-      const exists = await this.ruleRepository.findOne({
-        where: { tenant_id: tenantId, code: item.code, version: 1 },
-      });
+      let exists = await this.findIncludingDeleted(this.ruleRepository, {
+        tenant_id: tenantId,
+        code: item.code,
+        version: 1,
+      } as FindOptionsWhere<RecommendationRule>);
+      if (exists?.deleted_at) {
+        // Règle système supprimée logiquement : on la restaure, sinon le code
+        // reste réservé par l'index UNIQUE et la recréation échoue.
+        exists = await this.restoreSoftDeleted(this.ruleRepository, exists, {
+          label: item.label,
+          is_active: true,
+        });
+      }
       if (!exists) {
         try {
           await this.ruleRepository.save(
@@ -1157,6 +1227,43 @@ export class ActionCatalogService {
       candidate.code === 'ER_DUP_ENTRY' ||
       candidate.driverError?.code === 'ER_DUP_ENTRY'
     );
+  }
+
+  /**
+   * Recherche une entité en INCLUANT les lignes soft-deleted.
+   *
+   * Les index UNIQUE de ce catalogue (`UQ_case_action_family_tenant_code`,
+   * `UQ_case_action_definition_version`, `UQ_case_recommendation_rule_version`)
+   * ne contiennent pas `deleted_at` : une ligne supprimée logiquement continue
+   * donc d'occuper son code, alors que les recherches TypeORM l'excluent par
+   * défaut. Toute vérification d'unicité ou génération de code doit passer par
+   * ici, sans quoi l'INSERT part sur un `ER_DUP_ENTRY` brut et illisible.
+   */
+  private findIncludingDeleted<T extends ObjectLiteral>(
+    repository: Repository<T>,
+    where: FindOptionsWhere<T>,
+  ): Promise<T | null> {
+    return repository.findOne({ where, withDeleted: true });
+  }
+
+  /**
+   * Restaure une ligne soft-deleted en lui appliquant les nouvelles valeurs.
+   *
+   * Le nettoyage d'un plan d'écriture IA échoué supprime logiquement les
+   * entités déjà créées (cf. `GenericWriteService.cleanupHandlerEntities`) :
+   * le code reste réservé par l'index UNIQUE mais l'entité est invisible.
+   * Rejouer la même création doit donc restaurer la ligne — c'est le scénario
+   * qui produisait « Duplicate entry '1-FORMALITES' ».
+   */
+  private async restoreSoftDeleted<T extends ObjectLiteral>(
+    repository: Repository<T>,
+    entity: T,
+    patch: Partial<T>,
+  ): Promise<T> {
+    Object.assign(entity as Record<string, unknown>, patch, {
+      deleted_at: null,
+    });
+    return repository.save(entity);
   }
 
   async getFamilies(includeInactive = false): Promise<ActionFamily[]> {
@@ -1222,8 +1329,11 @@ export class ActionCatalogService {
         generateEntityCode(prefix, label),
       ).slice(0, maxLength);
       if (!code) continue;
+      // withDeleted : un code tenu par une ligne soft-deleted est tout aussi
+      // indisponible que s'il était actif (l'index UNIQUE l'ignore).
       const exists = await repository.findOne({
         where: { tenant_id: tenantId, code } as FindOptionsWhere<T>,
+        withDeleted: true,
       });
       if (!exists) return code;
     }
@@ -1279,10 +1389,14 @@ export class ActionCatalogService {
     const tenantId = getCurrentTenantId();
     const code = this.normalizeRuleCode(dto.code);
     if (!code) throw new ConflictException('Le code de la règle est invalide');
-    const existing = await this.ruleRepository.findOne({
-      where: { tenant_id: tenantId, code },
-    });
-    if (existing) {
+    // withDeleted : l'index UNIQUE (tenant_id, code, version) ne tient pas
+    // compte de `deleted_at`, donc une v1 soft-deleted provoquerait un
+    // ER_DUP_ENTRY brut au moment du save.
+    const existing = await this.findIncludingDeleted(this.ruleRepository, {
+      tenant_id: tenantId,
+      code,
+    } as FindOptionsWhere<RecommendationRule>);
+    if (existing && (!existing.deleted_at || existing.version !== 1)) {
       throw new ConflictException(
         `La règle ${code} existe déjà ; créez une nouvelle version`,
       );
@@ -1301,20 +1415,34 @@ export class ActionCatalogService {
     }
     this.assertRecommendationCondition(dto.condition_json);
 
+    const attributes = {
+      label: dto.label.trim(),
+      trigger: dto.trigger,
+      condition_json: dto.condition_json,
+      action_definition_id: definition.id,
+      reason_template: dto.reason_template.trim(),
+      priority: dto.priority ?? 0,
+      specificity: dto.specificity ?? 0,
+      due_offset_days: dto.due_offset_days ?? null,
+      is_active: dto.is_active ?? true,
+    };
+
+    // v1 supprimée logiquement : on la restaure (elle seule entrerait en
+    // collision avec l'insertion d'une nouvelle v1).
+    if (existing) {
+      return this.restoreSoftDeleted(
+        this.ruleRepository,
+        existing,
+        attributes,
+      );
+    }
+
     return this.ruleRepository.save(
       this.ruleRepository.create({
         tenant_id: tenantId,
         code,
-        label: dto.label.trim(),
         version: 1,
-        trigger: dto.trigger,
-        condition_json: dto.condition_json,
-        action_definition_id: definition.id,
-        reason_template: dto.reason_template.trim(),
-        priority: dto.priority ?? 0,
-        specificity: dto.specificity ?? 0,
-        due_offset_days: dto.due_offset_days ?? null,
-        is_active: dto.is_active ?? true,
+        ...attributes,
       }),
     );
   }
@@ -1352,6 +1480,17 @@ export class ActionCatalogService {
         );
       }
 
+      // La version suivante doit tenir compte des lignes soft-deleted : une
+      // version supprimée logiquement occupe toujours la clé
+      // (tenant_id, code, version) et ferait échouer l'insertion.
+      const highest = await ruleRepository.findOne({
+        where: { tenant_id: tenantId, code: source.code },
+        order: { version: 'DESC' },
+        withDeleted: true,
+      });
+      const nextVersion =
+        Math.max(source.version, highest?.version ?? source.version) + 1;
+
       const definitionId =
         dto.action_definition_id ?? source.action_definition_id;
       let definition = await definitionRepository.findOne({
@@ -1387,7 +1526,7 @@ export class ActionCatalogService {
           tenant_id: tenantId,
           code: source.code,
           label: dto.label?.trim() ?? source.label,
-          version: source.version + 1,
+          version: nextVersion,
           trigger: dto.trigger ?? source.trigger,
           condition_json: condition,
           action_definition_id: definition.id,
@@ -1408,14 +1547,37 @@ export class ActionCatalogService {
     let generated = false;
     let code: string;
 
+    const attributes = {
+      label: dto.label.trim(),
+      description: dto.description?.trim() || null,
+      is_active: dto.is_active ?? true,
+    };
+
     if (provided) {
       code = this.normalizeFamilyCode(provided);
       if (!code)
         throw new ConflictException('Le code de la famille est invalide');
-      const exists = await this.familyRepository.findOne({
-        where: { tenant_id: tenantId, code },
-      });
-      if (exists) throw new ConflictException(`La famille ${code} existe déjà`);
+
+      // withDeleted : l'index UQ_case_action_family_tenant_code ne tient pas
+      // compte de `deleted_at`. Une famille supprimée logiquement est donc
+      // invisible ici tout en occupant son code, ce qui faisait échouer le
+      // save sur un ER_DUP_ENTRY brut (« Duplicate entry '1-FORMALITES' »).
+      const existing = await this.findIncludingDeleted(this.familyRepository, {
+        tenant_id: tenantId,
+        code,
+      } as FindOptionsWhere<ActionFamily>);
+      if (existing) {
+        if (!existing.deleted_at)
+          throw new ConflictException(`La famille ${code} existe déjà`);
+        // Nettoyage d'un plan d'écriture IA échoué : on restaure la famille
+        // pour que le rejeu de la même création aboutisse.
+        return this.restoreSoftDeleted(this.familyRepository, existing, {
+          ...attributes,
+          ...(dto.display_order !== undefined
+            ? { display_order: dto.display_order }
+            : {}),
+        });
+      }
     } else {
       generated = true;
       code = await this.generateUniqueCatalogCode(
@@ -1434,18 +1596,32 @@ export class ActionCatalogService {
       this.familyRepository.create({
         tenant_id: tenantId,
         code: familyCode,
-        label: dto.label.trim(),
-        description: dto.description?.trim() || null,
+        ...attributes,
         display_order: dto.display_order ?? (last?.display_order ?? 0) + 1,
-        is_active: dto.is_active ?? true,
       });
 
     try {
       return await this.familyRepository.save(build(code));
     } catch (error) {
-      // Course sur UQ_case_action_family_tenant_code : un code auto-généré peut
-      // être repris tel quel, un code choisi par l'utilisateur doit remonter.
-      if (!generated || !isDuplicateKeyError(error)) throw error;
+      if (!isDuplicateKeyError(error)) throw error;
+
+      // Course sur UQ_case_action_family_tenant_code : une ligne a pu être
+      // créée entre la vérification et le save. On retente une résolution
+      // propre plutôt que de laisser remonter le message SQL brut.
+      const clash = await this.findIncludingDeleted(this.familyRepository, {
+        tenant_id: tenantId,
+        code,
+      } as FindOptionsWhere<ActionFamily>);
+      if (clash?.deleted_at) {
+        return this.restoreSoftDeleted(
+          this.familyRepository,
+          clash,
+          attributes,
+        );
+      }
+      if (!generated)
+        throw new ConflictException(`La famille ${code} existe déjà`);
+
       const retry = await this.generateUniqueCatalogCode(
         this.familyRepository,
         'FAM',
@@ -1481,6 +1657,9 @@ export class ActionCatalogService {
           throw new ConflictException('Le code de la famille est invalide');
         const duplicate = await repository.findOne({
           where: { tenant_id: tenantId, code },
+          // withDeleted : l'index UNIQUE ignore `deleted_at`, donc renommer
+          // vers le code d'une famille soft-deleted échouerait en SQL brut.
+          withDeleted: true,
         });
         if (duplicate && duplicate.id !== family.id)
           throw new ConflictException(`La famille ${code} existe déjà`);
@@ -1494,6 +1673,39 @@ export class ActionCatalogService {
       if (dto.is_active !== undefined) family.is_active = dto.is_active;
       return repository.save(family);
     });
+  }
+
+  /**
+   * Champs d'une définition dérivés du DTO, partagés par la création et la
+   * restauration d'une v1 soft-deleted (afin que les deux chemins restent
+   * strictement alignés).
+   */
+  private definitionAttributes(dto: CreateActionDefinitionDto) {
+    const professionalTreatment =
+      dto.default_professional_treatment ??
+      ActionDefaultProfessionalTreatment.FOLLOW_DOSSIER;
+    return {
+      label: dto.label.trim(),
+      specific_fields_schema: dto.specific_fields_schema ?? {
+        type: 'object',
+        properties: {},
+      },
+      allowed_results: dto.allowed_results ?? [],
+      required_relations: dto.required_relations ?? null,
+      default_due_days: dto.default_due_days ?? null,
+      default_priority: dto.default_priority ?? ActionPriority.NORMAL,
+      is_required: dto.is_required ?? false,
+      billable_by_default:
+        dto.billable_by_default ??
+        professionalTreatment !==
+          ActionDefaultProfessionalTreatment.NON_BILLABLE,
+      default_professional_treatment: professionalTreatment,
+      may_have_expenses: dto.may_have_expenses ?? false,
+      may_have_disbursements: dto.may_have_disbursements ?? false,
+      billing_mode: dto.billing_mode ?? null,
+      default_rate: dto.default_rate ?? null,
+      is_active: true,
+    };
   }
 
   async createDefinition(
@@ -1511,18 +1723,31 @@ export class ActionCatalogService {
     const provided = dto.code?.trim();
     let generated = false;
     let code: string;
+    const attributes = this.definitionAttributes(dto);
 
     if (provided) {
       code = provided.toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
       if (!code)
         throw new ConflictException('Le code de la définition est invalide');
-      const exists = await this.definitionRepository.findOne({
-        where: { tenant_id: tenantId, code },
-      });
-      if (exists)
-        throw new ConflictException(
-          `La définition ${code} existe déjà; créez une nouvelle version`,
-        );
+      // withDeleted : l'index UQ_case_action_definition_version ne tient pas
+      // compte de `deleted_at`. Une v1 supprimée logiquement occupe toujours
+      // la clé et ferait échouer le save sur un ER_DUP_ENTRY brut.
+      const existing = await this.findIncludingDeleted(
+        this.definitionRepository,
+        { tenant_id: tenantId, code } as FindOptionsWhere<ActionDefinition>,
+      );
+      if (existing) {
+        if (!existing.deleted_at || existing.version !== 1)
+          throw new ConflictException(
+            `La définition ${code} existe déjà; créez une nouvelle version`,
+          );
+        // v1 supprimée logiquement : on la restaure. Les versions suivantes
+        // éventuelles ne sont pas concernées (clé code + version).
+        return this.restoreSoftDeleted(this.definitionRepository, existing, {
+          family_id: family.id,
+          ...attributes,
+        });
+      }
     } else {
       generated = true;
       code = await this.generateUniqueCatalogCode(
@@ -1538,28 +1763,32 @@ export class ActionCatalogService {
         tenant_id: tenantId,
         family_id: family.id,
         code: definitionCode,
-        label: dto.label.trim(),
         version: 1,
-        specific_fields_schema: dto.specific_fields_schema ?? {
-          type: 'object',
-          properties: {},
-        },
-        allowed_results: dto.allowed_results ?? [],
-        required_relations: dto.required_relations ?? null,
-        default_due_days: dto.default_due_days ?? null,
-        default_priority: dto.default_priority ?? ActionPriority.NORMAL,
-        is_required: dto.is_required ?? false,
-        billable_by_default: dto.billable_by_default ?? false,
-        billing_mode: dto.billing_mode ?? null,
-        default_rate: dto.default_rate ?? null,
-        is_active: true,
+        ...attributes,
       });
 
     try {
       return await this.definitionRepository.save(build(code));
     } catch (error) {
-      // Course sur UQ_case_action_definition_version.
-      if (!generated || !isDuplicateKeyError(error)) throw error;
+      if (!isDuplicateKeyError(error)) throw error;
+
+      // Course sur UQ_case_action_definition_version : on retente une
+      // résolution propre plutôt que de relayer le message SQL brut.
+      const clash = await this.findIncludingDeleted(this.definitionRepository, {
+        tenant_id: tenantId,
+        code,
+      } as FindOptionsWhere<ActionDefinition>);
+      if (clash?.deleted_at && clash.version === 1) {
+        return this.restoreSoftDeleted(this.definitionRepository, clash, {
+          family_id: family.id,
+          ...attributes,
+        });
+      }
+      if (!generated)
+        throw new ConflictException(
+          `La définition ${code} existe déjà; créez une nouvelle version`,
+        );
+
       const retry = await this.generateUniqueCatalogCode(
         this.definitionRepository,
         'ACT',
@@ -1598,6 +1827,19 @@ export class ActionCatalogService {
         );
       }
 
+      // La version suivante doit tenir compte des lignes soft-deleted : une
+      // version supprimée logiquement occupe toujours la clé
+      // (tenant_id, code, version) et ferait échouer l'insertion.
+      const highest = await manager
+        .getRepository(ActionDefinition)
+        .findOne({
+          where: { tenant_id: tenantId, code: source.code },
+          order: { version: 'DESC' },
+          withDeleted: true,
+        });
+      const nextVersion =
+        Math.max(source.version, highest?.version ?? source.version) + 1;
+
       const familyId = dto.family_id ?? source.family_id;
       const family = await manager
         .getRepository(ActionFamily)
@@ -1619,7 +1861,7 @@ export class ActionCatalogService {
           family_id: family.id,
           code: source.code,
           label: dto.label?.trim() ?? source.label,
-          version: source.version + 1,
+          version: nextVersion,
           specific_fields_schema:
             dto.specific_fields_schema ?? source.specific_fields_schema,
           allowed_results: dto.allowed_results ?? source.allowed_results,
@@ -1630,8 +1872,18 @@ export class ActionCatalogService {
           is_required: dto.is_required ?? source.is_required,
           billable_by_default:
             dto.billable_by_default ?? source.billable_by_default,
+          default_professional_treatment:
+            dto.default_professional_treatment ??
+            source.default_professional_treatment,
+          may_have_expenses:
+            dto.may_have_expenses ?? source.may_have_expenses,
+          may_have_disbursements:
+            dto.may_have_disbursements ?? source.may_have_disbursements,
           billing_mode: dto.billing_mode ?? source.billing_mode,
-          default_rate: dto.default_rate ?? source.default_rate,
+          default_rate:
+            dto.default_rate !== undefined
+              ? dto.default_rate
+              : source.default_rate,
           is_active: dto.is_active ?? true,
         }),
       );

@@ -1,5 +1,5 @@
-import { ApiResponse } from "../interfaces/api-response.interface";
-import { PaginationMeta } from "../interfaces/pagination.interface";
+import { ApiResponse } from '../interfaces/api-response.interface';
+import { PaginationMeta } from '../interfaces/pagination.interface';
 
 export class ResponseFormatter {
   static format<T>(
@@ -15,4 +15,3 @@ export class ResponseFormatter {
     return response;
   }
 }
-

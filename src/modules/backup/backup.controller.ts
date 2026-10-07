@@ -39,14 +39,19 @@ export class BackupController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Lister les sauvegardes (scopées au cabinet, ou toutes si super-admin)' })
+  @ApiOperation({
+    summary:
+      'Lister les sauvegardes (scopées au cabinet, ou toutes si super-admin)',
+  })
   list(@Req() req: Request) {
     this.assertAdmin(req);
     return this.backup.list(this.scopeOf(req));
   }
 
   @Post()
-  @ApiOperation({ summary: 'Créer une sauvegarde (cabinet, ou complète si super-admin)' })
+  @ApiOperation({
+    summary: 'Créer une sauvegarde (cabinet, ou complète si super-admin)',
+  })
   create(@Req() req: Request) {
     this.assertAdmin(req);
     return this.backup.create(this.scopeOf(req));
@@ -54,19 +59,30 @@ export class BackupController {
 
   @Get(':name/download')
   @ApiOperation({ summary: 'Télécharger une sauvegarde' })
-  download(@Req() req: Request, @Param('name') name: string, @Res() res: Response) {
+  download(
+    @Req() req: Request,
+    @Param('name') name: string,
+    @Res() res: Response,
+  ) {
     this.assertAdmin(req);
-    const { stream, name: file } = this.backup.streamFor(name, this.scopeOf(req));
+    const { stream, name: file } = this.backup.streamFor(
+      name,
+      this.scopeOf(req),
+    );
     res.setHeader('Content-Type', 'application/sql');
     res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
     stream.pipe(res);
   }
 
   @Post(':name/restore')
-  @ApiOperation({ summary: 'Restaurer la base (DANGEREUX — super-admin uniquement)' })
+  @ApiOperation({
+    summary: 'Restaurer la base (DANGEREUX — super-admin uniquement)',
+  })
   restore(@Req() req: Request, @Param('name') name: string) {
     if (!this.isSuperAdmin(req)) {
-      throw new ForbiddenException('Restauration réservée au super-administrateur');
+      throw new ForbiddenException(
+        'Restauration réservée au super-administrateur',
+      );
     }
     return this.backup.restore(name);
   }

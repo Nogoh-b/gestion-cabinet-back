@@ -3,7 +3,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 export class EnrichActivitiesUserAudit1789200000000
   implements MigrationInterface
 {
-  private async hasColumn(queryRunner: QueryRunner, column: string): Promise<boolean> {
+  private async hasColumn(
+    queryRunner: QueryRunner,
+    column: string,
+  ): Promise<boolean> {
     const rows = await queryRunner.query(
       `SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE()

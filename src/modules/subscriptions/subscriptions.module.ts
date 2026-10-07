@@ -12,7 +12,12 @@ import { PAYMENT_PROVIDER } from './payment/payment-provider.interface';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Subscription, SubscriptionPayment, Cabinet, Plan]),
+    TypeOrmModule.forFeature([
+      Subscription,
+      SubscriptionPayment,
+      Cabinet,
+      Plan,
+    ]),
   ],
   controllers: [SubscriptionsController],
   providers: [

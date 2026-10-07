@@ -1,17 +1,17 @@
 // interface/write-intent.interface.ts
 
-import { WritePlan } from "../dto/analysis-response.dto";
+import { WritePlan } from '../dto/analysis-response.dto';
 
 export type OperationType = 'INSERT' | 'UPDATE' | 'DELETE' | 'READ';
 
 export interface WriteIntent {
   operation: OperationType;
-  entity: string;           // 'dossier', 'customer', 'employee'...
-  tempId?: any;           // 'dossier', 'customer', 'employee'...
+  entity: string; // 'dossier', 'customer', 'employee'...
+  tempId?: any; // 'dossier', 'customer', 'employee'...
   entityId?: string | number; // Pour UPDATE/DELETE
   fields: Record<string, any>; // Les champs à modifier
-  confidence: number;       // 0-1, score de confiance du LLM
-  humanReadable: string;    // Description lisible pour confirmation
+  confidence: number; // 0-1, score de confiance du LLM
+  humanReadable: string; // Description lisible pour confirmation
   /**
    * Configuration de résolution des dépendances (FK).
    * Permet de contrôler le comportement en cas d'ambiguïté.
@@ -32,10 +32,17 @@ export interface WriteIntent {
 
 export interface IntentDetectionResult {
   /** READ = interrogation BD, WRITE = écriture BD, CONVERSATIONAL = réponse directe sans SQL */
-  type: 'READ' | 'WRITE' | 'HELP' | 'ADVICE' | 'CONVERSATIONAL' | 'DOCUMENT' | 'TEXT';
+  type:
+    | 'READ'
+    | 'WRITE'
+    | 'HELP'
+    | 'ADVICE'
+    | 'CONVERSATIONAL'
+    | 'DOCUMENT'
+    | 'TEXT';
   writeIntent?: WriteIntent;
   writePlan?: WritePlan;
-  sqlQuery?: string;        // Si READ
+  sqlQuery?: string; // Si READ
   requiresConfirmation: boolean;
   /** Réponse directe de l'IA (mode CONVERSATIONAL uniquement) */
   conversationalResponse?: string;

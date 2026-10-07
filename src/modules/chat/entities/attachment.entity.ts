@@ -1,5 +1,11 @@
 // src/chat/entities/attachment.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  CreateDateColumn,
+} from 'typeorm';
 import { Message } from './messages.entity';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
@@ -8,7 +14,7 @@ export enum AttachmentType {
   DOCUMENT = 'document',
   VIDEO = 'video',
   AUDIO = 'audio',
-  FILE = 'file'
+  FILE = 'file',
 }
 
 @Entity()
@@ -28,7 +34,7 @@ export class Attachment extends BaseEntity {
   @Column({
     type: 'enum',
     enum: AttachmentType,
-    default: AttachmentType.FILE
+    default: AttachmentType.FILE,
   })
   fileType: AttachmentType;
 
@@ -38,12 +44,10 @@ export class Attachment extends BaseEntity {
   @Column({ nullable: true })
   cloudinaryPublicId: string; // Si vous utilisez Cloudinary
   @Column({ nullable: true })
-  fileUrl: string;       // URL publique (ex: http://localhost:3000/uploads/chat/image.jpg)
+  fileUrl: string; // URL publique (ex: http://localhost:3000/uploads/chat/image.jpg)
 
   @Column({ nullable: true })
   thumbnailPath: string; // Chemin physique de la miniature
-
-
 
   @Column({ nullable: true })
   thumbnailUrl: string; // Pour les images/vidéos
@@ -51,8 +55,8 @@ export class Attachment extends BaseEntity {
   @Column({ default: false })
   isUploaded: boolean;
 
-  @ManyToOne(() => Message, message => message.attachments, {
-    onDelete: 'CASCADE'
+  @ManyToOne(() => Message, (message) => message.attachments, {
+    onDelete: 'CASCADE',
   })
   message: Message;
 

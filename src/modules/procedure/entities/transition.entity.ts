@@ -10,7 +10,10 @@ import {
 } from 'typeorm';
 import { Stage } from './stage.entity';
 import { ProcedureTemplate } from './procedure-template.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 export enum TransitionType {
@@ -21,7 +24,8 @@ export enum TransitionType {
 @Entity('transitions')
 @BusinessTable({
   label: 'Transitions',
-  description: 'Transitions entre les étapes d\'un modèle de procédure. Définissent les chemins possibles d\'une étape à une autre, avec conditions et actions.',
+  description:
+    "Transitions entre les étapes d'un modèle de procédure. Définissent les chemins possibles d'une étape à une autre, avec conditions et actions.",
   icon: '➡️',
   category: 'procedure',
   ignored: true,
@@ -40,7 +44,8 @@ export class Transition extends BaseEntity {
   @Column({ name: 'fromStageId' })
   @BusinessColumn({
     label: 'Étape source',
-    description: 'Identifiant de l\'étape de départ. L\'étape source et destination doivent être différentes',
+    description:
+      "Identifiant de l'étape de départ. L'étape source et destination doivent être différentes",
     importance: 'high',
     group: 'relation',
     ignored: false,
@@ -54,7 +59,8 @@ export class Transition extends BaseEntity {
   @Column({ name: 'toStageId' })
   @BusinessColumn({
     label: 'Étape destination',
-    description: 'Identifiant de l\'étape d\'arrivée. L\'étape source et destination doivent être différentes',
+    description:
+      "Identifiant de l'étape d'arrivée. L'étape source et destination doivent être différentes",
     importance: 'high',
     group: 'relation',
     ignored: false,
@@ -81,8 +87,8 @@ export class Transition extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Libellé',
-    description: 'Libellé de la transition affiché à l\'utilisateur',
-    example: 'Passer à l\'instruction',
+    description: "Libellé de la transition affiché à l'utilisateur",
+    example: "Passer à l'instruction",
     importance: 'high',
     group: 'identification',
   })
@@ -130,7 +136,8 @@ export class Transition extends BaseEntity {
   @Column({ type: 'boolean', default: true })
   @BusinessColumn({
     label: 'Nécessite décision',
-    description: 'Si vrai, une décision explicite est requise pour cette transition',
+    description:
+      'Si vrai, une décision explicite est requise pour cette transition',
     importance: 'high',
     group: 'règles',
   })

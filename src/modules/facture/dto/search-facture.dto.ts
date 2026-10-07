@@ -1,6 +1,13 @@
 // src/facture/dto/search-facture.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsDate, IsNumber, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsDate,
+  IsNumber,
+  IsArray,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { StatutFacture, TypeFacture } from './create-facture.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
@@ -16,7 +23,10 @@ export class SearchFactureDto extends PaginationParamsDto {
   @IsOptional()
   dossierId?: string;
 
-  @ApiPropertyOptional({ example: 'b9d6c1dd-664c-4924-b359-fd77337da47e', required: false })
+  @ApiPropertyOptional({
+    example: 'b9d6c1dd-664c-4924-b359-fd77337da47e',
+    required: false,
+  })
   'sub_stage_id'?: string;
 
   @ApiPropertyOptional({ description: 'ID du client' })
@@ -24,7 +34,10 @@ export class SearchFactureDto extends PaginationParamsDto {
   @IsOptional()
   clientId?: string;
 
-  @ApiPropertyOptional({ enum: StatutFacture, description: 'Statut de la facture' })
+  @ApiPropertyOptional({
+    enum: StatutFacture,
+    description: 'Statut de la facture',
+  })
   @IsEnum(StatutFacture)
   @IsOptional()
   statut?: StatutFacture;
@@ -45,19 +58,19 @@ export class SearchFactureDto extends PaginationParamsDto {
   @IsOptional()
   dateFacture_from?: Date;
 
-  @ApiPropertyOptional({ description: 'Date de facture jusqu\'à' })
+  @ApiPropertyOptional({ description: "Date de facture jusqu'à" })
   @IsDate()
   @Type(() => Date)
   @IsOptional()
   dateFacture_to?: Date;
 
-  @ApiPropertyOptional({ description: 'Date d\'échéance à partir de' })
+  @ApiPropertyOptional({ description: "Date d'échéance à partir de" })
   @IsDate()
   @Type(() => Date)
   @IsOptional()
   dateEcheance_from?: Date;
 
-  @ApiPropertyOptional({ description: 'Date d\'échéance jusqu\'à' })
+  @ApiPropertyOptional({ description: "Date d'échéance jusqu'à" })
   @IsDate()
   @Type(() => Date)
   @IsOptional()

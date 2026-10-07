@@ -2,12 +2,23 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { Diligence, DiligenceStatus, DiligencePriority, DiligenceType } from './entities/diligence.entity';
+import {
+  Diligence,
+  DiligenceStatus,
+  DiligencePriority,
+  DiligenceType,
+} from './entities/diligence.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
-import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write/entity-resolver.service';
+import {
+  EntityResolverService,
+  ResolveConfig,
+} from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
-import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import {
+  WriteableFieldSchema,
+  ValidationResult,
+} from 'src/core/ai-database/interface/entity-write-handler.interface';
 
 /**
  * Handler custom pour les diligences.
@@ -34,14 +45,42 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
   async getWriteableFieldsSchema(): Promise<WriteableFieldSchema[]> {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
-      dossier_id: { description: 'ID du dossier. Peut fournir "dossier".', required: true },
-      title: { description: 'Titre de la diligence', example: 'Due diligence acquisition société X', required: true },
-      start_date: { description: 'Date de début (YYYY-MM-DD)', example: '2026-05-01', required: true },
-      deadline: { description: 'Date butoir (YYYY-MM-DD)', example: '2026-06-30', required: true },
-      type: { description: "BD: 'acquisition', 'investment', 'ipo', 'compliance', 'litigation', 'contract'.", example: 'acquisition' },
-      status: { description: "BD: 'draft', 'in_progress', 'review', 'completed', 'cancelled'.", example: 'draft' },
-      priority: { description: "BD: 'low', 'medium', 'high', 'critical'.", example: 'medium' },
-      assigned_lawyer_id: { description: 'ID de l\'avocat. Peut fournir "assigned_lawyer".' },
+      dossier_id: {
+        description: 'ID du dossier. Peut fournir "dossier".',
+        required: true,
+      },
+      title: {
+        description: 'Titre de la diligence',
+        example: 'Due diligence acquisition société X',
+        required: true,
+      },
+      start_date: {
+        description: 'Date de début (YYYY-MM-DD)',
+        example: '2026-05-01',
+        required: true,
+      },
+      deadline: {
+        description: 'Date butoir (YYYY-MM-DD)',
+        example: '2026-06-30',
+        required: true,
+      },
+      type: {
+        description:
+          "BD: 'acquisition', 'investment', 'ipo', 'compliance', 'litigation', 'contract'.",
+        example: 'acquisition',
+      },
+      status: {
+        description:
+          "BD: 'draft', 'in_progress', 'review', 'completed', 'cancelled'.",
+        example: 'draft',
+      },
+      priority: {
+        description: "BD: 'low', 'medium', 'high', 'critical'.",
+        example: 'medium',
+      },
+      assigned_lawyer_id: {
+        description: 'ID de l\'avocat. Peut fournir "assigned_lawyer".',
+      },
     };
     for (const f of fields) {
       if (enrichments[f.name]) Object.assign(f, enrichments[f.name]);
@@ -57,15 +96,25 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
     createdEntities?: Map<string, any>,
     config?: ResolveConfig,
   ): Promise<Record<string, any>> {
-    const resolved = await super.resolveDependencies(fields, userId, createdEntities, config);
+    const resolved = await super.resolveDependencies(
+      fields,
+      userId,
+      createdEntities,
+      config,
+    );
 
     // Auto-injection du contexte de stage visit courant (si le dossier a une procédure)
     if (resolved.dossier_id) {
-      const stageInfo = await this.fetchCurrentStageVisitInfo(resolved.dossier_id);
+      const stageInfo = await this.fetchCurrentStageVisitInfo(
+        resolved.dossier_id,
+      );
       if (stageInfo) {
-        if (!resolved.procedure_instance_id) resolved.procedure_instance_id = stageInfo.procedure_instance_id;
-        if (!resolved.stageVisit_id && stageInfo.stage_visit_id) resolved.stageVisit_id = stageInfo.stage_visit_id;
-        if (!resolved.sub_stage_visit_id && stageInfo.sub_stage_visit_id) resolved.sub_stage_visit_id = stageInfo.sub_stage_visit_id;
+        if (!resolved.procedure_instance_id)
+          resolved.procedure_instance_id = stageInfo.procedure_instance_id;
+        if (!resolved.stageVisit_id && stageInfo.stage_visit_id)
+          resolved.stageVisit_id = stageInfo.stage_visit_id;
+        if (!resolved.sub_stage_visit_id && stageInfo.sub_stage_visit_id)
+          resolved.sub_stage_visit_id = stageInfo.sub_stage_visit_id;
       }
     }
 
@@ -78,7 +127,8 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
   ): Promise<ValidationResult> {
     const errors: string[] = [];
     if (operation === 'INSERT') {
-      if (!fields.dossier_id) errors.push('Le dossier est requis (dossier_id ou dossier)');
+      if (!fields.dossier_id)
+        errors.push('Le dossier est requis (dossier_id ou dossier)');
       if (!fields.title) errors.push('Le titre est requis');
       if (!fields.start_date) errors.push('La date de début est requise');
       if (!fields.deadline) errors.push('La date limite est requise');
@@ -91,8 +141,13 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
     return { valid: errors.length === 0, errors, transformedFields: fields };
   }
 
-  protected async doInsert(fields: Record<string, any>, userId: string): Promise<WriteResult> {
-    const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
+  protected async doInsert(
+    fields: Record<string, any>,
+    userId: string,
+  ): Promise<WriteResult> {
+    const safeFields = this.stripAutoGeneratedFields(
+      this.filterKnownColumns(fields),
+    );
 
     const data = {
       ...safeFields,
@@ -101,12 +156,17 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
       type: safeFields.type ?? DiligenceType.ACQUISITION,
       status: safeFields.status ?? DiligenceStatus.DRAFT,
       priority: safeFields.priority ?? DiligencePriority.MEDIUM,
-      actual_hours: safeFields.actual_hours !== undefined ? Number(safeFields.actual_hours) : 0,
+      actual_hours:
+        safeFields.actual_hours !== undefined
+          ? Number(safeFields.actual_hours)
+          : 0,
       confidential: safeFields.confidential ?? true,
     };
 
     const record = this.diligenceRepo.create(data);
-    const saved = await this.diligenceRepo.save(record) as unknown as Diligence;
+    const saved = (await this.diligenceRepo.save(
+      record,
+    )) as unknown as Diligence;
 
     return {
       success: true,
@@ -123,14 +183,22 @@ export class DiligenceWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     userId: string,
   ): Promise<WriteResult> {
-    const diligence = await this.diligenceRepo.findOne({ where: { id: entityId as any } });
-    if (!diligence) throw new NotFoundException(`Diligence ${entityId} introuvable`);
+    const diligence = await this.diligenceRepo.findOne({
+      where: { id: entityId as any },
+    });
+    if (!diligence)
+      throw new NotFoundException(`Diligence ${entityId} introuvable`);
 
-    const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
+    const safeFields = this.stripAutoGeneratedFields(
+      this.filterKnownColumns(fields),
+    );
     Object.assign(diligence, safeFields);
 
     // Transition auto vers COMPLETED → completion_date
-    if (safeFields.status === DiligenceStatus.COMPLETED && !diligence.completion_date) {
+    if (
+      safeFields.status === DiligenceStatus.COMPLETED &&
+      !diligence.completion_date
+    ) {
       diligence.completion_date = new Date();
     }
 

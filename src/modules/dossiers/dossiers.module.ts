@@ -11,6 +11,9 @@ import { DossiersService } from './dossiers.service';
 import { Dossier } from './entities/dossier.entity';
 import { ChatModule } from '../chat/chat.module';
 import { DossierStatsService } from './dossier-stats.service';
+import { DossierAccessGrantsService } from './dossier-access-grants.service';
+import { DossierAccessGrant } from './entities/dossier-access-grant.entity';
+import { DossierVisibilityPatch } from './dossier-visibility.patch';
 import { StepsService } from './step.service';
 import { Step } from './entities/step.entity';
 import { AudiencesModule } from '../audiences/audiences.module';
@@ -27,6 +30,7 @@ import { PlansModule } from '../plans/plans.module';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
 import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
 import { CaseWorkflowFeature } from '../case-workflow/entities/workflow-audit.entity';
+import { DossierBillingProfile } from '../case-workflow/entities/billing.entity';
 
 @Module({
   imports: [
@@ -38,14 +42,40 @@ import { CaseWorkflowFeature } from '../case-workflow/entities/workflow-audit.en
     forwardRef(() => FactureModule),
     forwardRef(() => ProcedureModule),
 
-    TypeOrmModule.forFeature([Dossier, User, ProcedureType, ProcedureTemplate, Step, Conversation, Employee, Cabinet, CaseWorkflowFeature]),
+    TypeOrmModule.forFeature([
+      Dossier,
+      DossierAccessGrant,
+      User,
+      ProcedureType,
+      ProcedureTemplate,
+      Step,
+      Conversation,
+      Employee,
+      Cabinet,
+      CaseWorkflowFeature,
+      DossierBillingProfile,
+    ]),
     AiDatabaseModule,
     PlansModule,
     forwardRef(() => CaseWorkflowModule),
   ],
   controllers: [DossiersController],
-  providers: [DossiersService, DossierStatsService, StepsService, DossierWriteHandler, DossierSubscriber],
-  exports: [DossiersService, DossierStatsService, TypeOrmModule, StepsService],
+  providers: [
+    DossiersService,
+    DossierStatsService,
+    DossierAccessGrantsService,
+    DossierVisibilityPatch,
+    StepsService,
+    DossierWriteHandler,
+    DossierSubscriber,
+  ],
+  exports: [
+    DossiersService,
+    DossierStatsService,
+    DossierAccessGrantsService,
+    TypeOrmModule,
+    StepsService,
+  ],
 })
 export class DossiersModule {
   constructor(

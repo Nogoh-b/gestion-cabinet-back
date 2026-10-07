@@ -1,6 +1,5 @@
 import { Logger, QueryRunner } from 'typeorm';
 
-
 export class QueryLoggingInterceptor implements Logger {
   logQuery(query: string, parameters?: any[], queryRunner?: QueryRunner) {
     const isReadQuery = this.isReadOperation(query);
@@ -10,12 +9,22 @@ export class QueryLoggingInterceptor implements Logger {
     }
   }
 
-  logQueryError(error: string, query: string, parameters?: any[], queryRunner?: QueryRunner) {
+  logQueryError(
+    error: string,
+    query: string,
+    parameters?: any[],
+    queryRunner?: QueryRunner,
+  ) {
     console.error(`❌ Query Error: ${error}`);
     console.error(`   Query: ${query}`);
   }
 
-  logQuerySlow(time: number, query: string, parameters?: any[], queryRunner?: QueryRunner) {
+  logQuerySlow(
+    time: number,
+    query: string,
+    parameters?: any[],
+    queryRunner?: QueryRunner,
+  ) {
     console.warn(`🐌 Slow Query (${time}ms): ${query}`);
   }
 

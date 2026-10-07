@@ -19,7 +19,7 @@ export class CreateTypeCustomerDto {
   @IsOptional()
   code?: string;
 
- /* @IsString()
+  /* @IsString()
   @ApiProperty({
     description: 'Type de document accepté pour le customer',
     example: 1,

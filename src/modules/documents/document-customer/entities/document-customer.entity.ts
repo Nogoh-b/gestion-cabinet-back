@@ -1,4 +1,7 @@
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import {
@@ -34,7 +37,6 @@ import {
 
 import { DocumentType } from '../../document-type/entities/document-type.entity';
 
-
 export enum DocumentCustomerStatus {
   PENDING = 0,
   ACCEPTED = 1,
@@ -46,9 +48,10 @@ export enum DocumentCustomerStatus {
 @Entity('document_customer')
 @BusinessTable({
   label: 'Documents clients',
-  description: 'Gestion des documents uploadés par les clients ou par le cabinet. Un document peut être une pièce d\'identité, un contrat, une conclusion, un jugement, ou toute autre pièce jointe liée à un dossier ou à un client.',
+  description:
+    "Gestion des documents uploadés par les clients ou par le cabinet. Un document peut être une pièce d'identité, un contrat, une conclusion, un jugement, ou toute autre pièce jointe liée à un dossier ou à un client.",
   icon: '📄',
-  category: 'document'
+  category: 'document',
 })
 export class DocumentCustomer extends BaseEntity {
   /** Transient — lu par le DocumentSubscriber pour notifier le client. */
@@ -60,27 +63,29 @@ export class DocumentCustomer extends BaseEntity {
     description: 'Numéro unique généré automatiquement',
     importance: 'low',
     group: 'technique',
-    ignored: true  // ✅ Ignoré car non utile pour l'IA
+    ignored: true, // ✅ Ignoré car non utile pour l'IA
   })
   id: number;
 
   @Column()
   @BusinessColumn({
     label: 'Nom du document',
-    description: 'Nom original du fichier uploadé. Utitalisé pour rechercher un document par son nom.',
+    description:
+      'Nom original du fichier uploadé. Utitalisé pour rechercher un document par son nom.',
     example: 'Contrat_MeDupont_2025.pdf',
     importance: 'critical',
-    group: 'identification'
+    group: 'identification',
   })
   name: string;
 
   @Column({ type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Type de document',
-    description: 'Identifiant du type de document (PIÈCE_IDENTITÉ, CONTRAT, CONCLUSION, JUGEMENT, etc.)',
+    description:
+      'Identifiant du type de document (PIÈCE_IDENTITÉ, CONTRAT, CONCLUSION, JUGEMENT, etc.)',
     importance: 'high',
     group: 'classification',
-    ignored: true  // Relation gérée par document_type
+    ignored: true, // Relation gérée par document_type
   })
   document_type_id?: number;
 
@@ -89,7 +94,7 @@ export class DocumentCustomer extends BaseEntity {
     label: 'Client',
     description: 'Identifiant du client propriétaire du document',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   customer_id?: number;
 
@@ -98,27 +103,27 @@ export class DocumentCustomer extends BaseEntity {
     label: 'Dossier',
     description: 'Identifiant du dossier associé au document',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   dossier_id?: number;
 
   @Column({ type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Uploadé par',
-    description: 'Identifiant de l\'utilisateur qui a uploadé le document',
+    description: "Identifiant de l'utilisateur qui a uploadé le document",
     importance: 'low',
     group: 'audit',
-    ignored: true
+    ignored: true,
   })
   uploaded_by_id?: number;
 
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Description',
-    description: 'Description textuelle du contenu ou de l\'objet du document',
+    description: "Description textuelle du contenu ou de l'objet du document",
     example: 'Contrat de prestation signé le 15/03/2025',
     importance: 'high',
-    group: 'contenu'
+    group: 'contenu',
   })
   description: string;
 
@@ -133,16 +138,17 @@ export class DocumentCustomer extends BaseEntity {
     label: 'Client',
     description: 'Client auquel appartient le document',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   customer: Customer;
 
   @Column({ type: 'int', nullable: true })
   @BusinessColumn({
     label: 'Catégorie',
-    description: 'Catégorie du document (procedural, client, internal, financial, decision)',
+    description:
+      'Catégorie du document (procedural, client, internal, financial, decision)',
     importance: 'high',
-    group: 'classification'
+    group: 'classification',
   })
   category_id?: number;
 
@@ -156,14 +162,15 @@ export class DocumentCustomer extends BaseEntity {
   @Column({
     type: 'enum',
     enum: DocumentCustomerStatus,
-    default: DocumentCustomerStatus.ACCEPTED
+    default: DocumentCustomerStatus.ACCEPTED,
   })
   @BusinessColumn({
     label: 'Statut',
-    description: 'BD: 0=PENDING/En attente, 1=ACCEPTED/Validé, 2=REFUSED/Refusé, 3=EXPIRED/Expiré, 4=ARCHIVED/Archivé.',
+    description:
+      'BD: 0=PENDING/En attente, 1=ACCEPTED/Validé, 2=REFUSED/Refusé, 3=EXPIRED/Expiré, 4=ARCHIVED/Archivé.',
     example: '1 = Validé',
     importance: 'high',
-    group: 'validation'
+    group: 'validation',
   })
   status: DocumentCustomerStatus;
 
@@ -173,7 +180,7 @@ export class DocumentCustomer extends BaseEntity {
     description: 'Emplacement physique du fichier sur le serveur',
     importance: 'low',
     group: 'stockage',
-    ignored: true  // Technique, pas utile pour l'IA
+    ignored: true, // Technique, pas utile pour l'IA
   })
   file_path: string;
 
@@ -182,7 +189,7 @@ export class DocumentCustomer extends BaseEntity {
     label: 'URL du fichier',
     description: 'Lien de téléchargement du document',
     importance: 'medium',
-    group: 'stockage'
+    group: 'stockage',
   })
   file_url: string;
 
@@ -192,7 +199,7 @@ export class DocumentCustomer extends BaseEntity {
     description: 'Taille du fichier en octets',
     unit: 'bytes',
     importance: 'low',
-    group: 'stockage'
+    group: 'stockage',
   })
   file_size: number;
 
@@ -202,16 +209,17 @@ export class DocumentCustomer extends BaseEntity {
     description: 'Type de fichier (application/pdf, image/jpeg, etc.)',
     importance: 'low',
     group: 'stockage',
-    ignored: true
+    ignored: true,
   })
   file_mimetype: string;
 
   @Column({ name: 'version', default: 1 })
   @BusinessColumn({
     label: 'Version',
-    description: 'Numéro de version du document (incrémenté à chaque modification)',
+    description:
+      'Numéro de version du document (incrémenté à chaque modification)',
     importance: 'low',
-    group: 'versioning'
+    group: 'versioning',
   })
   version: number;
 
@@ -220,7 +228,7 @@ export class DocumentCustomer extends BaseEntity {
     label: 'Version courante',
     description: 'True = version actuelle, False = version archivée',
     importance: 'medium',
-    group: 'versioning'
+    group: 'versioning',
   })
   is_current_version: boolean;
 
@@ -234,7 +242,7 @@ export class DocumentCustomer extends BaseEntity {
     label: 'Dossier associé',
     description: 'Dossier juridique auquel le document est rattaché',
     importance: 'critical',
-    group: 'relation'
+    group: 'relation',
   })
   dossier: Dossier;
 
@@ -242,11 +250,11 @@ export class DocumentCustomer extends BaseEntity {
   @JoinColumn({ name: 'uploaded_by_id' })
   uploaded_by: User;
 
-  @ManyToMany(() => Step, step => step.documents)
+  @ManyToMany(() => Step, (step) => step.documents)
   @JoinTable({
     name: 'step_documents',
     joinColumn: { name: 'document_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'step_id', referencedColumnName: 'id' }
+    inverseJoinColumn: { name: 'step_id', referencedColumnName: 'id' },
   })
   steps: Step[];
 
@@ -257,7 +265,7 @@ export class DocumentCustomer extends BaseEntity {
     description: 'Date et heure de téléchargement du document',
     format: 'date',
     importance: 'high',
-    group: 'dates'
+    group: 'dates',
   })
   uploaded_at: Date;
 
@@ -268,7 +276,7 @@ export class DocumentCustomer extends BaseEntity {
     description: 'Date et heure de la dernière modification',
     format: 'date',
     importance: 'medium',
-    group: 'dates'
+    group: 'dates',
   })
   last_modified: Date;
 
@@ -278,27 +286,27 @@ export class DocumentCustomer extends BaseEntity {
     description: 'Date de validation officielle du document',
     format: 'date',
     importance: 'high',
-    group: 'validation'
+    group: 'validation',
   })
   date_validation: Date;
 
   @Column({ name: 'date_ejected', nullable: true })
   @BusinessColumn({
-    label: "Date de rejet",
+    label: 'Date de rejet',
     description: 'Date de rejet si le document a été refusé',
     format: 'date',
     importance: 'medium',
-    group: 'validation'
+    group: 'validation',
   })
   date_ejected: Date;
 
   @Column({ name: 'date_expired', nullable: true })
   @BusinessColumn({
     label: "Date d'expiration",
-    description: 'Date à laquelle le document expire (ex: pièce d\'identité)',
+    description: "Date à laquelle le document expire (ex: pièce d'identité)",
     format: 'date',
     importance: 'high',
-    group: 'validation'
+    group: 'validation',
   })
   date_expired: Date;
 
@@ -307,7 +315,7 @@ export class DocumentCustomer extends BaseEntity {
     label: 'Requis pour audience',
     description: 'True = document obligatoire pour une audience',
     importance: 'high',
-    group: 'audience'
+    group: 'audience',
   })
   required_for_hearing: boolean;
 
@@ -316,17 +324,18 @@ export class DocumentCustomer extends BaseEntity {
     label: 'Confidentiel',
     description: 'True = document confidentiel (accès restreint)',
     importance: 'high',
-    group: 'sécurité'
+    group: 'sécurité',
   })
   is_confidential: boolean;
 
   @Column({ name: 'metadata', type: 'simple-json', nullable: true })
   @BusinessColumn({
     label: 'Métadonnées',
-    description: 'Informations supplémentaires (mots-clés, nombre de pages, langue, etc.)',
+    description:
+      'Informations supplémentaires (mots-clés, nombre de pages, langue, etc.)',
     importance: 'low',
     group: 'technique',
-    ignored: true
+    ignored: true,
   })
   metadata: {
     keywords?: string[];
@@ -370,7 +379,10 @@ export class DocumentCustomer extends BaseEntity {
   @JoinTable({
     name: 'sub_stage_visit_documents',
     joinColumn: { name: 'document_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'sub_stage_visit_id', referencedColumnName: 'id' },
+    inverseJoinColumn: {
+      name: 'sub_stage_visit_id',
+      referencedColumnName: 'id',
+    },
   })
   sub_stage_visits: SubStageVisit[];
 
@@ -397,7 +409,11 @@ export class DocumentCustomer extends BaseEntity {
     if (!this.file_size) return '0 B';
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(this.file_size) / Math.log(1024));
-    return Math.round(this.file_size / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    return (
+      Math.round((this.file_size / Math.pow(1024, i)) * 100) / 100 +
+      ' ' +
+      sizes[i]
+    );
   }
 
   get file_type_icon(): string {
@@ -406,10 +422,12 @@ export class DocumentCustomer extends BaseEntity {
       'image/': 'fa-file-image',
       'text/': 'fa-file-text',
       'application/msword': 'fa-file-word',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'fa-file-word',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        'fa-file-word',
       'application/vnd.ms-excel': 'fa-file-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'fa-file-excel',
-      'default': 'fa-file'
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        'fa-file-excel',
+      default: 'fa-file',
     };
 
     for (const [key, icon] of Object.entries(mimeIcons)) {
@@ -437,7 +455,7 @@ export class DocumentCustomer extends BaseEntity {
   get can_be_downloaded(): boolean {
     const allowedStatuses = [
       DocumentCustomerStatus.PENDING,
-      DocumentCustomerStatus.ACCEPTED
+      DocumentCustomerStatus.ACCEPTED,
     ];
     return allowedStatuses.includes(this.status) && !!this.file_path;
   }
@@ -453,17 +471,21 @@ export class DocumentCustomer extends BaseEntity {
   }
 
   get can_be_modified(): boolean {
-    return this.status !== DocumentCustomerStatus.ARCHIVED &&
+    return (
+      this.status !== DocumentCustomerStatus.ARCHIVED &&
       (this.dossier?.workflow_engine === WorkflowEngine.ACTIONS_V2
         ? this.dossier.lifecycle_phase !== DossierLifecyclePhase.CLOSED
-        : this.dossier?.status !== DossierStatus.CLOSED);
+        : this.dossier?.status !== DossierStatus.CLOSED)
+    );
   }
 
   public canBeModified(): boolean {
-    return this.status !== DocumentCustomerStatus.ARCHIVED &&
+    return (
+      this.status !== DocumentCustomerStatus.ARCHIVED &&
       (this.dossier?.workflow_engine === WorkflowEngine.ACTIONS_V2
         ? this.dossier.lifecycle_phase !== DossierLifecyclePhase.CLOSED
-        : this.dossier?.status !== DossierStatus.CLOSED);
+        : this.dossier?.status !== DossierStatus.CLOSED)
+    );
   }
 
   @BeforeInsert()

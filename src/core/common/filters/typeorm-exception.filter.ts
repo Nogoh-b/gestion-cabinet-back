@@ -1,12 +1,11 @@
 import { QueryFailedError } from 'typeorm';
 import {
-    ExceptionFilter,
-    Catch,
-    ArgumentsHost,
-    HttpStatus,
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpStatus,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-
 
 @Catch(QueryFailedError)
 export class TypeOrmExceptionFilter implements ExceptionFilter {

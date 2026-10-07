@@ -37,6 +37,8 @@ import { SendFactureEmailDto } from './dto/send-facture-email.dto';
 import { UpdateFactureDto } from './dto/update-facture.dto';
 import { FactureStatsService } from './facture-stats.service';
 import { FactureService } from './facture.service';
+import { CaseBillingService } from '../case-workflow/services/case-billing.service';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 
 @ApiBearerAuth()
 @ApiTags('factures')
@@ -46,19 +48,31 @@ export class FactureController {
   constructor(
     private readonly factureService: FactureService,
     private readonly statsService: FactureStatsService,
+    private readonly billingService: CaseBillingService,
   ) {}
 
   @Get('stats')
   @RequirePermissions('view_financial_reports')
+  @ApiQuery({
+    name: 'includeConfidential',
+    required: false,
+    type: Boolean,
+    description:
+      "Inclure les dossiers confidentiels dans les agrégats. Sans effet pour les utilisateurs qui n'y ont pas accès.",
+  })
   async getStats(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('clientId') clientId?: number,
+    @Query('includeConfidential') includeConfidential?: string,
   ): Promise<FactureStatsDto> {
     return this.statsService.getStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       clientId: clientId ? +clientId : undefined,
+      // Simple préférence d'affichage : la sécurité est tranchée côté service
+      // (un non-habilité n'agrège jamais de facture liée à un dossier confidentiel).
+      includeConfidential: includeConfidential === 'true',
       fieldToUseForDate: 'dateFacture',
     });
   }
@@ -80,7 +94,11 @@ export class FactureController {
   @Get('search')
   @RequirePermissions('view_factures')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
-  @ApiResponse({ status: 200, description: 'Resultats de recherche', type: [FactureResponseDto] })
+  @ApiResponse({
+    status: 200,
+    description: 'Resultats de recherche',
+    type: [FactureResponseDto],
+  })
   async search(
     @Query() searchParams?: SearchFactureDto,
     @Query() paginationParams?: PaginationParamsDto,
@@ -94,10 +112,16 @@ export class FactureController {
 
   @Get('dossier/:dossierId/export')
   @RequirePermissions('download_facture')
-  @ApiOperation({ summary: "Exporter les factures d'un dossier (CSV comptable)" })
+  @ApiOperation({
+    summary: "Exporter les factures d'un dossier (CSV comptable)",
+  })
   @ApiParam({ name: 'dossierId', type: String })
-  async exportByDossier(@Param('dossierId') dossierId: string, @Res() res: Response) {
-    const { filename, content } = await this.factureService.exportDossierFacturesCsv(dossierId);
+  async exportByDossier(
+    @Param('dossierId') dossierId: string,
+    @Res() res: Response,
+  ) {
+    const { filename, content } =
+      await this.factureService.exportDossierFacturesCsv(dossierId);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(content);
@@ -105,7 +129,10 @@ export class FactureController {
 
   @Post('dossier/:dossierId/relance')
   @RequirePermissions('email_facture')
-  @ApiOperation({ summary: 'Envoyer une relance de paiement au client pour les factures impayees du dossier' })
+  @ApiOperation({
+    summary:
+      'Envoyer une relance de paiement au client pour les factures impayees du dossier',
+  })
   @ApiParam({ name: 'dossierId', type: String })
   async relanceByDossier(@Param('dossierId') dossierId: string) {
     return this.factureService.sendRelanceForDossier(dossierId);
@@ -177,7 +204,9 @@ export class FactureController {
 
   @Get('analytics/statistiques')
   @RequirePermissions('view_financial_reports')
-  @ApiOperation({ summary: 'Recuperer les statistiques generales des factures' })
+  @ApiOperation({
+    summary: 'Recuperer les statistiques generales des factures',
+  })
   async getStatistiques() {
     return this.factureService.getStatistiquesPaiements();
   }
@@ -210,9 +239,20 @@ export class FactureController {
       'client',
       'lines',
     ]);
-    return plainToInstance(
-      FactureResponseDto,
-      facture,
+    return plainToInstance(FactureResponseDto, facture);
+  }
+
+  @Get(':id/included-actions')
+  @RequirePermissions('view_factures')
+  @ApiOperation({
+    summary: 'Actions incluses dans le forfait pour la facture (annexe 0€)',
+    description:
+      "Aucune écriture ni BillableItem : lecture seule des DossierAction COMPLETED avec billing_decision=INCLUDED_IN_PACKAGE. N'impacte pas les totaux.",
+  })
+  async includedActions(@Param('id', ParseUUIDPipe) id: string) {
+    return this.billingService.getIncludedActionsForFacture(
+      id,
+      getCurrentTenantId(),
     );
   }
 
@@ -254,7 +294,17 @@ export class FactureController {
   @ApiOperation({ summary: "Changer le statut d'une facture" })
   @ApiResponse({ status: HttpStatus.OK, type: FactureResponseDto })
   @ApiParam({ name: 'id', type: String })
-  @ApiParam({ name: 'statut', enum: ['brouillon', 'envoyee', 'partiellement_payee', 'payee', 'impayee', 'annulee'] })
+  @ApiParam({
+    name: 'statut',
+    enum: [
+      'brouillon',
+      'envoyee',
+      'partiellement_payee',
+      'payee',
+      'impayee',
+      'annulee',
+    ],
+  })
   async changerStatut(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('statut') statut: string,

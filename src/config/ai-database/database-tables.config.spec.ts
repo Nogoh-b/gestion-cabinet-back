@@ -1,5 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
-import { DATABASE_TABLES_CONFIG, DOMAIN_ENTITIES } from './database-tables.config';
+import {
+  DATABASE_TABLES_CONFIG,
+  DOMAIN_ENTITIES,
+} from './database-tables.config';
 
 const config = DATABASE_TABLES_CONFIG!;
 const domainEntities = DOMAIN_ENTITIES!;
@@ -33,9 +36,7 @@ describe('Configuration des tables IA du cabinet', () => {
       'decisions',
     ];
 
-    expect(config.ignoredTables).toEqual(
-      expect.arrayContaining(legacyTables),
-    );
+    expect(config.ignoredTables).toEqual(expect.arrayContaining(legacyTables));
     expect(config.essentialTables).not.toEqual(
       expect.arrayContaining(legacyTables),
     );

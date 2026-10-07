@@ -21,7 +21,10 @@ import { CreatePayslipDto } from './dto/create-payslip.dto';
 import { UpdatePayslipDto } from './dto/update-payslip.dto';
 import { PayslipSearchDto } from './dto/payslip-search.dto';
 import { Payslip } from './entities/payslip.entity';
-import { PayslipListResponseDto, PayslipResponseDto } from './dto/payslip-response.dto';
+import {
+  PayslipListResponseDto,
+  PayslipResponseDto,
+} from './dto/payslip-response.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 
 @Controller('payslips')
@@ -45,7 +48,11 @@ export class PayslipsController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
   @ApiOperation({ summary: 'Rechercher les fiches de paie' })
-  @ApiResponse({ status: 200, description: 'Liste des fiches de paie', type: [Payslip] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des fiches de paie',
+    type: [Payslip],
+  })
   async search(
     @Query() searchParams?: PayslipSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
@@ -60,7 +67,9 @@ export class PayslipsController {
   @Get('/stats')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Masse salariale : vue d\'ensemble (option: ?periodId=)' })
+  @ApiOperation({
+    summary: "Masse salariale : vue d'ensemble (option: ?periodId=)",
+  })
   overview(@Query('periodId') periodId?: string) {
     return this.stats.overview(periodId ? +periodId : undefined);
   }
@@ -76,7 +85,7 @@ export class PayslipsController {
   @Get('/period/:periodId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Fiches de paie d\'une période' })
+  @ApiOperation({ summary: "Fiches de paie d'une période" })
   findByPeriod(@Param('periodId') periodId: string) {
     return this.service.findByPeriod(+periodId);
   }
@@ -84,7 +93,7 @@ export class PayslipsController {
   @Get('/employee/:employeeId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Fiches de paie d\'un employé' })
+  @ApiOperation({ summary: "Fiches de paie d'un employé" })
   findByEmployee(@Param('employeeId') employeeId: string) {
     return this.service.findByEmployee(+employeeId);
   }
@@ -100,16 +109,20 @@ export class PayslipsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_payslips')
-  @ApiOperation({ summary: 'Détail d\'une fiche de paie' })
+  @ApiOperation({ summary: "Détail d'une fiche de paie" })
   async findOne(@Param('id') id: string) {
     const payslip = await this.service.findOne(+id);
-    return plainToInstance(PayslipResponseDto, payslip, { excludeExtraneousValues: true });
+    return plainToInstance(PayslipResponseDto, payslip, {
+      excludeExtraneousValues: true,
+    });
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Modifier une fiche de paie (brouillon uniquement)' })
+  @ApiOperation({
+    summary: 'Modifier une fiche de paie (brouillon uniquement)',
+  })
   update(@Param('id') id: string, @Body() dto: UpdatePayslipDto) {
     return this.service.update(+id, dto);
   }
@@ -143,7 +156,9 @@ export class PayslipsController {
   @Post(':id/commissions')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('edit_payslip')
-  @ApiOperation({ summary: 'Générer les commissions internes depuis les dossiers' })
+  @ApiOperation({
+    summary: 'Générer les commissions internes depuis les dossiers',
+  })
   generateCommissions(
     @Param('id') id: string,
     @Body() body: { rate?: number },

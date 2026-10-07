@@ -28,7 +28,7 @@ export class TenantInterceptor implements NestInterceptor {
     // si ni le JWT ni la résolution n'ont donné de tenant, aucun contexte n'est
     // activé (les routes publiques ne doivent pas accéder aux données métier).
     const jwtTenantId = request.user?.tenantId;
-    const resolvedTenantId = (request as any)['resolvedTenantId'];
+    const resolvedTenantId = request['resolvedTenantId'];
     const tenantId: number | undefined = jwtTenantId ?? resolvedTenantId;
 
     // Tout le traitement de la requête (pipes, service, réponse) s'exécute dans
@@ -43,13 +43,17 @@ export class TenantInterceptor implements NestInterceptor {
     }
 
     return new Observable((observer) => {
-      this.tenantContext.run(tenantId, () => {
-        next.handle().subscribe({
-          next:     (value) => observer.next(value),
-          error:    (err)   => observer.error(err),
-          complete: ()      => observer.complete(),
-        });
-      }, true);
+      this.tenantContext.run(
+        tenantId,
+        () => {
+          next.handle().subscribe({
+            next: (value) => observer.next(value),
+            error: (err) => observer.error(err),
+            complete: () => observer.complete(),
+          });
+        },
+        true,
+      );
     });
   }
 }

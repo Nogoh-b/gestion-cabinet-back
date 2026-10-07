@@ -19,11 +19,14 @@ import { PlansModule } from 'src/modules/plans/plans.module';
 import { AiRequestLog } from './entities/ai-request-log.entity';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { AiModelRouterService } from './ai-model-router.service';
+import { AiAdminController } from './ai-admin.controller';
+import { SettingsModule } from 'src/modules/settings/settings.module';
 
 @Module({
   imports: [
     IamModule,
     PlansModule,
+    SettingsModule,
     TypeOrmModule.forFeature([
       Conversation,
       ConversationMessage,
@@ -31,7 +34,7 @@ import { AiModelRouterService } from './ai-model-router.service';
       AiRequestLog,
     ]),
   ],
-  controllers: [AiDatabaseController],
+  controllers: [AiDatabaseController, AiAdminController],
   providers: [
     AiDatabaseService,
     SchemaMetadataService,
@@ -53,7 +56,7 @@ import { AiModelRouterService } from './ai-model-router.service';
     GenericWriteService,
     EntityResolverService,
     SchemaMetadataService,
-    AiDatabasePermissionService
+    AiDatabasePermissionService,
   ],
 })
 export class AiDatabaseModule {}

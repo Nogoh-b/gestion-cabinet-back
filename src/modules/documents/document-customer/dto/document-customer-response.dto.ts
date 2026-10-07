@@ -3,19 +3,6 @@ import { Expose, Transform } from 'class-transformer';
 import { DocumentCategory } from 'src/modules/document-category/entities/document-category.entity';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 export enum DocumentCustomerStatus {
   PENDING = 0,
   ACCEPTED = 1,
@@ -23,7 +10,6 @@ export enum DocumentCustomerStatus {
   EXPIRED = 3,
   ARCHIVED = 4,
 }
-
 
 export class DocumentCustomerResponseDto {
   @ApiProperty()
@@ -65,11 +51,15 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.document_type ? {
-    id: obj.document_type.id,
-    name: obj.document_type.name,
-    code: obj.document_type.code,
-  } : undefined)
+  @Transform(({ obj }) =>
+    obj.document_type
+      ? {
+          id: obj.document_type.id,
+          name: obj.document_type.name,
+          code: obj.document_type.code,
+        }
+      : undefined,
+  )
   document_type?: {
     id: number;
     name: string;
@@ -91,12 +81,16 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.dossier ? {
-    id: obj.dossier.id,
-    dossier_number: obj.dossier.dossier_number,
-    objet: obj.dossier.objet,
-    name: obj.dossier.dossier_number,
-  } : undefined)
+  @Transform(({ obj }) =>
+    obj.dossier
+      ? {
+          id: obj.dossier.id,
+          dossier_number: obj.dossier.dossier_number,
+          objet: obj.dossier.objet,
+          name: obj.dossier.dossier_number,
+        }
+      : undefined,
+  )
   dossier?: {
     id: number;
     dossier_number: string;
@@ -111,12 +105,16 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.customer ? {
-    id: obj.customer.id,
-    full_name: obj.customer.full_name,
-    customer_code: obj.customer.customer_code,
-    company_name: obj.customer.company_name,
-  } : undefined)
+  @Transform(({ obj }) =>
+    obj.customer
+      ? {
+          id: obj.customer.id,
+          full_name: obj.customer.full_name,
+          customer_code: obj.customer.customer_code,
+          company_name: obj.customer.company_name,
+        }
+      : undefined,
+  )
   customer?: {
     id: number;
     full_name: string;
@@ -131,12 +129,16 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.uploaded_by ? {
-    id: obj.uploaded_by.id,
-    first_name: obj.uploaded_by.first_name,
-    last_name: obj.uploaded_by.last_name,
-    full_name: `${obj.uploaded_by.first_name} ${obj.uploaded_by.last_name}`,
-  } : undefined)
+  @Transform(({ obj }) =>
+    obj.uploaded_by
+      ? {
+          id: obj.uploaded_by.id,
+          first_name: obj.uploaded_by.first_name,
+          last_name: obj.uploaded_by.last_name,
+          full_name: `${obj.uploaded_by.first_name} ${obj.uploaded_by.last_name}`,
+        }
+      : undefined,
+  )
   uploaded_by?: {
     id: number;
     first_name: string;
@@ -150,11 +152,15 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.audience ? {
-    id: obj.audience.id,
-    audience_date: obj.audience.audience_date,
-    jurisdiction: obj.audience.jurisdiction,
-  } : undefined)
+  @Transform(({ obj }) =>
+    obj.audience
+      ? {
+          id: obj.audience.id,
+          audience_date: obj.audience.audience_date,
+          jurisdiction: obj.audience.jurisdiction,
+        }
+      : undefined,
+  )
   audience?: {
     id: number;
     audience_date: Date;
@@ -205,14 +211,18 @@ export class DocumentCustomerResponseDto {
 
   @ApiPropertyOptional()
   @Expose()
-  @Transform(({ obj }) => obj.metadata?.audit_trail?.find((a: any) => a.action === 'rejected')?.details)
+  @Transform(
+    ({ obj }) =>
+      obj.metadata?.audit_trail?.find((a: any) => a.action === 'rejected')
+        ?.details,
+  )
   rejection_reason?: string;
 
-  @ApiPropertyOptional()  
+  @ApiPropertyOptional()
   @Expose()
   stage_visits?: any[];
 
-  @ApiPropertyOptional()  
+  @ApiPropertyOptional()
   @Expose()
   sub_stage_visits?: any[];
 
@@ -223,7 +233,11 @@ export class DocumentCustomerResponseDto {
     if (!obj.file_size) return '0 B';
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(obj.file_size) / Math.log(1024));
-    return Math.round(obj.file_size / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    return (
+      Math.round((obj.file_size / Math.pow(1024, i)) * 100) / 100 +
+      ' ' +
+      sizes[i]
+    );
   })
   file_size_formatted: string;
 
@@ -233,7 +247,7 @@ export class DocumentCustomerResponseDto {
     const statusLabels = {
       [DocumentCustomerStatus.PENDING]: 'En attente',
       [DocumentCustomerStatus.ACCEPTED]: 'Validé',
-      [DocumentCustomerStatus.REFUSED]: 'Refusé', 
+      [DocumentCustomerStatus.REFUSED]: 'Refusé',
       [DocumentCustomerStatus.EXPIRED]: 'Expiré',
       [DocumentCustomerStatus.ARCHIVED]: 'Archivé',
     };
@@ -249,12 +263,14 @@ export class DocumentCustomerResponseDto {
       'image/': 'fa-file-image',
       'text/': 'fa-file-text',
       'application/msword': 'fa-file-word',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'fa-file-word',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        'fa-file-word',
       'application/vnd.ms-excel': 'fa-file-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'fa-file-excel',
-      'default': 'fa-file'
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        'fa-file-excel',
+      default: 'fa-file',
     };
-    
+
     for (const [key, icon] of Object.entries(mimeIcons)) {
       if (obj.file_mimetype?.startsWith(key)) return icon;
     }
@@ -287,7 +303,7 @@ export class DocumentCustomerResponseDto {
   @Transform(({ obj }) => {
     const allowedStatuses = [
       DocumentCustomerStatus.PENDING,
-      DocumentCustomerStatus.ACCEPTED
+      DocumentCustomerStatus.ACCEPTED,
     ];
     return allowedStatuses.includes(obj.status) && !!obj.file_path;
   })
@@ -307,11 +323,10 @@ export class DocumentCustomerResponseDto {
   @Expose()
   uploaded_at: Date;
 
-  
   @ApiProperty()
   @Expose()
   file_name: string;
-  
+
   @ApiProperty()
   @Expose()
   file_url: string;

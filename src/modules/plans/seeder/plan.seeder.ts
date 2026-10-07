@@ -3,7 +3,6 @@ import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
 import { Plan } from '../entities/plan.entity';
 
-
 export default class PlanSeeder implements Seeder {
   public async run(
     dataSource: DataSource,
@@ -15,7 +14,8 @@ export default class PlanSeeder implements Seeder {
       {
         name: 'Free',
         code: 'free',
-        description: 'Pour découvrir la plateforme. Idéal pour démarrer gratuitement.',
+        description:
+          'Pour découvrir la plateforme. Idéal pour démarrer gratuitement.',
         max_employees: 1,
         max_storage_gb: 1,
         max_dossiers: 10,
@@ -34,7 +34,11 @@ export default class PlanSeeder implements Seeder {
         ai_requests_per_month: null,
         price_monthly: 0,
         price_yearly: null,
-        features: JSON.stringify(['Gestion des dossiers', 'Clients', 'Documents']),
+        features: JSON.stringify([
+          'Gestion des dossiers',
+          'Clients',
+          'Documents',
+        ]),
         is_active: true,
         trial_enabled: false,
         trial_days: 0,
@@ -43,7 +47,8 @@ export default class PlanSeeder implements Seeder {
       {
         name: 'Starter',
         code: 'starter',
-        description: 'Pour les avocats indépendants. Tout le nécessaire au quotidien.',
+        description:
+          'Pour les avocats indépendants. Tout le nécessaire au quotidien.',
         max_employees: 3,
         max_storage_gb: 10,
         max_dossiers: 100,
@@ -78,7 +83,8 @@ export default class PlanSeeder implements Seeder {
       {
         name: 'Cabinet',
         code: 'cabinet',
-        description: 'Pour les cabinets en croissance avec une équipe et la paie.',
+        description:
+          'Pour les cabinets en croissance avec une équipe et la paie.',
         max_employees: 15,
         max_storage_gb: 50,
         max_dossiers: 1000,
@@ -113,7 +119,8 @@ export default class PlanSeeder implements Seeder {
       {
         name: 'Firme',
         code: 'firme',
-        description: 'Pour les grandes structures : quotas illimités et IA illimitée.',
+        description:
+          'Pour les grandes structures : quotas illimités et IA illimitée.',
         max_employees: -1,
         max_storage_gb: -1,
         max_dossiers: -1,
@@ -148,7 +155,9 @@ export default class PlanSeeder implements Seeder {
     ];
 
     for (const planData of plans) {
-      const existing = await repository.findOne({ where: { code: planData.code } });
+      const existing = await repository.findOne({
+        where: { code: planData.code },
+      });
       if (!existing) {
         const plan = repository.create(planData);
         await repository.save(plan);

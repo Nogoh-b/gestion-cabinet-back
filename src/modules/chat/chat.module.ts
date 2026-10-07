@@ -11,11 +11,11 @@ import { Attachment } from './entities/attachment.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Conversation, Message, MessageRead, Attachment]), 
+    TypeOrmModule.forFeature([Conversation, Message, MessageRead, Attachment]),
     forwardRef(() => AgenciesModule),
-],
+  ],
   providers: [ChatService],
   exports: [ChatService, TypeOrmModule],
-  controllers: [ChatController]
+  controllers: [ChatController],
 })
 export class ChatModule {}

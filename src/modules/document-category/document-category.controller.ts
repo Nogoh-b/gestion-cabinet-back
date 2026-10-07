@@ -1,5 +1,10 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
@@ -56,7 +61,7 @@ export class DocumentCategoryController {
   @RequirePermissions('MANAGE_DOCUMENT_CATEGORIES')
   async update(
     @Param('id') id: number,
-    @Body() dto: UpdateDocumentCategoryDto
+    @Body() dto: UpdateDocumentCategoryDto,
   ) {
     return this.service.update(id, dto);
   }

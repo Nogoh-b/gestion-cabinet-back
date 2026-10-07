@@ -10,22 +10,21 @@ export enum DossierStatus {
   EXECUTION = 7,
   CLOSED = 8,
   ARCHIVED = 9,
-  ABANDONED = 10
+  ABANDONED = 10,
 }
 // src/core/enums/client-decision.enum.ts
 export enum ClientDecision {
   TRANSACTION = 'transaction',
   CONTENTIEUX = 'contentieux',
-  ABANDON = 'abandon'
+  ABANDON = 'abandon',
 }
 
 // src/core/enums/recommendation-type.enum.ts
 export enum RecommendationType {
-  TRANSACTION = 'transaction',           // Recommander transaction
-  PRESENT_OPTIONS = 'present_options',   // Présenter les options
-  PROCEDURE = 'procedure'                // Recommander procédure
+  TRANSACTION = 'transaction', // Recommander transaction
+  PRESENT_OPTIONS = 'present_options', // Présenter les options
+  PROCEDURE = 'procedure', // Recommander procédure
 }
-
 
 export enum PriorityLevel {
   LOW = 0,

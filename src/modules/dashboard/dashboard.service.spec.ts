@@ -131,9 +131,59 @@ describe('DashboardService', () => {
     const overview = await service.getOverview();
 
     expect(overview.actions).toEqual({
+      totaux: {
+        diligencesEnRetard: 0,
+        echeancesProches: 0,
+        prochainesAudiences: 0,
+      },
       diligencesEnRetard: [],
       echeancesProches: [],
       prochainesAudiences: [],
+    });
+  });
+
+  it('tronque chaque section a 5 elements et expose la volumetrie reelle', async () => {
+    const many = (count: number, prefix: string, extra: object = {}) =>
+      Array.from({ length: count }, (_, i) => ({
+        id: i + 1,
+        title: `${prefix} ${i + 1}`,
+        dossierNumber: `DOS-${i + 1}`,
+        clientName: 'Client',
+        lawyerName: 'Me Dupont',
+        deadline: new Date('2026-09-10'),
+        ...extra,
+      }));
+
+    diligenceStats.getStats.mockResolvedValue({
+      total: 40,
+      overdue: 12,
+      expiredDeadlines: many(12, 'Retard', { daysOverdue: 3 }),
+      expiredDeadlinesTotal: 12,
+      upcomingDeadlines: many(9, 'Echeance', { daysRemaining: 5 }),
+      upcomingDeadlinesTotal: 9,
+    });
+    audienceStats.getStats.mockResolvedValue({
+      total: 30,
+      upcomingAudiences: Array.from({ length: 8 }, (_, i) => ({
+        id: i + 1,
+        date: new Date('2026-09-23'),
+        jurisdiction: 'TGI',
+        dossierNumber: `DOS-${i + 1}`,
+        clientName: 'Client',
+        status: 0,
+      })),
+      upcomingAudiencesTotal: 8,
+    });
+
+    const overview = await service.getOverview();
+
+    expect(overview.actions.diligencesEnRetard).toHaveLength(5);
+    expect(overview.actions.echeancesProches).toHaveLength(5);
+    expect(overview.actions.prochainesAudiences).toHaveLength(5);
+    expect(overview.actions.totaux).toEqual({
+      diligencesEnRetard: 12,
+      echeancesProches: 9,
+      prochainesAudiences: 8,
     });
   });
 });

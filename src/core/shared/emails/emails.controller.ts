@@ -91,13 +91,17 @@ export class MailController {
    */
   @Post('send-direct')
   @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({ summary: 'Créer puis envoyer/programmer un email (toujours persisté)' })
+  @ApiOperation({
+    summary: 'Créer puis envoyer/programmer un email (toujours persisté)',
+  })
   @ApiBody({ type: CreateMailDto })
-  async sendDirect(@Body() dto: CreateMailDto): Promise<{ id: string; status: string; message: string }> {
+  async sendDirect(
+    @Body() dto: CreateMailDto,
+  ): Promise<{ id: string; status: string; message: string }> {
     const mail = await this.mailService.create(dto);
     return {
-      id:      mail.id,
-      status:  mail.status,
+      id: mail.id,
+      status: mail.status,
       message: dto.scheduledAt ? 'Email programmé' : 'Email envoyé',
     };
   }
@@ -107,12 +111,14 @@ export class MailController {
    * (filtre sur `metadata.linkedEntity.type` et `metadata.linkedEntity.id`).
    */
   @Get('by-entity/:entityType/:entityId')
-  @ApiOperation({ summary: 'Lister les mails liés à une entité (dossier, facture, audience…)' })
+  @ApiOperation({
+    summary: 'Lister les mails liés à une entité (dossier, facture, audience…)',
+  })
   @ApiParam({ name: 'entityType', type: String })
-  @ApiParam({ name: 'entityId',   type: String })
+  @ApiParam({ name: 'entityId', type: String })
   async findByEntity(
     @Param('entityType') entityType: string,
-    @Param('entityId')   entityId: string,
+    @Param('entityId') entityId: string,
   ) {
     return this.mailService.findByEntity(entityType, entityId);
   }
@@ -121,7 +127,10 @@ export class MailController {
    * Lister tous les mails d'un client (directs ou via ses dossiers).
    */
   @Get('by-client/:clientId')
-  @ApiOperation({ summary: 'Lister tous les mails liés à un client (direct ou via ses dossiers)' })
+  @ApiOperation({
+    summary:
+      'Lister tous les mails liés à un client (direct ou via ses dossiers)',
+  })
   @ApiParam({ name: 'clientId', type: String })
   async findByClient(@Param('clientId') clientId: string) {
     return this.mailService.findByClient(clientId);

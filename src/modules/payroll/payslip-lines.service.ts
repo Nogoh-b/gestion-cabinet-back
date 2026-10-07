@@ -1,5 +1,9 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PayslipLine } from './entities/payslip-line.entity';
 import { CreatePayslipLineDto } from './dto/create-payslip-line.dto';
@@ -31,12 +35,16 @@ export class PayslipLinesService {
 
   async create(dto: CreatePayslipLineDto): Promise<PayslipLine> {
     const entity = this.repository.create(dto);
-    const payslip = await this.payslipRepo.findOne({ where: { id: dto.payslip_id } });
+    const payslip = await this.payslipRepo.findOne({
+      where: { id: dto.payslip_id },
+    });
     if (!payslip) throw new NotFoundException('Fiche de paie non trouvée');
     this.assertParentMutable(payslip);
     entity.payslip = payslip;
     if (dto.dossier_id) {
-      const dossier = await this.dossierRepo.findOne({ where: { id: dto.dossier_id } });
+      const dossier = await this.dossierRepo.findOne({
+        where: { id: dto.dossier_id },
+      });
       if (!dossier) throw new NotFoundException('Dossier non trouvé');
       entity.dossier = dossier;
     }
@@ -67,14 +75,18 @@ export class PayslipLinesService {
     if (line.payslip) this.assertParentMutable(line.payslip);
 
     if (dto.payslip_id) {
-      const payslip = await this.payslipRepo.findOne({ where: { id: dto.payslip_id } });
+      const payslip = await this.payslipRepo.findOne({
+        where: { id: dto.payslip_id },
+      });
       if (payslip) {
         this.assertParentMutable(payslip);
         line.payslip = payslip;
       }
     }
     if (dto.dossier_id) {
-      const dossier = await this.dossierRepo.findOne({ where: { id: dto.dossier_id } });
+      const dossier = await this.dossierRepo.findOne({
+        where: { id: dto.dossier_id },
+      });
       if (dossier) {
         line.dossier = dossier;
       }

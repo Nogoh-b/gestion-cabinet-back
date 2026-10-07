@@ -1,5 +1,12 @@
 import { Type } from 'class-transformer';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDate,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ExpenseReportStatus } from '../entities/expense-report.entity';
 
@@ -45,7 +52,10 @@ export class ExpenseReportSearchDto {
   @Min(1)
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Champ de tri', example: 'submission_date' })
+  @ApiPropertyOptional({
+    description: 'Champ de tri',
+    example: 'submission_date',
+  })
   @IsOptional()
   @IsString()
   sortBy?: string = 'submission_date';

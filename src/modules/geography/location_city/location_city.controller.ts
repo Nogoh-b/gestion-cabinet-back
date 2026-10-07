@@ -3,27 +3,19 @@ import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
-
-
-
-
-
-
-
-
-
-
-
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
-
-
-
-
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-
-
-
 
 import { CreateLocationCityDto } from './dto/create-location_city.dto';
 import { ResponseLocationCityDto } from './dto/response-location_city.dto';
@@ -32,7 +24,6 @@ import { LocationCity } from './entities/location_city.entity';
 import { LocationCitiesService } from './location_city.service';
 import { LocationCitySearchDto } from './dto/location-city-search.dto';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
-
 
 @Controller('location-cities')
 @ApiBearerAuth()
@@ -70,7 +61,7 @@ export class LocationCitiesController {
   // }
 
   @Post()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_LOCATION')
   create(@Body() dto: CreateLocationCityDto): Promise<LocationCity> {
     return this.service.create(dto);
@@ -82,14 +73,22 @@ export class LocationCitiesController {
     return this.service.findAll();
   }
 
-@Get('/search')
+  @Get('/search')
   @ApiOperation({ summary: 'Rechercher les villes/quartiers' })
-  @ApiResponse({ status: 200, description: 'Liste des villes/quartiers', type: [LocationCity] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des villes/quartiers',
+    type: [LocationCity],
+  })
   async search(
     @Query() searchParams?: LocationCitySearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(searchParams as any, LocationCity, paginationParams);
+    return this.service.searchWithTransformer(
+      searchParams as any,
+      LocationCity,
+      paginationParams,
+    );
   }
 
   // @Get('/search/by-full-address')
@@ -114,20 +113,20 @@ export class LocationCitiesController {
   //   return this.service.search()
   // }
 
-
   @Put(':id')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_LOCATION')
-  update(@Param('id') id: number, @Body() dto: UpdateLocationCityDto): Promise<LocationCity> {
+  update(
+    @Param('id') id: number,
+    @Body() dto: UpdateLocationCityDto,
+  ): Promise<LocationCity> {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_LOCATION')
   remove(@Param('id') id: number): Promise<void> {
     return this.service.remove(id);
   }
-
-
 }

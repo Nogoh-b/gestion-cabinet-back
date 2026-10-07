@@ -30,6 +30,7 @@ import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 import { CreatePaiementDto } from './dto/create-paiement.dto';
+import { AllocateDossierPaymentDto } from './dto/allocation-paiement.dto';
 import { PaiementResponseDto } from './dto/paiement-response.dto';
 import { SearchPaiementDto } from './dto/search-paiement.dto';
 import { UpdatePaiementDto } from './dto/update-paiement.dto';
@@ -44,15 +45,30 @@ export class PaiementController {
 
   @Post()
   @RequirePermissions('create_paiement')
-  @UseInterceptors(FileInterceptor('preuve', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('preuve', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
   @ApiConsumes('multipart/form-data', 'application/json')
-  @ApiOperation({ summary: 'Enregistrer un nouveau paiement avec preuve optionnelle' })
+  @ApiOperation({
+    summary: 'Enregistrer un nouveau paiement avec preuve optionnelle',
+  })
   @ApiResponse({ status: HttpStatus.CREATED, type: PaiementResponseDto })
   async create(
     @Body() createPaiementDto: CreatePaiementDto,
     @UploadedFile() preuve?: Express.Multer.File,
   ) {
     return this.paiementService.createPaiement(createPaiementDto, preuve);
+  }
+
+  @Post('dossier/:dossierId/encaissements')
+  @RequirePermissions('create_paiement')
+  @ApiOperation({ summary: 'Encaisser plusieurs factures d’un dossier' })
+  @ApiParam({ name: 'dossierId', type: Number })
+  async allocateDossierPayment(
+    @Param('dossierId') dossierId: string,
+    @Body() dto: AllocateDossierPaymentDto,
+  ) {
+    return this.paiementService.allocateDossierPayment(+dossierId, dto);
   }
 
   @Get()
@@ -91,7 +107,9 @@ export class PaiementController {
 
   @Get('analytics/statistiques')
   @RequirePermissions('view_financial_reports')
-  @ApiOperation({ summary: 'Recuperer les statistiques des paiements par periode' })
+  @ApiOperation({
+    summary: 'Recuperer les statistiques des paiements par periode',
+  })
   @ApiQuery({ name: 'dateDebut', type: Date, required: true })
   @ApiQuery({ name: 'dateFin', type: Date, required: true })
   async getStatistiques(
@@ -110,7 +128,10 @@ export class PaiementController {
   @ApiResponse({ status: HttpStatus.OK, type: PaiementResponseDto })
   @ApiParam({ name: 'id', type: String })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return plainToInstance(PaiementResponseDto, this.paiementService.findOneV1(id));
+    return plainToInstance(
+      PaiementResponseDto,
+      this.paiementService.findOneV1(id),
+    );
   }
 
   @Patch(':id')

@@ -1,9 +1,6 @@
 import { DossierActionService } from './dossier-action.service';
 import { describe, expect, it, jest } from '@jest/globals';
-import {
-  ActionPriority,
-  DossierActionStatus,
-} from '../case-workflow.enums';
+import { ActionPriority, DossierActionStatus } from '../case-workflow.enums';
 import {
   DiligencePriority,
   DiligenceStatus,
@@ -16,6 +13,17 @@ import {
 import { DossierActionAudienceLink } from '../entities/dossier-action.entity';
 import { CaseWorkflowEvent } from '../entities/workflow-audit.entity';
 
+/**
+ * Émetteur de notifications d'action : neutralisé dans les tests unitaires
+ * (les notifications ne doivent jamais influencer le résultat métier).
+ */
+const notificationsMock = {
+  actionStarted: jest.fn(async () => undefined),
+  actionHeld: jest.fn(async () => undefined),
+  actionCancelled: jest.fn(async () => undefined),
+  actionDeadlineExtended: jest.fn(async () => undefined),
+} as any;
+
 describe('DossierActionService - diligence liée', () => {
   const buildService = () =>
     new DossierActionService(
@@ -25,6 +33,7 @@ describe('DossierActionService - diligence liée', () => {
       {} as any,
       {} as any,
       {} as any,
+      notificationsMock,
     );
 
   it('crée une diligence personnelle lors de l’affectation d’une action', async () => {
@@ -136,6 +145,7 @@ describe('DossierActionService - diligence liée', () => {
       {} as any,
       {} as any,
       {} as any,
+      notificationsMock,
     );
     jest
       .spyOn(service as any, 'assertConfidentialDossierAccess')
@@ -191,7 +201,9 @@ describe('DossierActionService - diligence liée', () => {
       },
       {
         result_code: 'HELD',
-        specific_data: { report_content: `Compte rendu complet de l'audience.` },
+        specific_data: {
+          report_content: `Compte rendu complet de l'audience.`,
+        },
         audiences: [],
       },
       12,
@@ -258,7 +270,9 @@ describe('DossierActionService - diligence liée', () => {
     );
 
     expect(audience.status).toBe(AudienceStatus.POSTPONED);
-    expect(audience.report_content).toBe(`Compte rendu avec decision de renvoi.`);
+    expect(audience.report_content).toBe(
+      `Compte rendu avec decision de renvoi.`,
+    );
     expect(audienceRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         parent_audience_id: 44,
@@ -279,6 +293,7 @@ describe('DossierActionService - liaisons champ action → champ audience', () =
       {} as any,
       {} as any,
       {} as any,
+      notificationsMock,
     );
 
   const buildContext = (audience: any, audienceIds = [44]) => {

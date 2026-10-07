@@ -1,8 +1,6 @@
 import { DataSource } from 'typeorm';
 import { runSeeders } from 'typeorm-extension';
 
-
-
 import AudienceTypeSeeder from './modules/audience-type/seeder/audience-type.seeder';
 import ChatGroupConversationSeeder from './modules/chat/seeder/chat-group-conversation.seeder';
 import TypeCustomerSeeder from './modules/customer/type-customer/seeder/type-customer.seeder';
@@ -21,15 +19,12 @@ import MailTemplateSeeder from './modules/mail-template/seeder/mail-template.see
 import MailComposerTemplateSeeder from './modules/mail-template/seeder/mail-composer-template.seeder';
 import TemplateBlockSeeder from './modules/template-blocks/seeder/template-block.seeder';
 
-
-
 // src/database/seeders/index.ts
-
 
 export async function seedDatabase(dataSource: DataSource) {
   try {
     console.log('🚀 Démarrage des seeders...');
-    
+
     await runSeeders(dataSource, {
       seeds: [
         JurisdictionSeeder,
@@ -49,22 +44,23 @@ export async function seedDatabase(dataSource: DataSource) {
         MailTemplateSeeder,
         MailComposerTemplateSeeder,
         TemplateBlockSeeder,
-      ]
+      ],
     });
 
     console.log('✅ Seeders exécutés avec succès!');
     console.log('📋 Données initiales créées:');
     console.log('   - Juridictions camerounaises');
     console.log('   - Catégories de documents');
-    console.log('   - Types d\'audience');
+    console.log("   - Types d'audience");
     console.log('   - Types de factures (en FCFA)');
     console.log('   - Types de procédure');
     console.log('   - Sous-types de procédure');
-    console.log('   - Template de procédure avec stages, transitions et cycles');
-    console.log('   - Plans d\'abonnement (Starter, Pro, Business, Enterprise)');
-    
+    console.log(
+      '   - Template de procédure avec stages, transitions et cycles',
+    );
+    console.log("   - Plans d'abonnement (Starter, Pro, Business, Enterprise)");
   } catch (error) {
-    console.error('❌ Erreur lors de l\'exécution des seeders:', error);
+    console.error("❌ Erreur lors de l'exécution des seeders:", error);
     throw error;
   }
 }

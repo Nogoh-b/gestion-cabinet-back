@@ -1,5 +1,11 @@
 // dto/apply-transition.dto.ts
-import { IsString, IsOptional, IsObject, IsArray, IsUUID } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsObject,
+  IsArray,
+  IsUUID,
+} from 'class-validator';
 
 export class ApplyTransitionDto {
   @IsUUID()

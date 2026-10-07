@@ -9,7 +9,9 @@ describe('ActivitiesSavingsAccountService', () => {
       providers: [ActivitiesSavingsAccountService],
     }).compile();
 
-    service = module.get<ActivitiesSavingsAccountService>(ActivitiesSavingsAccountService);
+    service = module.get<ActivitiesSavingsAccountService>(
+      ActivitiesSavingsAccountService,
+    );
   });
 
   it('should be defined', () => {

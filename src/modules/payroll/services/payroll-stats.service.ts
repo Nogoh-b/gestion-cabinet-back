@@ -17,7 +17,8 @@ export interface PayrollOverview {
 @Injectable()
 export class PayrollStatsService {
   constructor(
-    @InjectRepository(Payslip) private readonly payslipRepo: Repository<Payslip>,
+    @InjectRepository(Payslip)
+    private readonly payslipRepo: Repository<Payslip>,
   ) {}
 
   /** Vue d'ensemble de la masse salariale, optionnellement filtrée par période. */
@@ -30,7 +31,12 @@ export class PayrollStatsService {
       .addSelect('COUNT(p.id)', 'count');
     if (periodId) qb = qb.where('p.period_id = :periodId', { periodId });
     qb = addTenantCondition(qb, 'p');
-    const row = await qb.getRawOne<{ gross: string; net: string; employer: string; count: string }>();
+    const row = await qb.getRawOne<{
+      gross: string;
+      net: string;
+      employer: string;
+      count: string;
+    }>();
 
     const gross = Number(row?.gross ?? 0);
     const net = Number(row?.net ?? 0);
@@ -42,9 +48,13 @@ export class PayrollStatsService {
       .select('p.status', 'status')
       .addSelect('COUNT(p.id)', 'count')
       .groupBy('p.status');
-    if (periodId) statusQb = statusQb.where('p.period_id = :periodId', { periodId });
+    if (periodId)
+      statusQb = statusQb.where('p.period_id = :periodId', { periodId });
     statusQb = addTenantCondition(statusQb, 'p');
-    const statusRows = await statusQb.getRawMany<{ status: string; count: string }>();
+    const statusRows = await statusQb.getRawMany<{
+      status: string;
+      count: string;
+    }>();
     const by_status: Record<string, number> = {};
     for (const r of statusRows) by_status[r.status] = Number(r.count);
 
@@ -60,7 +70,15 @@ export class PayrollStatsService {
   }
 
   /** Masse salariale agrégée par période (utile pour un graphique d'évolution). */
-  async byPeriod(): Promise<Array<{ period_id: number; period_label: string; total_gross: number; total_net: number; count: number }>> {
+  async byPeriod(): Promise<
+    Array<{
+      period_id: number;
+      period_label: string;
+      total_gross: number;
+      total_net: number;
+      count: number;
+    }>
+  > {
     let qb = this.payslipRepo
       .createQueryBuilder('p')
       .leftJoin('p.period', 'period')

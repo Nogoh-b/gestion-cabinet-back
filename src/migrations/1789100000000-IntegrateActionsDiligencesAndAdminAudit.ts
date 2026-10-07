@@ -35,12 +35,20 @@ export class IntegrateActionsDiligencesAndAdminAudit1789100000000
        enum('general','acquisition','investment','ipo','compliance','litigation','contract')
        NOT NULL DEFAULT 'acquisition'`,
     );
-    if (!(await this.columnExists(queryRunner, 'diligences', 'source_action_id'))) {
+    if (
+      !(await this.columnExists(queryRunner, 'diligences', 'source_action_id'))
+    ) {
       await queryRunner.query(
         `ALTER TABLE diligences ADD COLUMN source_action_id varchar(36) NULL AFTER assigned_lawyer_id`,
       );
     }
-    if (!(await this.indexExists(queryRunner, 'diligences', 'UQ_diligence_source_action'))) {
+    if (
+      !(await this.indexExists(
+        queryRunner,
+        'diligences',
+        'UQ_diligence_source_action',
+      ))
+    ) {
       await queryRunner.query(
         `CREATE UNIQUE INDEX UQ_diligence_source_action
          ON diligences (tenant_id, source_action_id)`,
@@ -61,7 +69,13 @@ export class IntegrateActionsDiligencesAndAdminAudit1789100000000
         );
       }
     }
-    if (!(await this.indexExists(queryRunner, 'activities_user', 'IDX_activities_tenant_risk_date'))) {
+    if (
+      !(await this.indexExists(
+        queryRunner,
+        'activities_user',
+        'IDX_activities_tenant_risk_date',
+      ))
+    ) {
       await queryRunner.query(
         `CREATE INDEX IDX_activities_tenant_risk_date
          ON activities_user (tenant_id, risk_level, created_at)`,
@@ -70,7 +84,13 @@ export class IntegrateActionsDiligencesAndAdminAudit1789100000000
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    if (await this.indexExists(queryRunner, 'activities_user', 'IDX_activities_tenant_risk_date')) {
+    if (
+      await this.indexExists(
+        queryRunner,
+        'activities_user',
+        'IDX_activities_tenant_risk_date',
+      )
+    ) {
       await queryRunner.query(
         `DROP INDEX IDX_activities_tenant_risk_date ON activities_user`,
       );
@@ -88,11 +108,23 @@ export class IntegrateActionsDiligencesAndAdminAudit1789100000000
         );
       }
     }
-    if (await this.indexExists(queryRunner, 'diligences', 'UQ_diligence_source_action')) {
-      await queryRunner.query(`DROP INDEX UQ_diligence_source_action ON diligences`);
+    if (
+      await this.indexExists(
+        queryRunner,
+        'diligences',
+        'UQ_diligence_source_action',
+      )
+    ) {
+      await queryRunner.query(
+        `DROP INDEX UQ_diligence_source_action ON diligences`,
+      );
     }
-    if (await this.columnExists(queryRunner, 'diligences', 'source_action_id')) {
-      await queryRunner.query(`ALTER TABLE diligences DROP COLUMN source_action_id`);
+    if (
+      await this.columnExists(queryRunner, 'diligences', 'source_action_id')
+    ) {
+      await queryRunner.query(
+        `ALTER TABLE diligences DROP COLUMN source_action_id`,
+      );
     }
     await queryRunner.query(
       `ALTER TABLE diligences MODIFY COLUMN type

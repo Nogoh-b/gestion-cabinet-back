@@ -10,13 +10,17 @@ import {
 } from 'typeorm';
 import { ProcedureTemplate } from './procedure-template.entity';
 import { Stage } from './stage.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('cycles')
 @BusinessTable({
   label: 'Cycles',
-  description: 'Cycles de répétition entre étapes d\'un modèle de procédure. Permettent de revenir à une étape antérieure un nombre limité de fois.',
+  description:
+    "Cycles de répétition entre étapes d'un modèle de procédure. Permettent de revenir à une étape antérieure un nombre limité de fois.",
   icon: '🔄',
   category: 'procedure',
   ignored: true,
@@ -49,7 +53,7 @@ export class Cycle extends BaseEntity {
   @Column({ name: 'fromStageId' })
   @BusinessColumn({
     label: 'Étape source',
-    description: 'Identifiant de l\'étape de départ du cycle',
+    description: "Identifiant de l'étape de départ du cycle",
     importance: 'high',
     group: 'relation',
     ignored: true,
@@ -63,7 +67,7 @@ export class Cycle extends BaseEntity {
   @Column({ name: 'toStageId' })
   @BusinessColumn({
     label: 'Étape destination',
-    description: 'Identifiant de l\'étape de retour du cycle',
+    description: "Identifiant de l'étape de retour du cycle",
     importance: 'high',
     group: 'relation',
     ignored: true,

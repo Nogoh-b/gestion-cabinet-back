@@ -1,7 +1,6 @@
 // core/config/swagger.config.ts
 import { DocumentBuilder } from '@nestjs/swagger';
 
-
 export const swaggerConfig = new DocumentBuilder()
   .setTitle('Core Banking API')
   .setDescription('API pour le système bancaire central')
@@ -25,7 +24,7 @@ export const swaggerConfig = new DocumentBuilder()
   .addSecurityRequirements('bearer')
   .addSecurityRequirements('x-tenant-code')
   .build();
-  /*.setTitle('Core Banking API')
+/*.setTitle('Core Banking API')
   .setDescription('API pour le système bancaire central')
   .setVersion('1.0')
   .addBearerAuth({

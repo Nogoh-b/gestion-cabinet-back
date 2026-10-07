@@ -2,7 +2,17 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { District } from '../district/entities/district.entity';
@@ -13,21 +23,27 @@ import { Division } from './entities/divivion.entity';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { DivisionSearchDto } from './dto/division-search.dto';
 
-
 @Controller('divisions')
 @ApiBearerAuth()
 export class DivisionsController {
   constructor(private readonly service: DivisionsService) {}
 
-  
   @Get('/search')
   @ApiOperation({ summary: 'Rechercher les divisions' })
-  @ApiResponse({ status: 200, description: 'Liste des divisions', type: [Division] })
+  @ApiResponse({
+    status: 200,
+    description: 'Liste des divisions',
+    type: [Division],
+  })
   async search(
     @Query() searchParams?: DivisionSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.service.searchWithTransformer(searchParams as any, Division, paginationParams);
+    return this.service.searchWithTransformer(
+      searchParams as any,
+      Division,
+      paginationParams,
+    );
   }
 
   @Post()
@@ -51,19 +67,22 @@ export class DivisionsController {
 
   @Get(':id/district')
   @RequirePermissions('')
-  findOneDistrict(@Param('id') id: number): Promise<District []> {
+  findOneDistrict(@Param('id') id: number): Promise<District[]> {
     return this.service.findOneDistrict(id);
   }
 
   @Put(':id')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_LOCATION')
-  update(@Param('id') id: number, @Body() dto: UpdateDivisionDto): Promise<Division> {
+  update(
+    @Param('id') id: number,
+    @Body() dto: UpdateDivisionDto,
+  ): Promise<Division> {
     return this.service.update(id, dto);
   }
 
   @Delete(':id')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('MANAGE_LOCATION')
   remove(@Param('id') id: number): Promise<void> {
     return this.service.remove(id);

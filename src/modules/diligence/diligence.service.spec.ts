@@ -66,7 +66,12 @@ describe('DiligencesService', () => {
       start_date: new Date('2026-09-01'),
       deadline: new Date('2026-10-01'),
       dossier_id: 12,
-      dossier: { id: 12, dossier_number: 'DOS-001', object: 'Litige', client: null },
+      dossier: {
+        id: 12,
+        dossier_number: 'DOS-001',
+        object: 'Litige',
+        client: null,
+      },
       assigned_lawyer: null,
       findings: [],
       documents: [],
@@ -91,7 +96,11 @@ describe('DiligencesService', () => {
     eventRepository.find.mockResolvedValue([
       {
         event_type: 'DOSSIER_ACTION_DEADLINE_SET',
-        payload: { previousDueAt: null, dueAt: '2026-09-15T00:00:00.000Z', reason: 'Echeance initiale' },
+        payload: {
+          previousDueAt: null,
+          dueAt: '2026-09-15T00:00:00.000Z',
+          reason: 'Echeance initiale',
+        },
         created_at: new Date('2026-09-01'),
       },
       {
@@ -128,7 +137,9 @@ describe('DiligencesService', () => {
   });
 
   it('findOne sans action d origine retourne des extensions vides', async () => {
-    repository.findOne.mockResolvedValue(diligenceFixture({ source_action_id: null }));
+    repository.findOne.mockResolvedValue(
+      diligenceFixture({ source_action_id: null }),
+    );
 
     const result = await service.findOne(5);
 
@@ -140,6 +151,8 @@ describe('DiligencesService', () => {
   it('findOne leve NotFoundException quand la diligence est absente', async () => {
     repository.findOne.mockResolvedValue(null);
 
-    await expect(service.findOne(999)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.findOne(999)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

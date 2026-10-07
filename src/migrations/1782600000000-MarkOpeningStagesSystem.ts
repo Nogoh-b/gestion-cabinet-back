@@ -25,7 +25,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * est en `ON DELETE CASCADE`, supprimer le stage supprimerait sa visite n°1
  * (et casserait le lien facture d'ouverture via `stage_visit_id`).
  */
-export class MarkOpeningStagesSystem1782600000000 implements MigrationInterface {
+export class MarkOpeningStagesSystem1782600000000
+  implements MigrationInterface
+{
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ── 1. Colonne isSystem (idempotent) ──────────────────────────────────
     const cols: Array<{ COLUMN_NAME: string }> = await queryRunner.query(
@@ -51,16 +53,17 @@ export class MarkOpeningStagesSystem1782600000000 implements MigrationInterface 
           AND description LIKE 'Phase d%ouverture%'`,
     );
     console.log(
-      `[MarkOpeningStagesSystem] ${(updateResult as any)?.affectedRows ?? updateResult?.[0]?.affectedRows ?? '?'} stage(s) "Ouverture" marqué(s) isSystem`,
+      `[MarkOpeningStagesSystem] ${updateResult?.affectedRows ?? updateResult?.[0]?.affectedRows ?? '?'} stage(s) "Ouverture" marqué(s) isSystem`,
     );
 
     // ── 3. Corriger les instances dont l'étape courante est un stage système ──
-    const instances: Array<{ id: string; templateId: string }> = await queryRunner.query(
-      `SELECT pi.id, pi.templateId
+    const instances: Array<{ id: string; templateId: string }> =
+      await queryRunner.query(
+        `SELECT pi.id, pi.templateId
          FROM procedure_instances pi
          JOIN stages s ON s.id = pi.currentStageId
         WHERE s.isSystem = 1`,
-    );
+      );
 
     let fixed = 0;
     for (const inst of instances) {
@@ -95,6 +98,8 @@ export class MarkOpeningStagesSystem1782600000000 implements MigrationInterface 
     // Migration corrective : on ne restaure pas l'ancien état (les stages
     // "Ouverture" restent en base en tant qu'étapes système ; les
     // currentStageId corrigés pointent vers de vraies étapes).
-    console.log('[MarkOpeningStagesSystem] down : aucune action (correctif irréversible)');
+    console.log(
+      '[MarkOpeningStagesSystem] down : aucune action (correctif irréversible)',
+    );
   }
 }

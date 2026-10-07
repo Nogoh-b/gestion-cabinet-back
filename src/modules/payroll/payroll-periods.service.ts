@@ -1,9 +1,16 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import { BaseServiceV1 } from 'src/core/shared/services/search/base-v1.service';
-import { PayrollPeriod, PayrollPeriodStatus } from './entities/payroll-period.entity';
+import {
+  PayrollPeriod,
+  PayrollPeriodStatus,
+} from './entities/payroll-period.entity';
 import { CreatePayrollPeriodDto } from './dto/create-payroll-period.dto';
 import { UpdatePayrollPeriodDto } from './dto/update-payroll-period.dto';
 import { Branch } from '../agencies/branch/entities/branch.entity';
@@ -33,7 +40,9 @@ export class PayrollPeriodsService extends BaseServiceV1<PayrollPeriod> {
   async create(dto: CreatePayrollPeriodDto): Promise<PayrollPeriod> {
     const entity = this.repository.create(dto);
     if (dto.branch_id) {
-      const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
+      const branch = await this.branchRepo.findOne({
+        where: { id: dto.branch_id },
+      });
       if (branch) {
         entity.branch = branch;
       }
@@ -57,13 +66,20 @@ export class PayrollPeriodsService extends BaseServiceV1<PayrollPeriod> {
     return period;
   }
 
-  async update(id: number, dto: UpdatePayrollPeriodDto): Promise<PayrollPeriod> {
+  async update(
+    id: number,
+    dto: UpdatePayrollPeriodDto,
+  ): Promise<PayrollPeriod> {
     const period = await this.findOne(id);
     if (period.status === PayrollPeriodStatus.PAID) {
-      throw new BadRequestException('Une période payée ne peut plus être modifiée.');
+      throw new BadRequestException(
+        'Une période payée ne peut plus être modifiée.',
+      );
     }
     if (dto.branch_id) {
-      const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
+      const branch = await this.branchRepo.findOne({
+        where: { id: dto.branch_id },
+      });
       if (branch) {
         period.branch = branch;
       }
@@ -94,7 +110,10 @@ export class PayrollPeriodsService extends BaseServiceV1<PayrollPeriod> {
           await this.payslipsService.validate(payslip.id);
           result.validated++;
         } catch (e) {
-          result.errors.push({ payslip_id: payslip.id, reason: (e as Error).message });
+          result.errors.push({
+            payslip_id: payslip.id,
+            reason: (e as Error).message,
+          });
         }
       } else {
         result.already_validated++;
@@ -109,7 +128,9 @@ export class PayrollPeriodsService extends BaseServiceV1<PayrollPeriod> {
   async remove(id: number): Promise<void> {
     const period = await this.findOne(id);
     if (period.status === PayrollPeriodStatus.PAID) {
-      throw new BadRequestException('Une période payée ne peut pas être supprimée.');
+      throw new BadRequestException(
+        'Une période payée ne peut pas être supprimée.',
+      );
     }
     await this.repository.softDelete(id);
   }

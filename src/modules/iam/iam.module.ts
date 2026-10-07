@@ -2,15 +2,6 @@ import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditInterceptor } from 'src/core/shared/interceptors/audit.interceptor';
 
-
-
-
-
-
-
-
-
-
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ActivitiesUserController } from './activities-user/activities-user.controller';
@@ -31,51 +22,45 @@ import { UserRolesService } from './user-role/user-role.service';
 import { User } from './user/entities/user.entity';
 import { UsersService } from './user/user.service';
 
-
-
-
-
-
-
-
-
-
-
-
 @Module({
-  controllers: [ 
-    // UsersController, 
-    
-  ActivitiesUserController, PermissionsController, UserRolesController, RolePermissionController,  UserRoleAssignmentController],
+  controllers: [
+    // UsersController,
+
+    ActivitiesUserController,
+    PermissionsController,
+    UserRolesController,
+    RolePermissionController,
+    UserRoleAssignmentController,
+  ],
   imports: [
-  // forwardRef(() => CustomerModule),
+    // forwardRef(() => CustomerModule),
     TypeOrmModule.forFeature([
       UserRole,
       Permission,
       RolePermission,
       UserRoleAssignment,
       User,
-      ActivitiesUser
+      ActivitiesUser,
     ]),
   ],
-     providers:[
-     PermissionsService,
-     UserRolesService,
-     RolePermissionService,
-     UsersService,
-     ActivitiesUserService,
-     UserRoleAssignmentService,
-     // Journal d'audit global (enregistre les mutations authentifiées).
-     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
-     ],
-     exports:[
-      PermissionsService,
-      UsersService,
-      UserRoleAssignmentService,
-      RolePermissionService,
-      UserRolesService,
-      ActivitiesUserService,
-      TypeOrmModule
-     ]
+  providers: [
+    PermissionsService,
+    UserRolesService,
+    RolePermissionService,
+    UsersService,
+    ActivitiesUserService,
+    UserRoleAssignmentService,
+    // Journal d'audit global (enregistre les mutations authentifiées).
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+  ],
+  exports: [
+    PermissionsService,
+    UsersService,
+    UserRoleAssignmentService,
+    RolePermissionService,
+    UserRolesService,
+    ActivitiesUserService,
+    TypeOrmModule,
+  ],
 })
 export class IamModule {}

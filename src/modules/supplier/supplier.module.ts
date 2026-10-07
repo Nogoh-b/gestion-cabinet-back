@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
@@ -17,6 +17,7 @@ import { ExpenseLinesService } from './expense-lines.service';
 import { SupplierInvoicesController } from './supplier-invoices.controller';
 import { ExpenseReportsController } from './expense-reports.controller';
 import { ExpenseLinesController } from './expense-lines.controller';
+import { ExpensesController } from './expenses.controller';
 
 // Dépendances externes
 import { AgenciesModule } from '../agencies/agencies.module';
@@ -30,6 +31,8 @@ import { ExpenseLineWriteHandler } from './expense-line-write.handler';
 import { WriteHandlerRegistry } from 'src/core/ai-database/write/write-handler.registry';
 import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { PlansModule } from '../plans/plans.module';
+import { CaseWorkflowModule } from '../case-workflow/case-workflow.module';
+import { ExpenseWorkspaceService } from './expense-workspace.service';
 
 @Module({
   imports: [
@@ -44,12 +47,14 @@ import { PlansModule } from '../plans/plans.module';
     DossiersModule,
     AiDatabaseModule,
     PlansModule,
+    forwardRef(() => CaseWorkflowModule),
   ],
   controllers: [
     SuppliersController,
     SupplierInvoicesController,
     ExpenseReportsController,
     ExpenseLinesController,
+    ExpensesController,
   ],
   providers: [
     PaginationServiceV1,
@@ -57,6 +62,7 @@ import { PlansModule } from '../plans/plans.module';
     SupplierInvoicesService,
     ExpenseReportsService,
     ExpenseLinesService,
+    ExpenseWorkspaceService,
     SupplierInvoiceWriteHandler,
     ExpenseReportWriteHandler,
     ExpenseLineWriteHandler,
@@ -66,6 +72,7 @@ import { PlansModule } from '../plans/plans.module';
     SupplierInvoicesService,
     ExpenseReportsService,
     ExpenseLinesService,
+    ExpenseWorkspaceService,
   ],
 })
 export class SupplierModule {

@@ -1,22 +1,25 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-    IsString,
-    IsNotEmpty,
-    IsOptional,
-    IsEnum,
-    IsBoolean,
-    IsNumber
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+  IsNumber,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { AudienceTypeCategory } from '../entities/audience-type.entity';
 
 export class CreateAudienceTypeDto {
-  @ApiProperty({ description: 'Code unique. Généré automatiquement si non fourni.', required: false })
+  @ApiProperty({
+    description: 'Code unique. Généré automatiquement si non fourni.',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   code?: string;
 
-  @ApiProperty({ description: 'Nom du type d\'audience' })
+  @ApiProperty({ description: "Nom du type d'audience" })
   @IsString()
   @IsNotEmpty()
   name: string;
@@ -26,14 +29,17 @@ export class CreateAudienceTypeDto {
   @IsString()
   description?: string;
 
-  @ApiProperty({ 
+  @ApiProperty({
     enum: AudienceTypeCategory,
-    description: 'Catégorie de l\'audience' 
+    description: "Catégorie de l'audience",
   })
   @IsEnum(AudienceTypeCategory)
   category: AudienceTypeCategory;
 
-  @ApiPropertyOptional({ description: 'Durée par défaut en minutes', default: 60 })
+  @ApiPropertyOptional({
+    description: 'Durée par défaut en minutes',
+    default: 60,
+  })
   @IsOptional()
   @IsNumber()
   @Transform(({ value }) => parseInt(value) || 60)
@@ -59,13 +65,15 @@ export class CreateAudienceTypeDto {
 
   @ApiPropertyOptional({ description: 'Documents requis (IDs JSON)' })
   @IsOptional()
-  @Transform(({ value }) => typeof value === 'string' ? JSON.parse(value) : value)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? JSON.parse(value) : value,
+  )
   required_documents?: number[];
 
   @ApiPropertyOptional({ description: 'Délai de préparation en jours' })
   @IsOptional()
   @IsNumber()
-  @Transform(({ value }) => value ? parseInt(value) : undefined)
+  @Transform(({ value }) => (value ? parseInt(value) : undefined))
   preparation_time_days?: number;
 
   @ApiPropertyOptional({ description: 'Actif', default: true })

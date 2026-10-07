@@ -8,7 +8,10 @@ import { CreateLocationCityDto } from './dto/create-location_city.dto';
 import { ResponseLocationCityDto } from './dto/response-location_city.dto';
 import { UpdateLocationCityDto } from './dto/update-location_city.dto';
 import { LocationCity } from './entities/location_city.entity';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
 
 @Injectable()
@@ -48,22 +51,17 @@ export class LocationCitiesService extends BaseServiceV1<LocationCity> {
         'district.division.region.code',
         'district.division.region.country.name',
       ],
-      
+
       // Champs pour recherche exacte
-      exactMatchFields: [
-        'id',
-        'code',
-        'districts_id'
-      ],
- 
-      
+      exactMatchFields: ['id', 'code', 'districts_id'],
+
       // ✅ CORRECTION : Spécifier les chemins de relations complets
       relationFields: [
-        'district',                                    // Niveau 1
-        'district.division',                          // Niveau 2
-        'district.division.region',                   // Niveau 3
-        'district.division.region.country'            // Niveau 4
-      ]
+        'district', // Niveau 1
+        'district.division', // Niveau 2
+        'district.division.region', // Niveau 3
+        'district.division.region.country', // Niveau 4
+      ],
     };
   }
 
@@ -73,12 +71,12 @@ export class LocationCitiesService extends BaseServiceV1<LocationCity> {
         'district',
         'district.division',
         'district.division.region',
-        'district.division.region.country'
-      ]
+        'district.division.region.country',
+      ],
     });
-    
-    return location_cities.map(location_city => 
-      plainToInstance(ResponseLocationCityDto, location_city)
+
+    return location_cities.map((location_city) =>
+      plainToInstance(ResponseLocationCityDto, location_city),
     );
   }
 
@@ -94,7 +92,7 @@ export class LocationCitiesService extends BaseServiceV1<LocationCity> {
     });
     if (!city) throw new NotFoundException('Location city not found');
     return plainToInstance(ResponseLocationCityDto, city, {
-      excludeExtraneousValues: true
+      excludeExtraneousValues: true,
     });
   }
 
@@ -119,10 +117,11 @@ export class LocationCitiesService extends BaseServiceV1<LocationCity> {
         'district',
         'district.division',
         'district.division.region',
-        'district.division.region.country'
+        'district.division.region.country',
       ],
     });
-    if (!city) throw new NotFoundException(`Location city with code ${code} not found`);
+    if (!city)
+      throw new NotFoundException(`Location city with code ${code} not found`);
     return city;
   }
 
@@ -148,17 +147,17 @@ export class LocationCitiesService extends BaseServiceV1<LocationCity> {
         district: {
           division: {
             region: {
-              id: regionId
-            }
-          }
-        }
+              id: regionId,
+            },
+          },
+        },
       },
       relations: [
         'district',
         'district.division',
         'district.division.region',
-        'district.division.region.country'
-      ]
+        'district.division.region.country',
+      ],
     });
   }
 
@@ -168,16 +167,16 @@ export class LocationCitiesService extends BaseServiceV1<LocationCity> {
       where: {
         district: {
           division: {
-            id: divisionId
-          }
-        }
+            id: divisionId,
+          },
+        },
       },
       relations: [
         'district',
         'district.division',
         'district.division.region',
-        'district.division.region.country'
-      ]
+        'district.division.region.country',
+      ],
     });
   }
 
@@ -189,8 +188,8 @@ export class LocationCitiesService extends BaseServiceV1<LocationCity> {
         'district',
         'district.division',
         'district.division.region',
-        'district.division.region.country'
-      ]
+        'district.division.region.country',
+      ],
     });
   }
 }

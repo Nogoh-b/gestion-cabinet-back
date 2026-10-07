@@ -1,8 +1,4 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 
 export enum MailStatus {
@@ -14,7 +10,7 @@ export enum MailStatus {
 
 export interface AttachmentMail {
   filename: string;
-  content?: string | Buffer;      // base64 ou Buffer encodé
+  content?: string | Buffer; // base64 ou Buffer encodé
   path?: string;
   href?: string;
   contentType?: string;

@@ -11,10 +11,14 @@ import {
   UseGuards,
   Request,
   HttpCode,
-  HttpStatus
+  HttpStatus,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
-import { CreateBulkNotificationDto, CreateNotificationDto, MarkReadDto } from './dto/create-notification.dto';
+import {
+  CreateBulkNotificationDto,
+  CreateNotificationDto,
+  MarkReadDto,
+} from './dto/create-notification.dto';
 import { UserRole } from '../../core/enums/user-role.enum';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
@@ -29,14 +33,19 @@ export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Récupérer les notifications de l\'utilisateur' })
+  @ApiOperation({ summary: "Récupérer les notifications de l'utilisateur" })
   async getMyNotifications(
     @Request() req,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
-    @Query('unread_only') unreadOnly: boolean = false
+    @Query('unread_only') unreadOnly: boolean = false,
   ) {
-    return this.notificationService.getUserNotifications(req.user.id, page, limit, unreadOnly);
+    return this.notificationService.getUserNotifications(
+      req.user.id,
+      page,
+      limit,
+      unreadOnly,
+    );
   }
 
   @Get('unread/count')
@@ -68,8 +77,14 @@ export class NotificationController {
   @Post('bulk')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Créer plusieurs notifications (admin)' })
-  async createBulk(@Body() createNotificationDtos: CreateBulkNotificationDto, @Request() req) {
-    return this.notificationService.createBulk(createNotificationDtos, req.user.id);
+  async createBulk(
+    @Body() createNotificationDtos: CreateBulkNotificationDto,
+    @Request() req,
+  ) {
+    return this.notificationService.createBulk(
+      createNotificationDtos,
+      req.user.id,
+    );
   }
 
   @Patch('mark-read')
@@ -79,7 +94,10 @@ export class NotificationController {
     if (markReadDto.mark_all) {
       await this.notificationService.markAllAsRead(req.user.id);
     } else if (markReadDto.notification_ids?.length) {
-      await this.notificationService.markAsRead(markReadDto.notification_ids, req.user.id);
+      await this.notificationService.markAsRead(
+        markReadDto.notification_ids,
+        req.user.id,
+      );
     }
     return { success: true };
   }

@@ -3,7 +3,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TypeCustomer } from './entities/type_customer.entity';
-import { TypeCustomerDetailDto, TypeCustomerStatsDto } from './dto/type-customer-stats.dto';
+import {
+  TypeCustomerDetailDto,
+  TypeCustomerStatsDto,
+} from './dto/type-customer-stats.dto';
 import { SingleTypeCustomerStatsDto } from './dto/single-type-customer-stats.dto';
 import { CustomerStatus } from './../customer/entities/customer.entity';
 
@@ -14,7 +17,9 @@ export class TypeCustomerStatsService {
     private typeCustomerRepository: Repository<TypeCustomer>,
   ) {}
 
-  async getStats(typeId?: number): Promise<TypeCustomerStatsDto | SingleTypeCustomerStatsDto> {
+  async getStats(
+    typeId?: number,
+  ): Promise<TypeCustomerStatsDto | SingleTypeCustomerStatsDto> {
     // Si un typeId est fourni, on retourne les stats détaillées de ce type
     if (typeId) {
       return this.getStatsForSingleType(typeId);
@@ -25,15 +30,17 @@ export class TypeCustomerStatsService {
   }
 
   // Méthode pour un type de client spécifique
-  private async getStatsForSingleType(typeId: number): Promise<SingleTypeCustomerStatsDto> {
+  private async getStatsForSingleType(
+    typeId: number,
+  ): Promise<SingleTypeCustomerStatsDto> {
     const type = await this.typeCustomerRepository.findOne({
       where: { id: typeId },
       relations: [
         'customers',
         'customers.dossiers',
         'customers.location_city',
-        'requiredDocuments'
-      ]
+        'requiredDocuments',
+      ],
     });
 
     if (!type) {
@@ -62,23 +69,38 @@ export class TypeCustomerStatsService {
     };
   }
 
-  private getClientsStats(clients: any[]): SingleTypeCustomerStatsDto['clients'] {
+  private getClientsStats(
+    clients: any[],
+  ): SingleTypeCustomerStatsDto['clients'] {
     const total = clients.length;
-    
-    const actifs = clients.filter(c => c.status === CustomerStatus.ACTIVE).length;
-    const inactifs = clients.filter(c => c.status === CustomerStatus.INACTIVE).length;
-    const bloques = clients.filter(c => 
-      [CustomerStatus.BLOCKED, CustomerStatus.SUSPENDED, CustomerStatus.LOCKED].includes(c.status)
+
+    const actifs = clients.filter(
+      (c) => c.status === CustomerStatus.ACTIVE,
+    ).length;
+    const inactifs = clients.filter(
+      (c) => c.status === CustomerStatus.INACTIVE,
+    ).length;
+    const bloques = clients.filter((c) =>
+      [
+        CustomerStatus.BLOCKED,
+        CustomerStatus.SUSPENDED,
+        CustomerStatus.LOCKED,
+      ].includes(c.status),
     ).length;
 
-    const avecDossiers = clients.filter(c => c.dossiers && c.dossiers.length > 0).length;
+    const avecDossiers = clients.filter(
+      (c) => c.dossiers && c.dossiers.length > 0,
+    ).length;
     const sansDossiers = total - avecDossiers;
 
     // Clients récents
     const recents = [...clients]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
       .slice(0, 10)
-      .map(c => ({
+      .map((c) => ({
         id: c.id,
         nom: c.full_name,
         email: c.email,
@@ -98,10 +120,12 @@ export class TypeCustomerStatsService {
     };
   }
 
-  private getDocumentsStats(documents: any[]): SingleTypeCustomerStatsDto['documentsRequis'] {
+  private getDocumentsStats(
+    documents: any[],
+  ): SingleTypeCustomerStatsDto['documentsRequis'] {
     const total = documents.length;
 
-    const liste = documents.map(d => ({
+    const liste = documents.map((d) => ({
       id: d.id,
       nom: d.name,
       code: d.code,
@@ -111,29 +135,39 @@ export class TypeCustomerStatsService {
 
     // Statistiques par statut (approximatif car on n'a pas les statuts ici)
     const parStatut = [
-      { statut: 'Actif', count: documents.filter(d => d.status === 1).length, percentage: 0 },
-      { statut: 'Inactif', count: documents.filter(d => d.status !== 1).length, percentage: 0 },
+      {
+        statut: 'Actif',
+        count: documents.filter((d) => d.status === 1).length,
+        percentage: 0,
+      },
+      {
+        statut: 'Inactif',
+        count: documents.filter((d) => d.status !== 1).length,
+        percentage: 0,
+      },
     ];
 
     // Calculer les pourcentages
-    parStatut.forEach(s => {
+    parStatut.forEach((s) => {
       s.percentage = total > 0 ? Math.round((s.count / total) * 100) : 0;
     });
 
     return {
       total,
       liste,
-      parStatut: parStatut.filter(s => s.count > 0),
+      parStatut: parStatut.filter((s) => s.count > 0),
     };
   }
 
-  private getDossiersStats(clients: any[]): SingleTypeCustomerStatsDto['dossiers'] {
-    const tousDossiers = clients.flatMap(c => c.dossiers || []);
+  private getDossiersStats(
+    clients: any[],
+  ): SingleTypeCustomerStatsDto['dossiers'] {
+    const tousDossiers = clients.flatMap((c) => c.dossiers || []);
     const total = tousDossiers.length;
 
     // Stats par statut
     const byStatusMap = new Map<number, number>();
-    tousDossiers.forEach(d => {
+    tousDossiers.forEach((d) => {
       byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
     });
 
@@ -157,19 +191,25 @@ export class TypeCustomerStatsService {
       6: '#9ca3af',
     };
 
-    const parStatut = Array.from(byStatusMap.entries()).map(([status, count]) => ({
-      name: statusLabels[status] || 'Inconnu',
-      value: count,
-      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-      color: statusColors[status] || '#6b7280',
-    }));
+    const parStatut = Array.from(byStatusMap.entries()).map(
+      ([status, count]) => ({
+        name: statusLabels[status] || 'Inconnu',
+        value: count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: statusColors[status] || '#6b7280',
+      }),
+    );
 
     // Dossiers récents
     const recents = [...tousDossiers]
-      .sort((a, b) => new Date(b.opening_date).getTime() - new Date(a.opening_date).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.opening_date).getTime() -
+          new Date(a.opening_date).getTime(),
+      )
       .slice(0, 10)
-      .map(d => {
-        const client = clients.find(c => c.id === d.client_id);
+      .map((d) => {
+        const client = clients.find((c) => c.id === d.client_id);
         return {
           id: d.id,
           numero: d.dossier_number,
@@ -186,10 +226,12 @@ export class TypeCustomerStatsService {
     };
   }
 
-  private getGeographicStats(clients: any[]): SingleTypeCustomerStatsDto['repartitionGeographique'] {
+  private getGeographicStats(
+    clients: any[],
+  ): SingleTypeCustomerStatsDto['repartitionGeographique'] {
     const cityMap = new Map<string, number>();
 
-    clients.forEach(c => {
+    clients.forEach((c) => {
       const city = c.location_city?.name || 'Ville inconnue';
       cityMap.set(city, (cityMap.get(city) || 0) + 1);
     });
@@ -207,7 +249,9 @@ export class TypeCustomerStatsService {
     return repartition;
   }
 
-  private getEvolutionStats(clients: any[]): SingleTypeCustomerStatsDto['evolution'] {
+  private getEvolutionStats(
+    clients: any[],
+  ): SingleTypeCustomerStatsDto['evolution'] {
     const maintenant = new Date();
     const sixMoisAvant = new Date();
     sixMoisAvant.setMonth(sixMoisAvant.getMonth() - 6);
@@ -215,8 +259,8 @@ export class TypeCustomerStatsService {
     const evolutionMap = new Map<string, number>();
 
     clients
-      .filter(c => new Date(c.created_at) >= sixMoisAvant)
-      .forEach(c => {
+      .filter((c) => new Date(c.created_at) >= sixMoisAvant)
+      .forEach((c) => {
         const date = new Date(c.created_at);
         const mois = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         evolutionMap.set(mois, (evolutionMap.get(mois) || 0) + 1);
@@ -242,10 +286,10 @@ export class TypeCustomerStatsService {
       .loadRelationCountAndMap('type.documentsCount', 'type.requiredDocuments')
       .getMany();
 
-    const active = types.filter(t => t.status === 1).length;
-    const inactive = types.filter(t => t.status !== 1).length;
+    const active = types.filter((t) => t.status === 1).length;
+    const inactive = types.filter((t) => t.status !== 1).length;
 
-    const details: TypeCustomerDetailDto[] = types.map(t => ({
+    const details: TypeCustomerDetailDto[] = types.map((t) => ({
       id: t.id,
       name: t.name,
       code: t.code,

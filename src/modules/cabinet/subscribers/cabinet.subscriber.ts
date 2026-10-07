@@ -2,10 +2,8 @@ import { BaseEntitySubscriber } from 'src/core/subscribers/base-entity.subscribe
 import { DataSource, InsertEvent } from 'typeorm';
 import { Injectable } from '@nestjs/common';
 
-
 import { Cabinet } from '../entities/cabinet.entity';
 import { TenantSeederService } from '../tenant-seeder.service';
-
 
 /**
  * CabinetSubscriber

@@ -2,16 +2,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import {
+  getCurrentTenantId,
+  hasActiveTenant,
+} from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { Dossier, DangerLevel } from './entities/dossier.entity';
 import { DossierStatus } from 'src/core/enums/dossier-status.enum';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
-import { EntityResolverService, ResolveConfig } from 'src/core/ai-database/write/entity-resolver.service';
+import {
+  EntityResolverService,
+  ResolveConfig,
+} from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
-import { WriteableFieldSchema, ValidationResult } from 'src/core/ai-database/interface/entity-write-handler.interface';
+import {
+  WriteableFieldSchema,
+  ValidationResult,
+} from 'src/core/ai-database/interface/entity-write-handler.interface';
 import { AmbiguityException } from 'src/core/ai-database/write/ambiguity.exception';
 import {
   DossierLifecyclePhase,
@@ -29,7 +38,6 @@ import { CaseWorkflowFeature } from 'src/modules/case-workflow/entities/workflow
  */
 @Injectable()
 export class DossierWriteHandler extends BaseWriteHandler {
-
   constructor(
     dataSource: DataSource,
     schemaMetadata: SchemaMetadataService,
@@ -69,15 +77,19 @@ export class DossierWriteHandler extends BaseWriteHandler {
     // Enrichir les champs clés avec des descriptions métier précises
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       client_id: {
-        description: 'ID du client associé au dossier. Peut aussi fournir "client" avec le nom.',
+        description:
+          'ID du client associé au dossier. Peut aussi fournir "client" avec le nom.',
         example: '1',
       },
       object: {
-        description: "Nom de l'affaire / objet du dossier. Ce texte est affiché comme titre principal du dossier.",
+        description:
+          "Nom de l'affaire / objet du dossier. Ce texte est affiché comme titre principal du dossier. Facultatif : le formulaire d'ouverture le déduit du client et de l'adversaire.",
         example: 'Affaire Société ABC — recouvrement de facture impayée',
+        required: false,
       },
       court_name: {
-        description: "Nature de l'affaire en texte libre (champ historique utilisé par le formulaire d'ouverture). Ne pas y mettre la juridiction, qui utilise jurisdiction_id/jurisdiction.",
+        description:
+          "Nature de l'affaire en texte libre (champ historique utilisé par le formulaire d'ouverture). Ne pas y mettre la juridiction, qui utilise jurisdiction_id/jurisdiction.",
         example: 'Recouvrement de créance',
       },
       status: {
@@ -85,7 +97,8 @@ export class DossierWriteHandler extends BaseWriteHandler {
         example: '0',
       },
       lawyer_id: {
-        description: "ID de l'avocat responsable. Peut aussi fournir \"lawyer\" avec le nom.",
+        description:
+          'ID de l\'avocat responsable. Peut aussi fournir "lawyer" avec le nom.',
         example: '1',
         required: false,
       },
@@ -98,17 +111,20 @@ export class DossierWriteHandler extends BaseWriteHandler {
         example: '2',
       },
       procedure_type_id: {
-        description: 'ID du type de procédure. Peut aussi fournir "procedure_type" avec le nom (ex: "Contentieux civil", "Droit des affaires").',
+        description:
+          'ID du type de procédure. Peut aussi fournir "procedure_type" avec le nom (ex: "Contentieux civil", "Droit des affaires").',
         example: '1',
         required: false,
       },
       procedure_subtype_id: {
-        description: 'ID du sous-type de procédure. Peut aussi fournir "procedure_subtype" avec le nom (ex: "Rupture conventionnelle", "Divorce").',
+        description:
+          'ID du sous-type de procédure. Peut aussi fournir "procedure_subtype" avec le nom (ex: "Rupture conventionnelle", "Divorce").',
         example: '1',
         required: false,
       },
       jurisdiction_id: {
-        description: 'ID de la juridiction compétente. Peut aussi fournir "jurisdiction" avec le nom du tribunal (ex: "Tribunal de première instance de Yaoundé"). Sera héritée par les audiences du dossier.',
+        description:
+          'ID de la juridiction compétente. Peut aussi fournir "jurisdiction" avec le nom du tribunal (ex: "Tribunal de première instance de Yaoundé"). Sera héritée par les audiences du dossier.',
         example: '3',
       },
     };
@@ -124,24 +140,26 @@ export class DossierWriteHandler extends BaseWriteHandler {
     // "case_name" → mappé vers "object" et "nature" → mappé vers "court_name"
     // dans resolveDependencies(). Sans ces entrées, le LLM ne peut pas deviner
     // ces noms et ne remplit jamais le nom / la nature de l'affaire séparément.
-    if (!fields.find(f => f.name === 'case_name')) {
+    if (!fields.find((f) => f.name === 'case_name')) {
       fields.push({
         name: 'case_name',
         label: "Nom de l'affaire",
         type: 'string',
-        required: true,
+        required: false,
         example: 'Affaire Société ABC — facture impayée de 2 500 000 FCFA',
-        description: "Nom de l'affaire, affiché comme titre principal du dossier. Stocké dans \"object\". Toujours le renseigner, distinct de la nature.",
+        description:
+          "Nom de l'affaire, affiché comme titre principal du dossier. Stocké dans \"object\". Facultatif : absent, le dossier est créé sans intitulé et le formulaire d'ouverture le déduit du client et de l'adversaire.",
       });
     }
-    if (!fields.find(f => f.name === 'nature')) {
+    if (!fields.find((f) => f.name === 'nature')) {
       fields.push({
         name: 'nature',
         label: "Nature de l'affaire",
         type: 'string',
         required: false,
         example: 'Recouvrement de créance',
-        description: "Nature de l'affaire en texte libre (ex: 'Recouvrement de créance', 'Divorce'). Stockée dans \"court_name\". Ce n'est pas le tribunal (voir jurisdiction).",
+        description:
+          "Nature de l'affaire en texte libre (ex: 'Recouvrement de créance', 'Divorce'). Stockée dans \"court_name\". Ce n'est pas le tribunal (voir jurisdiction).",
       });
     }
 
@@ -160,14 +178,13 @@ export class DossierWriteHandler extends BaseWriteHandler {
     if (operation === 'INSERT') {
       // Client requis
       if (!fields.client_id) {
-        errors.push('Le client est requis pour créer un dossier (client_id ou client)');
+        errors.push(
+          'Le client est requis pour créer un dossier (client_id ou client)',
+        );
       }
 
-      // Objet du litige requis
-      if (!fields.object) {
-        errors.push("L'objet du litige est requis");
-      }
-
+      // L'objet du litige n'est plus exigé : le formulaire d'ouverture le
+      // déduit du client et de l'adversaire, et le dossier reste valide sans.
     }
 
     return {
@@ -194,10 +211,16 @@ export class DossierWriteHandler extends BaseWriteHandler {
     // Accepter aussi les noms métier employés par le formulaire et dans les
     // demandes en langage naturel, puis les convertir vers les colonnes réelles.
     const normalizedFields = { ...fields };
-    if (!normalizedFields.object && typeof normalizedFields.case_name === 'string') {
+    if (
+      !normalizedFields.object &&
+      typeof normalizedFields.case_name === 'string'
+    ) {
       normalizedFields.object = normalizedFields.case_name;
     }
-    if (!normalizedFields.court_name && typeof normalizedFields.nature === 'string') {
+    if (
+      !normalizedFields.court_name &&
+      typeof normalizedFields.nature === 'string'
+    ) {
       normalizedFields.court_name = normalizedFields.nature;
     }
     delete normalizedFields.case_name;
@@ -212,10 +235,18 @@ export class DossierWriteHandler extends BaseWriteHandler {
     delete withoutProcedure.procedure_subtype;
 
     // ── 2. Résoudre les autres FK (client, lawyer, etc.) ────────────────────
-    const resolved = await super.resolveDependencies(withoutProcedure, userId, createdEntities, config);
+    const resolved = await super.resolveDependencies(
+      withoutProcedure,
+      userId,
+      createdEntities,
+      config,
+    );
 
     // ── 3. Résoudre procedure_type (is_subtype = false) ─────────────────────
-    if (typeValue !== undefined && !BaseWriteHandler.isAlreadyId(resolved.procedure_type_id)) {
+    if (
+      typeValue !== undefined &&
+      !BaseWriteHandler.isAlreadyId(resolved.procedure_type_id)
+    ) {
       if (BaseWriteHandler.isAlreadyId(typeValue)) {
         resolved.procedure_type_id = Number(typeValue);
       } else if (typeof typeValue === 'string') {
@@ -225,34 +256,66 @@ export class DossierWriteHandler extends BaseWriteHandler {
           userId,
           undefined,
           config,
-          { is_subtype: false },   // ← filtre types principaux uniquement
+          { is_subtype: false }, // ← filtre types principaux uniquement
         );
 
-        if (result.resolved.found && result.resolved.best && !result.resolved.ambiguous) {
-          resolved.procedure_type_id = (result.resolved.best as any).id;
-          this.logger.log(`✅ procedure_type résolu: "${typeValue}" → ID ${resolved.procedure_type_id}`);
-        } else if (result.resolved.ambiguous || (result.resolved.candidates && result.resolved.candidates.length > 0)) {
-          const candidates = result.resolved.candidates.slice(0, 10).map((c: any) => ({
-            id: (c.entity as any).id,
-            label: c.matchedOn,
-            score: c.score,
-            data: c.entity,
-          }));
-          this.logger.warn(`🔍 ${candidates.length} candidat(s) pour le type "${typeValue}"`);
-          throw new AmbiguityException('procedure_types', 'procedure_type', typeValue, candidates, -1, this.entityName);
+        if (
+          result.resolved.found &&
+          result.resolved.best &&
+          !result.resolved.ambiguous
+        ) {
+          resolved.procedure_type_id = result.resolved.best.id;
+          this.logger.log(
+            `✅ procedure_type résolu: "${typeValue}" → ID ${resolved.procedure_type_id}`,
+          );
+        } else if (
+          result.resolved.ambiguous ||
+          (result.resolved.candidates && result.resolved.candidates.length > 0)
+        ) {
+          const candidates = result.resolved.candidates
+            .slice(0, 10)
+            .map((c: any) => ({
+              id: c.entity.id,
+              label: c.matchedOn,
+              score: c.score,
+              data: c.entity,
+            }));
+          this.logger.warn(
+            `🔍 ${candidates.length} candidat(s) pour le type "${typeValue}"`,
+          );
+          throw new AmbiguityException(
+            'procedure_types',
+            'procedure_type',
+            typeValue,
+            candidates,
+            -1,
+            this.entityName,
+          );
         } else {
           // Type introuvable → proposer tous les types principaux disponibles.
           // Même si la liste est vide, on lance l'AmbiguityException pour que
           // le frontend affiche l'option "Autre" permettant la création.
-          this.logger.warn(`⚠️ Type de procédure "${typeValue}" introuvable — proposition des types disponibles`);
+          this.logger.warn(
+            `⚠️ Type de procédure "${typeValue}" introuvable — proposition des types disponibles`,
+          );
           const fallbackCandidates = await this.fetchTopProcedureTypes(false);
-          throw new AmbiguityException('procedure_types', 'procedure_type', typeValue, fallbackCandidates, -1, this.entityName);
+          throw new AmbiguityException(
+            'procedure_types',
+            'procedure_type',
+            typeValue,
+            fallbackCandidates,
+            -1,
+            this.entityName,
+          );
         }
       }
     }
 
     // ── 4. Résoudre procedure_subtype (is_subtype = true + parent_id) ───────
-    if (subtypeValue !== undefined && !BaseWriteHandler.isAlreadyId(resolved.procedure_subtype_id)) {
+    if (
+      subtypeValue !== undefined &&
+      !BaseWriteHandler.isAlreadyId(resolved.procedure_subtype_id)
+    ) {
       if (BaseWriteHandler.isAlreadyId(subtypeValue)) {
         resolved.procedure_subtype_id = Number(subtypeValue);
       } else if (typeof subtypeValue === 'string') {
@@ -274,7 +337,9 @@ export class DossierWriteHandler extends BaseWriteHandler {
         // 2ème tentative : is_subtype=true seulement (sans parent_id)
         // Utile si les données sont incohérentes ou si le type principal n'est pas encore résolu
         if (!result.resolved.found && !result.resolved.ambiguous && parentId) {
-          this.logger.log(`🔄 Sous-type non trouvé avec parent_id=${parentId}, tentative is_subtype=true seul`);
+          this.logger.log(
+            `🔄 Sous-type non trouvé avec parent_id=${parentId}, tentative is_subtype=true seul`,
+          );
           result = await this.entityResolver.resolveOrCreateEntity(
             'procedure_types',
             subtypeValue,
@@ -285,37 +350,71 @@ export class DossierWriteHandler extends BaseWriteHandler {
           );
         }
 
-        if (result.resolved.found && result.resolved.best && !result.resolved.ambiguous) {
-          resolved.procedure_subtype_id = (result.resolved.best as any).id;
-          this.logger.log(`✅ procedure_subtype résolu: "${subtypeValue}" → ID ${resolved.procedure_subtype_id}`);
-        } else if (result.resolved.ambiguous || (result.resolved.candidates && result.resolved.candidates.length > 0)) {
-          const candidates = result.resolved.candidates.slice(0, 10).map((c: any) => ({
-            id: (c.entity as any).id,
-            label: c.matchedOn,
-            score: c.score,
-            data: c.entity,
-          }));
-          this.logger.warn(`🔍 ${candidates.length} suggestion(s) pour le sous-type "${subtypeValue}"`);
-          throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, candidates, -1, this.entityName);
+        if (
+          result.resolved.found &&
+          result.resolved.best &&
+          !result.resolved.ambiguous
+        ) {
+          resolved.procedure_subtype_id = result.resolved.best.id;
+          this.logger.log(
+            `✅ procedure_subtype résolu: "${subtypeValue}" → ID ${resolved.procedure_subtype_id}`,
+          );
+        } else if (
+          result.resolved.ambiguous ||
+          (result.resolved.candidates && result.resolved.candidates.length > 0)
+        ) {
+          const candidates = result.resolved.candidates
+            .slice(0, 10)
+            .map((c: any) => ({
+              id: c.entity.id,
+              label: c.matchedOn,
+              score: c.score,
+              data: c.entity,
+            }));
+          this.logger.warn(
+            `🔍 ${candidates.length} suggestion(s) pour le sous-type "${subtypeValue}"`,
+          );
+          throw new AmbiguityException(
+            'procedure_types',
+            'procedure_subtype',
+            subtypeValue,
+            candidates,
+            -1,
+            this.entityName,
+          );
         } else {
           // Sous-type introuvable → proposer les sous-types disponibles pour ce parent.
           // Si aucun sous-type n'existe encore pour ce parent (liste vide), on lance
           // quand même l'AmbiguityException avec 0 candidats : le frontend affichera
           // l'option "Autre" pour créer le sous-type.
           const parentId = resolved.procedure_type_id;
-          this.logger.warn(`⚠️ Sous-type "${subtypeValue}" introuvable — proposition des sous-types pour parent_id=${parentId}`);
-          let fallbackCandidates = await this.fetchTopProcedureTypes(true, parentId);
+          this.logger.warn(
+            `⚠️ Sous-type "${subtypeValue}" introuvable — proposition des sous-types pour parent_id=${parentId}`,
+          );
+          let fallbackCandidates = await this.fetchTopProcedureTypes(
+            true,
+            parentId,
+          );
 
           // Si vraiment 0 sous-types pour ce parent → élargir à tous les sous-types
           // pour donner quand même un contexte à l'utilisateur
           if (fallbackCandidates.length === 0) {
-            this.logger.warn(`⚠️ Aucun sous-type pour parent_id=${parentId} — élargissement à tous les sous-types`);
+            this.logger.warn(
+              `⚠️ Aucun sous-type pour parent_id=${parentId} — élargissement à tous les sous-types`,
+            );
             fallbackCandidates = await this.fetchTopProcedureTypes(true);
           }
 
           // Dans tous les cas, on lance l'AmbiguityException :
           // le frontend affiche les candidats (0..N) + l'option "Autre" (allowOther=true)
-          throw new AmbiguityException('procedure_types', 'procedure_subtype', subtypeValue, fallbackCandidates, -1, this.entityName);
+          throw new AmbiguityException(
+            'procedure_types',
+            'procedure_subtype',
+            subtypeValue,
+            fallbackCandidates,
+            -1,
+            this.entityName,
+          );
         }
       }
     }
@@ -324,7 +423,9 @@ export class DossierWriteHandler extends BaseWriteHandler {
   }
 
   /** Récupère les 10 employés les plus récents avec leur user (pour avocat) */
-  private async fetchTopEmployees(): Promise<Array<{ id: any; label: string; score: number; data: any }>> {
+  private async fetchTopEmployees(): Promise<
+    Array<{ id: any; label: string; score: number; data: any }>
+  > {
     try {
       const employeesQB = this.dataSource
         .getRepository('employee')
@@ -337,13 +438,16 @@ export class DossierWriteHandler extends BaseWriteHandler {
       const employees = await employeesQB.getMany();
       return employees.map((e: any) => ({
         id: e.id,
-        label: `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim() +
+        label:
+          `${e.user?.first_name ?? ''} ${e.user?.last_name ?? ''}`.trim() +
           (e.specialization ? ` — ${e.specialization}` : ''),
         score: 0,
         data: e,
       }));
     } catch (err) {
-      this.logger.error(`Erreur récupération employés: ${(err as Error).message}`);
+      this.logger.error(
+        `Erreur récupération employés: ${(err as Error).message}`,
+      );
       return [];
     }
   }
@@ -379,7 +483,9 @@ export class DossierWriteHandler extends BaseWriteHandler {
         data: p,
       }));
     } catch (err) {
-      this.logger.error(`Erreur récupération procedure_types: ${(err as Error).message}`);
+      this.logger.error(
+        `Erreur récupération procedure_types: ${(err as Error).message}`,
+      );
       return [];
     }
   }
@@ -401,7 +507,9 @@ export class DossierWriteHandler extends BaseWriteHandler {
 
     const prefix = (settings?.dossier_prefix ?? 'DOS-').toString();
     const padding = 4;
-    const template = (settings?.dossier_number_format ?? '{PREFIX}{YYYY}-{NNNN}').toString();
+    const template = (
+      settings?.dossier_number_format ?? '{PREFIX}{YYYY}-{NNNN}'
+    ).toString();
 
     const now = new Date();
     const YYYY = now.getFullYear().toString();
@@ -428,7 +536,9 @@ export class DossierWriteHandler extends BaseWriteHandler {
 
     let nextSeq = 1;
     if (last?.dossier_number) {
-      const match = last.dossier_number.slice(searchPrefix.length).match(/^(\d+)/);
+      const match = last.dossier_number
+        .slice(searchPrefix.length)
+        .match(/^(\d+)/);
       if (match) nextSeq = parseInt(match[1], 10) + 1;
     }
 
@@ -463,19 +573,27 @@ export class DossierWriteHandler extends BaseWriteHandler {
   ): Promise<WriteResult> {
     // Numéro de dossier : honoré s'il est fourni, sinon auto-généré selon les
     // settings du cabinet (dossier_prefix / dossier_number_format).
-    const providedNumber = fields?.dossier_number ? String(fields.dossier_number).trim() : '';
-    const dossierNumber = providedNumber || (await this.generateDossierNumber());
+    const providedNumber = fields?.dossier_number
+      ? String(fields.dossier_number).trim()
+      : '';
+    const dossierNumber =
+      providedNumber || (await this.generateDossierNumber());
 
     // Filtrer les champs connus + stripper les champs auto-générés (codes, refs)
     // → on ne veut pas que le LLM impose un dossier_number qui causerait collision
-    const safeFields = this.stripAutoGeneratedFields(this.filterKnownColumns(fields));
+    const safeFields = this.stripAutoGeneratedFields(
+      this.filterKnownColumns(fields),
+    );
     const workflowEngine = await this.getNewDossierWorkflowEngine();
 
     const dossierData = {
       ...safeFields,
       dossier_number: dossierNumber,
       opening_date: new Date(),
-      status: safeFields.status !== undefined ? parseInt(safeFields.status) : DossierStatus.OPEN,
+      status:
+        safeFields.status !== undefined
+          ? parseInt(safeFields.status)
+          : DossierStatus.OPEN,
       priority_level: safeFields.priority_level || 0,
       danger_level: safeFields.danger_level || DangerLevel.Normal,
       // Le parcours est décidé par la configuration du cabinet, comme dans
@@ -483,20 +601,24 @@ export class DossierWriteHandler extends BaseWriteHandler {
       workflow_engine: workflowEngine,
       lifecycle_phase: DossierLifecyclePhase.OPENING,
       // Les deux références sont optionnelles et peuvent être complétées plus tard.
-      procedure_type_id: safeFields.procedure_type_id === undefined
-        ? undefined
-        : safeFields.procedure_type_id === null || safeFields.procedure_type_id === ''
-          ? null
-          : Number(safeFields.procedure_type_id),
-      procedure_subtype_id: safeFields.procedure_subtype_id === undefined
-        ? undefined
-        : safeFields.procedure_subtype_id === null || safeFields.procedure_subtype_id === ''
-          ? null
-          : Number(safeFields.procedure_subtype_id),
+      procedure_type_id:
+        safeFields.procedure_type_id === undefined
+          ? undefined
+          : safeFields.procedure_type_id === null ||
+              safeFields.procedure_type_id === ''
+            ? null
+            : Number(safeFields.procedure_type_id),
+      procedure_subtype_id:
+        safeFields.procedure_subtype_id === undefined
+          ? undefined
+          : safeFields.procedure_subtype_id === null ||
+              safeFields.procedure_subtype_id === ''
+            ? null
+            : Number(safeFields.procedure_subtype_id),
     } as any;
 
     // Supprimer les undefined pour laisser TypeORM gérer les defaults
-    Object.keys(dossierData).forEach(key => {
+    Object.keys(dossierData).forEach((key) => {
       if (dossierData[key] === undefined) delete dossierData[key];
     });
 

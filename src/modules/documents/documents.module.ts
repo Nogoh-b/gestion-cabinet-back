@@ -2,17 +2,6 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CabinetModule } from '../cabinet/cabinet.module';
 
-
-
-
-
-
-
-
-
-
-
-
 import { CustomerModule } from '../customer/customer.module';
 import { DocumentCategoryModule } from '../document-category/document-category.module';
 import { DossiersModule } from '../dossiers/dossiers.module';
@@ -29,18 +18,6 @@ import { ProcedureModule } from '../procedure/procedure.module';
 import { DocumentCustomerSubscriber } from './document-customer/subscribers/document-customer.subscriber';
 import { PlansModule } from '../plans/plans.module';
 
-
-
-
-
-
-
-
-
-
-
-
-
 @Module({
   imports: [
     TypeOrmModule.forFeature([DocumentType, DocumentCustomer]),
@@ -53,7 +30,18 @@ import { PlansModule } from '../plans/plans.module';
     PlansModule,
   ],
   controllers: [DocumentTypeController, DocumentCustomerController],
-  providers: [DocumentTypeService, DocumentCustomerService, DocumentStatsService, DocumentTypeStatsService, DocumentCustomerSubscriber],
-  exports: [DocumentTypeService, DocumentCustomerService,DocumentStatsService, TypeOrmModule],
+  providers: [
+    DocumentTypeService,
+    DocumentCustomerService,
+    DocumentStatsService,
+    DocumentTypeStatsService,
+    DocumentCustomerSubscriber,
+  ],
+  exports: [
+    DocumentTypeService,
+    DocumentCustomerService,
+    DocumentStatsService,
+    TypeOrmModule,
+  ],
 })
 export class DocumentsModule {}

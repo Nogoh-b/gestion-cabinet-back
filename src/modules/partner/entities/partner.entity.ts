@@ -10,16 +10,6 @@ import {
 } from 'typeorm';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
-
-
-
-
-
-
-
-
-
-
 @Entity('partner')
 export class Partner extends BaseEntity {
   /*@PrimaryGeneratedColumn()
@@ -28,13 +18,11 @@ export class Partner extends BaseEntity {
   @Column({ length: 100 })
   name: string; // Nom du partenaire
 
-
-
   @Index({ unique: true })
   @PrimaryColumn({ type: 'varchar', length: 50 }) // Modification ici (char → varchar)
   promo_code: string;
 
-  @Index({ unique: true }) 
+  @Index({ unique: true })
   @Column()
   customer_id: number; // Lien unique vers le client
 
@@ -45,7 +33,6 @@ export class Partner extends BaseEntity {
   @JoinColumn({ name: 'customer_id' })
   customer: Customer;
 
-  
   @Column({ type: 'tinyint', default: 1 })
   status: number; // Statut du partenaire (1=actif, 0=inactif)
 

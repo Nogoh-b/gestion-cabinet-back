@@ -1,15 +1,22 @@
 // src/modules/audiences/dto/create-audience.dto.ts
-import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-
-
-
 
 export class CreateAudienceDto {
   @ApiProperty({
     example: 12,
-    description: "Identifiant du dossier lié à cette audience",
+    description: 'Identifiant du dossier lié à cette audience',
   })
   @IsInt()
   @IsNotEmpty()
@@ -71,7 +78,7 @@ export class CreateAudienceDto {
   @IsString()
   @IsOptional()
   type: any;
-  
+
   @ApiProperty({
     example: 'Audience Type',
     required: false,
@@ -112,7 +119,6 @@ export class CreateAudienceDto {
   @IsOptional()
   document_ids: number[]; // Liste des destinataires principaux
 
-
   @ApiProperty({
     example: '2025-11-05T09:00:00Z',
     required: false,
@@ -121,12 +127,20 @@ export class CreateAudienceDto {
   @IsOptional()
   postponed_to?: Date;
 
-  @ApiProperty({ required: false, description: 'ID UUID de la visite d\'étape courante (optionnel — priorité sur la détection automatique)' })
+  @ApiProperty({
+    required: false,
+    description:
+      "ID UUID de la visite d'étape courante (optionnel — priorité sur la détection automatique)",
+  })
   @IsUUID()
   @IsOptional()
   stage_visit_id?: string;
 
-  @ApiProperty({ required: false, description: 'ID UUID de la visite de sous-étape courante (optionnel — priorité sur la détection automatique)' })
+  @ApiProperty({
+    required: false,
+    description:
+      'ID UUID de la visite de sous-étape courante (optionnel — priorité sur la détection automatique)',
+  })
   @IsUUID()
   @IsOptional()
   sub_stage_visit_id?: string;

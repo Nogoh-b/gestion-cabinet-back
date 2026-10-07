@@ -1,13 +1,21 @@
 // src/chat/entities/conversation.entity.ts
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, OneToMany, ManyToMany, JoinTable, OneToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  OneToMany,
+  ManyToMany,
+  JoinTable,
+  OneToOne,
+} from 'typeorm';
 
 import { Message } from './messages.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import { Expose } from 'class-transformer';
 
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
-
 
 @Entity()
 export class Conversation extends BaseEntity {
@@ -26,12 +34,11 @@ export class Conversation extends BaseEntity {
   @JoinTable()
   participants: Employee[];
 
-  @OneToMany(() => Message, message => message.conversation)
+  @OneToMany(() => Message, (message) => message.conversation)
   messages: Message[];
 
-  @OneToOne(() => Dossier, dossier => dossier.conversation)
+  @OneToOne(() => Dossier, (dossier) => dossier.conversation)
   dossier: Dossier;
-
 
   @CreateDateColumn()
   createdAt: Date;
@@ -39,8 +46,7 @@ export class Conversation extends BaseEntity {
   @Column({ default: null })
   lastMessageAt: Date;
 
-
- // ✅ AJOUTER CETTE COLONNE
+  // ✅ AJOUTER CETTE COLONNE
   @Column({ type: 'json', nullable: true })
   lastMessageData?: {
     content: string;
@@ -57,12 +63,14 @@ export class Conversation extends BaseEntity {
 
   // ✅ GARDER LE GETTER POUR LA COMPATIBILITÉ
   @Expose()
-  get lastMessage(): {
-    content: string;
-    createdAt: string;
-    senderId: number;
-    senderName: string;
-  } | undefined {
+  get lastMessage():
+    | {
+        content: string;
+        createdAt: string;
+        senderId: number;
+        senderName: string;
+      }
+    | undefined {
     return this.lastMessageData;
   }
 }

@@ -86,7 +86,7 @@ import { LegacyWorkflowMutationGuard } from './services/legacy-workflow-mutation
     WorkflowService,
     TaskService,
     HistoryService,
-    TypeOrmModule
+    TypeOrmModule,
   ],
 })
 export class ProcedureModule {

@@ -18,12 +18,13 @@ import {
   ParseIntPipe,
 } from '@nestjs/common';
 
-
-
-
-
-
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 
 import { DocumentTypeService } from './document-type.service';
 import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
@@ -32,23 +33,17 @@ import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { DocumentTypeStatsDto } from './dto/document-type-stats.dto';
 import { DocumentTypeStatsService } from './document-type-stats.service';
 
-
-
-
-
-
-
-
 @ApiTags('Document Types')
 @Controller('document-types')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class DocumentTypeController {
-  constructor(private readonly service: DocumentTypeService,
-    private readonly statsService: DocumentTypeStatsService) {}
+  constructor(
+    private readonly service: DocumentTypeService,
+    private readonly statsService: DocumentTypeStatsService,
+  ) {}
 
-
-    @Get('stats')
+  @Get('stats')
   // @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Obtenir les statistiques des types de documents' })
   @ApiResponse({ status: 200, type: DocumentTypeStatsDto })
@@ -58,11 +53,11 @@ export class DocumentTypeController {
 
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'un type de document spécifique' })
+  @ApiOperation({
+    summary: "Obtenir les statistiques d'un type de document spécifique",
+  })
   @ApiParam({ name: 'id', description: 'ID du type de document' })
-  async getStatsForType(
-    @Param('id', ParseIntPipe) id: number,
-  ): Promise<any> {
+  async getStatsForType(@Param('id', ParseIntPipe) id: number): Promise<any> {
     return this.statsService.getStats(id);
   }
 
@@ -92,7 +87,7 @@ export class DocumentTypeController {
 
   @Get('stats/usage')
   // @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'utilisation' })
+  @ApiOperation({ summary: "Obtenir les statistiques d'utilisation" })
   async getUsageStats() {
     const stats = await this.statsService.getStats();
     return (stats as any).usageStats;
@@ -134,7 +129,7 @@ export class DocumentTypeController {
     return this.service.findAll();
   }
 
- /**
+  /**
    * POST /document-types/get/by/category
    * Body: { filter: { categoryId: 2 } }
    */
@@ -145,9 +140,9 @@ export class DocumentTypeController {
     // @Query() paginationParams?: PaginationParamsDto,
   ): Promise<any> {
     const category_id = searchParams?.category_id || {};
-    console.log('Received filter:',JSON.stringify(searchParams) );
-    if(!category_id) {
-      return null
+    console.log('Received filter:', JSON.stringify(searchParams));
+    if (!category_id) {
+      return null;
       // throw new BadRequestException('Le champ categoryId est requis dans le filtre');
     }
     return this.service.getAllByCategory(category_id);

@@ -17,10 +17,18 @@ import {
   UploadedFiles,
   UseGuards,
   Query,
-  ParseIntPipe
+  ParseIntPipe,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiConsumes, ApiBearerAuth, ApiBody, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiConsumes,
+  ApiBearerAuth,
+  ApiBody,
+  ApiParam,
+} from '@nestjs/swagger';
 import { CustomersService } from './customer.service';
 import { CreateCustomerFromCotiDto } from './dto/create-customer-from-coti.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -31,18 +39,15 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { EmailService } from 'src/core/shared/services/email/email.service copy';
 import { CustomerStatsService } from './customer-stats.service';
 
-
 @ApiTags('customer')
 @Controller('customer')
-@ApiBearerAuth() 
-
+@ApiBearerAuth()
 export class CustomerController {
   constructor(
     private readonly customerService: CustomersService,
     private readonly emailService: EmailService,
-    private readonly statsService: CustomerStatsService
+    private readonly statsService: CustomerStatsService,
   ) {}
-
 
   @Get('stats')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
@@ -63,7 +68,7 @@ export class CustomerController {
   @Get('stats/:id')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @RequirePermissions('view_clients')
-  @ApiOperation({ summary: 'Obtenir les statistiques d\'un client spécifique' })
+  @ApiOperation({ summary: "Obtenir les statistiques d'un client spécifique" })
   @ApiParam({ name: 'id', description: 'ID du client' })
   async getStatsForCustomer(
     @Param('id', ParseIntPipe) id: number,
@@ -89,10 +94,14 @@ export class CustomerController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new customer' })
-  @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Customer created successfully',
+    type: CustomerResponseDto,
+  })
   @RequirePermissions('create_client')
   async create(@Body() createCustomerDto: CreateCustomerDto): Promise<any> {
-    console.log(createCustomerDto)
+    console.log(createCustomerDto);
     return await this.customerService.create(createCustomerDto);
   }
 
@@ -100,62 +109,80 @@ export class CustomerController {
   // @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('view_clients')
   @ApiOperation({ summary: 'Rechercher customer' })
-  @ApiResponse({ status: 201, description: 'Liste' , type: [CustomerResponseDto] })
-
- async search(
-
+  @ApiResponse({
+    status: 201,
+    description: 'Liste',
+    type: [CustomerResponseDto],
+  })
+  async search(
     @Query() searchParams?: CustomerSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.customerService.searchWithTransformer(searchParams as SearchCriteria, CustomerResponseDto , paginationParams);
+    return this.customerService.searchWithTransformer(
+      searchParams as SearchCriteria,
+      CustomerResponseDto,
+      paginationParams,
+    );
   }
-
 
   @Post('/create-online')
   @ApiOperation({ summary: 'Create a new customer' })
   @UseInterceptors(AnyFilesInterceptor())
   @ApiConsumes('multipart/form-data')
-  @ApiResponse({ status: 201, description: 'Customer created successfully', type: CustomerResponseDto })
-
+  @ApiResponse({
+    status: 201,
+    description: 'Customer created successfully',
+    type: CustomerResponseDto,
+  })
   async createUserFromeCoti(
     @Body() createCustomerDto: CreateCustomerFromCotiDto,
-    @UploadedFiles() files: Express.Multer.File[]
-    ): Promise<any> {
-    
-     return await this.customerService.createFromCoti(createCustomerDto, files);
+    @UploadedFiles() files: Express.Multer.File[],
+  ): Promise<any> {
+    return await this.customerService.createFromCoti(createCustomerDto, files);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all customers' })
-  @ApiResponse({ status: 200, description: 'List of customers', type: [CustomerResponseDto] })
+  @ApiResponse({
+    status: 200,
+    description: 'List of customers',
+    type: [CustomerResponseDto],
+  })
   @RequirePermissions('view_clients')
   async findAll(): Promise<CustomerResponseDto[]> {
     return await this.customerService.findAll();
   }
 
-
-  @Get("v2")
+  @Get('v2')
   @ApiOperation({ summary: 'Get all customers' })
-  @ApiResponse({ status: 200, description: 'List of customers', type: [CustomerResponseDto] })
+  @ApiResponse({
+    status: 200,
+    description: 'List of customers',
+    type: [CustomerResponseDto],
+  })
   @RequirePermissions('view_clients')
-  async findAllV1( @Query() query: PaginationQueryCustomerDto): Promise<any> {
+  async findAllV1(@Query() query: PaginationQueryCustomerDto): Promise<any> {
     const { page, limit, term, fields, exact, from, to, type_code } = query;
     const fieldList = fields ? fields.split(',') : undefined;
-    const isExact = exact ;
-    return await this.customerService.findAllV2(      
-      +page, 
-      +limit,       
+    const isExact = exact;
+    return await this.customerService.findAllV2(
+      +page,
+      +limit,
       term,
       fieldList,
       isExact,
       from ? new Date(from).toISOString() : undefined,
-      to ? new Date(to).toISOString() : undefined,);
+      to ? new Date(to).toISOString() : undefined,
+    );
   }
-
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a customer by ID' })
-  @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Customer found',
+    type: CustomerResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Customer not found' })
   // @RequirePermissions('view_clients')
   async findOne(@Param('id') id: string): Promise<CustomerResponseDto> {
@@ -164,16 +191,26 @@ export class CustomerController {
 
   @Get(':customer_code/documents')
   @ApiOperation({ summary: 'Get a customer by customer_code' })
-  @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Customer found',
+    type: CustomerResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Customer not found' })
   // @RequirePermissions('view_clients')
-  async findOneDocs(@Param('customer_code') customer_code: string): Promise<CustomerResponseDto> {
+  async findOneDocs(
+    @Param('customer_code') customer_code: string,
+  ): Promise<CustomerResponseDto> {
     return await this.customerService.findDocumentsOne(customer_code);
   }
 
   @Get(':id/stats-savings-accounts')
   @ApiOperation({ summary: 'Get a customer by ID' })
-  @ApiResponse({ status: 200, description: 'Customer found', type: CustomerResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Customer found',
+    type: CustomerResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Customer not found' })
   // @RequirePermissions('view_clients')
   async findOneStats(@Param('id') id: string): Promise<CustomerResponseDto> {
@@ -183,7 +220,11 @@ export class CustomerController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @ApiOperation({ summary: 'Update a customer' })
-  @ApiResponse({ status: 200, description: 'Customer updated', type: CustomerResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Customer updated',
+    type: CustomerResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Customer not found' })
   @RequirePermissions('edit_client')
   async update(
@@ -206,9 +247,9 @@ export class CustomerController {
   @Post('sync-kyc')
   @ApiOperation({ summary: 'Réceptionne les codes clients à synchroniser' })
   @ApiBody({ type: KycSyncDto })
-  async sync( @Body() dto: KycSyncDto) {
+  async sync(@Body() dto: KycSyncDto) {
     // traite comme tu veux dans le service
-    return this.customerService.sync(dto); 
+    return this.customerService.sync(dto);
   }
 
   @Post('contact')
@@ -220,13 +261,13 @@ export class CustomerController {
       message: 'contact-form',
       context: {
         name: 'contactDto.name',
-        message: 'contactDto.message'
-      }
+        message: 'contactDto.message',
+      },
     });
   }
   @Get('kyc/checkEmail')
   async getCustomersWithMissingKyc1(@Query('email') email: string) {
-    return  await this.customerService.emailExists(email)
+    return await this.customerService.emailExists(email);
   }
 
   @Get('kyc/missing')
@@ -272,7 +313,10 @@ export class CustomerController {
 
   @Post(':id/send-access')
   @RequirePermissions('edit_client')
-  @ApiOperation({ summary: 'Envoyer les identifiants de connexion à l\'espace client par email' })
+  @ApiOperation({
+    summary:
+      "Envoyer les identifiants de connexion à l'espace client par email",
+  })
   @ApiParam({ name: 'id', description: 'ID du client' })
   @ApiResponse({ status: 201, description: 'Accès envoyés avec succès' })
   async sendClientAccess(@Param('id', ParseIntPipe) id: number) {

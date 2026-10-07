@@ -19,14 +19,25 @@ export class SalaryAdvanceResponseDto {
   @Expose()
   amount: number;
 
-  @ApiProperty({ example: 50000, description: "Part déjà récupérée sur des paies" })
+  @ApiProperty({
+    example: 50000,
+    description: 'Part déjà récupérée sur des paies',
+  })
   @Expose()
   recovered_amount: number;
 
-  @ApiProperty({ example: 100000, description: "Reste à récupérer = montant − déjà récupéré" })
+  @ApiProperty({
+    example: 100000,
+    description: 'Reste à récupérer = montant − déjà récupéré',
+  })
   @Expose()
   @Transform(({ obj }) =>
-    Math.max(0, Math.round((Number(obj.amount || 0) - Number(obj.recovered_amount || 0)) * 100) / 100),
+    Math.max(
+      0,
+      Math.round(
+        (Number(obj.amount || 0) - Number(obj.recovered_amount || 0)) * 100,
+      ) / 100,
+    ),
   )
   outstanding_amount: number;
 
@@ -52,7 +63,19 @@ export class SalaryAdvanceResponseDto {
   reason: string;
 
   @ApiProperty({
-    example: { id: 5, full_name: 'Maître Sophie Martin', employee_number: 'EMP-005', position: 'avocat' },
+    example: 'Demande retirée par le collaborateur.',
+    required: false,
+  })
+  @Expose()
+  cancel_reason: string;
+
+  @ApiProperty({
+    example: {
+      id: 5,
+      full_name: 'Maître Sophie Martin',
+      employee_number: 'EMP-005',
+      position: 'avocat',
+    },
   })
   @Expose()
   @Transform(({ obj }) => ({
@@ -61,7 +84,12 @@ export class SalaryAdvanceResponseDto {
     employee_number: obj.employee?.employee_number,
     position: obj.employee?.position,
   }))
-  employee: { id: number; full_name: string; employee_number: string; position: string };
+  employee: {
+    id: number;
+    full_name: string;
+    employee_number: string;
+    position: string;
+  };
 
   // Champs aplatis pour l'affichage en liste/tableau.
   @ApiProperty({ example: 'Maître Sophie Martin' })

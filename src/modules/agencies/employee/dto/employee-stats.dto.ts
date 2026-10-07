@@ -1,41 +1,41 @@
 // src/modules/agencies/employee/dto/employee-stats.dto.ts
 
-import { BaseStatsDto, DistributionItem } from "src/core/types/base-stats.dto";
+import { BaseStatsDto, DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class EmployeeStatsDto extends BaseStatsDto {
   // Vue d'ensemble
   active: number;
   inactive: number;
   onVacation: number;
-  
+
   avocats: number;
   secretaires: number;
   assistants: number;
   stagiaires: number;
   huissiers: number;
   administratifs: number;
-  
+
   // Distributions
   byPosition: DistributionItem[];
   byStatus: DistributionItem[];
   byBranch: DistributionItem[];
   bySpecialization: DistributionItem[];
-  
+
   // Statistiques de charge
   workloadStats: WorkloadStatsDto;
-  
+
   // Statistiques de performance
   performanceStats?: PerformanceStatsDto;
-  
+
   // Nouveaux employés
   newHiresTrend: NewHiresTrendDto[];
-  
+
   // Top performers
   topPerformers: TopPerformerDto[];
-  
+
   // Employés récents
   recentEmployees: RecentEmployeeDto[];
-  
+
   // Employés disponibles
   availableEmployees?: AvailableEmployeeDto[];
 }

@@ -1,4 +1,12 @@
-import { Controller, Get, Param, ParseIntPipe, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
@@ -24,7 +32,10 @@ export class ExportController {
   /** Export ZIP de plusieurs dossiers (?ids=1,2,3) — un dossier par sous-dossier. */
   @Get('dossiers')
   @RequirePermissions('view_dossiers')
-  @ApiOperation({ summary: 'Exporter plusieurs dossiers en ZIP (ids séparés par des virgules)' })
+  @ApiOperation({
+    summary:
+      'Exporter plusieurs dossiers en ZIP (ids séparés par des virgules)',
+  })
   exportMany(@Query('ids') ids: string, @Res() res: Response) {
     const list = (ids ?? '')
       .split(',')

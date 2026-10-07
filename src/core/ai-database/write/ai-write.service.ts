@@ -24,8 +24,13 @@ export class AiWriteService {
   /**
    * @deprecated Utilisez GenericWriteService.executePlan() directement.
    */
-  async executePlan(writePlan: WritePlan, userId: string): Promise<WriteResult[]> {
-    this.logger.warn('⚠️ AiWriteService.executePlan() est déprécié, délégation à GenericWriteService');
+  async executePlan(
+    writePlan: WritePlan,
+    userId: string,
+  ): Promise<WriteResult[]> {
+    this.logger.warn(
+      '⚠️ AiWriteService.executePlan() est déprécié, délégation à GenericWriteService',
+    );
     return this.genericWriteService.executePlan(writePlan, userId);
   }
 }

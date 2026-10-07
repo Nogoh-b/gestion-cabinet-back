@@ -37,7 +37,9 @@ export class TenantResolverMiddleware implements NestMiddleware {
       if (resolved) {
         resolvedTenantId = resolved;
         (req as any)['resolvedTenantId'] = resolvedTenantId;
-        this.logger.debug(`[Tenant] code="${code}" → tenant_id=${resolvedTenantId}`);
+        this.logger.debug(
+          `[Tenant] code="${code}" → tenant_id=${resolvedTenantId}`,
+        );
       } else {
         this.logger.warn(`[Tenant] code="${code}" non trouvé`);
       }
@@ -77,7 +79,9 @@ export class TenantResolverMiddleware implements NestMiddleware {
     if (match) return match[1];
 
     // 4. Path /cabinets/resolve/:code — route publique de résolution
-    const resolveMatch = req.path.match(/^\/cabinets\/resolve\/([a-z0-9]+)(\/|$)/);
+    const resolveMatch = req.path.match(
+      /^\/cabinets\/resolve\/([a-z0-9]+)(\/|$)/,
+    );
     if (resolveMatch) return resolveMatch[1];
 
     return null;
@@ -101,7 +105,9 @@ export class TenantResolverMiddleware implements NestMiddleware {
       if (id) this.cache.set(code, id);
       return id;
     } catch (err) {
-      this.logger.error(`[Tenant] Erreur résolution code "${code}": ${err?.message}`);
+      this.logger.error(
+        `[Tenant] Erreur résolution code "${code}": ${err?.message}`,
+      );
       return null;
     }
   }

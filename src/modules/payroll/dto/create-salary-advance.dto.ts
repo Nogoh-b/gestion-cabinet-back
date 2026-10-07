@@ -23,7 +23,10 @@ export class CreateSalaryAdvanceDto {
   @IsNotEmpty()
   amount: number;
 
-  @ApiPropertyOptional({ example: '2026-06-15', description: "Date d'octroi (défaut: aujourd'hui)" })
+  @ApiPropertyOptional({
+    example: '2026-06-15',
+    description: "Date d'octroi (défaut: aujourd'hui)",
+  })
   @IsDateString()
   @IsOptional()
   date_granted?: string;
@@ -31,7 +34,8 @@ export class CreateSalaryAdvanceDto {
   @ApiPropertyOptional({
     enum: SalaryAdvanceStatus,
     example: SalaryAdvanceStatus.PENDING,
-    description: "Statut souhaité. 'paid' déclenche immédiatement l'écriture comptable (425/512).",
+    description:
+      "Statut souhaité. 'paid' déclenche immédiatement l'écriture comptable (425/512).",
   })
   @IsEnum(SalaryAdvanceStatus)
   @IsOptional()

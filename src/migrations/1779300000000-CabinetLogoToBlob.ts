@@ -14,10 +14,14 @@ export class CabinetLogoToBlob1779300000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // 1. Colonnes binaires (si absentes)
     if (!(await queryRunner.hasColumn('cabinets', 'logo'))) {
-      await queryRunner.query(`ALTER TABLE cabinets ADD COLUMN logo LONGBLOB NULL`);
+      await queryRunner.query(
+        `ALTER TABLE cabinets ADD COLUMN logo LONGBLOB NULL`,
+      );
     }
     if (!(await queryRunner.hasColumn('cabinets', 'logo_mime'))) {
-      await queryRunner.query(`ALTER TABLE cabinets ADD COLUMN logo_mime VARCHAR(100) NULL`);
+      await queryRunner.query(
+        `ALTER TABLE cabinets ADD COLUMN logo_mime VARCHAR(100) NULL`,
+      );
     }
 
     // 2. Migration des données : décode les data-URI base64 existants en blob.
@@ -40,7 +44,9 @@ export class CabinetLogoToBlob1779300000000 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     // 1. Recrée la colonne texte (si absente).
     if (!(await queryRunner.hasColumn('cabinets', 'logo_url'))) {
-      await queryRunner.query(`ALTER TABLE cabinets ADD COLUMN logo_url LONGTEXT NULL`);
+      await queryRunner.query(
+        `ALTER TABLE cabinets ADD COLUMN logo_url LONGTEXT NULL`,
+      );
     }
 
     // 2. Reconstruit le data-URI à partir du blob.

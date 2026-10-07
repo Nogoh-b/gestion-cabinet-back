@@ -111,14 +111,30 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     DELETE: 'delete_diligence_finding',
   },
 
-  // Traitement orienté actions (lecture uniquement via l'IA)
-  case_action_families: { READ: 'view_dossier_actions' },
-  case_action_definitions: { READ: 'view_dossier_actions' },
-  dossier_actions: { READ: 'view_dossier_actions' },
+  // Traitement orienté actions — catalogue (manage_action_catalog) + instances (create/update_dossier_action)
+  case_action_families: {
+    READ: 'view_dossier_actions',
+    INSERT: 'manage_action_catalog',
+    UPDATE: 'manage_action_catalog',
+  },
+  case_action_definitions: {
+    READ: 'view_dossier_actions',
+    INSERT: 'manage_action_catalog',
+    UPDATE: 'manage_action_catalog',
+  },
+  dossier_actions: {
+    READ: 'view_dossier_actions',
+    INSERT: 'create_dossier_action',
+    UPDATE: 'update_dossier_action',
+  },
   dossier_action_document_links: { READ: 'view_dossier_actions' },
   dossier_action_audience_links: { READ: 'view_dossier_actions' },
   dossier_action_relations: { READ: 'view_dossier_actions' },
-  case_recommendation_rules: { READ: 'view_dossier_actions' },
+  case_recommendation_rules: {
+    READ: 'view_dossier_actions',
+    INSERT: 'manage_action_catalog',
+    UPDATE: 'manage_action_catalog',
+  },
   dossier_recommendations: { READ: 'view_dossier_actions' },
 
   // Facturation issue du parcours d'actions (lecture uniquement via l'IA)
@@ -397,9 +413,33 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
 };
 
 const SQL_KEYWORDS = new Set([
-  'select', 'from', 'where', 'join', 'left', 'right', 'inner', 'outer', 'cross',
-  'on', 'as', 'and', 'or', 'group', 'order', 'by', 'having', 'limit', 'offset',
-  'union', 'all', 'distinct', 'case', 'when', 'then', 'else', 'end',
+  'select',
+  'from',
+  'where',
+  'join',
+  'left',
+  'right',
+  'inner',
+  'outer',
+  'cross',
+  'on',
+  'as',
+  'and',
+  'or',
+  'group',
+  'order',
+  'by',
+  'having',
+  'limit',
+  'offset',
+  'union',
+  'all',
+  'distinct',
+  'case',
+  'when',
+  'then',
+  'else',
+  'end',
 ]);
 
 @Injectable()
@@ -414,7 +454,10 @@ export class AiDatabasePermissionService {
 
   async assertCanReadTables(user: AiUserLike, tables: string[]): Promise<void> {
     const tableNames = this.normalizeTables(tables);
-    await this.assertAllowed(user, tableNames.map((table) => ({ table, operation: 'READ' as const })));
+    await this.assertAllowed(
+      user,
+      tableNames.map((table) => ({ table, operation: 'READ' as const })),
+    );
   }
 
   async assertCanReadSql(user: AiUserLike, sqlQuery: string): Promise<void> {
@@ -422,7 +465,10 @@ export class AiDatabasePermissionService {
     await this.assertCanReadTables(user, tables);
   }
 
-  async assertCanWritePlan(user: AiUserLike, writePlan: WritePlan): Promise<void> {
+  async assertCanWritePlan(
+    user: AiUserLike,
+    writePlan: WritePlan,
+  ): Promise<void> {
     const requirements = (writePlan.operations ?? []).map((operation) => ({
       table: operation.entity,
       operation: operation.operation,
@@ -437,7 +483,8 @@ export class AiDatabasePermissionService {
       .replace(/--.*$/gm, ' ')
       .replace(/\/\*[\s\S]*?\*\//g, ' ');
 
-    const tableRegex = /\b(?:FROM|JOIN)\s+`?([a-zA-Z_][\w]*)`?(?:\s+`?[a-zA-Z_][\w]*`?)?/gi;
+    const tableRegex =
+      /\b(?:FROM|JOIN)\s+`?([a-zA-Z_][\w]*)`?(?:\s+`?[a-zA-Z_][\w]*`?)?/gi;
     let match: RegExpExecArray | null;
     while ((match = tableRegex.exec(cleaned)) !== null) {
       const table = match[1]?.toLowerCase();
@@ -458,22 +505,32 @@ export class AiDatabasePermissionService {
 
     const missing = this.normalizeRequirements(requirements)
       .map((requirement) => {
-        const permission = this.resolvePermission(requirement.table, requirement.operation);
+        const permission = this.resolvePermission(
+          requirement.table,
+          requirement.operation,
+        );
         return { ...requirement, permission };
       })
-      .filter((requirement) => !requirement.permission || !permissions.has(requirement.permission));
+      .filter(
+        (requirement) =>
+          !requirement.permission || !permissions.has(requirement.permission),
+      );
 
     if (missing.length === 0) return;
 
     const details = missing
-      .map((item) => item.permission
-        ? `${item.operation} ${item.table} -> ${item.permission}`
-        : `${item.operation} ${item.table} -> permission non configuree`)
+      .map((item) =>
+        item.permission
+          ? `${item.operation} ${item.table} -> ${item.permission}`
+          : `${item.operation} ${item.table} -> permission non configuree`,
+      )
       .join(', ');
 
-    this.logger.warn(`Acces IA refuse: user=${this.getUserDebugId(user)} | ${details}`);
+    this.logger.warn(
+      `Acces IA refuse: user=${this.getUserDebugId(user)} | ${details}`,
+    );
     throw new ForbiddenException(
-      'Vous n\'avez pas la permission necessaire pour cette demande IA.',
+      "Vous n'avez pas la permission necessaire pour cette demande IA.",
     );
   }
 
@@ -481,7 +538,8 @@ export class AiDatabasePermissionService {
     requirements: Array<{ table: string; operation: AiDatabaseOperation }>,
   ): Array<{ table: string; operation: AiDatabaseOperation }> {
     const seen = new Set<string>();
-    const normalized: Array<{ table: string; operation: AiDatabaseOperation }> = [];
+    const normalized: Array<{ table: string; operation: AiDatabaseOperation }> =
+      [];
 
     for (const requirement of requirements) {
       const table = this.normalizeTableName(requirement.table);
@@ -496,11 +554,13 @@ export class AiDatabasePermissionService {
   }
 
   private normalizeTables(tables: string[]): string[] {
-    return Array.from(new Set(
-      (tables ?? [])
-        .map((table) => this.normalizeTableName(table))
-        .filter((table): table is string => !!table),
-    ));
+    return Array.from(
+      new Set(
+        (tables ?? [])
+          .map((table) => this.normalizeTableName(table))
+          .filter((table): table is string => !!table),
+      ),
+    );
   }
 
   private normalizeTableName(table: string | undefined | null): string | null {
@@ -508,7 +568,10 @@ export class AiDatabasePermissionService {
     return table.replace(/`/g, '').trim().toLowerCase();
   }
 
-  private resolvePermission(table: string, operation: AiDatabaseOperation): string | null {
+  private resolvePermission(
+    table: string,
+    operation: AiDatabaseOperation,
+  ): string | null {
     const normalized = this.normalizeTableName(table);
     if (!normalized) return null;
     return AI_TABLE_PERMISSIONS[normalized]?.[operation] ?? null;
@@ -520,20 +583,25 @@ export class AiDatabasePermissionService {
 
   private async getUserPermissionCodes(user: AiUserLike): Promise<Set<string>> {
     const jwtPermissions =
-      typeof user === 'object' && Array.isArray(user?.permissions) && user.permissions.length > 0
+      typeof user === 'object' &&
+      Array.isArray(user?.permissions) &&
+      user.permissions.length > 0
         ? new Set(user.permissions)
         : null;
 
     // Source de vérité = DB (les modifs faites dans Paramètres > Rôles doivent
     // s'appliquer sans obliger l'utilisateur à se reconnecter). Le JWT ne sert
     // que de fallback si la DB est inaccessible.
-    const userId = typeof user === 'string' || typeof user === 'number'
-      ? Number(user)
-      : Number(user?.userId ?? user?.id);
+    const userId =
+      typeof user === 'string' || typeof user === 'number'
+        ? Number(user)
+        : Number(user?.userId ?? user?.id);
     if (Number.isFinite(userId)) {
       try {
         const permissions = await this.usersService.getUserPermissions(userId);
-        const codes = (permissions ?? []).map((permission: any) => permission.code ?? permission);
+        const codes = (permissions ?? []).map(
+          (permission: any) => permission.code ?? permission,
+        );
         if (codes.length > 0) return new Set(codes);
         // Rôle sans permission en DB : ne pas retomber sur un JWT périmé.
         if (jwtPermissions) {
@@ -543,7 +611,9 @@ export class AiDatabasePermissionService {
         }
         return new Set();
       } catch (error: any) {
-        this.logger.warn(`Impossible de charger les permissions IAM pour user=${userId}: ${error?.message ?? error}`);
+        this.logger.warn(
+          `Impossible de charger les permissions IAM pour user=${userId}: ${error?.message ?? error}`,
+        );
         if (jwtPermissions) return jwtPermissions;
         return new Set();
       }
@@ -553,13 +623,16 @@ export class AiDatabasePermissionService {
   }
 
   private getUserDebugId(user: AiUserLike): string {
-    if (typeof user === 'string' || typeof user === 'number') return String(user);
+    if (typeof user === 'string' || typeof user === 'number')
+      return String(user);
     return String(user?.id ?? user?.userId ?? '?');
   }
 
   async assertTablesExistInPolicy(tables: string[]): Promise<void> {
     const knownTables = new Set(
-      this.dataSource.entityMetadatas.map((metadata) => metadata.tableName.toLowerCase()),
+      this.dataSource.entityMetadatas.map((metadata) =>
+        metadata.tableName.toLowerCase(),
+      ),
     );
 
     const unknown = this.normalizeTables(tables)

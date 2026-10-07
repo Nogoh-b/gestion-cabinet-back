@@ -21,7 +21,12 @@ export class SingleDocumentTypeStatsDto {
     totalSize: number;
     totalSizeFormatted: string;
     tailleMoyenne: number;
-    parStatut: Array<{ name: string; value: number; percentage: number; color?: string }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
     recents: Array<{
       id: number;
       nom: string;

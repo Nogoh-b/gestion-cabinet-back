@@ -6,7 +6,9 @@ import { DossierWriteHandler } from './dossier-write.handler';
 
 describe('DossierWriteHandler', () => {
   const createHandler = (): DossierWriteHandler => {
-    const handler = Object.create(DossierWriteHandler.prototype) as DossierWriteHandler;
+    const handler = Object.create(
+      DossierWriteHandler.prototype,
+    ) as DossierWriteHandler;
     Object.defineProperty(handler, 'logger', {
       value: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
     });
@@ -36,53 +38,86 @@ describe('DossierWriteHandler', () => {
   });
 
   it('déclare les références optionnelles dans le schéma présenté à l’IA', async () => {
-    jest.spyOn(BaseWriteHandler.prototype, 'getWriteableFieldsSchema').mockResolvedValue([
-      { name: 'object', label: 'Objet', type: 'string', required: true },
-      { name: 'court_name', label: 'Nature', type: 'string', required: false },
-      { name: 'lawyer_id', label: 'Avocat', type: 'number', required: true },
-      { name: 'procedure_type_id', label: 'Type', type: 'number', required: true },
-      { name: 'procedure_subtype_id', label: 'Sous-type', type: 'number', required: true },
-    ] as any);
+    jest
+      .spyOn(BaseWriteHandler.prototype, 'getWriteableFieldsSchema')
+      .mockResolvedValue([
+        { name: 'object', label: 'Objet', type: 'string', required: true },
+        {
+          name: 'court_name',
+          label: 'Nature',
+          type: 'string',
+          required: false,
+        },
+        { name: 'lawyer_id', label: 'Avocat', type: 'number', required: true },
+        {
+          name: 'procedure_type_id',
+          label: 'Type',
+          type: 'number',
+          required: true,
+        },
+        {
+          name: 'procedure_subtype_id',
+          label: 'Sous-type',
+          type: 'number',
+          required: true,
+        },
+      ] as any);
     const handler = createHandler();
 
     const schema = await handler.getWriteableFieldsSchema();
 
-    expect(schema).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        name: 'object',
-        description: expect.stringContaining("Nom de l'affaire"),
-      }),
-      expect.objectContaining({
-        name: 'court_name',
-        description: expect.stringContaining("Nature de l'affaire"),
-      }),
-      expect.objectContaining({ name: 'lawyer_id', required: false }),
-      expect.objectContaining({ name: 'procedure_type_id', required: false }),
-      expect.objectContaining({ name: 'procedure_subtype_id', required: false }),
-    ]));
+    expect(schema).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'object',
+          description: expect.stringContaining("Nom de l'affaire"),
+        }),
+        expect.objectContaining({
+          name: 'court_name',
+          description: expect.stringContaining("Nature de l'affaire"),
+        }),
+        expect.objectContaining({ name: 'lawyer_id', required: false }),
+        expect.objectContaining({ name: 'procedure_type_id', required: false }),
+        expect.objectContaining({
+          name: 'procedure_subtype_id',
+          required: false,
+        }),
+      ]),
+    );
   });
 
   it('ne demande aucune clarification pour les références optionnelles absentes', async () => {
     const fields = { client_id: 67, object: 'Litige contractuel' };
-    jest.spyOn(BaseWriteHandler.prototype, 'resolveDependencies').mockResolvedValue(fields);
+    jest
+      .spyOn(BaseWriteHandler.prototype, 'resolveDependencies')
+      .mockResolvedValue(fields);
     const handler = createHandler();
 
-    await expect(handler.resolveDependencies(fields, '12')).resolves.toEqual(fields);
+    await expect(handler.resolveDependencies(fields, '12')).resolves.toEqual(
+      fields,
+    );
   });
 
   it('conserve la résolution du type et du sous-type lorsqu’ils sont fournis', async () => {
-    jest.spyOn(BaseWriteHandler.prototype, 'resolveDependencies').mockResolvedValue({
-      client_id: 67,
-      object: 'Litige contractuel',
-    });
+    jest
+      .spyOn(BaseWriteHandler.prototype, 'resolveDependencies')
+      .mockResolvedValue({
+        client_id: 67,
+        object: 'Litige contractuel',
+      });
     const handler = createHandler();
 
-    await expect(handler.resolveDependencies({
-      client_id: 67,
-      object: 'Litige contractuel',
-      procedure_type: '11',
-      procedure_subtype: '12',
-    }, '12')).resolves.toEqual({
+    await expect(
+      handler.resolveDependencies(
+        {
+          client_id: 67,
+          object: 'Litige contractuel',
+          procedure_type: '11',
+          procedure_subtype: '12',
+        },
+        '12',
+      ),
+    ).resolves.toEqual({
       client_id: 67,
       object: 'Litige contractuel',
       procedure_type_id: 11,
@@ -91,15 +126,21 @@ describe('DossierWriteHandler', () => {
   });
 
   it('convertit les libellés métier du formulaire vers les champs du dossier', async () => {
-    jest.spyOn(BaseWriteHandler.prototype, 'resolveDependencies')
+    jest
+      .spyOn(BaseWriteHandler.prototype, 'resolveDependencies')
       .mockImplementation(async (fields) => fields);
     const handler = createHandler();
 
-    await expect(handler.resolveDependencies({
-      client_id: 67,
-      case_name: 'Affaire Société ABC',
-      nature: 'Recouvrement de créance',
-    }, '12')).resolves.toEqual({
+    await expect(
+      handler.resolveDependencies(
+        {
+          client_id: 67,
+          case_name: 'Affaire Société ABC',
+          nature: 'Recouvrement de créance',
+        },
+        '12',
+      ),
+    ).resolves.toEqual({
       client_id: 67,
       object: 'Affaire Société ABC',
       court_name: 'Recouvrement de créance',

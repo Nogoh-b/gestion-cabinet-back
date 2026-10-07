@@ -9,39 +9,12 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule } from '@nestjs/swagger';
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
 
-
-
-
-
-
-
-
-
-
-
-
-
 // seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
 // import { seedDatabase } from './main.seeder';
-
-
 
 dotenv.config();
 
@@ -59,7 +32,10 @@ async function fixRowFormat() {
     console.log('✅ notifications ROW_FORMAT=DYNAMIC applied');
   } catch (err: any) {
     // Already DYNAMIC, or table doesn't exist yet — both are fine
-    if (!err.message?.includes('already') && !err.message?.includes("doesn't exist")) {
+    if (
+      !err.message?.includes('already') &&
+      !err.message?.includes("doesn't exist")
+    ) {
       console.warn('ROW_FORMAT fix skipped:', err.message);
     }
   } finally {
@@ -99,8 +75,8 @@ async function bootstrap() {
   // (HTML/SVG → XSS) affiché dans une iframe.
   const UPLOADS_DIR = require('path').join(process.cwd(), 'uploads');
   const uploadsStatic = express.static(UPLOADS_DIR, {
-    index: false,            // ne sert jamais d'index.html
-    dotfiles: 'ignore',      // ignore les fichiers cachés
+    index: false, // ne sert jamais d'index.html
+    dotfiles: 'ignore', // ignore les fichiers cachés
     setHeaders: (res) => {
       res.setHeader('Content-Disposition', 'attachment');
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -113,7 +89,7 @@ async function bootstrap() {
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement
   // HTTP. Le faire dans le handler de requête (res.socket.setNoDelay) est trop
   // tard — le kernel peut déjà avoir bufferisé le paquet SYN-ACK initial.
-  (app.getHttpServer() as import('http').Server).on('connection', (socket) => {
+  app.getHttpServer().on('connection', (socket) => {
     socket.setNoDelay(true);
     socket.uncork();
   });
@@ -127,26 +103,46 @@ async function bootstrap() {
   //   },
   // });
 
-  app.useGlobalInterceptors(
-    new ClassSerializerInterceptor(app.get(Reflector)),
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+
+  // Toujours exécuté, même sans RUN_SEEDERS : certains cabinets historiques
+  // (notamment le tenant #1, ignoré par CabinetSubscriber) peuvent précéder le
+  // seeding par tenant. L'opération est additive et préserve les permissions
+  // retirées manuellement sur les rôles existants.
+  const { TenantSeederService } = await import(
+    './modules/cabinet/tenant-seeder.service'
   );
+  const tenantSeederService = app.get(TenantSeederService);
+  await tenantSeederService.syncIamReferenceDataForAllTenants();
 
   // ── Seeders globaux ──────────────────────────────────────────────────────
   // Permissions, rôles et données de référence métier sont désormais seedés
   // par TenantSeederService à la CRÉATION de chaque cabinet (multi-tenant).
   // Seuls les Plans d'abonnement restent globaux (pas de tenant_id).
   if (process.env.RUN_SEEDERS === 'true') {
-    const { default: PlanSeeder } = await import('./modules/plans/seeder/plan.seeder');
+    const { default: PlanSeeder } = await import(
+      './modules/plans/seeder/plan.seeder'
+    );
     const { runSeeders } = await import('typeorm-extension');
-    await runSeeders(app.get(DataSource), { seeds: [PlanSeeder, LocationSeeder] });
+    await runSeeders(app.get(DataSource), {
+      seeds: [PlanSeeder, LocationSeeder],
+    });
+
+    // Re-synchronise les données de référence (permissions, rôles, templates…)
+    // de TOUS les cabinets déjà existants, y compris le #1. Comble l'écart
+    // laissé par les seeders ci-dessus (purement « à la création du cabinet ») :
+    // sans cet appel, un cabinet créé avant l'ajout d'une permission/d'un
+    // rôle/d'un template ne le reçoit jamais. Idempotent et sûr à chaque
+    // démarrage — ne crée que ce qui manque.
+    await tenantSeederService.syncReferenceDataForAllTenants();
   }
 
   // Swagger : dev uniquement
   if (process.env.NODE_ENV !== 'production') {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api-docs', app, document, {
-      swaggerOptions: { 
-        persistAuthorization: true, 
+      swaggerOptions: {
+        persistAuthorization: true,
         defaultModelsExpandDepth: -1,
       },
     });
@@ -156,15 +152,18 @@ async function bootstrap() {
   // Règle de sécurité : ne jamais utiliser origin: '*' avec credentials: true,
   // cela exposerait l'API à des requêtes authentifiées depuis n'importe quel site.
   const corsOrigins = process.env.CORS_ORIGINS
-    ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    ? process.env.CORS_ORIGINS.split(',')
+        .map((o) => o.trim())
+        .filter(Boolean)
     : [];
   const isDevelopment = process.env.NODE_ENV !== 'production';
   const isLocalDevelopmentOrigin = (origin: string): boolean =>
-    isDevelopment && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  if (process.env.NODE_ENV === 'production' && corsOrigins.includes('*')) { 
+    isDevelopment &&
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  if (process.env.NODE_ENV === 'production' && corsOrigins.includes('*')) {
     console.warn(
       '⚠️  [SECURITE] CORS_ORIGINS contient "*" en production — configuration dangereuse. ' +
-        'Définissez une liste explicite d\'origines.',
+        "Définissez une liste explicite d'origines.",
     );
   }
   app.enableCors({
@@ -197,6 +196,8 @@ async function bootstrap() {
   const port = parseInt(process.env.PORT || '3004', 10);
   await app.startAllMicroservices();
   await app.listen(port);
-  console.log(`✅ HTTP en écoute sur ${port}, microservice TCP sur ${process.env.MICROSERVICE_PORT || '2999'}`);
+  console.log(
+    `✅ HTTP en écoute sur ${port}, microservice TCP sur ${process.env.MICROSERVICE_PORT || '2999'}`,
+  );
 }
 bootstrap();

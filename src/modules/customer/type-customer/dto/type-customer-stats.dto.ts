@@ -3,7 +3,7 @@ export class TypeCustomerStatsDto {
   total: number;
   active: number;
   inactive: number;
-  
+
   details: TypeCustomerDetailDto[];
 }
 

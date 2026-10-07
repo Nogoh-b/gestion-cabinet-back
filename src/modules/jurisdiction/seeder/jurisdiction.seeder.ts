@@ -1,14 +1,17 @@
 import { DataSource } from 'typeorm';
 import { Seeder, SeederFactoryManager } from 'typeorm-extension';
 
-import { Jurisdiction, JurisdictionLevel, JurisdictionType } from '../entities/jurisdiction.entity';
+import {
+  Jurisdiction,
+  JurisdictionLevel,
+  JurisdictionType,
+} from '../entities/jurisdiction.entity';
 import { findOneForTenant } from 'src/core/tenant/seeder-helper';
-
 
 export default class JurisdictionSeeder implements Seeder {
   public async run(
     dataSource: DataSource,
-    factoryManager: SeederFactoryManager
+    factoryManager: SeederFactoryManager,
   ): Promise<any> {
     const repository = dataSource.getRepository(Jurisdiction);
 
@@ -31,8 +34,8 @@ export default class JurisdictionSeeder implements Seeder {
           court_number: 'TPI-YAOUNDE-001',
           judge_name: 'Honorable Justice Jean Mbarga',
           working_hours: ['08:00-13:00', '14:00-17:00'],
-          timezone: 'Africa/Douala'
-        }
+          timezone: 'Africa/Douala',
+        },
       },
       {
         code: 'TPI_DOUALA',
@@ -51,8 +54,8 @@ export default class JurisdictionSeeder implements Seeder {
           court_number: 'TPI-DOUALA-001',
           judge_name: 'Honorable Justice Marie Ngo',
           working_hours: ['08:00-13:00', '14:00-17:00'],
-          timezone: 'Africa/Douala'
-        }
+          timezone: 'Africa/Douala',
+        },
       },
       {
         code: 'TPI_BAMENDA',
@@ -68,33 +71,33 @@ export default class JurisdictionSeeder implements Seeder {
         is_active: true,
         metadata: {
           court_number: 'TPI-BAMENDA-001',
-          judge_name: 'Honorable Justice Paul Ngwa'
-        }
+          judge_name: 'Honorable Justice Paul Ngwa',
+        },
       },
 
       // Cours d'appel
       {
         code: 'CA_YAOUNDE',
-        name: 'Cour d\'Appel de Yaoundé',
-        description: 'Cour d\'appel de la région du Centre',
+        name: "Cour d'Appel de Yaoundé",
+        description: "Cour d'appel de la région du Centre",
         level: JurisdictionLevel.NATIONAL,
         jurisdiction_type: JurisdictionType.CIVIL,
         city: 'Yaoundé',
         region: 'Centre',
         country: 'Cameroun',
-        address: 'Siège de la Cour d\'Appel, Yaoundé',
+        address: "Siège de la Cour d'Appel, Yaoundé",
         phone: '+237 222 23 00 00',
         email: 'cour-appel-yaounde@justice.cm',
         is_active: true,
         metadata: {
           court_number: 'CA-YAOUNDE-001',
-          president: 'Honorable Premier Président Samuel Eto\'o'
-        }
+          president: "Honorable Premier Président Samuel Eto'o",
+        },
       },
       {
         code: 'CA_DOUALA',
-        name: 'Cour d\'Appel de Douala',
-        description: 'Cour d\'appel de la région du Littoral',
+        name: "Cour d'Appel de Douala",
+        description: "Cour d'appel de la région du Littoral",
         level: JurisdictionLevel.NATIONAL,
         jurisdiction_type: JurisdictionType.COMMERCIAL,
         city: 'Douala',
@@ -106,8 +109,8 @@ export default class JurisdictionSeeder implements Seeder {
         is_active: true,
         metadata: {
           court_number: 'CA-DOUALA-001',
-          president: 'Honorable Premier Président Chantal Biya'
-        }
+          president: 'Honorable Premier Président Chantal Biya',
+        },
       },
 
       // Tribunaux de commerce
@@ -126,8 +129,8 @@ export default class JurisdictionSeeder implements Seeder {
         is_active: true,
         metadata: {
           court_number: 'TC-DOUALA-001',
-          judge_name: 'Honorable Justice Commerce Alain Fokou'
-        }
+          judge_name: 'Honorable Justice Commerce Alain Fokou',
+        },
       },
 
       // Tribunaux du travail
@@ -146,15 +149,16 @@ export default class JurisdictionSeeder implements Seeder {
         is_active: true,
         metadata: {
           court_number: 'TT-YAOUNDE-001',
-          judge_name: 'Honorable Justice Travail Martine Owona'
-        }
+          judge_name: 'Honorable Justice Travail Martine Owona',
+        },
       },
 
       // Tribunaux pour enfants
       {
         code: 'TE_YAOUNDE',
         name: 'Tribunal pour Enfants de Yaoundé',
-        description: 'Tribunal spécialisé pour les affaires impliquant des mineurs',
+        description:
+          'Tribunal spécialisé pour les affaires impliquant des mineurs',
         level: JurisdictionLevel.REGIONAL,
         jurisdiction_type: JurisdictionType.FAMILY,
         city: 'Yaoundé',
@@ -165,15 +169,15 @@ export default class JurisdictionSeeder implements Seeder {
         is_active: true,
         metadata: {
           court_number: 'TE-YAOUNDE-001',
-          judge_name: 'Honorable Justice Enfants Geneviève Ngo'
-        }
+          judge_name: 'Honorable Justice Enfants Geneviève Ngo',
+        },
       },
 
       // Cour Suprême
       {
         code: 'COUR_SUPREME',
         name: 'Cour Suprême du Cameroun',
-        description: 'Plus haute juridiction de l\'État du Cameroun',
+        description: "Plus haute juridiction de l'État du Cameroun",
         level: JurisdictionLevel.NATIONAL,
         jurisdiction_type: JurisdictionType.ADMINISTRATIVE,
         city: 'Yaoundé',
@@ -185,13 +189,17 @@ export default class JurisdictionSeeder implements Seeder {
         is_active: true,
         metadata: {
           court_number: 'CS-CM-001',
-          president: 'Honorable Premier Président Daniel Mekongo'
-        }
-      }
+          president: 'Honorable Premier Président Daniel Mekongo',
+        },
+      },
     ];
 
     for (const jurisdictionData of jurisdictions) {
-      const existing = await findOneForTenant(repository, 'code', jurisdictionData.code);
+      const existing = await findOneForTenant(
+        repository,
+        'code',
+        jurisdictionData.code,
+      );
 
       if (!existing) {
         const jurisdiction = repository.create(jurisdictionData);

@@ -1,14 +1,25 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Ecriture } from '../entities/ecriture.entity';
 import { ExerciceComptable } from '../entities/exercice.entity';
 import { JournalComptable } from '../entities/journal.entity';
 import { CompteComptable } from '../entities/compte.entity';
-import { SourceModule, StatutExercice, TypeJournal } from '../enums/comptabilite.enums';
+import {
+  SourceModule,
+  StatutExercice,
+  TypeJournal,
+} from '../enums/comptabilite.enums';
 import { CreateEcritureDto } from '../dto/create-ecriture.dto';
 import { InitialisationComptableService } from './initialisation.service';
-import { getCurrentTenantId, hasActiveTenant } from 'src/core/tenant/tenant.context';
+import {
+  getCurrentTenantId,
+  hasActiveTenant,
+} from 'src/core/tenant/tenant.context';
 
 @Injectable()
 export class EcrituresService {
@@ -29,14 +40,18 @@ export class EcrituresService {
     // Permet de comptabiliser des documents historiques (backfill) dans le bon
     // exercice fiscal. L'exercice est auto-créé s'il n'existe pas encore.
     const annee = new Date(dto.dateEcriture).getFullYear();
-    let exercice = await this.exerciceRepo.findOne({ where: this.withTenant({ annee }) });
+    let exercice = await this.exerciceRepo.findOne({
+      where: this.withTenant({ annee }),
+    });
     if (!exercice) {
-      exercice = await this.exerciceRepo.save(this.exerciceRepo.create({
-        annee,
-        dateDebut: new Date(`${annee}-01-01`),
-        dateFin:   new Date(`${annee}-12-31`),
-        statut:    StatutExercice.OUVERT,
-      }));
+      exercice = await this.exerciceRepo.save(
+        this.exerciceRepo.create({
+          annee,
+          dateDebut: new Date(`${annee}-01-01`),
+          dateFin: new Date(`${annee}-12-31`),
+          statut: StatutExercice.OUVERT,
+        }),
+      );
     }
     // Une écriture manuelle ne peut pas être passée dans un exercice clôturé.
     // Les écritures système (événements / synchronisation) restent autorisées.
@@ -47,31 +62,51 @@ export class EcrituresService {
     // Auto-réparation multi-tenant : si le plan comptable du tenant courant
     // n'a pas encore été créé (journal absent), on l'initialise puis on réessaie.
     // Couvre le cas d'un événement live reçu avant toute synchronisation.
-    let journal = await this.journalRepo.findOne({ where: this.withTenant({ typeJournal: dto.codeJournal }) });
+    let journal = await this.journalRepo.findOne({
+      where: this.withTenant({ typeJournal: dto.codeJournal }),
+    });
     if (!journal) {
       await this.initialisation.initialiser();
-      journal = await this.journalRepo.findOne({ where: this.withTenant({ typeJournal: dto.codeJournal }) });
+      journal = await this.journalRepo.findOne({
+        where: this.withTenant({ typeJournal: dto.codeJournal }),
+      });
     }
-    if (!journal) throw new BadRequestException(`Journal ${dto.codeJournal} introuvable`);
+    if (!journal)
+      throw new BadRequestException(`Journal ${dto.codeJournal} introuvable`);
 
     // Résolution des comptes avec auto-réparation : si un compte référencé
     // n'existe pas encore dans le plan du tenant (plan ancien, compte ajouté
     // après la création du tenant), on (ré)initialise le plan une seule fois —
     // seedComptes est idempotent — puis on réessaie.
     let planRepare = false;
-    const lignes: Array<{ compte_id: number; debit: number; credit: number; libelle: string }> = [];
+    const lignes: Array<{
+      compte_id: number;
+      debit: number;
+      credit: number;
+      libelle: string;
+    }> = [];
     for (const l of dto.lignes) {
-      let compte = await this.compteRepo.findOne({ where: this.withTenant({ numero: l.numeroCompte }) });
+      let compte = await this.compteRepo.findOne({
+        where: this.withTenant({ numero: l.numeroCompte }),
+      });
       if (!compte && !planRepare) {
         await this.initialisation.initialiser();
         planRepare = true;
-        compte = await this.compteRepo.findOne({ where: this.withTenant({ numero: l.numeroCompte }) });
+        compte = await this.compteRepo.findOne({
+          where: this.withTenant({ numero: l.numeroCompte }),
+        });
       }
-      if (!compte) throw new BadRequestException(`Compte ${l.numeroCompte} introuvable`);
-      lignes.push({ compte_id: compte.id, debit: l.debit, credit: l.credit, libelle: l.libelle ?? dto.libelle });
+      if (!compte)
+        throw new BadRequestException(`Compte ${l.numeroCompte} introuvable`);
+      lignes.push({
+        compte_id: compte.id,
+        debit: l.debit,
+        credit: l.credit,
+        libelle: l.libelle ?? dto.libelle,
+      });
     }
 
-    const totalDebit  = lignes.reduce((s, l) => s + Number(l.debit), 0);
+    const totalDebit = lignes.reduce((s, l) => s + Number(l.debit), 0);
     const totalCredit = lignes.reduce((s, l) => s + Number(l.credit), 0);
     if (Math.abs(totalDebit - totalCredit) > 0.01) {
       throw new BadRequestException(
@@ -83,12 +118,12 @@ export class EcrituresService {
 
     const ecriture = this.ecritureRepo.create({
       numero,
-      dateEcriture:    new Date(dto.dateEcriture),
-      libelle:         dto.libelle,
-      journal_id:      journal.id,
-      exercice_id:     exercice.id,
-      sourceModule:    dto.sourceModule ?? SourceModule.MANUEL,
-      sourceId:        dto.sourceId,
+      dateEcriture: new Date(dto.dateEcriture),
+      libelle: dto.libelle,
+      journal_id: journal.id,
+      exercice_id: exercice.id,
+      sourceModule: dto.sourceModule ?? SourceModule.MANUEL,
+      sourceId: dto.sourceId,
       isAutoGenerated: isAuto,
       lignes,
     });
@@ -113,7 +148,10 @@ export class EcrituresService {
     return e;
   }
 
-  findBySource(sourceModule: SourceModule, sourceId: string): Promise<Ecriture[]> {
+  findBySource(
+    sourceModule: SourceModule,
+    sourceId: string,
+  ): Promise<Ecriture[]> {
     return this.ecritureRepo.find({
       where: this.withTenant({ sourceModule, sourceId }),
       relations: ['journal', 'lignes', 'lignes.compte'],
@@ -125,14 +163,20 @@ export class EcrituresService {
    * Sert de garde d'idempotence pour les écritures automatiques (événements +
    * synchronisation initiale) afin de ne jamais créer de doublon.
    */
-  async existeParSource(sourceModule: SourceModule, sourceId: string, codeJournal?: TypeJournal): Promise<boolean> {
+  async existeParSource(
+    sourceModule: SourceModule,
+    sourceId: string,
+    codeJournal?: TypeJournal,
+  ): Promise<boolean> {
     const qb = this.ecritureRepo
       .createQueryBuilder('e')
       .where('e.source_module = :sm', { sm: sourceModule })
       .andWhere('e.source_id = :sid', { sid: sourceId });
     this.applyTenantScope(qb, 'e');
     if (codeJournal) {
-      qb.innerJoin('e.journal', 'j').andWhere('j.typeJournal = :tj', { tj: codeJournal });
+      qb.innerJoin('e.journal', 'j').andWhere('j.typeJournal = :tj', {
+        tj: codeJournal,
+      });
     }
     const count = await qb.getCount();
     return count > 0;
@@ -157,14 +201,19 @@ export class EcrituresService {
       .addOrderBy('e.id', 'DESC');
     this.applyTenantScope(qb, 'e');
 
-    if (params.journalId)    qb.andWhere('e.journal_id = :jid',   { jid: params.journalId });
-    if (params.exerciceId)   qb.andWhere('e.exercice_id = :eid',  { eid: params.exerciceId });
-    if (params.sourceModule) qb.andWhere('e.source_module = :sm', { sm: params.sourceModule });
-    if (params.dateDebut)    qb.andWhere('e.date_ecriture >= :dd', { dd: params.dateDebut });
-    if (params.dateFin)      qb.andWhere('e.date_ecriture <= :df', { df: params.dateFin });
+    if (params.journalId)
+      qb.andWhere('e.journal_id = :jid', { jid: params.journalId });
+    if (params.exerciceId)
+      qb.andWhere('e.exercice_id = :eid', { eid: params.exerciceId });
+    if (params.sourceModule)
+      qb.andWhere('e.source_module = :sm', { sm: params.sourceModule });
+    if (params.dateDebut)
+      qb.andWhere('e.date_ecriture >= :dd', { dd: params.dateDebut });
+    if (params.dateFin)
+      qb.andWhere('e.date_ecriture <= :df', { df: params.dateFin });
 
     const limit = params.limit ?? 50;
-    const page  = params.page  ?? 1;
+    const page = params.page ?? 1;
     qb.skip((page - 1) * limit).take(limit);
 
     const [data, total] = await qb.getManyAndCount();
@@ -195,13 +244,19 @@ export class EcrituresService {
     return `${prefix}${Date.now().toString(36).toUpperCase()}`;
   }
 
-  private withTenant<T extends Record<string, any>>(where: T): T & { tenant_id?: number } {
-    return hasActiveTenant() ? { ...where, tenant_id: getCurrentTenantId() } : where;
+  private withTenant<T extends Record<string, any>>(
+    where: T,
+  ): T & { tenant_id?: number } {
+    return hasActiveTenant()
+      ? { ...where, tenant_id: getCurrentTenantId() }
+      : where;
   }
 
   private applyTenantScope(qb: any, alias: string): void {
     if (hasActiveTenant()) {
-      qb.andWhere(`${alias}.tenant_id = :tenantId`, { tenantId: getCurrentTenantId() });
+      qb.andWhere(`${alias}.tenant_id = :tenantId`, {
+        tenantId: getCurrentTenantId(),
+      });
     }
   }
 }

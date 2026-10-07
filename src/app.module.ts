@@ -9,16 +9,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MulterModule } from '@nestjs/platform-express';
 
-
-
-
-
-
-
-
 import { ServeStaticModule } from '@nestjs/serve-static';
-
-
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -74,14 +65,6 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { ExportModule } from './modules/export/export.module';
 import { CaseWorkflowModule } from './modules/case-workflow/case-workflow.module';
 
-
-
-
-
-
-
-
-
 dotenv.config();
 
 @Module({
@@ -91,7 +74,7 @@ dotenv.config();
         fileSize: 50 * 1024 * 1024, // 50MB
       },
     }),
-     CoreModule,
+    CoreModule,
     CabinetModule,
     OnboardingModule,
 
@@ -111,14 +94,14 @@ dotenv.config();
     // 2. Modules indépendants
     IamModule,
     GeographyModule,
-    
+
     // 3. Modules avec dépendances simples
-    AgenciesModule, 
+    AgenciesModule,
     DocumentsModule,
     DossiersModule,
     // 4. Modules avec dépendances complexes (utilisent forwardRef)
     CustomerModule,
-    
+
     // 5. Autres modules
     ActivitiesModule,
     ConfigModule.forRoot({
@@ -150,7 +133,14 @@ dotenv.config();
           ),
         },
         template: {
-          dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+          dir: join(
+            process.cwd(),
+            'src',
+            'core',
+            'shared',
+            'emails',
+            'templates',
+          ),
           adapter: new HandlebarsAdapter(helpers),
           options: {
             strict: true,
@@ -159,7 +149,14 @@ dotenv.config();
         },
         options: {
           partials: {
-            dir: join(process.cwd(), 'src', 'core', 'shared', 'emails', 'templates'),
+            dir: join(
+              process.cwd(),
+              'src',
+              'core',
+              'shared',
+              'emails',
+              'templates',
+            ),
             options: {
               strict: true,
             },
@@ -245,8 +242,6 @@ dotenv.config();
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(TenantResolverMiddleware)
-      .forRoutes('*'); // Résolution tenant sur toutes les routes
+    consumer.apply(TenantResolverMiddleware).forRoutes('*'); // Résolution tenant sur toutes les routes
   }
 }

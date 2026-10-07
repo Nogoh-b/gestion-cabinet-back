@@ -1,6 +1,6 @@
 // src/modules/jurisdiction/dto/jurisdiction-stats.dto.ts
 
-import { DistributionItem } from "src/core/types/base-stats.dto";
+import { DistributionItem } from 'src/core/types/base-stats.dto';
 
 export class JurisdictionStatsDto {
   total: number;

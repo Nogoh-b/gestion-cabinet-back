@@ -87,12 +87,36 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity: Dossier,
     event: InsertEvent<Dossier>,
   ): Promise<void> {
-    await this.createConversation(entity, event);
+    // Chaque effet de bord est isolé dans son propre try/catch : une panne
+    // de conversation, de procédure ou de facturation d'ouverture ne doit
+    // JAMAIS empêcher `notifyDossierCreated()` de s'exécuter. Avant ce
+    // correctif, `createConversation`/`createProcedureInstance` n'étaient pas
+    // protégés : une erreur y interrompait silencieusement toute la chaîne
+    // `onAfterCreate` (rattrapée seulement par le catch générique
+    // `afterInsert` de `BaseEntitySubscriber`), empêchant la notification de
+    // création de dossier de partir — sans aucune erreur visible côté
+    // utilisateur, puisque le dossier lui-même est déjà inséré.
+    try {
+      await this.createConversation(entity, event);
+    } catch (err) {
+      this.logger.error(
+        `createConversation a échoué pour le dossier ${entity.dossier_number} : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
     // Un dossier V2 ne doit jamais amorcer en parallèle l'ancien moteur.
     // Ses frais d'ouverture sont créés, tracés puis facturés au moment de la
     // validation explicite de l'ouverture par CaseWorkflowService.
     if (entity.workflow_engine !== WorkflowEngine.ACTIONS_V2) {
-      await this.createProcedureInstance(entity, event);
+      try {
+        await this.createProcedureInstance(entity, event);
+      } catch (err) {
+        this.logger.error(
+          `createProcedureInstance a échoué pour le dossier ${entity.dossier_number} : ${(err as Error).message}`,
+          (err as Error).stack,
+        );
+      }
+      // createOpeningFeeInvoice gère déjà son propre try/catch en interne.
       await this.createOpeningFeeInvoice(entity, event);
     }
     await this.notifyDossierCreated(entity, event);
@@ -179,7 +203,9 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         (dossier as any)?.procedure_costs ?? (entity as any)?.procedure_costs,
       );
       const montantHT =
-        dossierOverride > 0 ? dossierOverride : Number(cabinet.dossier_opening_fee);
+        dossierOverride > 0
+          ? dossierOverride
+          : Number(cabinet.dossier_opening_fee);
       const tauxTVA = Number(cabinet.dossier_opening_fee_tva ?? 0);
       const montantTVA = Math.round(montantHT * tauxTVA) / 100;
       const montantTTC = montantHT + montantTVA;
@@ -491,11 +517,11 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     );
     if (!change) return;
 
-    const id = entity.id ?? (event.databaseEntity as Dossier)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
 
     const loaded = await this.load(id, event).catch(() => null);
-    const dossier = loaded ?? (event.databaseEntity as Dossier);
+    const dossier = loaded ?? event.databaseEntity;
     if (!dossier) return;
     const notifyClient = this.resolveTransientBoolean(
       'notify_client',
@@ -549,9 +575,9 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
     entity: Partial<Dossier>,
     event: UpdateEvent<Dossier>,
   ): Promise<void> {
-    const dossierId = entity.id ?? (event.databaseEntity as Dossier)?.id;
+    const dossierId = entity.id ?? event.databaseEntity?.id;
     this.logger.log(
-      `🔄 syncCollaboratorsToConversation START | dossierId=${dossierId} | entity.id=${entity.id} | dbEntity.id=${(event.databaseEntity as Dossier)?.id}`,
+      `🔄 syncCollaboratorsToConversation START | dossierId=${dossierId} | entity.id=${entity.id} | dbEntity.id=${event.databaseEntity?.id}`,
     );
     if (!dossierId) {
       this.logger.warn(`🔄 syncCollaborators SKIP — no dossierId`);

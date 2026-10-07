@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsEnum, IsEmail, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsEmail,
+  MaxLength,
+} from 'class-validator';
 import { CabinetPlan } from '../entities/cabinet.entity';
 
 /**
@@ -10,12 +16,15 @@ import { CabinetPlan } from '../entities/cabinet.entity';
  * PATCH /cabinets/:id/branding.
  */
 export class CreateCabinetDto {
-  @ApiProperty({ description: 'Nom du cabinet', example: 'Cabinet Dupont & Associes' })
+  @ApiProperty({
+    description: 'Nom du cabinet',
+    example: 'Cabinet Dupont & Associes',
+  })
   @IsString()
   @MaxLength(255)
   name: string;
 
-  @ApiPropertyOptional({ description: 'Plan d\'abonnement', example: 'free' })
+  @ApiPropertyOptional({ description: "Plan d'abonnement", example: 'free' })
   @IsOptional()
   @IsString()
   plan?: CabinetPlan;
@@ -36,7 +45,10 @@ export class CreateCabinetDto {
   @MaxLength(500)
   slogan?: string;
 
-  @ApiPropertyOptional({ description: 'Couleur principale (hex)', example: '#1d4ed8' })
+  @ApiPropertyOptional({
+    description: 'Couleur principale (hex)',
+    example: '#1d4ed8',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(20)
@@ -89,7 +101,9 @@ export class CreateCabinetDto {
 
   // ── Pied de page e-mail ────────────────────────────────────────────
 
-  @ApiPropertyOptional({ description: 'Texte de pied de page personnalise pour les e-mails' })
+  @ApiPropertyOptional({
+    description: 'Texte de pied de page personnalise pour les e-mails',
+  })
   @IsOptional()
   @IsString()
   email_footer?: string;

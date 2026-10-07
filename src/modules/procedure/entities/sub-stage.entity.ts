@@ -16,13 +16,17 @@ import { Facture } from 'src/modules/facture/entities/facture.entity';
 import { DocumentCustomer } from 'src/modules/documents/document-customer/entities/document-customer.entity';
 import { Diligence } from 'src/modules/diligence/entities/diligence.entity';
 import { Audience } from 'src/modules/audiences/entities/audience.entity';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity as BaseEntity } from 'src/core/entities/tenant.entity';
 
 @Entity('sub_stages')
 @BusinessTable({
   label: 'Sous-étapes',
-  description: 'Sous-étapes d\'une étape de procédure. Représentent les actions élémentaires à réaliser pour valider une étape.',
+  description:
+    "Sous-étapes d'une étape de procédure. Représentent les actions élémentaires à réaliser pour valider une étape.",
   icon: '🔹',
   category: 'procedure',
   ignored: true,
@@ -41,7 +45,7 @@ export class SubStage extends BaseEntity {
   @Column()
   @BusinessColumn({
     label: 'Étape',
-    description: 'Identifiant de l\'étape parente',
+    description: "Identifiant de l'étape parente",
     importance: 'high',
     group: 'relation',
     ignored: false,
@@ -55,7 +59,7 @@ export class SubStage extends BaseEntity {
   @Column()
   @BusinessColumn({
     label: 'Ordre',
-    description: 'Position de la sous-étape dans l\'étape',
+    description: "Position de la sous-étape dans l'étape",
     example: '1',
     importance: 'high',
     group: 'organisation',
@@ -76,7 +80,8 @@ export class SubStage extends BaseEntity {
   @BusinessColumn({
     label: 'Description',
     description: 'Description de la sous-étape et des actions à réaliser',
-    example: 'Rassembler toutes les pièces nécessaires à la constitution du dossier',
+    example:
+      'Rassembler toutes les pièces nécessaires à la constitution du dossier',
     importance: 'high',
     group: 'identification',
   })
@@ -85,21 +90,21 @@ export class SubStage extends BaseEntity {
   @Column({ default: true })
   @BusinessColumn({
     label: 'Obligatoire',
-    description: 'Indique si cette sous-étape doit obligatoirement être réalisée',
+    description:
+      'Indique si cette sous-étape doit obligatoirement être réalisée',
     importance: 'high',
     group: 'règles',
   })
   isMandatory: boolean;
 
-
-    @OneToMany(() => Facture, (facture) => facture.subStage)
+  @OneToMany(() => Facture, (facture) => facture.subStage)
   factures: Facture[];
 
   @ManyToMany(() => DocumentCustomer, (document) => document.subStages)
   @JoinTable({
     name: 'sub_stage_documents', // Table de jointure explicite
     joinColumn: { name: 'sub_stage_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' }
+    inverseJoinColumn: { name: 'document_id', referencedColumnName: 'id' },
   })
   documents: DocumentCustomer[];
 

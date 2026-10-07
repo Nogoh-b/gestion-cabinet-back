@@ -5,7 +5,7 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   JoinColumn,
-  Index
+  Index,
 } from 'typeorm';
 import { User } from '../../iam/user/entities/user.entity';
 import { Notification } from './notification.entity';

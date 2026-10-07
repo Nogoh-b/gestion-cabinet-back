@@ -11,7 +11,9 @@ describe('DocumentCategoryController', () => {
       providers: [DocumentCategoryService],
     }).compile();
 
-    controller = module.get<DocumentCategoryController>(DocumentCategoryController);
+    controller = module.get<DocumentCategoryController>(
+      DocumentCategoryController,
+    );
   });
 
   it('should be defined', () => {

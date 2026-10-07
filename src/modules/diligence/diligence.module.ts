@@ -14,7 +14,12 @@ import { DiligenceSubscriber } from './subscribers/diligence.subscriber';
 
 @Module({
   controllers: [DiligencesController],
-  providers: [DiligencesService, DiligenceStatsService, DiligenceWriteHandler, DiligenceSubscriber],
+  providers: [
+    DiligencesService,
+    DiligenceStatsService,
+    DiligenceWriteHandler,
+    DiligenceSubscriber,
+  ],
   exports: [DiligencesService, DiligenceStatsService],
   imports: [
     forwardRef(() => FindingModule),

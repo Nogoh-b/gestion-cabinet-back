@@ -1,10 +1,16 @@
 // user.entity.ts
-import { Exclude, Expose } from 'class-transformer';
+import { Exclude } from 'class-transformer';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { Employee } from 'src/modules/agencies/employee/entities/employee.entity';
 import { Customer } from 'src/modules/customer/customer/entities/customer.entity';
 import { Dossier } from 'src/modules/dossiers/entities/dossier.entity';
 import {
+  joinFullName,
+  splitFullName,
+} from 'src/core/shared/utils/full-name.util';
+import {
+  BeforeInsert,
+  BeforeUpdate,
   Entity,
   PrimaryGeneratedColumn,
   Column,
@@ -133,6 +139,22 @@ export class User extends BaseEntity {
   })
   first_name: string;
 
+  /**
+   * Nom et prénom en un seul champ — saisi directement par les formulaires de
+   * création (collaborateur, client). `first_name`/`last_name` restent la
+   * source lue par l'existant (recherche, tri, exports, module IA) : ils sont
+   * synchronisés automatiquement avec `full_name` par `syncNameFields()`
+   * ci-dessous, à chaque création ou mise à jour via `save()`.
+   */
+  @Column({ name: 'full_name', length: 91, nullable: false })
+  @BusinessColumn({
+    label: 'Nom complet',
+    description: 'Nom et prénom de l\'utilisateur, en un seul champ',
+    importance: 'critical',
+    group: 'identification',
+  })
+  full_name: string;
+
   @Column({ name: 'is_online', default: true })
   is_online: boolean;
 
@@ -165,12 +187,37 @@ export class User extends BaseEntity {
   @OneToMany(() => Finding, (finding) => finding.validated_by)
   validated_findings: Finding[];
 
-  @Expose()
-  get full_name(): string {
-    return `${this.first_name} ${this.last_name}`;
-  }
-
   get specialization(): string | null {
     return this.employee?.specialization || null;
+  }
+
+  /**
+   * Synchronise `full_name` et `first_name`/`last_name` à chaque création ou
+   * mise à jour passant par `save()` (ce que font tous les services actuels
+   * via `repository.create()` + `save()`).
+   *
+   * `full_name` est la source de vérité quand il est renseigné et que
+   * first_name/last_name ne le sont pas encore (formulaire à champ unique) ;
+   * sinon on reconstruit `full_name` depuis first_name/last_name, pour que
+   * les écritures legacy (qui ne connaissent que ces deux colonnes) restent
+   * cohérentes.
+   *
+   * Limite connue : un `repository.update(id, partial)` direct (sans charger
+   * puis sauvegarder l'entité) contourne ce hook — seuls les flux create/save
+   * sont couverts, ce qui suffit pour les formulaires de création visés ici.
+   */
+  @BeforeInsert()
+  @BeforeUpdate()
+  syncNameFields() {
+    const hasFullName = !!this.full_name?.trim();
+    const hasSplitNames = !!this.first_name?.trim() && !!this.last_name?.trim();
+
+    if (hasFullName && !hasSplitNames) {
+      const { first_name, last_name } = splitFullName(this.full_name);
+      this.first_name = first_name || this.first_name || '';
+      this.last_name = last_name || this.last_name || this.full_name.trim();
+    } else if (!hasFullName) {
+      this.full_name = joinFullName(this.first_name, this.last_name);
+    }
   }
 }

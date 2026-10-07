@@ -31,14 +31,12 @@ export enum EventType {
   SUBSTAGE_COMPLETED = 'substage_completed',
   TASK_COMPLETED = 'task_completed',
   DOCUMENT_UPLOADED = 'document_uploaded',
-CYCLE_APPLIED = 'cycle_applied',
+  CYCLE_APPLIED = 'cycle_applied',
 
   SUBSTAGE_STARTED = 'substage_started',
   SUBSTAGE_BLOCKED = 'substage_blocked',
   SUBSTAGE_UNBLOCKED = 'substage_unblocked',
   SUBSTAGE_SKIPPED = 'substage_skipped',
-
-
 
   INSTANCE_CREATED = 'instance_created',
   INSTANCE_STARTED = 'instance_started',
@@ -51,6 +49,4 @@ CYCLE_APPLIED = 'cycle_applied',
   TRANSITION_TRIGGERED = 'transition_triggered',
   USER_ACTION = 'user_action',
   ERROR_OCCURRED = 'error_occurred',
-
-
 }

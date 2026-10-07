@@ -1,5 +1,10 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsOrder } from 'typeorm';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
@@ -8,7 +13,10 @@ import {
   SearchCriteria,
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
-import { CommissionMode, DossierReferral } from './entities/dossier-referral.entity';
+import {
+  CommissionMode,
+  DossierReferral,
+} from './entities/dossier-referral.entity';
 import { CreateDossierReferralDto } from './dto/create-dossier-referral.dto';
 import { Dossier } from '../dossiers/entities/dossier.entity';
 import { Referrer } from './entities/referral.entity';
@@ -42,11 +50,15 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
 
     const entity = this.repository.create(dto);
 
-    const dossier = await this.dossierRepo.findOne({ where: { id: dto.dossier_id } });
+    const dossier = await this.dossierRepo.findOne({
+      where: { id: dto.dossier_id },
+    });
     if (!dossier) throw new NotFoundException('Dossier non trouvé');
     entity.dossier = dossier;
 
-    const referrer = await this.referrerRepo.findOne({ where: { id: dto.referrer_id } });
+    const referrer = await this.referrerRepo.findOne({
+      where: { id: dto.referrer_id },
+    });
     if (!referrer) throw new NotFoundException('Apporteur non trouvé');
     entity.referrer = referrer;
 
@@ -65,7 +77,13 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
         'referrer.company_name',
         'referrer.contact_name',
       ],
-      exactMatchFields: ['id', 'dossier_id', 'referrer_id', 'commission_basis', 'commission_mode'],
+      exactMatchFields: [
+        'id',
+        'dossier_id',
+        'referrer_id',
+        'commission_basis',
+        'commission_mode',
+      ],
       dateRangeFields: ['created_at', 'updated_at', 'referral_date'],
       relationFields: [
         'dossier',
@@ -101,10 +119,12 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
   }
 
   findAll(): Promise<DossierReferral[]> {
-    return this.repository.find({
-      relations: ['dossier', 'referrer', 'commissions'],
-      order: { referral_date: 'DESC' },
-    }).then((items) => items.map((item) => this.enrichReferral(item)));
+    return this.repository
+      .find({
+        relations: ['dossier', 'referrer', 'commissions'],
+        order: { referral_date: 'DESC' },
+      })
+      .then((items) => items.map((item) => this.enrichReferral(item)));
   }
 
   async findOne(id: number): Promise<DossierReferral> {
@@ -140,22 +160,27 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
   }
 
   async findByReferrer(referrer_id: number): Promise<DossierReferral[]> {
-    return this.repository.find({
-      where: { referrer_id },
-      relations: [
-        'dossier',
-        'dossier.client',
-        'referrer',
-        'referrer.employee',
-        'referrer.employee.user',
-        'referrer.customer',
-        'commissions',
-      ],
-      order: { referral_date: 'DESC' },
-    }).then((items) => items.map((item) => this.enrichReferral(item)));
+    return this.repository
+      .find({
+        where: { referrer_id },
+        relations: [
+          'dossier',
+          'dossier.client',
+          'referrer',
+          'referrer.employee',
+          'referrer.employee.user',
+          'referrer.customer',
+          'commissions',
+        ],
+        order: { referral_date: 'DESC' },
+      })
+      .then((items) => items.map((item) => this.enrichReferral(item)));
   }
 
-  async update(id: number, dto: UpdateDossierReferralDto): Promise<DossierReferral> {
+  async update(
+    id: number,
+    dto: UpdateDossierReferralDto,
+  ): Promise<DossierReferral> {
     const referral = await this.findOne(id);
     if (dto.dossier_id && dto.dossier_id !== referral.dossier_id) {
       const existing = await this.repository.findOne({
@@ -164,17 +189,25 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
       if (existing && existing.id !== id) {
         throw new ConflictException('Ce dossier a déjà un apporteur');
       }
-      const dossier = await this.dossierRepo.findOne({ where: { id: dto.dossier_id } });
-    if (!dossier) throw new NotFoundException('Dossier non trouvé');
-    referral.dossier = dossier;
+      const dossier = await this.dossierRepo.findOne({
+        where: { id: dto.dossier_id },
+      });
+      if (!dossier) throw new NotFoundException('Dossier non trouvé');
+      referral.dossier = dossier;
     }
     if (dto.referrer_id) {
-      const referrer = await this.referrerRepo.findOne({ where: { id: dto.referrer_id } });
+      const referrer = await this.referrerRepo.findOne({
+        where: { id: dto.referrer_id },
+      });
       if (!referrer) throw new NotFoundException('Apporteur non trouvé');
       referral.referrer = referrer;
     }
     const merged = { ...referral, ...dto } as DossierReferral;
-    this.applyCommissionRules(merged, merged as UpdateDossierReferralDto, referral.referrer);
+    this.applyCommissionRules(
+      merged,
+      merged as UpdateDossierReferralDto,
+      referral.referrer,
+    );
     await this.repository.save(merged);
     return this.findOne(id);
   }
@@ -189,13 +222,20 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
       .filter((item) => item.status === CommissionStatus.PAID)
       .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
     const totalPending = commissions
-      .filter((item) => item.status !== CommissionStatus.PAID && item.status !== CommissionStatus.CANCELLED)
+      .filter(
+        (item) =>
+          item.status !== CommissionStatus.PAID &&
+          item.status !== CommissionStatus.CANCELLED,
+      )
       .reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
 
     return {
       ...referral,
       commission_rate: Number(referral.commission_rate ?? 0),
-      commission_amount: referral.commission_amount != null ? Number(referral.commission_amount) : null,
+      commission_amount:
+        referral.commission_amount != null
+          ? Number(referral.commission_amount)
+          : null,
       commission_mode: referral.commission_mode ?? CommissionMode.RATE,
       total_paid_commissions: totalPaid,
       total_pending_commissions: totalPending,
@@ -221,8 +261,10 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
 
     const employeeUser = (referrer as any).employee?.user;
     const employeeName =
-      [employeeUser?.first_name, employeeUser?.last_name].filter(Boolean).join(' ').trim() ||
-      (referrer as any).employee?.full_name;
+      [employeeUser?.first_name, employeeUser?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || (referrer as any).employee?.full_name;
 
     return (
       referrer.company_name ||
@@ -251,25 +293,41 @@ export class DossierReferralsService extends BaseServiceV1<DossierReferral> {
     if (mode === CommissionMode.FIXED_AMOUNT) {
       const rawAmount = dto.commission_amount ?? entity.commission_amount;
       const amount = Number(rawAmount);
-      if (rawAmount === null || rawAmount === undefined || isNaN(amount) || amount <= 0) {
-        throw new BadRequestException('Le montant fixe de commission est requis et doit etre superieur a 0');
+      if (
+        rawAmount === null ||
+        rawAmount === undefined ||
+        isNaN(amount) ||
+        amount <= 0
+      ) {
+        throw new BadRequestException(
+          'Le montant fixe de commission est requis et doit etre superieur a 0',
+        );
       }
       entity.commission_amount = amount;
-      entity.commission_rate = Number(dto.commission_rate ?? entity.commission_rate ?? 0);
+      entity.commission_rate = Number(
+        dto.commission_rate ?? entity.commission_rate ?? 0,
+      );
       return;
     }
 
-    const rawRate = dto.commission_rate ?? entity.commission_rate ?? referrer?.default_commission_rate ?? null;
+    const rawRate =
+      dto.commission_rate ??
+      entity.commission_rate ??
+      referrer?.default_commission_rate ??
+      null;
     const rate = Number(rawRate);
     if (rawRate === null || rawRate === undefined || isNaN(rate)) {
       throw new BadRequestException(
-        "Le taux de commission est requis (aucun taux par defaut defini pour cet apporteur)",
+        'Le taux de commission est requis (aucun taux par defaut defini pour cet apporteur)',
       );
     }
     if (rate < 0 || rate > 100) {
-      throw new BadRequestException('Le taux de commission doit etre compris entre 0 et 100');
+      throw new BadRequestException(
+        'Le taux de commission doit etre compris entre 0 et 100',
+      );
     }
     entity.commission_rate = rate;
-    entity.commission_amount = dto.commission_amount ?? entity.commission_amount ?? null;
+    entity.commission_amount =
+      dto.commission_amount ?? entity.commission_amount ?? null;
   }
 }

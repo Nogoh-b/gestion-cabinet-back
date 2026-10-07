@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 export class LoginResponseDto {
   @ApiProperty({
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-    description: 'JWT Access Token'
+    description: 'JWT Access Token',
   })
   access_token: string;
 
@@ -11,9 +11,9 @@ export class LoginResponseDto {
     example: {
       id: 1,
       username: 'admin',
-      roles: ['ADMIN']
+      roles: ['ADMIN'],
     },
-    description: 'Informations utilisateur'
+    description: 'Informations utilisateur',
   })
   user: {
     id: number;

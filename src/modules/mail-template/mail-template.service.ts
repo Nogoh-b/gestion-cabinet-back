@@ -1,11 +1,18 @@
 import { Repository } from 'typeorm';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as Handlebars from 'handlebars';
 import { MailTemplate } from './entities/mail-template.entity';
 import { CreateMailTemplateDto } from './dto/create-mail-template.dto';
 import { UpdateMailTemplateDto } from './dto/update-mail-template.dto';
-import { Cabinet, cabinetLogoToDataUri } from 'src/modules/cabinet/entities/cabinet.entity';
+import {
+  Cabinet,
+  cabinetLogoToDataUri,
+} from 'src/modules/cabinet/entities/cabinet.entity';
 import { logoFileToUrl } from 'src/modules/cabinet/cabinet-logo.util';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { buildNotificationTemplateByCode } from './notification-template.defaults';
@@ -28,9 +35,13 @@ export class MailTemplateService {
   // ── CRUD ────────────────────────────────────────────────────────────────
 
   async create(dto: CreateMailTemplateDto): Promise<MailTemplate> {
-    const existing = await this.repository.findOne({ where: { code: dto.code } });
+    const existing = await this.repository.findOne({
+      where: { code: dto.code },
+    });
     if (existing) {
-      throw new BadRequestException(`Un template avec le code "${dto.code}" existe déjà.`);
+      throw new BadRequestException(
+        `Un template avec le code "${dto.code}" existe déjà.`,
+      );
     }
     const tpl = this.repository.create({
       ...dto,
@@ -45,7 +56,10 @@ export class MailTemplateService {
   }
 
   async findActive(): Promise<MailTemplate[]> {
-    return this.repository.find({ where: { is_active: true }, order: { name: 'ASC' } });
+    return this.repository.find({
+      where: { is_active: true },
+      order: { name: 'ASC' },
+    });
   }
 
   async findOne(id: number): Promise<MailTemplate> {
@@ -81,7 +95,10 @@ export class MailTemplateService {
    * (en-tête + pied de page) construit à partir des informations du cabinet
    * courant (logo, couleur, coordonnées).
    */
-  async render(code: string, context: Record<string, any> = {}): Promise<RenderedMail> {
+  async render(
+    code: string,
+    context: Record<string, any> = {},
+  ): Promise<RenderedMail> {
     const tpl = await this.findByCode(code);
     if (!tpl) throw new NotFoundException(`Template "${code}" introuvable`);
     return this.renderTemplate(tpl, context);
@@ -101,7 +118,10 @@ export class MailTemplateService {
     return this.renderTemplate(tpl, context);
   }
 
-  async preview(id: number, context: Record<string, any> = {}): Promise<RenderedMail> {
+  async preview(
+    id: number,
+    context: Record<string, any> = {},
+  ): Promise<RenderedMail> {
     const tpl = await this.findOne(id);
     return this.renderTemplate(tpl, context);
   }
@@ -121,8 +141,11 @@ export class MailTemplateService {
     return { subject, html };
   }
 
-  private async ensureSystemDefault(code: string): Promise<MailTemplate | null> {
-    const defaults = buildNotificationTemplateByCode(code) ?? buildAuthTemplateByCode(code);
+  private async ensureSystemDefault(
+    code: string,
+  ): Promise<MailTemplate | null> {
+    const defaults =
+      buildNotificationTemplateByCode(code) ?? buildAuthTemplateByCode(code);
     if (!defaults) return null;
 
     try {
@@ -154,7 +177,9 @@ export class MailTemplateService {
       },
       cabinetName,
       // URL hébergée en priorité (affichable en e-mail), repli data-URI.
-      logoUrl: logoFileToUrl(cabinet?.logo_file) ?? cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
+      logoUrl:
+        logoFileToUrl(cabinet?.logo_file) ??
+        cabinetLogoToDataUri(cabinet?.logo, cabinet?.logo_mime),
       brandColor: cabinet?.brand_color ?? '#1d4ed8',
       contactEmail,
       contactPhone,
@@ -166,7 +191,10 @@ export class MailTemplateService {
   }
 
   /** Habillage HTML : en-tête (logo/nom) + corps + pied de page (coordonnées). */
-  private wrapWithLayout(body: string, brand: ReturnType<typeof this.buildBrandContext>): string {
+  private wrapWithLayout(
+    body: string,
+    brand: ReturnType<typeof this.buildBrandContext>,
+  ): string {
     const header = `
       <div style="background:${brand.brandColor};padding:24px;text-align:center;">
         ${

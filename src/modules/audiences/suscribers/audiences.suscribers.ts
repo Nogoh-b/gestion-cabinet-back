@@ -88,7 +88,7 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     entity: Partial<Audience>,
     event: UpdateEvent<Audience>,
   ): Promise<void> {
-    const id = entity.id ?? (event.databaseEntity as Audience)?.id;
+    const id = entity.id ?? event.databaseEntity?.id;
     if (!id) return;
 
     if (this.hasColumnChanged(event, 'status')) {
@@ -115,18 +115,31 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
     }
   }
 
+  /**
+   * Émet l'événement source du case-workflow. Toujours appelé AVANT
+   * `this.notify(...)` dans les hooks ci-dessus : une exception ici (listener
+   * `case-workflow.source.*` synchrone en défaut, ou `EventEmitter2.emit`
+   * lui-même) ne doit jamais empêcher la notification métier de partir.
+   */
   private emitWorkflowSourceEvent(
     kind: 'created' | 'held' | 'postponed',
     audience: Audience,
   ): void {
-    const dossierId = Number(audience.dossier_id ?? audience.dossier?.id);
-    const tenantId = Number(audience.tenant_id);
-    if (!dossierId || !tenantId) return;
-    this.eventEmitter.emit(`case-workflow.source.audience-${kind}`, {
-      tenantId,
-      dossierId,
-      audienceId: audience.id,
-    });
+    try {
+      const dossierId = Number(audience.dossier_id ?? audience.dossier?.id);
+      const tenantId = Number(audience.tenant_id);
+      if (!dossierId || !tenantId) return;
+      this.eventEmitter.emit(`case-workflow.source.audience-${kind}`, {
+        tenantId,
+        dossierId,
+        audienceId: audience.id,
+      });
+    } catch (err) {
+      this.logger.error(
+        `emitWorkflowSourceEvent(audience-${kind}) a échoué pour l'audience ${audience.id} : ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
   }
 
   private async dispatchHeld(
@@ -154,8 +167,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       link: `/audiences/${audience.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
@@ -200,8 +213,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       link: `/audiences/${audience.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,
@@ -243,8 +256,8 @@ export class AudienceSubscriber extends NotifiableSubscriber<Audience> {
       link: `/audiences/${audience.id}`,
       audience: {
         client: {
-          user_id: (dossier?.client as any)?.user_id,
-          email: (dossier?.client as any)?.email,
+          user_id: dossier?.client?.user_id,
+          email: dossier?.client?.email,
           notify: notifyClient,
         },
         lawyer_id: dossier?.lawyer_id ?? null,

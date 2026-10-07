@@ -23,7 +23,9 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
   async create(dto: CreateSupplierDto): Promise<Supplier> {
     const entity = this.repository.create(dto);
     if (dto.branch_id) {
-      const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
+      const branch = await this.branchRepo.findOne({
+        where: { id: dto.branch_id },
+      });
       if (!branch) throw new NotFoundException('Agence non trouvée');
       entity.branch = branch;
     }
@@ -51,7 +53,9 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
   async update(id: number, dto: UpdateSupplierDto): Promise<Supplier> {
     const supplier = await this.findOne(id);
     if (dto.branch_id) {
-      const branch = await this.branchRepo.findOne({ where: { id: dto.branch_id } });
+      const branch = await this.branchRepo.findOne({
+        where: { id: dto.branch_id },
+      });
       if (!branch) throw new NotFoundException('Agence non trouvée');
       supplier.branch = branch;
     }
@@ -75,7 +79,10 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
 
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const supplier_code = `SUP-${String(sequence).padStart(3, '0')}`;
-      const exists = await this.repository.findOne({ where: { supplier_code }, withDeleted: true });
+      const exists = await this.repository.findOne({
+        where: { supplier_code },
+        withDeleted: true,
+      });
       if (!exists) return supplier_code;
       sequence += 1;
     }
@@ -91,7 +98,9 @@ export class SuppliersService extends BaseServiceV1<Supplier> {
     );
   }
 
-  private async saveWithUniqueSupplierCode(entity: Supplier): Promise<Supplier> {
+  private async saveWithUniqueSupplierCode(
+    entity: Supplier,
+  ): Promise<Supplier> {
     let attempt = 0;
     while (attempt++ < 5) {
       try {

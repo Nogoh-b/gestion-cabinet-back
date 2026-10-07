@@ -1,12 +1,26 @@
 // create-referrer.dto.ts
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber, IsBoolean, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  IsBoolean,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import { ReferrerPaymentMethod, ReferrerType } from '../entities/referral.entity';
-
+import {
+  ReferrerPaymentMethod,
+  ReferrerType,
+} from '../entities/referral.entity';
 
 export class CreateReferrerDto {
-  @ApiProperty({ example: 'Cabinet Dupont & Associés', description: 'Raison sociale ou nom complet' })
+  @ApiProperty({
+    example: 'Cabinet Dupont & Associés',
+    description: 'Raison sociale ou nom complet',
+  })
   @IsString()
   @IsNotEmpty()
   company_name: string;
@@ -16,7 +30,10 @@ export class CreateReferrerDto {
   @IsNotEmpty()
   referrer_type: ReferrerType;
 
-  @ApiPropertyOptional({ example: false, description: 'True si employé du cabinet' })
+  @ApiPropertyOptional({
+    example: false,
+    description: 'True si employé du cabinet',
+  })
   @IsBoolean()
   @IsOptional()
   is_internal?: boolean;
@@ -26,12 +43,18 @@ export class CreateReferrerDto {
   @IsOptional()
   employee_id?: number;
 
-  @ApiPropertyOptional({ example: 12, description: 'ID client si le client est apporteur' })
+  @ApiPropertyOptional({
+    example: 12,
+    description: 'ID client si le client est apporteur',
+  })
   @IsNumber()
   @IsOptional()
   customer_id?: number;
 
-  @ApiPropertyOptional({ example: 'Jean Martin', description: 'Nom du contact' })
+  @ApiPropertyOptional({
+    example: 'Jean Martin',
+    description: 'Nom du contact',
+  })
   @IsString()
   @IsOptional()
   contact_name?: string;
@@ -51,14 +74,20 @@ export class CreateReferrerDto {
   @IsOptional()
   address?: string;
 
-  @ApiPropertyOptional({ example: 10.0, description: 'Taux de commission par défaut (%)' })
+  @ApiPropertyOptional({
+    example: 10.0,
+    description: 'Taux de commission par défaut (%)',
+  })
   @IsNumber()
   @Min(0)
   @Max(100)
   @IsOptional()
   default_commission_rate?: number;
 
-  @ApiPropertyOptional({ enum: ReferrerPaymentMethod, example: ReferrerPaymentMethod.VIREMENT })
+  @ApiPropertyOptional({
+    enum: ReferrerPaymentMethod,
+    example: ReferrerPaymentMethod.VIREMENT,
+  })
   @IsEnum(ReferrerPaymentMethod)
   @IsOptional()
   payment_method?: ReferrerPaymentMethod;
@@ -83,7 +112,11 @@ export class CreateReferrerDto {
   @IsOptional()
   notes?: string;
 
-  @ApiPropertyOptional({ example: true, description: 'Actif (true) ou Inactif (false)', default: true })
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Actif (true) ou Inactif (false)',
+    default: true,
+  })
   @IsBoolean()
   @IsOptional()
   status?: boolean = true;

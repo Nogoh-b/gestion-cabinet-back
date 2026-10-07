@@ -65,7 +65,12 @@ export class SingleEmployeeStatsDto {
       dateOuverture: Date;
       statut: number;
     }>;
-    parStatut: Array<{ name: string; value: number; percentage: number; color?: string }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
     parType: Array<{ type: string; count: number; percentage: number }>;
   };
 

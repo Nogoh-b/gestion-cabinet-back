@@ -19,7 +19,9 @@ export class BranchStatsService {
     private branchRepository: Repository<Branch>,
   ) {}
 
-  async getStats(filters?: StatsFilterDto): Promise<BranchStatsDto | SingleBranchStatsDto> {
+  async getStats(
+    filters?: StatsFilterDto,
+  ): Promise<BranchStatsDto | SingleBranchStatsDto> {
     // Si un branchId est fourni, on retourne les stats détaillées de cette agence
     if (filters?.branchId) {
       return this.getStatsForSingleBranch(filters.branchId, filters);
@@ -31,8 +33,8 @@ export class BranchStatsService {
 
   // Méthode pour une agence spécifique
   private async getStatsForSingleBranch(
-    branchId: number, 
-    filters?: StatsFilterDto
+    branchId: number,
+    filters?: StatsFilterDto,
   ): Promise<SingleBranchStatsDto> {
     const branch = await this.branchRepository.findOne({
       where: { id: branchId },
@@ -44,8 +46,8 @@ export class BranchStatsService {
         'employees.managed_dossiers.audiences',
         'customers',
         'customers.dossiers',
-        'customers.factures'
-      ]
+        'customers.factures',
+      ],
     });
 
     if (!branch) {
@@ -77,33 +79,57 @@ export class BranchStatsService {
     };
   }
 
-  private async getResumeStats(branch: Branch, filters?: StatsFilterDto): Promise<SingleBranchStatsDto['resume']> {
+  private async getResumeStats(
+    branch: Branch,
+    filters?: StatsFilterDto,
+  ): Promise<SingleBranchStatsDto['resume']> {
     const employes = branch.employees || [];
     const clients = branch.customers || [];
-    
+
     // Récupérer tous les dossiers des employés de l'agence
-    const tousDossiers = employes.flatMap(e => e.managed_dossiers || []);
-    
+    const tousDossiers = employes.flatMap((e) => e.managed_dossiers || []);
+
     // Filtrer par date si nécessaire
-    const dossiersFiltres = this.filterByDate(tousDossiers, filters, 'created_at');
-    const dossiersActifs = dossiersFiltres.filter(d => d.is_active);
-    const dossiersClos = dossiersFiltres.filter(d => d.is_closed);
+    const dossiersFiltres = this.filterByDate(
+      tousDossiers,
+      filters,
+      'created_at',
+    );
+    const dossiersActifs = dossiersFiltres.filter((d) => d.is_active);
+    const dossiersClos = dossiersFiltres.filter((d) => d.is_closed);
 
     // Récupérer toutes les audiences
-    const toutesAudiences = dossiersFiltres.flatMap(d => d.audiences || []);
-    const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
+    const toutesAudiences = dossiersFiltres.flatMap((d) => d.audiences || []);
+    const audiencesFiltrees = this.filterByDate(
+      toutesAudiences,
+      filters,
+      'created_at',
+    );
 
     // Récupérer toutes les factures
-    const toutesFactures = clients.flatMap(c => c.factures || []);
-    const facturesFiltrees = this.filterByDate(toutesFactures, filters, 'dateFacture');
-    const chiffreAffaires = facturesFiltrees.reduce((sum, f) => sum + (parseFloat(f.montantTTC) || 0), 0);
+    const toutesFactures = clients.flatMap((c) => c.factures || []);
+    const facturesFiltrees = this.filterByDate(
+      toutesFactures,
+      filters,
+      'dateFacture',
+    );
+    const chiffreAffaires = facturesFiltrees.reduce(
+      (sum, f) => sum + (parseFloat(f.montantTTC) || 0),
+      0,
+    );
 
     return {
       totalEmployes: employes.length,
-      totalAvocats: employes.filter(e => e.position === EmployeePosition.AVOCAT).length,
-      totalSecretaires: employes.filter(e => e.position === EmployeePosition.SECRETAIRE).length,
-      totalAutresEmployes: employes.filter(e => 
-        e.position !== EmployeePosition.AVOCAT && e.position !== EmployeePosition.SECRETAIRE
+      totalAvocats: employes.filter(
+        (e) => e.position === EmployeePosition.AVOCAT,
+      ).length,
+      totalSecretaires: employes.filter(
+        (e) => e.position === EmployeePosition.SECRETAIRE,
+      ).length,
+      totalAutresEmployes: employes.filter(
+        (e) =>
+          e.position !== EmployeePosition.AVOCAT &&
+          e.position !== EmployeePosition.SECRETAIRE,
       ).length,
       totalClients: clients.length,
       totalDossiers: dossiersFiltres.length,
@@ -115,13 +141,16 @@ export class BranchStatsService {
     };
   }
 
-  private getEmployesStats(employes: any[], filters?: StatsFilterDto): SingleBranchStatsDto['employes'] {
+  private getEmployesStats(
+    employes: any[],
+    filters?: StatsFilterDto,
+  ): SingleBranchStatsDto['employes'] {
     const employesFiltres = this.filterByDate(employes, filters, 'created_at');
     const total = employesFiltres.length;
 
     // Répartition par poste
     const positionMap = new Map<string, number>();
-    employesFiltres.forEach(e => {
+    employesFiltres.forEach((e) => {
       positionMap.set(e.position, (positionMap.get(e.position) || 0) + 1);
     });
 
@@ -143,40 +172,49 @@ export class BranchStatsService {
       [EmployeePosition.ADMINISTRATIF]: '#6b7280',
     };
 
-    const parPosition = Array.from(positionMap.entries()).map(([position, count]) => ({
-      position: positionLabels[position] || position,
-      count,
-      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-      color: positionColors[position] || '#6b7280',
-    }));
+    const parPosition = Array.from(positionMap.entries()).map(
+      ([position, count]) => ({
+        position: positionLabels[position] || position,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: positionColors[position] || '#6b7280',
+      }),
+    );
 
     // Employés récents
     const recents = [...employesFiltres]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
       .slice(0, 10)
-      .map(e => ({
+      .map((e) => ({
         id: e.id,
         nom: e.full_name,
         position: e.position,
         dateEmbauche: e.hireDate,
-        dossiersActifs: e.managed_dossiers?.filter(d => d.is_active).length || 0,
+        dossiersActifs:
+          e.managed_dossiers?.filter((d) => d.is_active).length || 0,
       }));
 
     // Top performers
     const topPerformers = employesFiltres
-      .filter(e => e.position === EmployeePosition.AVOCAT)
-      .map(e => {
+      .filter((e) => e.position === EmployeePosition.AVOCAT)
+      .map((e) => {
         const dossiers = e.managed_dossiers || [];
-        const dossiersClos = dossiers.filter(d => d.is_closed).length;
-        const audiences = dossiers.flatMap(d => d.audiences || []);
-        
+        const dossiersClos = dossiers.filter((d) => d.is_closed).length;
+        const audiences = dossiers.flatMap((d) => d.audiences || []);
+
         return {
           id: e.id,
           nom: e.full_name,
           position: e.position,
           dossiers: dossiers.length,
           audiences: audiences.length,
-          tauxSucces: dossiers.length > 0 ? Math.round((dossiersClos / dossiers.length) * 100) : 0,
+          tauxSucces:
+            dossiers.length > 0
+              ? Math.round((dossiersClos / dossiers.length) * 100)
+              : 0,
         };
       })
       .sort((a, b) => b.tauxSucces - a.tauxSucces)
@@ -189,13 +227,16 @@ export class BranchStatsService {
     };
   }
 
-  private getClientsStats(clients: any[], filters?: StatsFilterDto): SingleBranchStatsDto['clients'] {
+  private getClientsStats(
+    clients: any[],
+    filters?: StatsFilterDto,
+  ): SingleBranchStatsDto['clients'] {
     const clientsFiltres = this.filterByDate(clients, filters, 'created_at');
     const total = clientsFiltres.length;
 
     // Répartition par type
     const typeMap = new Map<string, number>();
-    clientsFiltres.forEach(c => {
+    clientsFiltres.forEach((c) => {
       const type = c.type_customer?.name || 'Non spécifié';
       typeMap.set(type, (typeMap.get(type) || 0) + 1);
     });
@@ -208,9 +249,12 @@ export class BranchStatsService {
 
     // Clients récents
     const recents = [...clientsFiltres]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
       .slice(0, 10)
-      .map(c => ({
+      .map((c) => ({
         id: c.id,
         nom: c.full_name,
         email: c.email,
@@ -220,11 +264,14 @@ export class BranchStatsService {
 
     // Top clients par montant
     const topClients = clientsFiltres
-      .map(c => ({
+      .map((c) => ({
         id: c.id,
         nom: c.full_name,
         dossierCount: c.dossiers?.length || 0,
-        montantTotal: (c.factures || []).reduce((sum, f) => sum + (parseFloat(f.montantTTC) || 0), 0),
+        montantTotal: (c.factures || []).reduce(
+          (sum, f) => sum + (parseFloat(f.montantTTC) || 0),
+          0,
+        ),
       }))
       .sort((a, b) => b.montantTotal - a.montantTotal)
       .slice(0, 5);
@@ -237,14 +284,21 @@ export class BranchStatsService {
     };
   }
 
-  private async getDossiersStats(employes: any[], filters?: StatsFilterDto): Promise<SingleBranchStatsDto['dossiers']> {
-    const tousDossiers = employes.flatMap(e => e.managed_dossiers || []);
-    const dossiersFiltres = this.filterByDate(tousDossiers, filters, 'created_at');
+  private async getDossiersStats(
+    employes: any[],
+    filters?: StatsFilterDto,
+  ): Promise<SingleBranchStatsDto['dossiers']> {
+    const tousDossiers = employes.flatMap((e) => e.managed_dossiers || []);
+    const dossiersFiltres = this.filterByDate(
+      tousDossiers,
+      filters,
+      'created_at',
+    );
     const total = dossiersFiltres.length;
 
     // Stats par statut
     const byStatusMap = new Map<number, number>();
-    dossiersFiltres.forEach(d => {
+    dossiersFiltres.forEach((d) => {
       byStatusMap.set(d.status, (byStatusMap.get(d.status) || 0) + 1);
     });
 
@@ -268,16 +322,18 @@ export class BranchStatsService {
       [DossierStatus.ARCHIVED]: '#9ca3af',
     };
 
-    const parStatut = Array.from(byStatusMap.entries()).map(([status, count]) => ({
-      name: statusLabels[status] || 'Inconnu',
-      value: count,
-      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-      color: statusColors[status] || '#6b7280',
-    }));
+    const parStatut = Array.from(byStatusMap.entries()).map(
+      ([status, count]) => ({
+        name: statusLabels[status] || 'Inconnu',
+        value: count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: statusColors[status] || '#6b7280',
+      }),
+    );
 
     // Stats par type de procédure
     const typeMap = new Map<string, number>();
-    dossiersFiltres.forEach(d => {
+    dossiersFiltres.forEach((d) => {
       const type = d.procedure_type?.name || 'Non spécifié';
       typeMap.set(type, (typeMap.get(type) || 0) + 1);
     });
@@ -296,10 +352,13 @@ export class BranchStatsService {
 
     // Dossiers récents
     const recents = [...dossiersFiltres]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )
       .slice(0, 10)
-      .map(d => {
-        const avocat = employes.find(e => e.id === d.lawyer_id);
+      .map((d) => {
+        const avocat = employes.find((e) => e.id === d.lawyer_id);
         return {
           id: d.id,
           numero: d.dossier_number,
@@ -320,30 +379,54 @@ export class BranchStatsService {
     };
   }
 
-  private async getAudiencesStats(employes: any[], filters?: StatsFilterDto): Promise<SingleBranchStatsDto['audiences']> {
-    const tousDossiers = employes.flatMap(e => e.managed_dossiers || []);
-    const toutesAudiences = tousDossiers.flatMap(d => d.audiences || []);
-    const audiencesFiltrees = this.filterByDate(toutesAudiences, filters, 'created_at');
+  private async getAudiencesStats(
+    employes: any[],
+    filters?: StatsFilterDto,
+  ): Promise<SingleBranchStatsDto['audiences']> {
+    const tousDossiers = employes.flatMap((e) => e.managed_dossiers || []);
+    const toutesAudiences = tousDossiers.flatMap((d) => d.audiences || []);
+    const audiencesFiltrees = this.filterByDate(
+      toutesAudiences,
+      filters,
+      'created_at',
+    );
     const maintenant = new Date();
 
-    const passees = audiencesFiltrees.filter(a => new Date(a.full_datetime) < maintenant).length;
-    const aVenir = audiencesFiltrees.filter(a => 
-      new Date(a.full_datetime) >= maintenant && a.status === AudienceStatus.SCHEDULED
+    const passees = audiencesFiltrees.filter(
+      (a) => new Date(a.full_datetime) < maintenant,
     ).length;
-    const annulees = audiencesFiltrees.filter(a => a.status === AudienceStatus.CANCELLED).length;
+    const aVenir = audiencesFiltrees.filter(
+      (a) =>
+        new Date(a.full_datetime) >= maintenant &&
+        a.status === AudienceStatus.SCHEDULED,
+    ).length;
+    const annulees = audiencesFiltrees.filter(
+      (a) => a.status === AudienceStatus.CANCELLED,
+    ).length;
 
     // Prochaine audience
     const prochaines = audiencesFiltrees
-      .filter(a => new Date(a.full_datetime) >= maintenant && a.status === AudienceStatus.SCHEDULED)
-      .sort((a, b) => new Date(a.full_datetime).getTime() - new Date(b.full_datetime).getTime());
+      .filter(
+        (a) =>
+          new Date(a.full_datetime) >= maintenant &&
+          a.status === AudienceStatus.SCHEDULED,
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.full_datetime).getTime() -
+          new Date(b.full_datetime).getTime(),
+      );
 
-    const prochaine = prochaines.length > 0 ? {
-      id: prochaines[0].id,
-      titre: prochaines[0].title,
-      date: prochaines[0].full_datetime,
-      dossier: prochaines[0].dossier?.dossier_number,
-      client: prochaines[0].dossier?.client?.full_name,
-    } : undefined;
+    const prochaine =
+      prochaines.length > 0
+        ? {
+            id: prochaines[0].id,
+            titre: prochaines[0].title,
+            date: prochaines[0].full_datetime,
+            dossier: prochaines[0].dossier?.dossier_number,
+            client: prochaines[0].dossier?.client?.full_name,
+          }
+        : undefined;
 
     return {
       total: audiencesFiltrees.length,
@@ -354,21 +437,37 @@ export class BranchStatsService {
     };
   }
 
-  private async getFinancierStats(clients: any[], filters?: StatsFilterDto): Promise<SingleBranchStatsDto['financier']> {
-    const toutesFactures = clients.flatMap(c => c.factures || []);
-    const facturesFiltrees = this.filterByDate(toutesFactures, filters, 'dateFacture');
+  private async getFinancierStats(
+    clients: any[],
+    filters?: StatsFilterDto,
+  ): Promise<SingleBranchStatsDto['financier']> {
+    const toutesFactures = clients.flatMap((c) => c.factures || []);
+    const facturesFiltrees = this.filterByDate(
+      toutesFactures,
+      filters,
+      'dateFacture',
+    );
 
-    const chiffreAffaires = facturesFiltrees.reduce((sum, f) => sum + (parseFloat(f.montantTTC) || 0), 0);
+    const chiffreAffaires = facturesFiltrees.reduce(
+      (sum, f) => sum + (parseFloat(f.montantTTC) || 0),
+      0,
+    );
     const montantPaye = facturesFiltrees
-      .filter(f => f.status === StatutFacture.PAYEE)
+      .filter((f) => f.status === StatutFacture.PAYEE)
       .reduce((sum, f) => sum + (parseFloat(f.montantTTC) || 0), 0);
     const montantImpaye = chiffreAffaires - montantPaye;
-    const tauxRecouvrement = chiffreAffaires > 0 ? Math.round((montantPaye / chiffreAffaires) * 100) : 0;
+    const tauxRecouvrement =
+      chiffreAffaires > 0
+        ? Math.round((montantPaye / chiffreAffaires) * 100)
+        : 0;
 
     const facturesEmises = facturesFiltrees.length;
-    const facturesPayees = facturesFiltrees.filter(f => f.status === StatutFacture.PAYEE).length;
-    const facturesImpayees = facturesFiltrees.filter(f => 
-      f.status !== StatutFacture.PAYEE && f.status !== StatutFacture.ANNULEE
+    const facturesPayees = facturesFiltrees.filter(
+      (f) => f.status === StatutFacture.PAYEE,
+    ).length;
+    const facturesImpayees = facturesFiltrees.filter(
+      (f) =>
+        f.status !== StatutFacture.PAYEE && f.status !== StatutFacture.ANNULEE,
     ).length;
 
     // Évolution du CA par mois
@@ -386,36 +485,56 @@ export class BranchStatsService {
     };
   }
 
-  private async getPerformanceStats(branch: Branch, filters?: StatsFilterDto): Promise<SingleBranchStatsDto['performance']> {
+  private async getPerformanceStats(
+    branch: Branch,
+    filters?: StatsFilterDto,
+  ): Promise<SingleBranchStatsDto['performance']> {
     const employes = branch.employees || [];
-    const avocats = employes.filter(e => e.position === EmployeePosition.AVOCAT);
-    
-    const tousDossiers = employes.flatMap(e => e.managed_dossiers || []);
-    const dossiersFiltres = this.filterByDate(tousDossiers, filters, 'created_at');
-    const dossiersClos = dossiersFiltres.filter(d => d.is_closed);
-    
-    const toutesAudiences = dossiersFiltres.flatMap(d => d.audiences || []);
-    const audiencesTenues = toutesAudiences.filter(a => a.status === AudienceStatus.HELD);
+    const avocats = employes.filter(
+      (e) => e.position === EmployeePosition.AVOCAT,
+    );
+
+    const tousDossiers = employes.flatMap((e) => e.managed_dossiers || []);
+    const dossiersFiltres = this.filterByDate(
+      tousDossiers,
+      filters,
+      'created_at',
+    );
+    const dossiersClos = dossiersFiltres.filter((d) => d.is_closed);
+
+    const toutesAudiences = dossiersFiltres.flatMap((d) => d.audiences || []);
+    const audiencesTenues = toutesAudiences.filter(
+      (a) => a.status === AudienceStatus.HELD,
+    );
 
     // Taux d'occupation des employés (basé sur le nombre de dossiers actifs par rapport à la capacité)
-    const capaciteTotale = avocats.reduce((sum, a) => sum + (a.max_dossiers || 50), 0);
-    const dossiersActifs = dossiersFiltres.filter(d => d.is_active).length;
-    const tauxOccupationEmployes = capaciteTotale > 0 ? Math.round((dossiersActifs / capaciteTotale) * 100) : 0;
+    const capaciteTotale = avocats.reduce(
+      (sum, a) => sum + (a.max_dossiers || 50),
+      0,
+    );
+    const dossiersActifs = dossiersFiltres.filter((d) => d.is_active).length;
+    const tauxOccupationEmployes =
+      capaciteTotale > 0
+        ? Math.round((dossiersActifs / capaciteTotale) * 100)
+        : 0;
 
     // Moyenne de dossiers par avocat
-    const moyenneDossiersParAvocat = avocats.length > 0 
-      ? Math.round(dossiersFiltres.length / avocats.length) 
-      : 0;
+    const moyenneDossiersParAvocat =
+      avocats.length > 0
+        ? Math.round(dossiersFiltres.length / avocats.length)
+        : 0;
 
     // Taux de résolution des dossiers
-    const tauxResolutionDossiers = dossiersFiltres.length > 0 
-      ? Math.round((dossiersClos.length / dossiersFiltres.length) * 100) 
-      : 0;
+    const tauxResolutionDossiers =
+      dossiersFiltres.length > 0
+        ? Math.round((dossiersClos.length / dossiersFiltres.length) * 100)
+        : 0;
 
     // Taux d'audiences tenues
-    const tauxAudiencesTenues = toutesAudiences.length > 0 
-      ? Math.round((audiencesTenues.length / toutesAudiences.length) * 100) 
-      : 0;
+    const tauxAudiencesTenues =
+      toutesAudiences.length > 0
+        ? Math.round((audiencesTenues.length / toutesAudiences.length) * 100)
+        : 0;
 
     return {
       tauxOccupationEmployes,
@@ -426,7 +545,9 @@ export class BranchStatsService {
   }
 
   // Méthode existante pour les stats globales
-  private async getGlobalStats(filters?: StatsFilterDto): Promise<BranchStatsDto> {
+  private async getGlobalStats(
+    filters?: StatsFilterDto,
+  ): Promise<BranchStatsDto> {
     const total = await this.branchRepository.count();
     const active = await this.branchRepository.count({ where: { status: 1 } });
 
@@ -439,8 +560,14 @@ export class BranchStatsService {
       .addSelect('b.name', 'name')
       .addSelect('b.location_city_id', 'city')
       .addSelect('COUNT(DISTINCT e.id)', 'employees')
-      .addSelect('SUM(CASE WHEN e.position = :avocat THEN 1 ELSE 0 END)', 'avocats')
-      .addSelect('SUM(CASE WHEN e.position = :secretaire THEN 1 ELSE 0 END)', 'secretaires')
+      .addSelect(
+        'SUM(CASE WHEN e.position = :avocat THEN 1 ELSE 0 END)',
+        'avocats',
+      )
+      .addSelect(
+        'SUM(CASE WHEN e.position = :secretaire THEN 1 ELSE 0 END)',
+        'secretaires',
+      )
       .setParameters({
         avocat: EmployeePosition.AVOCAT,
         secretaire: EmployeePosition.SECRETAIRE,
@@ -449,10 +576,14 @@ export class BranchStatsService {
     addTenantCondition(employeesQuery, 'b');
 
     if (filters?.startDate) {
-      employeesQuery.andWhere('e.created_at >= :startDate', { startDate: filters.startDate });
+      employeesQuery.andWhere('e.created_at >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
     if (filters?.endDate) {
-      employeesQuery.andWhere('e.created_at <= :endDate', { endDate: filters.endDate });
+      employeesQuery.andWhere('e.created_at <= :endDate', {
+        endDate: filters.endDate,
+      });
     }
 
     const employees = await employeesQuery.getRawMany();
@@ -465,8 +596,14 @@ export class BranchStatsService {
       .select('b.id', 'id')
       .addSelect('b.name', 'name')
       .addSelect('COUNT(DISTINCT c.id)', 'customers')
-      .addSelect('SUM(CASE WHEN t.code = :part THEN 1 ELSE 0 END)', 'particuliers')
-      .addSelect('SUM(CASE WHEN t.code = :pro THEN 1 ELSE 0 END)', 'professionnels')
+      .addSelect(
+        'SUM(CASE WHEN t.code = :part THEN 1 ELSE 0 END)',
+        'particuliers',
+      )
+      .addSelect(
+        'SUM(CASE WHEN t.code = :pro THEN 1 ELSE 0 END)',
+        'professionnels',
+      )
       .setParameters({
         part: 'PART',
         pro: 'PRO',
@@ -475,10 +612,14 @@ export class BranchStatsService {
     addTenantCondition(customersQuery, 'b');
 
     if (filters?.startDate) {
-      customersQuery.andWhere('c.created_at >= :startDate', { startDate: filters.startDate });
+      customersQuery.andWhere('c.created_at >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
     if (filters?.endDate) {
-      customersQuery.andWhere('c.created_at <= :endDate', { endDate: filters.endDate });
+      customersQuery.andWhere('c.created_at <= :endDate', {
+        endDate: filters.endDate,
+      });
     }
 
     const customers = await customersQuery.getRawMany();
@@ -491,7 +632,10 @@ export class BranchStatsService {
       .select('b.id', 'id')
       .addSelect('b.name', 'name')
       .addSelect('COUNT(DISTINCT d.id)', 'dossiers')
-      .addSelect('SUM(CASE WHEN d.status IN (:...actifs) THEN 1 ELSE 0 END)', 'actifs')
+      .addSelect(
+        'SUM(CASE WHEN d.status IN (:...actifs) THEN 1 ELSE 0 END)',
+        'actifs',
+      )
       .addSelect('SUM(CASE WHEN d.status = :clos THEN 1 ELSE 0 END)', 'clos')
       .setParameters({
         actifs: [0, 1, 2, 3, 4],
@@ -501,10 +645,14 @@ export class BranchStatsService {
     addTenantCondition(dossiersQuery, 'b');
 
     if (filters?.startDate) {
-      dossiersQuery.andWhere('d.created_at >= :startDate', { startDate: filters.startDate });
+      dossiersQuery.andWhere('d.created_at >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
     if (filters?.endDate) {
-      dossiersQuery.andWhere('d.created_at <= :endDate', { endDate: filters.endDate });
+      dossiersQuery.andWhere('d.created_at <= :endDate', {
+        endDate: filters.endDate,
+      });
     }
 
     const dossiers = await dossiersQuery.getRawMany();
@@ -519,12 +667,24 @@ export class BranchStatsService {
       .select('b.id', 'id')
       .addSelect('b.name', 'name')
       .addSelect('COUNT(DISTINCT d.id)', 'totalDossiers')
-      .addSelect('SUM(CASE WHEN d.status = :clos THEN 1 ELSE 0 END)', 'dossiersClos')
-      .addSelect('AVG(DATEDIFF(d.closing_date, d.opening_date))', 'avgCompletionTime')
+      .addSelect(
+        'SUM(CASE WHEN d.status = :clos THEN 1 ELSE 0 END)',
+        'dossiersClos',
+      )
+      .addSelect(
+        'AVG(DATEDIFF(d.closing_date, d.opening_date))',
+        'avgCompletionTime',
+      )
       .addSelect('COUNT(DISTINCT a.id)', 'totalAudiences')
-      .addSelect('SUM(CASE WHEN a.status = :tenue THEN 1 ELSE 0 END)', 'audiencesTenues')
+      .addSelect(
+        'SUM(CASE WHEN a.status = :tenue THEN 1 ELSE 0 END)',
+        'audiencesTenues',
+      )
       .addSelect('SUM(f.montantTTC)', 'chiffreAffaires')
-      .addSelect('SUM(CASE WHEN f.status = :payee THEN f.montantTTC ELSE 0 END)', 'caRealise')
+      .addSelect(
+        'SUM(CASE WHEN f.status = :payee THEN f.montantTTC ELSE 0 END)',
+        'caRealise',
+      )
       .setParameters({
         clos: 5,
         tenue: 'held',
@@ -534,10 +694,14 @@ export class BranchStatsService {
     addTenantCondition(performanceQuery, 'b');
 
     if (filters?.startDate) {
-      performanceQuery.andWhere('d.created_at >= :startDate', { startDate: filters.startDate });
+      performanceQuery.andWhere('d.created_at >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
     if (filters?.endDate) {
-      performanceQuery.andWhere('d.created_at <= :endDate', { endDate: filters.endDate });
+      performanceQuery.andWhere('d.created_at <= :endDate', {
+        endDate: filters.endDate,
+      });
     }
 
     const performance = await performanceQuery.getRawMany();
@@ -545,7 +709,7 @@ export class BranchStatsService {
     return {
       total,
       active,
-      employeesByBranch: employees.map(e => ({
+      employeesByBranch: employees.map((e) => ({
         id: parseInt(e.id),
         name: e.name,
         city: e.city,
@@ -553,41 +717,59 @@ export class BranchStatsService {
         avocats: parseInt(e.avocats || 0),
         secretaires: parseInt(e.secretaires || 0),
       })),
-      customersByBranch: customers.map(c => ({
+      customersByBranch: customers.map((c) => ({
         id: parseInt(c.id),
         name: c.name,
         customers: parseInt(c.customers || 0),
         particuliers: parseInt(c.particuliers || 0),
         professionnels: parseInt(c.professionnels || 0),
       })),
-      dossiersByBranch: dossiers.map(d => ({
+      dossiersByBranch: dossiers.map((d) => ({
         id: parseInt(d.id),
         name: d.name,
         dossiers: parseInt(d.dossiers || 0),
         actifs: parseInt(d.actifs || 0),
         clos: parseInt(d.clos || 0),
       })),
-      performanceByBranch: performance.map(p => ({
+      performanceByBranch: performance.map((p) => ({
         id: parseInt(p.id),
         name: p.name,
         totalDossiers: parseInt(p.totalDossiers || 0),
-        tauxResolution: parseInt(p.totalDossiers || 0) > 0 
-          ? Math.round((parseInt(p.dossiersClos || 0) / parseInt(p.totalDossiers || 0)) * 100)
-          : 0,
+        tauxResolution:
+          parseInt(p.totalDossiers || 0) > 0
+            ? Math.round(
+                (parseInt(p.dossiersClos || 0) /
+                  parseInt(p.totalDossiers || 0)) *
+                  100,
+              )
+            : 0,
         delaiMoyenTraitement: Math.round(parseFloat(p.avgCompletionTime || 0)),
         totalAudiences: parseInt(p.totalAudiences || 0),
-        tauxAudiencesTenues: parseInt(p.totalAudiences || 0) > 0
-          ? Math.round((parseInt(p.audiencesTenues || 0) / parseInt(p.totalAudiences || 0)) * 100)
-          : 0,
+        tauxAudiencesTenues:
+          parseInt(p.totalAudiences || 0) > 0
+            ? Math.round(
+                (parseInt(p.audiencesTenues || 0) /
+                  parseInt(p.totalAudiences || 0)) *
+                  100,
+              )
+            : 0,
         chiffreAffaires: parseFloat(p.chiffreAffaires || 0),
-        tauxRecouvrement: parseFloat(p.chiffreAffaires || 0) > 0
-          ? Math.round((parseFloat(p.caRealise || 0) / parseFloat(p.chiffreAffaires || 0)) * 100)
-          : 0,
+        tauxRecouvrement:
+          parseFloat(p.chiffreAffaires || 0) > 0
+            ? Math.round(
+                (parseFloat(p.caRealise || 0) /
+                  parseFloat(p.chiffreAffaires || 0)) *
+                  100,
+              )
+            : 0,
       })),
     };
   }
 
-  private buildDateCondition(filters?: StatsFilterDto): { condition: string; params: any } {
+  private buildDateCondition(filters?: StatsFilterDto): {
+    condition: string;
+    params: any;
+  } {
     const params: any = {};
     const conditions: string[] = [];
 
@@ -606,25 +788,34 @@ export class BranchStatsService {
     };
   }
 
-  private filterByDate(items: any[], filters?: StatsFilterDto, dateField: string = 'created_at'): any[] {
+  private filterByDate(
+    items: any[],
+    filters?: StatsFilterDto,
+    dateField: string = 'created_at',
+  ): any[] {
     if (!filters?.startDate && !filters?.endDate) return items;
-    
-    return items.filter(item => {
+
+    return items.filter((item) => {
       const itemDate = new Date(item[dateField]);
-      if (filters?.startDate && itemDate < new Date(filters.startDate)) return false;
-      if (filters?.endDate && itemDate > new Date(filters.endDate)) return false;
+      if (filters?.startDate && itemDate < new Date(filters.startDate))
+        return false;
+      if (filters?.endDate && itemDate > new Date(filters.endDate))
+        return false;
       return true;
     });
   }
 
-  private getMonthlyEvolution(items: any[], dateField: string): Array<{ mois: string; count: number }> {
+  private getMonthlyEvolution(
+    items: any[],
+    dateField: string,
+  ): Array<{ mois: string; count: number }> {
     const evolutionMap = new Map<string, number>();
     const sixMoisAvant = new Date();
     sixMoisAvant.setMonth(sixMoisAvant.getMonth() - 6);
 
     items
-      .filter(item => new Date(item[dateField]) >= sixMoisAvant)
-      .forEach(item => {
+      .filter((item) => new Date(item[dateField]) >= sixMoisAvant)
+      .forEach((item) => {
         const date = new Date(item[dateField]);
         const mois = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         evolutionMap.set(mois, (evolutionMap.get(mois) || 0) + 1);
@@ -635,14 +826,16 @@ export class BranchStatsService {
       .sort((a, b) => a.mois.localeCompare(b.mois));
   }
 
-  private getMonthlyFinancialEvolution(factures: any[]): Array<{ mois: string; montant: number }> {
+  private getMonthlyFinancialEvolution(
+    factures: any[],
+  ): Array<{ mois: string; montant: number }> {
     const evolutionMap = new Map<string, number>();
     const sixMoisAvant = new Date();
     sixMoisAvant.setMonth(sixMoisAvant.getMonth() - 6);
 
     factures
-      .filter(f => new Date(f.dateFacture) >= sixMoisAvant)
-      .forEach(f => {
+      .filter((f) => new Date(f.dateFacture) >= sixMoisAvant)
+      .forEach((f) => {
         const date = new Date(f.dateFacture);
         const mois = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         const montant = parseFloat(f.montantTTC) || 0;
@@ -654,7 +847,10 @@ export class BranchStatsService {
       .sort((a, b) => a.mois.localeCompare(b.mois));
   }
 
-  async getBranchPerformance(branchId: number, filters?: StatsFilterDto): Promise<any> {
+  async getBranchPerformance(
+    branchId: number,
+    filters?: StatsFilterDto,
+  ): Promise<any> {
     const query = this.branchRepository
       .createQueryBuilder('b')
       .leftJoin('b.employees', 'e')
@@ -673,7 +869,9 @@ export class BranchStatsService {
     addTenantCondition(query, 'b');
 
     if (filters?.startDate) {
-      query.andWhere('d.created_at >= :startDate', { startDate: filters.startDate });
+      query.andWhere('d.created_at >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
     if (filters?.endDate) {
       query.andWhere('d.created_at <= :endDate', { endDate: filters.endDate });
@@ -688,7 +886,7 @@ export class BranchStatsService {
     });
 
     const comparison = await Promise.all(
-      branches.map(async branch => {
+      branches.map(async (branch) => {
         const stats = await this.getBranchPerformance(branch.id, filters);
         return {
           id: branch.id,
@@ -699,9 +897,13 @@ export class BranchStatsService {
           customers: branch.customers?.length || 0,
           performance: stats,
         };
-      })
+      }),
     );
 
-    return comparison.sort((a, b) => (b.performance?.chiffreAffaires || 0) - (a.performance?.chiffreAffaires || 0));
+    return comparison.sort(
+      (a, b) =>
+        (b.performance?.chiffreAffaires || 0) -
+        (a.performance?.chiffreAffaires || 0),
+    );
   }
 }

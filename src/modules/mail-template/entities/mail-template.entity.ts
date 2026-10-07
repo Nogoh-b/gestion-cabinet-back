@@ -1,22 +1,16 @@
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  Unique,
-} from 'typeorm';
-
+import { Entity, PrimaryGeneratedColumn, Column, Unique } from 'typeorm';
 
 /**
  * Catégorie fonctionnelle d'un template de mail.
  */
 export type MailTemplateCategory =
-  | 'auth'        // ouverture de compte, reset password, activation
-  | 'dossier'     // notifications dossier
-  | 'audience'    // rappels d'audience
-  | 'billing'     // facturation
-  | 'general';    // divers
+  | 'auth' // ouverture de compte, reset password, activation
+  | 'dossier' // notifications dossier
+  | 'audience' // rappels d'audience
+  | 'billing' // facturation
+  | 'general'; // divers
 
 /**
  * Cible (destinataire) du template — permet de scinder les modèles destinés au
@@ -91,5 +85,4 @@ export class MailTemplate extends TenantEntity {
 
   @Column({ type: 'tinyint', default: 1, name: 'is_active' })
   is_active: boolean;
-
 }

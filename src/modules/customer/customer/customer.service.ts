@@ -3,11 +3,19 @@ import { plainToInstance } from 'class-transformer';
 import { UserRole } from 'src/core/enums/user-role.enum';
 import { EmailService } from 'src/core/shared/services/email/email.service copy';
 import { User } from 'src/modules/iam/user/entities/user.entity';
-import { DateRange, PaginatedResult, PaginationOptions, SearchOptions as SearchOptionV1 } from 'src/core/shared/interfaces/pagination.interface';
+import {
+  DateRange,
+  PaginatedResult,
+  PaginationOptions,
+  SearchOptions as SearchOptionV1,
+} from 'src/core/shared/interfaces/pagination.interface';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { PaginationService } from 'src/core/shared/services/pagination/pagination.service';
 import { PaginationServiceV1 } from 'src/core/shared/services/pagination/paginations-v1.service';
-import { BaseServiceV1, SearchOptions } from 'src/core/shared/services/search/base-v1.service';
+import {
+  BaseServiceV1,
+  SearchOptions,
+} from 'src/core/shared/services/search/base-v1.service';
 import { BranchService } from 'src/modules/agencies/branch/branch.service';
 import { DocumentCustomerService } from 'src/modules/documents/document-customer/document-customer.service';
 import { CreateDocumentCustomerDto } from 'src/modules/documents/document-customer/dto/create-document-customer.dto';
@@ -36,18 +44,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-
-
-
-
-
-
-
-
-
-
-
-
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
@@ -69,20 +65,6 @@ import {
   CommunicationStatus,
 } from './entities/customer-communication.entity';
 import { CreateCustomerCommunicationDto } from './dto/create-customer-communication.dto';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 @Injectable()
 export class CustomersService extends BaseServiceV1<Customer> {
@@ -111,57 +93,54 @@ export class CustomersService extends BaseServiceV1<Customer> {
   }
 
   protected getDefaultSearchOptions(): SearchOptions {
-      return {
-        // Champs pour la recherche globale
-        searchFields: [
-          'last_name',
-          'first_name',
-          'company_name',
-          'address',
-          'postal_code',
-          'country',
-          'billing_type',
-          'professional_phone',
-          'fax',
-          'siret',
-          'tva_number',
-          'legal_form',
-          'reference',
-          'number_phone_1',
-          'number_phone_2',
-          'email',
-          'customer_code',
-          'type_customer.name',
-          'location_city.name',
-          'nui',
-          'rccm',
-          'birthday',
-        ],
-        
-        // Champs pour recherche exacte
-        exactMatchFields: [
-          'type_customer.name',
-          'location_city.name',
-        ],
-        
-        // Champs pour ranges de dates
-        /*dateRangeFields: [
+    return {
+      // Champs pour la recherche globale
+      searchFields: [
+        'last_name',
+        'first_name',
+        'company_name',
+        'address',
+        'postal_code',
+        'country',
+        'billing_type',
+        'professional_phone',
+        'fax',
+        'siret',
+        'tva_number',
+        'legal_form',
+        'reference',
+        'number_phone_1',
+        'number_phone_2',
+        'email',
+        'customer_code',
+        'type_customer.name',
+        'location_city.name',
+        'nui',
+        'rccm',
+        'birthday',
+      ],
+
+      // Champs pour recherche exacte
+      exactMatchFields: ['type_customer.name', 'location_city.name'],
+
+      // Champs pour ranges de dates
+      /*dateRangeFields: [
           'created_at',
           'updated_at',
           'opening_date',
           'closing_date'
         ],*/
-        
-        // Champs de relations pour filtrage
-        // `dossiers` est chargé pour permettre le calcul de dossier_count /
-        // active_dossier_count dans le CustomerResponseDto (affiché dans la liste).
-        relationFields: ['type_customer', 'location_city', 'dossiers']
-      };
-    }
- toNumberOrNull(value: any): number | null {
-  const num = Number(value);
-  return isNaN(num) ? null : num;
-}
+
+      // Champs de relations pour filtrage
+      // `dossiers` est chargé pour permettre le calcul de dossier_count /
+      // active_dossier_count dans le CustomerResponseDto (affiché dans la liste).
+      relationFields: ['type_customer', 'location_city', 'dossiers'],
+    };
+  }
+  toNumberOrNull(value: any): number | null {
+    const num = Number(value);
+    return isNaN(num) ? null : num;
+  }
   async create(createCustomerDto: CreateCustomerDto): Promise<any> {
     // ── Vérification quota plan ────────────────────────────────────────────
     const tenantId = getCurrentTenantId();
@@ -170,53 +149,130 @@ export class CustomersService extends BaseServiceV1<Customer> {
       await this.planQuotaService.checkLimit(tenantId, 'clients', currentCount);
     }
 
-    return await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
-
-      // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
-      // if (existing) throw new ConflictException('Numero deja attribué à un compte');
-      const type_customer = await this.typeCustomerService.findOne(
-        Number(createCustomerDto.type_customer_id),
+    // Nom et prénom : le formulaire envoie désormais `full_name` en un seul
+    // champ (`Customer.syncNameFields()` dérive first_name/last_name à la
+    // sauvegarde) ; `first_name`/`last_name` restent acceptés isolément pour
+    // les appelants existants. Au moins l'une des deux formes est requise —
+    // comportement inchangé pour les clients professionnels : `company_name`
+    // ne dispense pas de renseigner un nom (règle déjà en vigueur avant ce
+    // changement, non modifiée ici).
+    if (
+      !createCustomerDto.full_name?.trim() &&
+      !createCustomerDto.first_name?.trim() &&
+      !createCustomerDto.last_name?.trim()
+    ) {
+      throw new BadRequestException(
+        'Le nom du client est obligatoire (nom et prénom).',
       );
-      // return new CustomerResponseDto()
-      const location_city = await this.locationcityService.findOne(
-        Number(createCustomerDto.location_city_id),
-      );
-      if (!type_customer || !location_city)
-        throw new NotFoundException(
-          'Le type de client ou la location invalide',
-        );
+    }
 
-      const branch = await this.branchService.findOne(
-        Number(createCustomerDto.branch_id),
-      );
-      if (!branch) throw new NotFoundException('Branche invalide');
+    return await this.dataSource.transaction(
+      'SERIALIZABLE',
+      async (manager) => {
+        // const existing = await this.customerRepository.findOneBy({ number_phone_1 : createCustomerDto.number_phone_1 });
+        // if (existing) throw new ConflictException('Numero deja attribué à un compte');
+        // Agence, ville, type : résolus depuis le DTO si fournis, sinon
+        // repliés sur des valeurs par défaut (création minimale depuis un
+        // select — « + Créer », uniquement `full_name`).
+        const type_customer = createCustomerDto.type_customer_id
+          ? await this.typeCustomerService.findOne(
+              Number(createCustomerDto.type_customer_id),
+            )
+          : await this.resolveDefaultTypeCustomer();
+        const location_city = createCustomerDto.location_city_id
+          ? await this.locationcityService.findOne(
+              Number(createCustomerDto.location_city_id),
+            )
+          : await this.resolveDefaultLocationCity();
+        if (!type_customer || !location_city)
+          throw new NotFoundException(
+            'Le type de client ou la location invalide',
+          );
 
-      if (createCustomerDto.email) {
-        /*const emailExists = await this.customerRepository.findOneBy({ email: createCustomerDto.email });
+        const branch = createCustomerDto.branch_id
+          ? await this.branchService.findOne(
+              Number(createCustomerDto.branch_id),
+            )
+          : await this.resolveDefaultBranch();
+        if (!branch) throw new NotFoundException('Branche invalide');
+
+        if (createCustomerDto.email) {
+          /*const emailExists = await this.customerRepository.findOneBy({ email: createCustomerDto.email });
         if (emailExists) throw new ConflictException('L\'adresse mail existe deja');*/
-      }
+        }
 
-      const { mode: _mode, ...customerData } = createCustomerDto as CreateCustomerDto & { mode?: string };
-      const customer = manager.getRepository(Customer).create({
-        ...customerData,
-        email:
-          typeof createCustomerDto.email === 'string' &&
-          createCustomerDto.email.trim() !== ''
-            ? createCustomerDto.email.trim()
-            : undefined,
-        first_name: createCustomerDto.first_name ?? createCustomerDto.first_name,
-        type_customer,
-        location_city,
-      });
-      customer.status = CustomerStatus.INACTIVE;
+        const { mode: _mode, ...customerData } =
+          createCustomerDto as CreateCustomerDto & { mode?: string };
+        const customer = manager.getRepository(Customer).create({
+          ...customerData,
+          email:
+            typeof createCustomerDto.email === 'string' &&
+            createCustomerDto.email.trim() !== ''
+              ? createCustomerDto.email.trim()
+              : undefined,
+          // `full_name` (ou first_name/last_name) arrive déjà via le spread
+          // de `customerData` ci-dessus ; `Customer.syncNameFields()` dérive
+          // le champ manquant à la sauvegarde.
+          type_customer,
+          location_city,
+        });
+        customer.status = CustomerStatus.INACTIVE;
 
-      // L'index SQL de customer_code est global : le prochain numéro doit donc
-      // être calculé globalement, dans la même transaction sérialisée.
-      customer.customer_code = await this.generateNextCustomerCode(
-        manager.getRepository(Customer),
+        // L'index SQL de customer_code est global : le prochain numéro doit donc
+        // être calculé globalement, dans la même transaction sérialisée.
+        customer.customer_code = await this.generateNextCustomerCode(
+          manager.getRepository(Customer),
+        );
+        return plainToInstance(
+          CustomerResponseDto,
+          await manager.save(customer),
+        );
+      },
+    );
+  }
+
+  /**
+   * Création minimale (depuis un select « + Créer », uniquement `full_name`) :
+   * à défaut d'agence précisée, retombe sur la première agence active.
+   */
+  private async resolveDefaultBranch() {
+    const branches = await this.branchService.findAllBranches();
+    if (!branches.length) {
+      throw new NotFoundException(
+        "Aucune agence active n'est configurée : impossible de créer un client sans agence précisée.",
       );
-      return plainToInstance(CustomerResponseDto, await manager.save(customer));
+    }
+    return branches[0];
+  }
+
+  /**
+   * Idem pour la ville : première ville du référentiel géographique (partagé
+   * entre tenants).
+   */
+  private async resolveDefaultLocationCity() {
+    const cities = await this.locationcityService.findAll();
+    if (!cities.length) {
+      throw new NotFoundException(
+        "Aucune ville n'est configurée : impossible de créer un client sans ville précisée.",
+      );
+    }
+    return cities[0];
+  }
+
+  /**
+   * Idem pour le type de client : premier type actif (`status = 1`).
+   */
+  private async resolveDefaultTypeCustomer() {
+    const type = await this.typeCustomerRepository.findOne({
+      where: { status: 1 },
+      order: { id: 'ASC' },
     });
+    if (!type) {
+      throw new NotFoundException(
+        "Aucun type de client actif n'est configuré : impossible de créer un client sans type précisé.",
+      );
+    }
+    return type;
   }
 
   async createFromCoti(
@@ -284,13 +340,15 @@ export class CustomersService extends BaseServiceV1<Customer> {
     return plainToInstance(CustomerResponseDto, customers);
   }
 
-  async findAllV2(page = 1, limit = 10,
+  async findAllV2(
+    page = 1,
+    limit = 10,
     term?: string,
     fields?: string[],
     exact?: boolean,
     from?: string,
-    to?: string): Promise<PaginatedResult<CustomerResponseDto>>  {
-
+    to?: string,
+  ): Promise<PaginatedResult<CustomerResponseDto>> {
     const qb = this.customerRepository
       .createQueryBuilder('c')
       .leftJoinAndSelect('c.branch', 'branch')
@@ -300,26 +358,26 @@ export class CustomersService extends BaseServiceV1<Customer> {
     // Isolation multi-tenant : limite aux clients du cabinet courant.
     addTenantCondition(qb, 'c');
 
-      const options: PaginationOptions & {
-        search?: SearchOptionV1;
-        dateRange?: DateRange;
-      } = { page, limit };
-      if (term) options.search = { term, fields, exact };
-      if (from || to)
-        options.dateRange = {
-          from: from ? new Date(from) : undefined,
-          to: to ? new Date(to) : undefined,
-        };
-      console.log('------options---- ', options);
-      const result = await this.oldPaginationService.paginate(qb, options);
-
-      // transformer chaque item en DTO
-      return {
-        ...result,
-        data: result.data.map((customer) =>
-          plainToInstance(CustomerResponseDto, customer)
-        ),
+    const options: PaginationOptions & {
+      search?: SearchOptionV1;
+      dateRange?: DateRange;
+    } = { page, limit };
+    if (term) options.search = { term, fields, exact };
+    if (from || to)
+      options.dateRange = {
+        from: from ? new Date(from) : undefined,
+        to: to ? new Date(to) : undefined,
       };
+    console.log('------options---- ', options);
+    const result = await this.oldPaginationService.paginate(qb, options);
+
+    // transformer chaque item en DTO
+    return {
+      ...result,
+      data: result.data.map((customer) =>
+        plainToInstance(CustomerResponseDto, customer),
+      ),
+    };
 
     /*const customers = await this.customerRepository.find({
       relations: ['type_customer', 'location_city'],
@@ -330,7 +388,14 @@ export class CustomersService extends BaseServiceV1<Customer> {
   async findOne(id: number): Promise<CustomerResponseDto> {
     const customer = await this.customerRepository.findOne({
       where: { id },
-      relations: ['type_customer', 'location_city' , 'dossiers' , 'documents', 'factures', 'communications'],
+      relations: [
+        'type_customer',
+        'location_city',
+        'dossiers',
+        'documents',
+        'factures',
+        'communications',
+      ],
     });
     if (!customer) throw new NotFoundException();
     return plainToInstance(CustomerResponseDto, customer);
@@ -362,178 +427,192 @@ export class CustomersService extends BaseServiceV1<Customer> {
   //   doc
   // }
 
-async update(
-  id: number,
-  dto: UpdateCustomerDto,
-): Promise<CustomerResponseDto> {
-  // Récupérer le client existant
-  const customer = await this.findOne(id);
-  if (!customer) {
-    throw new NotFoundException(`Customer with ID ${id} not found`);
-  }
-
-  // Vérifier l'unicité de l'email si modifié
-  if (dto.email && dto.email !== customer.email) {
-    const emailExists = await this.customerRepository.findOneBy({
-      email: dto.email,
-    });
-    if (emailExists) {
-      throw new ConflictException('Email already exists');
+  async update(
+    id: number,
+    dto: UpdateCustomerDto,
+  ): Promise<CustomerResponseDto> {
+    // Récupérer le client existant
+    const customer = await this.findOne(id);
+    if (!customer) {
+      throw new NotFoundException(`Customer with ID ${id} not found`);
     }
-  }
 
-  // Gestion des relations et transformations
-  const updateData: any = { ...dto };
-
-  // Mettre à jour la ville de localisation si fournie
-  if (dto.location_city_id) {
-    updateData.location_city = await this.locationcityService.findOneSimple(
-      dto.location_city_id,
-    );
-    // Supprimer l'ID pour éviter la confusion
-    delete updateData.location_city_id;
-  }
-
-  // Gérer la relation de branche si fournie
-  if (dto.branch_id) {
-    const branch = await this.branchService.findOne(dto.branch_id);
-    if (!branch) {
-      throw new NotFoundException(`Branch with ID ${dto.branch_id} not found`);
+    // Vérifier l'unicité de l'email si modifié
+    if (dto.email && dto.email !== customer.email) {
+      const emailExists = await this.customerRepository.findOneBy({
+        email: dto.email,
+      });
+      if (emailExists) {
+        throw new ConflictException('Email already exists');
+      }
     }
-    updateData.branch = branch;
-    delete updateData.branch_id;
-  }
 
-  // Gérer la relation de type de client si fournie
-  if (dto.type_customer_id) {
-    const typeCustomer = await this.typeCustomerService.findOne(dto.type_customer_id);
-    if (!typeCustomer) {
-      throw new NotFoundException(`Customer type with ID ${dto.type_customer_id} not found`);
+    // Gestion des relations et transformations
+    const updateData: any = { ...dto };
+
+    // Mettre à jour la ville de localisation si fournie
+    if (dto.location_city_id) {
+      updateData.location_city = await this.locationcityService.findOneSimple(
+        dto.location_city_id,
+      );
+      // Supprimer l'ID pour éviter la confusion
+      delete updateData.location_city_id;
     }
-    updateData.type_customer = typeCustomer;
-    delete updateData.type_customer_id;
-  }
 
-  // Vérifier la civilité si fournie
-  if (dto.civilite) {
-    const allowedCivilites = ['M', 'Mme', 'Mlle', 'Société'];
-    if (!allowedCivilites.includes(dto.civilite)) {
+    // Gérer la relation de branche si fournie
+    if (dto.branch_id) {
+      const branch = await this.branchService.findOne(dto.branch_id);
+      if (!branch) {
+        throw new NotFoundException(
+          `Branch with ID ${dto.branch_id} not found`,
+        );
+      }
+      updateData.branch = branch;
+      delete updateData.branch_id;
+    }
+
+    // Gérer la relation de type de client si fournie
+    if (dto.type_customer_id) {
+      const typeCustomer = await this.typeCustomerService.findOne(
+        dto.type_customer_id,
+      );
+      if (!typeCustomer) {
+        throw new NotFoundException(
+          `Customer type with ID ${dto.type_customer_id} not found`,
+        );
+      }
+      updateData.type_customer = typeCustomer;
+      delete updateData.type_customer_id;
+    }
+
+    // Vérifier la civilité si fournie
+    if (dto.civilite) {
+      const allowedCivilites = ['M', 'Mme', 'Mlle', 'Société'];
+      if (!allowedCivilites.includes(dto.civilite)) {
+        throw new BadRequestException(
+          `Civilité must be one of: ${allowedCivilites.join(', ')}`,
+        );
+      }
+    }
+
+    // Vérifier le type de facturation si fourni
+    if (dto.billing_type) {
+      const allowedBillingTypes = ['forfait', 'temps_passe', 'mixte'];
+      if (!allowedBillingTypes.includes(dto.billing_type)) {
+        throw new BadRequestException(
+          `Billing type must be one of: ${allowedBillingTypes.join(', ')}`,
+        );
+      }
+    }
+
+    // Vérifier le statut si fourni
+    if (dto.status) {
+      const validStatuses = Object.values(CustomerStatus);
+      if (!validStatuses.includes(dto.status)) {
+        throw new BadRequestException(
+          `Status must be one of: ${validStatuses.join(', ')}`,
+        );
+      }
+    }
+
+    // Vérifier le créé depuis si fourni
+    if (dto.created_from) {
+      const validCreatedFrom = Object.values(CustomerCreatedFrom);
+      if (!validCreatedFrom.includes(dto.created_from)) {
+        throw new BadRequestException(
+          `Created from must be one of: ${validCreatedFrom.join(', ')}`,
+        );
+      }
+    }
+
+    // Empêcher la mise à jour du code client s'il est déjà défini
+    if (dto.customer_code && customer.customer_code) {
       throw new BadRequestException(
-        `Civilité must be one of: ${allowedCivilites.join(', ')}`,
+        'Customer code cannot be modified once set',
       );
     }
-  }
 
-  // Vérifier le type de facturation si fourni
-  if (dto.billing_type) {
-    const allowedBillingTypes = ['forfait', 'temps_passe', 'mixte'];
-    if (!allowedBillingTypes.includes(dto.billing_type)) {
-      throw new BadRequestException(
-        `Billing type must be one of: ${allowedBillingTypes.join(', ')}`,
+    // Validation SIRET si fourni
+    if (dto.siret) {
+      if (!/^\d{14}$/.test(dto.siret)) {
+        throw new BadRequestException('SIRET must be 14 digits');
+      }
+    }
+
+    // Validation TVA si fournie
+    if (dto.tva_number) {
+      // Format basique pour validation
+      if (!/^[A-Z]{2}\d+$/.test(dto.tva_number)) {
+        throw new BadRequestException('Invalid TVA number format');
+      }
+    }
+
+    // Validation NUI si fourni
+    if (dto.nui) {
+      if (!/^\d+$/.test(dto.nui)) {
+        throw new BadRequestException('NUI must contain only digits');
+      }
+    }
+
+    // Appliquer les modifications
+    Object.assign(customer, updateData);
+
+    try {
+      // Sauvegarder les modifications
+      const updatedCustomer = await this.customerRepository.save(
+        plainToInstance(Customer, customer),
       );
+
+      // Récupérer le client avec toutes ses relations pour la réponse
+      const fullCustomer = await this.customerRepository.findOne({
+        where: { id: updatedCustomer.id },
+        relations: [
+          'location_city',
+          'branch',
+          'type_customer',
+          'communications',
+          'documents',
+          'documents.document_type',
+          'dossiers',
+          'dossiers.factures',
+          'factures',
+        ],
+      });
+      if (!fullCustomer) {
+        throw new BadRequestException('Non');
+      }
+
+      // Calculer les statistiques pour la réponse
+      const responseData = {
+        ...fullCustomer,
+        document_count: fullCustomer.documents?.length || 0,
+        communication_count: fullCustomer.communications?.length || 0,
+        dossiers_en_cours:
+          fullCustomer.dossiers?.filter((d) => d.is_active).length || 0,
+        chiffre_affaires:
+          fullCustomer.factures?.reduce(
+            (sum, facture) => sum + (facture.montantTTC || 0),
+            0,
+          ) || 0,
+        solde_en_cours:
+          fullCustomer.factures?.reduce(
+            (sum, facture) => sum + (facture.montantPaye || 0),
+            0,
+          ) || 0,
+      };
+
+      // Transformer en DTO de réponse
+      return plainToInstance(CustomerResponseDto, responseData);
+    } catch (error) {
+      if (error.code === '23505') {
+        // Violation de contrainte d'unicité PostgreSQL
+        throw new ConflictException(
+          'A customer with similar unique data already exists',
+        );
+      }
+      throw error;
     }
   }
-
-  // Vérifier le statut si fourni
-  if (dto.status) {
-    const validStatuses = Object.values(CustomerStatus);
-    if (!validStatuses.includes(dto.status)) {
-      throw new BadRequestException(
-        `Status must be one of: ${validStatuses.join(', ')}`,
-      );
-    }
-  }
-
-  // Vérifier le créé depuis si fourni
-  if (dto.created_from) {
-    const validCreatedFrom = Object.values(CustomerCreatedFrom);
-    if (!validCreatedFrom.includes(dto.created_from)) {
-      throw new BadRequestException(
-        `Created from must be one of: ${validCreatedFrom.join(', ')}`,
-      );
-    }
-  }
-
-  // Empêcher la mise à jour du code client s'il est déjà défini
-  if (dto.customer_code && customer.customer_code) {
-    throw new BadRequestException('Customer code cannot be modified once set');
-  }
-
-
-
-  // Validation SIRET si fourni
-  if (dto.siret) {
-    if (!/^\d{14}$/.test(dto.siret)) {
-      throw new BadRequestException('SIRET must be 14 digits');
-    }
-  }
-
-  // Validation TVA si fournie
-  if (dto.tva_number) {
-    // Format basique pour validation
-    if (!/^[A-Z]{2}\d+$/.test(dto.tva_number)) {
-      throw new BadRequestException('Invalid TVA number format');
-    }
-  }
-
-  // Validation NUI si fourni
-  if (dto.nui) {
-    if (!/^\d+$/.test(dto.nui)) {
-      throw new BadRequestException('NUI must contain only digits');
-    }
-  }
-
-  // Appliquer les modifications
-  Object.assign(customer, updateData);
-
-  try {
-    // Sauvegarder les modifications
-    const updatedCustomer = await this.customerRepository.save(plainToInstance(Customer, customer));
-
-    // Récupérer le client avec toutes ses relations pour la réponse
-    const fullCustomer = await this.customerRepository.findOne({
-      where: { id: updatedCustomer.id },
-      relations: [
-        'location_city',
-        'branch',
-        'type_customer',
-        'communications',
-        'documents',
-        'documents.document_type',
-        'dossiers',
-        'dossiers.factures',
-        'factures',
-      ],
-    });
-    if (!fullCustomer) {
-      throw new BadRequestException('Non');
-    }
-
-    // Calculer les statistiques pour la réponse
-    const responseData = {
-      ...fullCustomer,
-      document_count: fullCustomer.documents?.length || 0,
-      communication_count: fullCustomer.communications?.length || 0,
-      dossiers_en_cours:
-        fullCustomer.dossiers?.filter(d => d.is_active).length || 0,
-      chiffre_affaires: fullCustomer.factures?.reduce(
-        (sum, facture) => sum + (facture.montantTTC || 0), 0
-      ) || 0,
-      solde_en_cours: fullCustomer.factures?.reduce(
-        (sum, facture) => sum + (facture.montantPaye || 0), 0
-      ) || 0,
-    };
-
-    // Transformer en DTO de réponse
-    return plainToInstance(CustomerResponseDto, responseData);
-  } catch (error) {
-    if (error.code === '23505') {
-      // Violation de contrainte d'unicité PostgreSQL
-      throw new ConflictException('A customer with similar unique data already exists');
-    }
-    throw error;
-  }
-}
 
   async remove(id: number): Promise<void> {
     const result = await this.customerRepository.delete(id);
@@ -551,7 +630,9 @@ async update(
     return this.customerRepository;
   }
 
-  async generateNextCustomerCode(repository: Repository<Customer> = this.customerRepository): Promise<string> {
+  async generateNextCustomerCode(
+    repository: Repository<Customer> = this.customerRepository,
+  ): Promise<string> {
     // Verrouille le dernier code numérique jusqu'au commit. La lecture est
     // globale car la contrainte d'unicité SQL l'est également.
     const raw = await repository
@@ -590,10 +671,7 @@ async update(
     });
     if (!customer) throw new NotFoundException(`Compte ${id} introuvable`);
 
-    const stats = {
-    };
-
-
+    const stats = {};
 
     return stats;
   }
@@ -605,7 +683,7 @@ async update(
   // ...
   async emailExists(email: string): Promise<boolean> {
     if (!email) return false; // sécurité si email est vide
-    
+
     const customer = await this.customerRepository.findOne({
       where: { email },
     });
@@ -643,7 +721,9 @@ async update(
    * Récupère l'historique des communications d'un client (appels, emails,
    * réunions, courriers) trié de la plus récente à la plus ancienne.
    */
-  async getCommunications(customerId: number): Promise<CustomerCommunication[]> {
+  async getCommunications(
+    customerId: number,
+  ): Promise<CustomerCommunication[]> {
     const customer = await this.customerRepository.findOne({
       where: { id: customerId },
     });
@@ -729,24 +809,34 @@ async update(
    * Crée (ou réinitialise) un compte utilisateur CLIENT pour le client donné,
    * puis envoie les identifiants de connexion par email.
    */
-  async sendClientAccess(customerId: number): Promise<{ success: boolean; message: string }> {
+  async sendClientAccess(
+    customerId: number,
+  ): Promise<{ success: boolean; message: string }> {
     // 1. Récupérer le client
-    const customer = await this.customerRepository.findOneBy({ id: customerId });
+    const customer = await this.customerRepository.findOneBy({
+      id: customerId,
+    });
     if (!customer) {
       throw new NotFoundException(`Client ${customerId} introuvable`);
     }
     if (!customer.email) {
-      throw new BadRequestException('Ce client n\'a pas d\'adresse email enregistrée');
+      throw new BadRequestException(
+        "Ce client n'a pas d'adresse email enregistrée",
+      );
     }
 
     const userRepo = this.dataSource.getRepository(User);
 
     // 2. Générer un mot de passe aléatoire
-    const rawPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+    const rawPassword =
+      Math.random().toString(36).slice(-8) +
+      Math.random().toString(36).slice(-4).toUpperCase();
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
     // 3. Chercher un compte existant pour ce client
-    let user = await userRepo.findOne({ where: { customer: { id: customerId } } });
+    let user = await userRepo.findOne({
+      where: { customer: { id: customerId } },
+    });
 
     if (user) {
       // Réinitialiser le mot de passe
@@ -793,7 +883,7 @@ async update(
 
     await this.emailService.sendMail({
       to: customer.email,
-      subject: 'Vos accès à l\'espace client',
+      subject: "Vos accès à l'espace client",
       message: emailBody,
     });
 

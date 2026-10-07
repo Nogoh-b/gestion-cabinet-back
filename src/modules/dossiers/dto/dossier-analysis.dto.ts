@@ -1,5 +1,14 @@
-import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsString, Max, Min } from "class-validator";
-import { DangerLevel } from "../entities/dossier.entity";
+import {
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
+import { DangerLevel } from '../entities/dossier.entity';
 
 // src/modules/dossiers/dto/preliminary-analysis.dto.ts
 export class PreliminaryAnalysisDto {

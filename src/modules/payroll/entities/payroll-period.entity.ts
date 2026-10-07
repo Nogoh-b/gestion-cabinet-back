@@ -6,7 +6,10 @@ import {
   JoinColumn,
   OneToMany,
 } from 'typeorm';
-import { BusinessTable, BusinessColumn } from 'src/core/decorators/business-metadata.decorator';
+import {
+  BusinessTable,
+  BusinessColumn,
+} from 'src/core/decorators/business-metadata.decorator';
 import { TenantEntity } from 'src/core/entities/tenant.entity';
 import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
 import { Payslip } from './payslip.entity';
@@ -68,10 +71,15 @@ export class PayrollPeriod extends TenantEntity {
   })
   end_date: Date;
 
-  @Column({ type: 'enum', enum: PayrollPeriodStatus, default: PayrollPeriodStatus.DRAFT })
+  @Column({
+    type: 'enum',
+    enum: PayrollPeriodStatus,
+    default: PayrollPeriodStatus.DRAFT,
+  })
   @BusinessColumn({
     label: 'Statut',
-    description: "BD: 'draft'=Brouillon, 'validated'=Validée, 'paid'=Payée, 'cancelled'=Annulée.",
+    description:
+      "BD: 'draft'=Brouillon, 'validated'=Validée, 'paid'=Payée, 'cancelled'=Annulée.",
     importance: 'high',
     group: 'statut',
   })
@@ -80,7 +88,7 @@ export class PayrollPeriod extends TenantEntity {
   @Column({ type: 'int', nullable: true, name: 'branch_id' })
   @BusinessColumn({
     label: 'Agence',
-    description: 'Identifiant de l\'agence concernée',
+    description: "Identifiant de l'agence concernée",
     importance: 'medium',
     group: 'relation',
     ignored: true,
@@ -99,5 +107,4 @@ export class PayrollPeriod extends TenantEntity {
 
   @OneToMany(() => Payslip, (payslip) => payslip.period)
   payslips: Payslip[];
-
 }

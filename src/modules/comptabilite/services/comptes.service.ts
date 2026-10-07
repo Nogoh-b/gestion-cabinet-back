@@ -29,21 +29,33 @@ export class ComptesService {
     return this.repo.save(this.repo.create(data));
   }
 
-  async update(id: number, data: Partial<CompteComptable>): Promise<CompteComptable> {
+  async update(
+    id: number,
+    data: Partial<CompteComptable>,
+  ): Promise<CompteComptable> {
     await this.repo.update(id, data);
     return this.repo.findOne({ where: { id } }) as Promise<CompteComptable>;
   }
 
   // Soldes de tous les comptes pour la balance
-  async getSoldes(): Promise<{ compte: CompteComptable; totalDebit: number; totalCredit: number; solde: number }[]> {
+  async getSoldes(): Promise<
+    {
+      compte: CompteComptable;
+      totalDebit: number;
+      totalCredit: number;
+      solde: number;
+    }[]
+  > {
     const comptes = await this.repo.find({
       relations: ['lignes'],
       order: { numero: 'ASC' },
     });
 
-    return comptes.map(c => {
-      const totalDebit  = c.lignes?.reduce((s, l) => s + Number(l.debit),  0) ?? 0;
-      const totalCredit = c.lignes?.reduce((s, l) => s + Number(l.credit), 0) ?? 0;
+    return comptes.map((c) => {
+      const totalDebit =
+        c.lignes?.reduce((s, l) => s + Number(l.debit), 0) ?? 0;
+      const totalCredit =
+        c.lignes?.reduce((s, l) => s + Number(l.credit), 0) ?? 0;
       const solde = [TypeCompte.ACTIF, TypeCompte.CHARGE].includes(c.typeCompte)
         ? totalDebit - totalCredit
         : totalCredit - totalDebit;

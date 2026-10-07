@@ -49,7 +49,12 @@ export class SingleTypeCustomerStatsDto {
   // Statistiques des dossiers
   dossiers: {
     total: number;
-    parStatut: Array<{ name: string; value: number; percentage: number; color?: string }>;
+    parStatut: Array<{
+      name: string;
+      value: number;
+      percentage: number;
+      color?: string;
+    }>;
     recents: Array<{
       id: number;
       numero: string;

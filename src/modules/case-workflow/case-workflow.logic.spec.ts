@@ -4,6 +4,7 @@ import {
   getActionDeadlineState,
   recommendationTriggersForEvaluation,
   recommendationScore,
+  resolveDefaultActionBillingDecision,
   resolveLegacyMapping,
   shouldSuppressRecommendationAction,
   validateDeadlineExtension,
@@ -12,7 +13,9 @@ import {
 } from './case-workflow.logic';
 import {
   ActionBillingDecision,
+  ActionDefaultProfessionalTreatment,
   BillingCalculationMode,
+  BillingMode,
   DossierActionStatus,
   RecommendationTrigger,
 } from './case-workflow.enums';
@@ -215,6 +218,42 @@ describe('case-workflow business rules', () => {
       gross: 35_775,
       reviewReason: null,
     });
+  });
+
+  it('fait suivre automatiquement la convention financière du dossier', () => {
+    expect(
+      resolveDefaultActionBillingDecision(
+        ActionDefaultProfessionalTreatment.FOLLOW_DOSSIER,
+        BillingMode.FIXED,
+      ),
+    ).toBe(ActionBillingDecision.INCLUDED_IN_PACKAGE);
+    expect(
+      resolveDefaultActionBillingDecision(
+        ActionDefaultProfessionalTreatment.FOLLOW_DOSSIER,
+        BillingMode.MIXED,
+      ),
+    ).toBe(ActionBillingDecision.INCLUDED_IN_PACKAGE);
+    expect(
+      resolveDefaultActionBillingDecision(
+        ActionDefaultProfessionalTreatment.FOLLOW_DOSSIER,
+        BillingMode.HOURLY,
+      ),
+    ).toBe(ActionBillingDecision.HOURLY);
+  });
+
+  it('fait primer le traitement explicite du catalogue sur le mode du dossier', () => {
+    expect(
+      resolveDefaultActionBillingDecision(
+        ActionDefaultProfessionalTreatment.VACATION,
+        BillingMode.FIXED,
+      ),
+    ).toBe(ActionBillingDecision.VACATION);
+    expect(
+      resolveDefaultActionBillingDecision(
+        ActionDefaultProfessionalTreatment.NON_BILLABLE,
+        BillingMode.HOURLY,
+      ),
+    ).toBe(ActionBillingDecision.NON_BILLABLE);
   });
 
   it('crée un calcul à revoir quand le tarif manque', () => {

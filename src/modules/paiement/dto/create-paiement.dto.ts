@@ -1,8 +1,14 @@
 // src/paiement/dto/create-paiement.dto.ts
 import { Type } from 'class-transformer';
-import { IsString, IsNumber, IsOptional, IsDate, IsEnum, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  IsDate,
+  IsEnum,
+  IsBoolean,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
 
 export enum ModePaiement {
   VIREMENT = 0,
@@ -11,16 +17,16 @@ export enum ModePaiement {
   CARTE = 3,
   PRELEVEMENT = 4,
   Mobile = 5,
-  AUTRE = 6
+  AUTRE = 6,
 }
 
 export enum StatutPaiement {
   EN_ATTENTE = 0,
   VALIDE = 1,
   REJETE = 2,
-  ANNULE = 3
+  ANNULE = 3,
 }
- 
+
 export class CreatePaiementDto {
   @ApiProperty({
     description: 'ID de la facture associée',
@@ -108,7 +114,7 @@ export class CreatePaiementDto {
   })
   @IsEnum(StatutPaiement)
   @IsOptional()
-  status?: StatutPaiement ;
+  status?: StatutPaiement;
 
   @ApiPropertyOptional({
     description: 'Notes internes ou commentaire du paiement',
@@ -126,7 +132,8 @@ export class CreatePaiementDto {
   })
   @IsString()
   @IsOptional()
-  preuvePaiement?: string = 'https://cabinetjuridique.com/uploads/preuves/paiement-001.pdf';
+  preuvePaiement?: string =
+    'https://cabinetjuridique.com/uploads/preuves/paiement-001.pdf';
 
   /**
    * Transient — case « Notifier le client » du modal.

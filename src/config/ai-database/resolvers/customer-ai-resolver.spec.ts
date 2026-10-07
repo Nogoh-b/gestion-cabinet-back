@@ -21,10 +21,12 @@ describe('CustomerAiResolver', () => {
 
     expect(result.found).toBe(false);
     expect(result.best).toBeNull();
-    expect(result.candidates[0]).toEqual(expect.objectContaining({
-      entity: expect.objectContaining({ id: 10 }),
-      score: 40,
-    }));
+    expect(result.candidates[0]).toEqual(
+      expect.objectContaining({
+        entity: expect.objectContaining({ id: 10 }),
+        score: 40,
+      }),
+    );
   });
 
   it('sélectionne une correspondance exacte sur le nom complet', async () => {
@@ -34,12 +36,14 @@ describe('CustomerAiResolver', () => {
 
     const result = await resolver.resolve('Brice Kamdem');
 
-    expect(result).toEqual(expect.objectContaining({
-      found: true,
-      ambiguous: false,
-      score: 100,
-      best: expect.objectContaining({ id: 11 }),
-    }));
+    expect(result).toEqual(
+      expect.objectContaining({
+        found: true,
+        ambiguous: false,
+        score: 100,
+        best: expect.objectContaining({ id: 11 }),
+      }),
+    );
   });
 
   it('tolère une petite faute dans le nom complet', async () => {

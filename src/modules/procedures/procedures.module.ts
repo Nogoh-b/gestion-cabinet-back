@@ -23,7 +23,12 @@ import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
     forwardRef(() => DossiersModule),
   ],
   controllers: [ProceduresController],
-  providers: [ProceduresService, ProcedureStatsService, ProcedureTypeWriteHandler, ProcedureTypeSubscriber],
+  providers: [
+    ProceduresService,
+    ProcedureStatsService,
+    ProcedureTypeWriteHandler,
+    ProcedureTypeSubscriber,
+  ],
   exports: [ProceduresService, ProcedureStatsService],
 })
 export class ProceduresModule implements OnModuleInit {

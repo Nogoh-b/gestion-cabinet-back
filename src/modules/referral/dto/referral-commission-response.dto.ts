@@ -29,7 +29,13 @@ export class ReferralCommissionResponseDto {
   payment_reference?: string;
 
   // Relations
-  @ApiProperty({ example: { id: 1, dossier_id: 15, referrer: { company_name: 'Cabinet Dupont' } } })
+  @ApiProperty({
+    example: {
+      id: 1,
+      dossier_id: 15,
+      referrer: { company_name: 'Cabinet Dupont' },
+    },
+  })
   @Expose()
   @Transform(({ obj }) => ({
     id: obj.dossier_referral?.id,
@@ -40,11 +46,17 @@ export class ReferralCommissionResponseDto {
   }))
   dossier_referral: any;
 
-  @ApiProperty({ example: { id: 25, numero: 'FAC-2026-025', montant_ttc: 25000.0 } })
+  @ApiProperty({
+    example: { id: 25, numero: 'FAC-2026-025', montant_ttc: 25000.0 },
+  })
   @Expose()
   @Transform(({ obj }) =>
     obj.facture
-      ? { id: obj.facture.id, numero: obj.facture.numero, montant_ttc: obj.facture.montant_ttc }
+      ? {
+          id: obj.facture.id,
+          numero: obj.facture.numero,
+          montant_ttc: obj.facture.montant_ttc,
+        }
       : null,
   )
   facture: any;
