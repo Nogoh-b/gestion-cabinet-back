@@ -245,11 +245,13 @@ export class FactureSubscriber extends NotifiableSubscriber<Facture> {
          SET actual_costs = COALESCE(
            (SELECT SUM(f.montant_ttc)
             FROM factures f
-            WHERE f.dossier_id = ? AND f.deleted_at IS NULL),
+            WHERE f.dossier_id = ?
+              AND f.deleted_at IS NULL
+              AND f.status <> ?),
            0
          )
          WHERE id = ?`,
-        [dossierId, dossierId],
+        [dossierId, StatutFacture.ANNULEE, dossierId],
       );
       this.logger.log(`💰 actual_costs mis à jour | dossier #${dossierId}`);
     } catch (err) {

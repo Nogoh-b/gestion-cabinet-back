@@ -115,10 +115,63 @@ export class FactureStatsService extends BaseStatsService<Facture> {
     };
   }
 
+  /**
+   * Une facture annulée reste consultable pour la traçabilité, mais elle ne
+   * constitue plus une facture active et ne doit donc alimenter aucun KPI.
+   */
+  protected async getTotalCount(filters?: StatsFilterDto): Promise<number> {
+    const query = this.factureRepository
+      .createQueryBuilder('facture')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      });
+    this.applyFilters(query, filters, 'facture');
+    return query.getCount();
+  }
+
+  protected async getEvolution(
+    filters?: StatsFilterDto,
+    dateField: string = 'created_at',
+    alias: string = 'facture',
+  ): Promise<any[]> {
+    const { startDate = this.getDefaultStartDate(), endDate = new Date() } =
+      filters || {};
+    dateField = filters?.fieldToUseForDate ?? dateField;
+
+    const query = this.factureRepository
+      .createQueryBuilder(alias)
+      .select(`DATE(${alias}.${dateField})`, 'date')
+      .addSelect('COUNT(*)', 'count')
+      .where(`${alias}.${dateField} BETWEEN :start AND :end`, {
+        start: startDate,
+        end: endDate,
+      })
+      .andWhere(`${alias}.status != :cancelled`, {
+        cancelled: StatutFacture.ANNULEE,
+      })
+      .groupBy(`DATE(${alias}.${dateField})`)
+      .orderBy('date', 'ASC');
+
+    this.applyFilters(query, filters, alias);
+    const results = await query.getRawMany();
+    let cumulative = 0;
+    return results.map((result) => {
+      cumulative += parseInt(result.count);
+      return {
+        date: result.date,
+        count: parseInt(result.count),
+        cumulative,
+      };
+    });
+  }
+
   private async getTotalHT(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantHT)', 'total');
+      .select('SUM(facture.montantHT)', 'total')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      });
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -127,7 +180,10 @@ export class FactureStatsService extends BaseStatsService<Facture> {
   private async getTotalTTC(filters?: StatsFilterDto): Promise<number> {
     const query = this.factureRepository
       .createQueryBuilder('facture')
-      .select('SUM(facture.montantTTC)', 'total');
+      .select('SUM(facture.montantTTC)', 'total')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      });
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -160,6 +216,10 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       )
       .where('facture.status != :status', { status: StatutFacture.PAYEE });
 
+    query.andWhere('facture.status != :cancelled', {
+      cancelled: StatutFacture.ANNULEE,
+    });
+
     this.applyFilters(query, filters, 'facture');
     const result = await query.getRawOne();
     return parseFloat(result.total || 0);
@@ -179,6 +239,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .where('facture.status != :status', { status: StatutFacture.PAYEE })
       .andWhere('facture.status != :brouillon', {
         brouillon: StatutFacture.BROUILLON,
+      })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
       });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
@@ -192,6 +255,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .andWhere('facture.status != :status', { status: StatutFacture.PAYEE })
       .andWhere('facture.status != :brouillon', {
         brouillon: StatutFacture.BROUILLON,
+      })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
       });
     this.applyFilters(query, filters, 'facture');
     return query.getCount();
@@ -205,6 +271,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .select('facture.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('facture.status');
 
     this.applyFilters(query, filters, 'facture');
@@ -258,6 +327,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .select('invoice_type.name', 'invoice_type_name')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('invoice_type.name');
 
     this.applyFilters(query, filters, 'facture');
@@ -296,6 +368,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('client.id IS NOT NULL')
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('client.id, client.first_name, client.last_name')
       .orderBy('total', 'DESC')
       .limit(10);
@@ -322,6 +397,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'total')
       .where('dossier.id IS NOT NULL')
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('dossier.dossier_number')
       .orderBy('total', 'DESC')
       .limit(10);
@@ -368,6 +446,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         'facture.montantTTC',
         "CONCAT(client.first_name, ' ', client.last_name)",
       ])
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .orderBy('facture.montantTTC', 'DESC')
       .limit(1);
 
@@ -413,6 +494,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .andWhere('facture.status != :status', { status: StatutFacture.PAYEE })
       .andWhere('facture.status != :brouillon', {
         brouillon: StatutFacture.BROUILLON,
+      })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
       });
 
     this.applyFilters(query, filters, 'facture');
@@ -498,6 +582,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
         start: startDate,
         end: endDate,
       })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy("DATE_FORMAT(facture.dateFacture, '%Y-%m')")
       .orderBy('month', 'ASC');
 
@@ -547,6 +634,9 @@ export class FactureStatsService extends BaseStatsService<Facture> {
       .where('facture.status != :status', { status: StatutFacture.PAYEE })
       .andWhere('facture.status != :brouillon', {
         brouillon: StatutFacture.BROUILLON,
+      })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
       })
       .orderBy('facture.dateEcheance', 'ASC')
       .limit(20);

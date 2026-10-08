@@ -153,6 +153,17 @@ describe('CaseWorkflowService - récapitulatif de clôture', () => {
             },
           ],
         },
+        {
+          id: 'fac-annulee',
+          numero: 'F-2026-002',
+          dateFacture: new Date('2026-05-02'),
+          dateEcheance: new Date('2026-06-01'),
+          currency: 'XAF',
+          montantTTC: 30000,
+          status: StatutFacture.ANNULEE,
+          lines: [],
+          paiements: [],
+        },
       ],
     });
 
@@ -171,7 +182,7 @@ describe('CaseWorkflowService - récapitulatif de clôture', () => {
       title: 'Assignation',
       family: 'Procédure',
     });
-    expect(recap.billing.invoices).toHaveLength(1);
+    expect(recap.billing.invoices).toHaveLength(2);
     expect(recap.billing.invoices[0]).toMatchObject({
       numero: 'F-2026-001',
       total: 60000,

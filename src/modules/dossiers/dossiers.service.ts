@@ -50,6 +50,7 @@ import { DocumentCustomerService } from '../documents/document-customer/document
 import { User } from '../iam/user/entities/user.entity';
 import { Jurisdiction } from '../jurisdiction/entities/jurisdiction.entity';
 import { PlanQuotaService } from '../plans/plan-quota.service';
+import { StatutFacture } from '../facture/dto/create-facture.dto';
 import { ApplyTransitionDto } from '../procedure/dto/create-procedure-instance.dto copy';
 import { ProcedureInstance } from '../procedure/entities/procedure-instance.entity';
 import { StageVisit } from '../procedure/entities/stage-visit.entity';
@@ -871,7 +872,9 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
     // Vérifier que toutes les factures sont payées (R5)
     const unpaidFactures = dossier.factures.filter(
-      (facture) => facture.montantPaye <= 0,
+      (facture) =>
+        Number(facture.status) !== StatutFacture.ANNULEE &&
+        facture.montantPaye <= 0,
     );
     if (unpaidFactures.length > 0) {
       throw new BadRequestException(

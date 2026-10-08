@@ -348,8 +348,7 @@ export class DossierStatsService extends BaseStatsService<Dossier> {
     // actual_costs = total des factures du dossier (calculé dynamiquement).
     // On évite toute référence directe à la colonne stockée `actual_costs`
     // pour rester robuste si elle n'a pas encore été synchronisée par TypeORM.
-    const facturesSumExpr =
-      '(SELECT COALESCE(SUM(f.montant_ttc), 0) FROM factures f WHERE f.dossier_id = dossier.id AND f.deleted_at IS NULL)';
+    const facturesSumExpr = `(SELECT COALESCE(SUM(f.montant_ttc), 0) FROM factures f WHERE f.dossier_id = dossier.id AND f.deleted_at IS NULL AND f.status <> ${StatutFacture.ANNULEE})`;
 
     const query = this.dossierRepository
       .createQueryBuilder('dossier')

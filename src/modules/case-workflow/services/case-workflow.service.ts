@@ -1158,11 +1158,14 @@ export class CaseWorkflowService {
         status: item.status,
         occurred_at: item.occurred_at,
       }));
+    const countedInvoices = invoices.filter(
+      (invoice) => Number(invoice.status) !== StatutFacture.ANNULEE,
+    );
     const billed = round(
-      invoices.reduce((sum, invoice) => sum + invoice.total, 0),
+      countedInvoices.reduce((sum, invoice) => sum + invoice.total, 0),
     );
     const paid = round(
-      invoices.reduce((sum, invoice) => sum + invoice.paid, 0),
+      countedInvoices.reduce((sum, invoice) => sum + invoice.paid, 0),
     );
     return {
       dossier: {

@@ -189,8 +189,8 @@ describe("PaiementService - encaissement groupé d'un dossier", () => {
     );
     const where = ((factureFind as unknown as jest.Mock).mock.calls[0][0] as any).where;
     // Régression : des nombres ici feraient matcher l'INDEX 1-based de
-    // l'ENUM ('0','1','3') au lieu des valeurs ('1','2','4').
-    expect(where.status.value).toEqual(['1', '2', '4']);
+    // l'ENUM ('0','1','3') au lieu des valeurs ('0','1','2','4').
+    expect(where.status.value).toEqual(['0', '1', '2', '4']);
   });
 
   it('compte les paiements validés même quand MySQL renvoie des chaînes', async () => {

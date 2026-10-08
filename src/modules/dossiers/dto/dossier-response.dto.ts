@@ -560,11 +560,15 @@ export class DossierResponseDto {
   @Expose()
   @Transform(({ obj }) => {
     if (!obj.factures) return 0;
-    return obj.factures.reduce(
-      (total: number, facture: any) =>
-        total + parseFloat(facture.montantTTC?.toString() || '0'),
-      0,
-    );
+    return obj.factures
+      .filter(
+        (facture: any) => Number(facture.status) !== StatutFacture.ANNULEE,
+      )
+      .reduce(
+        (total: number, facture: any) =>
+          total + parseFloat(facture.montantTTC?.toString() || '0'),
+        0,
+      );
   })
   total_factures_amount: number;
 

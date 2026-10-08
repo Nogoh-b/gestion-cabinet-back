@@ -690,6 +690,9 @@ export class FactureService extends BaseServiceV1<Facture> {
       .where('facture.dateFacture BETWEEN :dateDebut AND :dateFin', {
         dateDebut,
         dateFin,
+      })
+      .andWhere('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
       });
     addTenantCondition(qb, 'facture');
     const result = await qb.getRawOne();
@@ -703,7 +706,10 @@ export class FactureService extends BaseServiceV1<Facture> {
       .select('COUNT(*)', 'total')
       .addSelect('SUM(facture.montantTTC)', 'totalTTC')
       .addSelect('SUM(facture.montantPaye)', 'totalPaye')
-      .addSelect('SUM(facture.resteAPayer)', 'totalRestant');
+      .addSelect('SUM(facture.resteAPayer)', 'totalRestant')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      });
     addTenantCondition(totalQB, 'facture');
     const totalFactures = await totalQB.getRawOne();
 
@@ -712,6 +718,9 @@ export class FactureService extends BaseServiceV1<Facture> {
       .select('facture.status', 'status')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(facture.montantTTC)', 'montantTotal')
+      .where('facture.status != :cancelled', {
+        cancelled: StatutFacture.ANNULEE,
+      })
       .groupBy('facture.status');
     addTenantCondition(parStatutQB, 'facture');
     const parStatut = await parStatutQB.getRawMany();
