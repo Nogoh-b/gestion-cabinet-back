@@ -26,8 +26,8 @@ export class UserSettings extends TenantEntity {
   @Column({ length: 10, default: 'system' })
   user_theme: string;
 
-  @ApiProperty({ example: 'md' })
-  @Column({ length: 5, default: 'md' })
+  @ApiProperty({ example: 'lg' })
+  @Column({ length: 5, default: 'lg' })
   user_font_size: string;
 
   @ApiProperty({ example: 'fr' })

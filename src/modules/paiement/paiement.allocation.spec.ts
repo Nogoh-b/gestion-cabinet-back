@@ -33,6 +33,7 @@ function setup(options: {
 }) {
   const savedPaiements: unknown[] = [];
   const savedFactures: unknown[] = [];
+  const factureFind = jest.fn(async () => options.factures ?? []);
   const manager = {
     getRepository: jest.fn((entity: unknown) => {
       if (entity === Dossier) {
@@ -40,9 +41,9 @@ function setup(options: {
       }
       if (entity === Facture) {
         return {
-          find: jest.fn(async () => options.factures ?? []),
+          find: factureFind,
           save: jest.fn(async (value: unknown) => {
-            savedFactures.push(value);
+            savedFactures.push({ ...(value as Record<string, unknown>) });
             return value;
           }),
         };
@@ -78,7 +79,7 @@ function setup(options: {
     dataSource as any,
     factureService as any,
   );
-  return { service, manager, dataSource, factureService, savedPaiements };
+  return { service, manager, dataSource, factureService, factureFind, savedPaiements, savedFactures };
 }
 
 const dossier = {
@@ -176,5 +177,57 @@ describe("PaiementService - encaissement groupé d'un dossier", () => {
         service.allocateDossierPayment(12, { montant_total: 5000 } as any),
       ),
     ).rejects.toThrow('Aucune facture à encaisser');
+  });
+
+  it('filtre les statuts SQL avec des chaînes (ENUM MySQL)', async () => {
+    const { service, factureFind } = setup({
+      dossier,
+      factures: [invoice({ montantTTC: 10000 })],
+    });
+    await new TenantContext().run(22, () =>
+      service.allocateDossierPayment(12, { montant_total: 5000 } as any),
+    );
+    const where = ((factureFind as unknown as jest.Mock).mock.calls[0][0] as any).where;
+    // Régression : des nombres ici feraient matcher l'INDEX 1-based de
+    // l'ENUM ('0','1','3') au lieu des valeurs ('1','2','4').
+    expect(where.status.value).toEqual(['1', '2', '4']);
+  });
+
+  it('compte les paiements validés même quand MySQL renvoie des chaînes', async () => {
+    const { service } = setup({
+      dossier,
+      factures: [
+        invoice({
+          montantTTC: 10000,
+          paiements: [{ id: 'pay-old', status: '1', montant: 6000 }],
+        }),
+      ],
+    });
+    const result = await new TenantContext().run(22, () =>
+      service.allocateDossierPayment(12, { montant_total: 4000 } as any),
+    );
+    // Reste réel : 4000. Sans Number(), le déjà-payé vaut 0 et la facture
+    // resterait PARTIELLEMENT_PAYEE avec 6000 de reste.
+    expect(result.allocations[0]).toMatchObject({
+      montant: 4000,
+      remaining_after: 0,
+      status: StatutFacture.PAYEE,
+    });
+    expect(result.total_allocated).toBe(4000);
+  });
+
+  it('persiste le statut sans repasser les paiements périmés à save()', async () => {
+    const { service, savedFactures } = setup({
+      dossier,
+      factures: [invoice({ montantTTC: 10000, paiements: [] })],
+    });
+    await new TenantContext().run(22, () =>
+      service.allocateDossierPayment(12, { montant_total: 5000 } as any),
+    );
+    // Régression FK 1452 : le tableau `paiements` chargé avant l'insert ne
+    // doit pas être persisté, sinon TypeORM détache le paiement inséré
+    // (UPDATE paiements SET facture_id = NULL).
+    expect(savedFactures).toHaveLength(1);
+    expect((savedFactures[0] as any).paiements).toBeUndefined();
   });
 });

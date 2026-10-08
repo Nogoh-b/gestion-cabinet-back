@@ -7,7 +7,7 @@ export class UserSettingsDto {
   @IsString()
   user_theme?: string;
 
-  @ApiProperty({ example: 'md' })
+  @ApiProperty({ example: 'lg' })
   @IsOptional()
   @IsString()
   user_font_size?: string;

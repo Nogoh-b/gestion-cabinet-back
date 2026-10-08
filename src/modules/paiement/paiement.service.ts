@@ -95,7 +95,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     const { notify_client, modePaiment, ...persistable } = createDto as any;
     const paiement = this.repository.create({
       ...persistable,
-      factureId: facture.id,
+      facture,
       montant,
       modePaiement: this.normalizePaymentMode(createDto),
       status,
@@ -203,10 +203,10 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     }
     const round = (value: number): number =>
       Math.round((value + Number.EPSILON) * 100) / 100;
-    const reference = dto.reference?.trim() || generateEntityCode('ENC');
-    const datePaiement = dto.date_paiement
-      ? new Date(dto.date_paiement)
-      : new Date();
+    const reference = (dto as any).reference?.trim() || generateEntityCode('ENC');
+    const rawDate: string | undefined =
+      (dto as any).date_paiement ?? (dto as any).datePaiement;
+    const datePaiement = rawDate ? new Date(rawDate) : new Date();
     return this.dataSource.transaction(async (manager) => {
       const dossier = await manager.getRepository(Dossier).findOne({
         where: { id: dossierId, tenant_id: tenantId },
@@ -215,22 +215,27 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       if (!dossier) {
         throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
       }
+      // MySQL stocke les enums TS numériques dans un ENUM('0','1',...) :
+      // comparé à des NOMBRES, `status IN (1,2,4)` matche l'INDEX 1-based
+      // ('0','1','3' !) au lieu des valeurs. On compare avec des chaînes.
+      const statutsEncaissables = [
+        StatutFacture.BROUILLON,
+        StatutFacture.ENVOYEE,
+        StatutFacture.PARTIELLEMENT_PAYEE,
+        StatutFacture.IMPAYEE,
+      ].map(String);
       const factures = await manager.getRepository(Facture).find({
         where: {
           dossier_id: dossierId,
           tenant_id: tenantId,
-          status: In([
-            StatutFacture.ENVOYEE,
-            StatutFacture.PARTIELLEMENT_PAYEE,
-            StatutFacture.IMPAYEE,
-          ]),
+          status: In(statutsEncaissables as unknown as StatutFacture[]),
         },
         relations: ['paiements'],
         order: { dateEcheance: 'ASC', dateFacture: 'ASC' },
       });
       const eligible = factures.filter(
         (facture) =>
-          facture.type !== TypeFacture.AVOIR &&
+          Number(facture.type) !== TypeFacture.AVOIR &&
           this.getRemainingAmount(facture) > 0.009,
       );
       if (!eligible.length) {
@@ -240,16 +245,26 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       }
       const plan: Array<{ facture: Facture; montant: number }> = [];
       if (manual) {
-        for (const allocation of dto.allocations!) {
+        for (const rawAlloc of dto.allocations! as any[]) {
+          const fid: string | undefined =
+            rawAlloc.facture_id ??
+            rawAlloc.factureId ??
+            rawAlloc.id ??
+            rawAlloc.facture_id_string;
+          if (!fid) {
+            throw new BadRequestException(
+              "Chaque allocation doit contenir facture_id",
+            );
+          }
           const facture = eligible.find(
-            (candidate) => candidate.id === allocation.facture_id,
+            (candidate) => candidate.id === fid,
           );
           if (!facture) {
             throw new BadRequestException(
-              `La facture ${allocation.facture_id} n'est pas encaissable`,
+              `La facture ${fid} n'est pas encaissable`,
             );
           }
-          const montant = round(Number(allocation.montant));
+          const montant = round(Number((rawAlloc as any).montant));
           if (!(montant > 0)) {
             throw new BadRequestException(
               'Le montant du paiement doit etre strictement positif',
@@ -289,21 +304,23 @@ export class PaiementService extends BaseServiceV1<Paiement> {
         status: StatutFacture;
       }> = [];
       for (const { facture, montant } of plan) {
+        // L'entité Paiement a maintenant un getter factureId → this.facture?.id.
+        // On ne set pas factureId en dur : TypeORM utilise la relation @ManyToOne.
         await paiementRepo.save(
           paiementRepo.create({
             tenant_id: tenantId,
-            factureId: facture.id,
+            facture,
             montant,
             modePaiement: this.normalizePaymentMode(dto),
             status: StatutPaiement.VALIDE,
             datePaiement,
             dateValeur: datePaiement,
             reference,
-            banque: dto.banque?.trim() || null,
-            titulaire: dto.titulaire?.trim() || null,
-            numeroCheque: dto.numero_cheque?.trim() || null,
-            notes: dto.notes?.trim() || null,
-          } as Partial<Paiement>),
+            banque: (dto as any).banque?.trim() || null,
+            titulaire: (dto as any).titulaire?.trim() || null,
+            numeroCheque: (dto as any).numero_cheque?.trim() || null,
+            notes: (dto as any).notes?.trim() || null,
+          } as unknown as Partial<Paiement>),
         );
         const paidAfter = round(
           this.getValidatedPaidAmount(facture) + montant,
@@ -313,7 +330,14 @@ export class PaiementService extends BaseServiceV1<Paiement> {
           paidAfter >= totalTtc - 0.009
             ? StatutFacture.PAYEE
             : StatutFacture.PARTIELLEMENT_PAYEE;
+        // `facture.paiements` a été chargé AVANT l'insert ci-dessus : le
+        // passer à save() ferait croire à TypeORM que le paiement inséré a
+        // été retiré de la relation → UPDATE paiements SET facture_id=NULL
+        // → violation de FK (1452). On le détache le temps du save.
+        const paiementsCharges = facture.paiements;
+        facture.paiements = undefined as unknown as Paiement[];
         await manager.getRepository(Facture).save(facture);
+        facture.paiements = paiementsCharges;
         allocations.push({
           facture_id: facture.id,
           numero: facture.numero,
@@ -463,7 +487,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   }
 
   async getPaiementsEnAttente(): Promise<Paiement[]> {
-    return this.findAllV1({ status: StatutPaiement.EN_ATTENTE }, undefined, [
+    return this.findAllV1({ status: String(StatutPaiement.EN_ATTENTE) }, undefined, [
       'facture',
     ]);
   }
@@ -553,7 +577,11 @@ export class PaiementService extends BaseServiceV1<Paiement> {
     dto: Partial<CreatePaiementDto> | any,
   ): ModePaiement {
     const value =
-      dto.modePaiement ?? dto.modePaiment ?? dto.mode ?? ModePaiement.VIREMENT;
+      dto.modePaiement ??
+      dto.modePaiment ??
+      dto.mode_paiement ??
+      dto.mode ??
+      ModePaiement.VIREMENT;
     if (typeof value === 'number') return value as ModePaiement;
 
     const numeric = Number(value);
@@ -573,7 +601,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   }
 
   private assertFactureAcceptsPayment(facture: Facture): void {
-    if (facture.status === StatutFacture.ANNULEE) {
+    if (Number(facture.status) === StatutFacture.ANNULEE) {
       throw new BadRequestException(
         'Impossible d enregistrer un paiement sur une facture annulee',
       );
@@ -586,7 +614,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
   ): number {
     return (facture.paiements ?? [])
       .filter(
-        (p) => p.status === StatutPaiement.VALIDE && p.id !== excludePaymentId,
+        (p) => Number(p.status) === StatutPaiement.VALIDE && p.id !== excludePaymentId,
       )
       .reduce((sum, p) => sum + Number(p.montant ?? 0), 0);
   }
@@ -614,7 +642,7 @@ export class PaiementService extends BaseServiceV1<Paiement> {
       relations: ['paiements', 'client', 'dossier'],
     });
     if (!facture) return null;
-    if (facture.status === StatutFacture.ANNULEE) return facture;
+    if (Number(facture.status) === StatutFacture.ANNULEE) return facture;
 
     const totalPaye = this.getValidatedPaidAmount(facture);
     const totalTtc = Number(facture.montantTTC);

@@ -13,6 +13,8 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -62,6 +64,13 @@ export class PaiementController {
 
   @Post('dossier/:dossierId/encaissements')
   @RequirePermissions('create_paiement')
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: false,
+    }),
+  )
   @ApiOperation({ summary: 'Encaisser plusieurs factures d’un dossier' })
   @ApiParam({ name: 'dossierId', type: Number })
   async allocateDossierPayment(

@@ -6,7 +6,7 @@ import { UserSettingsDto } from '../dto/user-settings.dto';
 
 const DEFAULT_USER_SETTINGS: Partial<UserSettings> = {
   user_theme: 'system',
-  user_font_size: 'md',
+  user_font_size: 'lg',
   user_language: 'fr',
   user_notifications_enabled: true,
   user_email_notifications: true,

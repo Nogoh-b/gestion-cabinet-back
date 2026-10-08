@@ -378,7 +378,7 @@ export class Facture extends BaseEntity {
   get montantPaye(): number {
     if (!this.paiements || this.paiements.length === 0) return 0;
     return this.paiements
-      .filter((p) => p.status === StatutPaiement.VALIDE)
+      .filter((p) => Number(p.status) === StatutPaiement.VALIDE)
       .reduce((sum, p) => sum + Number(p.montant), 0);
   }
 

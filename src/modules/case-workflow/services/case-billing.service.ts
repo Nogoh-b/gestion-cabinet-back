@@ -2767,7 +2767,7 @@ export class CaseBillingService {
         initialPaiement = await paiementRepo.save(
           paiementRepo.create({
             tenant_id: tenantId,
-            factureId: facture.id,
+            facture,
             montant,
             modePaiement: mode,
             status,
@@ -2818,7 +2818,7 @@ export class CaseBillingService {
         ? [initialPaiement]
         : await manager
             .getRepository(Paiement)
-            .find({ where: { factureId: facture.id as any, tenant_id: tenantId } as any });
+            .find({ where: { facture: { id: facture.id }, tenant_id: tenantId } as any });
       return Object.assign(facture, { lines, paiements });
     });
   }

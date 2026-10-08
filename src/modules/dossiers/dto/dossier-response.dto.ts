@@ -573,7 +573,7 @@ export class DossierResponseDto {
   @Transform(({ obj }) => {
     if (!obj.factures) return 0;
     return obj.factures
-      .filter((facture: any) => facture.status === StatutFacture.PAYEE)
+      .filter((facture: any) => Number(facture.status) === StatutFacture.PAYEE)
       .reduce(
         (total: number, facture: any) =>
           total + parseFloat(facture.montantTTC?.toString() || '0'),

@@ -143,7 +143,7 @@ export class PaiementWriteHandler extends BaseWriteHandler {
 
     const data = {
       ...safeFields,
-      factureId,
+      factureId, // passe par le setter → this.facture = { id: factureId }
       montant,
       datePaiement: safeFields.datePaiement
         ? new Date(safeFields.datePaiement)

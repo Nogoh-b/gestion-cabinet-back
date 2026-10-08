@@ -1100,7 +1100,7 @@ export class CaseWorkflowService {
       Math.round((value + Number.EPSILON) * 100) / 100;
     const invoices = factures.map((facture) => {
       const payments = (facture.paiements ?? [])
-        .filter((paiement) => paiement.status === StatutPaiement.VALIDE)
+        .filter((paiement) => Number(paiement.status) === StatutPaiement.VALIDE)
         .map((paiement) => ({
           date: paiement.datePaiement,
           mode: paiement.modePaiement,
