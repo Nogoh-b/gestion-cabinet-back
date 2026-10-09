@@ -1,11 +1,12 @@
 import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import { Entity, ManyToOne, JoinColumn, Column, PrimaryColumn } from 'typeorm';
 
 import { Permission } from '../../permission/entities/permission.entity';
 import { UserRole } from '../../user-role/entities/user-role.entity';
 
-@SharedAcrossTenants()
+// Isolation stricte par cabinet : les liaisons rôle↔permission sont
+// filtrées par WHERE tenant_id = X, comme Permission et UserRole.
+// Pas de @SharedAcrossTenants — sinon doublons via IN (1, X).
 @Entity('role_permission')
 export class RolePermission extends TenantEntity {
   @PrimaryColumn({ unsigned: true, type: 'tinyint' })

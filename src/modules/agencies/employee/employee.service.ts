@@ -140,7 +140,7 @@ export class EmployeeService extends BaseServiceV1<Employee> {
     const position = dto.position ?? EmployeePosition.COLLABORATEUR;
     const defaultRole = this.getUserRoleFromPosition(position);
     const requestedRoleCode = dto.role?.trim() || defaultRole;
-    // Résolution tolérante (tenant exact → rôles globaux tenant 1 → sans filtre).
+    // Résolution stricte (tenant courant uniquement, sans repli tenant 1).
     // On ne bloque plus la création si le profil est absent en DB : l'employé
     // est créé avec `user.role` renseigné, sans ligne d'assignation.
     const accessProfile = await this.resolveAccessProfile(requestedRoleCode);
@@ -326,33 +326,22 @@ export class EmployeeService extends BaseServiceV1<Employee> {
   }
 
   /**
-   * Résout un profil d'accès (`user_role`) par son code avec repli :
-   *  1. tenant exact courant,
-   *  2. rôles globaux partagés (tenant_id = 1, cf. @SharedAcrossTenants),
-   *  3. sans filtre tenant (dernier recours).
+   * Résout un profil d'accès (`user_role`) par son code — isolation stricte :
+   * UNIQUEMENT le tenant courant (WHERE tenant_id = X). Aucun repli vers le
+   * tenant 1 ni recherche sans filtre : un cabinet ne doit jamais hériter
+   * des rôles d'un autre cabinet.
    * Retourne `null` si aucun profil actif ne correspond — l'appelant ne doit
    * pas bloquer la création/mise à jour dans ce cas.
    */
   private async resolveAccessProfile(code: string) {
     const tenantId = getCurrentTenantId();
-    const tryTenant = async (tid?: number | null) => {
-      const qb = this.userRoleRepository
-        .createQueryBuilder('r')
-        .where('r.code = :code', { code })
-        .andWhere('r.status = 1');
-      if (tid !== undefined && tid !== null) {
-        qb.andWhere('r.tenant_id = :tid', { tid });
-      }
-      return qb.getOne();
-    };
-
-    return (
-      (tenantId !== undefined && tenantId !== null
-        ? await tryTenant(tenantId)
-        : null) ??
-      (tenantId !== 1 ? await tryTenant(1) : null) ??
-      (await tryTenant(undefined))
-    );
+    if (tenantId === undefined || tenantId === null) return null;
+    return this.userRoleRepository
+      .createQueryBuilder('r')
+      .where('r.code = :code', { code })
+      .andWhere('r.status = 1')
+      .andWhere('r.tenant_id = :tid', { tid: tenantId })
+      .getOne();
   }
 
   // Méthode helper pour déterminer le rôle utilisateur

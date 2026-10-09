@@ -1,6 +1,5 @@
 // user-role.entity.ts
 import { TenantEntity } from 'src/core/entities/tenant.entity';
-import { SharedAcrossTenants } from 'src/core/tenant/tenant.decorator';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -11,7 +10,10 @@ import {
 
 import { RolePermission } from '../../role-permission/entities/role-permission.entity';
 
-@SharedAcrossTenants()
+// Isolation stricte par cabinet : chaque tenant ne voit QUE ses propres
+// rôles (WHERE tenant_id = X). Pas de @SharedAcrossTenants ici —
+// sinon les lectures retournent tenant_id IN (1, X) et chaque rôle
+// (secretaire, avocat, …) apparaît en double.
 @Entity('user_role')
 @Unique(['code', 'tenant_id'])
 export class UserRole extends TenantEntity {

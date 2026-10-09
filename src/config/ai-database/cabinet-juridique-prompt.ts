@@ -604,6 +604,48 @@ Quand l'utilisateur demande de renvoyer, reporter, reprogrammer ou marquer une a
   - "outcome": "postponed"
 - ne propose PAS un simple UPDATE avec seulement "status" et "outcome"
 - si la nouvelle date, l'heure ou le rapport manquent, baisse la confiance et demande confirmation
+
+### 6. 🗂️ Règle CRITIQUE pour le CATALOGUE D'ACTIONS (familles, définitions, règles)
+Le catalogue se compose de 3 niveaux : FAMILLE (regroupement) → DÉFINITION (type d'action) → RÈGLE de recommandation (optionnelle).
+Une ACTION de dossier (dossier_actions) n'est JAMAIS créée directement sans définition existante.
+
+**Mots déclencheurs à détecter** :
+"famille", "familles", "famille d'action", "catalogue", "type d'action", "sous-action",
+"ajouter une famille", "nouvelle famille", "créer un type d'action", "règle de recommandation".
+
+**Créer une FAMILLE** → UNE SEULE opération INSERT dans l'entité "case_action_families" avec :
+  - champ "label" : OBLIGATOIRE, le nom donné par l'utilisateur (ex: "Recouvrement amiable").
+    Clé JSON exacte "label" en minuscules — jamais "Famille", "famille", "nom" ou "name".
+  - champ "code" : NE JAMAIS LE METTRE sauf si l'utilisateur impose explicitement un code.
+    Il est généré automatiquement depuis le libellé.
+  - NE crée PAS d'opération "case_action_definitions" en même temps sauf si l'utilisateur
+    demande aussi un type d'action précis.
+
+  Exemple — « ajoute une famille d'action Recouvrement amiable » :
+  { "operation": "INSERT", "entity": "case_action_families", "tempId": "nouvelle_famille",
+    "fields": { "label": "Recouvrement amiable" } }
+
+**Créer une DÉFINITION (type d'action)** → INSERT dans "case_action_definitions" avec :
+  - champ "label" : OBLIGATOIRE (nom lisible de l'action).
+  - champ "family" : OBLIGATOIRE si "family_id" absent — code ou LIBELLÉ de la famille
+    (ex: "Recouvrement amiable"). Si la famille n'existe pas, elle est CRÉÉE
+    AUTOMATIQUEMENT : ne génère PAS d'opération "case_action_families" séparée.
+  - champ "code" : optionnel, généré automatiquement si absent.
+
+  Exemple — « crée l'action Relancer le débiteur dans la famille Recouvrement amiable » :
+  { "operation": "INSERT", "entity": "case_action_definitions", "tempId": "nouvelle_definition",
+    "fields": { "label": "Relancer le débiteur", "family": "Recouvrement amiable" } }
+
+**Créer une RÈGLE de recommandation** → INSERT dans "case_recommendation_rules" avec :
+  - champs OBLIGATOIRES : "code" (MAJUSCULES, ex: "RELANCE_DEBITEUR"), "label", "trigger",
+    "condition_json" (objet json-logic), "reason_template", "action_definition_id"
+    (ou "action_definition" avec le code/libellé de la définition).
+  - contrairement aux familles/définitions, le "code" N'EST PAS auto-généré : déduis-le du libellé.
+
+**Créer une ACTION de dossier** → INSERT dans "dossier_actions" UNIQUEMENT si le dossier
+et la définition existent déjà (jamais de création auto du dossier ni de la définition ici) :
+  - champ "dossier" : numéro du dossier existant, champ "definition_code" ou "definition" :
+    code/libellé de la définition existante.
 `;
 
 /**

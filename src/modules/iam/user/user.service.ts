@@ -177,7 +177,10 @@ export class UsersService {
       .leftJoinAndSelect('roleAssignment.role', 'role')
       .where('user.email = :email', { email });
 
-    if (tenantId && tenantId !== 1) {
+    // Isolation stricte : quand un tenant est connu, on filtre TOUJOURS
+    // dessus (y compris tenant 1). Sans filtre, un reset mot de passe
+    // pourrait retourner le compte d'un autre cabinet partageant l'e-mail.
+    if (tenantId) {
       qb = qb.andWhere('user.tenant_id = :tenantId', { tenantId });
     }
 

@@ -47,6 +47,15 @@ export const DOMAIN_KEYWORDS: AiDatabaseProjectConfig['domainKeywords'] = [
   'actions',
   'sous-action',
   'sous-actions',
+  'famille',
+  'familles',
+  'famille action',
+  'famille actions',
+  'catalogue',
+  'catalogue action',
+  'catalogue actions',
+  'type action',
+  'type actions',
   'recommandation',
   'recommandations',
   'priorite',
@@ -163,6 +172,10 @@ export const DOMAIN_ENTITIES: AiDatabaseProjectConfig['domainEntities'] = [
     label: 'action de traitement',
   },
   {
+    pattern: 'familles?(?:\\s+d[’\']?actions?)?|catalogue(?:\\s+d[’\']?actions?)?|types?\\s+d[’\']?actions?',
+    label: 'famille d’actions',
+  },
+  {
     pattern: 'recommandations?|prochaine action|action suivante',
     label: 'recommandation',
   },
@@ -178,6 +191,8 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       'dossiers',
       'customer',
       'employee',
+      'case_action_families',
+      'case_action_definitions',
       'dossier_actions',
       'dossier_recommendations',
       'billable_items',
@@ -231,6 +246,8 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       loan: 'Prets accordes',
       case_action_definitions:
         'Définitions versionnées des actions disponibles dans le parcours de traitement.',
+      case_action_families:
+        'Familles du catalogue des actions (regroupements fonctionnels : Formalités, Audience, Conseil…). Création via INSERT avec le champ "label" OBLIGATOIRE (ex: {"label": "Recouvrement amiable"}) — le code est généré automatiquement.',
       dossier_actions:
         'Actions de traitement d’un dossier. Une action terminée n’est à facturer que si billing_decision vaut BILLABLE.',
       dossier_recommendations:
@@ -282,6 +299,17 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
         'catalogue d actions',
         'type d action',
         'sous action',
+        'definition d action',
+      ],
+      case_action_families: [
+        'famille d actions',
+        'familles d actions',
+        'famille',
+        'familles',
+        'catalogue d actions',
+        'catalogue',
+        'regroupement d actions',
+        'categorie d actions',
       ],
       billable_items: [
         'element facturable',

@@ -29,7 +29,8 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         label: 'Code de la règle',
         type: 'string',
         required: true,
-        description: 'Code métier unique de la règle',
+        description:
+          'OBLIGATOIRE. Code métier unique de la règle (MAJUSCULES, chiffres, underscores). Clé JSON exacte : "code". Contrairement aux familles et définitions, le code N’EST PAS généré automatiquement — tu dois le déduire du libellé (ex: "Audience proche" → "AUDIENCE_PROCHE").',
         example: 'AUDIENCE_DUE_SOON',
       },
       {
@@ -37,7 +38,8 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         label: 'Libellé',
         type: 'string',
         required: true,
-        description: 'Nom lisible de la règle',
+        description:
+          'OBLIGATOIRE. Nom lisible de la règle. Clé JSON exacte : "label" (minuscules). N’utilise JAMAIS "Libellé", "nom" ou "name" comme clé — seul "label" est accepté.',
         example: 'Audience proche',
       },
       {
@@ -85,7 +87,7 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         type: 'string',
         required: true,
         description:
-          'Condition json-logic. Ex: {"<=":[{"var":"audiences.nextInDays"},7]}',
+          'OBLIGATOIRE. Condition json-logic de déclenchement. Clé JSON exacte : "condition_json". Accepte un objet ou sa forme texte. Ex: {"<=":[{"var":"audiences.nextInDays"},7]}',
         example: '{"<=":[{"var":"audiences.nextInDays"},7]}',
       },
       {
@@ -93,7 +95,8 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         label: 'Motif affiché',
         type: 'string',
         required: true,
-        description: 'Phrase affichée à l’utilisateur quand la règle s’applique',
+        description:
+          'OBLIGATOIRE. Phrase affichée à l’utilisateur quand la règle s’applique. Clé JSON exacte : "reason_template".',
         example: 'Une audience est prévue dans les 7 jours.',
       },
       {
@@ -135,18 +138,113 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
+    const normalized = this.normalizeKeys(fields);
     const errors: string[] = [];
     if (operation === 'INSERT') {
-      if (!fields.code) errors.push('Le code est requis');
-      if (!fields.label) errors.push('Le libellé est requis');
-      if (!fields.trigger) errors.push('Le déclencheur (trigger) est requis');
-      if (!fields.condition_json && !fields.conditionJson)
-        errors.push('La condition (condition_json) est requise');
-      if (!fields.reason_template) errors.push('Le motif (reason_template) est requis');
-      if (!fields.action_definition_id && !fields.action_definition && !fields.definition_code)
-        errors.push('La définition d’action est requise (action_definition_id ou action_definition)');
+      if (!this.nonEmpty(normalized.code))
+        errors.push(
+          'Le code est requis : fournis "code" en MAJUSCULES (ex: {"code": "AUDIENCE_PROCHE"}).',
+        );
+      if (!this.nonEmpty(normalized.label))
+        errors.push(
+          'Le libellé est requis : fournis "label" avec le nom lisible (ex: {"label": "Audience proche"}). Clé exacte "label", pas "Libellé" ni "nom".',
+        );
+      if (!this.nonEmpty(normalized.trigger))
+        errors.push('Le déclencheur (trigger) est requis');
+      if (
+        !this.nonEmpty(normalized.condition_json) &&
+        !this.nonEmpty(normalized.conditionJson)
+      )
+        errors.push(
+          'La condition (condition_json) est requise : fournis un objet json-logic (ex: {"condition_json": {"<=": [{"var": "audiences.nextInDays"}, 7]}}).',
+        );
+      if (!this.nonEmpty(normalized.reason_template))
+        errors.push(
+          'Le motif (reason_template) est requis : phrase affichée à l’utilisateur.',
+        );
+      if (
+        !this.nonEmpty(normalized.action_definition_id) &&
+        !this.nonEmpty(normalized.action_definition) &&
+        !this.nonEmpty(normalized.definition_code)
+      )
+        errors.push(
+          'La définition d’action est requise : fournis action_definition_id (UUID) ou action_definition / definition_code avec le code ou libellé.',
+        );
     }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return {
+      valid: errors.length === 0,
+      errors,
+      transformedFields: normalized,
+    };
+  }
+
+  /**
+   * Normalise les clés envoyées par le LLM (casse, accents, alias français)
+   * vers les noms techniques attendus.
+   */
+  private normalizeKeys(fields: Record<string, any>): Record<string, any> {
+    const out: Record<string, any> = { ...fields };
+    const pick = (...names: string[]): string | undefined =>
+      Object.keys(out).find((k) => names.includes(k.toLowerCase().trim()));
+    const move = (from: string | undefined, to: string) => {
+      if (from && from !== to) {
+        if (out[to] === undefined) out[to] = out[from];
+        delete out[from];
+      }
+    };
+    move(
+      pick('label', 'libelle', 'libellé', 'nom', 'name', 'title', 'titre'),
+      'label',
+    );
+    move(pick('code', 'code_regle', 'rule_code'), 'code');
+    move(pick('trigger', 'declencheur', 'déclencheur', 'evenement', 'événement'), 'trigger');
+    move(
+      pick(
+        'condition_json',
+        'conditionjson',
+        'condition',
+        'condition-json',
+        'condition_logique',
+      ),
+      'condition_json',
+    );
+    move(
+      pick(
+        'reason_template',
+        'reasontemplate',
+        'motif',
+        'motif_affiche',
+        'message',
+        'phrase',
+      ),
+      'reason_template',
+    );
+    move(
+      pick(
+        'action_definition_id',
+        'actiondefinitionid',
+        'definition_id',
+        'id_definition',
+      ),
+      'action_definition_id',
+    );
+    move(
+      pick(
+        'action_definition',
+        'actiondefinition',
+        'definition',
+        'definition_code',
+        'definitioncode',
+      ),
+      'action_definition',
+    );
+    return out;
+  }
+
+  private nonEmpty(value: any): boolean {
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return String(value).trim().length > 0;
   }
 
   async resolveDependencies(
@@ -155,7 +253,25 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
     createdEntities?: Map<string, any>,
     config?: import('src/core/ai-database/write/entity-resolver.service').ResolveConfig,
   ): Promise<Record<string, any>> {
-    const resolved = { ...fields };
+    const resolved = { ...this.normalizeKeys(fields) };
+    // Nettoyer les textes (espaces) avant résolution ; une valeur vide ne
+    // doit jamais partir au resolver — validateFields produira le message.
+    for (const key of [
+      'code',
+      'label',
+      'trigger',
+      'action_definition',
+      'action_definition_id',
+      'reason_template',
+    ] as const) {
+      if (resolved[key] !== undefined && resolved[key] !== null) {
+        if (typeof resolved[key] === 'string') {
+          const trimmed = resolved[key].trim();
+          if (trimmed === '') delete resolved[key];
+          else resolved[key] = trimmed;
+        }
+      }
+    }
     // Alias: action_definition / definition_code -> action_definition_id
     const aliasVal =
       resolved.action_definition ?? resolved.definition_code ?? resolved.definitionCode;
@@ -217,23 +333,45 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     _userId: string,
   ): Promise<WriteResult> {
+    const normalized = this.normalizeKeys(fields);
+    if (!this.nonEmpty(normalized.code)) {
+      throw new Error(
+        'Le code est requis : fournis "code" en MAJUSCULES (ex: {"code": "AUDIENCE_PROCHE"}).',
+      );
+    }
+    if (!this.nonEmpty(normalized.label)) {
+      throw new Error(
+        'Le libellé est requis : fournis "label" avec le nom lisible (ex: {"label": "Audience proche"}).',
+      );
+    }
+    if (!this.nonEmpty(normalized.action_definition_id)) {
+      throw new Error(
+        'La définition d’action est requise : fournis action_definition_id (UUID) ou action_definition avec le code/libellé.',
+      );
+    }
     const rule = await this.catalogService.createRecommendationRule({
-      code: fields.code.trim(),
-      label: fields.label.trim(),
-      trigger: fields.trigger,
-      action_definition_id: fields.action_definition_id,
-      condition_json: fields.condition_json,
-      reason_template: fields.reason_template.trim(),
+      code: String(normalized.code).trim(),
+      label: String(normalized.label).trim(),
+      trigger: normalized.trigger,
+      action_definition_id: String(normalized.action_definition_id).trim(),
+      condition_json: normalized.condition_json,
+      reason_template: String(normalized.reason_template).trim(),
       priority:
-        fields.priority !== undefined ? Number(fields.priority) : undefined,
+        normalized.priority !== undefined
+          ? Number(normalized.priority)
+          : undefined,
       specificity:
-        fields.specificity !== undefined ? Number(fields.specificity) : undefined,
+        normalized.specificity !== undefined
+          ? Number(normalized.specificity)
+          : undefined,
       due_offset_days:
-        fields.due_offset_days !== undefined
-          ? Number(fields.due_offset_days)
+        normalized.due_offset_days !== undefined
+          ? Number(normalized.due_offset_days)
           : undefined,
       is_active:
-        fields.is_active !== undefined ? Boolean(fields.is_active) : undefined,
+        normalized.is_active !== undefined
+          ? this.toBoolean(normalized.is_active)
+          : undefined,
     } as any);
     return {
       success: true,
@@ -276,7 +414,7 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
     if (fields.specificity !== undefined) patch.specificity = Number(fields.specificity);
     if (fields.due_offset_days !== undefined)
       patch.due_offset_days = Number(fields.due_offset_days);
-    if (fields.is_active !== undefined) patch.is_active = Boolean(fields.is_active);
+    if (fields.is_active !== undefined) patch.is_active = this.toBoolean(fields.is_active);
     const rule = await this.catalogService.reviseRecommendationRule(
       String(entityId),
       patch,
@@ -289,5 +427,22 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
       data: rule,
       message: `Règle "${rule.label}" révisée → v${rule.version}`,
     };
+  }
+
+  /**
+   * Convertit les booléens fournis en chaîne par le LLM ("true", "1", "oui"…).
+   * Boolean("false") === true, d'où la nécessité de ce helper.
+   */
+  private toBoolean(value: any): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    const v = String(value ?? '')
+      .trim()
+      .toLowerCase();
+    if (['true', '1', 'oui', 'yes', 'y', 'actif', 'active'].includes(v))
+      return true;
+    if (['false', '0', 'non', 'no', 'n', 'inactif', 'inactive'].includes(v))
+      return false;
+    return true;
   }
 }

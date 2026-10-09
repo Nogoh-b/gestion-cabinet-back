@@ -31,7 +31,7 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
         required: false,
         referenceEntity: 'case_action_families',
         description:
-          'ID de la famille. Tu peux aussi fournir "family" avec le code ou le libellé (résolu automatiquement).',
+          'UUID de la famille (prioritaire si fourni). Sinon fournis "family" avec le code ou le libellé (résolu automatiquement, créé si inexistant). Clés exactes : "family_id" ou "family".',
         example: 'FORMALITES',
       },
       {
@@ -41,7 +41,7 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
         required: false,
         referenceEntity: 'case_action_families',
         description:
-          'Code ou libellé de la famille. Si la famille n’existe pas elle sera créée automatiquement.',
+          'OBLIGATOIRE si "family_id" est absent. Code ou LIBELLÉ de la famille (ex: "Formalités", "Recouvrement amiable"). Si la famille n’existe pas, elle est CRÉÉE AUTOMATIQUEMENT avec ce nom comme "label" — ne crée JAMAIS une opération case_action_families séparée pour ça. Exemple de plan minimal : {"operation":"INSERT","entity":"case_action_definitions","fields":{"label":"Relancer le débiteur","family":"Recouvrement amiable"}}.',
         example: 'Formalités',
       },
       {
@@ -58,7 +58,8 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
         label: 'Libellé de l’action',
         type: 'string',
         required: true,
-        description: 'Nom lisible proposé lors de la création d’une action.',
+        description:
+          'OBLIGATOIRE. Nom lisible de l’action. Clé JSON exacte : "label" (minuscules). N’utilise JAMAIS "Libellé", "libelle", "nom" ou "name" comme clé — seul "label" est accepté.',
         example: 'Faire signer le document',
       },
       {
@@ -183,20 +184,83 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
+    const normalized = this.normalizeKeys(fields);
     const errors: string[] = [];
-    if (operation === 'INSERT' && !fields.label) {
-      errors.push('Le champ "Libellé de l’action" (label) est requis');
+    if (operation === 'INSERT' && !this.nonEmpty(normalized.label)) {
+      errors.push(
+        'Le champ "Libellé de l’action" (label) est requis : fournis "label" avec le nom de l’action (ex: {"label": "Relancer le débiteur"}).',
+      );
     }
     if (
       operation === 'INSERT' &&
-      !fields.family_id &&
-      !fields.family
+      !this.nonEmpty(normalized.family_id) &&
+      !this.nonEmpty(normalized.family)
     ) {
       errors.push(
-        'La famille est requise : fournir soit family_id soit family (code/libellé)',
+        'La famille est requise : fournis "family" avec le code ou le LIBELLÉ (ex: {"family": "Recouvrement amiable"}) — elle sera créée automatiquement si elle n’existe pas — ou "family_id" avec l’UUID.',
       );
     }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return {
+      valid: errors.length === 0,
+      errors,
+      transformedFields: normalized,
+    };
+  }
+
+  /**
+   * Normalise les clés envoyées par le LLM (casse, accents, alias français)
+   * vers les noms techniques attendus. Ex : {"Libellé": "X"} → {"label": "X"},
+   * {"famille": "Y"} → {"family": "Y"}.
+   */
+  private normalizeKeys(fields: Record<string, any>): Record<string, any> {
+    const out: Record<string, any> = { ...fields };
+    const pick = (...names: string[]): string | undefined =>
+      Object.keys(out).find((k) => names.includes(k.toLowerCase().trim()));
+    const move = (from: string | undefined, to: string) => {
+      if (from && from !== to) {
+        if (out[to] === undefined) out[to] = out[from];
+        delete out[from];
+      }
+    };
+    move(
+      pick(
+        'label',
+        'libelle',
+        'libellé',
+        'nom',
+        'name',
+        'title',
+        'titre',
+        'intitule',
+        'intitulé',
+      ),
+      'label',
+    );
+    move(
+      pick(
+        'family',
+        'famille',
+        'family_label',
+        'famille_label',
+        'family_name',
+        'nom_famille',
+      ),
+      'family',
+    );
+    move(
+      pick('family_id', 'familyid', 'famille_id', 'famille-id', 'id_famille'),
+      'family_id',
+    );
+    move(pick('code', 'code_action'), 'code');
+    return out;
+  }
+
+  private nonEmpty(value: any): boolean {
+    return (
+      value !== undefined &&
+      value !== null &&
+      String(value).trim().length > 0
+    );
   }
 
   async resolveDependencies(
@@ -205,7 +269,15 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
     createdEntities?: Map<string, any>,
     config?: import('src/core/ai-database/write/entity-resolver.service').ResolveConfig,
   ): Promise<Record<string, any>> {
-    const resolved = { ...fields };
+    const resolved = { ...this.normalizeKeys(fields) };
+    // Valeurs texte avec espaces superflus : on nettoie avant résolution.
+    for (const key of ['label', 'code', 'family', 'family_id'] as const) {
+      if (resolved[key] !== undefined && resolved[key] !== null) {
+        const trimmed = String(resolved[key]).trim();
+        if (trimmed === '') delete resolved[key];
+        else resolved[key] = trimmed;
+      }
+    }
     if (!resolved.family_id && resolved.family) {
       const term = String(resolved.family).trim();
       // Ne pas passer un UUID déjà résolu au resolver — sinon on chercherait un nom qui vaut l'UUID
@@ -248,6 +320,9 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
     } else if (resolved.family) {
       delete resolved.family;
     }
+    // La création automatique de famille rejette un terme vide : si "family"
+    // était vide et qu'aucune famille n'est résolue, on laisse validateFields
+    // produire le message actionnable plutôt qu'une erreur SQL.
     // Laisser BaseWriteHandler gérer le reste (s'il en reste) — mais on a déjà traité family
     // On ne doit pas rappeler super.resolveDependencies qui re-traiterait family_id comme FK texte
     return resolved;
@@ -257,39 +332,54 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
     fields: Record<string, any>,
     _userId: string,
   ): Promise<WriteResult> {
+    const normalized = this.normalizeKeys(fields);
+    if (!this.nonEmpty(normalized.label)) {
+      throw new Error(
+        'Le champ "Libellé de l’action" (label) est requis : fournis "label" avec le nom de l’action (ex: {"label": "Relancer le débiteur"}).',
+      );
+    }
+    if (!this.nonEmpty(normalized.family_id)) {
+      throw new Error(
+        'La famille est requise : fournis "family" avec le code ou le libellé (ex: {"family": "Recouvrement amiable"}).',
+      );
+    }
     const def = await this.catalogService.createDefinition({
-      family_id: fields.family_id,
-      code: fields.code?.toString().trim() || undefined,
-      label: fields.label.trim(),
+      family_id: String(normalized.family_id).trim(),
+      code: this.nonEmpty(normalized.code)
+        ? String(normalized.code).trim()
+        : undefined,
+      label: String(normalized.label).trim(),
       default_due_days:
-        fields.default_due_days !== undefined
-          ? Number(fields.default_due_days)
+        normalized.default_due_days !== undefined
+          ? Number(normalized.default_due_days)
           : undefined,
-      default_priority: fields.default_priority || undefined,
+      default_priority: normalized.default_priority || undefined,
       default_professional_treatment:
-        fields.default_professional_treatment || undefined,
+        normalized.default_professional_treatment || undefined,
       billable_by_default:
-        fields.billable_by_default !== undefined
-          ? Boolean(fields.billable_by_default)
+        normalized.billable_by_default !== undefined
+          ? this.toBoolean(normalized.billable_by_default)
           : undefined,
-      billing_mode: fields.billing_mode || undefined,
+      billing_mode: normalized.billing_mode || undefined,
       default_rate:
-        fields.default_rate !== undefined ? Number(fields.default_rate) : undefined,
+        normalized.default_rate !== undefined
+          ? Number(normalized.default_rate)
+          : undefined,
       may_have_expenses:
-        fields.may_have_expenses !== undefined
-          ? Boolean(fields.may_have_expenses)
+        normalized.may_have_expenses !== undefined
+          ? this.toBoolean(normalized.may_have_expenses)
           : undefined,
       may_have_disbursements:
-        fields.may_have_disbursements !== undefined
-          ? Boolean(fields.may_have_disbursements)
+        normalized.may_have_disbursements !== undefined
+          ? this.toBoolean(normalized.may_have_disbursements)
           : undefined,
       is_required:
-        fields.is_required !== undefined
-          ? Boolean(fields.is_required)
+        normalized.is_required !== undefined
+          ? this.toBoolean(normalized.is_required)
           : undefined,
-      allowed_results: this.parseJson(fields.allowed_results),
-      specific_fields_schema: this.parseJson(fields.specific_fields_schema),
-      required_relations: this.parseJson(fields.required_relations),
+      allowed_results: this.parseJson(normalized.allowed_results),
+      specific_fields_schema: this.parseJson(normalized.specific_fields_schema),
+      required_relations: this.parseJson(normalized.required_relations),
     } as any);
     return {
       success: true,
@@ -362,5 +452,23 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
       }
     }
     return value;
+  }
+
+  /**
+   * Convertit les booléens fournis en chaîne par le LLM ("true", "1", "oui"…)
+   * en vrais booléens. Boolean("false") === true, d'où la nécessité de ce
+   * helper : sans lui, "false" devenait true côté catalogue.
+   */
+  private toBoolean(value: any): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    const v = String(value ?? '')
+      .trim()
+      .toLowerCase();
+    if (['true', '1', 'oui', 'yes', 'y', 'actif', 'active'].includes(v))
+      return true;
+    if (['false', '0', 'non', 'no', 'n', 'inactif', 'inactive'].includes(v))
+      return false;
+    return true;
   }
 }

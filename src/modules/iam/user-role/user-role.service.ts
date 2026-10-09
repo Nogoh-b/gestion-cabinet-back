@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateUserRoleDto } from './dto/create-user-role.dto';
 import { UserRole } from './entities/user-role.entity';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { RolePermissionService } from '../role-permission/role-permission.service';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
 import { CreateRolePermissionDto } from '../role-permission/dto/create-role-permission.dto';
@@ -71,11 +72,21 @@ export class UserRolesService {
 
   async findOneWithPermissions(id: number): Promise<any> {
     const role = await this.repository.findOne({ where: { id } });
-    const permissions = await this.repository
-      .createQueryBuilder('role')
-      .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
-      .leftJoinAndSelect('rolePermissions.permission', 'permission')
-      .where('role.id = :id', { id })
+    // Isolation stricte : le QueryBuilder ne passe PAS par le patch
+    // Repository → filtres tenant explicites sur le rôle ET les jointures
+    // (WHERE *.tenant_id = X), sinon des liaisons résiduelles cross-tenant
+    // feraient réapparaître des permissions d'un autre cabinet.
+    let qb = addTenantCondition(
+      this.repository
+        .createQueryBuilder('role')
+        .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
+        .leftJoinAndSelect('rolePermissions.permission', 'permission')
+        .where('role.id = :id', { id }),
+      'role',
+    );
+    qb = addTenantCondition(qb, 'rolePermissions');
+    qb = addTenantCondition(qb, 'permission');
+    const permissions = await qb
       .select([
         'permission.id',
         'permission.code',
@@ -103,11 +114,20 @@ export class UserRolesService {
   async findAllWithPermissions(): Promise<any[]> {
     const roles = await this.repository.find();
 
-    const permissionsByRole = await this.repository
-      .createQueryBuilder('role')
-      .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
-      .leftJoinAndSelect('rolePermissions.permission', 'permission')
-      .select([
+    // Isolation stricte : filtres tenant explicites sur le rôle ET les
+    // jointures (le QueryBuilder contourne le patch Repository) → chaque
+    // cabinet ne voit QUE ses propres rôles/permissions, jamais les
+    // lignes résiduelles d'un autre tenant.
+    let qb = addTenantCondition(
+      this.repository
+        .createQueryBuilder('role')
+        .leftJoinAndSelect('role.rolePermissions', 'rolePermissions')
+        .leftJoinAndSelect('rolePermissions.permission', 'permission'),
+      'role',
+    );
+    qb = addTenantCondition(qb, 'rolePermissions');
+    qb = addTenantCondition(qb, 'permission');
+    const permissionsByRole = await qb.select([
         'role.id AS role_id',
         'permission.id AS permission_id',
         'permission.code AS permission_code',

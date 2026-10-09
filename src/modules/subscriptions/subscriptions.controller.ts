@@ -8,6 +8,7 @@ import {
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
+import { AllowSuspended } from 'src/core/decorators/allow-suspended.decorator';
 import { Public } from 'src/core/decorators/public.decorator';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
@@ -17,6 +18,7 @@ import { ChangeSubscriptionDto } from './dto/change-subscription.dto';
 @ApiTags('Subscriptions')
 @Controller('subscriptions')
 @ApiBearerAuth()
+@AllowSuspended()
 @UseGuards(JwtAuthGuard)
 export class SubscriptionsController {
   constructor(private readonly service: SubscriptionsService) {}
@@ -24,12 +26,10 @@ export class SubscriptionsController {
   /**
    * Résout le cabinet courant.
    *
-   * ⚠️ Ces routes sont `@Public()` (pour rester accessibles à un cabinet
-   * suspendu), donc `JwtAuthGuard` ne peuple PAS `req.user`. On retombe alors
-   * sur `req.resolvedTenantId` posé par le TenantResolverMiddleware à partir du
-   * header `x-tenant-code`. Sans ce fallback, `req.user?.tenantId` est
-   * `undefined` et le service opère sur le mauvais cabinet (ex. renew qui ne
-   * réactive jamais le cabinet).
+   * Ces routes restent authentifiées afin que `req.user.tenantId` soit
+   * disponible même lorsque le header `x-tenant-code` n'est pas encore présent
+   * lors de la première connexion. `@AllowSuspended()` permet néanmoins à un
+   * cabinet suspendu de consulter et renouveler son abonnement.
    */
   private tenantOf(req: any): number {
     const tenantId = req.user?.tenantId ?? req.resolvedTenantId;
@@ -44,7 +44,6 @@ export class SubscriptionsController {
   }
 
   /** Abonnement courant du cabinet + décompte (jours restants). */
-  @Public()
   @Get('/current')
   @ApiOperation({ summary: 'Abonnement courant du cabinet (avec décompte)' })
   getCurrent(@Request() req: any) {
@@ -52,7 +51,6 @@ export class SubscriptionsController {
   }
 
   /** Historique de facturation (échéances + paiements). */
-  @Public()
   @Get('/payments')
   @ApiOperation({ summary: 'Historique de facturation du cabinet' })
   listPayments(@Request() req: any) {
@@ -60,7 +58,6 @@ export class SubscriptionsController {
   }
 
   /** Change le plan et/ou le cycle (mensuel ↔ annuel). */
-  @Public()
   @Patch('/change')
   @ApiOperation({ summary: 'Changer de plan et/ou de cycle de facturation' })
   change(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
@@ -71,7 +68,6 @@ export class SubscriptionsController {
   }
 
   /** Renouvelle l'abonnement échu et réactive le cabinet. */
-  @Public()
   @Patch('/renew')
   @ApiOperation({ summary: "Renouveler l'abonnement (réactive le cabinet)" })
   renew(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
@@ -81,7 +77,6 @@ export class SubscriptionsController {
   // ── Paiement (passerelle) ───────────────────────────────────────────────────
 
   /** Initie une session de paiement pour l'échéance en attente (retourne l'URL). */
-  @Public()
   @Post('/pay')
   @ApiOperation({ summary: "Initier le paiement de l'échéance en attente" })
   pay(@Request() req: any) {
@@ -104,7 +99,6 @@ export class SubscriptionsController {
   }
 
   /** [TEST] Simule un encaissement réussi (passerelle de test uniquement). */
-  @Public()
   @Post('/payments/simulate')
   @ApiOperation({ summary: '[TEST] Simuler un paiement réussi' })
   simulate(@Request() req: any, @Body() dto: { payment_id?: number }) {
@@ -112,12 +106,10 @@ export class SubscriptionsController {
   }
 
   // ── Outils DEV (403 en production) ─────────────────────────────────────────
-  // Tous @Public() : un cabinet suspendu doit pouvoir piloter ces outils
-  // (sinon le panneau dev se verrouille). La protection prod est faite par
-  // assertDev() côté service.
+  // Ces outils restent authentifiés mais sont autorisés pour un cabinet
+  // suspendu. La protection prod est faite par assertDev() côté service.
 
   /** [DEV] Force la date de fin à now + days (négatif = passé). */
-  @Public()
   @Patch('/dev/set-ends-in')
   @ApiOperation({ summary: '[DEV] Définir la date de fin à N jours' })
   devSetEndsIn(@Request() req: any, @Body() dto: { days?: number }) {
@@ -128,7 +120,6 @@ export class SubscriptionsController {
   }
 
   /** [DEV] Termine l'essai en cours → bascule en période payante. */
-  @Public()
   @Patch('/dev/end-trial-now')
   @ApiOperation({ summary: "[DEV] Terminer l'essai (passage en payant)" })
   devEndTrialNow(@Request() req: any) {
@@ -136,7 +127,6 @@ export class SubscriptionsController {
   }
 
   /** [DEV] Expire immédiatement l'abonnement (suspend le cabinet). */
-  @Public()
   @Patch('/dev/expire-now')
   @ApiOperation({ summary: '[DEV] Expirer immédiatement' })
   devExpireNow(@Request() req: any) {
@@ -144,7 +134,6 @@ export class SubscriptionsController {
   }
 
   /** [DEV] Recrée un essai neuf pour le plan courant. */
-  @Public()
   @Patch('/dev/reset-trial')
   @ApiOperation({ summary: '[DEV] Réinitialiser un essai' })
   devResetTrial(@Request() req: any) {

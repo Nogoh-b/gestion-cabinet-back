@@ -683,7 +683,12 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
     //     Cela convertit les noms DB (snake_case, ex: montant_ht) vers les property names
     //     TypeORM (camelCase, ex: montantHT) pour que validateFields et doInsert
     //     reçoivent des clés cohérentes quelle que soit la convention de l'entité.
-    const normalizedFields = this.filterKnownColumns(resolvedFields);
+    //     ⚠️ Les handlers custom normalisent déjà les alias LLM (casse/accents) dans
+    //     resolveDependencies/validateFields ; ici on ne touche qu'à la convention
+    //     snake_case ↔ camelCase des VRAIES colonnes + on conserve les champs non-colonnes
+    //     (ex: "family", "dossier") pour que validateFields puisse les contrôler et
+    //     produire un message actionnable au lieu de les perdre silencieusement.
+    const normalizedFields = this.filterKnownColumnsLenient(resolvedFields);
 
     // 2. Valider
     const validation = await this.validateFields(
@@ -1105,6 +1110,33 @@ export class BaseWriteHandler implements EntityWriteHandler<any> {
         safe[propName] = fields[dbName];
       } else if (propName !== dbName && fields[propName] !== undefined) {
         safe[propName] = fields[propName];
+      }
+    }
+    return safe;
+  }
+
+  /**
+   * Variante « indulgente » de filterKnownColumns utilisée dans execute()
+   * AVANT validateFields : normalise snake_case ↔ camelCase des vraies colonnes
+   * mais CONSERVE les champs non-colonnes (alias métier comme "family",
+   * "dossier", "definition"…). Sans ça, un alias résolu en partie (ex: "family"
+   * vidé après résolution, en attente de family_id) est jeté avant validation et
+   * le handler ne peut plus produire un message d'erreur actionnable — pire, un
+   * alias NON encore normalisé (ex: "Famille" avec majuscule) disparaît
+   * silencieusement puis échoue en « champ requis ».
+   */
+  protected filterKnownColumnsLenient(
+    fields: Record<string, any>,
+  ): Record<string, any> {
+    const safe = this.filterKnownColumns(fields);
+    const known = new Set<string>();
+    for (const column of this.entityMeta.columns) {
+      known.add(column.databaseName);
+      known.add(column.propertyName);
+    }
+    for (const [key, value] of Object.entries(fields)) {
+      if (!(key in safe) && !known.has(key)) {
+        safe[key] = value;
       }
     }
     return safe;

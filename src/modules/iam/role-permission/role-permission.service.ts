@@ -9,6 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateRolePermissionDto } from './dto/create-role-permission.dto';
+import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { RolePermission } from './entities/role-permission.entity';
 import { UserRolesService } from '../user-role/user-role.service';
 import { PermissionsService } from '../permission/permission.service';
@@ -73,10 +74,19 @@ export class RolePermissionService {
   }
 
   async getPermissionsByRole(role_id: number): Promise<Permission[]> {
-    return this.rolePermissionRepository
-      .createQueryBuilder('rp')
-      .innerJoinAndSelect('rp.permission', 'permission')
-      .where('rp.role_id = :role_id', { role_id })
+    // Isolation stricte : filtres tenant explicites sur la liaison ET la
+    // permission jointe (le QueryBuilder contourne le patch Repository) →
+    // jamais de permissions d'un autre cabinet, même via des liaisons
+    // résiduelles cross-tenant.
+    let qb = addTenantCondition(
+      this.rolePermissionRepository
+        .createQueryBuilder('rp')
+        .innerJoinAndSelect('rp.permission', 'permission')
+        .where('rp.role_id = :role_id', { role_id }),
+      'rp',
+    );
+    qb = addTenantCondition(qb, 'permission');
+    return qb
       .select([
         'permission.id',
         'permission.code',
