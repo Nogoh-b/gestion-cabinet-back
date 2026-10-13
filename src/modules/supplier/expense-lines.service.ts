@@ -1,4 +1,8 @@
 import { DataSource, Repository } from 'typeorm';
+import { unlink } from 'fs/promises';
+import { join } from 'path';
+import { UPLOAD_DOCS_PATH } from 'src/core/common/constants/constants';
+import { FilesUtil } from 'src/core/shared/utils/file.util';
 import {
   BadRequestException,
   ConflictException,
@@ -138,6 +142,73 @@ export class ExpenseLinesService {
         this.reportAllowsBilling(expenseReport.status),
       );
       return saved;
+    });
+  }
+
+  async attachReceipt(
+    id: number,
+    file: Express.Multer.File,
+    actorUserId: number,
+  ): Promise<ExpenseLine> {
+    if (!file?.buffer?.length || file.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('Choisissez un fichier de 5 Mo maximum');
+    }
+    const formats: Record<string, { extension: string; signature: (buffer: Buffer) => boolean }> = {
+      'application/pdf': { extension: '.pdf', signature: (b) => b.subarray(0, 5).toString() === '%PDF-' },
+      'image/png': { extension: '.png', signature: (b) => b.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) },
+      'image/jpeg': { extension: '.jpg', signature: (b) => b.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex')) },
+    };
+    const format = formats[file.mimetype];
+    const extension = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    if (!format || !format.signature(file.buffer) ||
+      !(file.mimetype === 'image/jpeg' ? ['.jpg', '.jpeg'].includes(extension) : extension === format.extension)) {
+      throw new BadRequestException('Justificatif PDF, PNG ou JPEG valide requis');
+    }
+    const tenantId = getCurrentTenantId();
+    let uploadedPath: string | undefined;
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const repository = manager.getRepository(ExpenseLine);
+        const line = await repository.findOne({
+          where: { id, tenant_id: tenantId },
+          relations: ['expense_report'],
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!line) throw new NotFoundException('Ligne de dépense non trouvée');
+        if (line.attachment_url) {
+          throw new ConflictException('Un justificatif est déjà associé à cette ligne');
+        }
+        await this.assertBillableItemMutable(manager, id, { attachment_url: 'new' });
+        const upload = await FilesUtil.uploadFileV1(
+          file,
+          join(UPLOAD_DOCS_PATH, 'expenses', String(tenantId), String(line.expense_report_id)),
+        );
+        uploadedPath = upload.filePath;
+        line.attachment_url = upload.fileUrl;
+        const saved = await repository.save(line);
+        saved.expense_report = line.expense_report;
+        await this.caseBillingService.syncExpenseLineToBillableItem(
+          manager, saved, actorUserId, this.reportAllowsBilling(line.expense_report.status),
+        );
+        return saved;
+      });
+    } catch (error) {
+      if (uploadedPath) await unlink(uploadedPath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async approveWithoutReceipt(id: number, actorUserId: number, reason: string) {
+    const tenantId = getCurrentTenantId();
+    return this.dataSource.transaction(async (manager) => {
+      const line = await manager.getRepository(ExpenseLine).findOne({
+        where: { id, tenant_id: tenantId },
+        relations: ['expense_report'],
+      });
+      if (!line) throw new NotFoundException('Ligne de dépense non trouvée');
+      return this.caseBillingService.approveExpenseWithoutReceipt(
+        manager, line, actorUserId, reason,
+      );
     });
   }
 

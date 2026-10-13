@@ -11,6 +11,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { UseGuards } from '@nestjs/common';
 import { AudiencesService } from './audiences.service';
 import { CreateAudienceDto } from './dto/create-audience.dto';
 import {
@@ -28,6 +32,7 @@ import {
 
 @ApiTags('Audiences')
 @Controller('audiences')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AudiencesController {
   constructor(
     private readonly audiencesService: AudiencesService,
@@ -37,6 +42,7 @@ export class AudiencesController {
 
   // ✅ CREATE - POST /audiences
   @Post()
+  @RequirePermissions('create_audience')
   @ApiOperation({ summary: 'Créer une audience' })
   @ApiResponse({ status: 201, type: AudienceResponseDto })
   async create(@Body() createAudienceDto: CreateAudienceDto) {
@@ -46,6 +52,7 @@ export class AudiencesController {
   }
 
   @Get('stats')
+  @RequirePermissions('view_audiences')
   @ApiQuery({ name: 'startDate', required: false, type: Date })
   @ApiQuery({ name: 'endDate', required: false, type: Date })
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
@@ -62,6 +69,7 @@ export class AudiencesController {
 
   // ✅ SEARCH - GET /audiences/search
   @Get('/search')
+  @RequirePermissions('view_audiences')
   @ApiOperation({ summary: 'Rechercher des audiences avec filtres' })
   @ApiResponse({ status: 200, type: [AudienceListResponseDto] })
   async search(
@@ -77,6 +85,7 @@ export class AudiencesController {
 
   // ✅ LIST - GET /audiences
   @Get()
+  @RequirePermissions('view_audiences')
   @ApiOperation({ summary: 'Lister toutes les audiences' })
   @ApiResponse({ status: 200, type: [AudienceListResponseDto] })
   async findAll() {
@@ -85,6 +94,7 @@ export class AudiencesController {
 
   // ✅ GET BY ID - GET /audiences/:id
   @Get(':id')
+  @RequirePermissions('view_audiences')
   @ApiOperation({ summary: 'Obtenir une audience par ID' })
   @ApiResponse({ status: 200, type: AudienceResponseDto })
   async findOne(@Param('id') id: string) {
@@ -93,6 +103,7 @@ export class AudiencesController {
 
   // ✅ UPDATE - PATCH /audiences/:id
   @Patch(':id')
+  @RequirePermissions('edit_audience')
   @ApiOperation({ summary: 'Mettre à jour une audience' })
   @ApiResponse({ status: 200, type: AudienceResponseDto })
   async update(
@@ -104,6 +115,7 @@ export class AudiencesController {
 
   // ✅ DELETE - DELETE /audiences/:id
   @Delete(':id')
+  @RequirePermissions('delete_audience')
   @ApiOperation({ summary: 'Supprimer une audience' })
   @ApiResponse({ status: 200, description: 'Audience supprimée avec succès' })
   async remove(@Param('id') id: string) {
@@ -114,6 +126,7 @@ export class AudiencesController {
    * ✅ AJOUTER UNE DÉCISION - POST /audiences/:id/decision
    */
   @Post(':id/decision')
+  @RequirePermissions('edit_audience')
   @ApiOperation({ summary: 'Ajouter une décision à une audience' })
   @ApiResponse({ status: 201, type: AddDecisionResponseDto })
   async addDecision(
@@ -128,6 +141,7 @@ export class AudiencesController {
    * reprogramer audience
    */
   @Post(':id/postpone/to')
+  @RequirePermissions('postpone_audience')
   @ApiOperation({ summary: 'Ajouter une décision à une audience' })
   @ApiResponse({ status: 201, type: AddDecisionResponseDto })
   async postpone(
@@ -144,6 +158,7 @@ export class AudiencesController {
    * ✅ MODIFIER UNE DÉCISION - PATCH /audiences/:id/decision
    */
   @Patch(':id/decision')
+  @RequirePermissions('edit_audience')
   @ApiOperation({ summary: "Modifier la décision d'une audience" })
   @ApiResponse({ status: 200, type: AddDecisionResponseDto })
   async updateDecision(
@@ -161,6 +176,7 @@ export class AudiencesController {
    * ✅ RÉCUPÉRER LA DÉCISION - GET /audiences/:id/decision
    */
   @Get(':id/decision')
+  @RequirePermissions('view_audiences')
   @ApiOperation({ summary: "Récupérer la décision d'une audience" })
   async getDecision(@Param('id') id: string) {
     return await this.decisionService.getDecision(+id);
@@ -170,6 +186,7 @@ export class AudiencesController {
    * ✅ SUPPRIMER UN DOCUMENT DE LA DÉCISION - DELETE /audiences/:id/decision/documents/:documentId
    */
   @Delete(':id/decision/documents/:documentId')
+  @RequirePermissions('edit_audience')
   @ApiOperation({ summary: 'Supprimer un document de la décision' })
   async removeDecisionDocument(
     @Param('id') id: string,
@@ -180,6 +197,7 @@ export class AudiencesController {
 
   // ── Rapport d'audience (procès-verbal) ────────────────────────────────────
   @Post(':id/report')
+  @RequirePermissions('edit_audience')
   @ApiOperation({ summary: "Ajouter un rapport d'audience" })
   async addReport(
     @Param('id') id: string,
@@ -195,6 +213,7 @@ export class AudiencesController {
   }
 
   @Patch(':id/report')
+  @RequirePermissions('edit_audience')
   @ApiOperation({ summary: "Mettre à jour le rapport d'audience" })
   async updateReport(
     @Param('id') id: string,
@@ -210,6 +229,7 @@ export class AudiencesController {
   }
 
   @Get(':id/report')
+  @RequirePermissions('view_audiences')
   @ApiOperation({ summary: "Récupérer le rapport d'audience" })
   async getReport(@Param('id') id: string) {
     return await this.audiencesService.getReport(+id);

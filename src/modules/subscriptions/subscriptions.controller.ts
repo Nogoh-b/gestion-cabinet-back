@@ -4,24 +4,37 @@ import {
   Post,
   Patch,
   Body,
+  Param,
+  ParseIntPipe,
   Request,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { AllowSuspended } from 'src/core/decorators/allow-suspended.decorator';
-import { Public } from 'src/core/decorators/public.decorator';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { SubscriptionsService } from './subscriptions.service';
 import { ChangeSubscriptionDto } from './dto/change-subscription.dto';
+import { cabinetUserActor } from './subscription-events.service';
+import { PaymentMethodsService } from './payment/payment-methods.service';
 
 @ApiTags('Subscriptions')
 @Controller('subscriptions')
 @ApiBearerAuth()
 @AllowSuspended()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SubscriptionsController {
-  constructor(private readonly service: SubscriptionsService) {}
+  constructor(
+    private readonly service: SubscriptionsService,
+    private readonly methods: PaymentMethodsService,
+  ) {}
 
   /**
    * Résout le cabinet courant.
@@ -59,47 +72,104 @@ export class SubscriptionsController {
 
   /** Change le plan et/ou le cycle (mensuel ↔ annuel). */
   @Patch('/change')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: 'Changer de plan et/ou de cycle de facturation' })
   change(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
-    return this.service.changePlanOrCycle(this.tenantOf(req), {
-      planId: dto.plan_id,
-      cycle: dto.cycle,
-    });
+    return this.service.changePlanOrCycle(
+      this.tenantOf(req),
+      { planId: dto.plan_id, cycle: dto.cycle },
+      cabinetUserActor(req.user),
+    );
   }
 
   /** Renouvelle l'abonnement échu et réactive le cabinet. */
   @Patch('/renew')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: "Renouveler l'abonnement (réactive le cabinet)" })
   renew(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
-    return this.service.renewForCabinet(this.tenantOf(req), dto?.cycle);
+    return this.service.renewForCabinet(
+      this.tenantOf(req),
+      dto?.cycle,
+      cabinetUserActor(req.user),
+    );
   }
 
-  // ── Paiement (passerelle) ───────────────────────────────────────────────────
+  // ── Paiement ────────────────────────────────────────────────────────────────
 
-  /** Initie une session de paiement pour l'échéance en attente (retourne l'URL). */
-  @Post('/pay')
-  @ApiOperation({ summary: "Initier le paiement de l'échéance en attente" })
-  pay(@Request() req: any) {
-    return this.service.initiatePaymentForCurrent(this.tenantOf(req));
+  /** Moyens de paiement proposés (aucune donnée secrète). */
+  @Get('/payment-methods')
+  @ApiOperation({ summary: 'Moyens de paiement disponibles' })
+  async paymentMethods(@Request() req: any) {
+    const current = await this.service.getCurrent(this.tenantOf(req));
+    return this.methods.listActiveForCabinet(
+      current.pending_payment?.currency ?? current.subscription?.currency ?? 'XAF',
+    );
   }
 
   /**
-   * Webhook de la passerelle : confirme/échoue un paiement via sa référence.
-   * Public et SANS tenant (la passerelle rappelle ce endpoint, identifie par
-   * référence). À sécuriser par signature quand une vraie passerelle est branchée.
+   * Démarre le paiement de l'échéance due avec le moyen choisi : URL de la
+   * passerelle (en ligne) ou instructions (moyen manuel).
    */
-  @Public()
-  @Post('/payments/webhook')
-  @ApiOperation({ summary: 'Webhook passerelle (confirmation de paiement)' })
-  webhook(@Body() dto: { reference?: string; status?: 'paid' | 'failed' }) {
-    return this.service.handleWebhook(
-      dto?.reference ?? '',
-      dto?.status ?? 'paid',
+  @Post('/pay')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: "Payer l'échéance due avec un moyen de paiement" })
+  pay(@Request() req: any, @Body() dto: { method_code?: string }) {
+    return this.service.initiatePaymentForCurrent(this.tenantOf(req), {
+      methodCode: dto?.method_code,
+      customer: { email: req.user?.email ?? null },
+    });
+  }
+
+  /** Statut à jour d'une transaction (retour de la passerelle). */
+  @Get('/payments/status/:reference')
+  @ApiOperation({ summary: "Statut d'une transaction (vérifié auprès de la passerelle)" })
+  paymentStatus(@Request() req: any, @Param('reference') reference: string) {
+    return this.service.paymentStatusForCabinet(this.tenantOf(req), reference);
+  }
+
+  /** Déclaration d'un paiement manuel (référence + justificatif facultatif). */
+  @Post('/payments/:id/declare')
+  @RequirePermissions('manage_subscription')
+  @UseInterceptors(FileInterceptor('proof', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Déclarer un paiement manuel (virement, Mobile Money…)' })
+  declare(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { method_code?: string; reference?: string; note?: string },
+    @UploadedFile() proof?: Express.Multer.File,
+  ) {
+    return this.service.declareManualPayment(
+      this.tenantOf(req),
+      id,
+      {
+        methodCode: String(dto?.method_code ?? ''),
+        reference: String(dto?.reference ?? ''),
+        note: dto?.note,
+      },
+      proof,
+      cabinetUserActor(req.user),
     );
+  }
+
+  /** Justificatif déposé par le cabinet (lecture par le cabinet lui-même). */
+  @Get('/payments/:id/proof')
+  @ApiOperation({ summary: 'Télécharger le justificatif déposé' })
+  async proof(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const file = await this.service.proofFileForCabinet(this.tenantOf(req), id);
+    res.setHeader('Content-Type', file.mime);
+    res.setHeader('Content-Disposition', 'inline; filename="justificatif"');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.sendFile(file.path);
   }
 
   /** [TEST] Simule un encaissement réussi (passerelle de test uniquement). */
   @Post('/payments/simulate')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[TEST] Simuler un paiement réussi' })
   simulate(@Request() req: any, @Body() dto: { payment_id?: number }) {
     return this.service.simulatePayment(this.tenantOf(req), dto?.payment_id);
@@ -111,6 +181,7 @@ export class SubscriptionsController {
 
   /** [DEV] Force la date de fin à now + days (négatif = passé). */
   @Patch('/dev/set-ends-in')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[DEV] Définir la date de fin à N jours' })
   devSetEndsIn(@Request() req: any, @Body() dto: { days?: number }) {
     return this.service.devSetEndsIn(
@@ -121,6 +192,7 @@ export class SubscriptionsController {
 
   /** [DEV] Termine l'essai en cours → bascule en période payante. */
   @Patch('/dev/end-trial-now')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: "[DEV] Terminer l'essai (passage en payant)" })
   devEndTrialNow(@Request() req: any) {
     return this.service.devEndTrialNow(this.tenantOf(req));
@@ -128,6 +200,7 @@ export class SubscriptionsController {
 
   /** [DEV] Expire immédiatement l'abonnement (suspend le cabinet). */
   @Patch('/dev/expire-now')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[DEV] Expirer immédiatement' })
   devExpireNow(@Request() req: any) {
     return this.service.devExpireNow(this.tenantOf(req));
@@ -135,6 +208,7 @@ export class SubscriptionsController {
 
   /** [DEV] Recrée un essai neuf pour le plan courant. */
   @Patch('/dev/reset-trial')
+  @RequirePermissions('manage_subscription')
   @ApiOperation({ summary: '[DEV] Réinitialiser un essai' })
   devResetTrial(@Request() req: any) {
     return this.service.devResetTrial(this.tenantOf(req));

@@ -6,9 +6,13 @@ import {
   Patch,
   Param,
   Delete,
+  ParseIntPipe,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
@@ -55,6 +59,32 @@ export class ExpenseLinesController {
     @CurrentUser() user: User,
   ) {
     return this.service.update(+id, dto, Number(user.id));
+  }
+
+  @Post(':id/receipt')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('edit_expense_report')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Ajouter un justificatif à une ligne de note de frais' })
+  attachReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.attachReceipt(id, file, Number(user.id));
+  }
+
+  @Post(':id/approve-without-receipt')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('manage_billable_items')
+  @ApiOperation({ summary: 'Autoriser exceptionnellement un débours sans justificatif' })
+  approveWithoutReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('reason') reason: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.approveWithoutReceipt(id, Number(user.id), reason);
   }
 
   @Delete(':id')

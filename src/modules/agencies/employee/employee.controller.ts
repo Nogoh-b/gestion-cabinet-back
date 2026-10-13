@@ -92,6 +92,20 @@ export class EmployeeController {
     return (stats as any).topPerformers;
   }
 
+  @Get('directory')
+  @RequirePermissions('view_user_directory')
+  @ApiOperation({ summary: "Annuaire minimal des utilisateurs (selects d'assignation)" })
+  @ApiResponse({ status: 200, description: "Entrées d'annuaire" })
+  async directory(
+    @Query() searchParams?: SearchEmployeeDto,
+    @Query() paginationParams?: PaginationParamsDto,
+  ) {
+    return this.employeeService.searchDirectory(
+      searchParams as SearchCriteria,
+      paginationParams,
+    );
+  }
+
   @Get('search')
   @RequirePermissions('view_users')
   @ApiOperation({ summary: 'Recherche texte avec relations' })

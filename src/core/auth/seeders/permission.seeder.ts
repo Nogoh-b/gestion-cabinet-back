@@ -101,6 +101,10 @@ export class PermissionSeeder {
       // CABINET — FACTURES & FINANCES
       // ===================================================================
       { code: 'view_factures', description: 'Voir les factures' },
+      {
+        code: 'manage_invoice_settings',
+        description: 'Configurer la facturation (types, paramètres)',
+      },
       { code: 'create_facture', description: 'Créer une facture' },
       { code: 'edit_facture', description: 'Modifier une facture' },
       { code: 'delete_facture', description: 'Supprimer une facture' },
@@ -206,6 +210,11 @@ export class PermissionSeeder {
       // CABINET — UTILISATEURS & ADMINISTRATION
       // ===================================================================
       { code: 'view_users', description: 'Voir les utilisateurs' },
+      {
+        code: 'view_user_directory',
+        description:
+          "Voir l'annuaire minimal des utilisateurs (selects d'assignation)",
+      },
       { code: 'create_user', description: 'Créer un utilisateur' },
       { code: 'edit_user', description: 'Modifier un utilisateur' },
       { code: 'delete_user', description: 'Supprimer un utilisateur' },
@@ -214,6 +223,10 @@ export class PermissionSeeder {
       {
         code: 'manage_settings',
         description: 'Gérer les paramètres du cabinet',
+      },
+      {
+        code: 'manage_subscription',
+        description: "Gérer l'abonnement du cabinet (plan, renouvellement, paiement)",
       },
 
       // ===================================================================

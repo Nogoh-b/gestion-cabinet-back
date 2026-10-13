@@ -12,6 +12,13 @@ import {
 import { logoFileToUrl } from '../cabinet-logo.util';
 
 export type CabinetStatus = 'active' | 'trial' | 'suspended';
+/**
+ * Origine d'une suspension :
+ *  - payment_required : paiement initial/renouvellement non encore réglé ;
+ *  - expired          : abonnement arrivé à échéance ;
+ *  - manual           : décision de la plateforme (jamais levée automatiquement).
+ */
+export type CabinetSuspensionReason = 'payment_required' | 'expired' | 'manual';
 export type CabinetPlan =
   | 'free'
   | 'avocat'
@@ -61,6 +68,18 @@ export class Cabinet {
 
   @Column({ type: 'datetime', nullable: true })
   trial_ends_at: Date | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true, name: 'suspension_reason' })
+  suspension_reason: CabinetSuspensionReason | null;
+
+  @Column({ type: 'datetime', nullable: true, name: 'suspended_at' })
+  suspended_at: Date | null;
+
+  @Column({ type: 'int', nullable: true, name: 'suspended_by_admin_id' })
+  suspended_by_admin_id: number | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true, name: 'suspension_note' })
+  suspension_note: string | null;
 
   // ── Branding / coordonnées (utilisés dans les en-têtes/pieds d'e-mail) ─────
   // NOTE: ces champs constituent la source de configuration UNIQUE du cabinet

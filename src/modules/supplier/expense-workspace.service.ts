@@ -286,7 +286,7 @@ export class ExpenseWorkspaceService {
       parent_id: line.expense_report_id,
       occurred_at: line.expense_date,
       kind,
-      label: line.description,
+      label: line.description?.trim() || line.category || 'Dépense',
       party_name: report?.employee?.full_name || 'Collaborateur',
       supplier_id: null,
       employee_id: report?.employee_id ?? null,
@@ -405,10 +405,19 @@ export class ExpenseWorkspaceService {
     await this.checkExpenseQuota(tenantId);
     const approved = dto.finalization === ExpenseWorkspaceFinalization.APPROVE;
     const saved = await this.dataSource.transaction(async (manager) => {
+      // Sans sélection explicite, la note de frais appartient au collaborateur
+      // connecté. Un utilisateur sans fiche collaborateur doit en choisir un.
+      const employeeId = input.employee_id ?? actorUserId;
       const employee = await manager.getRepository(Employee).findOne({
-        where: { id: input.employee_id, tenant_id: tenantId },
+        where: { id: employeeId, tenant_id: tenantId },
       });
-      if (!employee) throw new NotFoundException('Collaborateur non trouvé');
+      if (!employee) {
+        throw new BadRequestException(
+          input.employee_id
+            ? 'Collaborateur non trouvé'
+            : 'Sélectionnez un collaborateur : votre compte ne possède pas de fiche collaborateur',
+        );
+      }
       const dossier = await this.resolveDossierAndAction(
         manager,
         dto.dossier_id,
@@ -437,9 +446,9 @@ export class ExpenseWorkspaceService {
       const report = await reportRepository.save(
         reportRepository.create({
           tenant_id: tenantId,
-          employee_id: input.employee_id,
+          employee_id: employee.id,
           employee,
-          title: input.title.trim(),
+          title: input.title?.trim() || normalizedLines[0].description?.trim() || 'Note de frais',
           total_amount: total,
           submission_date: new Date(input.submission_date),
           notes: input.notes,
@@ -458,7 +467,7 @@ export class ExpenseWorkspaceService {
             expense_report_id: report.id,
             expense_report: report,
             expense_date: new Date(inputLine.expense_date),
-            description: inputLine.description.trim(),
+            description: inputLine.description?.trim() || null,
             category: inputLine.category,
             amount_ht: inputLine.amount_ht,
             tax_rate: inputLine.tax_rate,

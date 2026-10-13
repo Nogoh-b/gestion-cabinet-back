@@ -328,7 +328,6 @@ export class DossiersController {
   // ouvrent un dossier confidentiel à un collaborateur.
 
   @Get(':id/access-grants')
-  @Roles(UserRole.ADMIN)
   @RequirePermissions('view_dossier_confidential')
   @ApiOperation({ summary: "Collaborateurs autorisés sur un dossier confidentiel" })
   listAccessGrants(@Param('id', ParseIntPipe) id: string) {
@@ -336,7 +335,6 @@ export class DossiersController {
   }
 
   @Post(':id/access-grants')
-  @Roles(UserRole.ADMIN)
   @RequirePermissions('view_dossier_confidential')
   @ApiOperation({ summary: "Autoriser un collaborateur sur un dossier confidentiel" })
   grantAccess(
@@ -353,7 +351,6 @@ export class DossiersController {
   }
 
   @Delete(':id/access-grants/:employeeId')
-  @Roles(UserRole.ADMIN)
   @RequirePermissions('view_dossier_confidential')
   @ApiOperation({ summary: "Révoquer l'autorisation d'un collaborateur" })
   revokeAccess(

@@ -172,6 +172,16 @@ export class Facture extends BaseEntity {
   })
   montantTTC: number;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  @BusinessColumn({
+    label: 'Libellé',
+    description:
+      'Libellé utilisé pour identifier la facture (affichages, listes, PDF). Reprend le numéro si non renseigné.',
+    importance: 'high',
+    group: 'identification',
+  })
+  libelle: string | null;
+
   @Column({ type: 'text', nullable: true })
   @BusinessColumn({
     label: 'Description',

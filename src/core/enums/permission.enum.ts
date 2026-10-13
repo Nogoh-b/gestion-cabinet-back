@@ -35,6 +35,7 @@ export enum Permission {
 
   // ── Factures & Finances ─────────────────────────────────────────────────
   VIEW_FACTURES = 'view_factures',
+  MANAGE_INVOICE_SETTINGS = 'manage_invoice_settings',
   CREATE_FACTURE = 'create_facture',
   EDIT_FACTURE = 'edit_facture',
   DELETE_FACTURE = 'delete_facture',
@@ -94,12 +95,14 @@ export enum Permission {
 
   // ── Utilisateurs & Administration ────────────────────────────────────────
   VIEW_USERS = 'view_users',
+  VIEW_USER_DIRECTORY = 'view_user_directory',
   CREATE_USER = 'create_user',
   EDIT_USER = 'edit_user',
   DELETE_USER = 'delete_user',
   MANAGE_ROLES = 'manage_roles',
   VIEW_AUDIT_LOGS = 'view_audit_logs',
   MANAGE_SETTINGS = 'manage_settings',
+  MANAGE_SUBSCRIPTION = 'manage_subscription',
 
   // ── Communications ──────────────────────────────────────────────────────
   VIEW_MESSAGES = 'view_messages',

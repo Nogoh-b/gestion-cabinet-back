@@ -10,6 +10,7 @@ import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
 import { DashboardService } from './dashboard.service';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 
 @ApiTags('dashboard')
 @Controller('dashboard')
@@ -20,6 +21,7 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('overview')
+  @RequirePermissions('view_dashboard')
   // @Roles(UserRole.ADMIN, UserRole.AVOCAT)
   @ApiOperation({ summary: "Obtenir les données pour l'overview du dashboard" })
   @ApiResponse({ status: 200, type: DashboardOverviewDto })

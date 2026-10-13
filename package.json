@@ -24,6 +24,8 @@
     "migration": "ts-node migration-cli.ts migrate generate",
     "diag:login": "node scripts/diag-login-password.js",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
+    "iam:backfill-defaults": "ts-node -r tsconfig-paths/register scripts/backfill-iam-defaults.ts",
+    "platform:create-owner": "ts-node -r tsconfig-paths/register scripts/create-platform-owner.ts",
     "billing:reconcile": "ts-node -r tsconfig-paths/register src/scripts/billing-reconcile.ts",
     "mig:run": "npx typeorm migration:run",
     "seed:migrate": "ts-node scripts/seed-with-migration.ts",

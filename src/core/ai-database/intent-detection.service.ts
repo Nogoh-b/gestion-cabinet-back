@@ -812,6 +812,12 @@ Réponds UNIQUEMENT avec READ, WRITE, HELP, ADVICE ou CHAT. Rien d'autre.`;
         .trim()
         .toUpperCase()
         .replace(/[^A-Z]/g, '');
+      if (!raw) {
+        // Réponse vide (ex. budget de tokens épuisé par la réflexion du
+        // modèle) : repli READ, mais sans le mettre en cache.
+        this.logger.warn('🏷️ Classification vide → READ par défaut');
+        return 'READ';
+      }
       const value: IntentClass = raw.startsWith('WRITE')
         ? 'WRITE'
         : raw.startsWith('HELP')

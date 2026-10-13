@@ -12,6 +12,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
+import { bullBoardAuth } from './core/security/bull-board-auth.middleware';
 
 // seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
 // import { seedDatabase } from './main.seeder';
@@ -50,8 +51,17 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
-  app.use(express.json({ limit: '15mb' }));
-  app.use(express.urlencoded({ limit: '15mb', extended: true }));
+  // Bull Board (/admin/queues) : protégé avant l'enregistrement des routes Nest.
+  app.use('/admin/queues', bullBoardAuth);
+  // Corps brut conservé : vérification des signatures de webhooks de paiement
+  // (Stripe, NotchPay, CinetPay) calculées sur les octets exacts reçus.
+  const keepRawBody = (req: any, _res: any, buf: Buffer) => {
+    if (String(req.originalUrl ?? req.url ?? '').startsWith('/payments/webhooks/')) {
+      req.rawBody = Buffer.from(buf);
+    }
+  };
+  app.use(express.json({ limit: '15mb', verify: keepRawBody }));
+  app.use(express.urlencoded({ limit: '15mb', extended: true, verify: keepRawBody }));
 
   // ── Sécurité : en-têtes HTTP via Helmet ──────────────────────────────────
   // Ajoute X-Content-Type-Options, X-Frame-Options (anti clickjacking),

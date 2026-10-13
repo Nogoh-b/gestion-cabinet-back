@@ -61,6 +61,7 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { SuspendedCabinetGuard } from './core/common/guards/suspended-cabinet.guard';
 import { ReminderSchedulerModule } from './core/scheduler/reminder.scheduler.module';
 import { BackupModule } from './modules/backup/backup.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ExportModule } from './modules/export/export.module';
 import { CaseWorkflowModule } from './modules/case-workflow/case-workflow.module';
@@ -220,6 +221,7 @@ dotenv.config();
     TemplateBlocksModule,
     ReminderSchedulerModule,
     BackupModule,
+    PlatformModule,
     ReportsModule,
     ExportModule,
     CaseWorkflowModule,

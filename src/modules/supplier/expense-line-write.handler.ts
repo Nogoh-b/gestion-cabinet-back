@@ -21,7 +21,7 @@ import { CaseBillingService } from '../case-workflow/services/case-billing.servi
 /**
  * Handler custom pour les lignes de note de frais.
  * Logique métier :
- *   - expense_report + description + category + amount_ht obligatoires
+ *   - expense_report + category + amount_ht obligatoires (description facultative)
  *   - Calcul automatique amount_ttc depuis amount_ht + tax_rate
  *   - expense_date par défaut : today
  *   - Après INSERT/UPDATE : recalcule total_amount de la note de frais parente
@@ -51,9 +51,9 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
         required: true,
       },
       description: {
-        description: 'Détail de la dépense',
+        description: 'Détail de la dépense (facultatif)',
         example: 'Train Paris-Lyon A/R',
-        required: true,
+        required: false,
       },
       category: {
         description:
@@ -103,7 +103,6 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
     if (operation === 'INSERT') {
       if (!fields.expense_report_id)
         errors.push('La note de frais est requise (expense_report_id)');
-      if (!fields.description) errors.push('La description est requise');
       if (!fields.category) errors.push('La catégorie est requise');
       if (fields.amount_ht === undefined || fields.amount_ht === null) {
         errors.push('Le montant HT est requis');

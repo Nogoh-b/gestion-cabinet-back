@@ -37,9 +37,14 @@ export class MailService {
    * inline), sinon via le SMTP par défaut (MailerService). Repli automatique en
    * cas d'erreur de résolution du transport cabinet.
    */
-  private async dispatch(mailOptions: any): Promise<void> {
+  private async dispatch(
+    mailOptions: any,
+    transport: 'tenant' | 'platform' = 'tenant',
+  ): Promise<void> {
     let tenantTransportError: unknown;
-    if (!mailOptions.template) {
+    // transport 'platform' : emails de la plateforme elle-même (OTP super
+    // admin, factures d'abonnement…) → toujours le SMTP global SMTP_*.
+    if (!mailOptions.template && transport === 'tenant') {
       try {
         const t =
           await this.smtpService.getTenantTransport(getCurrentTenantId());
@@ -189,6 +194,13 @@ export class MailService {
           content: Buffer.from(buffer),
           contentType: doc.contentType,
         });
+      } else if (doc.content) {
+        // Contenu déjà en mémoire (ex. PDF généré à la volée).
+        attachments.push({
+          filename: doc.filename,
+          content: doc.content,
+          contentType: doc.contentType,
+        });
       }
       // sinon, lire depuis le disque local
     }
@@ -208,6 +220,8 @@ export class MailService {
     attachments?: AttachmentMail[];
     cc?: string | string[];
     bcc?: string | string[];
+    /** 'platform' = SMTP global (jamais celui du cabinet courant). */
+    transport?: 'tenant' | 'platform';
   }): Promise<void> {
     const {
       to,
@@ -219,6 +233,7 @@ export class MailService {
       attachments,
       cc,
       bcc,
+      transport,
     } = options;
 
     // Préparer les pièces jointes si nécessaire (récupération des buffers)
@@ -248,7 +263,7 @@ export class MailService {
     }
 
     // Envoyer (SMTP cabinet si configuré, sinon défaut)
-    await this.dispatch(mailOptions);
+    await this.dispatch(mailOptions, transport ?? 'tenant');
     this.logger.log(`Email direct envoyé à ${to}`);
   }
 

@@ -191,7 +191,10 @@ export class OnboardingService {
             cabinet.id,
             selectedPlan?.id ?? null,
             dto.billing_cycle ?? 'monthly',
-            { gateAllPaid: true },
+            {
+              gateAllPaid: true,
+              actor: { type: 'cabinet_user', label: dto.email },
+            },
           );
           // Reflète le statut résolu sur l'objet en mémoire pour la réponse.
           // Plan payant sans essai → pending_payment → cabinet suspendu (paiement requis).

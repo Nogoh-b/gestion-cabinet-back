@@ -54,6 +54,7 @@ export const ROLES_CONFIG: {
       'mark_audience_held',
       // Factures & Finances
       'view_factures',
+      'manage_invoice_settings',
       'create_facture',
       'edit_facture',
       'delete_facture',
@@ -108,12 +109,14 @@ export const ROLES_CONFIG: {
       'add_diligence_note',
       // Utilisateurs & Administration
       'view_users',
+      'view_user_directory',
       'create_user',
       'edit_user',
       'delete_user',
       'manage_roles',
       'view_audit_logs',
       'manage_settings',
+      'manage_subscription',
       // Modèles PDF
       'view_pdf_templates',
       'create_pdf_template',
@@ -276,6 +279,7 @@ export const ROLES_CONFIG: {
       // Demandes personnelles
       'request_leave',
       'request_salary_advance',
+      'view_user_directory',
       // Dépenses (consultation + notes de frais)
       'view_expenses',
       'view_suppliers',
@@ -285,6 +289,7 @@ export const ROLES_CONFIG: {
       // Comptabilité (consultation)
       'view_accounting',
       'view_accounting_reports',
+      'view_user_directory',
     ],
   },
 
@@ -333,6 +338,7 @@ export const ROLES_CONFIG: {
       // Demandes personnelles
       'request_leave',
       'request_salary_advance',
+      'view_user_directory',
     ],
   },
 
@@ -350,6 +356,7 @@ export const ROLES_CONFIG: {
       'view_factures',
       'create_facture',
       'edit_facture',
+      'manage_invoice_settings',
       'view_financial_reports',
       'manage_payments',
       'archive_facture',
@@ -377,6 +384,7 @@ export const ROLES_CONFIG: {
       // Demandes personnelles
       'request_leave',
       'request_salary_advance',
+      'view_user_directory',
     ],
   },
 
@@ -410,6 +418,7 @@ export const ROLES_CONFIG: {
       'view_factures',
       'create_facture',
       'edit_facture',
+      'manage_invoice_settings',
       'archive_facture',
       'print_facture',
       'email_facture',
@@ -449,6 +458,7 @@ export const ROLES_CONFIG: {
       'send_message',
       // Rapports
       'view_reports',
+      'view_dashboard',
       // Apporteurs
       'view_referrers',
       'create_referrer',
@@ -490,6 +500,7 @@ export const ROLES_CONFIG: {
       'edit_ecriture',
       'open_exercice',
       'view_accounting_reports',
+      'view_user_directory',
     ],
   },
 
@@ -534,6 +545,9 @@ export const ROLES_CONFIG: {
       // Demandes personnelles
       'request_leave',
       'request_salary_advance',
+      'view_user_directory',
+      // Tableau de bord (accès par défaut pour tous)
+      'view_dashboard',
     ],
   },
 
@@ -568,6 +582,9 @@ export const ROLES_CONFIG: {
       // Demandes personnelles
       'request_leave',
       'request_salary_advance',
+      'view_user_directory',
+      // Tableau de bord (accès par défaut pour tous)
+      'view_dashboard',
     ],
   },
 
@@ -604,6 +621,7 @@ export const ROLES_CONFIG: {
       // Demandes personnelles
       'request_leave',
       'request_salary_advance',
+      'view_user_directory',
     ],
   },
 
@@ -658,6 +676,8 @@ export const ROLES_CONFIG: {
       'download_payslip',
       // Apporteurs (consultation)
       'view_referral_commissions',
+      // Tableau de bord (accès par défaut pour tous)
+      'view_dashboard',
     ],
   },
 ];
@@ -676,6 +696,63 @@ export class RoleSeeder {
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepo: Repository<RolePermission>,
   ) {}
+
+  /**
+   * Rattrapage one-shot pour les tenants créés AVANT l'introduction de
+   * `view_dashboard` (défaut pour tous), `view_user_directory` (annuaire des
+   * selects) et `manage_invoice_settings` (config facturation).
+   *
+   * Le top-up standard de `seed()` ne couvre que les codes tout juste créés :
+   * si la permission existait déjà, les rôles existants ne la reçoivent pas.
+   * Cette méthode accorde explicitement les 3 codes aux rôles système qui les
+   * prévoient dans `ROLES_CONFIG`, sans toucher aux autres liens (les retraits
+   * manuels faits via l'UI sont préservés pour tout le reste).
+   */
+  async backfillDefaultPermissions() {
+    const codes = [
+      'view_dashboard',
+      'view_user_directory',
+      'manage_invoice_settings',
+    ];
+    this.logger.log(
+      `Rattrapage permissions par défaut : ${codes.join(', ')}…`,
+    );
+    for (const config of ROLES_CONFIG) {
+      const wanted = config.permissions.filter((c) => codes.includes(c));
+      if (!wanted.length) continue;
+      const role = await findOneForTenant(this.roleRepo, 'code', config.code);
+      if (!role) continue;
+      const qb = this.permissionRepo
+        .createQueryBuilder('p')
+        .where('p.code IN (:...codes)', { codes: wanted });
+      if (hasActiveTenant()) {
+        qb.andWhere('p.tenant_id = :tid', { tid: getCurrentTenantId() });
+      }
+      const permissions = await qb.getMany();
+      let grantedCount = 0;
+      for (const permission of permissions) {
+        const alreadyLinked = await this.rolePermissionRepo.findOneBy({
+          role_id: role!.id,
+          permission_id: permission.id,
+        });
+        if (alreadyLinked) continue;
+        await this.rolePermissionRepo.save(
+          this.rolePermissionRepo.create({
+            role_id: role!.id,
+            permission_id: permission.id,
+            status: 1,
+          }),
+        );
+        grantedCount++;
+      }
+      if (grantedCount) {
+        this.logger.log(
+          `Rôle "${config.code}" : ${grantedCount} permission(s) de rattrapage accordée(s).`,
+        );
+      }
+    }
+    this.logger.log('Rattrapage permissions par défaut terminé.');
+  }
 
   /**
    * @param newlyCreatedPermissionCodes — codes de permission tout juste créés

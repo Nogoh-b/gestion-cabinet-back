@@ -298,4 +298,88 @@ describe('AiModelRouterService', () => {
       expect(service.formatDescriptor(descriptor)).toContain('cle=NON');
     });
   });
+
+  describe('réflexion par fournisseur', () => {
+    beforeEach(() => {
+      process.env.META_API_KEY = 'meta-server-key';
+      process.env.AI_REASONING_KWARGS_FAST = '{"reasoning_effort":"low"}';
+      process.env.AI_REASONING_KWARGS_BALANCED =
+        '{"reasoning_effort":"medium"}';
+      process.env.AI_REASONING_KWARGS_PRECISE = '{"reasoning_effort":"high"}';
+      delete process.env.AI_FAST_MODEL_KWARGS;
+      delete process.env.AI_MODEL_KWARGS;
+    });
+
+    it('applique les défauts Meta (minimal/low) et garde le générique pour precise', async () => {
+      const service = new AiModelRouterService(
+        fakeDataSource(META_AI_CONFIG_WITH_SERVER_SECRET),
+      );
+
+      await new TenantContext().run(42, async () => {
+        await service.ensureTenantConfigLoaded();
+
+        expect(service.reasoningKwargs('fast')).toEqual({
+          reasoning_effort: 'minimal',
+        });
+        expect(service.reasoningKwargs('balanced')).toEqual({
+          reasoning_effort: 'low',
+        });
+        expect(service.reasoningKwargs('precise')).toEqual({
+          reasoning_effort: 'high',
+        });
+        // Le profil fast (classification) reçoit aussi `minimal` : sans lui,
+        // Muse Spark épuise son budget en réflexion et répond vide.
+        const { model } = service.getModelWithDescriptor('fast', 400);
+        expect((model as any).modelKwargs).toEqual({
+          reasoning_effort: 'minimal',
+        });
+      });
+    });
+
+    it('la variable propre au fournisseur prime sur le défaut intégré', async () => {
+      process.env.AI_REASONING_KWARGS_FAST_META = '{"reasoning_effort":"low"}';
+      process.env.AI_META_FAST_MODEL_KWARGS = '{"reasoning_effort":"low"}';
+      const service = new AiModelRouterService(
+        fakeDataSource(META_AI_CONFIG_WITH_SERVER_SECRET),
+      );
+
+      await new TenantContext().run(42, async () => {
+        await service.ensureTenantConfigLoaded();
+
+        expect(service.reasoningKwargs('fast')).toEqual({
+          reasoning_effort: 'low',
+        });
+        const { model } = service.getModelWithDescriptor('fast', 400);
+        expect((model as any).modelKwargs).toEqual({
+          reasoning_effort: 'low',
+        });
+      });
+    });
+
+    it('DeepSeek désactive la réflexion en Rapide et garde le générique ailleurs', () => {
+      const service = new AiModelRouterService();
+
+      expect(service.reasoningKwargs('fast')).toEqual({
+        thinking: { type: 'disabled' },
+      });
+      expect(service.reasoningKwargs('balanced')).toEqual({
+        reasoning_effort: 'medium',
+      });
+      const { model } = service.getModelWithDescriptor('fast', 400);
+      expect((model as any).modelKwargs).toEqual({
+        thinking: { type: 'disabled' },
+      });
+    });
+
+    it('un fournisseur sans défaut intégré garde les variables génériques', () => {
+      process.env.AI_DEEPSEEK_BASE_URL = 'https://llm.exemple.test/v1';
+      const service = new AiModelRouterService();
+
+      expect(service.reasoningKwargs('fast')).toEqual({
+        reasoning_effort: 'low',
+      });
+      const { model } = service.getModelWithDescriptor('fast', 400);
+      expect((model as any).modelKwargs ?? {}).toEqual({});
+    });
+  });
 });

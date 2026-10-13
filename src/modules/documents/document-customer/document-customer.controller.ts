@@ -57,6 +57,7 @@ import { UpdateDocumentCustomerDto } from './dto/update-document-customer.dto';
 @ApiTags('Customer Documents')
 @ApiConsumes('multipart/form-data')
 @Controller('documents')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class DocumentCustomerController {
   constructor(
@@ -135,6 +136,7 @@ export class DocumentCustomerController {
     );
   }
   @Patch(':id')
+  @RequirePermissions('edit_document')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
@@ -226,6 +228,7 @@ export class DocumentCustomerController {
   }
 
   @Post('/add-documents')
+  @RequirePermissions('upload_document')
   @UseInterceptors(AnyFilesInterceptor())
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -287,6 +290,7 @@ export class DocumentCustomerController {
   // Dans votre controller (par exemple document-customer.controller.ts)
   @Get(':id/stream')
   @UseGuards(JwtAuthGuard)
+  @RequirePermissions('view_documents')
   async streamDocument(@Param('id') id: string): Promise<StreamableFile> {
     const document = await this.service.findOne(+id);
 
@@ -347,6 +351,7 @@ export class DocumentCustomerController {
   // Alternative plus simple - Endpoint pour obtenir l'URL de stream
   @Get(':id/stream-url')
   @UseGuards(JwtAuthGuard)
+  @RequirePermissions('view_documents')
   async getStreamUrl(@Param('id') id: string, @CurrentUser() user: User) {
     // Vérifier les permissions
     // await this.service.verifyAccess(id, user.id);
@@ -361,6 +366,7 @@ export class DocumentCustomerController {
   // Endpoint direct pour servir le fichier raw
   @Get(':id/raw')
   @UseGuards(JwtAuthGuard)
+  @RequirePermissions('view_documents')
   async getRawFile(
     @Param('id') id: string,
     @CurrentUser() user: User,
@@ -378,6 +384,7 @@ export class DocumentCustomerController {
 
   @Get(':id/base64')
   @UseGuards(JwtAuthGuard)
+  @RequirePermissions('view_documents')
   @ApiOperation({ summary: 'Récupérer un document au format base64' })
   @ApiParam({ name: 'id', description: 'ID du document' })
   @ApiResponse({ status: 200, description: 'Document encodé en base64' })

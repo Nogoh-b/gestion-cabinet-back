@@ -31,6 +31,7 @@ function setup(profile: { vat_rate: number; currency: string } | null = null) {
     ),
   };
   const savedInvoices: Record<string, unknown>[] = [];
+  const savedReports: Record<string, unknown>[] = [];
   const savedLines: Record<string, unknown>[] = [];
   const manager = {
     getRepository: jest.fn((entity: unknown) => {
@@ -51,14 +52,14 @@ function setup(profile: { vat_rate: number; currency: string } | null = null) {
           }),
         };
       if (entity === Employee)
-        return { findOne: jest.fn(async () => ({ id: 7 })) };
+        return { findOne: jest.fn(async ({ where }: any) => ({ id: where.id })) };
       if (entity === ExpenseReport)
         return {
           create: jest.fn((value: object) => value),
-          save: jest.fn(async (value: object) => ({
-            ...(value as object),
-            id: 11,
-          })),
+          save: jest.fn(async (value: object) => {
+            savedReports.push(value as Record<string, unknown>);
+            return { ...(value as object), id: 11 };
+          }),
         };
       if (entity === ExpenseLine)
         return {
@@ -91,7 +92,7 @@ function setup(profile: { vat_rate: number; currency: string } | null = null) {
     { count: jest.fn(async () => 0) } as any,
     {} as any,
   );
-  return { service, profileRepository, savedInvoices, savedLines };
+  return { service, profileRepository, savedInvoices, savedReports, savedLines };
 }
 
 describe('ExpenseWorkspaceService - TVA et devise héritées du dossier', () => {
@@ -195,6 +196,23 @@ describe('ExpenseWorkspaceService - TVA et devise héritées du dossier', () => 
     });
   });
 
+  it('déduit le collaborateur connecté et l’objet de la première ligne si omis', async () => {
+    const context = setup();
+    await context.service.create(
+      {
+        origin: ExpenseWorkspaceOrigin.EMPLOYEE_REPORT,
+        target: ExpenseWorkspaceTarget.INTERNAL,
+        finalization: ExpenseWorkspaceFinalization.SUBMIT,
+        expense_report: {
+          submission_date: '2026-10-02',
+          lines: [{ expense_date: '2026-10-02', description: 'Taxi', category: 'transport', amount_ht: 10000 }],
+        },
+      } as any,
+      adminUser,
+    );
+    expect(context.savedReports[0]).toMatchObject({ employee_id: 9, title: 'Taxi' });
+  });
+
   it('reste à zéro sans dossier, sans lire le profil', async () => {
     const context = setup({ vat_rate: 19.25, currency: 'XAF' });
 
@@ -239,6 +257,17 @@ describe('CreateUnifiedExpenseDto - validation', () => {
       },
     });
 
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('accepte une note sans collaborateur ni objet explicites', async () => {
+    const dto = plainToInstance(CreateUnifiedExpenseDto, {
+      origin: 'EMPLOYEE_REPORT', target: 'INTERNAL', finalization: 'SUBMIT',
+      expense_report: {
+        submission_date: '2026-10-02',
+        lines: [{ expense_date: '2026-10-02', description: 'Taxi', category: 'transport', amount_ht: 10000 }],
+      },
+    });
     expect(await validate(dto)).toHaveLength(0);
   });
 

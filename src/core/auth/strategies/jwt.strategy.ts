@@ -3,12 +3,16 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
 import { getJwtSecret } from 'src/core/config/secrets';
+import { TenantContext } from 'src/core/tenant/tenant.context';
 import { UsersService } from 'src/modules/iam/user/user.service';
 import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private readonly usersService: UsersService) {
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly tenantContext: TenantContext,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -20,39 +24,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(req: Request, payload: any) {
+    // Un jeton de l'espace plateforme n'est jamais accepté sur une route
+    // cabinet (signé avec un autre secret, mais on refuse explicitement).
+    if (payload?.typ === 'platform') {
+      throw new UnauthorizedException('Jeton plateforme non valide ici.');
+    }
     const jwtTenantId: number = payload.tenantId ?? 1;
     const resolvedTenantId: number | undefined = (req as any)[
       'resolvedTenantId'
     ];
-    const permissions: string[] = payload.permissions ?? [];
-    const isSuperAdmin = permissions.includes('SUPER_ADMIN');
-
-    // ── Validation cross-tenant (fail-closed) ────────────────────────────────
-    // PRINCIPE : sur une route authentifiée, un jeton d'un cabinet A ne doit
-    // JAMAIS pouvoir accéder aux données d'un cabinet B. L'ancienne logique
-    // contournait la vérification quand resolvedTenantId === 1 (valeur par
-    // défaut), ce qui permettait à un attaquant d'omettre le header
-    // x-tenant-code pour échapper au contrôle cross-tenant.
-    //
-    // Nouveau comportement :
-    //  - resolvedTenantId est désormais undefined quand AUCUN tenant n'est
-    //    explicitement résolu (pas de header/subdomain/path). Dans ce cas, on
-    //    fait confiance au tenant du JWT (appels internes, scripts, clients
-    //    API qui ne gèrent pas la résolution de cabinet).
-    //  - Si un tenant EST résolu explicitement et diffère du JWT → rejet,
-    //    sauf SUPER_ADMIN.
-    //  - Le cabinet système (tenant_id=1) sans SUPER_ADMIN ne peut pas
-    //    accéder aux données métier d'un cabinet résolu.
-    if (
-      !isSuperAdmin &&
-      resolvedTenantId !== undefined &&
-      resolvedTenantId !== jwtTenantId
-    ) {
-      throw new UnauthorizedException(
-        "Accès refusé : vos identifiants n'appartiennent pas à ce cabinet.",
-      );
-    }
-
     const sessionUser = await this.usersService.findSessionState(
       Number(payload.sub),
       jwtTenantId,
@@ -69,13 +49,42 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       );
     }
 
+    // ── Permissions FRAÎCHES ─────────────────────────────────────────────────
+    // Le JWT est signé pour 30 jours (core.module) et figerait les permissions
+    // du login : une permission accordée ou retirée au rôle n'aurait aucun effet
+    // côté API avant reconnexion (403 « Forbidden resource » sur des écrans que
+    // l'UI affiche déjà). On relit donc les permissions du rôle en base, dans le
+    // contexte du cabinet du jeton, à chaque requête authentifiée.
+    // `sessionUser.role` (base) prime sur `payload.role` pour la même raison.
+    const role = sessionUser.role ?? payload.role ?? null;
+    const freshPermissions = await this.tenantContext.run(jwtTenantId, () =>
+      this.usersService.getPermissionsByRoleCode(role),
+    );
+    const permissions: string[] = (freshPermissions ?? []).map(
+      (permission: any) => permission.code,
+    );
+
+    // ── Validation cross-tenant (fail-closed) ────────────────────────────────
+    // Un jeton d'un cabinet A ne doit JAMAIS accéder aux données d'un cabinet
+    // B. Aucune exception : l'accès inter-cabinets relève exclusivement de
+    // l'espace plateforme (`/platform`, comptes et jetons distincts) ; la
+    // permission SUPER_ADMIN d'un cabinet ne donne plus ce pouvoir.
+    //  - resolvedTenantId undefined (pas de header/subdomain/path) → on fait
+    //    confiance au tenant du JWT (appels internes, scripts, clients API).
+    //  - Tenant résolu explicitement et différent du JWT → rejet.
+    if (resolvedTenantId !== undefined && resolvedTenantId !== jwtTenantId) {
+      throw new UnauthorizedException(
+        "Accès refusé : vos identifiants n'appartiennent pas à ce cabinet.",
+      );
+    }
+
     return {
       id: payload.sub,
       userId: payload.sub,
       username: payload.username,
       email: payload.email,
-      role: payload.role,
-      permissions: payload.permissions ?? [],
+      role,
+      permissions,
       customerId: payload.customerId ?? null,
       tenantId: jwtTenantId,
     };

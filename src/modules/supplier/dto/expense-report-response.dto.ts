@@ -1,10 +1,7 @@
 import { Expose, Transform } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { ExpenseReportStatus } from '../entities/expense-report.entity';
-import {
-  ExpenseCategory,
-  ExpenseRebillingType,
-} from '../entities/expense-line.entity';
+import { ExpenseRebillingType } from '../entities/expense-line.entity';
 
 export class ExpenseLineResponseDto {
   @ApiProperty({ example: 1 })
@@ -15,13 +12,13 @@ export class ExpenseLineResponseDto {
   @Expose()
   expense_date: Date;
 
-  @ApiProperty({ example: 'Train Paris-Lyon A/R' })
+  @ApiProperty({ example: 'Train Paris-Lyon A/R', required: false, nullable: true })
   @Expose()
-  description: string;
+  description: string | null;
 
-  @ApiProperty({ enum: ExpenseCategory, example: ExpenseCategory.TRANSPORT })
+  @ApiProperty({ example: 'transport' })
   @Expose()
-  category: ExpenseCategory;
+  category: string;
 
   @ApiProperty({ example: 120.0 })
   @Expose()

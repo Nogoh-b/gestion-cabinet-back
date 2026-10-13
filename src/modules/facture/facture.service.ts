@@ -19,6 +19,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 
 import { DossiersService } from '../dossiers/dossiers.service';
 import { Dossier } from '../dossiers/entities/dossier.entity';
+import { DossierBillingProfile } from '../case-workflow/entities/billing.entity';
 import { Customer } from '../customer/customer/entities/customer.entity';
 import { CreateFactureDto, StatutFacture } from './dto/create-facture.dto';
 import { FactureResponseDto } from './dto/facture-response.dto';
@@ -57,7 +58,7 @@ export class FactureService extends BaseServiceV1<Facture> {
 
   protected getDefaultSearchOptions(): SearchOptions {
     return {
-      searchFields: ['numero', 'description', 'notesInternes'],
+      searchFields: ['numero', 'libelle', 'description', 'notesInternes'],
       exactMatchFields: [
         'id',
         'dossier_id',
@@ -65,6 +66,7 @@ export class FactureService extends BaseServiceV1<Facture> {
         'status',
         'type',
         'numero',
+        'libelle',
       ],
       dateRangeFields: [
         'dateFacture',
@@ -156,18 +158,10 @@ export class FactureService extends BaseServiceV1<Facture> {
       'Création de la facture avec les données suivantes  :',
       createDto,
     );
-    // Calcul automatique des montants si nécessaire
-    if (!createDto.montantTVA) {
-      createDto.montantTVA =
-        Number(createDto.montantHT) * (Number(createDto.tauxTVA) / 100);
-    }
-    if (!createDto.montantTTC) {
-      createDto.montantTTC =
-        Number(createDto.montantHT) + Number(createDto.montantTVA);
-    }
     const {
       clientId,
       dossierId,
+      libelle: providedLibelle,
       notify_client,
       numero: providedNumero,
       statut,
@@ -188,6 +182,27 @@ export class FactureService extends BaseServiceV1<Facture> {
         : this.dossiersService.findOne(dossierId)));
     if (!dossier_) {
       throw new NotFoundException(`Dossier ${dossierId} non trouvé`);
+    }
+    // TVA : valeur saisie prioritaire, sinon config du dossier
+    // (profil de facturation), sinon défaut du cabinet.
+    if (
+      rest.tauxTVA === undefined ||
+      rest.tauxTVA === null ||
+      (typeof rest.tauxTVA !== 'number' &&
+        String(rest.tauxTVA).trim() === '')
+    ) {
+      rest.tauxTVA = await this.resolveDefaultTvaRate(
+        Number((options.dossier as any)?.id ?? dossierId),
+        options.manager,
+      );
+    }
+    // Calcul automatique des montants si nécessaire
+    if (!rest.montantTVA) {
+      rest.montantTVA =
+        Number(rest.montantHT) * (Number(rest.tauxTVA) / 100);
+    }
+    if (!rest.montantTTC) {
+      rest.montantTTC = Number(rest.montantHT) + Number(rest.montantTVA);
     }
     const dossier = { id: dossierId } as Dossier;
     const client = options.client ?? dossier_.client;
@@ -235,6 +250,13 @@ export class FactureService extends BaseServiceV1<Facture> {
       ...rest,
       dossier,
       numero,
+      // Libellé : valeur saisie prioritaire, sinon numéro de la facture.
+      libelle:
+        providedLibelle !== undefined &&
+        providedLibelle !== null &&
+        String(providedLibelle).trim() !== ''
+          ? String(providedLibelle).trim()
+          : numero,
       client,
       // La relation est nullable : un cabinet dont le catalogue n'est pas
       // encore seedé peut créer la facture sans fabriquer une fausse FK.
@@ -243,7 +265,7 @@ export class FactureService extends BaseServiceV1<Facture> {
       client_id,
       currency,
       montantPaye: 0,
-      resteAPayer: createDto.montantTTC,
+      resteAPayer: rest.montantTTC,
       stageVisit_id: stageVisitId,
       sub_stage_visit_id: subStageVisitId,
       procedure_instance_id: procedureInstance?.id,
@@ -290,6 +312,12 @@ export class FactureService extends BaseServiceV1<Facture> {
       updateDto.montantTVA = montantHT * (tauxTVA / 100);
       updateDto.montantTTC = montantHT + updateDto.montantTVA;
       // updateDto.resteAPayer = updateDto.montantTTC - facture.montantPaye;
+    }
+
+    // Libellé : chaîne vide = fallback sur le numéro (jamais de libellé vide).
+    if (updateDto.libelle !== undefined) {
+      const trimmed = String(updateDto.libelle ?? '').trim();
+      updateDto.libelle = trimmed !== '' ? trimmed : facture.numero;
     }
 
     Object.assign(facture, updateDto);
@@ -822,6 +850,35 @@ export class FactureService extends BaseServiceV1<Facture> {
       withDeleted: true,
     });
     return !!existing;
+  }
+
+  /**
+   * TVA par défaut d'une facture : profil de facturation du dossier
+   * (`dossier_billing_profiles.vat_rate`), repli sur le défaut du cabinet
+   * (`cabinets.default_tva_rate`), sinon 0. La valeur saisie reste prioritaire.
+   */
+  private async resolveDefaultTvaRate(
+    dossierId: number,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const tenantId = getCurrentTenantId();
+    try {
+      const profileRepo =
+        manager?.getRepository(DossierBillingProfile) ??
+        this.repository.manager.getRepository(DossierBillingProfile);
+      const profile = await profileRepo.findOne({
+        where: { tenant_id: tenantId, dossier_id: dossierId } as any,
+      });
+      if (profile?.vat_rate !== undefined && profile?.vat_rate !== null) {
+        return Number(profile.vat_rate);
+      }
+    } catch {
+      // Profil indisponible : repli sur le défaut du cabinet.
+    }
+    const cabinet = await this.cabinetRepo.findOne({
+      where: { id: tenantId },
+    });
+    return Number(cabinet?.default_tva_rate ?? 0);
   }
 
   private isDuplicateInvoiceNumberError(error: any): boolean {

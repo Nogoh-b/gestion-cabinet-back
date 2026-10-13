@@ -20,6 +20,16 @@ export interface AiProviderDefinition {
   base_url: string;
   models: string[];
   description: string;
+  /**
+   * Réflexion par défaut propre au fournisseur, prioritaire sur les variables
+   * génériques `AI_REASONING_KWARGS_*` / `AI_FAST_MODEL_KWARGS` (elles-mêmes
+   * surchargées par `AI_REASONING_KWARGS_<NIVEAU>_<FOURNISSEUR>` et
+   * `AI_<FOURNISSEUR>_FAST_MODEL_KWARGS`). `fastProfile` s'applique au profil
+   * `fast` (classification, réponses conversationnelles).
+   */
+  reasoningDefaults?: Partial<
+    Record<AiModelMode | 'fastProfile', Record<string, unknown>>
+  >;
 }
 
 /**
@@ -39,13 +49,39 @@ export const BUILTIN_AI_PROVIDERS: readonly AiProviderDefinition[] = [
       'deepseek-reasoner',
     ],
     description: "Fournisseur DeepSeek compatible avec l'API OpenAI",
+    // DeepSeek v4 réfléchit par défaut, même avec `reasoning_effort: low`.
+    // Mesures du 2026-10-13 sur une question multi-ressources réelle, avec
+    // `thinking` désactivé : rédaction 10 s → 1 s avant le premier mot, SQL
+    // 6 s → 2,5 s, requêtes valides sans correction. Équilibré et Précis
+    // gardent la réflexion (variables génériques).
+    reasoningDefaults: {
+      fastProfile: { thinking: { type: 'disabled' } },
+      fast: { thinking: { type: 'disabled' } },
+    },
   },
   {
     id: 'meta',
-    label: 'Meta AI (Muse Spark)',
+    label: 'Meta AI (Muse)',
     base_url: 'https://api.meta.ai/v1',
-    models: ['muse-spark-1.3-contributor'],
-    description: 'Muse Spark Contributor via Meta AI',
+    models: [
+      'muse-spark-1.3-contributor',
+      'muse-spark-1.3',
+      'muse-spark-1.2-contributor',
+      'muse-spark-1.2',
+      'muse-spark-1.1',
+      'muse-wonder-1.0',
+    ],
+    description: 'Muse Spark et Muse Wonder via Meta AI',
+    // Sans paramètre, Muse Spark réfléchit (en caché) ~1 000 tokens avant de
+    // répondre : ~14 s par appel, et une classification limitée à 64 tokens
+    // revient vide. Mesures du 2026-10-13 sur le prompt SQL réel : `minimal`
+    // → 3,5 s, `low` → 7 s, requête SQL identique. `precise` garde le réglage
+    // générique (plus de réflexion, plus lent).
+    reasoningDefaults: {
+      fastProfile: { reasoning_effort: 'minimal' },
+      fast: { reasoning_effort: 'minimal' },
+      balanced: { reasoning_effort: 'low' },
+    },
   },
   {
     id: 'freellm',
@@ -54,6 +90,27 @@ export const BUILTIN_AI_PROVIDERS: readonly AiProviderDefinition[] = [
     models: ['auto'],
     description:
       'Passerelle Bisoft avec catalogue de modeles charge depuis /v1/models',
+  },
+  {
+    id: 'google',
+    label: 'Google (Gemini)',
+    base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    models: [
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-2.0-flash',
+      'gemini-3.8-flash',
+      'gemini-3.6-flash',
+    ],
+    description:
+      "Gemini via l'endpoint compatible OpenAI — modeles configurables",
+    // Gemini mappe `reasoning_effort` (minimal/low/medium/high, `none` pour
+    // desactiver sur les 2.5). `minimal` en profil fast pour rester reactif.
+    reasoningDefaults: {
+      fastProfile: { reasoning_effort: 'minimal' },
+      fast: { reasoning_effort: 'minimal' },
+      balanced: { reasoning_effort: 'low' },
+    },
   },
 ] as const;
 
@@ -174,13 +231,20 @@ export class AiModelRouterService {
       stored?.model ?? definition?.models?.[0] ?? '',
     ).trim();
     // Compatibilite avec les anciens identifiants enregistres dans ai_config.
-    // Meta est force sur l'offre Contributor et FreeLLM expose `auto`.
-    const model =
+    // Meta : `muse-spark-1.3` nu redirige vers l'offre Contributor (tarif
+    // reduit, donnees utilisables pour l'entrainement) et FreeLLM expose
+    // `auto` (ancien libelle `multi-models`).
+    // Google : le catalogue /v1/models renvoie des IDs prefixes `models/…`
+    // (format natif Gemini) — l'endpoint compatible OpenAI attend l'ID nu.
+    let model =
       providerId === 'freellm' && configuredModel === 'multi-models'
         ? 'auto'
         : providerId === 'meta' && configuredModel === 'muse-spark-1.3'
           ? 'muse-spark-1.3-contributor'
           : configuredModel;
+    if (providerId === 'google') {
+      model = model.replace(/^models\//, '');
+    }
     const storedApiKey = definition
       ? ''
       : String(stored?.api_key ?? stored?.apiKey ?? '').trim();
@@ -211,7 +275,10 @@ export class AiModelRouterService {
       ]),
     ).filter(Boolean);
 
-    if (providerId !== 'freellm' || !runtime?.api_key || !runtime.base_url) {
+    if (providerId !== 'freellm' && providerId !== 'google') {
+      return fallback;
+    }
+    if (!runtime?.api_key || !runtime.base_url) {
       return fallback;
     }
 
@@ -255,6 +322,12 @@ export class AiModelRouterService {
             // les proposer dans l'administration puisqu'un test echouerait.
             .filter((item) => item?.available !== false)
             .map((item) => (typeof item?.id === 'string' ? item.id.trim() : ''))
+            .filter(Boolean)
+            // Google renvoie des IDs natifs `models/…` : l'endpoint OpenAI
+            // attend l'ID nu, on affiche donc la forme utilisable.
+            .map((id) =>
+              providerId === 'google' ? id.replace(/^models\//, '') : id,
+            )
             .filter(Boolean),
         ),
       );
@@ -570,6 +643,13 @@ export class AiModelRouterService {
           message: `Modele introuvable chez le fournisseur : ${provider.model} (HTTP 404)`,
         };
       }
+      if (status === 402) {
+        return {
+          ok: false,
+          message:
+            'Fournisseur facture (HTTP 402) : le compte Google AI Studio doit avoir un mode de facturation actif / des credits. Verifiez billing sur https://aistudio.google.com.',
+        };
+      }
       if (
         status === 503 &&
         /no candidate model|provider key|all models exhausted/i.test(rawMessage)
@@ -659,12 +739,30 @@ export class AiModelRouterService {
    * pour s'adapter au paramètre réel du fournisseur sans redéploiement :
    *   AI_REASONING_KWARGS_FAST={"reasoning_effort":"low"}
    *   AI_REASONING_KWARGS_FAST={"enable_thinking":false}   // variante on/off
-   * Non renseigné → aucun override (comportement historique).
+   * Les valeurs acceptées diffèrent d'un fournisseur à l'autre : par ordre de
+   * priorité, `AI_REASONING_KWARGS_<NIVEAU>_<FOURNISSEUR>` (ex. `..._FAST_META`),
+   * puis le `reasoningDefaults` du fournisseur intégré, puis la variable
+   * générique. Rien de renseigné → aucun override (comportement historique).
    */
   reasoningKwargs(
     level: 'fast' | 'balanced' | 'precise',
   ): Record<string, unknown> | undefined {
-    const raw = process.env[`AI_REASONING_KWARGS_${level.toUpperCase()}`];
+    const levelKey = level.toUpperCase();
+    const providerId = this.currentProviderId('quality', level);
+    if (providerId) {
+      const scoped = this.parseKwargsEnv(
+        `AI_REASONING_KWARGS_${levelKey}_${this.envProviderKey(providerId)}`,
+      );
+      if (scoped) return scoped;
+      const builtin = this.builtinReasoningDefaults(providerId)?.[level];
+      if (builtin) return { ...builtin };
+    }
+    return this.parseKwargsEnv(`AI_REASONING_KWARGS_${levelKey}`);
+  }
+
+  /** Lit une variable d'env contenant un objet JSON de `modelKwargs`. */
+  private parseKwargsEnv(name: string): Record<string, unknown> | undefined {
+    const raw = process.env[name];
     if (!raw) return undefined;
     try {
       const parsed = JSON.parse(raw);
@@ -672,11 +770,32 @@ export class AiModelRouterService {
         ? parsed
         : undefined;
     } catch {
-      this.logger.warn(
-        `AI_REASONING_KWARGS_${level.toUpperCase()} invalide: JSON attendu`,
-      );
+      this.logger.warn(`${name} invalide: JSON attendu`);
       return undefined;
     }
+  }
+
+  /** Fournisseur qui servira un profil pour le cabinet courant. */
+  private currentProviderId(
+    profile: AiModelProfile,
+    mode?: AiModelMode,
+  ): string {
+    const tenant = this.getTenantEffectiveSync();
+    return this.describeProvider(
+      tenant,
+      this.getBaseUrl(profile, mode, tenant),
+    );
+  }
+
+  private builtinReasoningDefaults(
+    providerId: string,
+  ): AiProviderDefinition['reasoningDefaults'] {
+    return BUILTIN_AI_PROVIDERS.find((p) => p.id === providerId)
+      ?.reasoningDefaults;
+  }
+
+  private envProviderKey(providerId: string): string {
+    return providerId.toUpperCase().replace(/[^A-Z0-9]/g, '_');
   }
 
   estimateTokens(input: unknown): number {
@@ -699,6 +818,7 @@ export class AiModelRouterService {
     const model = this.getConfiguredModel(profile, mode, tenantEffective);
     const baseURL = this.getBaseUrl(profile, mode, tenantEffective);
     const apiKey = this.getApiKey(profile, mode, tenantEffective);
+    const providerId = this.describeProvider(tenantEffective, baseURL);
 
     const defaults: Record<AiModelProfile, number> = {
       fast: 300,
@@ -734,7 +854,7 @@ export class AiModelRouterService {
       apiKey,
       baseURL,
       modelKwargs: this.mergeModelKwargs(
-        this.getModelKwargs(profile),
+        this.getModelKwargs(profile, providerId),
         modelKwargsOverride,
       ),
       useResponsesApi: this.usesResponsesApi(baseURL),
@@ -743,7 +863,7 @@ export class AiModelRouterService {
     const descriptor: AiModelDescriptor = {
       profile,
       mode: mode ?? this.defaultModeFor(profile),
-      provider: this.describeProvider(tenantEffective, baseURL),
+      provider: providerId,
       model,
       baseURL,
       source: tenantEffective ? 'tenant' : 'env',
@@ -1006,6 +1126,14 @@ export class AiModelRouterService {
   private getProviderEnvApiKey(providerId: string): string | undefined {
     if (providerId === 'meta') return process.env.META_API_KEY;
     if (providerId === 'freellm') return process.env.FREELLM_API_KEY;
+    if (providerId === 'google') {
+      return (
+        process.env.GOOGLE_API_KEY ||
+        process.env.GEMINI_API_KEY ||
+        process.env.AI_API_KEY ||
+        process.env.OPENAI_API_KEY
+      );
+    }
     if (providerId === 'deepseek') {
       return (
         process.env.DEEPSEEK_API_KEY ||
@@ -1019,6 +1147,9 @@ export class AiModelRouterService {
   private getProviderEnvBaseUrl(providerId: string): string | undefined {
     if (providerId === 'meta') return process.env.META_BASE_URL;
     if (providerId === 'freellm') return process.env.FREELLM_BASE_URL;
+    if (providerId === 'google') {
+      return process.env.GOOGLE_BASE_URL;
+    }
     if (providerId === 'deepseek') {
       return process.env.AI_DEEPSEEK_BASE_URL || process.env.AI_BASE_URL;
     }
@@ -1081,9 +1212,23 @@ export class AiModelRouterService {
 
   private getModelKwargs(
     profile: AiModelProfile,
+    providerId?: string,
   ): Record<string, unknown> | undefined {
     const profileKey =
       profile === 'streaming' ? 'STREAM' : profile.toUpperCase();
+    // Réglage propre au fournisseur d'abord (ex. AI_META_FAST_MODEL_KWARGS),
+    // puis, pour le profil `fast`, le défaut du fournisseur intégré.
+    if (providerId) {
+      const scoped = this.parseKwargsEnv(
+        `AI_${this.envProviderKey(providerId)}_${profileKey}_MODEL_KWARGS`,
+      );
+      if (scoped) return scoped;
+      const builtin =
+        profile === 'fast'
+          ? this.builtinReasoningDefaults(providerId)?.fastProfile
+          : undefined;
+      if (builtin) return { ...builtin };
+    }
     const raw =
       process.env[`AI_${profileKey}_MODEL_KWARGS`] ||
       process.env.AI_MODEL_KWARGS;

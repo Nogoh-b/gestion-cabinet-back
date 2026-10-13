@@ -37,7 +37,13 @@ import {
   ModePaiement,
   StatutPaiement,
 } from 'src/modules/paiement/dto/create-paiement.dto';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import {
+  DataSource,
+  DeepPartial,
+  EntityManager,
+  In,
+  Repository,
+} from 'typeorm';
 import {
   ActionBillingDecision,
   BillableCategory,
@@ -52,6 +58,7 @@ import {
   AdjustBillableItemDto,
   CreateDossierBillingRuleDto,
   CreateManualBillableItemDto,
+  AddBillableItemsToFactureDto,
   GenerateInvoiceFromItemsDto,
   RecalculateBillableItemsDto,
   SwitchBillingModeDto,
@@ -844,7 +851,8 @@ export class CaseBillingService {
     if (
       isDisbursement &&
       profile?.require_disbursement_receipt !== false &&
-      !expenseLine.attachment_url
+      !expenseLine.attachment_url &&
+      !existing?.calculation_snapshot?.receiptOverride
     ) {
       reviewReasons.push('Justificatif obligatoire pour ce débours');
     }
@@ -875,7 +883,7 @@ export class CaseBillingService {
       billing_rule_id: null,
       source_event_key: sourceEventKey,
       occurred_at: new Date(expenseLine.expense_date),
-      label: `${isDisbursement ? 'Débours' : 'Frais'} - ${expenseLine.description}`,
+      label: `${isDisbursement ? 'Débours' : 'Frais'} - ${expenseLine.description?.trim() || expenseLine.category || 'Dépense'}`,
       unit_label: null,
       quantity: 1,
       unit_price: net,
@@ -898,6 +906,9 @@ export class CaseBillingService {
         amountTtc: gross,
         attachmentUrl: expenseLine.attachment_url ?? null,
         actionId: expenseLine.action_id ?? null,
+        ...(existing?.calculation_snapshot?.receiptOverride
+          ? { receiptOverride: existing.calculation_snapshot.receiptOverride }
+          : {}),
       },
       review_reason: reviewReason,
       reserved_at: null,
@@ -916,6 +927,65 @@ export class CaseBillingService {
       existing ? 'BILLABLE_ITEM_UPDATED' : 'BILLABLE_ITEM_CREATED',
     );
     return item;
+  }
+
+  /** Dérogation individuelle et tracée, seulement si le justificatif est l'unique blocage. */
+  async approveExpenseWithoutReceipt(
+    manager: EntityManager,
+    line: ExpenseLine,
+    actorUserId: number,
+    reason: string,
+  ): Promise<BillableItem> {
+    const tenantId = getCurrentTenantId();
+    const itemRepo = manager.getRepository(BillableItem);
+    const item = await itemRepo.findOne({
+      where: {
+        tenant_id: tenantId,
+        source_event_key: `EXPENSE:${line.id}:APPROVED`,
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (
+      line.rebilling_type !== ExpenseRebillingType.DISBURSEMENT ||
+      !line.is_rebillable ||
+      !line.dossier_id ||
+      line.attachment_url ||
+      ![ExpenseReportStatus.APPROVED, ExpenseReportStatus.REIMBURSED].includes(
+        line.expense_report?.status,
+      ) ||
+      item?.status !== BillableItemStatus.NEEDS_REVIEW ||
+      item.review_reason !== 'Justificatif obligatoire pour ce débours'
+    ) {
+      throw new ConflictException(
+        'La dérogation est réservée à un débours approuvé dont le seul blocage est le justificatif',
+      );
+    }
+    const justification = typeof reason === 'string' ? reason.trim() : '';
+    if (justification.length < 10 || justification.length > 500) {
+      throw new BadRequestException('Précisez un motif de 10 à 500 caractères');
+    }
+    const receiptOverride = {
+      actorUserId,
+      reason: justification,
+      approvedAt: new Date().toISOString(),
+    };
+    item.calculation_snapshot = {
+      ...(item.calculation_snapshot ?? {}),
+      receiptOverride,
+    };
+    item.status = BillableItemStatus.TO_INVOICE;
+    item.review_reason = null;
+    const saved = await itemRepo.save(item);
+    await this.eventService.append(manager, {
+      dossierId: item.dossier_id,
+      eventType: 'EXPENSE_RECEIPT_EXCEPTION_APPROVED',
+      aggregateType: 'BillableItem',
+      aggregateId: item.id,
+      actorUserId,
+      payload: { expenseLineId: line.id, reason: justification },
+      idempotencyKey: `EXPENSE_RECEIPT_EXCEPTION:${line.id}:${saved.lock_version}`,
+    });
+    return saved;
   }
 
   private async appendExpenseSyncEvent(
@@ -2678,6 +2748,13 @@ export class CaseBillingService {
         ? new Date(dto.due_date)
         : new Date(invoiceDate.getTime() + 30 * 86_400_000);
       const isCreditNote = adjustmentItems.length > 0 && net < 0;
+      // TVA saisissable : prioritaire si fournie ; sur une facture calculée
+      // depuis les lignes, on garde la TVA issue des éléments sauf saisie
+      // explicite. Sans éléments, repli sur la config du dossier (createFacture).
+      const explicitTva =
+        dto.taux_tva !== undefined && dto.taux_tva !== null
+          ? Number(dto.taux_tva)
+          : undefined;
       const facture = await this.factureService.createFacture(
         {
           dossierId: dossier.id,
@@ -2689,9 +2766,21 @@ export class CaseBillingService {
           dateFacture: invoiceDate,
           dateEcheance: dueDate,
           montantHT: net,
-          tauxTVA: net !== 0 ? this.round((tax / net) * 100) : 0,
-          montantTVA: tax,
-          montantTTC: this.round(net + tax),
+          ...(explicitTva !== undefined
+            ? {
+                tauxTVA: explicitTva,
+                montantTVA: this.round((net * explicitTva) / 100),
+                montantTTC: this.round(net + (net * explicitTva) / 100),
+              }
+            : items.length
+              ? {
+                  tauxTVA:
+                    net !== 0 ? this.round((tax / net) * 100) : 0,
+                  montantTVA: tax,
+                  montantTTC: this.round(net + tax),
+                }
+              : {}),
+          libelle: dto.libelle?.trim() || undefined,
           description:
             dto.description?.trim() ||
             (isCreditNote
@@ -2711,32 +2800,9 @@ export class CaseBillingService {
       for (let index = 0; index < items.length; index++) {
         const item = items[index];
         const line = await lineRepo.save(
-          lineRepo.create({
-            tenant_id: tenantId,
-            facture_id: facture.id,
-            dossier_id: item.dossier_id,
-            billable_item_id: item.id,
-            category: item.category,
-            calculation_mode: item.calculation_mode,
-            unit_label: item.unit_label,
-            action_id: item.action_id,
-            billing_rule_id: item.billing_rule_id,
-            display_order: index + 1,
-            label: item.label,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            net_amount: item.net_amount,
-            tax_rate: item.tax_rate,
-            tax_amount: item.tax_amount,
-            gross_amount: item.gross_amount,
-            currency: item.currency,
-            source_snapshot: {
-              sourceType: item.source_type,
-              sourceId: item.source_id,
-              sourceEventKey: item.source_event_key,
-              calculation: item.calculation_snapshot,
-            },
-          }),
+          lineRepo.create(
+            this.invoiceLineFromItem(item, facture.id, tenantId, index + 1),
+          ),
         );
         item.status = BillableItemStatus.INVOICED;
         item.invoice_line_id = line.id;
@@ -2823,6 +2889,209 @@ export class CaseBillingService {
     });
   }
 
+  /** Ligne de facture figée depuis un élément : copie ses montants et garde sa source. */
+  private invoiceLineFromItem(
+    item: BillableItem,
+    factureId: string,
+    tenantId: number,
+    displayOrder: number,
+  ): DeepPartial<InvoiceLine> {
+    return {
+      tenant_id: tenantId,
+      facture_id: factureId,
+      dossier_id: item.dossier_id,
+      billable_item_id: item.id,
+      category: item.category,
+      calculation_mode: item.calculation_mode,
+      unit_label: item.unit_label,
+      action_id: item.action_id,
+      billing_rule_id: item.billing_rule_id,
+      display_order: displayOrder,
+      label: item.label,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      net_amount: item.net_amount,
+      tax_rate: item.tax_rate,
+      tax_amount: item.tax_amount,
+      gross_amount: item.gross_amount,
+      currency: item.currency,
+      source_snapshot: {
+        sourceType: item.source_type,
+        sourceId: item.source_id,
+        sourceEventKey: item.source_event_key,
+        calculation: item.calculation_snapshot,
+      },
+    };
+  }
+
+  /**
+   * Ajoute des éléments facturables à une facture existante, en brouillon.
+   * Mêmes garde-fous que la génération (TO_INVOICE, même dossier, même devise,
+   * pas d'ajustement). Les lignes déjà présentes ne sont pas recalculées : les
+   * totaux HT / TVA / TTC sont incrémentés. Atomique (verrou sur la facture et
+   * sur les éléments) ; rejeu sûr via l'Idempotency-Key.
+   */
+  async addItemsToFacture(
+    factureId: string,
+    dto: AddBillableItemsToFactureDto,
+    idempotencyKey: string,
+    actorUserId: number,
+  ): Promise<Facture> {
+    const tenantId = getCurrentTenantId();
+    const eventKey = `INVOICE_ITEMS:${idempotencyKey}`;
+    const priorEvent = await this.eventRepository.findOne({
+      where: { tenant_id: tenantId, idempotency_key: eventKey },
+    });
+    if (priorEvent) return this.loadFactureWithLines(factureId, tenantId);
+
+    const ids = [...new Set(dto.billable_item_ids)];
+    if (ids.length !== dto.billable_item_ids.length) {
+      throw new BadRequestException(
+        'Un élément ne peut être sélectionné qu’une seule fois',
+      );
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const factureRepo = manager.getRepository(Facture);
+      const facture = await factureRepo.findOne({
+        where: { id: factureId, tenant_id: tenantId } as any,
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!facture) throw new NotFoundException('Facture introuvable');
+      if (Number(facture.type) === TypeFacture.AVOIR) {
+        throw new ConflictException(
+          'Un avoir ne peut pas recevoir d’éléments facturables',
+        );
+      }
+      if (Number(facture.status) !== StatutFacture.BROUILLON) {
+        throw new ConflictException(
+          'Seule une facture en brouillon peut recevoir des éléments facturables',
+        );
+      }
+      if (!facture.dossier_id) {
+        throw new ConflictException(
+          'La facture n’est rattachée à aucun dossier',
+        );
+      }
+
+      const itemRepo = manager.getRepository(BillableItem);
+      const items = await itemRepo
+        .createQueryBuilder('item')
+        .setLock('pessimistic_write')
+        .where('item.tenant_id = :tenantId', { tenantId })
+        .andWhere('item.id IN (:...ids)', { ids })
+        .getMany();
+      if (items.length !== ids.length) {
+        throw new NotFoundException(
+          'Un ou plusieurs éléments à facturer sont introuvables',
+        );
+      }
+      if (items.some((item) => item.status !== BillableItemStatus.TO_INVOICE)) {
+        throw new ConflictException(
+          'Un élément est déjà réservé, facturé ou doit être revu',
+        );
+      }
+      if (
+        items.some(
+          (item) => Number(item.dossier_id) !== Number(facture.dossier_id),
+        )
+      ) {
+        throw new ConflictException(
+          'Les éléments doivent appartenir au dossier de la facture',
+        );
+      }
+      if (
+        items.some((item) => item.source_type === BillableSourceType.ADJUSTMENT)
+      ) {
+        throw new ConflictException(
+          'Les ajustements ne peuvent être ajoutés qu’à un avoir',
+        );
+      }
+
+      const lineRepo = manager.getRepository(InvoiceLine);
+      const existingLines = await lineRepo.find({
+        where: { facture_id: facture.id, tenant_id: tenantId } as any,
+      });
+      const currency = facture.currency ?? existingLines[0]?.currency ?? null;
+      if (currency && items.some((item) => item.currency !== currency)) {
+        throw new ConflictException(
+          'Les éléments doivent utiliser la devise de la facture',
+        );
+      }
+
+      const lastOrder = existingLines.reduce(
+        (max, line) => Math.max(max, Number(line.display_order) || 0),
+        0,
+      );
+      items.sort(
+        (left, right) =>
+          new Date(left.occurred_at).getTime() -
+          new Date(right.occurred_at).getTime(),
+      );
+      let addedNet = 0;
+      let addedTax = 0;
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        const line = await lineRepo.save(
+          lineRepo.create(
+            this.invoiceLineFromItem(
+              item,
+              facture.id,
+              tenantId,
+              lastOrder + index + 1,
+            ),
+          ),
+        );
+        item.status = BillableItemStatus.INVOICED;
+        item.invoice_line_id = line.id;
+        addedNet += Number(item.net_amount);
+        addedTax += Number(item.tax_amount);
+      }
+      await itemRepo.save(items);
+
+      facture.montantHT = this.round(Number(facture.montantHT) + addedNet);
+      facture.montantTVA = this.round(Number(facture.montantTVA) + addedTax);
+      facture.montantTTC = this.round(facture.montantHT + facture.montantTVA);
+      if (facture.montantHT !== 0) {
+        facture.tauxTVA = this.round(
+          (facture.montantTVA / facture.montantHT) * 100,
+        );
+      }
+      await factureRepo.save(facture);
+
+      await this.eventService.append(manager, {
+        dossierId: Number(facture.dossier_id),
+        eventType: 'INVOICE_ITEMS_ADDED',
+        aggregateType: 'Facture',
+        aggregateId: facture.id,
+        actorUserId,
+        payload: {
+          invoiceId: facture.id,
+          billableItemIds: ids,
+          addedAmount: this.round(addedNet + addedTax),
+        },
+        idempotencyKey: eventKey,
+      });
+      return this.loadFactureWithLines(facture.id, tenantId, manager);
+    });
+  }
+
+  private async loadFactureWithLines(
+    factureId: string,
+    tenantId: number,
+    manager?: EntityManager,
+  ): Promise<Facture> {
+    const repo = manager
+      ? manager.getRepository(Facture)
+      : this.factureRepository;
+    const facture = await repo.findOne({
+      where: { id: factureId, tenant_id: tenantId } as any,
+      relations: ['lines', 'paiements'],
+    });
+    if (!facture) throw new NotFoundException('Facture introuvable');
+    return facture;
+  }
+
   private normalizeInitialPaymentMode(value?: number): ModePaiement {
     if (typeof value === 'number' && value >= 0 && value <= 6)
       return value as ModePaiement;
@@ -2857,7 +3126,8 @@ export class CaseBillingService {
       where: { id: factureId, tenant_id: tenantId } as any,
     });
     if (!facture) throw new NotFoundException('Facture introuvable');
-    const dossierId = (facture as any).dossier_id as number;
+    if (Number(facture.type) !== Number(TypeFacture.HONORAIRES)) return [];
+    const dossierId = facture.dossier_id;
     const rows = await this.dataSource
       .getRepository(DossierAction)
       .createQueryBuilder('a')

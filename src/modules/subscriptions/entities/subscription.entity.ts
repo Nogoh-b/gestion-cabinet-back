@@ -1,5 +1,6 @@
 import {
   Entity,
+  Index,
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
@@ -10,6 +11,7 @@ import {
 import { Plan } from 'src/modules/plans/entities/plan.entity';
 
 export type BillingCycle = 'monthly' | 'yearly';
+export type SubscriptionActorType = 'system' | 'cabinet_user' | 'platform_admin';
 export type SubscriptionStatus =
   | 'trial'
   | 'active'
@@ -35,6 +37,7 @@ export type SubscriptionStatus =
  * et l'évolution future.
  */
 @Entity('subscriptions')
+@Index('IDX_subscriptions_cabinet_status', ['cabinet_id', 'status'])
 export class Subscription {
   @PrimaryGeneratedColumn()
   id: number;
@@ -103,6 +106,16 @@ export class Subscription {
   /** Reconduction automatique à l'échéance (créera une nouvelle période). */
   @Column({ type: 'boolean', default: true, name: 'auto_renew' })
   auto_renew: boolean;
+
+  @Column({ type: 'datetime', nullable: true, name: 'cancelled_at' })
+  cancelled_at: Date | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true, name: 'cancel_reason' })
+  cancel_reason: string | null;
+
+  /** Origine de la création : système, cabinet (self-service) ou plateforme. */
+  @Column({ type: 'varchar', length: 20, default: 'system', name: 'created_by' })
+  created_by: SubscriptionActorType;
 
   @CreateDateColumn({ name: 'created_at' })
   created_at: Date;

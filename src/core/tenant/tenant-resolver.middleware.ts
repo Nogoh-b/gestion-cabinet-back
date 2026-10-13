@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantContext } from './tenant.context';
+import { PLATFORM_PATH_PREFIX } from '../decorators/platform.decorator';
 
 /**
  * TenantResolverMiddleware — résout le cabinet (tenant) depuis la requête HTTP.
@@ -29,6 +30,18 @@ export class TenantResolverMiddleware implements NestMiddleware {
   ) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
+    // Espace plateforme : jamais de contexte cabinet implicite (ni header
+    // x-tenant-code, ni sous-domaine). Les opérations ciblant un cabinet
+    // ouvrent explicitement leur contexte (tenantContext.run(cabinetId)).
+    const path = String(req.originalUrl ?? req.url ?? '').split('?')[0];
+    if (
+      path === PLATFORM_PATH_PREFIX ||
+      path.startsWith(`${PLATFORM_PATH_PREFIX}/`)
+    ) {
+      next();
+      return;
+    }
+
     const code = this.extractCode(req);
     let resolvedTenantId: number | undefined;
 

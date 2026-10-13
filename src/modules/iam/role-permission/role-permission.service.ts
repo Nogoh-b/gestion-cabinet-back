@@ -2,6 +2,7 @@
 import {
   Injectable,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   Inject,
   forwardRef,
@@ -15,6 +16,7 @@ import { UserRolesService } from '../user-role/user-role.service';
 import { PermissionsService } from '../permission/permission.service';
 import { Permission } from '../permission/entities/permission.entity';
 import { validateDto } from 'src/core/shared/pipes/validate-dto';
+import { isProtectedPermission } from '../constants/iam.constants';
 
 @Injectable()
 export class RolePermissionService {
@@ -32,6 +34,19 @@ export class RolePermissionService {
     await validateDto(CreateRolePermissionDto, createDto);
     const role = await this.userRolesService.findOne(createDto.role_id);
 
+    // Validation préalable : aucune liaison n'est créée si une seule
+    // permission système (SUPER_ADMIN, AUDIT_SYSTEM…) figure dans la demande.
+    const permissions = new Map<number, Permission>();
+    for (const element of createDto.permissions_ids) {
+      const permission = await this.permissionsService.findOne(element);
+      if (isProtectedPermission(permission)) {
+        throw new ForbiddenException(
+          `La permission système « ${permission.code} » ne peut pas être attribuée.`,
+        );
+      }
+      permissions.set(element, permission);
+    }
+
     for (const element of createDto.permissions_ids) {
       // Ignorer silencieusement les permissions déjà assignées (idempotent)
       const exists = await this.rolePermissionRepository.findOne({
@@ -39,7 +54,7 @@ export class RolePermissionService {
       });
       if (exists) continue;
 
-      const permission = await this.permissionsService.findOne(element);
+      const permission = permissions.get(element);
       const rolePermission = this.rolePermissionRepository.create({
         role_id: createDto.role_id,
         permission_id: element,
@@ -107,8 +122,10 @@ export class RolePermissionService {
   }
 
   async getRolePermissions(role_id: number): Promise<Permission[]> {
+    // Seules les liaisons actives comptent : une liaison désactivée (status 0)
+    // ne doit jamais accorder la permission.
     const permissions = await this.rolePermissionRepository.find({
-      where: { role_id },
+      where: { role_id, status: 1 },
       relations: ['permission'],
     });
     return permissions.map((p) => p.permission);

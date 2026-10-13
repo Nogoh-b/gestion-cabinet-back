@@ -1667,7 +1667,7 @@ export class ActionCatalogService {
       }
       if (dto.label !== undefined) family.label = dto.label.trim();
       if (dto.description !== undefined)
-        family.description = dto.description.trim() || null;
+        family.description = dto.description?.trim() || null;
       if (dto.display_order !== undefined)
         family.display_order = dto.display_order;
       if (dto.is_active !== undefined) family.is_active = dto.is_active;

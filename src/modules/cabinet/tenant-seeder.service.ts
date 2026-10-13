@@ -111,6 +111,34 @@ export class TenantSeederService {
   }
 
   /**
+   * Rattrapage ponctuel des défauts « tout le monde » pour les cabinets déjà
+   * existants (dashboard, annuaire des selects, config facturation).
+   *
+   * Lancé par `npm run iam:backfill-defaults` (scripts/backfill-iam-defaults.ts),
+   * PAS au démarrage : la sync de démarrage ne répare que les cabinets qui
+   * manquent un rôle, et un rattrapage à chaque boot ré-accorderait une
+   * permission qu'un admin aurait retirée. Ici, chaque étape reste additive.
+   */
+  async backfillIamDefaultsForAllTenants(): Promise<void> {
+    const cabinets = await this.cabinetRepo.find({ select: ['id'] });
+    this.logger.log(`🔐 Rattrapage IAM : ${cabinets.length} cabinet(s)…`);
+    for (const { id } of cabinets) {
+      try {
+        await this.tenantContext.run(id, async () => {
+          await this.seedIamReferenceData();
+          await this.roleSeeder.backfillDefaultPermissions();
+        });
+        this.logger.log(`✅ Cabinet #${id} : défauts IAM accordés.`);
+      } catch (err) {
+        this.logger.error(
+          `❌ Cabinet #${id} : rattrapage IAM en échec : ${(err as Error)?.message ?? err}`,
+        );
+      }
+    }
+    this.logger.log('🔐 Rattrapage IAM terminé.');
+  }
+
+  /**
    * Seed toutes les données de référence pour un nouveau cabinet.
    *
    * @param cabinetId — ID du cabinet (= tenant_id).

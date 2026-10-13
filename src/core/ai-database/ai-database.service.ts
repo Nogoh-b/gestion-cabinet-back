@@ -102,6 +102,36 @@ interface AiRequestMetrics {
   reasoningKwargs?: Record<string, unknown>;
 }
 
+/**
+ * Génération SQL lancée par anticipation pendant la classification de
+ * l'intention (voir `startSqlDraft`).
+ */
+interface SqlDraft {
+  /** Messages envoyés au modèle : le brouillon n'est repris que s'ils sont identiques. */
+  signature: string;
+  /** Réponse du modèle, ou null en cas d'échec / d'annulation. Ne rejette jamais. */
+  response: Promise<{ content: string } | null>;
+  abort: () => void;
+}
+
+/** Résultat d'une sous-requête d'une question multi-ressources. */
+interface SubQuestionResult {
+  title: string;
+  sqlQuery: string;
+  data: any[];
+  rowCount: number;
+}
+
+/**
+ * Sous-requêtes d'une question multi-ressources lancées par anticipation
+ * pendant la classification (voir `startMultiResourceDraft`).
+ */
+interface MultiResourceDraft {
+  /** Une entrée par sous-question (null si elle a échoué). Ne rejette jamais. */
+  parts: Promise<Array<SubQuestionResult | null>>;
+  abort: () => void;
+}
+
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
   private readonly logger = new Logger(AiDatabaseService.name);
@@ -149,6 +179,10 @@ export class AiDatabaseService implements OnModuleInit {
   // dossier en une seule opération). Un budget insuffisant tronque le JSON en
   // plein milieu → "Unexpected end of JSON input" au parsing.
   private readonly WRITE_PLAN_MAX_TOKENS = 6000;
+  // Classification READ/WRITE/CHAT : la réponse tient en un mot, mais un
+  // modèle « thinking » réfléchit d'abord. Avec 64 tokens, Muse Spark épuisait
+  // le budget en réflexion et renvoyait une réponse vide (repli READ forcé).
+  private readonly CLASSIFIER_MAX_TOKENS = 400;
   private readonly MAX_CHARS = 180000;
   private readonly MAX_HISTORY_MESSAGES = 4;
   private readonly MAX_HISTORY_TOKENS = 2200;
@@ -348,22 +382,43 @@ export class AiDatabaseService implements OnModuleInit {
     return p === 'streaming' || p === 'quality' ? p : 'fast';
   }
 
+  /**
+   * Réflexion appliquée à la rédaction de la réponse à partir des résultats
+   * SQL. Mettre en forme des données déjà calculées ne demande pas de
+   * raisonnement approfondi : on applique le niveau « Rapide »
+   * (AI_REASONING_KWARGS_FAST) quel que soit le niveau choisi, qui reste
+   * appliqué à la génération SQL. Le premier mot de la réponse arrive ainsi
+   * bien plus tôt. `AI_ANALYSIS_FOLLOWS_REASONING_LEVEL=true` rétablit
+   * l'ancien comportement (même réflexion que la génération SQL).
+   */
+  private analysisReasoning(): Record<string, unknown> | undefined {
+    if (process.env.AI_ANALYSIS_FOLLOWS_REASONING_LEVEL === 'true') {
+      return undefined;
+    }
+    return this.aiModelRouter.reasoningKwargs('fast');
+  }
+
   private async invokeModel(
     profile: AiModelProfile,
     input: unknown,
     maxTokens?: number,
+    reasoningOverride?: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<any> {
     const modelMode = this.currentModelMode();
     // Une SEULE résolution : le descripteur décrit l'instance qui sera appelée.
     const { model, descriptor } = this.aiModelRouter.getModelWithDescriptor(
       profile,
       maxTokens,
-      this.reasoningOverrideFor(profile),
+      reasoningOverride ?? this.reasoningOverrideFor(profile),
       modelMode,
     );
     this.recordLlmCall(profile, input, descriptor);
     this.logLlmCall('invoke', descriptor, maxTokens);
-    const response = await model.invoke(input as any);
+    const response = await model.invoke(
+      input as any,
+      signal ? { signal } : undefined,
+    );
     this.recordOutput(this.extractLlmText(response));
     return response;
   }
@@ -372,17 +427,19 @@ export class AiDatabaseService implements OnModuleInit {
     profile: AiModelProfile,
     input: unknown,
     maxTokens?: number,
+    reasoningOverride?: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<any> {
     const modelMode = this.currentModelMode();
     const { model, descriptor } = this.aiModelRouter.getModelWithDescriptor(
       profile,
       maxTokens,
-      this.reasoningOverrideFor(profile),
+      reasoningOverride ?? this.reasoningOverrideFor(profile),
       modelMode,
     );
     this.recordLlmCall(profile, input, descriptor);
     this.logLlmCall('stream', descriptor, maxTokens);
-    return model.stream(input as any);
+    return model.stream(input as any, signal ? { signal } : undefined);
   }
 
   /**
@@ -396,8 +453,15 @@ export class AiDatabaseService implements OnModuleInit {
     profile: AiModelProfile,
     input: unknown,
     maxTokens?: number,
+    signal?: AbortSignal,
   ): Promise<{ content: string }> {
-    const stream = await this.streamModel(profile, input, maxTokens);
+    const stream = await this.streamModel(
+      profile,
+      input,
+      maxTokens,
+      undefined,
+      signal,
+    );
     let fullText = '';
     for await (const chunk of stream) {
       fullText += this.extractChunkText(chunk);
@@ -583,11 +647,13 @@ export class AiDatabaseService implements OnModuleInit {
     historyQuestion?: string,
     references: ReferencedEntityContext[] = [],
     historyOverride: VisibleHistoryMessage[] = [],
+    draft?: SqlDraft | null,
   ): Promise<string> {
     // 1. Vérifier que la conversation existe
     const conversation =
       await this.conversationManager.getConversation(conversationId);
     if (!conversation) {
+      draft?.abort();
       throw new Error(`Conversation ${conversationId} non trouvée`);
     }
 
@@ -599,41 +665,39 @@ export class AiDatabaseService implements OnModuleInit {
       historyQuestion,
       references,
       historyOverride,
+      draft,
     );
   }
 
   /**
-   * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
+   * Messages envoyés au modèle pour générer le SQL (prompt système, historique
+   * récent, question). Lecture seule : sert aussi au brouillon anticipé, qui
+   * n'est réutilisé que si ces messages sont identiques.
    */
-  private async generateSqlForConversation(
-    conversationId: string,
+  private async buildSqlMessages(
+    conversationId: string | undefined,
     question: string,
-    schema?: string,
-    tables: string[] = [],
-    historyQuestion?: string,
-    references: ReferencedEntityContext[] = [],
+    schemaToUse: string,
     historyOverride: VisibleHistoryMessage[] = [],
-  ): Promise<string> {
-    const schemaToUse =
-      schema ||
-      (await this.getCompleteSchema(
-        tables.length
-          ? tables
-          : await this.detectRelevantTables(question, undefined, references),
-      ));
+  ): Promise<{
+    messages: Array<{ role: string; content: string }>;
+    recentHistory: Array<{ role: string; content: string }>;
+  }> {
     const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
     const systemPrompt = this.buildReadSystemPrompt(schemaToUse, tenantId);
 
     const recentHistory: Array<{ role: string; content: string }> =
       historyOverride.length
         ? historyOverride.slice(-this.MAX_HISTORY_MESSAGES)
-        : await this.conversationManager.getRecentHistoryForPrompt(
-            conversationId,
-            {
-              maxMessages: this.MAX_HISTORY_MESSAGES,
-              maxTokens: this.MAX_HISTORY_TOKENS,
-            },
-          );
+        : conversationId
+          ? await this.conversationManager.getRecentHistoryForPrompt(
+              conversationId,
+              {
+                maxMessages: this.MAX_HISTORY_MESSAGES,
+                maxTokens: this.MAX_HISTORY_TOKENS,
+              },
+            )
+          : [];
 
     // Le chat envoie toujours `historyOverride` (texte visible), ce qui court-circuite
     // getRecentHistoryForPrompt et donc le bloc [CONTEXTE STRUCTURE...] (SQL + lignes
@@ -655,16 +719,151 @@ export class AiDatabaseService implements OnModuleInit {
       }
     }
 
-    await this.conversationManager.addUserMessage(
-      conversationId,
-      historyQuestion ?? question,
-      references,
-    );
     const messages = [
       { role: 'system', content: systemPrompt },
       ...recentHistory,
       { role: 'user', content: question },
     ];
+    return { messages, recentHistory };
+  }
+
+  /**
+   * Lance la génération SQL par anticipation, pendant que le classifieur LLM
+   * décide de l'intention : si la demande est bien une lecture, le SQL est
+   * déjà en cours (on économise la durée de la classification) ; sinon
+   * l'appel est annulé. Ne lève jamais : renvoie null si l'anticipation n'est
+   * pas possible (droits de lecture insuffisants, erreur de préparation).
+   */
+  private async startSqlDraft(
+    user: AiUserContext | string,
+    conversationId: string | undefined,
+    question: string,
+    schema: string,
+    tables: string[],
+    historyOverride: VisibleHistoryMessage[],
+  ): Promise<SqlDraft | null> {
+    try {
+      await this.aiPermissionService.assertCanReadTables(
+        user as AiUserContext,
+        tables,
+      );
+      const { messages } = await this.buildSqlMessages(
+        conversationId,
+        question,
+        schema,
+        historyOverride,
+      );
+      const controller = new AbortController();
+      const response = this.invokeModelViaStream(
+        'quality',
+        messages,
+        1200,
+        controller.signal,
+      ).catch((error: Error) => {
+        if (!controller.signal.aborted) {
+          this.logger.warn(`⚡ Brouillon SQL en échec: ${error.message}`);
+        }
+        return null;
+      });
+      return {
+        signature: JSON.stringify(messages),
+        response,
+        abort: () => controller.abort(),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Variante multi-ressources de `startSqlDraft` : lance les sous-requêtes
+   * pendant la classification de l'intention ; annulées si la demande n'est
+   * pas une lecture. Ne lève jamais : null si les droits de lecture manquent.
+   */
+  private async startMultiResourceDraft(
+    user: AiUserContext | string,
+    subQuestions: Array<{ question: string; title: string }>,
+    schema: string,
+    tables: string[],
+  ): Promise<MultiResourceDraft | null> {
+    try {
+      await this.aiPermissionService.assertCanReadTables(
+        user as AiUserContext,
+        tables,
+      );
+    } catch {
+      return null;
+    }
+    const controller = new AbortController();
+    const parts = Promise.all(
+      subQuestions.map((sub) =>
+        this.runSubQuestion(sub, schema, tables, user, controller.signal),
+      ),
+    );
+    return { parts, abort: () => controller.abort() };
+  }
+
+  /**
+   * Texte brut de la réponse SQL du modèle : celui du brouillon anticipé s'il
+   * a été produit avec exactement les mêmes messages, sinon un nouvel appel.
+   */
+  private async resolveSqlResponse(
+    messages: Array<{ role: string; content: string }>,
+    draft?: SqlDraft | null,
+  ): Promise<string> {
+    if (draft) {
+      if (draft.signature === JSON.stringify(messages)) {
+        const drafted = await draft.response;
+        if (drafted) {
+          this.logger.log('⚡ SQL repris du brouillon anticipé');
+          return this.extractLlmText(drafted);
+        }
+      } else {
+        draft.abort();
+        this.logger.warn(
+          '⚡ Brouillon SQL écarté (messages différents) → nouvel appel',
+        );
+      }
+    }
+    // Génération SQL en streaming : évite un blocage unique et n'accumule pas
+    // les tokens de réflexion. Le parsing du SQL en aval reste identique.
+    const response = await this.invokeModelViaStream('quality', messages, 1200);
+    return this.extractLlmText(response);
+  }
+
+  /**
+   * Détecte si la réponse indique qu'aucun résultat n'a été trouvé
+   */
+  private async generateSqlForConversation(
+    conversationId: string,
+    question: string,
+    schema?: string,
+    tables: string[] = [],
+    historyQuestion?: string,
+    references: ReferencedEntityContext[] = [],
+    historyOverride: VisibleHistoryMessage[] = [],
+    draft?: SqlDraft | null,
+  ): Promise<string> {
+    const schemaToUse =
+      schema ||
+      (await this.getCompleteSchema(
+        tables.length
+          ? tables
+          : await this.detectRelevantTables(question, undefined, references),
+      ));
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    const { messages, recentHistory } = await this.buildSqlMessages(
+      conversationId,
+      question,
+      schemaToUse,
+      historyOverride,
+    );
+
+    await this.conversationManager.addUserMessage(
+      conversationId,
+      historyQuestion ?? question,
+      references,
+    );
     const estimatedTokens = messages.reduce(
       (sum, m) => sum + Math.ceil(m.content.length / 4),
       0,
@@ -688,15 +887,13 @@ export class AiDatabaseService implements OnModuleInit {
     if (sqlCacheKey) {
       const cachedSql = this.sqlGenerationCache.get(sqlCacheKey);
       if (cachedSql && Date.now() - cachedSql.timestamp < 5 * 60 * 1000) {
+        draft?.abort();
         this.markMetric({ cacheHit: true });
         return cachedSql.sql;
       }
     }
 
-    // Génération SQL en streaming : évite un blocage unique et n'accumule pas
-    // les tokens de réflexion. Le parsing du SQL en aval reste identique.
-    const response = await this.invokeModelViaStream('quality', messages, 1200);
-    const content = this.extractLlmText(response);
+    const content = await this.resolveSqlResponse(messages, draft);
     this.logger.log(
       `Reponse SQL brute (200 chars): ${content.substring(0, 200)}`,
     );
@@ -767,11 +964,13 @@ export class AiDatabaseService implements OnModuleInit {
     tenantId: number | null,
   ): string {
     const readDomainRules = this.buildReadDomainRulesBlock();
+    // Ordre volontaire : tout ce qui est FIXE (rôle, règles, règles métier,
+    // format) vient d'abord, le schéma (variable selon les tables) ensuite, la
+    // règle tenant en dernier. Le préfixe identique d'une requête à l'autre est
+    // ainsi servi depuis le cache de contexte du fournisseur (DeepSeek), ce qui
+    // réduit la latence et le coût de chaque génération SQL.
     const prompt = `Tu es un expert SQL pour une base de donnees juridique.
-
-Voici le schema utile de la base :
-
-${schema}
+Le SCHEMA UTILE de la base est fourni a la fin de ce message.
 
 REGLES ABSOLUES :
 1. Ignore toujours les colonnes deleted_at, deleted_by, deleted_date
@@ -781,12 +980,12 @@ REGLES ABSOLUES :
 5. Toutes les valeurs doivent etre en dur, sans placeholders (:id, ?, @param)
 6. Pour une question de suivi ("cette facture", "ce dossier", "donne les details"), reutilise les contraintes metier de l'historique recent (client, statut, periode, montant, etc.). Si l'historique contient un bloc [CONTEXTE STRUCTURE POUR LES QUESTIONS DE SUIVI], utilise en priorite les identifiants exacts fournis (ex: dossier_id=40 => WHERE d.id = 40). N'utilise jamais une colonne avec ? ou un numero invente parce qu'un numero exact manque.
 7. Si des documents sont fournis dans la question, utilise leur contenu uniquement comme contexte d'analyse, pas comme nom de table
-8. ⚠️ IMPORTANT : Utilise EXACTEMENT les noms de tables du schema ci-dessus. Ne devine JAMAIS les noms de tables. Par exemple, la table "document_customer" s'appelle EXACTEMENT "document_customer", pas "document" ni "documents".
+8. ⚠️ IMPORTANT : Utilise EXACTEMENT les noms de tables du SCHEMA UTILE. Ne devine JAMAIS les noms de tables. Par exemple, la table "document_customer" s'appelle EXACTEMENT "document_customer", pas "document" ni "documents".
 9. Base MySQL : pour la date du jour utilise CURDATE() (TOUJOURS avec parenthèses), pour l'instant présent NOW(). N'écris JAMAIS CURDATE, CURRENT_DATE, NOW ni SYSDATE sans parenthèses, sinon MySQL les prend pour des colonnes. Ex: WHERE a.audience_date >= CURDATE().
-10. N'utilise QUE de vraies colonnes des tables ci-dessus, JAMAIS des champs calculés/libellés (ex: "Est à venir", "Statut libellé"). Pour les audiences "à venir", compare audience_date >= CURDATE() (et status = 0 si pertinent).
-11. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le schéma ci-dessus. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le tableau du schéma.
-12. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes listées ci-dessus, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
-13. Un identifiant LISIBLE contenant des lettres/chiffres/tirets/slashs (ex: \`F-2025-001\`, \`FAC2-202606-0001\`, \`DOS-2024-12\`) correspond TOUJOURS à une colonne d'identifiant métier (\`numero\`, \`reference\`, ou une colonne se terminant par \`_number\`/\`_reference\`), JAMAIS à la colonne \`id\` (qui est numérique ou UUID). Pour filtrer par un tel identifiant, utilise la colonne \`numero\`/\`reference\` correspondante (ex: \`WHERE f.numero = 'FAC2-202606-0001'\`), pas \`id\`. Réserve \`id\` aux valeurs purement numériques/UUID. La colonne Exemple du schéma indique le format réel de chaque colonne.
+10. N'utilise QUE de vraies colonnes des tables du SCHEMA UTILE, JAMAIS des champs calculés/libellés (ex: "Est à venir", "Statut libellé"). Pour les audiences "à venir", compare audience_date >= CURDATE() (et status = 0 si pertinent).
+11. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le SCHEMA UTILE. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le schéma.
+12. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes du SCHEMA UTILE, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
+13. Un identifiant LISIBLE contenant des lettres/chiffres/tirets/slashs (ex: \`F-2025-001\`, \`FAC2-202606-0001\`, \`DOS-2024-12\`) correspond TOUJOURS à une colonne d'identifiant métier (\`numero\`, \`reference\`, ou une colonne se terminant par \`_number\`/\`_reference\`), JAMAIS à la colonne \`id\` (qui est numérique ou UUID). Pour filtrer par un tel identifiant, utilise la colonne \`numero\`/\`reference\` correspondante (ex: \`WHERE f.numero = 'FAC2-202606-0001'\`), pas \`id\`. Réserve \`id\` aux valeurs purement numériques/UUID. La mention "ex:" du schéma indique le format réel de chaque colonne.
 14. Les colonnes \`id\`, \`uuid\`, \`tenant_id\` et \`*_id\` peuvent servir aux JOIN et aux filtres, mais ne doivent JAMAIS figurer dans le SELECT destiné à l'utilisateur. Sélectionne à leur place un nom, un titre, un libellé, un numéro métier ou une référence lisible. N'utilise \`SELECT *\` que dans l'exemple de syntaxe ci-dessous, jamais dans la requête finale.
 
 ${readDomainRules}
@@ -796,7 +995,11 @@ Reponds uniquement avec un bloc SQL parsable :
 
 \`\`\`sql
 SELECT * FROM dossiers d LIMIT ${this.MAX_RESULTS};
-\`\`\``;
+\`\`\`
+
+SCHEMA UTILE (seules ces tables et colonnes existent) :
+
+${schema}`;
 
     if (!tenantId || tenantId === 1) return prompt;
 
@@ -1834,7 +2037,7 @@ Contraintes obligatoires :
     } else {
       intentResult = await this.intentDetectionService.detectIntent(
         enrichedQuestion,
-        this.getRequestModel('fast', 64),
+        this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
         schema,
         {
           forceWrite: intentMode === 'write' || forceWriteDespiteReadMode,
@@ -3767,6 +3970,10 @@ ${blocks.join('\n\n')}
       if (event === 'status') await this.sleep(delayMs);
     };
 
+    // Génération SQL anticipée pendant la classification (voir startSqlDraft).
+    let sqlDraft: Promise<SqlDraft | null> | null = null;
+    let multiDraft: Promise<MultiResourceDraft | null> | null = null;
+
     try {
       tLog('service entré');
 
@@ -4042,9 +4249,41 @@ ${blocks.join('\n\n')}
       } else if (intentMode === 'chat') {
         intentResult = { type: 'CONVERSATIONAL', requiresConfirmation: false };
       } else {
+        // Sans verdict des règles locales, la classification coûte un appel
+        // LLM complet : on lance la génération SQL en parallèle, reprise si
+        // l'intention est READ, annulée sinon.
+        if (
+          intentMode === 'auto' &&
+          !forceWriteDespiteReadMode &&
+          this.intentDetectionService.classifyLocal(enrichedQuestion) === null
+        ) {
+          const subQuestions = this.decomposeReadQuestion(
+            dto.question,
+            enrichedQuestion,
+          );
+          if (subQuestions.length > 1) {
+            multiDraft = this.startMultiResourceDraft(
+              user,
+              subQuestions,
+              schema,
+              relevantTables,
+            );
+            tLog('⚡ sous-requêtes lancées en parallèle de la classification');
+          } else {
+            sqlDraft = this.startSqlDraft(
+              user,
+              dto.conversationId,
+              enrichedQuestion,
+              schema,
+              relevantTables,
+              historyOverride,
+            );
+            tLog('⚡ brouillon SQL lancé en parallèle de la classification');
+          }
+        }
         intentResult = await this.intentDetectionService.detectIntent(
           enrichedQuestion,
-          this.getRequestModel('fast', 64),
+          this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
           schema,
           {
             forceWrite: intentMode === 'write' || forceWriteDespiteReadMode,
@@ -4060,6 +4299,12 @@ ${blocks.join('\n\n')}
         );
       }
       tLog(`detectIntent retourné → ${intentResult.type}`);
+      if (intentResult.type !== 'READ') {
+        void sqlDraft?.then((draft) => draft?.abort());
+        void multiDraft?.then((draft) => draft?.abort());
+        sqlDraft = null;
+        multiDraft = null;
+      }
       this.markMetric({ intent: intentResult.type });
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
         intentResult.writePlan = this.enrichWritePlanWithReferencedEntities(
@@ -4264,6 +4509,7 @@ ${blocks.join('\n\n')}
           startTime,
           sendEvent,
           emit,
+          (await multiDraft)?.parts,
         );
         return;
       }
@@ -4276,6 +4522,7 @@ ${blocks.join('\n\n')}
         dto.question,
         requestContext.referenced,
         historyOverride,
+        await sqlDraft,
       );
       await emit('status', {
         message: '✅ Requête générée, exécution en cours...',
@@ -4349,7 +4596,7 @@ ${blocks.join('\n\n')}
         );
         const rerouted = await this.intentDetectionService.detectIntent(
           enrichedQuestion,
-          this.getRequestModel('fast', 64),
+          this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
           schema,
           {
             forceWrite: true,
@@ -4412,6 +4659,13 @@ ${blocks.join('\n\n')}
 
       const results = await this.executeSafeQuery(validatedQuery);
 
+      // Le tableau part dès l'exécution : l'utilisateur voit les données
+      // pendant que la réponse rédigée est générée.
+      sendEvent('rows', {
+        sqlQuery: validatedQuery,
+        results: results.data,
+        rowCount: results.rowCount,
+      });
       await emit('status', { message: '📊 Analyse des résultats...' });
 
       // Streaming token-by-token de l'analyse métier
@@ -4452,6 +4706,10 @@ ${blocks.join('\n\n')}
       this.logger.error(`❌ Erreur streaming: ${error.message}`);
       this.markMetric({ status: 'error' });
       sendEvent('error', { message: error.message });
+    } finally {
+      // Brouillons non repris (sortie anticipée, erreur…) : on coupe les appels.
+      void sqlDraft?.then((draft) => draft?.abort());
+      void multiDraft?.then((draft) => draft?.abort());
     }
   }
 
@@ -4472,6 +4730,7 @@ ${blocks.join('\n\n')}
     startTime: number,
     sendEvent: (event: string, data: any) => void,
     emit: (event: string, data: any, delayMs?: number) => Promise<void>,
+    draftParts?: Promise<Array<SubQuestionResult | null>> | null,
   ): Promise<void> {
     await emit('status', {
       message: `🧩 Question multi-ressources — ${subQuestions.length} recherches...`,
@@ -4488,8 +4747,16 @@ ${blocks.join('\n\n')}
       data: any[];
       rowCount: number;
     }> = [];
-    for (const sub of subQuestions) {
-      const part = await this.runSubQuestion(sub, schema, relevantTables, user);
+    // Sous-requêtes indépendantes (runSubQuestion ne lève jamais) : lancées en
+    // parallèle, l'ordre des résultats est conservé. Reprises telles quelles
+    // si elles ont été anticipées pendant la classification.
+    const subResults = await (draftParts ??
+      Promise.all(
+        subQuestions.map((sub) =>
+          this.runSubQuestion(sub, schema, relevantTables, user),
+        ),
+      ));
+    for (const part of subResults) {
       if (part) parts.push(part);
     }
 
@@ -4515,6 +4782,12 @@ ${blocks.join('\n\n')}
       return;
     }
 
+    sendEvent('rows', {
+      sqlQuery: parts.map((p) => `-- ${p.title}\n${p.sqlQuery}`).join('\n\n'),
+      results: parts[0].data,
+      rowCount: parts.reduce((sum, p) => sum + p.rowCount, 0),
+      resultSets: parts,
+    });
     await emit('status', { message: '📊 Analyse combinée des résultats...' });
     const analysis = await this.generateCombinedAnalysisStream(
       dto.question,
@@ -4578,8 +4851,14 @@ ${blocks.join('\n\n')}
       data: any[];
       rowCount: number;
     }> = [];
-    for (const sub of subQuestions) {
-      const part = await this.runSubQuestion(sub, schema, relevantTables, user);
+    // Sous-requêtes indépendantes (runSubQuestion ne lève jamais) : lancées en
+    // parallèle, l'ordre des résultats est conservé.
+    const subResults = await Promise.all(
+      subQuestions.map((sub) =>
+        this.runSubQuestion(sub, schema, relevantTables, user),
+      ),
+    );
+    for (const part of subResults) {
       if (part) parts.push(part);
     }
     if (parts.length === 0) return null;
@@ -5021,7 +5300,7 @@ QUESTION POSÉE PAR L'UTILISATEUR:
 "${question}"
 
 RÉSULTATS DES DONNÉES (présentés en termes métier):
-${JSON.stringify(businessResults, null, 2)}
+${JSON.stringify(businessResults)}
 
 INSTRUCTIONS IMPORTANTES:
 1. Réponds comme si tu parlais à un collègue non technique (avocat, gestionnaire de dossier)
@@ -5041,6 +5320,7 @@ RÉPONSE (en français courant, langage métier):`;
       'streaming',
       prompt,
       this.MAX_TOKENS,
+      this.analysisReasoning(),
     );
     const analysis = this.extractLlmText(response).trim();
     if (analysis) return analysis;
@@ -5154,7 +5434,7 @@ QUESTION POSÉE PAR L'UTILISATEUR:
 "${question}"
 
 RÉSULTATS DES DONNÉES (présentés en termes métier):
-${JSON.stringify(businessResults, null, 2)}
+${JSON.stringify(businessResults)}
 
 INSTRUCTIONS IMPORTANTES:
 1. Réponds comme si tu parlais à un collègue non technique
@@ -5180,6 +5460,7 @@ RÉPONSE (en langage naturel):`;
         'streaming',
         prompt,
         this.MAX_TOKENS,
+        this.analysisReasoning(),
       );
       for await (const chunk of stream) {
         const text = this.extractChunkText(chunk);
@@ -5206,6 +5487,7 @@ RÉPONSE (en langage naturel):`;
         'streaming',
         prompt,
         this.MAX_TOKENS,
+        this.analysisReasoning(),
       );
       fullText = this.extractLlmText(response);
       this.logger.debug(`📤 [FALLBACK] token unique: ${fullText.length} chars`);
@@ -5317,12 +5599,8 @@ RÉPONSE (en langage naturel):`;
     schema: string,
     relevantTables: string[],
     user: AiUserContext | string,
-  ): Promise<{
-    title: string;
-    sqlQuery: string;
-    data: any[];
-    rowCount: number;
-  } | null> {
+    signal?: AbortSignal,
+  ): Promise<SubQuestionResult | null> {
     try {
       // Réutiliser EXACTEMENT le pipeline du chemin mono-requête : prompt système
       // complet (13 règles + filtre tenant + exemples + règles métier) au format
@@ -5333,7 +5611,14 @@ RÉPONSE (en langage naturel):`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: sub.question },
       ];
-      const response = await this.invokeModel('quality', messages, 1500);
+      const response = await this.invokeModel(
+        'quality',
+        messages,
+        1500,
+        undefined,
+        signal,
+      );
+      if (signal?.aborted) return null;
       const content = this.extractLlmText(response);
       let sql = this.extractSQL(content) || this.extractSQLRelaxed(content);
       if (!sql) {
@@ -5396,7 +5681,7 @@ RÉPONSE (en langage naturel):`;
     const blocks = parts
       .map((p) => {
         const business = this.transformToBusinessResults(p.data, tables);
-        return `### ${p.title} (${p.rowCount} résultat(s))\n${JSON.stringify(business, null, 2)}`;
+        return `### ${p.title} (${p.rowCount} résultat(s))\n${JSON.stringify(business)}`;
       })
       .join('\n\n');
 
@@ -5455,6 +5740,7 @@ RÉPONSE (en langage naturel):`;
         'streaming',
         prompt,
         this.MAX_TOKENS,
+        this.analysisReasoning(),
       );
       for await (const chunk of stream) {
         const text = this.extractChunkText(chunk);
@@ -5472,6 +5758,7 @@ RÉPONSE (en langage naturel):`;
         'streaming',
         prompt,
         this.MAX_TOKENS,
+        this.analysisReasoning(),
       );
       fullText = this.extractLlmText(response);
       sendEvent('token', { text: fullText });
@@ -5495,6 +5782,7 @@ RÉPONSE (en langage naturel):`;
       'streaming',
       prompt,
       this.MAX_TOKENS,
+      this.analysisReasoning(),
     );
     const analysis = this.extractLlmText(response).trim();
     return analysis || this.buildCombinedFallbackAnalysis(parts, tables);
@@ -6116,34 +6404,28 @@ RÉPONSE (en langage naturel):`;
       `🔄 Génération du schéma complet pour ${validTables.length} tables...`,
     );
 
-    let schema = '# SCHÉMA DE LA BASE DE DONNÉES\n\n';
+    // Les relations sont écrites directement sur la colonne FK (« → table.col »),
+    // limitées aux tables présentes dans ce schéma : pas de section RELATIONS
+    // séparée qui répéterait la même information.
     const relationships = this.relationshipsCache.get('all') || {};
-
-    for (const table of validTables) {
-      try {
-        const tableInfo = await this.getTableInfo(table, relationships[table]);
-        if (tableInfo) {
-          this.logger.log(`🔄 tableau info  ${table} tables...`);
-          schema += tableInfo + '\n';
+    const includedTables = new Set(validTables);
+    const parts = await Promise.all(
+      validTables.map(async (table) => {
+        try {
+          return await this.getTableInfo(
+            table,
+            relationships[table],
+            includedTables,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Impossible de lire ${table}: ${(error as unknown as any).message}`,
+          );
+          return null;
         }
-      } catch (error) {
-        this.logger.warn(
-          `Impossible de lire ${table}: ${(error as unknown as any).message}`,
-        );
-      }
-    }
-
-    schema += '\n# RELATIONS ENTRE TABLES\n\n';
-    for (const table of validTables) {
-      const rel = relationships[table];
-      if (rel?.foreignKeys) {
-        for (const fk of rel.foreignKeys) {
-          if (validTables.includes(fk.referencedTable)) {
-            schema += `- ${table}.${fk.column} → ${fk.referencedTable}.${fk.referencedColumn}\n`;
-          }
-        }
-      }
-    }
+      }),
+    );
+    const schema = parts.filter(Boolean).join('\n');
 
     const finalSchema = schema.substring(0, this.MAX_CHARS);
     this.schemaCache.set(cacheKey, { schema: finalSchema, timestamp: now });
@@ -6163,28 +6445,28 @@ RÉPONSE (en langage naturel):`;
     return this.getCompleteSchema(visibleTables);
   }
   /**
-   * Récupère les infos d'une table avec TOUS les détails des colonnes
+   * Décrit une table pour le prompt SQL, au format compact « une ligne par
+   * colonne » : nom, type, clé, relation, libellé métier, exemple, description.
+   * Seules les informations utiles à l'écriture du SQL sont gardées (pas de
+   * NOT NULL/DEFAULT, pas de libellé ni description générés automatiquement,
+   * pas de comptage de lignes) : chaque token retiré accélère la génération.
    */
   private async getTableInfo(
     table: string,
     relationships?: any,
+    includedTables?: Set<string>,
   ): Promise<string | null> {
-    // Récupérer TOUTES les colonnes
     const columns = await this.dataSource.query(
       `
-      SELECT 
+      SELECT
         COLUMN_NAME,
         DATA_TYPE,
         COLUMN_TYPE,
         COLUMN_KEY,
-        IS_NULLABLE,
-        COLUMN_DEFAULT,
-        EXTRA,
-        CHARACTER_MAXIMUM_LENGTH,
         NUMERIC_PRECISION,
         NUMERIC_SCALE,
         COLUMN_COMMENT
-      FROM information_schema.COLUMNS 
+      FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
       ORDER BY ORDINAL_POSITION
     `,
@@ -6197,8 +6479,27 @@ RÉPONSE (en langage naturel):`;
     const columnMetadata = this.columnLabelsCache.get(table) || new Map();
     const tableMeta = this.schemaMetadata.getTableMetadataForPrompt(table);
 
+    // Colonnes de suppression logique : la règle n°1 du prompt demande déjà de
+    // les ignorer, inutile de les décrire.
+    const softDeleteColumns = new Set([
+      'deleted_at',
+      'deleted_by',
+      'deleted_date',
+    ]);
+    // Colonnes techniques dont le nom suffit : ni libellé ni description.
+    const bareColumns = new Set([
+      'id',
+      'uuid',
+      'tenant_id',
+      'created_at',
+      'updated_at',
+      'created_by',
+      'updated_by',
+    ]);
+
     // ✅ Filtrer les colonnes ignorées
     const visibleColumns = columns.filter((col) => {
+      if (softDeleteColumns.has(col.COLUMN_NAME)) return false;
       let meta;
       if (columnMetadata instanceof Map) {
         meta = columnMetadata.get(col.COLUMN_NAME);
@@ -6207,150 +6508,109 @@ RÉPONSE (en langage naturel):`;
       return !meta?.ignored;
     });
 
-    // Compter les lignes
-    let rowCount = 0;
-    try {
-      const countResult = await this.dataSource.query(
-        `SELECT COUNT(*) as count FROM ${table}`,
-      );
-      rowCount = parseInt(countResult[0]?.count || '0');
-    } catch {
-      /* ignore */
+    const foreignKeys = new Map<string, string>();
+    for (const fk of relationships?.foreignKeys ?? []) {
+      if (!includedTables || includedTables.has(fk.referencedTable)) {
+        foreignKeys.set(
+          fk.column,
+          `${fk.referencedTable}.${fk.referencedColumn}`,
+        );
+      }
     }
 
-    // Construction du schéma enrichi
-    let schema = `## Table ${table} (${rowCount.toLocaleString()} lignes)\n\n`;
+    const normalize = (value: string) =>
+      this.stripAccents(String(value ?? ''))
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
 
-    // ✅ AJOUTER LES INFORMATIONS BUSINESS TABLE
-    if (tableMeta) {
-      schema += `**📋 Métier:** ${tableMeta.label}\n`;
-      if (tableMeta.description) {
-        schema += `**📝 Description:** ${tableMeta.description}\n`;
-      }
-      if (tableMeta.icon) {
-        schema += `**🖼️ Icône:** ${tableMeta.icon}\n`;
-      }
-      if (tableMeta.category) {
-        schema += `**📁 Catégorie:** ${tableMeta.category}\n`;
-      }
-      schema += `\n`;
+    let schema = `## ${table}`;
+    if (tableMeta?.label) schema += ` — ${tableMeta.label}`;
+    schema += '\n';
+    if (tableMeta?.description) {
+      schema += `${this.truncateSchemaText(tableMeta.description, 220)}\n`;
     }
-    schema +=
-      '| Colonne technique | Type détaillé | Contraintes | Libellé métier | Exemple | Description |\n';
-    schema +=
-      '|------------------|---------------|-------------|----------------|---------|-------------|\n';
 
     for (const col of visibleColumns) {
-      // ✅ Utiliser visibleColumns
-      // Type détaillé
-      let detailedType = col.DATA_TYPE;
-      if (
-        (col.DATA_TYPE === 'enum' || col.DATA_TYPE === 'set') &&
-        col.COLUMN_TYPE
-      ) {
-        detailedType = col.COLUMN_TYPE;
-      } else if (col.CHARACTER_MAXIMUM_LENGTH) {
-        detailedType += `(${col.CHARACTER_MAXIMUM_LENGTH})`;
-      } else if (col.NUMERIC_PRECISION) {
-        detailedType += `(${col.NUMERIC_PRECISION}`;
-        if (col.NUMERIC_SCALE) detailedType += `,${col.NUMERIC_SCALE}`;
-        detailedType += `)`;
-      }
+      const name: string = col.COLUMN_NAME;
+      let line = `- ${name} ${this.compactColumnType(col)}`;
+      if (col.COLUMN_KEY === 'PRI') line += ' PK';
+      const reference = foreignKeys.get(name);
+      if (reference) line += ` → ${reference}`;
 
-      // Contraintes
-      const constraints: any[] = [];
-      if (col.COLUMN_KEY === 'PRI') constraints.push('🔑 PK');
-      if (col.COLUMN_KEY === 'MUL') constraints.push('🔗 FK');
-      if (col.IS_NULLABLE === 'NO') constraints.push('NOT NULL');
-      if (col.EXTRA?.includes('auto_increment'))
-        constraints.push('AUTO_INCREMENT');
-      if (col.COLUMN_DEFAULT) constraints.push(`DEFAULT ${col.COLUMN_DEFAULT}`);
+      if (!bareColumns.has(name)) {
+        const label = this.schemaMetadata.getBusinessLabel(table, name);
+        const autoLabel = this.schemaMetadata.formatTechnicalName(name);
+        const hasLabel = !!label && normalize(label) !== normalize(autoLabel);
+        if (hasLabel) line += ` « ${label} »`;
 
-      // Libellé métier
-      const businessLabel = this.schemaMetadata.getBusinessLabel(
-        table,
-        col.COLUMN_NAME,
-      );
-
-      // Description
-      let description = col.COLUMN_COMMENT || '';
-      if (!description) {
-        const metaDesc = this.schemaMetadata.getColumnDescription(
-          table,
-          col.COLUMN_NAME,
-        );
-        description = metaDesc || this.getDefaultDescription(col.COLUMN_NAME);
-      }
-
-      // Exemple de valeur (distingue numero/reference lisibles d'un id numérique/UUID)
-      const example =
-        this.schemaMetadata.getColumnExample(table, col.COLUMN_NAME) || '-';
-
-      schema += `| ${col.COLUMN_NAME} | ${detailedType} | ${constraints.join(', ') || '-'} | ${businessLabel} | ${example} | ${description.substring(0, 240)}${description.length > 240 ? '...' : ''} |\n`;
-    }
-
-    // Ajouter les relations (filtrer aussi les colonnes FK ignorées)
-    if (relationships?.foreignKeys?.length > 0) {
-      schema += '\n### 🔗 Clés étrangères\n\n';
-      for (const fk of relationships.foreignKeys) {
-        // ✅ Vérifier si la colonne FK n'est pas ignorée
-        let fkMeta;
-        if (columnMetadata instanceof Map) {
-          fkMeta = columnMetadata.get(fk.column);
+        const example = this.schemaMetadata.getColumnExample(table, name);
+        if (example && example !== '-') {
+          line += ` ex: ${this.truncateSchemaText(example, 80)}`;
         }
-        if (
-          !fkMeta?.ignored &&
-          this.schemaMetadata.hasTableMetadata(fk.referencedTable)
-        ) {
-          const fkLabel = this.schemaMetadata.getBusinessLabel(
-            table,
-            fk.column,
-          );
-          const refTableLabel = this.schemaMetadata.getTableLabel(
-            fk.referencedTable,
-          );
-          schema += `- **${fkLabel}** (${fk.column}) → **${refTableLabel}** (${fk.referencedTable}.${fk.referencedColumn})\n`;
+
+        const description =
+          col.COLUMN_COMMENT ||
+          this.schemaMetadata.getColumnDescription(table, name) ||
+          '';
+        const isUseful =
+          description.trim().length > 0 &&
+          description !== this.getDefaultDescription(name) &&
+          (!hasLabel || normalize(description) !== normalize(label));
+        if (isUseful) {
+          // Limite large : les descriptions portent souvent la table des codes
+          // (« BD: 0=OPEN, … 8=CLOSED ») qu'il ne faut pas couper.
+          line += ` — ${this.truncateSchemaText(description, 400)}`;
         }
       }
+
+      schema += `${line}\n`;
     }
 
     // ⚠️ HINT spécial pour la table employee : les noms sont dans user
     if (table === 'employee') {
-      schema += '\n### ⚠️ ATTENTION : Noms des collaborateurs\n\n';
       schema +=
-        'La table "employee" ne contient PAS les colonnes "last_name" ni "first_name".\n';
-      schema +=
-        'Ces colonnes se trouvent dans la table "user", liée via une clé primaire partagée (employee.id = user.id).\n';
-      schema +=
-        'Pour récupérer le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec "user" sur user.id = employee.id\n';
-      schema += 'et sélectionner user.last_name et user.first_name.\n';
-      schema +=
-        "Ne JAMAIS utiliser employee.last_name ou employee.first_name — ces colonnes n'existent PAS.\n";
-      schema +=
-        "Pour le nom complet : CONCAT(user.first_name, ' ', user.last_name).\n";
+        '⚠️ employee n\'a PAS de colonnes last_name/first_name : elles sont dans "user" (employee.id = user.id). ' +
+        "Pour le nom d'un collaborateur, fais LEFT JOIN user u ON u.id = employee.id et sélectionne " +
+        "CONCAT(u.first_name, ' ', u.last_name). N'utilise JAMAIS employee.last_name ni employee.first_name.\n";
     }
 
     if (table === 'dossier_actions') {
-      schema += '\n### 👤 Affichage lisible des actions\n\n';
       schema +=
-        "N'affiche jamais id, definition_id, responsible_user_id ou un UUID.\n";
-      schema += "Affiche title ou definition_label pour désigner l'action.\n";
-      schema +=
-        'Pour le responsable, fais un LEFT JOIN avec "user" sur user.id = dossier_actions.responsible_user_id, puis sélectionne CONCAT(user.first_name, \' \', user.last_name) AS responsable.\n';
-      schema +=
-        "Une action COMPLETED n'est pas automatiquement facturable. Utilise exclusivement billing_decision = 'BILLABLE' pour la qualifier d'action à facturer.\n";
-      schema +=
-        "Pour une action prête à mettre sur facture, joins billable_items sur source_type = 'ACTION' et source_id = dossier_actions.id, puis exige billable_items.status = 'TO_INVOICE'.\n";
+        "⚠️ N'affiche jamais id, definition_id, responsible_user_id ni un UUID : désigne l'action par title ou definition_label. " +
+        "Responsable : LEFT JOIN user u ON u.id = dossier_actions.responsible_user_id, puis CONCAT(u.first_name, ' ', u.last_name) AS responsable. " +
+        "Une action COMPLETED n'est pas automatiquement facturable : seule billing_decision = 'BILLABLE' la rend « à facturer ». " +
+        "Pour une action prête à mettre sur facture, joins billable_items sur source_type = 'ACTION' AND source_id = dossier_actions.id et exige billable_items.status = 'TO_INVOICE'.\n";
     }
 
     if (table === 'billable_items') {
-      schema += '\n### 💰 Interprétation de la facturation\n\n';
       schema +=
-        'TO_INVOICE = prêt à facturer; NEEDS_REVIEW = tarif ou calcul à contrôler; RESERVED = réservé; INVOICED = déjà facturé; WAIVED = abandonné; ADJUSTED = ajusté.\n';
-      schema += 'Ne présente jamais NEEDS_REVIEW comme déjà prêt à facturer.\n';
+        '⚠️ Statuts : TO_INVOICE = prêt à facturer; NEEDS_REVIEW = tarif ou calcul à contrôler; RESERVED = réservé; ' +
+        'INVOICED = déjà facturé; WAIVED = abandonné; ADJUSTED = ajusté. Ne présente jamais NEEDS_REVIEW comme prêt à facturer.\n';
     }
 
     return schema;
+  }
+
+  /** Type SQL réduit à ce qui guide l'écriture d'une requête. */
+  private compactColumnType(col: any): string {
+    const dataType = String(col.DATA_TYPE ?? '').toLowerCase();
+    if ((dataType === 'enum' || dataType === 'set') && col.COLUMN_TYPE) {
+      return col.COLUMN_TYPE;
+    }
+    if (
+      (dataType === 'decimal' || dataType === 'numeric') &&
+      col.NUMERIC_PRECISION
+    ) {
+      return `${dataType}(${col.NUMERIC_PRECISION},${col.NUMERIC_SCALE ?? 0})`;
+    }
+    return dataType;
+  }
+
+  private truncateSchemaText(text: string, max: number): string {
+    const clean = String(text ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return clean.length > max ? `${clean.substring(0, max - 1)}…` : clean;
   }
 
   private async getTableInfoJson(
@@ -7050,6 +7310,26 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     );
   }
 
+  /**
+   * Garantit qu'une lecture ne ramène jamais plus de MAX_RESULTS lignes depuis
+   * MySQL. Sans LIMIT, toute la table était lue puis tronquée en mémoire par
+   * `.slice()`, ce qui coûte cher sur les grosses tables. Le LIMIT n'est ajouté
+   * que si la requête n'en contient aucun (une sous-requête limitée reste
+   * couverte par le `.slice()` de sécurité).
+   */
+  private ensureResultLimit(sql: string): string {
+    const code = this.stripSqlLiteralsAndComments(sql);
+    if (/\blimit\b/i.test(code)) return sql;
+    if (/\b(for\s+update|lock\s+in\s+share\s+mode)\b/i.test(code)) return sql;
+    // Retire commentaires et « ; » finaux : un `--` en fin de requête
+    // avalerait le LIMIT ajouté.
+    const body = sql
+      .replace(/(\s*(--[^\n]*|\/\*[\s\S]*?\*\/|;))+\s*$/, '')
+      .trimEnd();
+    if (this.stripSqlLiteralsAndComments(body).includes(';')) return sql;
+    return `${body}\nLIMIT ${this.MAX_RESULTS}`;
+  }
+
   private stripSqlLiteralsAndComments(sql: string): string {
     return sql
       .replace(/'([^'\\]|\\.|'')*'/g, "''")
@@ -7210,7 +7490,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     }
 
     // execQuery est la requête nettoyée + enrichie qui sera réellement exécutée
-    const execQuery = this.prepareReadQuery(sqlQuery);
+    const execQuery = this.ensureResultLimit(this.prepareReadQuery(sqlQuery));
 
     // normalizedQuery (lowercase) sert uniquement à la validation de sécurité
     const normalizedQuery = execQuery.toLowerCase();

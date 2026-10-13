@@ -34,8 +34,9 @@ import {
   CreateLegacyWorkflowMappingDto,
   DeferRecommendationDto,
   ExtendDossierActionDeadlineDto,
+  AddBillableItemsToFactureDto,
   GenerateInvoiceFromItemsDto,
-  ReviewBillableItemDto,
+ReviewBillableItemDto,
   RecalculateBillableItemsDto,
   SwitchBillingModeDto,
   ReopenDossierDto,
@@ -567,6 +568,22 @@ export class CaseInvoicesController {
     @CurrentUser() user: User,
   ) {
     return this.billingService.invoiceFromItems(
+      dto,
+      requireIdempotencyKey(key),
+      actorId(user),
+    );
+  }
+
+  @Post('facture/:factureId/billable-items')
+  @RequirePermissions('edit_facture', 'generate_invoice_from_items')
+  addItemsToFacture(
+    @Param('factureId') factureId: string,
+    @Body() dto: AddBillableItemsToFactureDto,
+    @Headers('idempotency-key') key: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.billingService.addItemsToFacture(
+      factureId,
       dto,
       requireIdempotencyKey(key),
       actorId(user),

@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -90,7 +91,8 @@ export class UpdateActionFamilyDto {
   @IsOptional()
   @IsString()
   @MaxLength(2000)
-  description?: string;
+  // null = vider la description (le service la passe à NULL en base).
+  description?: string | null;
 
   @IsOptional()
   @IsInt()
@@ -653,6 +655,17 @@ export class GenerateInvoiceFromItemsDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  libelle?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  taux_tva?: number;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(1000)
   description?: string;
 
@@ -665,6 +678,13 @@ export class GenerateInvoiceFromItemsDto {
   @ValidateNested()
   @Type(() => InitialPaymentDto)
   initial_payment?: InitialPaymentDto;
+}
+
+export class AddBillableItemsToFactureDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  billable_item_ids: string[];
 }
 
 export class ReviewBillableItemDto {

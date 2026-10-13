@@ -148,7 +148,11 @@ export class AiAdminController {
         providerId,
         candidateRuntime,
       );
-      if (!availableModels.includes(normalizedModel)) {
+      // Google fait évoluer ses IDs de modèles en continu : on accepte tout
+      // nom de modèle non vide (modèles configurables). La validité réelle
+      // se vérifie via « Tester » et à l'appel. Les autres fournisseurs
+      // intégrés gardent leur liste fermée.
+      if (providerId !== 'google' && !availableModels.includes(normalizedModel)) {
         throw new BadRequestException(
           `Modele non disponible pour ${definition.label}`,
         );

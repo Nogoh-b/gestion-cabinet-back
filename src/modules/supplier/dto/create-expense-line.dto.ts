@@ -39,17 +39,17 @@ export class CreateExpenseLineDto {
     description: 'Description de la dépense',
   })
   @IsString()
-  @IsNotEmpty()
-  description: string;
+  @IsOptional()
+  description?: string;
 
   @ApiProperty({
-    enum: ExpenseCategory,
-    example: ExpenseCategory.TRANSPORT,
-    description: 'Catégorie de dépense',
+    example: 'transport',
+    description: 'Code de catégorie de dépense (liste gérable par le cabinet)',
   })
-  @IsEnum(ExpenseCategory)
+  @IsString()
   @IsNotEmpty()
-  category: ExpenseCategory;
+  @MaxLength(80)
+  category: string;
 
   @ApiProperty({
     example: 120.0,

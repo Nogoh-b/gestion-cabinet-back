@@ -14,7 +14,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ExpenseCategory, ExpenseRebillingType } from '../entities/expense-line.entity';
+import { ExpenseRebillingType } from '../entities/expense-line.entity';
 import { SupplierInvoiceStatus } from '../entities/supplier-invoice.entity';
 
 export enum ExpenseWorkspaceOrigin {
@@ -92,12 +92,14 @@ export class UnifiedExpenseLineDto {
   @IsDateString()
   expense_date: string;
 
+  @IsOptional()
   @IsString()
   @MaxLength(500)
-  description: string;
+  description?: string;
 
-  @IsEnum(ExpenseCategory)
-  category: ExpenseCategory;
+  @IsString()
+  @MaxLength(80)
+  category: string;
 
   @IsNumber()
   @Min(0)
@@ -120,12 +122,14 @@ export class UnifiedExpenseLineDto {
 }
 
 export class UnifiedExpenseReportDto {
+  @IsOptional()
   @IsInt()
-  employee_id: number;
+  employee_id?: number;
 
+  @IsOptional()
   @IsString()
   @MaxLength(255)
-  title: string;
+  title?: string;
 
   @IsDateString()
   submission_date: string;

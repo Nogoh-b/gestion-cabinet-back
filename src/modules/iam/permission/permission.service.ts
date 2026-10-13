@@ -2,12 +2,14 @@
 import {
   Injectable,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Permission } from './entities/permission.entity';
 import { CreatePermissionDto } from './dto/create-permission.dto';
+import { isProtectedPermission } from '../constants/iam.constants';
 
 @Injectable()
 export class PermissionsService {
@@ -17,6 +19,11 @@ export class PermissionsService {
   ) {}
 
   async create(dto: CreatePermissionDto): Promise<Permission> {
+    if (isProtectedPermission({ code: dto.code })) {
+      throw new ForbiddenException(
+        'Les permissions système ne peuvent pas être créées depuis un cabinet.',
+      );
+    }
     const exists = await this.repository.findOne({ where: { code: dto.code } });
     if (exists) throw new ConflictException('Permission code already exists');
     return this.repository.save({ ...dto, status: 1 });

@@ -11,7 +11,8 @@ import { PERMISSIONS_KEY } from 'src/core/decorators/permissions.decorator';
 import { ActivitiesUserService } from 'src/modules/iam/activities-user/activities-user.service';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const SKIP = [/\/auth\/refresh/i];
+// /platform : journalisé à part (platform_audit_logs), jamais dans l'audit cabinet.
+const SKIP = [/\/auth\/refresh/i, /^\/platform(?:\/|\?|$)/i];
 const AUDITABLE_READ = /\/(?:download|export|stream|base64|pdf)(?:\/|\?|$)/i;
 
 const RESOURCE_META: Record<string, { object: string; route?: string }> = {

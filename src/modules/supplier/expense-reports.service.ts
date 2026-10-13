@@ -17,6 +17,7 @@ import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { addTenantCondition } from 'src/core/tenant/tenant-repository.patch';
 import { CaseBillingService } from '../case-workflow/services/case-billing.service';
 import { BillableItemStatus } from '../case-workflow/case-workflow.enums';
+import { BillableItem } from '../case-workflow/entities/billing.entity';
 
 @Injectable()
 export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
@@ -72,10 +73,34 @@ export class ExpenseReportsService extends BaseServiceV1<ExpenseReport> {
 
   async findOne(id: number): Promise<ExpenseReport> {
     const report = await this.repository.findOne({
-      where: { id },
+      where: { id, tenant_id: getCurrentTenantId() },
       relations: ['employee', 'approved_by', 'lines', 'lines.dossier'],
     });
     if (!report) throw new NotFoundException('Note de frais non trouvée');
+    Object.assign(report, {
+      total_rebillable: (report.lines ?? [])
+        .filter((line) => line.is_rebillable && line.dossier_id)
+        .reduce((total, line) => total + Number(line.amount_ttc || 0), 0),
+    });
+    const lineIds = (report.lines ?? []).map((line) => line.id);
+    if (lineIds.length) {
+      const items = await this.dataSource.getRepository(BillableItem)
+        .createQueryBuilder('item')
+        .where('item.tenant_id = :tenantId', { tenantId: getCurrentTenantId() })
+        .andWhere('item.source_event_key IN (:...keys)', {
+          keys: lineIds.map((lineId) => `EXPENSE:${lineId}:APPROVED`),
+        })
+        .getMany();
+      const bySource = new Map(items.map((item) => [item.source_event_key, item]));
+      for (const line of report.lines ?? []) {
+        const item = bySource.get(`EXPENSE:${line.id}:APPROVED`);
+        Object.assign(line, {
+          billing_status: item?.status ?? null,
+          billing_review_reason: item?.review_reason ?? null,
+          receipt_override: item?.calculation_snapshot?.receiptOverride ?? null,
+        });
+      }
+    }
     return report;
   }
 

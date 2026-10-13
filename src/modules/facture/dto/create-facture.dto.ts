@@ -87,29 +87,39 @@ export class CreateFactureDto {
   @IsNumber()
   montantHT: number = 100000;
 
-  @ApiProperty({
-    description: 'Taux de TVA en pourcentage',
-    example: 20,
-    default: 20,
+  @ApiPropertyOptional({
+    description:
+      'Taux de TVA en pourcentage. Si omis, reprend la config du dossier (profil de facturation), sinon le défaut du cabinet.',
+    example: 19.25,
   })
   @IsNumber()
-  tauxTVA: number = 20;
+  @IsOptional()
+  tauxTVA?: number;
 
-  @ApiProperty({
-    description: 'Montant de la TVA',
+  @ApiPropertyOptional({
+    description: 'Montant de la TVA (calculé si omis : HT × taux TVA)',
     example: 20000,
-    default: 20000,
   })
   @IsNumber()
-  montantTVA: number = 20000;
+  @IsOptional()
+  montantTVA?: number;
 
-  @ApiProperty({
-    description: 'Montant TTC (total à payer)',
+  @ApiPropertyOptional({
+    description: 'Montant TTC, total à payer (calculé si omis : HT + TVA)',
     example: 120000,
-    default: 120000,
   })
   @IsNumber()
-  montantTTC: number = 120000;
+  @IsOptional()
+  montantTTC?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Libellé utilisé pour identifier la facture. Si omis ou vide, il reprend automatiquement le numéro de la facture.',
+    example: 'Honoraires — dossier DOS-2026-0012',
+  })
+  @IsString()
+  @IsOptional()
+  libelle?: string;
 
   @ApiPropertyOptional({
     description: 'Description détaillée des prestations ou services facturés',

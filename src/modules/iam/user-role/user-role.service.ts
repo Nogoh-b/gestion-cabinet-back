@@ -54,7 +54,10 @@ export class UserRolesService {
 
   async getPermissionsByCode(code: string) {
     const role = await this.repository.findOneBy({ code });
-    return await this.rolepermissionService.getRolePermissions(role?.id || 1);
+    // Rôle introuvable : aucune permission. Ne JAMAIS retomber sur un autre
+    // rôle (l'ancien `role?.id || 1` donnait les droits du rôle d'id 1).
+    if (!role) return [];
+    return await this.rolepermissionService.getRolePermissions(role.id);
   }
 
   async findOne(id: number): Promise<UserRole> {

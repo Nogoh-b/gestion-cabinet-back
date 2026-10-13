@@ -160,6 +160,11 @@ export class FactureWriteHandler extends BaseWriteHandler {
           '0=BROUILLON, 1=ENVOYEE, 2=PARTIELLEMENT_PAYEE, 3=PAYEE, 4=IMPAYEE, 5=ANNULEE',
         example: '0',
       },
+      libelle: {
+        description:
+          'Libellé utilisé de la facture. Si omis ou vide, reprend le numéro.',
+        example: 'Honoraires — dossier DOS-2026-0012',
+      },
       dateEcheance: {
         description: 'Date limite de paiement (par défaut: J+30)',
         example: '2026-06-15',
@@ -220,9 +225,20 @@ export class FactureWriteHandler extends BaseWriteHandler {
       numero = await this.generateInvoiceNumber();
     }
 
+    // TVA : valeur saisie prioritaire, sinon défaut du cabinet.
+    const rawTva = safeFields.tauxTVA ?? safeFields.taux_tva;
+    const tauxTVA =
+      rawTva !== undefined && rawTva !== null && String(rawTva).trim?.() !== ''
+        ? Number(rawTva)
+        : Number(
+            (
+              await this.dataSource
+                .getRepository(Cabinet)
+                .findOne({ where: { id: getCurrentTenantId() } })
+            )?.default_tva_rate ?? 0,
+          );
     // Calculs financiers
     const montantHT = Number(safeFields.montantHT ?? 0);
-    const tauxTVA = Number(safeFields.tauxTVA ?? 0);
     const montantTVA = Math.round(montantHT * tauxTVA) / 100;
     const montantTTC = Math.round((montantHT + montantTVA) * 100) / 100;
 
@@ -237,6 +253,13 @@ export class FactureWriteHandler extends BaseWriteHandler {
     const data = {
       ...safeFields,
       numero,
+      // Libellé : valeur saisie prioritaire, sinon numéro de la facture.
+      libelle:
+        safeFields.libelle !== undefined &&
+        safeFields.libelle !== null &&
+        String(safeFields.libelle).trim() !== ''
+          ? String(safeFields.libelle).trim()
+          : numero,
       dateFacture,
       dateEcheance,
       montantHT,
@@ -284,6 +307,11 @@ export class FactureWriteHandler extends BaseWriteHandler {
     );
     delete safeFields['numero'];
     delete safeFields['dateFacture'];
+    // Libellé : chaîne vide = fallback sur le numéro (jamais vide).
+    if (safeFields.libelle !== undefined) {
+      const trimmed = String(safeFields.libelle ?? '').trim();
+      safeFields.libelle = trimmed !== '' ? trimmed : facture.numero;
+    }
 
     Object.assign(facture, safeFields);
 

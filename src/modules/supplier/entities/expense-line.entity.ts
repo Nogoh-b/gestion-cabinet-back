@@ -77,25 +77,25 @@ export class ExpenseLine extends TenantEntity {
   })
   expense_date: Date;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   @BusinessColumn({
     label: 'Description',
-    description: 'Détail de la dépense',
+    description: 'Détail de la dépense (facultatif)',
     example: 'Train Paris-Lyon A/R',
-    importance: 'high',
+    importance: 'medium',
     group: 'identification',
   })
-  description: string;
+  description: string | null;
 
-  @Column({ type: 'enum', enum: ExpenseCategory })
+  @Column({ type: 'varchar', length: 80 })
   @BusinessColumn({
     label: 'Catégorie',
     description:
-      "BD: 'transport', 'accommodation', 'meal', 'bailiff', 'court_fees', 'office_supplies', 'other'.",
+      'Code de catégorie (table expense_category gérable par le cabinet ; valeurs historiques conservées).',
     importance: 'high',
     group: 'identification',
   })
-  category: ExpenseCategory;
+  category: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, name: 'amount_ht' })
   @BusinessColumn({

@@ -21,37 +21,30 @@ import { BackupScope, BackupService } from './backup.service';
 export class BackupController {
   constructor(private readonly backup: BackupService) {}
 
-  private isSuperAdmin(req: any): boolean {
-    return (req?.user?.permissions ?? []).includes('SUPER_ADMIN');
-  }
-
-  /** Admin du cabinet OU super-admin. */
+  /** Admin du cabinet uniquement. */
   private assertAdmin(req: any): void {
-    if (req?.user?.role !== 'admin' && !this.isSuperAdmin(req)) {
+    if (req?.user?.role !== 'admin') {
       throw new ForbiddenException("Réservé à l'administration");
     }
   }
 
-  /** Portée : super-admin = toute la base ; sinon = le cabinet courant. */
+  /**
+   * Portée : toujours le cabinet courant. La sauvegarde/restauration de la
+   * base complète relève de l'espace plateforme (`/platform/backups`).
+   */
   private scopeOf(req: any): BackupScope {
-    const full = this.isSuperAdmin(req);
-    return { full, tenantId: full ? undefined : req?.user?.tenantId };
+    return { full: false, tenantId: req?.user?.tenantId };
   }
 
   @Get()
-  @ApiOperation({
-    summary:
-      'Lister les sauvegardes (scopées au cabinet, ou toutes si super-admin)',
-  })
+  @ApiOperation({ summary: 'Lister les sauvegardes du cabinet' })
   list(@Req() req: Request) {
     this.assertAdmin(req);
     return this.backup.list(this.scopeOf(req));
   }
 
   @Post()
-  @ApiOperation({
-    summary: 'Créer une sauvegarde (cabinet, ou complète si super-admin)',
-  })
+  @ApiOperation({ summary: 'Créer une sauvegarde du cabinet' })
   create(@Req() req: Request) {
     this.assertAdmin(req);
     return this.backup.create(this.scopeOf(req));
@@ -72,19 +65,6 @@ export class BackupController {
     res.setHeader('Content-Type', 'application/sql');
     res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
     stream.pipe(res);
-  }
-
-  @Post(':name/restore')
-  @ApiOperation({
-    summary: 'Restaurer la base (DANGEREUX — super-admin uniquement)',
-  })
-  restore(@Req() req: Request, @Param('name') name: string) {
-    if (!this.isSuperAdmin(req)) {
-      throw new ForbiddenException(
-        'Restauration réservée au super-administrateur',
-      );
-    }
-    return this.backup.restore(name);
   }
 
   @Delete(':name')

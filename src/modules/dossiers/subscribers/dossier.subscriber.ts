@@ -255,6 +255,8 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         montantTTC,
         dateFacture: today,
         dateEcheance: echeance,
+        // Libellé utilisé de la facture ; la description garde le détail.
+        libelle: label,
         description: label,
         notify_client: false,
         stage_visit_id: openingStageVisitId,
@@ -344,7 +346,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         },
         lawyer_id: dossier.lawyer_id ?? null,
         collaborator_ids: (dossier.collaborators ?? [])
-          .map((c) => (c as any).user_id ?? (c as any).user?.id)
+          .map((c) => (c as any).user_id ?? (c as any).user?.id ?? c.id)
           .filter(Boolean),
       },
       entity: { type: 'dossier', id: dossier.id },
@@ -550,7 +552,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
         },
         lawyer_id: dossier.lawyer_id ?? null,
         collaborator_ids: (dossier.collaborators ?? [])
-          .map((c) => (c as any).user_id ?? (c as any).user?.id)
+          .map((c) => (c as any).user_id ?? (c as any).user?.id ?? c.id)
           .filter(Boolean),
       },
       entity: { type: 'dossier', id: dossier.id },
@@ -627,7 +629,7 @@ export class DossierSubscriber extends NotifiableSubscriber<Dossier> {
 
     // Notifier chaque nouveau collaborateur en in-app + e-mail
     const newCollabUserIds = toAdd
-      .map((emp) => (emp as any).user_id ?? (emp as any).user?.id)
+      .map((emp) => (emp as any).user_id ?? (emp as any).user?.id ?? emp.id)
       .filter(Boolean);
     if (newCollabUserIds.length > 0) {
       const mailDossier =

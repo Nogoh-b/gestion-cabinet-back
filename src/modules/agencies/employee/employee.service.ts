@@ -12,6 +12,7 @@ import {
 
 import {
   BaseServiceV1,
+  SearchCriteria,
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
 
@@ -770,6 +771,8 @@ export class EmployeeService extends BaseServiceV1<Employee> {
     });
   }
 
+  /* Ancien bloc commenté (référence) : findByUsername / getUserPermissions /
+     updateRefreshToken / findById / findByRefreshToken / getUserRoles.
   /* async findByUsername(username: string): Promise<any | null> {
     const user = await this.userRepository.findOne({
       where: { username },
@@ -823,18 +826,43 @@ export class EmployeeService extends BaseServiceV1<Employee> {
       .where('user.id = :userId', { userId })
       .select(['role.code', 'role.name'])
       .getRawMany();
-  }
+  */
 
-  async remove(id: number): Promise<void> {
-    await this.userRepository.delete(id);
+  /**
+   * Annuaire minimal pour les selects d'assignation (responsable, auteur…).
+   * Ne retourne que l'identifiant, le nom, le poste et l'email pro — aucune
+   * donnée RH sensible (salaire, adresse personnelle, etc.).
+   */
+  async searchDirectory(
+    searchParams?: SearchCriteria,
+    paginationParams?: { page?: number; limit?: number },
+  ) {
+    const result: any = await this.searchWithTransformer(
+      searchParams as SearchCriteria,
+      EmployeeResponseDto,
+      paginationParams as any,
+    );
+    const rows: any[] = Array.isArray(result)
+      ? result
+      : (result?.data ?? result?.items ?? []);
+    const data = rows.map((row: any) => ({
+      id: row?.id,
+      full_name:
+        row?.full_name ??
+        joinFullName(row?.user?.first_name, row?.user?.last_name) ??
+        row?.user?.username ??
+        `Employé #${row?.id}`,
+      position: row?.position ?? null,
+      email: row?.email ?? row?.user?.email ?? null,
+      is_available: row?.is_available ?? true,
+      // Statut (actif / suspendu) et agence : utilisés par les badges et
+      // sous-titres des selects. Pas de donnée RH sensible ici (salaire exclu).
+      status: row?.status ?? null,
+      branch: row?.branch
+        ? { id: row.branch.id, name: row.branch.name }
+        : null,
+    }));
+    if (Array.isArray(result)) return data;
+    return { ...(result as object), data };
   }
-
-  async descativeUser(id: number): Promise<any> {
-    await this.userRepository.update(id, { status: 0 });
-    return
-  }
-  async activateUser(id: number): Promise<any> {
-    await this.userRepository.update(id, { status: 1 });
-    return
-  }*/
 }

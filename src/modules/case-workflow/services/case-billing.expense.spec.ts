@@ -205,6 +205,39 @@ describe('CaseBillingService - dépenses refacturables', () => {
     });
   });
 
+  it('conserve une dérogation motivée lors des synchronisations suivantes', async () => {
+    const { service } = createService();
+    const receiptOverride = {
+      actorUserId: 9,
+      reason: 'Pièce originale perdue',
+      approvedAt: '2026-10-10T12:00:00.000Z',
+    };
+    const existing = {
+      id: 'item-existing',
+      dossier_id: 74,
+      status: BillableItemStatus.TO_INVOICE,
+      source_event_key: 'EXPENSE:31:APPROVED',
+      calculation_snapshot: { receiptOverride },
+    } as BillableItem;
+    const manager = managerFor({ existing });
+
+    const item = await new TenantContext().run(22, () =>
+      service.syncExpenseLineToBillableItem(
+        manager,
+        expenseLine({
+          rebilling_type: ExpenseRebillingType.DISBURSEMENT,
+          attachment_url: null,
+        }),
+        9,
+        true,
+      ),
+    );
+    expect(item).toMatchObject({
+      status: BillableItemStatus.TO_INVOICE,
+      calculation_snapshot: { receiptOverride },
+    });
+  });
+
   it('conserve le lien facultatif vers l’action ayant généré la dépense', async () => {
     const { service } = createService();
     const manager = managerFor({ actionExists: true });

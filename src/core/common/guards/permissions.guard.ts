@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from 'src/core/decorators/permissions.decorator';
 import { ActivitiesUserService } from 'src/modules/iam/activities-user/activities-user.service';
 import { UsersService } from 'src/modules/iam/user/user.service';
+import { PLATFORM_PERMISSION_CODES } from 'src/modules/iam/constants/iam.constants';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -27,7 +28,15 @@ export class PermissionsGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest();
     const { user } = request;
-    if (user.role === 'admin') return true;
+
+    // Les codes plateforme (gestion des cabinets, catalogue des plans) ne sont
+    // JAMAIS accordés à un utilisateur de cabinet, même admin ou SUPER_ADMIN :
+    // ces opérations relèvent exclusivement de l'espace `/platform`.
+    const requiresPlatform = requiredPermissions.some((permission) =>
+      PLATFORM_PERMISSION_CODES.includes(permission),
+    );
+
+    if (!requiresPlatform && user.role === 'admin') return true;
 
     const userPermissionCodes: string[] = Array.isArray(user.permissions)
       ? user.permissions
@@ -35,10 +44,11 @@ export class PermissionsGuard implements CanActivate {
           (permission: any) => permission.code,
         );
     const allowed =
-      userPermissionCodes.includes('SUPER_ADMIN') ||
-      requiredPermissions.every((permission) =>
-        userPermissionCodes.includes(permission),
-      );
+      !requiresPlatform &&
+      (userPermissionCodes.includes('SUPER_ADMIN') ||
+        requiredPermissions.every((permission) =>
+          userPermissionCodes.includes(permission),
+        ));
 
     if (!allowed && this.audit) {
       const path = String(request?.originalUrl ?? request?.url ?? '');

@@ -52,6 +52,11 @@ export class SearchFactureDto extends PaginationParamsDto {
   @IsOptional()
   numero?: string;
 
+  @ApiPropertyOptional({ description: 'Libellé de la facture' })
+  @IsString()
+  @IsOptional()
+  libelle?: string;
+
   @ApiPropertyOptional({ description: 'Date de facture à partir de' })
   @IsDate()
   @Type(() => Date)

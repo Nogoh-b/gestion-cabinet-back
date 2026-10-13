@@ -71,10 +71,10 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     DELETE: 'delete_paiement',
   },
   invoice_types: {
-    READ: 'MANAGE_INVOICE_TYPES',
-    INSERT: 'MANAGE_INVOICE_TYPES',
-    UPDATE: 'MANAGE_INVOICE_TYPES',
-    DELETE: 'MANAGE_INVOICE_TYPES',
+    READ: 'view_factures',
+    INSERT: 'manage_invoice_settings',
+    UPDATE: 'manage_invoice_settings',
+    DELETE: 'manage_invoice_settings',
   },
 
   // Documents

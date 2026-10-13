@@ -1,4 +1,7 @@
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
+import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { UseGuards } from '@nestjs/common';
 import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { SearchCriteria } from 'src/core/shared/services/search/base-v1.service';
 
@@ -29,6 +32,7 @@ import { InvoiceTypeStatsDto } from './dto/invoice-type-stats.dto';
 @ApiTags('Invoice Types')
 @ApiBearerAuth()
 @Controller('invoice-types')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class InvoiceTypeController {
   constructor(
     private readonly service: InvoiceTypeService,
@@ -88,11 +92,12 @@ export class InvoiceTypeController {
   @Post()
   @ApiOperation({ summary: 'Créer un nouveau type de facture' })
   @ApiResponse({ status: 201, type: InvoiceTypeResponseDto })
-  @RequirePermissions('MANAGE_INVOICE_TYPES')
+  @RequirePermissions('manage_invoice_settings')
   async create(@Body() dto: CreateInvoiceTypeDto) {
     return this.service.create(dto);
   }
   @Get('search')
+  @RequirePermissions('view_factures')
   @ApiOperation({ summary: 'Recherche texte avec relations' })
   @ApiResponse({
     status: 200,
@@ -111,6 +116,7 @@ export class InvoiceTypeController {
   }
 
   @Get()
+  @RequirePermissions('view_factures')
   @ApiOperation({ summary: 'Lister tous les types de factures' })
   @ApiResponse({ status: 200, type: [InvoiceTypeResponseDto] })
   async findAll() {
@@ -118,6 +124,7 @@ export class InvoiceTypeController {
   }
 
   @Get(':id')
+  @RequirePermissions('view_factures')
   @ApiOperation({ summary: 'Récupérer un type de facture par ID' })
   @ApiResponse({ status: 200, type: InvoiceTypeResponseDto })
   async findOne(@Param('id') id: number) {
@@ -127,7 +134,7 @@ export class InvoiceTypeController {
   @Post(':id')
   @ApiOperation({ summary: 'Mettre à jour un type de facture' })
   @ApiResponse({ status: 200, type: InvoiceTypeResponseDto })
-  @RequirePermissions('MANAGE_INVOICE_TYPES')
+  @RequirePermissions('manage_invoice_settings')
   async update(@Param('id') id: number, @Body() dto: UpdateInvoiceTypeDto) {
     return this.service.update(id, dto);
   }

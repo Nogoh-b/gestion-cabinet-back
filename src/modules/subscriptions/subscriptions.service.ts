@@ -11,11 +11,32 @@ import { DataSource, LessThan, Repository, In } from 'typeorm';
 
 import { Subscription, BillingCycle } from './entities/subscription.entity';
 import { SubscriptionPayment } from './entities/subscription-payment.entity';
-import { Cabinet } from '../cabinet/entities/cabinet.entity';
+import {
+  Cabinet,
+  CabinetSuspensionReason,
+} from '../cabinet/entities/cabinet.entity';
 import { Plan } from '../plans/entities/plan.entity';
-import { PaymentGatewayService } from './payment/payment-gateway.service';
+import {
+  PaymentCustomer,
+  PaymentGatewayService,
+  PaymentStartResult,
+} from './payment/payment-gateway.service';
+import { PaymentMethodsService } from './payment/payment-methods.service';
+import {
+  resolvePaymentProof,
+  savePaymentProof,
+} from './payment/payment-proof.storage';
+import { isPaymentTestEnabled } from './payment/payment-test-mode';
+import {
+  SubscriptionActor,
+  SubscriptionEventsService,
+  SYSTEM_ACTOR,
+} from './subscription-events.service';
+import type { SubscriptionEventType } from './entities/subscription-event.entity';
 import {
   addCycle,
+  addDays,
+  addMonths,
   daysRemaining,
   isFreePlan,
   planPriceForCycle,
@@ -30,6 +51,10 @@ export interface PendingPaymentInfo {
   provider: string | null;
   reference: string | null;
   checkout_url: string | null;
+  status?: string;
+  method?: string | null;
+  declared_at?: Date | null;
+  failure_reason?: string | null;
 }
 
 export interface CurrentSubscription {
@@ -49,6 +74,17 @@ export interface CurrentSubscription {
 /** Seuil (jours) à partir duquel on considère que l'abonnement « expire bientôt ». */
 const EXPIRING_SOON_THRESHOLD_DAYS = 7;
 
+export function isManuallySuspended(cabinet: Cabinet): boolean {
+  return cabinet.status === 'suspended' && cabinet.suspension_reason === 'manual';
+}
+
+function clearSuspension(cabinet: Cabinet) {
+  cabinet.suspension_reason = null;
+  cabinet.suspended_at = null;
+  cabinet.suspended_by_admin_id = null;
+  cabinet.suspension_note = null;
+}
+
 @Injectable()
 export class SubscriptionsService {
   private readonly logger = new Logger(SubscriptionsService.name);
@@ -63,6 +99,8 @@ export class SubscriptionsService {
     @InjectRepository(Plan)
     private readonly planRepo: Repository<Plan>,
     private readonly gateway: PaymentGatewayService,
+    private readonly methods: PaymentMethodsService,
+    private readonly events: SubscriptionEventsService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -83,8 +121,8 @@ export class SubscriptionsService {
       where: { id: cabinetId },
     });
     if (!cabinet) return;
-    cabinet.status = 'suspended';
     if (planId) cabinet.plan_id = planId;
+    this.markSuspended(cabinet, 'payment_required');
     await this.cabinetRepo.save(cabinet);
   }
 
@@ -100,16 +138,23 @@ export class SubscriptionsService {
     cabinetId: number,
     planId: number | null,
     cycle: BillingCycle = 'monthly',
-    opts?: { gateAllPaid?: boolean },
+    opts?: {
+      gateAllPaid?: boolean;
+      actor?: SubscriptionActor;
+      eventType?: SubscriptionEventType;
+      eventPayload?: Record<string, any>;
+    },
   ): Promise<Subscription> {
+    const actor = opts?.actor ?? SYSTEM_ACTOR;
     const plan = planId
       ? await this.planRepo.findOne({ where: { id: planId } })
       : null;
 
     // Clore les abonnements en cours (un seul abonnement vivant par cabinet)
-    await this.subRepo.update(
-      { cabinet_id: cabinetId, status: In(['trial', 'active']) },
-      { status: 'cancelled' },
+    await this.closeLiveSubscriptions(
+      cabinetId,
+      ['trial', 'active', 'pending_payment', 'expired', 'suspended'],
+      'replaced',
     );
 
     const startedAt = new Date();
@@ -140,6 +185,7 @@ export class SubscriptionsService {
       amount: period.amount,
       currency,
       auto_renew: true,
+      created_by: actor.type,
     });
     const saved = await this.subRepo.save(sub);
 
@@ -150,11 +196,25 @@ export class SubscriptionsService {
       period.ends_at,
     );
     if (gated) {
-      await this.gateway.initiate(payment); // session de paiement (provider + url)
+      // Le cabinet choisit ensuite son moyen de paiement (POST /subscriptions/pay).
+      void payment;
       await this.holdCabinetForPayment(cabinetId, saved.plan_id);
     } else {
       await this.syncCabinet(cabinetId, saved);
     }
+    await this.events.record({
+      cabinetId,
+      subscriptionId: saved.id,
+      type: opts?.eventType ?? 'created',
+      actor,
+      payload: {
+        plan_id: saved.plan_id,
+        cycle,
+        amount: Number(saved.amount),
+        status: saved.status,
+        ...(opts?.eventPayload ?? {}),
+      },
+    });
 
     this.logger.log(
       `[Subscriptions] Abonnement créé — cabinet=${cabinetId} plan=${saved.plan_id} ` +
@@ -174,6 +234,7 @@ export class SubscriptionsService {
   async renewForCabinet(
     cabinetId: number,
     cycle?: BillingCycle,
+    actor: SubscriptionActor = SYSTEM_ACTOR,
   ): Promise<Subscription> {
     const current = await this.getRawCurrent(cabinetId);
     const planId = current?.plan_id ?? null;
@@ -183,12 +244,10 @@ export class SubscriptionsService {
       : null;
 
     // Clore l'abonnement échu/suspendu en cours.
-    await this.subRepo.update(
-      {
-        cabinet_id: cabinetId,
-        status: In(['trial', 'active', 'expired', 'suspended']),
-      },
-      { status: 'cancelled' },
+    await this.closeLiveSubscriptions(
+      cabinetId,
+      ['trial', 'active', 'expired', 'suspended', 'pending_payment'],
+      'renewed',
     );
 
     const startedAt = new Date();
@@ -210,6 +269,7 @@ export class SubscriptionsService {
       amount: period.amount,
       currency,
       auto_renew: true,
+      created_by: actor.type,
     });
     const saved = await this.subRepo.save(sub);
 
@@ -220,11 +280,24 @@ export class SubscriptionsService {
       period.ends_at,
     );
     if (gated) {
-      await this.gateway.initiate(payment);
-      // Le cabinet reste suspendu jusqu'à confirmation du paiement.
+      // Le cabinet reste suspendu jusqu'à confirmation du paiement (moyen
+      // choisi ensuite via POST /subscriptions/pay).
+      void payment;
     } else {
       await this.syncCabinet(cabinetId, saved); // repasse le cabinet en 'active'
     }
+    await this.events.record({
+      cabinetId,
+      subscriptionId: saved.id,
+      type: 'renewed',
+      actor,
+      payload: {
+        plan_id: saved.plan_id,
+        cycle: targetCycle,
+        amount: Number(saved.amount),
+        status: saved.status,
+      },
+    });
 
     this.logger.log(
       `[Subscriptions] Renouvellement — cabinet=${cabinetId} cycle=${targetCycle} ` +
@@ -246,6 +319,7 @@ export class SubscriptionsService {
   async changePlanOrCycle(
     cabinetId: number,
     opts: { planId?: number; cycle?: BillingCycle },
+    actor: SubscriptionActor = SYSTEM_ACTOR,
   ): Promise<Subscription> {
     const current = await this.getRawCurrent(cabinetId);
 
@@ -255,6 +329,7 @@ export class SubscriptionsService {
         cabinetId,
         opts.planId ?? current?.plan_id ?? null,
         opts.cycle ?? current?.billing_cycle ?? 'monthly',
+        { actor },
       );
     }
 
@@ -263,12 +338,16 @@ export class SubscriptionsService {
 
     // Changement de plan → vraie nouvelle période.
     if (targetPlanId !== current.plan_id) {
-      return this.createForCabinet(cabinetId, targetPlanId, targetCycle);
+      return this.createForCabinet(cabinetId, targetPlanId, targetCycle, {
+        actor,
+        eventType: 'plan_changed',
+        eventPayload: { from_plan_id: current.plan_id, mode: 'new_period' },
+      });
     }
 
     // Changement de cycle uniquement → mise à jour en place.
     if (targetCycle !== current.billing_cycle) {
-      return this.updateCycleInPlace(current, targetCycle);
+      return this.updateCycleInPlace(current, targetCycle, actor);
     }
 
     return current; // rien à changer
@@ -282,7 +361,9 @@ export class SubscriptionsService {
   private async updateCycleInPlace(
     sub: Subscription,
     cycle: BillingCycle,
+    actor: SubscriptionActor = SYSTEM_ACTOR,
   ): Promise<Subscription> {
+    const fromCycle = sub.billing_cycle;
     const plan =
       sub.plan ?? (await this.planRepo.findOne({ where: { id: sub.plan_id } }));
 
@@ -311,6 +392,13 @@ export class SubscriptionsService {
     }
 
     await this.syncCabinet(sub.cabinet_id, saved);
+    await this.events.record({
+      cabinetId: sub.cabinet_id,
+      subscriptionId: sub.id,
+      type: 'cycle_changed',
+      actor,
+      payload: { from: fromCycle, to: cycle, amount: Number(saved.amount) },
+    });
     this.logger.log(
       `[Subscriptions] Cycle mis à jour en place — cabinet=${sub.cabinet_id} cycle=${cycle}`,
     );
@@ -362,7 +450,10 @@ export class SubscriptionsService {
     let pendingPayment: PendingPaymentInfo | null = null;
     if (requiresPayment && sub) {
       const p = await this.payRepo.findOne({
-        where: { subscription_id: sub.id, status: 'pending' },
+        where: {
+          subscription_id: sub.id,
+          status: In(['pending', 'awaiting_validation']),
+        },
         order: { id: 'DESC' },
       });
       if (p) {
@@ -373,6 +464,10 @@ export class SubscriptionsService {
           provider: p.provider,
           reference: p.reference,
           checkout_url: p.checkout_url,
+          status: p.status,
+          method: p.method,
+          declared_at: p.declared_at,
+          failure_reason: p.failure_reason,
         };
       }
     }
@@ -404,44 +499,424 @@ export class SubscriptionsService {
   }
 
   /** Historique de facturation du cabinet (échéances + paiements). */
-  async listPayments(cabinetId: number): Promise<SubscriptionPayment[]> {
-    return this.payRepo.find({
-      where: { cabinet_id: cabinetId },
-      order: { due_date: 'DESC' },
+  async listPayments(cabinetId: number) {
+    const rows = await this.payRepo.find({
+      where: { cabinet_id: cabinetId, status: In(['pending', 'awaiting_validation', 'paid', 'failed', 'refunded']) },
+      order: { due_date: 'DESC', id: 'DESC' },
     });
+    return rows.map(({ provider_payload, proof_file, validated_by_admin_id, notes, ...rest }) => ({
+      ...rest,
+      has_proof: !!proof_file,
+    }));
   }
 
   // ── Paiement (passerelle) ─────────────────────────────────────────────────
 
   /**
-   * (Ré)initie une session de paiement pour l'échéance en attente du cabinet et
-   * retourne l'URL de la passerelle. Utilisé par le bouton « Payer ».
+   * Démarre le paiement de l'échéance due avec le moyen choisi : session en
+   * ligne (URL de la passerelle) ou instructions d'un moyen manuel.
    */
-  async initiatePaymentForCurrent(cabinetId: number): Promise<{
-    payment_id: number;
-    provider: string;
-    reference: string;
-    checkout_url: string;
-  }> {
+  async initiatePaymentForCurrent(
+    cabinetId: number,
+    input: { methodCode?: string; customer?: Partial<PaymentCustomer> } = {},
+  ): Promise<PaymentStartResult> {
     const sub = await this.getRawCurrent(cabinetId);
     if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
     const payment = await this.payRepo.findOne({
-      where: { subscription_id: sub.id, status: 'pending' },
+      where: { subscription_id: sub.id, status: In(['pending', 'awaiting_validation']) },
       order: { id: 'DESC' },
     });
     if (!payment) throw new BadRequestException('Aucune échéance à régler');
-    if (Number(payment.amount) <= 0) {
+    if (payment.status === 'awaiting_validation') {
       throw new BadRequestException(
-        'Cette échéance ne nécessite pas de paiement',
+        'Un paiement a déjà été déclaré pour cette échéance : il est en cours de validation.',
       );
     }
-    const res = await this.gateway.initiate(payment);
+    if (Number(payment.amount) <= 0) {
+      throw new BadRequestException('Cette échéance ne nécessite pas de paiement');
+    }
+    const methodCode =
+      input.methodCode ??
+      (await this.methods.listActiveForCabinet(payment.currency))[0]?.code;
+    if (!methodCode) {
+      throw new BadRequestException('Aucun moyen de paiement disponible pour le moment.');
+    }
+    const method = await this.methods.resolveForPayment(methodCode);
+    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+    const plan = sub.plan ?? (await this.planRepo.findOne({ where: { id: sub.plan_id } }));
+    const description = `Abonnement ${plan?.name ?? ''} — ${cabinet?.name ?? `cabinet ${cabinetId}`}`.trim();
+    return this.gateway.start(
+      payment,
+      method,
+      {
+        email: input.customer?.email ?? cabinet?.contact_email ?? null,
+        name: input.customer?.name ?? cabinet?.name ?? null,
+        phone: input.customer?.phone ?? cabinet?.contact_phone ?? null,
+      },
+      description,
+    );
+  }
+
+  /**
+   * Relit l'état d'une transaction auprès de sa passerelle et l'applique :
+   * confirmation si payée (montant contrôlé), motif d'échec sinon. Idempotent.
+   */
+  async reconcilePayment(payment: SubscriptionPayment): Promise<string> {
+    if (payment.status === 'paid') return 'paid';
+    if (payment.status !== 'pending') return payment.status;
+    const result = await this.gateway.verify(payment);
+    if (!result) return payment.status;
+    payment.provider_payload = { ...(result.raw ?? {}), channel: result.channel ?? null };
+
+    if (result.status === 'paid') {
+      const due = Number(payment.amount);
+      const sameCurrency =
+        !result.currency || result.currency.toUpperCase() === payment.currency.toUpperCase();
+      if (
+        result.amount !== null &&
+        result.amount !== undefined &&
+        (!sameCurrency || Math.abs(Number(result.amount) - due) > 0.01)
+      ) {
+        payment.failure_reason = `Montant encaissé (${result.amount} ${result.currency ?? ''}) différent du montant dû (${due} ${payment.currency}) — à vérifier.`;
+        await this.payRepo.save(payment);
+        await this.events.record({
+          cabinetId: payment.cabinet_id,
+          subscriptionId: payment.subscription_id,
+          type: 'payment_failed',
+          payload: { payment_id: payment.id, reason: payment.failure_reason },
+        });
+        return 'pending';
+      }
+      await this.payRepo.save(payment);
+      await this.confirmPayment(payment);
+      return 'paid';
+    }
+
+    if (result.status === 'failed') {
+      const already = payment.failure_reason === (result.failureReason ?? 'Paiement refusé');
+      payment.failure_reason = result.failureReason ?? 'Paiement refusé';
+      await this.payRepo.save(payment);
+      if (!already) {
+        await this.events.record({
+          cabinetId: payment.cabinet_id,
+          subscriptionId: payment.subscription_id,
+          type: 'payment_failed',
+          payload: {
+            payment_id: payment.id,
+            provider: payment.provider,
+            reference: payment.reference,
+            reason: payment.failure_reason,
+          },
+        });
+      }
+      return 'failed';
+    }
+    await this.payRepo.save(payment);
+    return 'pending';
+  }
+
+  /** Retrouve une échéance par notre référence ou celle de la passerelle. */
+  findPaymentByReference(reference?: string | null, providerReference?: string | null) {
+    const where: any[] = [];
+    if (reference) where.push({ reference });
+    if (providerReference) where.push({ provider_reference: providerReference });
+    if (!where.length) return Promise.resolve(null);
+    return this.payRepo.findOne({ where });
+  }
+
+  /** Retour navigateur / page abonnement : statut à jour d'une transaction. */
+  async paymentStatusForCabinet(cabinetId: number, reference: string) {
+    const payment = await this.payRepo.findOne({ where: { cabinet_id: cabinetId, reference } });
+    if (!payment) throw new NotFoundException('Transaction introuvable');
+    try {
+      await this.reconcilePayment(payment);
+    } catch (error) {
+      this.logger.warn(`[Paiement] vérification ${reference} impossible : ${(error as Error).message}`);
+    }
+    const fresh = await this.payRepo.findOne({ where: { id: payment.id } });
     return {
-      payment_id: payment.id,
-      provider: this.gateway.providerName,
-      reference: res.reference,
-      checkout_url: res.checkoutUrl,
+      payment_id: fresh!.id,
+      status: fresh!.status,
+      failure_reason: fresh!.failure_reason,
+      provider: fresh!.provider,
+      reference: fresh!.reference,
+      current: await this.getCurrent(cabinetId),
     };
+  }
+
+  /** Le cabinet déclare un paiement manuel (virement, Mobile Money direct…). */
+  async declareManualPayment(
+    cabinetId: number,
+    paymentId: number,
+    input: { methodCode: string; reference: string; note?: string },
+    file: Express.Multer.File | undefined,
+    actor: SubscriptionActor,
+  ) {
+    const payment = await this.payRepo.findOne({ where: { id: paymentId, cabinet_id: cabinetId } });
+    if (!payment) throw new NotFoundException('Échéance introuvable');
+    if (payment.status !== 'pending') {
+      throw new BadRequestException("Cette échéance n'est pas en attente de paiement.");
+    }
+    const method = await this.methods.resolveForPayment(input.methodCode);
+    if (method.kind !== 'manual') {
+      throw new BadRequestException('Ce moyen de paiement se règle en ligne.');
+    }
+    const reference = String(input.reference ?? '').trim();
+    if (reference.length < 3) {
+      throw new BadRequestException('Indiquez la référence de votre paiement.');
+    }
+    payment.payment_method_id = method.id;
+    payment.method = method.code.slice(0, 30);
+    payment.provider = null;
+    payment.declared_reference = reference.slice(0, 120);
+    payment.declared_at = new Date();
+    payment.notes = input.note?.slice(0, 500) || null;
+    payment.failure_reason = null;
+    if (file) payment.proof_file = await savePaymentProof(cabinetId, payment.id, file);
+    payment.status = 'awaiting_validation';
+    await this.payRepo.save(payment);
+    await this.events.record({
+      cabinetId,
+      subscriptionId: payment.subscription_id,
+      type: 'payment_declared',
+      actor,
+      payload: {
+        payment_id: payment.id,
+        method: method.code,
+        reference: payment.declared_reference,
+        amount: Number(payment.amount),
+        has_proof: !!payment.proof_file,
+      },
+    });
+    return this.getCurrent(cabinetId);
+  }
+
+  /** Justificatif d'une échéance du cabinet (chemin privé). */
+  async proofFileForCabinet(cabinetId: number, paymentId: number) {
+    const payment = await this.payRepo.findOne({ where: { id: paymentId, cabinet_id: cabinetId } });
+    if (!payment) throw new NotFoundException('Échéance introuvable');
+    return resolvePaymentProof(payment.proof_file);
+  }
+
+  /** Justificatif d'une échéance (lecture plateforme). */
+  async proofFile(paymentId: number) {
+    const payment = await this.payRepo.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Paiement introuvable');
+    return resolvePaymentProof(payment.proof_file);
+  }
+
+  // ── Encaissements gérés par la plateforme ──────────────────────────────────
+
+  private async requirePayment(paymentId: number) {
+    const payment = await this.payRepo.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException('Paiement introuvable');
+    return payment;
+  }
+
+  /** Validation d'un paiement déclaré (ou en attente) après contrôle. */
+  async validatePaymentByPlatform(
+    paymentId: number,
+    actor: SubscriptionActor,
+    input: { reference?: string; note?: string } = {},
+  ) {
+    const payment = await this.requirePayment(paymentId);
+    if (!['awaiting_validation', 'pending'].includes(payment.status)) {
+      throw new BadRequestException('Seul un paiement en attente peut être validé.');
+    }
+    payment.validated_by_admin_id = actor.id ?? null;
+    payment.validated_at = new Date();
+    if (input.reference) payment.reference = input.reference.slice(0, 100);
+    if (input.note) payment.notes = input.note.slice(0, 500);
+    payment.method = payment.method ?? 'manual';
+    payment.failure_reason = null;
+    await this.payRepo.save(payment);
+    await this.confirmPayment(payment, actor);
+    return this.requirePayment(paymentId);
+  }
+
+  /** Refus d'une déclaration : l'échéance redevient due, avec le motif. */
+  async rejectPaymentByPlatform(paymentId: number, actor: SubscriptionActor, reason: string) {
+    const payment = await this.requirePayment(paymentId);
+    if (payment.status !== 'awaiting_validation') {
+      throw new BadRequestException('Seul un paiement déclaré peut être rejeté.');
+    }
+    payment.status = 'pending';
+    payment.failure_reason = `Déclaration rejetée : ${reason}`.slice(0, 255);
+    await this.payRepo.save(payment);
+    await this.events.record({
+      cabinetId: payment.cabinet_id,
+      subscriptionId: payment.subscription_id,
+      type: 'payment_rejected',
+      actor,
+      payload: { payment_id: payment.id, reason, declared_reference: payment.declared_reference },
+    });
+    return payment;
+  }
+
+  /**
+   * Enregistre un encaissement reçu hors ligne (espèces, virement constaté…)
+   * sur l'échéance due du cabinet (ou une échéance précise).
+   */
+  async recordPaymentByPlatform(
+    cabinetId: number,
+    actor: SubscriptionActor,
+    input: { paymentId?: number; methodCode: string; reference?: string; paidAt?: string; note?: string },
+  ) {
+    const payment = input.paymentId
+      ? await this.payRepo.findOne({ where: { id: input.paymentId, cabinet_id: cabinetId } })
+      : await this.payRepo
+          .createQueryBuilder('p')
+          .innerJoin(Subscription, 's', 's.id = p.subscription_id')
+          .where('p.cabinet_id = :cabinetId', { cabinetId })
+          .andWhere("p.status IN ('pending','awaiting_validation')")
+          .andWhere("s.status <> 'cancelled'")
+          .orderBy('p.id', 'DESC')
+          .getOne();
+    if (!payment) throw new NotFoundException('Aucune échéance due pour ce cabinet.');
+    if (!['pending', 'awaiting_validation'].includes(payment.status)) {
+      throw new BadRequestException("Cette échéance n'est pas en attente de paiement.");
+    }
+    const method =
+      input.methodCode === 'other' ? null : await this.methods.resolveForPayment(input.methodCode).catch(() => null);
+    payment.payment_method_id = method?.id ?? payment.payment_method_id;
+    payment.method = (method?.code ?? input.methodCode ?? 'manual').slice(0, 30);
+    payment.reference = input.reference?.slice(0, 100) || payment.reference;
+    payment.notes = input.note?.slice(0, 500) || payment.notes;
+    payment.validated_by_admin_id = actor.id ?? null;
+    payment.validated_at = new Date();
+    payment.fee_amount = this.methods.feeFor(method, Number(payment.amount));
+    await this.payRepo.save(payment);
+    await this.events.record({
+      cabinetId,
+      subscriptionId: payment.subscription_id,
+      type: 'payment_recorded',
+      actor,
+      payload: { payment_id: payment.id, amount: Number(payment.amount), method: payment.method, reference: payment.reference },
+    });
+    await this.confirmPayment(payment, actor);
+    if (input.paidAt) {
+      const paidAt = new Date(input.paidAt);
+      if (!Number.isNaN(paidAt.getTime()) && paidAt.getTime() <= Date.now()) {
+        await this.payRepo.update(payment.id, { paid_at: paidAt });
+      }
+    }
+    return this.requirePayment(payment.id);
+  }
+
+  /**
+   * Remboursement (total ou partiel). `viaProvider` tente l'API de la
+   * passerelle (Stripe) ; sinon le remboursement est simplement enregistré.
+   */
+  async refundPaymentByPlatform(
+    paymentId: number,
+    actor: SubscriptionActor,
+    input: { amount?: number; reason: string; viaProvider?: boolean },
+  ) {
+    const payment = await this.requirePayment(paymentId);
+    if (payment.status !== 'paid') {
+      throw new BadRequestException('Seul un paiement encaissé peut être remboursé.');
+    }
+    const paid = Number(payment.amount);
+    const already = Number(payment.refund_amount ?? 0);
+    const amount = Math.round(Number(input.amount ?? paid - already) * 100) / 100;
+    if (!(amount > 0) || amount + already > paid + 0.001) {
+      throw new BadRequestException(`Montant à rembourser invalide (reste remboursable : ${paid - already}).`);
+    }
+    let providerMessage: string | null = null;
+    if (input.viaProvider) {
+      const res = await this.gateway.refundViaProvider(payment, amount);
+      if (!res.ok) throw new BadRequestException(res.message);
+      providerMessage = res.message;
+    }
+    payment.refund_amount = already + amount;
+    payment.refunded_at = new Date();
+    payment.refund_reason = input.reason.slice(0, 255);
+    if (payment.refund_amount >= paid - 0.001) payment.status = 'refunded';
+    await this.payRepo.save(payment);
+    await this.events.record({
+      cabinetId: payment.cabinet_id,
+      subscriptionId: payment.subscription_id,
+      type: 'payment_refunded',
+      actor,
+      payload: { payment_id: payment.id, amount, total_refunded: payment.refund_amount, reason: input.reason, provider: providerMessage },
+    });
+    return payment;
+  }
+
+  /**
+   * Annule une échéance due (geste commercial, erreur de facturation). Si
+   * l'abonnement attendait ce paiement, il est activé sans encaissement.
+   */
+  async waivePaymentByPlatform(paymentId: number, actor: SubscriptionActor, reason: string) {
+    const payment = await this.requirePayment(paymentId);
+    if (!['pending', 'awaiting_validation'].includes(payment.status)) {
+      throw new BadRequestException('Seule une échéance due peut être annulée.');
+    }
+    payment.status = 'cancelled';
+    payment.notes = `Échéance annulée : ${reason}`.slice(0, 500);
+    await this.payRepo.save(payment);
+    const sub = await this.subRepo.findOne({ where: { id: payment.subscription_id } });
+    if (sub && sub.status === 'pending_payment') {
+      sub.status = sub.is_trial ? 'trial' : 'active';
+      await this.subRepo.save(sub);
+      await this.syncCabinet(sub.cabinet_id, sub);
+    }
+    await this.events.record({
+      cabinetId: payment.cabinet_id,
+      subscriptionId: payment.subscription_id,
+      type: 'payment_waived',
+      actor,
+      payload: { payment_id: payment.id, amount: Number(payment.amount), reason },
+    });
+    return payment;
+  }
+
+  /**
+   * Filet de sécurité : relit toutes les 10 min les paiements en ligne restés
+   * « en attente » (webhook perdu). Au-delà du délai d'expiration configuré,
+   * la session de paiement est abandonnée (l'échéance reste due).
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async reconcilePendingGatewayPayments(): Promise<void> {
+    const expiryHours = await this.pendingExpiryHours();
+    const now = Date.now();
+    const candidates = await this.payRepo
+      .createQueryBuilder('p')
+      .where("p.status = 'pending'")
+      .andWhere("p.provider IN ('cinetpay','notchpay','stripe')")
+      .andWhere('p.reference IS NOT NULL')
+      .andWhere('p.updated_at < :recent', { recent: new Date(now - 10 * 60_000) })
+      .getMany();
+    for (const payment of candidates) {
+      try {
+        const status = await this.reconcilePayment(payment);
+        const age = now - new Date(payment.updated_at).getTime();
+        if (status === 'pending' && age > expiryHours * 3_600_000 && payment.checkout_url) {
+          await this.payRepo.update(payment.id, {
+            checkout_url: null,
+            failure_reason: 'Session de paiement expirée',
+          });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `[Paiement] rapprochement #${payment.id} impossible : ${(error as Error).message}`,
+        );
+      }
+    }
+  }
+
+  private async pendingExpiryHours(): Promise<number> {
+    try {
+      const rows: Array<{ value: any }> = await this.dataSource.query(
+        "SELECT value FROM platform_settings WHERE `key` = 'billing' LIMIT 1",
+      );
+      const raw = rows[0]?.value;
+      const value = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const hours = Number(value?.pending_payment_expiry_hours);
+      return Number.isFinite(hours) && hours > 0 ? hours : 24;
+    } catch {
+      return 24;
+    }
   }
 
   /**
@@ -450,12 +925,27 @@ export class SubscriptionsService {
    */
   async confirmPayment(
     payment: SubscriptionPayment,
+    actor: SubscriptionActor = SYSTEM_ACTOR,
   ): Promise<Subscription | null> {
     if (payment.status !== 'paid') {
       payment.status = 'paid';
       payment.paid_at = new Date();
-      payment.method = payment.method ?? this.gateway.providerName;
+      payment.method = payment.method ?? payment.provider ?? 'manual';
       await this.payRepo.save(payment);
+      await this.events.record({
+        cabinetId: payment.cabinet_id,
+        subscriptionId: payment.subscription_id,
+        type: 'payment_paid',
+        actor,
+        payload: {
+          payment_id: payment.id,
+          amount: Number(payment.amount),
+          currency: payment.currency,
+          method: payment.method,
+          provider: payment.provider,
+          reference: payment.reference,
+        },
+      });
     }
 
     const sub = await this.subRepo.findOne({
@@ -477,22 +967,6 @@ export class SubscriptionsService {
     return sub;
   }
 
-  /** Webhook passerelle : confirme/échoue un paiement via sa référence. */
-  async handleWebhook(
-    reference: string,
-    status: 'paid' | 'failed' = 'paid',
-  ): Promise<void> {
-    if (!reference) throw new BadRequestException('Référence manquante');
-    const payment = await this.payRepo.findOne({ where: { reference } });
-    if (!payment) throw new NotFoundException('Paiement introuvable');
-    if (status === 'failed') {
-      payment.status = 'failed';
-      await this.payRepo.save(payment);
-      return;
-    }
-    await this.confirmPayment(payment);
-  }
-
   /**
    * [TEST] Simule un encaissement réussi pour une échéance du cabinet.
    * Disponible uniquement avec la passerelle de test.
@@ -501,7 +975,7 @@ export class SubscriptionsService {
     cabinetId: number,
     paymentId?: number,
   ): Promise<CurrentSubscription> {
-    if (!this.gateway.isTest) {
+    if (!isPaymentTestEnabled()) {
       throw new ForbiddenException(
         'Simulation indisponible : passerelle réelle active',
       );
@@ -516,6 +990,8 @@ export class SubscriptionsService {
           order: { id: 'DESC' },
         });
     if (!payment) throw new NotFoundException('Aucune échéance à régler');
+    payment.method = payment.method ?? 'test';
+    payment.provider = payment.provider ?? 'test';
     await this.confirmPayment(payment);
     return this.getCurrent(cabinetId);
   }
@@ -547,6 +1023,12 @@ export class SubscriptionsService {
       sub.status = 'active';
       await this.subRepo.save(sub);
       await this.syncCabinet(sub.cabinet_id, sub);
+      await this.events.record({
+        cabinetId: sub.cabinet_id,
+        subscriptionId: sub.id,
+        type: 'trial_ended',
+        payload: { ends_at: sub.ends_at },
+      });
       this.logger.log(
         `[Subscriptions] Essai terminé — cabinet=${sub.cabinet_id} → période payante ` +
           `(ends_at=${sub.ends_at?.toISOString() ?? 'illimité'})`,
@@ -569,7 +1051,13 @@ export class SubscriptionsService {
     //  qu'un paiement existera un jour ; aujourd'hui on applique la suspension.)
     sub.status = 'suspended';
     await this.subRepo.save(sub);
-    await this.suspendCabinet(sub.cabinet_id);
+    await this.suspendCabinet(sub.cabinet_id, 'expired');
+    await this.events.record({
+      cabinetId: sub.cabinet_id,
+      subscriptionId: sub.id,
+      type: 'expired',
+      payload: { ends_at: sub.ends_at },
+    });
     this.logger.warn(
       `[Subscriptions] Abonnement échu — cabinet=${sub.cabinet_id} suspendu`,
     );
@@ -688,6 +1176,28 @@ export class SubscriptionsService {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
+  /** Clôt les abonnements vivants d'un cabinet et annule leurs échéances dues. */
+  private async closeLiveSubscriptions(
+    cabinetId: number,
+    statuses: Subscription['status'][],
+    reason: string,
+  ): Promise<void> {
+    const live = await this.subRepo.find({
+      where: { cabinet_id: cabinetId, status: In(statuses) },
+      select: ['id'],
+    });
+    if (!live.length) return;
+    const ids = live.map((s) => s.id);
+    await this.subRepo.update(
+      { id: In(ids) },
+      { status: 'cancelled', cancelled_at: new Date(), cancel_reason: reason },
+    );
+    await this.payRepo.update(
+      { subscription_id: In(ids), status: In(['pending', 'awaiting_validation']) },
+      { status: 'cancelled', notes: `Échéance d'un abonnement ${reason === 'renewed' ? 'renouvelé' : 'remplacé'}` },
+    );
+  }
+
   private async createPaymentForPeriod(
     sub: Subscription,
     amount: number,
@@ -710,7 +1220,11 @@ export class SubscriptionsService {
     return this.payRepo.save(payment);
   }
 
-  /** Aligne le cabinet (status + trial_ends_at) sur l'abonnement courant. */
+  /**
+   * Aligne le cabinet (status + trial_ends_at + plan) sur l'abonnement courant.
+   * Une suspension MANUELLE (décision plateforme) n'est jamais levée ici :
+   * seule la réactivation plateforme la lève.
+   */
   private async syncCabinet(
     cabinetId: number,
     sub: Subscription,
@@ -719,19 +1233,38 @@ export class SubscriptionsService {
       where: { id: cabinetId },
     });
     if (!cabinet) return;
-    cabinet.status = sub.is_trial ? 'trial' : 'active';
-    cabinet.trial_ends_at = sub.ends_at; // null = illimité
+    cabinet.trial_ends_at = sub.is_trial ? sub.trial_ends_at : null;
     cabinet.plan_id = sub.plan_id || cabinet.plan_id;
+    if (!isManuallySuspended(cabinet)) {
+      cabinet.status = sub.is_trial ? 'trial' : 'active';
+      clearSuspension(cabinet);
+    }
     await this.cabinetRepo.save(cabinet);
   }
 
-  private async suspendCabinet(cabinetId: number): Promise<void> {
+  private async suspendCabinet(
+    cabinetId: number,
+    reason: CabinetSuspensionReason,
+  ): Promise<void> {
     const cabinet = await this.cabinetRepo.findOne({
       where: { id: cabinetId },
     });
-    if (!cabinet || cabinet.status === 'suspended') return;
-    cabinet.status = 'suspended';
+    if (!cabinet) return;
+    if (cabinet.status === 'suspended' && cabinet.suspension_reason) return;
+    this.markSuspended(cabinet, reason);
     await this.cabinetRepo.save(cabinet);
+  }
+
+  /** Pose la suspension sans écraser une suspension manuelle existante. */
+  private markSuspended(cabinet: Cabinet, reason: CabinetSuspensionReason) {
+    if (isManuallySuspended(cabinet) && reason !== 'manual') return;
+    cabinet.status = 'suspended';
+    cabinet.suspension_reason = reason;
+    cabinet.suspended_at = new Date();
+    if (reason !== 'manual') {
+      cabinet.suspended_by_admin_id = null;
+      cabinet.suspension_note = null;
+    }
   }
 
   private async resolveCurrency(cabinetId: number): Promise<string> {
@@ -741,10 +1274,283 @@ export class SubscriptionsService {
     return cabinet?.currency ?? 'XAF';
   }
 
+  // ── Actions plateforme (super admin) ───────────────────────────────────────
+
+  /** Abonnement courant (non annulé) ou null — lecture plateforme. */
+  findCurrent(cabinetId: number): Promise<Subscription | null> {
+    return this.getRawCurrent(cabinetId);
+  }
+
+  private async requireCabinet(cabinetId: number): Promise<Cabinet> {
+    const cabinet = await this.cabinetRepo.findOne({ where: { id: cabinetId } });
+    if (!cabinet) throw new NotFoundException('Cabinet introuvable');
+    return cabinet;
+  }
+
+  /** Suspension manuelle : jamais levée automatiquement (paiement, renouvellement…). */
+  async suspendByPlatform(
+    cabinetId: number,
+    actor: SubscriptionActor,
+    note: string,
+  ): Promise<Cabinet> {
+    const cabinet = await this.requireCabinet(cabinetId);
+    this.markSuspended(cabinet, 'manual');
+    cabinet.suspended_by_admin_id = actor.id ?? null;
+    cabinet.suspension_note = note?.slice(0, 500) || null;
+    await this.cabinetRepo.save(cabinet);
+    const sub = await this.getRawCurrent(cabinetId);
+    await this.events.record({
+      cabinetId,
+      subscriptionId: sub?.id ?? null,
+      type: 'suspended',
+      actor,
+      payload: { reason: 'manual', note },
+    });
+    return cabinet;
+  }
+
+  /**
+   * Lève une suspension manuelle puis réaligne le cabinet sur son abonnement :
+   * il reste suspendu si l'abonnement est échu ou en attente de paiement.
+   */
+  async reactivateByPlatform(
+    cabinetId: number,
+    actor: SubscriptionActor,
+  ): Promise<{ cabinet: Cabinet; still_suspended_reason: string | null }> {
+    const cabinet = await this.requireCabinet(cabinetId);
+    const wasManual = isManuallySuspended(cabinet);
+    clearSuspension(cabinet);
+    cabinet.status = 'active';
+    await this.cabinetRepo.save(cabinet);
+
+    let sub = await this.getRawCurrent(cabinetId);
+    if (sub) sub = await this.expireIfDue(sub);
+    let reason: CabinetSuspensionReason | null = null;
+    if (!sub) {
+      reason = null;
+    } else if (sub.status === 'pending_payment') {
+      reason = 'payment_required';
+    } else if (sub.status === 'suspended' || sub.status === 'expired') {
+      reason = 'expired';
+    }
+    if (reason) {
+      await this.suspendCabinet(cabinetId, reason);
+    } else if (sub) {
+      await this.syncCabinet(cabinetId, sub);
+    }
+    await this.events.record({
+      cabinetId,
+      subscriptionId: sub?.id ?? null,
+      type: 'reactivated',
+      actor,
+      payload: { lifted_manual: wasManual, still_suspended_reason: reason },
+    });
+    return {
+      cabinet: await this.requireCabinet(cabinetId),
+      still_suspended_reason: reason,
+    };
+  }
+
+  /**
+   * Prolonge l'abonnement courant de `days` jours (ou jusqu'à `until`).
+   * Pendant un essai, l'essai ET la période payante sont décalés.
+   * Un abonnement échu/suspendu repart (active / trial).
+   */
+  async extendByPlatform(
+    cabinetId: number,
+    input: { days?: number; until?: string | Date },
+    actor: SubscriptionActor,
+    note?: string,
+    eventType: SubscriptionEventType = 'extended',
+  ): Promise<Subscription> {
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    if (sub.status === 'pending_payment') {
+      throw new BadRequestException(
+        "Paiement en attente : enregistrez le paiement ou changez le plan sans facturation avant de prolonger.",
+      );
+    }
+    const now = new Date();
+    const base =
+      sub.ends_at && new Date(sub.ends_at).getTime() > now.getTime()
+        ? new Date(sub.ends_at)
+        : now;
+    let newEnds: Date;
+    if (input.until) {
+      newEnds = new Date(input.until);
+      if (Number.isNaN(newEnds.getTime()) || newEnds.getTime() <= now.getTime()) {
+        throw new BadRequestException('La nouvelle date de fin doit être dans le futur.');
+      }
+    } else {
+      const days = Math.round(Number(input.days ?? 0));
+      if (!days || days < 1 || days > 3660) {
+        throw new BadRequestException('Nombre de jours invalide (1 à 3660).');
+      }
+      newEnds = addDays(base, days);
+    }
+    const before = {
+      status: sub.status,
+      ends_at: sub.ends_at,
+      trial_ends_at: sub.trial_ends_at,
+    };
+    const shiftMs =
+      newEnds.getTime() - (sub.ends_at ? new Date(sub.ends_at).getTime() : now.getTime());
+    if (sub.is_trial && sub.trial_ends_at && shiftMs > 0) {
+      const trialBase = Math.max(new Date(sub.trial_ends_at).getTime(), now.getTime());
+      sub.trial_ends_at = new Date(trialBase + shiftMs);
+    }
+    sub.ends_at = newEnds;
+    if (sub.status === 'suspended' || sub.status === 'expired') {
+      sub.status =
+        sub.is_trial && sub.trial_ends_at && new Date(sub.trial_ends_at) > now
+          ? 'trial'
+          : 'active';
+    }
+    const saved = await this.subRepo.save(sub);
+    await this.syncCabinet(cabinetId, saved);
+    await this.events.record({
+      cabinetId,
+      subscriptionId: saved.id,
+      type: eventType,
+      actor,
+      payload: {
+        before,
+        after: { status: saved.status, ends_at: saved.ends_at, trial_ends_at: saved.trial_ends_at },
+        note: note ?? null,
+      },
+    });
+    return saved;
+  }
+
+  /** Offre `months` mois gratuits (prolongation sans facturation). */
+  async grantFreePeriodByPlatform(
+    cabinetId: number,
+    months: number,
+    actor: SubscriptionActor,
+    note?: string,
+  ): Promise<Subscription> {
+    const m = Math.round(Number(months));
+    if (!m || m < 1 || m > 36) {
+      throw new BadRequestException('Nombre de mois invalide (1 à 36).');
+    }
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    const now = new Date();
+    const base =
+      sub.ends_at && new Date(sub.ends_at) > now ? new Date(sub.ends_at) : now;
+    return this.extendByPlatform(
+      cabinetId,
+      { until: addMonths(base, m) },
+      actor,
+      note,
+      'free_period_granted',
+    );
+  }
+
+  /**
+   * Changement de plan par la plateforme :
+   *  - `keep_period` : plan/cycle modifiés sur la période en cours, sans
+   *    facturation ; le nouveau tarif s'applique au prochain renouvellement ;
+   *  - `new_period`  : nouvelle période facturée (même règle que le
+   *    self-service : paiement exigé avant activation pour un plan payant).
+   */
+  async changePlanByPlatform(
+    cabinetId: number,
+    input: { planId: number; cycle?: BillingCycle; mode: 'keep_period' | 'new_period' },
+    actor: SubscriptionActor,
+  ): Promise<Subscription> {
+    const plan = await this.planRepo.findOne({ where: { id: input.planId } });
+    if (!plan) throw new NotFoundException('Plan introuvable');
+    const current = await this.getRawCurrent(cabinetId);
+    const cycle = input.cycle ?? current?.billing_cycle ?? 'monthly';
+
+    if (input.mode === 'new_period' || !current) {
+      return this.createForCabinet(cabinetId, plan.id, cycle, {
+        actor,
+        eventType: current ? 'plan_changed' : 'created',
+        eventPayload: { from_plan_id: current?.plan_id ?? null, mode: 'new_period' },
+      });
+    }
+
+    const before = {
+      plan_id: current.plan_id,
+      cycle: current.billing_cycle,
+      amount: Number(current.amount),
+    };
+    current.plan_id = plan.id;
+    current.plan = plan;
+    current.billing_cycle = cycle;
+    current.amount = planPriceForCycle(plan, cycle);
+    const saved = await this.subRepo.save(current);
+    const pending = await this.payRepo.findOne({
+      where: { subscription_id: saved.id, status: 'pending' },
+      order: { id: 'DESC' },
+    });
+    if (pending) {
+      pending.amount = saved.amount;
+      await this.payRepo.save(pending);
+    }
+    await this.syncCabinet(cabinetId, saved);
+    await this.events.record({
+      cabinetId,
+      subscriptionId: saved.id,
+      type: 'plan_changed',
+      actor,
+      payload: {
+        mode: 'keep_period',
+        from_plan_id: before.plan_id,
+        plan_id: plan.id,
+        before,
+        after: { plan_id: plan.id, cycle, amount: Number(saved.amount) },
+      },
+    });
+    return saved;
+  }
+
+  /**
+   * Résiliation par la plateforme :
+   *  - `immediate` : abonnement annulé et cabinet suspendu (manuel) ;
+   *  - sinon : pas de reconduction, l'accès court jusqu'à la fin de période.
+   */
+  async cancelByPlatform(
+    cabinetId: number,
+    input: { reason: string; immediate: boolean },
+    actor: SubscriptionActor,
+  ): Promise<Subscription> {
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    sub.auto_renew = false;
+    sub.cancel_reason = input.reason?.slice(0, 255) || null;
+    if (input.immediate) {
+      sub.status = 'cancelled';
+      sub.cancelled_at = new Date();
+    }
+    const saved = await this.subRepo.save(sub);
+    if (input.immediate) {
+      const cabinet = await this.requireCabinet(cabinetId);
+      this.markSuspended(cabinet, 'manual');
+      cabinet.suspended_by_admin_id = actor.id ?? null;
+      cabinet.suspension_note = `Abonnement résilié : ${input.reason}`.slice(0, 500);
+      await this.cabinetRepo.save(cabinet);
+    }
+    await this.events.record({
+      cabinetId,
+      subscriptionId: saved.id,
+      type: 'cancelled',
+      actor,
+      payload: { reason: input.reason, immediate: input.immediate, ends_at: saved.ends_at },
+    });
+    return saved;
+  }
+
+  listEvents(cabinetId: number) {
+    return this.events.listForCabinet(cabinetId);
+  }
+
   // ── Outils DEV (indisponibles en production) ───────────────────────────────
 
   private assertDev(): void {
-    if (process.env.NODE_ENV === 'production') {
+    if (!isPaymentTestEnabled()) {
       throw new ForbiddenException(
         'Outils de développement indisponibles en production',
       );

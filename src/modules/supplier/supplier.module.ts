@@ -7,6 +7,7 @@ import { Supplier } from './entities/supplier.entity';
 import { SupplierInvoice } from './entities/supplier-invoice.entity';
 import { ExpenseReport } from './entities/expense-report.entity';
 import { ExpenseLine } from './entities/expense-line.entity';
+import { ExpenseCategoryEntity } from './entities/expense-category.entity';
 
 // Services
 import { SupplierInvoicesService } from './supplier-invoices.service';
@@ -18,6 +19,8 @@ import { SupplierInvoicesController } from './supplier-invoices.controller';
 import { ExpenseReportsController } from './expense-reports.controller';
 import { ExpenseLinesController } from './expense-lines.controller';
 import { ExpensesController } from './expenses.controller';
+import { ExpenseCategoriesController } from './expense-categories.controller';
+import { ExpenseCategoriesService } from './expense-categories.service';
 
 // Dépendances externes
 import { AgenciesModule } from '../agencies/agencies.module';
@@ -41,6 +44,7 @@ import { ExpenseWorkspaceService } from './expense-workspace.service';
       SupplierInvoice,
       ExpenseReport,
       ExpenseLine,
+      ExpenseCategoryEntity,
     ]),
     AgenciesModule,
     IamModule,
@@ -55,6 +59,7 @@ import { ExpenseWorkspaceService } from './expense-workspace.service';
     ExpenseReportsController,
     ExpenseLinesController,
     ExpensesController,
+    ExpenseCategoriesController,
   ],
   providers: [
     PaginationServiceV1,
@@ -63,6 +68,7 @@ import { ExpenseWorkspaceService } from './expense-workspace.service';
     ExpenseReportsService,
     ExpenseLinesService,
     ExpenseWorkspaceService,
+    ExpenseCategoriesService,
     SupplierInvoiceWriteHandler,
     ExpenseReportWriteHandler,
     ExpenseLineWriteHandler,
@@ -73,6 +79,7 @@ import { ExpenseWorkspaceService } from './expense-workspace.service';
     ExpenseReportsService,
     ExpenseLinesService,
     ExpenseWorkspaceService,
+    ExpenseCategoriesService,
   ],
 })
 export class SupplierModule {

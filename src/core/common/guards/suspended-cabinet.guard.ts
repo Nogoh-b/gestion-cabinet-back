@@ -8,6 +8,7 @@
 // APRES le TenantResolverMiddleware (qui résout resolvedTenantId).
 import { IS_PUBLIC_KEY } from 'src/core/decorators/public.decorator';
 import { ALLOW_SUSPENDED_KEY } from 'src/core/decorators/allow-suspended.decorator';
+import { IS_PLATFORM_KEY } from 'src/core/decorators/platform.decorator';
 import { Cabinet } from 'src/modules/cabinet/entities/cabinet.entity';
 import { SubscriptionsService } from 'src/modules/subscriptions/subscriptions.service';
 import { Repository } from 'typeorm';
@@ -40,6 +41,10 @@ export class SuspendedCabinetGuard implements CanActivate {
     const metadataTargets = [context.getHandler(), context.getClass()];
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, metadataTargets);
     if (isPublic) return true;
+    // Espace plateforme : aucun cabinet courant, rien à bloquer.
+    if (this.reflector.getAllAndOverride<boolean>(IS_PLATFORM_KEY, metadataTargets)) {
+      return true;
+    }
     const allowSuspended = this.reflector.getAllAndOverride<boolean>(
       ALLOW_SUSPENDED_KEY,
       metadataTargets,
