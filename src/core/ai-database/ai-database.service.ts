@@ -1840,9 +1840,12 @@ Contraintes obligatoires :
     file?: Express.Multer.File,
     aiRequestLogId?: number,
   ): Promise<AnalysisResponseDto> {
-    return this.withAiMetrics('ask', aiRequestLogId, () =>
-      this.analyzeQuestionInternal(dto, user, file),
+    const analyze = () => this.withAiMetrics('ask', aiRequestLogId, () =>
+      this.analyzeQuestionInternal(dto.temporary === true || dto.temporary === 'true'
+        ? { ...dto, conversationId: undefined } : dto, user, file),
     );
+    return dto.temporary === true || dto.temporary === 'true'
+      ? this.conversationManager.runTemporary(analyze) : analyze();
   }
 
   private async analyzeQuestionInternal(
@@ -4025,9 +4028,12 @@ ${blocks.join('\n\n')}
     sendEvent: (event: string, data: any) => void,
     aiRequestLogId?: number,
   ): Promise<void> {
-    return this.withAiMetrics('ask_stream', aiRequestLogId, () =>
-      this.analyzeQuestionStreamInternal(dto, user, file, sendEvent),
+    const analyze = () => this.withAiMetrics('ask_stream', aiRequestLogId, () =>
+      this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
+        ? { ...dto, conversationId: undefined } : dto, user, file, sendEvent),
     );
+    return dto.temporary === true || dto.temporary === 'true'
+      ? this.conversationManager.runTemporary(analyze) : analyze();
   }
 
   private async analyzeQuestionStreamInternal(
@@ -6389,7 +6395,7 @@ RÉPONSE (en langage naturel):`;
 
     if (referenceTables.length > 0) {
       const combined = [...new Set([...referenceTables, ...detectedTables])];
-      const expanded = this.expandWithRelatedTables(combined, 10);
+      const expanded = this.expandWithRelatedTables(combined, 12);
       this.logger.log(
         `Tables contraintes par references: ${expanded.join(', ')}`,
       );
@@ -6414,12 +6420,20 @@ RÉPONSE (en langage naturel):`;
         'dossiers',
         'customer',
         'dossier_actions',
+        'billable_items',
+        'dossier_billing_profiles',
+        'dossier_billing_rules',
+        'case_action_definitions',
         'dossier_recommendations',
       ],
       case: [
         'dossiers',
         'customer',
         'dossier_actions',
+        'billable_items',
+        'dossier_billing_profiles',
+        'dossier_billing_rules',
+        'case_action_definitions',
         'dossier_recommendations',
       ],
       client: ['customer', 'dossiers'],
@@ -6430,6 +6444,7 @@ RÉPONSE (en langage naturel):`;
       action: [
         'dossier_actions',
         'billable_items',
+        'dossier_billing_profiles',
         'dossier_billing_rules',
         'case_action_definitions',
         'case_action_families',
@@ -6731,14 +6746,17 @@ RÉPONSE (en langage naturel):`;
       schema +=
         "⚠️ N'affiche jamais id, definition_id, responsible_user_id ni un UUID : désigne l'action par title ou definition_label. " +
         "Responsable : LEFT JOIN user u ON u.id = dossier_actions.responsible_user_id, puis CONCAT(u.first_name, ' ', u.last_name) AS responsable. " +
-        "Une action COMPLETED n'est pas automatiquement facturable : seule billing_decision = 'BILLABLE' la rend « à facturer ». " +
-        "Pour une action prête à mettre sur facture, joins billable_items sur source_type = 'ACTION' AND source_id = dossier_actions.id et exige billable_items.status = 'TO_INVOICE'.\n";
+        "Une action COMPLETED n'est pas automatiquement facturable : BILLABLE, HOURLY et VACATION sont des traitements facturables; INCLUDED_IN_PACKAGE est inclus au forfait. " +
+        "Pour une action prête à mettre sur facture, joins billable_items sur source_type = 'ACTION' AND source_id = dossier_actions.id et exige billable_items.status = 'TO_INVOICE'. " +
+        "Pour son montant, sélectionne les montants, la quantité, le prix unitaire et la devise de billable_items. Consulte aussi dossier_billing_profiles via dossier_id et les règles tarifaires avant de déclarer un tarif absent.\n";
     }
 
     if (table === 'billable_items') {
       schema +=
         '⚠️ Statuts : TO_INVOICE = prêt à facturer; NEEDS_REVIEW = tarif ou calcul à contrôler; RESERVED = réservé; ' +
-        'INVOICED = déjà facturé; WAIVED = abandonné; ADJUSTED = ajusté. Ne présente jamais NEEDS_REVIEW comme prêt à facturer.\n';
+        'INVOICED = déjà facturé; WAIVED = abandonné; ADJUSTED = ajusté. Ne présente jamais NEEDS_REVIEW comme prêt à facturer. ' +
+        'Pour une question de montant, sélectionne quantity, unit_price, net_amount, tax_rate, tax_amount, gross_amount, currency, calculation_snapshot et review_reason. ' +
+        'Ces montants enregistrés priment sur une estimation à partir de la configuration actuelle du dossier.\n';
     }
 
     return schema;
@@ -7318,6 +7336,9 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
 
     // Construire la map alias → tableName pour les tables tenant-aware
     const aliasMap = new Map<string, string>(); // alias → tableName
+    // Alias introduits uniquement par une jointure externe (LEFT/RIGHT JOIN).
+    const outerAliases = new Set<string>();
+    const innerAliases = new Set<string>();
 
     // FIX 1 — l'alias est entièrement optionnel : `(?:\s+(?:AS\s+)?alias)?`
     // Avant : `\s+` était obligatoire → `FROM table` (fin de string) ne matchait pas.
@@ -7327,15 +7348,21 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     while ((m = fromRe.exec(sql)) !== null) {
       const tbl = m[1].toLowerCase();
       const alias = resolveAlias(tbl, m[2]);
-      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+      if (tenantTables.has(tbl)) {
+        aliasMap.set(alias, tbl);
+        innerAliases.add(alias);
+      }
     }
 
-    // [LEFT|RIGHT|INNER|OUTER|CROSS] JOIN table [AS alias]
-    const joinRe = /\bJOIN\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
+    // [LEFT|RIGHT [OUTER]|INNER|CROSS] JOIN table [AS alias]
+    const joinRe =
+      /\b(?:(LEFT|RIGHT)(?:\s+OUTER)?\s+)?JOIN\s+`?(\w+)`?(?:\s+(?:AS\s+)?([a-zA-Z_]\w*))?\b/gi;
     while ((m = joinRe.exec(sql)) !== null) {
-      const tbl = m[1].toLowerCase();
-      const alias = resolveAlias(tbl, m[2]);
-      if (tenantTables.has(tbl)) aliasMap.set(alias, tbl);
+      const tbl = m[2].toLowerCase();
+      const alias = resolveAlias(tbl, m[3]);
+      if (!tenantTables.has(tbl)) continue;
+      aliasMap.set(alias, tbl);
+      (m[1] ? outerAliases : innerAliases).add(alias);
     }
 
     if (aliasMap.size === 0) {
@@ -7355,9 +7382,19 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     const newConditions = Array.from(aliasMap.entries())
       .map(([alias, tbl]) => {
         const isShared = sharedTables.has(tbl);
-        const condition = isShared
+        const tenantCondition = isShared
           ? `${alias}.tenant_id IN (1, ${tenantId})`
           : `${alias}.tenant_id = ${tenantId}`;
+        // FIX 5 — jointure externe : sans correspondance, toutes les colonnes de
+        // l'alias valent NULL. Exiger tenant_id = X dans le WHERE supprimait
+        // alors la ligne principale (ex. dossier sans juridiction → « dossier
+        // introuvable »). tenant_id est NOT NULL partout : un NULL ne peut venir
+        // que de l'absence de correspondance, et une ligne d'un autre cabinet
+        // reste exclue.
+        const condition =
+          outerAliases.has(alias) && !innerAliases.has(alias)
+            ? `(${tenantCondition} OR ${alias}.tenant_id IS NULL)`
+            : tenantCondition;
         // Idempotence : ne pas réinjecter si la condition correcte est déjà présente
         const already = isShared
           ? new RegExp(

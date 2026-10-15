@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 // conversation-manager.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,6 +10,16 @@ import type { ReferencedEntityContext } from './dto/ask-question.dto';
 
 @Injectable()
 export class ConversationManagerService {
+  // Ce contexte est limité à la requête et isolé entre utilisateurs concurrents.
+  // L'historique visible des questions suivantes est fourni par le navigateur.
+  private readonly temporarySession = new AsyncLocalStorage<{
+    conversation: Conversation | null;
+  }>();
+
+  runTemporary<T>(callback: () => T): T {
+    return this.temporarySession.run({ conversation: null }, callback);
+  }
+
   private readonly logger = new Logger(ConversationManagerService.name);
 
   constructor(
@@ -25,6 +36,13 @@ export class ConversationManagerService {
     userId: string,
     title?: string,
   ): Promise<Conversation> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) {
+      temporary.conversation ??= Object.assign(new Conversation(), {
+        id: uuidv4(), userId, title: title || 'Nouvelle conversation', status: 'active',
+      });
+      return temporary.conversation;
+    }
     const conversation = this.conversationRepo.create({
       id: uuidv4(),
       userId,
@@ -68,6 +86,9 @@ export class ConversationManagerService {
     references?: ReferencedEntityContext[],
     metadata?: Record<string, any>,
   ): Promise<ConversationMessage> {
+    if (this.temporarySession.getStore()) {
+      return Object.assign(new ConversationMessage(), { conversationId, role, content });
+    }
     const message = this.messageRepo.create({
       conversationId,
       role,
@@ -95,6 +116,7 @@ export class ConversationManagerService {
     conversationId: string,
     schema: string,
   ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     // Vérifier si le message système existe déjà
     const existing = await this.messageRepo.findOne({
       where: { conversationId, role: 'system' },
@@ -214,6 +236,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     conversationId: string,
     content: string,
   ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     const conversation = await this.conversationRepo.findOne({
       where: { id: conversationId },
     });
@@ -230,6 +253,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Vérifie si la conversation a déjà un message système
    */
   async hasSystemMessage(conversationId: string): Promise<boolean> {
+    if (this.temporarySession.getStore()) return false;
     const count = await this.messageRepo.count({
       where: { conversationId, role: 'system' },
     });
@@ -471,6 +495,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     conversationId: string,
     options: { maxMessages?: number; maxTokens?: number } = {},
   ): Promise<Array<{ role: string; content: string }>> {
+    if (this.temporarySession.getStore()) return [];
     const maxMessages = options.maxMessages ?? 8;
     const maxTokens = options.maxTokens ?? 8000;
 
@@ -511,6 +536,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   async getStructuredFollowUpContext(
     conversationId: string,
   ): Promise<string | null> {
+    if (this.temporarySession.getStore()) return null;
     const messages = await this.messageRepo.find({
       where: { conversationId },
       order: { created_at: 'DESC' },
@@ -533,6 +559,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    * Récupère une conversation active par son ID
    */
   async getConversation(conversationId: string): Promise<Conversation | null> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) return temporary.conversation;
     return this.conversationRepo.findOne({
       where: { id: conversationId, status: 'active' },
     });
@@ -545,6 +573,8 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   async getConversationAny(
     conversationId: string,
   ): Promise<Conversation | null> {
+    const temporary = this.temporarySession.getStore();
+    if (temporary) return temporary.conversation;
     return this.conversationRepo.findOne({
       where: { id: conversationId },
     });
@@ -570,6 +600,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
     conversationId: string,
     title: string,
   ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
     await this.conversationRepo.update(conversationId, { title });
     this.logger.log(
       `📝 Titre mis à jour pour conv ${conversationId}: "${title}"`,

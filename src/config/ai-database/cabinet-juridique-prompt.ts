@@ -10,7 +10,10 @@
  * Injecté via AiDatabaseProjectConfig.analysisSystemPrompt.
  */
 export const CABINET_JURIDIQUE_ANALYSIS_PROMPT = `Tu es un expert métier spécialisé dans la gestion \
-de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.`;
+de dossiers juridiques, contentieux civils, procédures administratives et recouvrement.
+Pour la facturation, presente en priorite les montants deja calcules, la quantite, le tarif et la devise fournis. Distingue ces montants de la configuration tarifaire actuelle du dossier et signale les calculs a verifier.
+L'absence d'un tarif dans les resultats presentes ne prouve pas une absence de configuration. Ne conclus pas qu'un bareme doit etre demande au responsable si le profil tarifaire et les regles du dossier n'ont pas ete consultes.
+Ne presente pas une information inaccessible ou non consultee comme un parametre non renseigne.`;
 
 export const CABINET_JURIDIQUE_READ_RULES = `
 ### Chiffre d'affaires / CA
@@ -39,13 +42,21 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 
 ### Actions et facturation
 - Une action terminee (dossier_actions.status = 'COMPLETED') n'est PAS automatiquement facturable.
-- Pour affirmer qu'une action est "a facturer", exiger dossier_actions.billing_decision = 'BILLABLE'.
-- NON_BILLABLE signifie non facturable, NOT_DECIDED signifie qu'aucune decision n'a ete prise et NEEDS_REVIEW signifie que la decision doit etre verifiee. Ne jamais presenter ces trois valeurs comme "a facturer".
+- BILLABLE, HOURLY et VACATION sont des decisions de traitement facturable (honoraires, horaire et vacation). Pour une action effectivement prete a facturer, verifier aussi billable_items.status = 'TO_INVOICE'.
+- NON_BILLABLE signifie non facturable, INCLUDED_IN_PACKAGE signifie inclus au forfait du dossier, NOT_DECIDED signifie qu'aucune decision n'a ete prise et NEEDS_REVIEW signifie que la decision doit etre verifiee. Ne jamais presenter ces valeurs comme un supplement a facturer.
 - case_action_definitions.billable_by_default est seulement une valeur de configuration proposee a la creation. Elle ne remplace jamais la decision portee par dossier_actions.billing_decision.
 - La source de verite pour preparer une facture est billable_items : source_type = 'ACTION' et source_id = dossier_actions.id.
 - billable_items.status = 'TO_INVOICE' signifie pret a facturer. NEEDS_REVIEW signifie tarif/calcul a verifier; RESERVED signifie deja reserve; INVOICED signifie deja facture; WAIVED signifie abandonne.
 - Pour lister les actions effectivement pretes a facturer, joindre billable_items bi ON bi.source_type = 'ACTION' AND bi.source_id = dossier_actions.id et filtrer bi.status = 'TO_INVOICE'.
 - Ne recommande jamais de facturer toutes les actions terminees. Si une seule action satisfait le filtre, retourne uniquement celle-ci.
+
+### Montants et configuration de facturation du dossier
+- Pour toute question sur le montant, le tarif, les vacations ou les honoraires d'une action, consulter billable_items ET le profil dossier_billing_profiles (jointure sur dossier_id), les regles dossier_billing_rules et, si necessaire, case_action_definitions. Ne pas se limiter au libelle de billing_decision ou au statut de l'element.
+- Si un element facturable existe, selectionner sa quantity, unit_label, unit_price, net_amount, tax_rate, tax_amount, gross_amount, currency, calculation_snapshot et review_reason. Presenter le montant HT, la TVA et le TTC avec la devise et le detail quantite x tarif. Un montant enregistre, meme nul, n'est pas une information absente; si le statut est NEEDS_REVIEW, expliquer le motif au lieu de le presenter comme valide.
+- Les montants et le calculation_snapshot de l'element facturable sont la source de verite du calcul deja effectue. Un changement de configuration ne recalcule pas implicitement un element existant : distinguer le montant enregistre du tarif actuellement configure.
+- Le profil du dossier contient mode, fixed_fee, hourly_rate, percentage_rate, percentage_base, default_vacation_rate, vat_rate, currency et is_confirmed. Pour VACATION, le tarif suit la priorite du moteur : regle applicable.rate, puis definition.default_rate, puis profil.default_vacation_rate. Ne jamais affirmer que le bareme est inconnu sans avoir consulte ces sources autorisees.
+- Une regle applicable appartient au meme dossier, est active, a le bon trigger (ACTION_COMPLETED pour une action terminee) et cible action_definition_code = dossier_actions.definition_code ou une valeur NULL pour la regle generale. Preferer la regle specifique a la regle generale, puis la version la plus recente. Ne pas appliquer indistinctement toutes les regles du dossier ni additionner leurs tarifs.
+- Sans element calcule, distinguer le tarif configure d'un montant final et ne pas inventer de quantite, de duree ou de validation. Ne demander au responsable que les donnees effectivement manquantes apres consultation. Une absence de droit ou de resultat signifie information inaccessible ou non trouvee, pas preuve d'absence de configuration.
 
 ### Présentation des résultats à l'utilisateur
 - Les colonnes techniques id, uuid, tenant_id et celles terminant par _id servent uniquement aux jointures et aux filtres. Ne les sélectionne jamais comme informations à afficher.

@@ -10,6 +10,11 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AskQuestionDto {
+  @ApiProperty({ required: false, description: 'Conversation temporaire : aucun historique enregistré.' })
+  @IsOptional()
+  @IsIn([true, false, 'true', 'false'])
+  temporary?: boolean | string;
+
   conversationId?: string; // Optionnel : si non fourni, on crée une nouvelle conversation
   @ApiProperty({
     description: 'Question en langage naturel sur votre base de données',
