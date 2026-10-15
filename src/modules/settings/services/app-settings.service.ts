@@ -1,5 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -10,8 +9,9 @@ import {
   applyLogoInput,
   deleteLogoFile,
 } from 'src/modules/cabinet/cabinet-logo.util';
-import { AI_CONFIG_CHANGED_EVENT } from 'src/core/ai-database/ai-model-router.service';
 import { AppSettingsDto } from '../dto/app-settings.dto';
+import { APPEARANCE_FALLBACK } from '../appearance.constants';
+import { mergeSmtpConfig } from '../smtp-config.util';
 
 /**
  * Service de configuration du cabinet.
@@ -22,12 +22,9 @@ import { AppSettingsDto } from '../dto/app-settings.dto';
  */
 @Injectable()
 export class AppSettingsService {
-  private readonly logger = new Logger(AppSettingsService.name);
-
   constructor(
     @InjectRepository(Cabinet)
     private readonly cabinetRepository: Repository<Cabinet>,
-    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /** Champs réinitialisables par `reset()` (les valeurs par défaut métier). */
@@ -36,10 +33,12 @@ export class AppSettingsService {
     logo_mime: null,
     logo_file: null,
     slogan: null,
-    theme_name: 'ocean',
-    font_ui: 'outfit',
-    font_heading: 'outfit',
-    font_mono: 'jetbrains_mono',
+    theme_name: APPEARANCE_FALLBACK.theme_name,
+    font_ui: APPEARANCE_FALLBACK.font_ui,
+    font_heading: APPEARANCE_FALLBACK.font_heading,
+    font_mono: APPEARANCE_FALLBACK.font_mono,
+    default_font_size: APPEARANCE_FALLBACK.font_size,
+    default_sidebar_style: APPEARANCE_FALLBACK.sidebar_style,
     rccm: null,
     nina: null,
     bank_account: null,
@@ -75,6 +74,7 @@ export class AppSettingsService {
     return cabinet;
   }
 
+  /** Exception IA posée par la plateforme pour ce cabinet (lecture seule ici). */
   async getAiConfig(cabinetId: number): Promise<AiCabinetConfig | null> {
     const cabinet = await this.findByCabinet(cabinetId);
     return cabinet.ai_config
@@ -82,73 +82,26 @@ export class AppSettingsService {
       : null;
   }
 
-  /**
-   * Point d'ecriture dedie a l'administration IA. Le remplacement est
-   * atomique et l'invalidation du routeur est emise juste apres la sauvegarde.
-   */
-  async saveAiConfig(
-    cabinetId: number,
-    config: AiCabinetConfig | null,
-  ): Promise<AiCabinetConfig | null> {
-    const cabinet = await this.findByCabinet(cabinetId);
-    cabinet.ai_config = config;
-    const saved = await this.cabinetRepository.save(cabinet);
-    this.eventEmitter.emit(AI_CONFIG_CHANGED_EVENT, { tenantId: cabinetId });
-    this.logger.log(
-      `[AI-MODEL] config IA modifiee pour le cabinet #${cabinetId} - cache invalide`,
-    );
-    return saved.ai_config ? JSON.parse(JSON.stringify(saved.ai_config)) : null;
-  }
-
   async update(cabinetId: number, dto: AppSettingsDto): Promise<Cabinet> {
     const cabinet = await this.findByCabinet(cabinetId);
+    const previousSmtpConfig = cabinet.smtp_config;
     // `logo_url` est un champ de transport (data-URI) → décodé en blob + fichier statique.
-    const { logo_url, ai_config, ...rest } = dto as AppSettingsDto & {
+    // `ai_config` n'est plus modifiable par le cabinet : le moteur IA est géré par
+    // la console plateforme (module « Intelligence artificielle »).
+    const { logo_url, ai_config: _ignored, ...rest } = dto as AppSettingsDto & {
       logo_url?: string | null;
-      ai_config?: any;
+      ai_config?: unknown;
     };
     Object.assign(cabinet, rest);
-    applyLogoInput(cabinet, logo_url);
-    // ai_config : si la clé contient des • (masquée), on ne l'écrase pas
-    if (ai_config !== undefined) {
-      const merged = this.mergeAiConfig(cabinet.ai_config, ai_config);
-      cabinet.ai_config = merged;
-    }
-    const saved = await this.cabinetRepository.save(cabinet);
-    // La config IA du cabinet a changé (fournisseur, clé, modèle) : on prévient
-    // le routeur pour qu'il purge son cache immédiatement — sans quoi le
-    // changement n'aurait d'effet qu'après expiration du TTL (30 s).
-    if (ai_config !== undefined) {
-      this.eventEmitter.emit(AI_CONFIG_CHANGED_EVENT, { tenantId: cabinetId });
-      this.logger.log(
-        `[AI-MODEL] config IA modifiée pour le cabinet #${cabinetId} — cache invalidé`,
+    if (rest.smtp_config !== undefined) {
+      // Un mot de passe masqué/vide renvoyé par l'écran ne remplace pas l'existant.
+      cabinet.smtp_config = mergeSmtpConfig(
+        rest.smtp_config,
+        previousSmtpConfig,
       );
     }
-    return saved;
-  }
-
-  private mergeAiConfig(existing: any, incoming: any): any {
-    if (incoming === null) return null;
-    if (!incoming || typeof incoming !== 'object') return incoming;
-    // Préserve les clés masquées (contenant •) : garde l'ancienne valeur
-    const result = { ...(existing ?? {}), ...incoming };
-    // Merge profond pour providers
-    if (existing?.providers || incoming.providers) {
-      result.providers = { ...(existing?.providers ?? {}) };
-      for (const [k, v] of Object.entries(incoming.providers ?? {})) {
-        const prev = existing?.providers?.[k] ?? {};
-        const cur = v as any;
-        // Si api_key contient •, on garde l'ancienne
-        if (cur?.api_key?.includes('•') || cur?.api_key?.includes('•')) {
-          cur.api_key = prev.api_key;
-        }
-        result.providers[k] = { ...prev, ...cur };
-      }
-    }
-    if (incoming.api_key?.includes('•')) {
-      result.api_key = existing?.api_key;
-    }
-    return result;
+    applyLogoInput(cabinet, logo_url);
+    return this.cabinetRepository.save(cabinet);
   }
 
   async reset(cabinetId: number): Promise<Cabinet> {

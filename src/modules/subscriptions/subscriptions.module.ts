@@ -19,15 +19,23 @@ import { PaymentWebhooksController } from './payment/payment-webhooks.controller
 import { CinetPayProvider } from './payment/providers/cinetpay.provider';
 import { NotchPayProvider } from './payment/providers/notchpay.provider';
 import { StripeProvider } from './payment/providers/stripe.provider';
+import { ReceiptService } from './billing/receipt.service';
+import { BillingNotifierService } from './billing/billing-notifier.service';
+import { Coupon, CouponRedemption } from './coupons/coupon.entity';
+import { CouponsService } from './coupons/coupons.service';
+import { PlansModule } from '../plans/plans.module';
 
 @Module({
   imports: [
+    PlansModule,
     TypeOrmModule.forFeature([
       Subscription,
       SubscriptionPayment,
       SubscriptionEvent,
       PaymentMethod,
       PaymentWebhookEvent,
+      Coupon,
+      CouponRedemption,
       Cabinet,
       Plan,
     ]),
@@ -44,12 +52,17 @@ import { StripeProvider } from './payment/providers/stripe.provider';
     CinetPayProvider,
     NotchPayProvider,
     StripeProvider,
+    ReceiptService,
+    BillingNotifierService,
+    CouponsService,
   ],
   exports: [
     SubscriptionsService,
     SubscriptionEventsService,
     PaymentMethodsService,
     PaymentProviderRegistry,
+    ReceiptService,
+    CouponsService,
   ],
 })
 export class SubscriptionsModule {}

@@ -113,6 +113,14 @@ export class Subscription {
   @Column({ type: 'varchar', length: 255, nullable: true, name: 'cancel_reason' })
   cancel_reason: string | null;
 
+  /** Code promo appliqué à cet abonnement (platform_coupons). */
+  @Column({ type: 'int', nullable: true, name: 'coupon_id' })
+  coupon_id: number | null;
+
+  /** Échéances futures restant à remiser (renouvellements). */
+  @Column({ type: 'int', nullable: true, name: 'discount_cycles_remaining' })
+  discount_cycles_remaining: number | null;
+
   /** Origine de la création : système, cabinet (self-service) ou plateforme. */
   @Column({ type: 'varchar', length: 20, default: 'system', name: 'created_by' })
   created_by: SubscriptionActorType;

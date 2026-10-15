@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -16,6 +17,9 @@ export interface SubscriptionActor {
 
 export const SYSTEM_ACTOR: SubscriptionActor = { type: 'system' };
 
+/** Événement diffusé après chaque transition enregistrée. */
+export const SUBSCRIPTION_EVENT = 'subscription.event';
+
 /** Construit l'acteur « utilisateur de cabinet » depuis req.user. */
 export function cabinetUserActor(user: any): SubscriptionActor {
   return {
@@ -32,6 +36,7 @@ export class SubscriptionEventsService {
   constructor(
     @InjectRepository(SubscriptionEvent)
     private readonly repo: Repository<SubscriptionEvent>,
+    @Optional() private readonly emitter?: EventEmitter2,
   ) {}
 
   /** Enregistre un événement. Ne lève jamais (n'interrompt pas la transition). */
@@ -44,7 +49,7 @@ export class SubscriptionEventsService {
   }): Promise<void> {
     const actor = input.actor ?? SYSTEM_ACTOR;
     try {
-      await this.repo.insert({
+      const row = {
         cabinet_id: input.cabinetId,
         subscription_id: input.subscriptionId ?? null,
         type: input.type,
@@ -52,6 +57,12 @@ export class SubscriptionEventsService {
         actor_id: actor.id ?? null,
         actor_label: actor.label?.slice(0, 150) ?? null,
         payload: input.payload ?? null,
+      };
+      const result = await this.repo.insert(row);
+      this.emitter?.emit(SUBSCRIPTION_EVENT, {
+        ...row,
+        id: result.identifiers?.[0]?.id ?? null,
+        created_at: new Date(),
       });
     } catch (error) {
       this.logger.error(

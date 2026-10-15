@@ -84,6 +84,22 @@ export interface PublicPaymentMethod {
   min_amount: number;
 }
 
+/**
+ * URL publique du front (retours de paiement, liens d'emails) :
+ * APP_FRONTEND_URL, sinon FRONTEND_URL, sinon la première origine CORS.
+ */
+export function frontendPublicUrl(): string {
+  const candidate =
+    process.env.APP_FRONTEND_URL ||
+    process.env.FRONTEND_URL ||
+    String(process.env.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .find((o) => /^https?:\/\//.test(o)) ||
+    '';
+  return candidate.trim().replace(/\/+$/, '');
+}
+
 export function apiPublicUrl(): string {
   return String(
     process.env.API_PUBLIC_URL || `http://localhost:${String(process.env.PORT || '3004').trim()}`,

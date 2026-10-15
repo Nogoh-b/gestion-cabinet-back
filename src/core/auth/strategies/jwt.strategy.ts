@@ -1,17 +1,25 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { Request } from 'express';
 import { getJwtSecret } from 'src/core/config/secrets';
 import { TenantContext } from 'src/core/tenant/tenant.context';
 import { UsersService } from 'src/modules/iam/user/user.service';
 import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
+import {
+  assertImpersonationAllowed,
+  ImpersonationInfo,
+  loadImpersonation,
+} from '../impersonation';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private readonly usersService: UsersService,
     private readonly tenantContext: TenantContext,
+    @Optional() @InjectDataSource() private readonly dataSource?: DataSource,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -78,7 +86,26 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       );
     }
 
+    // ── Session support (« en tant que ») ────────────────────────────────────
+    // Le jeton porte l'identifiant de session : elle doit être active, non
+    // expirée et non révoquée ; certaines actions restent interdites.
+    let impersonation: ImpersonationInfo | null = null;
+    if (payload.imp) {
+      if (!this.dataSource) throw new UnauthorizedException('Session support invalide.');
+      impersonation = await loadImpersonation(
+        this.dataSource,
+        Number(payload.imp),
+        Number(payload.sub),
+        jwtTenantId,
+      );
+      assertImpersonationAllowed(
+        (req as any).method,
+        (req as any).originalUrl ?? (req as any).url,
+      );
+    }
+
     return {
+      ...(impersonation ? { impersonation } : {}),
       id: payload.sub,
       userId: payload.sub,
       username: payload.username,

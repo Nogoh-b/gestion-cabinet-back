@@ -17,6 +17,7 @@ import { NotificationService } from 'src/modules/notification/notification.servi
 import { NotificationResponseDto } from 'src/modules/notification/dto/notification-response.dto';
 import { UsersService } from 'src/modules/iam/user/user.service';
 import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
+import { isClientUser } from 'src/core/auth/client-access';
 
 @WebSocketGateway({
   cors: {
@@ -61,6 +62,11 @@ export class MainGateway implements OnGatewayConnection, OnGatewayDisconnect {
         employeeStatus === EmployeeStatus.SUSPENDED
       ) {
         throw new Error('Compte inactif ou bloqué');
+      }
+      // Portail client : pas de temps réel. Les événements (join_room,
+      // send_notification…) ne sont pas cloisonnés par client.
+      if (isClientUser(sessionUser)) {
+        throw new Error('Temps réel indisponible pour un compte client');
       }
 
       this.logger.log(`🟢 Connexion - User: ${userId}, Socket: ${client.id}`);

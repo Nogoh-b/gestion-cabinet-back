@@ -1,4 +1,9 @@
 import { Plan } from 'src/modules/plans/entities/plan.entity';
+import type {
+  FontSize,
+  SidebarStyle,
+  ThemeName,
+} from 'src/modules/settings/appearance.constants';
 import {
   Column,
   CreateDateColumn,
@@ -144,15 +149,14 @@ export class Cabinet {
 
   // ── Apparence (anciennement app_settings) ─────────────────────────────────
 
-  /** 🎨 Thème nommé (palette claire). Ignoré en mode sombre. */
-  @Column({
-    type: 'enum',
-    enum: ['ocean', 'silver', 'yellow', 'forest', 'sunset', 'rose'],
-    default: 'ocean',
-  })
-  theme_name: 'ocean' | 'silver' | 'yellow' | 'forest' | 'sunset' | 'rose';
+  // L'apparence est personnelle (`user_settings`) : les champs ci-dessous sont
+  // les DÉFAUTS copiés sur chaque nouveau membre du cabinet.
 
-  /** Polices configurables (clés de FONTS côté front). */
+  /** 🎨 Thème nommé par défaut (voir THEME_NAMES). */
+  @Column({ type: 'varchar', length: 20, default: 'midnight' })
+  theme_name: ThemeName;
+
+  /** Polices par défaut (clés de FONTS côté front). */
   @Column({ length: 50, default: 'outfit', name: 'font_ui' })
   font_ui: string;
 
@@ -161,6 +165,19 @@ export class Cabinet {
 
   @Column({ length: 50, default: 'jetbrains_mono', name: 'font_mono' })
   font_mono: string;
+
+  /** Taille de texte par défaut des nouveaux membres. */
+  @Column({ type: 'varchar', length: 5, default: 'lg', name: 'default_font_size' })
+  default_font_size: FontSize;
+
+  /** Style de sidebar par défaut des nouveaux membres. */
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: 'tinted',
+    name: 'default_sidebar_style',
+  })
+  default_sidebar_style: SidebarStyle;
 
   // ── Informations légales (anciennement app_settings) ──────────────────────
 

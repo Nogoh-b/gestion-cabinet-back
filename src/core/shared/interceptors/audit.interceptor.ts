@@ -120,7 +120,7 @@ export class AuditInterceptor implements NestInterceptor {
             path: path.slice(0, 255),
             statusCode: res?.statusCode ?? null,
             ip: this.ipOf(req),
-            summary: this.summaryFor(action, resource, resourceName, true),
+            summary: this.withSupport(req, this.summaryFor(action, resource, resourceName, true)),
             authorizationResult,
             requiredPermissions,
             grantedPermissions,
@@ -146,7 +146,7 @@ export class AuditInterceptor implements NestInterceptor {
             path: path.slice(0, 255),
             statusCode,
             ip: this.ipOf(req),
-            summary: this.summaryFor(action, resource, resourceName, false),
+            summary: this.withSupport(req, this.summaryFor(action, resource, resourceName, false)),
             authorizationResult,
             requiredPermissions,
             grantedPermissions,
@@ -308,6 +308,21 @@ export class AuditInterceptor implements NestInterceptor {
     req: any,
     resourceName: string | null,
   ): Record<string, unknown> | null {
+    const base = this.baseDetailsOf(req, resourceName);
+    const imp = req?.user?.impersonation;
+    if (!imp) return base;
+    // Action réalisée par le support plateforme (connexion « en tant que »).
+    return {
+      ...(base ?? {}),
+      impersonated_by: imp.adminEmail,
+      impersonation_session: imp.sessionId,
+    };
+  }
+
+  private baseDetailsOf(
+    req: any,
+    resourceName: string | null,
+  ): Record<string, unknown> | null {
     const body = req?.body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return resourceName ? { resource_name: resourceName } : null;
@@ -321,6 +336,13 @@ export class AuditInterceptor implements NestInterceptor {
       ...(resourceName ? { resource_name: resourceName } : {}),
       ...(uniqueFields.length ? { changed_fields: uniqueFields } : {}),
     };
+  }
+
+  /** Préfixe le résumé quand l'action vient d'une session support plateforme. */
+  private withSupport(req: any, summary: string | null): string | null {
+    const imp = req?.user?.impersonation;
+    if (!imp) return summary;
+    return `[Support plateforme : ${imp.adminEmail}] ${summary ?? ''}`.trim().slice(0, 500);
   }
 
   private ipOf(req: any): string | null {

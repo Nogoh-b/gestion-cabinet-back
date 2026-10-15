@@ -14,6 +14,12 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Public } from 'src/core/decorators/public.decorator';
 import { PaymentWebhooksService } from './payment-webhooks.service';
+import { Body } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { CouponsService } from '../coupons/coupons.service';
+import { PlansService } from 'src/modules/plans/plans.service';
+import { planPriceForCycle } from '../subscriptions.policy';
+import { frontendPublicUrl } from './payment-methods.service';
 
 /**
  * Points d'entrée publics des passerelles (aucun cabinet, aucun jeton) :
@@ -23,7 +29,43 @@ import { PaymentWebhooksService } from './payment-webhooks.service';
 @ApiExcludeController()
 @Controller('payments')
 export class PaymentWebhooksController {
-  constructor(private readonly webhooks: PaymentWebhooksService) {}
+  constructor(
+    private readonly webhooks: PaymentWebhooksService,
+    private readonly coupons: CouponsService,
+    private readonly plans: PlansService,
+  ) {}
+
+  /** Aperçu d'un code promo pour un plan et un cycle (public, limité en débit). */
+  @Public()
+  @Post('coupons/quote')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async quote(
+    @Body() body: { code?: string; plan_code?: string; plan_id?: number; cycle?: 'monthly' | 'yearly' },
+  ) {
+    const plan = body?.plan_id
+      ? await this.plans.findOne(Number(body.plan_id)).catch(() => null)
+      : await this.plans.findByCode(String(body?.plan_code ?? ''));
+    const cycle = body?.cycle === 'yearly' ? 'yearly' : 'monthly';
+    const amount = planPriceForCycle(plan, cycle);
+    const q = await this.coupons.quote(String(body?.code ?? ''), {
+      planId: plan?.id ?? null,
+      cycle,
+      amount,
+      currency: 'XAF',
+    });
+    return {
+      code: q.coupon.code,
+      description: q.coupon.description,
+      type: q.coupon.type,
+      value: Number(q.coupon.value),
+      duration_cycles: q.coupon.duration_cycles,
+      gross: q.gross,
+      discount: q.discount,
+      net: q.net,
+      free_months: q.free_months,
+    };
+  }
 
   @Public()
   @Post('webhooks/:provider')
@@ -54,7 +96,7 @@ export class PaymentWebhooksController {
     // CinetPay renvoie la référence en POST (transaction_id).
     const reference = ref ?? req.body?.transaction_id ?? req.body?.cpm_trans_id ?? null;
     const result = cancelled ? { status: 'cancelled' } : await this.webhooks.handleReturn(reference);
-    const front = String(process.env.APP_FRONTEND_URL ?? '').replace(/\/+$/, '');
+    const front = frontendPublicUrl();
     const params = new URLSearchParams({
       ...(reference ? { payment_ref: String(reference) } : {}),
       payment_status: String(result.status),

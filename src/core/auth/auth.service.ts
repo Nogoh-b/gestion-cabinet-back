@@ -19,10 +19,16 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
+import { UserRole } from 'src/core/enums/user-role.enum';
 import { EmployeeStatus } from 'src/modules/agencies/employee/entities/employee.entity';
+import { CustomerStatus } from 'src/modules/customer/customer/entities/customer.entity';
 import { MailService } from '../shared/emails/emails.service';
 import { MailTemplateService } from '../../modules/mail-template/mail-template.service';
 import { AuthTokenService } from './auth-token.service';
+import {
+  PASSWORD_POLICY_MESSAGE,
+  PASSWORD_POLICY_REGEX,
+} from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
@@ -58,6 +64,44 @@ export class AuthService {
     ) {
       throw new ForbiddenException(
         'Compte collaborateur inactif ou suspendu. Contactez votre administrateur.',
+      );
+    }
+  }
+
+  /** Compte du portail client : il n'a pas de fiche employé. */
+  private isClientAccount(user: any): boolean {
+    return user?.role === UserRole.CLIENT;
+  }
+
+  /**
+   * Appartenance d'un compte client au cabinet (fail-closed) : le compte ET
+   * la fiche client liée (customer_id) doivent relever de ce cabinet. Remplace,
+   * pour le rôle `client`, la recherche de la fiche employé du même e-mail.
+   */
+  private assertClientOfCabinet(user: any, tenantId: number): void {
+    const customer = user?.customer;
+    const belongs =
+      !!customer?.id &&
+      Number(user?.tenant_id) === Number(tenantId) &&
+      Number(customer.tenant_id) === Number(tenantId);
+    if (!belongs) {
+      this.logger.warn(
+        `[Auth] Connexion client refusée: email="${user?.email}" ` +
+          `absent du cabinet tenant_id=${tenantId}`,
+      );
+      throw new UnauthorizedException(
+        'Identifiants invalides Aucun client trouvé pour ce cabinet',
+      );
+    }
+    const blockedCustomer = [
+      CustomerStatus.DELETED,
+      CustomerStatus.BLOCKED,
+      CustomerStatus.SUSPENDED,
+      CustomerStatus.LOCKED,
+    ].includes(customer.status);
+    if (user.status !== 1 || blockedCustomer) {
+      throw new ForbiddenException(
+        'Accès à l’espace client désactivé. Contactez votre cabinet.',
       );
     }
   }
@@ -105,27 +149,33 @@ export class AuthService {
       }
 
       // ── Vérification d'appartenance au cabinet ───────────────
-      let employee: any = null;
-      await this.tenantContext.run(tenantId, async () => {
-        try {
-          employee = await this.employeeService.findByEmail(username, false);
-        } catch {
-          employee = null;
+      if (this.isClientAccount(user)) {
+        // Compte client : pas de fiche employé, on contrôle le compte et sa
+        // fiche client contre le cabinet résolu par le middleware.
+        this.assertClientOfCabinet(user, tenantId);
+      } else {
+        let employee: any = null;
+        await this.tenantContext.run(tenantId, async () => {
+          try {
+            employee = await this.employeeService.findByEmail(username, false);
+          } catch {
+            employee = null;
+          }
+        });
+
+        if (!employee) {
+          this.logger.warn(
+            `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
+              `absent du cabinet tenant_id=${tenantId}`,
+          );
+          throw new UnauthorizedException(
+            'Identifiants invalides Aucun employé trouvé pour ce cabinet',
+          );
         }
-      });
 
-      if (!employee) {
-        this.logger.warn(
-          `[Auth] Tentative cross-tenant bloquée: email="${username}" ` +
-            `absent du cabinet tenant_id=${tenantId}`,
-        );
-        throw new UnauthorizedException(
-          'Identifiants invalides Aucun employé trouvé pour ce cabinet',
-        );
+        // tenant_id de l'employee (source de vérité pour le JWT)
+        resolvedTenantId = employee.tenant_id ?? tenantId;
       }
-
-      // tenant_id de l'employee (source de vérité pour le JWT)
-      resolvedTenantId = employee.tenant_id ?? tenantId;
     } else {
       // ── Connexion globale (/auth/login sans cabinet) ────────────────
       // L'e-mail n'a pas de contrainte d'unicité : plusieurs comptes peuvent
@@ -161,18 +211,24 @@ export class AuthService {
       }
       user = matched;
 
-      // Cabinet déduit de l'employé lié à CE compte (même id), recherché
-      // SANS filtre tenant. Sans employé, on conserve le tenant par défaut —
-      // issueSession() applique alors le comportement historique (erreur 'Utilisateur inexistant').
-      try {
-        const employee: any = await this.tenantContext.runWithoutTenant(() =>
-          this.employeeService.findOne(user.id),
-        );
-        if (employee) {
-          resolvedTenantId = employee.tenant_id ?? resolvedTenantId;
+      if (this.isClientAccount(user)) {
+        // Compte client : cabinet de CE compte, recoupé avec sa fiche client.
+        this.assertClientOfCabinet(user, user.tenant_id);
+        resolvedTenantId = user.tenant_id;
+      } else {
+        // Cabinet déduit de l'employé lié à CE compte (même id), recherché
+        // SANS filtre tenant. Sans employé, on conserve le tenant par défaut —
+        // issueSession() applique alors le comportement historique (erreur 'Utilisateur inexistant').
+        try {
+          const employee: any = await this.tenantContext.runWithoutTenant(() =>
+            this.employeeService.findOne(user.id),
+          );
+          if (employee) {
+            resolvedTenantId = employee.tenant_id ?? resolvedTenantId;
+          }
+        } catch {
+          // Recherche globale impossible : le flux historique tranche (issueSession).
         }
-      } catch {
-        // Recherche globale impossible : le flux historique tranche (issueSession).
       }
     }
 
@@ -285,6 +341,10 @@ export class AuthService {
         ? this.tenantContext.run(sessionTenant, fn)
         : fn();
 
+    if (this.isClientAccount(data)) {
+      return this.issueClientSession(data, sessionTenant ?? data.tenant_id);
+    }
+
     // Paralléliser : employee (pour payload JWT) + permissions (role → codes)
     const [user, permissionObjects] = await inSessionTenant(() =>
       Promise.all([
@@ -330,6 +390,52 @@ export class AuthService {
     return {
       access_token: this.jwtService.sign(payload),
       user: userWithRole,
+      permissions,
+      tenant_id: tenantId,
+      tenant_code: await this.resolveTenantCode(tenantId),
+    };
+  }
+
+  /**
+   * Session d'un compte client (portail /espace-client), sans fiche employé.
+   * `sub` = id du compte (relu par JwtStrategy.findSessionState), `customerId`
+   * = fiche client (filtre des dossiers côté API).
+   */
+  private async issueClientSession(data: any, tenantId: number) {
+    // verifyMfa() ne passe pas par validateUser() : on revérifie ici.
+    this.assertClientOfCabinet(data, tenantId);
+
+    const permissionObjects = await this.tenantContext.run(tenantId, () =>
+      this.usersService.getPermissionsByRoleCode(UserRole.CLIENT),
+    );
+    const permissions = (permissionObjects ?? []).map((p: any) => p.code);
+
+    this.logger.log(
+      `[login] client email="${data.email}" → JWT tenantId=${tenantId}`,
+    );
+
+    const payload: JwtPayload = {
+      sub: data.id,
+      username: data.email,
+      role: UserRole.CLIENT,
+      permissions,
+      customerId: data.customer.id,
+      tenantId,
+    };
+
+    // verifyMfa() transmet l'entité complète : aucun secret dans la réponse.
+    const {
+      password,
+      refreshToken,
+      fcmToken,
+      roleAssignments,
+      _resolvedTenantId,
+      ...user
+    } = data;
+
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: { ...user, role: UserRole.CLIENT },
       permissions,
       tenant_id: tenantId,
       tenant_code: await this.resolveTenantCode(tenantId),
@@ -489,43 +595,11 @@ export class AuthService {
     // Marquer le token comme utilisé
     await this.authTokenService.markTokenAsUsed(token);
 
-    // Confirmation de changement de mot de passe (ne bloque jamais le flux).
-    // Template DB `password_changed` en priorité, repli sur un HTML inline.
-    try {
-      const pcFirstName = user.first_name || user.username || '';
-      const pcChangedAt = new Date().toLocaleString('fr-FR');
-      let pcSubject = 'Votre mot de passe a été modifié';
-      let pcHtml =
-        `<h2 style="margin-top:0;">Mot de passe modifié</h2>` +
-        `<p>Bonjour ${pcFirstName},</p>` +
-        `<p>Nous vous confirmons que votre mot de passe a bien été modifié le ${pcChangedAt}.</p>` +
-        `<p style="color:#dc2626;font-size:13px;">Si vous n'êtes pas à l'origine de cette opération, contactez immédiatement votre administrateur.</p>`;
-      try {
-        const rendered =
-          await this.mailTemplateService.renderOrCreateSystemDefault(
-            'password_changed',
-            {
-              firstName: pcFirstName,
-              changedAt: pcChangedAt,
-            },
-          );
-        if (rendered?.html) {
-          pcSubject = rendered.subject || pcSubject;
-          pcHtml = rendered.html;
-        }
-      } catch {
-        // template DB indisponible → repli inline
-      }
-      await this.mailService.sendDirect({
-        to: email,
-        subject: pcSubject,
-        html: pcHtml,
-      });
-    } catch (mailErr) {
-      this.logger.warn(
-        `[resetPassword] Email de confirmation non envoyé : ${(mailErr as Error)?.message}`,
-      );
-    }
+    await this.sendPasswordChangedEmail(
+      email,
+      user.first_name || user.username || '',
+      'resetPassword',
+    );
 
     // Optionnel: Générer un nouveau token JWT pour connecter l'utilisateur automatiquement
     let employee: any = null;
@@ -543,6 +617,8 @@ export class AuthService {
       username: user.email,
       role,
       permissions,
+      // Compte client : sans customerId, ses dossiers seraient masqués.
+      customerId: user.customer?.id ?? null,
       tenantId: employee?.tenant_id ?? userTenantId,
     };
 
@@ -557,6 +633,90 @@ export class AuthService {
         permissions,
       },
     };
+  }
+
+  /**
+   * Changement de mot de passe par l'utilisateur connecté (employé ou client).
+   * `userId` = `sub` du JWT, c'est-à-dire l'id du compte : l'employé partage
+   * l'id de son compte (JwtStrategy relit le compte avec ce même id).
+   */
+  async changePassword(
+    userId: number,
+    tenantId: number,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const user = await this.tenantContext.run(tenantId, () =>
+      this.usersService.findById(userId),
+    );
+    // 400 et non 401 : un 401 déconnecterait l'utilisateur côté front.
+    if (
+      !user?.password ||
+      !(await bcrypt.compare(String(currentPassword ?? ''), user.password))
+    ) {
+      throw new BadRequestException('Mot de passe actuel incorrect.');
+    }
+    if (!PASSWORD_POLICY_REGEX.test(String(newPassword ?? ''))) {
+      throw new BadRequestException(PASSWORD_POLICY_MESSAGE);
+    }
+    if (newPassword === currentPassword) {
+      throw new BadRequestException(
+        "Le nouveau mot de passe doit être différent de l'ancien.",
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await this.tenantContext.run(tenantId, async () => {
+      await this.usersService.update(user.id, { password: hashedPassword });
+    });
+
+    if (user.email) {
+      await this.sendPasswordChangedEmail(
+        user.email,
+        user.first_name || user.username || '',
+        'changePassword',
+      );
+    }
+
+    return { success: true, message: 'Mot de passe modifié avec succès' };
+  }
+
+  /**
+   * Confirmation de changement de mot de passe (ne bloque jamais le flux).
+   * Template DB `password_changed` en priorité, repli sur un HTML inline.
+   */
+  private async sendPasswordChangedEmail(
+    to: string,
+    firstName: string,
+    origin: string,
+  ): Promise<void> {
+    try {
+      const changedAt = new Date().toLocaleString('fr-FR');
+      let subject = 'Votre mot de passe a été modifié';
+      let html =
+        `<h2 style="margin-top:0;">Mot de passe modifié</h2>` +
+        `<p>Bonjour ${firstName},</p>` +
+        `<p>Nous vous confirmons que votre mot de passe a bien été modifié le ${changedAt}.</p>` +
+        `<p style="color:#dc2626;font-size:13px;">Si vous n'êtes pas à l'origine de cette opération, contactez immédiatement votre administrateur.</p>`;
+      try {
+        const rendered =
+          await this.mailTemplateService.renderOrCreateSystemDefault(
+            'password_changed',
+            { firstName, changedAt },
+          );
+        if (rendered?.html) {
+          subject = rendered.subject || subject;
+          html = rendered.html;
+        }
+      } catch {
+        // template DB indisponible → repli inline
+      }
+      await this.mailService.sendDirect({ to, subject, html });
+    } catch (mailErr) {
+      this.logger.warn(
+        `[${origin}] Email de confirmation non envoyé : ${(mailErr as Error)?.message}`,
+      );
+    }
   }
 
   /**
@@ -626,6 +786,8 @@ export class AuthService {
       username: user.email,
       role,
       permissions,
+      // Compte client : sans customerId, ses dossiers seraient masqués.
+      customerId: user.customer?.id ?? null,
       tenantId: employee?.tenant_id ?? userTenantId,
     };
 

@@ -2,6 +2,7 @@
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
+import { AllowClient } from 'src/core/decorators/allow-client.decorator';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { Roles } from 'src/core/decorators/roles.decorator';
@@ -175,18 +176,20 @@ export class DossiersController {
     type: [DossierResponseDto],
   })
   async search(
+    @CurrentUser() user: User,
     @Query() searchParams?: DossierSearchDto,
     @Query() paginationParams?: PaginationParamsDto,
   ) {
-    return this.dossiersService.searchWithTransformer(
+    return this.dossiersService.searchForUser(
       searchParams as SearchCriteria,
-      DossierResponseDto,
       paginationParams,
+      user,
     );
   }
 
   @Get()
   @RequirePermissions('view_dossiers')
+  @AllowClient() // portail client : bornée à ses dossiers (buildRoleScope)
   @ApiOperation({ summary: 'Lister tous les dossiers (avec filtres)' })
   @ApiResponse({
     status: 200,
@@ -252,6 +255,7 @@ export class DossiersController {
 
   @Get(':id')
   @RequirePermissions('view_dossiers')
+  @AllowClient() // portail client : 403 hors de ses dossiers (checkDossierAccess)
   @ApiOperation({ summary: 'Obtenir un dossier par son ID' })
   @ApiResponse({
     status: 200,

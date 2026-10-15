@@ -9,11 +9,13 @@ import { PaginationParamsDto } from 'src/core/shared/dto/pagination-params.dto';
 import { CreateMailDto } from 'src/core/shared/emails/dto/create-mail.dto';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import {
+  normalizePaging,
   PaginatedResult,
   PaginationServiceV1,
 } from 'src/core/shared/services/pagination/paginations-v1.service';
 import {
   BaseServiceV1,
+  SearchCriteria,
   SearchOptions,
 } from 'src/core/shared/services/search/base-v1.service';
 import { SearchFilter, SearchUtils } from 'src/core/shared/utils/search.utils';
@@ -483,6 +485,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       relations: [
         'client',
         'lawyer',
+        'lawyer.user',
         'procedure_type',
         'procedure_subtype',
         'documents',
@@ -508,11 +511,12 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       paginationParams,
       (dossiers) =>
         Promise.all(dossiers.map((dossier) => this.mapToResponseDto(dossier))),
-      whereConditions,
+      // `where: []` échapperait au filtre de confidentialité (DossierVisibilityPatch).
+      whereConditions.length > 0 ? whereConditions : undefined,
       [
         'client',
         'lawyer',
-        'lawyer.employee',
+        'lawyer.user',
         'procedure_type',
         'procedure_subtype',
         'documents',
@@ -522,34 +526,19 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     );
   }
 
+  /**
+   * Un tableau `where` est un OU pour TypeORM : seule la recherche texte
+   * (un champ OU un autre) produit plusieurs branches. Les filtres (statut,
+   * client) et la portée du rôle sont fusionnés dans CHACUNE d'elles, sinon
+   * `search` ou `status` ouvriraient les dossiers d'autres clients ou avocats.
+   */
   private buildWhereConditions(
     searchDto: DossierSearchDto,
     user: User,
   ): FindOptionsWhere<Dossier>[] {
-    const conditions: FindOptionsWhere<Dossier>[] = [];
-    const authUser = user as any;
+    const scope = this.buildRoleScope(user);
 
-    // Filtrage par rôle : avocat voit ses propres dossiers
-    if (authUser.role === UserRole.AVOCAT) {
-      conditions.push({ lawyer: { id: authUser.id } });
-    }
-
-    // Filtrage par rôle : client voit uniquement ses propres dossiers
-    if (authUser.role === UserRole.CLIENT) {
-      if (!authUser.customerId) return [{ client_id: -1 }]; // aucun résultat si customerId absent
-      conditions.push({ client_id: authUser.customerId });
-    }
-
-    // Filtres de recherche
     const filters: SearchFilter[] = [];
-
-    if (searchDto.search) {
-      const searchConditions = SearchUtils.buildSearchConditions<Dossier>(
-        searchDto.search,
-        ['object', 'jurisdiction', 'dossier_number'],
-      );
-      conditions.push(...searchConditions);
-    }
 
     if (searchDto.status) {
       filters.push({ field: 'status', value: searchDto.status });
@@ -559,13 +548,64 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       filters.push({ field: 'client', value: { id: searchDto.client_id } });
     }
 
-    if (filters.length > 0) {
-      const filterConditions =
-        SearchUtils.buildWhereConditions<Dossier>(filters);
-      conditions.push(filterConditions);
+    const filterConditions = SearchUtils.buildWhereConditions<Dossier>(filters);
+
+    const searchConditions = searchDto.search
+      ? SearchUtils.buildSearchConditions<Dossier>(searchDto.search, [
+          'object',
+          'jurisdiction',
+          'dossier_number',
+        ])
+      : [];
+
+    // La portée du rôle vient en dernier : aucun filtre ne peut l'écraser.
+    return (searchConditions.length > 0 ? searchConditions : [{}])
+      .map((condition) => ({ ...condition, ...filterConditions, ...scope }))
+      .filter((condition) => Object.keys(condition).length > 0);
+  }
+
+  /**
+   * Portée imposée par le rôle de l'appelant, à fusionner dans chaque
+   * branche du `where` (cf. buildWhereConditions).
+   */
+  private buildRoleScope(user: User): FindOptionsWhere<Dossier> {
+    const authUser = user as any;
+
+    // Avocat : ses propres dossiers (Employee partage la clé de User).
+    if (authUser?.role === UserRole.AVOCAT) {
+      return { lawyer: { id: authUser.id } };
     }
 
-    return conditions;
+    return this.buildClientScope(user);
+  }
+
+  /** Client : uniquement ses propres dossiers. */
+  private buildClientScope(user: User): FindOptionsWhere<Dossier> {
+    const authUser = user as any;
+    if (authUser?.role !== UserRole.CLIENT) return {};
+
+    // Aucun résultat si le jeton ne porte pas de customerId.
+    return { client_id: authUser.customerId || -1 };
+  }
+
+  /**
+   * GET /dossiers/search : recherche générique, bornée pour un client à ses
+   * propres dossiers. Le personnel garde la recherche sur tout le cabinet
+   * (liste des dossiers du back-office).
+   */
+  async searchForUser(
+    criteria: SearchCriteria,
+    paginationParams: PaginationParamsDto | undefined,
+    user: User,
+  ): Promise<PaginatedResult<DossierResponseDto>> {
+    return this.searchWithTransformer(
+      criteria,
+      DossierResponseDto,
+      paginationParams,
+      undefined,
+      undefined,
+      this.buildClientScope(user),
+    );
   }
 
   // Dans votre DossierService
@@ -1091,9 +1131,20 @@ export class DossiersService extends BaseServiceV1<Dossier> {
   }
 
   async getCollaboratorDossiers(
-    collaboratorId: number,
+    collaboratorIdParam: number | string,
     paginationParams?: PaginationParamsDto,
   ): Promise<DossierResponseDto[] | any> {
+    // Pas de ValidationPipe global : l'identifiant de la route et page/limit
+    // arrivent en texte ('10' + '10' = '1010', 5 !== '5').
+    const collaboratorId = Number(collaboratorIdParam);
+    if (!Number.isInteger(collaboratorId) || collaboratorId < 1) {
+      throw new BadRequestException('Identifiant de collaborateur invalide');
+    }
+    const isPaginated = [paginationParams?.page, paginationParams?.limit].some(
+      (value) => value !== undefined && value !== null && String(value) !== '',
+    );
+    const { page, limit } = normalizePaging(paginationParams);
+
     // Vérifier l'existence du collaborateur
     const collaborator = await this.userRepository.findOne({
       where: { id: collaboratorId },
@@ -1143,13 +1194,13 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     // Si aucun dossier trouvé
     if (!filteredDossiers || filteredDossiers.length === 0) {
       // Retourner selon le mode (paginated ou non)
-      if (paginationParams?.page && paginationParams?.limit) {
+      if (isPaginated) {
         return {
           data: [],
           meta: {
             total: 0,
-            page: paginationParams.page,
-            limit: paginationParams.limit,
+            page,
+            limit,
             totalPages: 0,
             hasNextPage: false,
             hasPreviousPage: false,
@@ -1160,15 +1211,15 @@ export class DossiersService extends BaseServiceV1<Dossier> {
     }
 
     // Si pas de pagination, retourner tout
-    if (!paginationParams?.page || !paginationParams?.limit) {
+    if (!isPaginated) {
       return Promise.all(
         filteredDossiers.map((dossier) => this.mapToResponseDto(dossier)),
       );
     }
 
     // Avec pagination (appliquer la pagination sur les résultats filtrés)
-    const startIndex = (paginationParams.page - 1) * paginationParams.limit;
-    const endIndex = startIndex + paginationParams.limit;
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
     const paginatedDossiers = filteredDossiers.slice(startIndex, endIndex);
     const total = filteredDossiers.length;
 
@@ -1180,12 +1231,11 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       data: dtoDossiers,
       meta: {
         total,
-        page: paginationParams.page,
-        limit: paginationParams.limit,
-        totalPages: Math.ceil(total / paginationParams.limit),
-        hasNextPage:
-          paginationParams.page < Math.ceil(total / paginationParams.limit),
-        hasPreviousPage: paginationParams.page > 1,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page < Math.ceil(total / limit),
+        hasPreviousPage: page > 1,
       },
     };
   }

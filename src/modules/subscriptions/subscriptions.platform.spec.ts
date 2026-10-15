@@ -75,6 +75,9 @@ function build() {
     cabinetRepo as any,
     fakeRepo([]) as any,
     gateway,
+    {} as any,
+    { assignNumber: jest.fn(async () => 'REC-2026-000001') } as any,
+    {} as any,
     events,
     {} as any,
   );

@@ -61,6 +61,7 @@ import { EmailsModule } from './shared/emails/emails.module';
 import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { QueryLoggingInterceptor } from './shared/interceptors/query-logging.interceptor';
 import { TransformInterceptor } from './shared/interceptors/transform.interceptor';
+import { SignUploadUrlsInterceptor } from './shared/interceptors/sign-upload-urls.interceptor';
 import { EmailService } from './shared/services/email/email.service copy';
 import { KeyGeneratorService } from './shared/services/key-generator/key-generator.service';
 import { OtpService } from './shared/services/otp/otp.service';
@@ -154,6 +155,7 @@ import { RequestUserInterceptor } from './security/request-user.interceptor';
     { provide: 'APP_INTERCEPTOR', useClass: LoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: QueryLoggingInterceptor },
     { provide: 'APP_INTERCEPTOR', useClass: TransformInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: SignUploadUrlsInterceptor },
     InitService,
     KeyGeneratorService,
     MyPaginationService,

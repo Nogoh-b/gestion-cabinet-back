@@ -24,6 +24,7 @@ import { SubscriptionsService } from './subscriptions.service';
 import { ChangeSubscriptionDto } from './dto/change-subscription.dto';
 import { cabinetUserActor } from './subscription-events.service';
 import { PaymentMethodsService } from './payment/payment-methods.service';
+import { ReceiptService } from './billing/receipt.service';
 
 @ApiTags('Subscriptions')
 @Controller('subscriptions')
@@ -34,6 +35,7 @@ export class SubscriptionsController {
   constructor(
     private readonly service: SubscriptionsService,
     private readonly methods: PaymentMethodsService,
+    private readonly receipts: ReceiptService,
   ) {}
 
   /**
@@ -77,7 +79,7 @@ export class SubscriptionsController {
   change(@Request() req: any, @Body() dto: ChangeSubscriptionDto) {
     return this.service.changePlanOrCycle(
       this.tenantOf(req),
-      { planId: dto.plan_id, cycle: dto.cycle },
+      { planId: dto.plan_id, cycle: dto.cycle, couponCode: dto.coupon_code },
       cabinetUserActor(req.user),
     );
   }
@@ -91,6 +93,7 @@ export class SubscriptionsController {
       this.tenantOf(req),
       dto?.cycle,
       cabinetUserActor(req.user),
+      dto?.coupon_code,
     );
   }
 
@@ -118,6 +121,18 @@ export class SubscriptionsController {
       methodCode: dto?.method_code,
       customer: { email: req.user?.email ?? null },
     });
+  }
+
+  /** Applique un code promo à l'échéance due (avant paiement). */
+  @Post('/coupons/apply')
+  @RequirePermissions('manage_subscription')
+  @ApiOperation({ summary: "Appliquer un code promo à l'échéance due" })
+  applyCoupon(@Request() req: any, @Body() dto: { code?: string }) {
+    return this.service.applyCouponToDuePayment(
+      this.tenantOf(req),
+      String(dto?.code ?? ''),
+      cabinetUserActor(req.user),
+    );
   }
 
   /** Statut à jour d'une transaction (retour de la passerelle). */
@@ -150,6 +165,20 @@ export class SubscriptionsController {
       proof,
       cabinetUserActor(req.user),
     );
+  }
+
+  /** Reçu PDF d'un paiement encaissé du cabinet. */
+  @Get('/payments/:id/receipt')
+  @ApiOperation({ summary: 'Télécharger le reçu (PDF)' })
+  async receipt(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.receipts.pdf(id, this.tenantOf(req));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   /** Justificatif déposé par le cabinet (lecture par le cabinet lui-même). */

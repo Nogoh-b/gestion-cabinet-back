@@ -22,6 +22,8 @@ import {
   PaymentStartResult,
 } from './payment/payment-gateway.service';
 import { PaymentMethodsService } from './payment/payment-methods.service';
+import { ReceiptService } from './billing/receipt.service';
+import { CouponQuote, CouponsService, computeDiscount } from './coupons/coupons.service';
 import {
   resolvePaymentProof,
   savePaymentProof,
@@ -100,6 +102,8 @@ export class SubscriptionsService {
     private readonly planRepo: Repository<Plan>,
     private readonly gateway: PaymentGatewayService,
     private readonly methods: PaymentMethodsService,
+    private readonly receipts: ReceiptService,
+    private readonly coupons: CouponsService,
     private readonly events: SubscriptionEventsService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
@@ -143,11 +147,17 @@ export class SubscriptionsService {
       actor?: SubscriptionActor;
       eventType?: SubscriptionEventType;
       eventPayload?: Record<string, any>;
+      couponCode?: string | null;
     },
   ): Promise<Subscription> {
     const actor = opts?.actor ?? SYSTEM_ACTOR;
     const plan = planId
       ? await this.planRepo.findOne({ where: { id: planId } })
+      : null;
+
+    // Code promo vérifié AVANT toute modification (erreur claire, rien de créé).
+    const precheck = opts?.couponCode
+      ? await this.coupons.check(opts.couponCode, { cabinetId, planId: plan?.id ?? planId, cycle })
       : null;
 
     // Clore les abonnements en cours (un seul abonnement vivant par cabinet)
@@ -161,15 +171,18 @@ export class SubscriptionsService {
     // On conserve TOUJOURS l'essai éventuel du plan (is_trial / trial_ends_at).
     const period = resolveInitialPeriod(plan, cycle, startedAt);
     const currency = await this.resolveCurrency(cabinetId);
+    const quote = precheck ? await this.applyQuote(precheck, period, currency, startedAt) : null;
+    const due = quote ? quote.net : Number(period.amount);
 
     // Gating :
     //  - gateAllPaid (onboarding) → tout plan PAYANT exige le paiement amont,
     //    MÊME avec essai. L'essai (is_trial/trial_ends_at) est préservé et
     //    reprend ses droits dès la confirmation du paiement.
     //  - sinon → politique standard (paiement seulement si payant ET sans essai).
-    const paidPlan = !isFreePlan(plan) && Number(period.amount) > 0;
+    const paidPlan = !isFreePlan(plan) && due > 0;
     const gated =
-      (opts?.gateAllPaid && paidPlan) || this.requiresUpfrontPayment(period);
+      (opts?.gateAllPaid && paidPlan) ||
+      this.requiresUpfrontPayment({ is_trial: period.is_trial, amount: due });
 
     const sub = this.subRepo.create({
       cabinet_id: cabinetId,
@@ -186,6 +199,8 @@ export class SubscriptionsService {
       currency,
       auto_renew: true,
       created_by: actor.type,
+      coupon_id: quote?.coupon.id ?? null,
+      discount_cycles_remaining: quote ? Math.max(0, (quote.coupon.duration_cycles ?? 1) - 1) : null,
     });
     const saved = await this.subRepo.save(sub);
 
@@ -194,7 +209,9 @@ export class SubscriptionsService {
       period.amount,
       startedAt,
       period.ends_at,
+      quote,
     );
+    if (quote) await this.recordCoupon(quote, saved, payment.id, actor);
     if (gated) {
       // Le cabinet choisit ensuite son moyen de paiement (POST /subscriptions/pay).
       void payment;
@@ -235,6 +252,7 @@ export class SubscriptionsService {
     cabinetId: number,
     cycle?: BillingCycle,
     actor: SubscriptionActor = SYSTEM_ACTOR,
+    couponCode?: string | null,
   ): Promise<Subscription> {
     const current = await this.getRawCurrent(cabinetId);
     const planId = current?.plan_id ?? null;
@@ -242,6 +260,14 @@ export class SubscriptionsService {
     const plan = planId
       ? await this.planRepo.findOne({ where: { id: planId } })
       : null;
+    const precheck = couponCode
+      ? await this.coupons.check(couponCode, { cabinetId, planId, cycle: targetCycle })
+      : null;
+    // Coupon multi-échéances encore actif sur l'abonnement renouvelé.
+    const carried =
+      !precheck && current?.coupon_id && Number(current.discount_cycles_remaining ?? 0) > 0
+        ? await this.coupons.findById(current.coupon_id)
+        : null;
 
     // Clore l'abonnement échu/suspendu en cours.
     await this.closeLiveSubscriptions(
@@ -253,9 +279,23 @@ export class SubscriptionsService {
     const startedAt = new Date();
     const period = resolveRenewalPeriod(plan, targetCycle, startedAt);
     const currency = await this.resolveCurrency(cabinetId);
+    let quote: CouponQuote | null = null;
+    let remaining: number | null = null;
+    if (precheck) {
+      quote = await this.applyQuote(precheck, period, currency, startedAt);
+      remaining = Math.max(0, (precheck.duration_cycles ?? 1) - 1);
+    } else if (carried) {
+      const res = computeDiscount(carried, Number(period.amount), currency);
+      if (res.free_months && period.ends_at) period.ends_at = addMonths(period.ends_at, res.free_months);
+      quote = { coupon: carried, gross: Number(period.amount), ...res };
+      remaining = Math.max(0, Number(current!.discount_cycles_remaining) - 1);
+    }
     // Renouvellement payant → attente de paiement avant réactivation.
     // Plan gratuit (montant 0) → réactivation immédiate.
-    const gated = this.requiresUpfrontPayment(period);
+    const gated = this.requiresUpfrontPayment({
+      is_trial: period.is_trial,
+      amount: quote ? quote.net : Number(period.amount),
+    });
 
     const sub = this.subRepo.create({
       cabinet_id: cabinetId,
@@ -270,6 +310,8 @@ export class SubscriptionsService {
       currency,
       auto_renew: true,
       created_by: actor.type,
+      coupon_id: quote?.coupon.id ?? null,
+      discount_cycles_remaining: remaining,
     });
     const saved = await this.subRepo.save(sub);
 
@@ -278,7 +320,9 @@ export class SubscriptionsService {
       period.amount,
       startedAt,
       period.ends_at,
+      quote,
     );
+    if (quote) await this.recordCoupon(quote, saved, payment.id, actor, !!carried);
     if (gated) {
       // Le cabinet reste suspendu jusqu'à confirmation du paiement (moyen
       // choisi ensuite via POST /subscriptions/pay).
@@ -318,7 +362,7 @@ export class SubscriptionsService {
    */
   async changePlanOrCycle(
     cabinetId: number,
-    opts: { planId?: number; cycle?: BillingCycle },
+    opts: { planId?: number; cycle?: BillingCycle; couponCode?: string | null },
     actor: SubscriptionActor = SYSTEM_ACTOR,
   ): Promise<Subscription> {
     const current = await this.getRawCurrent(cabinetId);
@@ -329,7 +373,7 @@ export class SubscriptionsService {
         cabinetId,
         opts.planId ?? current?.plan_id ?? null,
         opts.cycle ?? current?.billing_cycle ?? 'monthly',
-        { actor },
+        { actor, couponCode: opts.couponCode },
       );
     }
 
@@ -342,6 +386,7 @@ export class SubscriptionsService {
         actor,
         eventType: 'plan_changed',
         eventPayload: { from_plan_id: current.plan_id, mode: 'new_period' },
+        couponCode: opts.couponCode,
       });
     }
 
@@ -932,6 +977,12 @@ export class SubscriptionsService {
       payment.paid_at = new Date();
       payment.method = payment.method ?? payment.provider ?? 'manual';
       await this.payRepo.save(payment);
+      payment.receipt_number = await this.receipts
+        .assignNumber(payment.id)
+        .catch((error) => {
+          this.logger.warn(`[Reçu] numérotation #${payment.id} impossible : ${error?.message ?? error}`);
+          return null;
+        });
       await this.events.record({
         cabinetId: payment.cabinet_id,
         subscriptionId: payment.subscription_id,
@@ -1203,21 +1254,127 @@ export class SubscriptionsService {
     amount: number,
     periodStart: Date,
     periodEnd: Date | null,
+    quote: CouponQuote | null = null,
   ): Promise<SubscriptionPayment> {
+    const discounted = !!quote && quote.discount > 0;
+    // Échéance entièrement couverte par le code promo : réglée d'office.
+    const covered = discounted && quote!.net <= 0 && Number(amount) > 0;
     const payment = this.payRepo.create({
       subscription_id: sub.id,
       cabinet_id: sub.cabinet_id,
-      amount,
+      amount: discounted ? quote!.net : amount,
+      amount_gross: discounted ? Number(amount) : null,
+      discount_amount: discounted ? quote!.discount : 0,
       currency: sub.currency,
-      status: 'pending',
+      status: covered ? 'paid' : 'pending',
       due_date: periodStart,
-      paid_at: null,
+      paid_at: covered ? new Date() : null,
       period_start: periodStart,
       period_end: periodEnd,
-      method: null,
+      method: covered ? 'coupon' : null,
       reference: null,
     });
     return this.payRepo.save(payment);
+  }
+
+  /** Applique un code promo à une période (mois offerts) et chiffre la remise. */
+  private async applyQuote(
+    coupon: CouponQuote['coupon'],
+    period: { amount: number; ends_at: Date | null; trial_ends_at: Date | null; is_trial: boolean },
+    currency: string,
+    startedAt: Date,
+  ): Promise<CouponQuote> {
+    const res = computeDiscount(coupon, Number(period.amount), currency);
+    if (res.free_months > 0 && period.ends_at) {
+      period.ends_at = addMonths(new Date(period.ends_at), res.free_months);
+    }
+    void startedAt;
+    await this.coupons.reserve(coupon);
+    return { coupon, gross: Number(period.amount), ...res };
+  }
+
+  private async recordCoupon(
+    quote: CouponQuote,
+    sub: Subscription,
+    paymentId: number,
+    actor: SubscriptionActor,
+    carried = false,
+  ) {
+    await this.coupons.record({
+      couponId: quote.coupon.id,
+      cabinetId: sub.cabinet_id,
+      subscriptionId: sub.id,
+      paymentId,
+      discount: quote.discount,
+      freeMonths: quote.free_months,
+    });
+    await this.events.record({
+      cabinetId: sub.cabinet_id,
+      subscriptionId: sub.id,
+      type: 'coupon_applied',
+      actor,
+      payload: {
+        code: quote.coupon.code,
+        type: quote.coupon.type,
+        discount: quote.discount,
+        free_months: quote.free_months,
+        net: quote.net,
+        carried,
+      },
+    });
+  }
+
+  /**
+   * Code promo saisi par le cabinet (ou appliqué par la plateforme) sur
+   * l'échéance due de l'abonnement courant, avant paiement.
+   */
+  async applyCouponToDuePayment(cabinetId: number, code: string, actor: SubscriptionActor) {
+    const sub = await this.getRawCurrent(cabinetId);
+    if (!sub) throw new NotFoundException('Aucun abonnement pour ce cabinet');
+    const payment = await this.payRepo.findOne({
+      where: { subscription_id: sub.id, status: 'pending' },
+      order: { id: 'DESC' },
+    });
+    if (!payment || Number(payment.amount) <= 0) {
+      throw new BadRequestException('Aucune échéance à régler.');
+    }
+    if (Number(payment.discount_amount ?? 0) > 0 || sub.coupon_id) {
+      throw new BadRequestException('Un code promo est déjà appliqué à cette échéance.');
+    }
+    const coupon = await this.coupons.check(code, { cabinetId, planId: sub.plan_id, cycle: sub.billing_cycle });
+    const gross = Number(payment.amount);
+    const res = computeDiscount(coupon, gross, payment.currency);
+    await this.coupons.reserve(coupon);
+    if (res.discount > 0) {
+      payment.amount_gross = gross;
+      payment.discount_amount = res.discount;
+      payment.amount = res.net;
+    }
+    if (res.free_months > 0) {
+      if (sub.ends_at) sub.ends_at = addMonths(new Date(sub.ends_at), res.free_months);
+      if (payment.period_end) payment.period_end = addMonths(new Date(payment.period_end), res.free_months);
+    }
+    // Lien de checkout éventuel devenu caduc (montant modifié).
+    payment.checkout_url = null;
+    payment.reference = null;
+    payment.provider_reference = null;
+    sub.coupon_id = coupon.id;
+    sub.discount_cycles_remaining = Math.max(0, (coupon.duration_cycles ?? 1) - 1);
+    await this.subRepo.save(sub);
+    const covered = res.discount > 0 && res.net <= 0;
+    if (covered) {
+      payment.status = 'paid';
+      payment.paid_at = new Date();
+      payment.method = 'coupon';
+    }
+    await this.payRepo.save(payment);
+    await this.recordCoupon({ coupon, gross, ...res }, sub, payment.id, actor);
+    if (covered && sub.status === 'pending_payment') {
+      sub.status = sub.is_trial ? 'trial' : 'active';
+      await this.subRepo.save(sub);
+      await this.syncCabinet(cabinetId, sub);
+    }
+    return this.getCurrent(cabinetId);
   }
 
   /**

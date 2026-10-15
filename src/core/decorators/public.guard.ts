@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { IS_PLATFORM_KEY } from './platform.decorator';
+import { assertClientRouteAllowed } from '../auth/client-access';
 
 @Injectable()
 export class PublicGuard extends AuthGuard('jwt') {
@@ -10,7 +11,7 @@ export class PublicGuard extends AuthGuard('jwt') {
     super();
   }
 
-  canActivate(context: ExecutionContext) {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -25,6 +26,11 @@ export class PublicGuard extends AuthGuard('jwt') {
     );
     if (isPlatform) return true;
 
-    return super.canActivate(context);
+    const authenticated = (await super.canActivate(context)) as boolean;
+    if (!authenticated) return false;
+
+    // Comptes du portail client : refus par défaut, hors routes @AllowClient().
+    assertClientRouteAllowed(this.reflector, context);
+    return true;
   }
 }

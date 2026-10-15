@@ -74,11 +74,7 @@ export function assertStrongPassword(password: string): string | null {
   return null;
 }
 
-export function frontendBaseUrl(): string {
-  return String(
-    process.env.APP_FRONTEND_URL ?? process.env.FRONTEND_URL ?? '',
-  ).replace(/\/+$/, '');
-}
+export { frontendPublicUrl as frontendBaseUrl } from 'src/modules/subscriptions/payment/payment-methods.service';
 
 export function maskEmail(email: string): string {
   const [user, domain] = String(email ?? '').split('@');

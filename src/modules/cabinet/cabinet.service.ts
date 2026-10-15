@@ -19,6 +19,11 @@ import {
   writeLogoFile,
 } from './cabinet-logo.util';
 import { CreateCabinetDto } from './dto/create-cabinet.dto';
+import { PlatformSetting } from '../platform/entities/platform-setting.entity';
+import {
+  mergeSection,
+  PLATFORM_SETTING_DEFAULTS,
+} from '../platform/settings/platform-settings.service';
 
 @Injectable()
 export class CabinetService implements OnModuleInit {
@@ -29,7 +34,34 @@ export class CabinetService implements OnModuleInit {
     private readonly repo: Repository<Cabinet>,
     @InjectRepository(Plan)
     private readonly planRepo: Repository<Plan>,
+    @InjectRepository(PlatformSetting)
+    private readonly platformSettingRepo: Repository<PlatformSetting>,
   ) {}
+
+  /**
+   * Pose sur un nouveau cabinet l'apparence par défaut définie dans la console
+   * plateforme (Paramètres → Apparence). Ces valeurs seront copiées sur chaque
+   * nouveau membre du cabinet. Repli sur le défaut produit en cas d'erreur.
+   */
+  async applyPlatformAppearanceDefaults(cabinet: Cabinet): Promise<void> {
+    let defaults = PLATFORM_SETTING_DEFAULTS.appearance;
+    try {
+      const row = await this.platformSettingRepo.findOne({
+        where: { key: 'appearance' },
+      });
+      defaults = mergeSection(PLATFORM_SETTING_DEFAULTS.appearance, row?.value);
+    } catch (e) {
+      this.logger.warn(
+        `Apparence plateforme illisible, défaut produit appliqué : ${e.message}`,
+      );
+    }
+    cabinet.theme_name = defaults.theme_name;
+    cabinet.font_ui = defaults.font_ui;
+    cabinet.font_heading = defaults.font_heading;
+    cabinet.font_mono = defaults.font_mono;
+    cabinet.default_font_size = defaults.font_size;
+    cabinet.default_sidebar_style = defaults.sidebar_style;
+  }
 
   /**
    * Au démarrage : crée le cabinet par défaut (tenant_id = 1) s'il n'existe pas.
@@ -177,6 +209,7 @@ export class CabinetService implements OnModuleInit {
       nina: nina ?? null,
       bank_account: bank_account ?? null,
     });
+    await this.applyPlatformAppearanceDefaults(cabinet);
 
     // Sauver d'abord pour obtenir l'id (nécessaire pour le logo_file)
     const saved = await this.repo.save(cabinet);

@@ -62,7 +62,7 @@ export class PlatformPaymentsService {
     const where: string[] = [];
     const params: any[] = [];
     if (query.status === 'due') {
-      where.push("sp.status IN ('pending','awaiting_validation') AND sp.amount > 0 AND s.status <> 'cancelled'");
+      where.push("sp.status = 'pending' AND sp.amount > 0 AND s.status <> 'cancelled'");
     } else if (query.status) {
       where.push('sp.status = ?');
       params.push(query.status);
@@ -119,8 +119,7 @@ export class PlatformPaymentsService {
       `SELECT
          SUM(sp.status = 'awaiting_validation') AS awaiting_validation,
          SUM(sp.status = 'pending' AND sp.amount > 0 AND s.status <> 'cancelled') AS due
-         FROM subscription_payments sp
-         LEFT JOIN subscriptions s ON s.id = sp.subscription_id`,
+         ${PAYMENT_JOINS}`,
     );
     return {
       data: rows.map(normalize),

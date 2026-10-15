@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmailsModule } from 'src/core/shared/emails/emails.module';
+import { AiDatabaseModule } from 'src/core/ai-database/ai-database.module';
 import { BackupModule } from '../backup/backup.module';
 import { PlansModule } from '../plans/plans.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
@@ -29,16 +30,27 @@ import { PlatformPlansController } from './plans/platform-plans.controller';
 import { PlatformPaymentsService } from './payments/platform-payments.service';
 import { PlatformPaymentsController } from './payments/platform-payments.controller';
 import { PlatformPaymentMethodsController } from './payments/platform-payment-methods.controller';
+import { PlatformRevenueService } from './revenue/platform-revenue.service';
+import { PlatformRevenueController } from './revenue/platform-revenue.controller';
+import { PlatformCouponsController } from './coupons/platform-coupons.controller';
+import { PlatformImpersonationService } from './impersonation/platform-impersonation.service';
+import {
+  PlatformImpersonationController,
+  TenantImpersonationController,
+} from './impersonation/platform-impersonation.controller';
+import { PlatformAiService } from './ai/platform-ai.service';
+import { PlatformAiController } from './ai/platform-ai.controller';
 
 /**
  * Espace PLATEFORME (super admin) : comptes, rôles, audit, paramètres,
- * pilotage des cabinets / abonnements / paiements / revenus.
+ * pilotage des cabinets / abonnements / paiements / revenus, moteurs IA.
  * Toutes les routes vivent sous `/platform/*` (aucun contexte cabinet).
  */
 @Module({
   imports: [
     PassportModule,
     EmailsModule,
+    AiDatabaseModule,
     BackupModule,
     PlansModule,
     SubscriptionsModule,
@@ -60,6 +72,11 @@ import { PlatformPaymentMethodsController } from './payments/platform-payment-me
     PlatformPlansController,
     PlatformPaymentsController,
     PlatformPaymentMethodsController,
+    PlatformRevenueController,
+    PlatformCouponsController,
+    PlatformImpersonationController,
+    TenantImpersonationController,
+    PlatformAiController,
   ],
   providers: [
     PlatformJwtStrategy,
@@ -73,6 +90,9 @@ import { PlatformPaymentMethodsController } from './payments/platform-payment-me
     PlatformSettingsService,
     PlatformCabinetsService,
     PlatformPaymentsService,
+    PlatformRevenueService,
+    PlatformImpersonationService,
+    PlatformAiService,
   ],
   exports: [
     PlatformAuditService,

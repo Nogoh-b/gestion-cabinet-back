@@ -14,6 +14,7 @@ import {
   Logger,
   UseInterceptors,
   UploadedFile,
+  UploadedFiles,
   Res,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -33,7 +34,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { PrepareFormDto } from './dto/prepare-form.dto';
 import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor';
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 
@@ -50,6 +52,20 @@ export class AiDatabaseController {
     private readonly conversationManager: ConversationManagerService,
     private readonly tenantContext: TenantContext,
   ) {}
+  @Post('form/prepare')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AiQuotaGuard)
+  @UseInterceptors(FilesInterceptor('files', 3, memoryStorageOptions))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Prépare ou explique un formulaire, sans écriture en base' })
+  async prepareForm(
+    @Body() dto: PrepareFormDto,
+    @Req() req,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    return this.aiDbService.prepareForm(dto, files ?? [], req?.aiRequestLogId);
+  }
+
   @Post('ask')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, AiQuotaGuard)

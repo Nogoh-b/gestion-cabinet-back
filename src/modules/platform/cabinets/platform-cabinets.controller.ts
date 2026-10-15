@@ -20,6 +20,7 @@ import { PlatformCabinetsService } from './platform-cabinets.service';
 import { PlatformPaymentsService } from '../payments/platform-payments.service';
 import { RecordPaymentDto } from '../payments/dto/platform-payment.dto';
 import {
+  ApplyCouponDto,
   CancelSubscriptionDto,
   ChangeCabinetPlanDto,
   EmailCabinetDto,
@@ -147,6 +148,19 @@ export class PlatformCabinetsController {
     @CurrentPlatformAdmin() admin: PlatformPrincipal,
   ) {
     return this.service.cancel(id, dto, admin);
+  }
+
+  @Post(':id/apply-coupon')
+  @HttpCode(HttpStatus.OK)
+  @PlatformRoles('finance', 'support')
+  @PlatformAudit({ action: 'coupon.apply', ...CABINET })
+  @ApiOperation({ summary: "Appliquer un code promo à l'échéance due du cabinet" })
+  applyCoupon(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ApplyCouponDto,
+    @CurrentPlatformAdmin() admin: PlatformPrincipal,
+  ) {
+    return this.service.applyCoupon(id, dto.code, admin);
   }
 
   @Post(':id/email')

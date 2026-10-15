@@ -3,6 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PlatformSetting } from '../entities/platform-setting.entity';
 import { PlatformAuditContext } from '../audit/platform-audit.context';
+import {
+  APPEARANCE_FALLBACK,
+  AppearanceDefaults,
+  FONT_KEY_PATTERN,
+  isFontSize,
+  isSidebarStyle,
+  isThemeName,
+} from 'src/modules/settings/appearance.constants';
 
 /** Valeurs par défaut (et typage) des paramètres plateforme modifiables. */
 export const PLATFORM_SETTING_DEFAULTS = {
@@ -36,13 +44,15 @@ export const PLATFORM_SETTING_DEFAULTS = {
     email: '',
     phone: '',
   },
+  /** Apparence copiée sur chaque nouveau cabinet (puis sur ses membres). */
+  appearance: { ...APPEARANCE_FALLBACK } as AppearanceDefaults,
 };
 
 export type PlatformSettings = typeof PLATFORM_SETTING_DEFAULTS;
 export type PlatformSettingKey = keyof PlatformSettings;
 const KEYS = Object.keys(PLATFORM_SETTING_DEFAULTS) as PlatformSettingKey[];
 
-function mergeSection<T extends Record<string, any>>(defaults: T, value: any): T {
+export function mergeSection<T extends Record<string, any>>(defaults: T, value: any): T {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...defaults };
   const out: Record<string, any> = { ...defaults };
   for (const key of Object.keys(defaults)) {
@@ -118,6 +128,17 @@ export class PlatformSettingsService {
         throw new BadRequestException('Préfixe de reçu : 1 à 10 lettres ou chiffres.');
       }
       value = { ...value, prefix };
+    }
+    if (key === 'appearance') {
+      const invalid = (field: string) => {
+        throw new BadRequestException(`Apparence : valeur invalide pour « ${field} ».`);
+      };
+      if (value.theme_name !== undefined && !isThemeName(value.theme_name)) invalid('thème');
+      if (value.font_size !== undefined && !isFontSize(value.font_size)) invalid('taille du texte');
+      if (value.sidebar_style !== undefined && !isSidebarStyle(value.sidebar_style)) invalid('barre latérale');
+      for (const font of ['font_ui', 'font_heading', 'font_mono'] as const) {
+        if (value[font] !== undefined && !FONT_KEY_PATTERN.test(String(value[font]))) invalid('police');
+      }
     }
     return value;
   }

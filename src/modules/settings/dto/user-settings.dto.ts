@@ -1,16 +1,55 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+} from 'class-validator';
+import {
+  COLOR_MODES,
+  FONT_KEY_PATTERN,
+  FONT_SIZES,
+  SIDEBAR_STYLES,
+  THEME_NAMES,
+} from '../appearance.constants';
 
 export class UserSettingsDto {
-  @ApiProperty({ example: 'system' })
+  @ApiProperty({ enum: COLOR_MODES, example: 'system' })
   @IsOptional()
-  @IsString()
+  @IsIn(COLOR_MODES as unknown as string[])
   user_theme?: string;
 
-  @ApiProperty({ example: 'lg' })
+  @ApiProperty({ enum: FONT_SIZES, example: 'lg' })
   @IsOptional()
-  @IsString()
+  @IsIn(FONT_SIZES as unknown as string[])
   user_font_size?: string;
+
+  @ApiPropertyOptional({ enum: THEME_NAMES, example: 'midnight' })
+  @IsOptional()
+  @IsIn(THEME_NAMES as unknown as string[])
+  user_theme_name?: string;
+
+  @ApiPropertyOptional({ example: 'outfit' })
+  @IsOptional()
+  @Matches(FONT_KEY_PATTERN)
+  user_font_ui?: string;
+
+  @ApiPropertyOptional({ example: 'outfit' })
+  @IsOptional()
+  @Matches(FONT_KEY_PATTERN)
+  user_font_heading?: string;
+
+  @ApiPropertyOptional({ example: 'jetbrains_mono' })
+  @IsOptional()
+  @Matches(FONT_KEY_PATTERN)
+  user_font_mono?: string;
+
+  @ApiPropertyOptional({ enum: SIDEBAR_STYLES, example: 'tinted' })
+  @IsOptional()
+  @IsIn(SIDEBAR_STYLES as unknown as string[])
+  user_sidebar_style?: string;
 
   @ApiProperty({ example: 'fr' })
   @IsOptional()

@@ -33,6 +33,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
+import { AllowClient } from 'src/core/decorators/allow-client.decorator';
 
 @ApiTags('chat')
 @Controller('chat')
@@ -70,6 +71,9 @@ export class ChatController {
   }
 
   @Get('conversations')
+  // Chargée par le ChatProvider global du front ; bornée aux conversations
+  // dont l'appelant est participant (vide pour un client).
+  @AllowClient()
   @ApiOperation({ summary: "Récupérer les conversations de l'utilisateur" })
   @ApiResponse({
     status: HttpStatus.OK,

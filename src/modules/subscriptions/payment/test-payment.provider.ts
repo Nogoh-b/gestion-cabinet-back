@@ -9,6 +9,7 @@ import {
   VerifyPaymentResult,
   WebhookRequest,
 } from './payment-provider.interface';
+import { frontendPublicUrl } from './payment-methods.service';
 
 /**
  * Passerelle de TEST (aucun encaissement réel), disponible uniquement hors
@@ -23,7 +24,7 @@ export class TestPaymentProvider implements PaymentProvider {
   private readonly logger = new Logger(TestPaymentProvider.name);
 
   async initiate(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
-    const base = (process.env.APP_FRONTEND_URL ?? '').replace(/\/+$/, '');
+    const base = frontendPublicUrl();
     const checkoutUrl = `${base}/abonnement?payment_ref=${encodeURIComponent(input.reference)}`;
     this.logger.log(
       `[TEST] Paiement initié — payment=${input.paymentId} montant=${input.amount} ${input.currency} ref=${input.reference}`,

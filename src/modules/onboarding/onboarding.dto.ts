@@ -62,4 +62,10 @@ export class OnboardingDto {
   @IsOptional()
   @IsIn(['monthly', 'yearly'])
   billing_cycle?: 'monthly' | 'yearly';
+
+  /** Code promo (facultatif) appliqué au premier abonnement. */
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  coupon_code?: string;
 }

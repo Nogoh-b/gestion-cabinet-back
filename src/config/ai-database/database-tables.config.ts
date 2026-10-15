@@ -211,6 +211,9 @@ export const DATABASE_TABLES_CONFIG: AiDatabaseProjectConfig['databaseTablesConf
       'dossier_action_relations',
     ],
     ignoredTables: [
+      'dossier_access_grant',
+      'ai_context_configs',
+      'ai_context_suggestions',
       'history_entries',
       'auth_tokens',
       'otp_codes',

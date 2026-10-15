@@ -6,17 +6,17 @@ import {
   IsObject,
   IsIn,
   IsInt,
+  Matches,
 } from 'class-validator';
-
-const THEME_NAMES = [
-  'ocean',
-  'silver',
-  'yellow',
-  'forest',
-  'sunset',
-  'rose',
-] as const;
-type ThemeName = (typeof THEME_NAMES)[number];
+import {
+  FONT_KEY_PATTERN,
+  FONT_SIZES,
+  SIDEBAR_STYLES,
+  THEME_NAMES,
+  type FontSize,
+  type SidebarStyle,
+  type ThemeName,
+} from '../appearance.constants';
 
 const NUMBERING_STRATEGIES = ['yearly', 'monthly', 'continuous'] as const;
 type NumberingStrategy = (typeof NUMBERING_STRATEGIES)[number];
@@ -74,26 +74,36 @@ export class AppSettingsDto {
   @IsString()
   email_footer?: string;
 
-  // ── Apparence ───────────────────────────────────────────────────────────
-  @ApiPropertyOptional({ enum: THEME_NAMES, example: 'ocean' })
+  // ── Apparence par défaut des nouveaux membres ───────────────────────────
+  @ApiPropertyOptional({ enum: THEME_NAMES, example: 'midnight' })
   @IsOptional()
   @IsIn(THEME_NAMES as unknown as string[])
   theme_name?: ThemeName;
 
   @ApiPropertyOptional({ example: 'outfit' })
   @IsOptional()
-  @IsString()
+  @Matches(FONT_KEY_PATTERN)
   font_ui?: string;
 
   @ApiPropertyOptional({ example: 'outfit' })
   @IsOptional()
-  @IsString()
+  @Matches(FONT_KEY_PATTERN)
   font_heading?: string;
 
   @ApiPropertyOptional({ example: 'jetbrains_mono' })
   @IsOptional()
-  @IsString()
+  @Matches(FONT_KEY_PATTERN)
   font_mono?: string;
+
+  @ApiPropertyOptional({ enum: FONT_SIZES, example: 'lg' })
+  @IsOptional()
+  @IsIn(FONT_SIZES as unknown as string[])
+  default_font_size?: FontSize;
+
+  @ApiPropertyOptional({ enum: SIDEBAR_STYLES, example: 'tinted' })
+  @IsOptional()
+  @IsIn(SIDEBAR_STYLES as unknown as string[])
+  default_sidebar_style?: SidebarStyle;
 
   // ── Informations légales ──────────────────────────────────────────────────
   @ApiPropertyOptional({ example: 'RC/YAO/2024/1234' })

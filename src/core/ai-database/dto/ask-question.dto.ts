@@ -90,6 +90,11 @@ export class AskQuestionDto {
   @IsString()
   context?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  pageContext?: string;
+
   @ApiProperty({
     required: false,
     description:

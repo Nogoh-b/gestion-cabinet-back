@@ -131,6 +131,9 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
     paginationParams?: PaginationParamsDto,
     relations?: string[] | null,
     order?: FindOptionsOrder<T>,
+    // Contrainte imposée (ex. portée d'un rôle), fusionnée dans chaque branche
+    // du `where` : un tableau `where` est un OU pour TypeORM.
+    scope?: FindOptionsWhere<T>,
   ): Promise<PaginatedResult<R>> {
     console.log(
       'Relation fields:',
@@ -139,7 +142,10 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
 
     this.debugConditions(criteria, {});
 
-    const whereConditions = this.buildWhereConditionsV1(criteria, {});
+    const whereConditions = this.applyScope(
+      this.buildWhereConditionsV1(criteria, {}),
+      scope,
+    );
 
     // ⚙️ Construire dynamiquement l'ordre en prenant en compte les relations
     const finalOrder =
@@ -166,6 +172,20 @@ export abstract class BaseServiceV1<T extends ObjectLiteral> {
       { order: finalOrder },
       dtoClass,
     );
+  }
+
+  /** Fusionne `scope` en dernier dans chaque branche : il ne peut pas être écrasé. */
+  protected applyScope(
+    where: FindOptionsWhere<T> | FindOptionsWhere<T>[],
+    scope?: FindOptionsWhere<T>,
+  ): FindOptionsWhere<T> | FindOptionsWhere<T>[] {
+    if (!scope || Object.keys(scope).length === 0) return where;
+    if (Array.isArray(where)) {
+      return where.length > 0
+        ? where.map((branch) => ({ ...branch, ...scope }))
+        : scope;
+    }
+    return { ...where, ...scope };
   }
 
   private buildOrderWithRelations(

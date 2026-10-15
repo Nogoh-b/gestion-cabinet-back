@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { BillingCycle } from '../entities/subscription.entity';
 
 export class ChangeSubscriptionDto {
@@ -15,4 +15,10 @@ export class ChangeSubscriptionDto {
   @IsOptional()
   @IsIn(['monthly', 'yearly'])
   cycle?: BillingCycle;
+
+  @ApiProperty({ required: false, description: 'Code promo appliqué à la nouvelle période' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  coupon_code?: string;
 }

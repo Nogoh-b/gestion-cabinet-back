@@ -115,3 +115,9 @@ export class EmailCabinetDto {
   @IsString() @IsNotEmpty() @MaxLength(5000)
   message: string;
 }
+
+export class ApplyCouponDto {
+  @ApiProperty()
+  @IsString() @MinLength(3) @MaxLength(40)
+  code: string;
+}

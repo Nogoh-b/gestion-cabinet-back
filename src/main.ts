@@ -13,6 +13,7 @@ import { AppModule } from './app.module';
 import { swaggerConfig } from './core/config/swagger.config';
 import LocationSeeder from './modules/geography/seeder/location.seeder';
 import { bullBoardAuth } from './core/security/bull-board-auth.middleware';
+import { uploadsGuard } from './core/security/uploads-access';
 
 // seedDatabase a été remplacé par TenantSeederService (exécuté à la création de chaque cabinet)
 // import { seedDatabase } from './main.seeder';
@@ -93,7 +94,9 @@ async function bootstrap() {
       res.setHeader('Cache-Control', 'no-store');
     },
   });
-  app.use('/uploads', uploadsStatic);
+  // Accès : logos de cabinet (`uploads/cabinets/`) publics, tout le reste sur
+  // URL signée à durée limitée (voir core/security/uploads-access.ts).
+  app.use('/uploads', uploadsGuard, uploadsStatic);
 
   // ── SSE / streaming : désactiver Nagle sur chaque nouvelle connexion TCP ──
   // setNoDelay doit être activé DÈS la création du socket, avant tout traitement

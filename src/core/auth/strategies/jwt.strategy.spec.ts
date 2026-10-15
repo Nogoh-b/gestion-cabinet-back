@@ -26,7 +26,10 @@ function buildStrategy(opts: {
   const tenantContext: any = {
     run: jest.fn((_tenantId: number, fn: () => any) => fn()),
   };
-  const strategy = new JwtStrategy(usersService, tenantContext);
+  const dataSource: any = {
+    query: jest.fn(async () => (opts as any).session ? [(opts as any).session] : []),
+  };
+  const strategy = new JwtStrategy(usersService, tenantContext, dataSource);
   return { strategy, usersService, tenantContext };
 }
 
@@ -37,8 +40,8 @@ const activeUser = {
   employee: { status: 'ACTIVE' },
 };
 
-function request(resolvedTenantId?: number) {
-  return { resolvedTenantId } as any;
+function request(resolvedTenantId?: number, method = 'GET', originalUrl = '/dossiers') {
+  return { resolvedTenantId, method, originalUrl } as any;
 }
 
 describe('JwtStrategy.validate — permissions fraîches', () => {
@@ -141,5 +144,38 @@ describe('JwtStrategy.validate — permissions fraîches', () => {
       strategy.validate(request(), { sub: 7, typ: 'platform', role: 'owner' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(usersService.findSessionState).not.toHaveBeenCalled();
+  });
+
+  it('accepte une session support active et la signale sur req.user', async () => {
+    const future = new Date(Date.now() + 3600_000);
+    const { strategy } = buildStrategy({
+      sessionUser: activeUser,
+      rolePermissions: ['view_dashboard'],
+      session: { id: 5, admin_id: 1, admin_email: 'support@plateforme.test', cabinet_id: TENANT, user_id: 7, expires_at: future, ended_at: null },
+    } as any);
+    const user: any = await strategy.validate(request(), { sub: 7, tenantId: TENANT, role: 'avocat', imp: 5 });
+    expect(user.impersonation).toEqual(expect.objectContaining({ sessionId: 5, adminEmail: 'support@plateforme.test' }));
+  });
+
+  it('refuse une session support révoquée', async () => {
+    const { strategy } = buildStrategy({
+      sessionUser: activeUser,
+      rolePermissions: [],
+      session: { id: 5, admin_id: 1, admin_email: 'x', cabinet_id: TENANT, user_id: 7, expires_at: new Date(Date.now() + 3600_000), ended_at: new Date() },
+    } as any);
+    await expect(
+      strategy.validate(request(), { sub: 7, tenantId: TENANT, role: 'avocat', imp: 5 }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('interdit les actions sensibles pendant une session support', async () => {
+    const { strategy } = buildStrategy({
+      sessionUser: activeUser,
+      rolePermissions: [],
+      session: { id: 5, admin_id: 1, admin_email: 'x', cabinet_id: TENANT, user_id: 7, expires_at: new Date(Date.now() + 3600_000), ended_at: null },
+    } as any);
+    await expect(
+      strategy.validate(request(undefined, 'POST', '/subscriptions/pay'), { sub: 7, tenantId: TENANT, role: 'avocat', imp: 5 }),
+    ).rejects.toThrow(/session support/);
   });
 });

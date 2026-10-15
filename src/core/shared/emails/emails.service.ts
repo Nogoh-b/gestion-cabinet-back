@@ -18,6 +18,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CreateMailDto } from './dto/create-mail.dto';
 import { SmtpService } from './smtp.service';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { signUploadUrl } from 'src/core/security/uploads-access';
 
 @Injectable()
 export class MailService {
@@ -187,7 +188,8 @@ export class MailService {
     const attachments = [] as AttachmentMail[];
     for (const doc of documents) {
       if (doc.href) {
-        const response = await fetch(doc.href);
+        // Signé à l'envoi (l'URL stockée n'expire pas) : /uploads est privé.
+        const response = await fetch(signUploadUrl(doc.href));
         const buffer = await response.arrayBuffer();
         attachments.push({
           filename: doc.filename,

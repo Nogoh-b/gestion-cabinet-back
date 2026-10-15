@@ -1,4 +1,5 @@
 import { plainToInstance } from 'class-transformer';
+import { signUploadUrl } from 'src/core/security/uploads-access';
 import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -335,7 +336,7 @@ export class DocumentCustomerController {
     // 2) Fichier distant → on le récupère côté serveur et on renvoie les octets
     //    (toujours aucune redirection visible par le navigateur).
     if (document.file_url && document.file_url.startsWith('http')) {
-      const upstream = await fetch(document.file_url);
+      const upstream = await fetch(signUploadUrl(document.file_url));
       if (!upstream.ok) {
         throw new NotFoundException('Fichier distant inaccessible');
       }
@@ -379,7 +380,7 @@ export class DocumentCustomerController {
     }
 
     // Si vous avez déjà un file_url accessible publiquement
-    return res.redirect(document.file_url);
+    return res.redirect(signUploadUrl(document.file_url));
   }
 
   @Get(':id/base64')

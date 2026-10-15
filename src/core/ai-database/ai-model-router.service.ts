@@ -10,6 +10,12 @@ import {
 import { DataSource } from 'typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
+import {
+  AiStoredConfig,
+  mergeAiConfigs,
+  parseStoredAiConfig,
+  PLATFORM_AI_SETTING_KEY,
+} from './ai-provider-config';
 
 export type AiModelProfile = 'fast' | 'quality' | 'streaming';
 export type AiModelMode = 'fast' | 'balanced' | 'precise';
@@ -33,9 +39,10 @@ export interface AiProviderDefinition {
 }
 
 /**
- * Fournisseurs proposes nativement dans l'administration. Les secrets ne sont
- * jamais places ici : ils proviennent exclusivement des variables d'environnement
- * ou, pour une configuration personnalisee, de la configuration du cabinet.
+ * Fournisseurs proposes nativement dans la console plateforme. Les secrets ne
+ * sont jamais places ici : ils proviennent exclusivement des variables
+ * d'environnement ou, pour une configuration personnalisee, du catalogue IA de
+ * la plateforme (`platform_settings['ai']`).
  */
 export const BUILTIN_AI_PROVIDERS: readonly AiProviderDefinition[] = [
   {
@@ -148,7 +155,10 @@ export interface AiModelDescriptor {
   model: string;
   /** URL de base réellement utilisée. */
   baseURL: string;
-  /** Origine de la configuration : config cabinet (`ai_config`) ou ENV. */
+  /**
+   * Origine de la configuration : `tenant` = base de données (exception du
+   * cabinet ou moteur par défaut de la plateforme), `env` = variables serveur.
+   */
   source: 'tenant' | 'env';
   /** Cabinet concerné (null hors contexte tenant). */
   tenantId: number | null;
@@ -194,6 +204,7 @@ export class AiModelRouterService {
   >();
   private readonly loadingPromises = new Map<number, Promise<void>>();
   private readonly TENANT_CACHE_TTL = 30_000; // 30s
+  private platformConfigCache: { config: AiStoredConfig | null; ts: number } | null = null;
 
   constructor(
     @Optional() @InjectDataSource() private readonly dataSource?: DataSource,
@@ -424,6 +435,7 @@ export class AiModelRouterService {
 
   clearAllCache(): void {
     this.tenantConfigCache.clear();
+    this.platformConfigCache = null;
     this.models.clear();
   }
 
@@ -523,7 +535,7 @@ export class AiModelRouterService {
       this.logger.warn(
         `[AI-MODEL] ⚠️ aucune clé API résolue pour provider=${descriptor.provider} ` +
           `(source=${descriptor.source}) — les appels vont échouer en 401. ` +
-          `Renseignez la clé dans /admin/ai ou la variable d'env correspondante.`,
+          `Renseignez la clé dans la console plateforme (Intelligence artificielle) ou la variable d'env correspondante.`,
       );
     }
     return { model, descriptor };
@@ -1156,6 +1168,11 @@ export class AiModelRouterService {
     return undefined;
   }
 
+  /**
+   * Configuration IA effective d'un cabinet : exception posée par la
+   * plateforme pour ce cabinet, sinon moteur par défaut de la plateforme
+   * (`platform_settings['ai']`), sinon `null` → variables d'environnement.
+   */
   private async loadTenantConfig(tenantId: number): Promise<any | null> {
     if (!this.dataSource) return null;
     try {
@@ -1164,21 +1181,37 @@ export class AiModelRouterService {
         'SELECT ai_config FROM cabinets WHERE id = ? LIMIT 1',
         [tenantId],
       );
-      const raw = rows?.[0]?.ai_config;
-      if (raw == null) return null;
-      if (typeof raw === 'string') {
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return null;
-        }
-      }
-      return raw;
+      const cabinet = parseStoredAiConfig(rows?.[0]?.ai_config);
+      const platform = await this.loadPlatformConfig();
+      return mergeAiConfigs(platform, cabinet);
     } catch (e) {
       this.logger.warn(
         `loadTenantConfig #${tenantId} échoué: ${(e as Error).message}`,
       );
       return null;
+    }
+  }
+
+  /** Configuration IA de la plateforme (catalogue + moteur par défaut), en cache. */
+  async loadPlatformConfig(): Promise<AiStoredConfig | null> {
+    if (!this.dataSource) return null;
+    const cached = this.platformConfigCache;
+    if (cached && Date.now() - cached.ts < this.TENANT_CACHE_TTL) {
+      return cached.config;
+    }
+    try {
+      const rows: any[] = await this.dataSource.query(
+        'SELECT `value` FROM platform_settings WHERE `key` = ? LIMIT 1',
+        [PLATFORM_AI_SETTING_KEY],
+      );
+      const config = parseStoredAiConfig(rows?.[0]?.value);
+      this.platformConfigCache = { config, ts: Date.now() };
+      return config;
+    } catch (e) {
+      this.logger.warn(
+        `Lecture de la config IA plateforme échouée: ${(e as Error).message}`,
+      );
+      return cached?.config ?? null;
     }
   }
 

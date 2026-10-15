@@ -7,9 +7,10 @@ import { Cabinet } from './entities/cabinet.entity';
 import { Plan } from '../plans/entities/plan.entity';
 import { CabinetSubscriber } from './subscribers/cabinet.subscriber';
 import { TenantSeederService } from './tenant-seeder.service';
+import { PlatformSetting } from '../platform/entities/platform-setting.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Cabinet, Plan])],
+  imports: [TypeOrmModule.forFeature([Cabinet, Plan, PlatformSetting])],
   providers: [CabinetService, TenantSeederService, CabinetSubscriber],
   controllers: [CabinetController],
   exports: [CabinetService, TenantSeederService],

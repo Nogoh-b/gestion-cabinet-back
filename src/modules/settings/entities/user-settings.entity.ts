@@ -30,6 +30,30 @@ export class UserSettings extends TenantEntity {
   @Column({ length: 5, default: 'lg' })
   user_font_size: string;
 
+  // ── Apparence personnelle ───────────────────────────────────────────────
+  // Copiée depuis les défauts du cabinet à la création de la ligne, puis
+  // modifiable par l'utilisateur. NULL = repli sur les défauts du cabinet.
+
+  @ApiProperty({ example: 'midnight', nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  user_theme_name: string | null;
+
+  @ApiProperty({ example: 'outfit', nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  user_font_ui: string | null;
+
+  @ApiProperty({ example: 'outfit', nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  user_font_heading: string | null;
+
+  @ApiProperty({ example: 'jetbrains_mono', nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  user_font_mono: string | null;
+
+  @ApiProperty({ example: 'tinted', nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  user_sidebar_style: string | null;
+
   @ApiProperty({ example: 'fr' })
   @Column({ length: 10, default: 'fr' })
   user_language: string;

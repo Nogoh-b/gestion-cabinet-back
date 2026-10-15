@@ -65,6 +65,7 @@ import { PlatformModule } from './modules/platform/platform.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ExportModule } from './modules/export/export.module';
 import { CaseWorkflowModule } from './modules/case-workflow/case-workflow.module';
+import { GlobalSearchModule } from './modules/search/search.module';
 
 dotenv.config();
 
@@ -225,6 +226,7 @@ dotenv.config();
     ReportsModule,
     ExportModule,
     CaseWorkflowModule,
+    GlobalSearchModule,
   ],
   controllers: [AppController],
   providers: [

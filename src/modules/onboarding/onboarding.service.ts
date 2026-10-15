@@ -27,6 +27,7 @@ import { OnboardingDto } from './onboarding.dto';
 import { JwtPayload } from 'src/core/auth/interfaces/jwt-payload.interface';
 import { MailService } from 'src/core/shared/emails/emails.service';
 import { MailTemplateService } from '../mail-template/mail-template.service';
+import { CouponsService } from '../subscriptions/coupons/coupons.service';
 
 @Injectable()
 export class OnboardingService {
@@ -45,6 +46,7 @@ export class OnboardingService {
     private readonly cabinetService: CabinetService,
     private readonly plansService: PlansService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly couponsService: CouponsService,
     private readonly jwtService: JwtService,
     private readonly dataSource: DataSource,
     private readonly mailService: MailService,
@@ -106,6 +108,15 @@ export class OnboardingService {
       .findByCode(planCode)
       .catch(() => null);
 
+    // Code promo vérifié avant toute création (message clair, rien à défaire).
+    const couponCode = dto.coupon_code?.trim() || null;
+    if (couponCode) {
+      await this.couponsService.check(couponCode, {
+        planId: selectedPlan?.id ?? null,
+        cycle: dto.billing_cycle ?? 'monthly',
+      });
+    }
+
     // ── 2. Créer le cabinet (pas encore de tenant context) ────────────────
     const cabinet = this.cabinetRepo.create({
       code: this.cabinetService.generateCode(),
@@ -118,6 +129,7 @@ export class OnboardingService {
         ? this.trialEnd(selectedPlan.trial_days)
         : null,
     });
+    await this.cabinetService.applyPlatformAppearanceDefaults(cabinet);
     await this.cabinetRepo.save(cabinet);
     this.logger.log(
       `[Onboarding] Cabinet créé — id=${cabinet.id} code="${cabinet.code}" plan="${planCode}" plan_id=${selectedPlan?.id ?? 'none'}`,
@@ -194,6 +206,7 @@ export class OnboardingService {
             {
               gateAllPaid: true,
               actor: { type: 'cabinet_user', label: dto.email },
+              couponCode,
             },
           );
           // Reflète le statut résolu sur l'objet en mémoire pour la réponse.

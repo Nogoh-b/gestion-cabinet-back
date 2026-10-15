@@ -21,6 +21,9 @@ import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { AiModelRouterService } from './ai-model-router.service';
 import { AiAdminController } from './ai-admin.controller';
 import { SettingsModule } from 'src/modules/settings/settings.module';
+import { AiContextConfig, AiContextSuggestion } from './entities/ai-context-config.entity';
+import { AiContextConfigService } from './ai-context-config.service';
+import { AiContextConfigController } from './ai-context-config.controller';
 
 @Module({
   imports: [
@@ -32,9 +35,11 @@ import { SettingsModule } from 'src/modules/settings/settings.module';
       ConversationMessage,
       DocumentCustomer,
       AiRequestLog,
+      AiContextConfig,
+      AiContextSuggestion,
     ]),
   ],
-  controllers: [AiDatabaseController, AiAdminController],
+  controllers: [AiDatabaseController, AiAdminController, AiContextConfigController],
   providers: [
     AiDatabaseService,
     SchemaMetadataService,
@@ -48,6 +53,7 @@ import { SettingsModule } from 'src/modules/settings/settings.module';
     AiDatabasePermissionService,
     AiModelRouterService,
     AiQuotaGuard,
+    AiContextConfigService,
   ],
   exports: [
     AiDatabaseService,

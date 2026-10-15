@@ -6,6 +6,42 @@ import { Dossier } from './entities/dossier.entity';
 import { canBypassConfidentiality } from './dossier-visibility';
 
 /**
+ * Applique « non confidentiel OU explicitement autorisé » à un `where`
+ * TypeORM, pour un appelant qui ne contourne pas la confidentialité.
+ *
+ * La règle s'exprime par un tableau de conditions (OR), qu'il faut
+ * distribuer sur chaque branche du `where` déjà présent — sinon les autres
+ * critères seraient perdus.
+ *
+ * Un tableau vide (`[]`) ne porte aucune condition pour TypeORM (OR vide =
+ * aucun filtre) : il est traité comme l'absence de `where`. Sans cela, le
+ * `map`/`flatMap` sur `[]` renverrait `[]` et la règle disparaîtrait.
+ */
+export function applyConfidentialityClause(
+  where: any,
+  grantedIds: readonly number[],
+): any {
+  const hasWhere = Array.isArray(where) ? where.length > 0 : !!where;
+
+  // Fail-closed : sans autorisation nominative, seul le non-confidentiel.
+  if (grantedIds.length === 0) {
+    const clause = { confidentiality_level: false };
+    if (!hasWhere) return clause;
+    if (Array.isArray(where)) return where.map((w) => ({ ...w, ...clause }));
+    return { ...where, ...clause };
+  }
+
+  const clauses = [
+    { confidentiality_level: false },
+    { id: In([...grantedIds]) },
+  ];
+  const base: any[] = !hasWhere ? [{}] : Array.isArray(where) ? where : [where];
+  return base.flatMap((branch) =>
+    clauses.map((condition) => ({ ...branch, ...condition })),
+  );
+}
+
+/**
  * DossierVisibilityPatch — patch de `Repository.prototype` au démarrage,
  * restreint à la SEULE entité `Dossier`.
  *
@@ -65,11 +101,8 @@ export class DossierVisibilityPatch implements OnModuleInit {
     }
 
     /**
-     * Fusionne le filtre de confidentialité dans un `where` TypeORM.
-     *
-     * « non confidentiel OU explicitement autorisé » s'exprime par un tableau
-     * de conditions (OR), qu'il faut distribuer sur chaque branche du `where`
-     * déjà présent — sinon les autres critères seraient perdus.
+     * Fusionne le filtre de confidentialité dans un `where` TypeORM
+     * (cf. `applyConfidentialityClause`).
      */
     async function mergeVisibilityWhere(
       manager: EntityManager,
@@ -80,23 +113,7 @@ export class DossierVisibilityPatch implements OnModuleInit {
       if (canBypassConfidentiality()) return where;
 
       const grantedIds = await resolveGrantedIds(manager);
-
-      // Fail-closed : sans autorisation nominative, seul le non-confidentiel.
-      if (grantedIds.length === 0) {
-        const clause = { confidentiality_level: false };
-        if (!where) return clause;
-        if (Array.isArray(where)) return where.map((w) => ({ ...w, ...clause }));
-        return { ...where, ...clause };
-      }
-
-      const clauses = [
-        { confidentiality_level: false },
-        { id: In(grantedIds) },
-      ];
-      const base: any[] = !where ? [{}] : Array.isArray(where) ? where : [where];
-      return base.flatMap((branch) =>
-        clauses.map((condition) => ({ ...branch, ...condition })),
-      );
+      return applyConfidentialityClause(where, grantedIds);
     }
 
     const orig = {

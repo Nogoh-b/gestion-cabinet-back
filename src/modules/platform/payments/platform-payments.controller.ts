@@ -19,6 +19,7 @@ import {
   PlatformPrincipal,
 } from '../common/platform-principal';
 import { PlatformPaymentsService } from './platform-payments.service';
+import { ReceiptService } from 'src/modules/subscriptions/billing/receipt.service';
 import {
   PlatformPaymentQueryDto,
   RefundPaymentDto,
@@ -33,7 +34,10 @@ const PAYMENT = { targetType: 'payment' };
 @Controller('platform/payments')
 @PlatformRoute()
 export class PlatformPaymentsController {
-  constructor(private readonly service: PlatformPaymentsService) {}
+  constructor(
+    private readonly service: PlatformPaymentsService,
+    private readonly receipts: ReceiptService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Paiements de tous les cabinets (filtres, totaux)' })
@@ -63,6 +67,16 @@ export class PlatformPaymentsController {
   @Get(':id')
   detail(@Param('id', ParseIntPipe) id: number) {
     return this.service.detail(id);
+  }
+
+  @Get(':id/receipt')
+  @PlatformAudit({ action: 'payment.receipt', ...PAYMENT })
+  @ApiOperation({ summary: 'Reçu PDF du paiement' })
+  async receipt(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
+    const { buffer, filename } = await this.receipts.pdf(id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Get(':id/proof')

@@ -20,6 +20,8 @@ export const DatabaseTablesConfig = {
 
   // Tables à ignorer complètement
   ignoredTables: [
+    'ai_context_configs',
+    'ai_context_suggestions',
     'history_entries',
     'auth_tokens',
     'otp_codes',

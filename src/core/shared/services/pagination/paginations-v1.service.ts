@@ -23,6 +23,32 @@ export interface PaginatedResult<T> {
   };
 }
 
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 10;
+// Au-dessus du max du DTO (100) : le front demande jusqu'à 500 éléments
+// (export PDF des audiences, calendrier, liste des modèles PDF).
+const MAX_LIMIT = 500;
+
+/** Entier ≥ 1 (partie entière), sinon la valeur par défaut. */
+function toPositiveInt(value: unknown, fallback: number): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+/**
+ * Page et limite exploitables à partir de paramètres de requête bruts
+ * (texte, absents ou invalides) : entiers ≥ 1, défauts 1/10, plafond 500.
+ */
+export function normalizePaging(params?: {
+  page?: unknown;
+  limit?: unknown;
+}): { page: number; limit: number } {
+  return {
+    page: toPositiveInt(params?.page, DEFAULT_PAGE),
+    limit: Math.min(toPositiveInt(params?.limit, DEFAULT_LIMIT), MAX_LIMIT),
+  };
+}
+
 @Injectable()
 export class PaginationServiceV1 {
   async paginate<T extends ObjectLiteral>(
@@ -32,8 +58,9 @@ export class PaginationServiceV1 {
     relations: string[] = [],
     additionalOptions: FindManyOptions<T> = {},
   ): Promise<PaginatedResult<T>> {
-    const page = Number(paginationParams.page) ?? 1;
-    const limit = Number(paginationParams.limit) ?? 10;
+    // Pas de ValidationPipe global : page/limit arrivent bruts (string,
+    // undefined…) et Number(undefined) = NaN, que `??` ne rattrape pas.
+    const { page, limit } = normalizePaging(paginationParams);
 
     console.log('Pagination params:', page, '*', limit);
 

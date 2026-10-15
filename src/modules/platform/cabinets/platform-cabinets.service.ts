@@ -329,6 +329,12 @@ export class PlatformCabinetsService {
     );
   }
 
+  async applyCoupon(cabinetId: number, code: string, admin: PlatformPrincipal) {
+    const before = await this.snapshot(cabinetId);
+    await this.subscriptions.applyCouponToDuePayment(cabinetId, code, platformActor(admin));
+    return this.done(cabinetId, 'coupon.apply', before, `Code promo ${code.toUpperCase()} appliqué`);
+  }
+
   // ── Utilisateurs du cabinet ───────────────────────────────────────────────
 
   async setUserBlocked(cabinetId: number, userId: number, blocked: boolean) {
