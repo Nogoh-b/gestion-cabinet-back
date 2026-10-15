@@ -60,6 +60,11 @@ import { EntityIdRequiredException } from './write/entity-id-required.exception'
 import { PrepareFormDto } from './dto/prepare-form.dto';
 import { buildFormPrompt, normalizeFormDraft, parseFormFields } from './form-preparation';
 import { formatPageContext } from './page-context';
+import {
+  uploadedDocumentMessage,
+  uploadedFilePlannerNote,
+  withoutUploadedDocumentInserts,
+} from './uploaded-document-guard';
 import { AiContextConfigService } from './ai-context-config.service';
 import {
   WriteHandlerRegistry,
@@ -81,6 +86,8 @@ interface DocumentContextItem {
 
 interface RequestContext {
   enrichedQuestion: string;
+  /** enrichedQuestion sans le texte des documents : base de la classification. */
+  intentQuestion: string;
   fileInfo?: any;
   documentContext: DocumentContextItem[];
   referenced: ReferencedEntityContext[];
@@ -1812,7 +1819,11 @@ Contraintes obligatoires :
       this.markMetric({ intent: 'TEXT' });
       const fileTexts: string[] = [];
       for (const file of files) {
-        const text = await this.extractFileContent(file);
+        // Un fichier illisible (PDF corrompu, image sans texte) ne fait pas échouer le brouillon.
+        const text = await this.extractFileContent(file).catch((error: Error) => {
+          this.logger.warn(`Pièce jointe illisible « ${file.originalname} » : ${error.message}`);
+          return '[Contenu illisible : seul le nom du fichier est connu]';
+        });
         fileTexts.push(`${file.originalname}\n${this.truncateContextText(text, this.MAX_FILE_CONTEXT_CHARS).content}`);
       }
       const response = await this.invokeModel('quality', [
@@ -2180,12 +2191,31 @@ Contraintes obligatoires :
 
     // ── 3b. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
     if (intentResult.type === 'WRITE' && intentResult.writePlan) {
+      const { plan, removed } = file
+        ? withoutUploadedDocumentInserts(intentResult.writePlan)
+        : { plan: intentResult.writePlan as WritePlan, removed: 0 };
+      if (removed) {
+        // Sans formulaire d'ajout côté client, on explique seulement la démarche.
+        const notice = `Le fichier « ${file!.originalname} » ne peut pas être joint par un plan d'écriture : ajoutez-le depuis la fiche du dossier.`;
+        if (!plan.operations.length) {
+          return {
+            success: true,
+            question: dto.question,
+            analysis: notice,
+            executionTimeMs: Date.now() - startTime,
+            conversationId: dto.conversationId,
+            ...(fileInfo && { fileInfo }),
+          };
+        }
+        plan.humanReadable = `${plan.humanReadable}\n\n${notice}`;
+        intentResult.requiresConfirmation = true;
+      }
       await this.aiPermissionService.assertCanWritePlan(
         user as AiUserContext,
-        intentResult.writePlan,
+        plan,
       );
       return this.handleWriteIntent(
-        intentResult.writePlan,
+        plan,
         intentResult.requiresConfirmation ?? false,
         enrichedQuestion,
         dto,
@@ -3854,12 +3884,19 @@ ${blocks.join('\n\n')}
       enrichedQuestion += this.formatReferencedContext(referenced);
     }
 
+    const intentQuestion = enrichedQuestion;
     enrichedQuestion += this.buildDocumentContextBlock(
       documentContext,
       dto.question,
     );
 
-    return { enrichedQuestion, fileInfo, documentContext, referenced };
+    return {
+      enrichedQuestion,
+      intentQuestion,
+      fileInfo,
+      documentContext,
+      referenced,
+    };
   }
 
   private async loadSystemDocumentContext(
@@ -4134,6 +4171,14 @@ ${blocks.join('\n\n')}
         enrichedQuestion,
         historyOverride,
       );
+      // Les mots d'une pièce jointe (« recommandation », « code »…) ne doivent
+      // pas décider de l'intention : la classification locale lit la demande seule.
+      const intentText = requestContext.documentContext.length
+        ? this.resolveFollowUpContext(
+            requestContext.intentQuestion,
+            historyOverride,
+          )
+        : enrichedQuestion;
 
       if (dto.textGenerationOnly) {
         this.markMetric({ intent: 'TEXT' });
@@ -4152,7 +4197,7 @@ ${blocks.join('\n\n')}
       }
       if (
         intentMode === 'auto' &&
-        this.intentDetectionService.classifyLocal(enrichedQuestion) === 'HELP'
+        this.intentDetectionService.classifyLocal(intentText) === 'HELP'
       ) {
         this.markMetric({ intent: 'HELP' });
         sendEvent('intent', { type: 'HELP' });
@@ -4170,7 +4215,7 @@ ${blocks.join('\n\n')}
       }
       if (
         intentMode === 'auto' &&
-        this.intentDetectionService.classifyLocal(enrichedQuestion) === 'ADVICE'
+        this.intentDetectionService.classifyLocal(intentText) === 'ADVICE'
       ) {
         this.markMetric({ intent: 'ADVICE' });
         sendEvent('intent', { type: 'ADVICE' });
@@ -4225,13 +4270,18 @@ ${blocks.join('\n\n')}
 
       // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
       // Si l'utilisateur a joint OU mentionné (@) un document dont le CONTENU a
-      // pu être extrait, et que l'intention n'est pas une écriture explicite, on
-      // analyse directement le TEXTE du document (résumé, extraction de clauses…)
-      // au lieu de générer du SQL — qui ne verrait que les métadonnées.
+      // pu être extrait, on analyse directement le TEXTE du document (résumé,
+      // extraction de clauses…) au lieu de générer du SQL — qui ne verrait que
+      // les métadonnées. Une demande d'action (« crée une audience à partir de
+      // ce document ») part au planner : le document y sert de source.
       const hasReadableDocument = requestContext.documentContext.some(
         (d) => !d.error && !!d.content && d.content.trim().length > 40,
       );
-      if (hasReadableDocument && intentMode !== 'write') {
+      const writeWithDocument =
+        hasReadableDocument &&
+        (intentMode === 'auto' || intentMode === 'read') &&
+        this.isObviousWriteQuestion(dto.question);
+      const answerFromDocuments = async () => {
         await this.aiPermissionService.assertCanReadTables(
           user as AiUserContext,
           relevantTables,
@@ -4261,6 +4311,7 @@ ${blocks.join('\n\n')}
           dto.question,
           requestContext.documentContext,
           sendEvent,
+          requestContext.referenced,
         );
         await this.conversationManager.addAssistantMessage(
           conversationId,
@@ -4276,6 +4327,9 @@ ${blocks.join('\n\n')}
           executionTimeMs: Date.now() - startTime,
           ...(fileInfo && { fileInfo }),
         });
+      };
+      if (hasReadableDocument && intentMode !== 'write' && !writeWithDocument) {
+        await answerFromDocuments();
         return;
       }
 
@@ -4296,7 +4350,8 @@ ${blocks.join('\n\n')}
         if (
           intentMode === 'auto' &&
           !forceWriteDespiteReadMode &&
-          this.intentDetectionService.classifyLocal(enrichedQuestion) === null
+          !writeWithDocument &&
+          this.intentDetectionService.classifyLocal(intentText) === null
         ) {
           const subQuestions = this.decomposeReadQuestion(
             dto.question,
@@ -4322,12 +4377,20 @@ ${blocks.join('\n\n')}
             tLog('⚡ brouillon SQL lancé en parallèle de la classification');
           }
         }
+        // Le texte du document est dans la question : la classification
+        // locale de detectIntent le lirait, on part donc directement au planner.
+        const forceWrite =
+          intentMode === 'write' ||
+          forceWriteDespiteReadMode ||
+          writeWithDocument;
         intentResult = await this.intentDetectionService.detectIntent(
-          enrichedQuestion,
+          file && forceWrite
+            ? enrichedQuestion + uploadedFilePlannerNote(file.originalname)
+            : enrichedQuestion,
           this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
           schema,
           {
-            forceWrite: intentMode === 'write' || forceWriteDespiteReadMode,
+            forceWrite,
             history: historyForIntent,
             plannerLlm: this.getRequestModel(
               'quality',
@@ -4385,6 +4448,12 @@ ${blocks.join('\n\n')}
           executionTimeMs: Date.now() - startTime,
           conversationId,
         });
+        return;
+      }
+
+      // Le planner n'a retenu aucune écriture : la pièce jointe reste le sujet.
+      if (hasReadableDocument && intentResult.type === 'READ') {
+        await answerFromDocuments();
         return;
       }
 
@@ -4455,11 +4524,15 @@ ${blocks.join('\n\n')}
 
       // ── 3b. WRITE ────────────────────────────────────────────────────────────
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
-        const plan = intentResult.writePlan;
-        await this.aiPermissionService.assertCanWritePlan(
-          user as AiUserContext,
-          plan,
-        );
+        const { plan, removed } = file
+          ? withoutUploadedDocumentInserts(intentResult.writePlan)
+          : { plan: intentResult.writePlan as WritePlan, removed: 0 };
+        if (plan.operations.length) {
+          await this.aiPermissionService.assertCanWritePlan(
+            user as AiUserContext,
+            plan,
+          );
+        }
 
         let conversationId = dto.conversationId;
         if (!conversationId) {
@@ -4475,8 +4548,32 @@ ${blocks.join('\n\n')}
           requestContext.referenced,
         );
 
+        if (removed) {
+          const notice = uploadedDocumentMessage(
+            file!.originalname,
+            plan.operations.length > 0,
+          );
+          if (!plan.operations.length) {
+            // Le chat ouvre le formulaire d'ajout avec le fichier qu'il détient encore.
+            await this.conversationManager.addAssistantMessage(
+              conversationId,
+              notice,
+              undefined,
+            );
+            sendEvent('document_upload', { message: notice, conversationId });
+            return;
+          }
+          plan.humanReadable = `${plan.humanReadable}\n\n${notice}`;
+          intentResult.requiresConfirmation = true;
+        }
+
         if (intentResult.requiresConfirmation) {
-          sendEvent('confirmation', { plan, conversationId });
+          sendEvent('confirmation', {
+            plan,
+            conversationId,
+            // Le chat propose le classement du fichier après confirmation.
+            ...(removed > 0 && { documentsExcluded: true }),
+          });
           const display = `⚠️ **Confirmation requise**\n\n${this.formatPlanForDisplay(plan)}`;
           await this.conversationManager.addAssistantMessage(
             conversationId,
@@ -4958,8 +5055,13 @@ ${blocks.join('\n\n')}
     question: string,
     documentContext: DocumentContextItem[],
     sendEvent: (event: string, data: any) => void,
+    referenced: ReferencedEntityContext[] = [],
   ): Promise<string> {
-    const prompt = this.buildDocumentAnalysisPrompt(question, documentContext);
+    const prompt = this.buildDocumentAnalysisPrompt(
+      question,
+      documentContext,
+      referenced,
+    );
 
     let fullText = '';
     let tokenCount = 0;
@@ -5043,6 +5145,7 @@ ${blocks.join('\n\n')}
   private buildDocumentAnalysisPrompt(
     question: string,
     documentContext: DocumentContextItem[],
+    referenced: ReferencedEntityContext[] = [],
   ): string {
     const docs = documentContext
       .filter((d) => !d.error && !!d.content && d.content.trim().length > 0)
@@ -5062,10 +5165,19 @@ ${blocks.join('\n\n')}
 
 Tu dois répondre à la demande de l'utilisateur en t'appuyant EXCLUSIVEMENT sur le contenu des documents ci-dessous.
 ⚠️ Si une information demandée ne figure pas dans les documents, dis-le explicitement. N'invente JAMAIS de contenu.
+⚠️ Tu n'exécutes aucune action : n'affirme jamais avoir créé, ajouté, classé, enregistré ou modifié quoi que ce soit. Si la demande réclame une action, précise en une phrase que rien n'a été enregistré, puis réponds à partir des documents.
 
 ## DEMANDE DE L'UTILISATEUR
 "${question}"
-
+${
+  referenced.length
+    ? `
+## CONTEXTE CHOISI PAR L'UTILISATEUR
+${this.formatReferencedContext(referenced).trim()}
+Ces éléments situent la demande. Un document qui ne les cite pas reste exploitable : ce n'est jamais un motif de refus.
+`
+    : ''
+}
 ## CONTENU DES DOCUMENTS
 ${docs}
 

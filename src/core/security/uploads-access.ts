@@ -73,7 +73,8 @@ export function verifyUploadSignature(
   );
 }
 
-const UPLOAD_URL = /^(https?:\/\/[^/\s?#]+)?\/uploads\/([^?#\s]+)$/;
+// Les URLs stockées en base ne sont pas encodées : espaces et accents autorisés.
+const UPLOAD_URL = /^(https?:\/\/[^/\s?#]+)?\/uploads\/([^?#]+)$/;
 
 /**
  * Transforme une URL `/uploads/…` (absolue ou relative) en URL signée. Les

@@ -432,6 +432,29 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
     return this.mapToResponseDto(updatedProcedure);
   }
 
+  /**
+   * Nombre de dossiers du cabinet qui utilisent ce type (ou sous-type).
+   *
+   * Compte VOLONTAIREMENT tous les dossiers, confidentiels compris : le
+   * `repository.count()` passerait par le filtre de confidentialité et, pour
+   * un non-admin, ignorerait les dossiers confidentiels — le type paraîtrait
+   * alors inutilisé alors qu'il l'est. Le QueryBuilder n'est pas couvert par ce
+   * filtre ; seul le périmètre du cabinet est appliqué. Ne renvoie qu'un
+   * nombre, aucun dossier n'est exposé.
+   */
+  private async countDossiersUsingProcedureType(
+    procedureTypeId: number,
+  ): Promise<number> {
+    const qb = this.dossierRepository
+      .createQueryBuilder('dossier')
+      .where(
+        '(dossier.procedure_type_id = :procedureTypeId OR dossier.procedure_subtype_id = :procedureTypeId)',
+        { procedureTypeId },
+      );
+    addTenantCondition(qb, 'dossier');
+    return qb.getCount();
+  }
+
   async remove(id: number): Promise<void> {
     const procedureType = await this.procedureTypeRepository.findOne({
       where: { id },
@@ -442,10 +465,8 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
       throw new NotFoundException(`Type de procédure ${id} non trouvé`);
     }
 
-    // Vérifier s'il est utilisé dans des dossiers
-    const dossierCount = await this.dossierRepository.count({
-      where: [{ procedure_type: { id } }, { procedure_subtype: { id } }],
-    });
+    // Vérifier s'il est utilisé dans des dossiers (confidentiels compris)
+    const dossierCount = await this.countDossiersUsingProcedureType(id);
 
     if (dossierCount > 0) {
       throw new BadRequestException(
@@ -511,12 +532,9 @@ export class ProceduresService extends BaseServiceV1<ProcedureType> {
   private async mapToResponseDto(
     procedureType: any,
   ): Promise<ProcedureTypeResponseDto> {
-    const dossierCount = await this.dossierRepository.count({
-      where: [
-        { procedure_type: { id: procedureType.id } },
-        { procedure_subtype: { id: procedureType.id } },
-      ],
-    });
+    const dossierCount = await this.countDossiersUsingProcedureType(
+      procedureType.id,
+    );
 
     // Calculer les getters qui sont perdus lors de la sérialisation JSON
     const parent = procedureType.parent;

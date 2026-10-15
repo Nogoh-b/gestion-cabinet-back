@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 
 import { Cabinet } from '../entities/cabinet.entity';
 import { TenantSeederService } from '../tenant-seeder.service';
+import { applyDefaultCabinetLogo } from '../cabinet-logo.util';
 
 /**
  * CabinetSubscriber
@@ -31,6 +32,10 @@ export class CabinetSubscriber extends BaseEntitySubscriber<Cabinet> {
 
   listenTo() {
     return Cabinet;
+  }
+
+  protected async onBeforeCreate(entity: Cabinet): Promise<void> {
+    applyDefaultCabinetLogo(entity);
   }
 
   /**

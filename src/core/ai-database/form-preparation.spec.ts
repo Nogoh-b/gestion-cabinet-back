@@ -93,6 +93,18 @@ describe('Préparation de formulaire IA', () => {
     expect(service.dataSource.query).not.toHaveBeenCalled();
     expect(service.conversationManager.addUserMessage).not.toHaveBeenCalled();
   });
+  it('prépare quand même le brouillon quand une pièce jointe est illisible', async () => {
+    const service: any = Object.create(AiDatabaseService.prototype);
+    service.withAiMetrics = (_name: string, _id: number, run: () => unknown) => run();
+    service.configureRequestModel = jest.fn(); service.markMetric = jest.fn();
+    service.logger = { warn: jest.fn() };
+    service.extractFileContent = jest.fn().mockRejectedValue(new Error('Invalid PDF structure'));
+    service.invokeModel = jest.fn().mockResolvedValue({ content: JSON.stringify({ values: { report: 'Brouillon' } }) });
+    const file = { originalname: 'corrompu.pdf' };
+    const result = await service.prepareForm({ text: 'Classe ce fichier', fields: JSON.stringify(fields), mode: 'create' }, [file]);
+    expect(result.values).toEqual({ report: 'Brouillon' });
+    expect(JSON.stringify(service.invokeModel.mock.calls[0][1])).toContain('corrompu.pdf\\n[Contenu illisible');
+  });
   it('bloque la préparation et les demandes sans contexte de page quand le cabinet désactive son aide', async () => {
     const configRepo: any = { find: jest.fn().mockResolvedValue([]), findOneBy: jest.fn().mockResolvedValue({ enabled: false }) };
     const service: any = Object.create(AiDatabaseService.prototype);

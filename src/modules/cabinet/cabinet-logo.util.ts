@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join, normalize } from 'path';
 import {
   UPLOAD_FOLDER_NAME,
@@ -20,6 +20,22 @@ import type { Cabinet } from './entities/cabinet.entity';
 
 /** Sous-dossier (sous `uploads/`) où sont écrits les logos cabinet. */
 const LOGO_SUBDIR = 'cabinets';
+const DEFAULT_LOGO_FILE = `${LOGO_SUBDIR}/cabisoft-default.png`;
+
+/** Default for every creation path, including onboarding and repository saves. */
+export function applyDefaultCabinetLogo(cabinet: Cabinet): void {
+  if (cabinet.logo?.length || cabinet.logo_file) return;
+
+  const buffer = readFileSync(join(__dirname, 'assets', 'cabisoft-default.png'));
+  const dir = join(UPLOAD_PATH, LOGO_SUBDIR);
+  mkdirSync(dir, { recursive: true });
+  const destination = join(UPLOAD_PATH, DEFAULT_LOGO_FILE);
+  if (!existsSync(destination)) writeFileSync(destination, buffer);
+
+  cabinet.logo = buffer;
+  cabinet.logo_mime = 'image/png';
+  cabinet.logo_file = DEFAULT_LOGO_FILE;
+}
 
 /** Convertit un type MIME image en extension de fichier. */
 function mimeToExt(mime: string): string {
@@ -75,6 +91,8 @@ export function writeLogoFile(
 /** Supprime le fichier logo (best-effort, ignore les erreurs). */
 export function deleteLogoFile(relPath?: string | null): void {
   if (!relPath) return;
+  // Shared by new cabinets: replacing/removing one logo must keep the default.
+  if (relPath.replace(/\\/g, '/') === DEFAULT_LOGO_FILE) return;
   try {
     const full = normalize(join(UPLOAD_PATH, relPath));
     // garde-fou : ne supprimer que sous UPLOAD_PATH

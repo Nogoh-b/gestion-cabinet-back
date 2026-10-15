@@ -345,12 +345,12 @@ describe('GET /api/settings/app', () => {
     });
   });
 
-  it('personnel du cabinet : réponse inchangée (hors ai_config)', async () => {
+  it('administrateur : réponse inchangée (hors ai_config), mot de passe SMTP masqué', async () => {
     const body = await controller.get({
       user: { id: 48, role: 'admin', tenantId: 25 },
     } as any);
     expect(body).toMatchObject({
-      smtp_config: cabinet.smtp_config,
+      smtp_config: { host: 'smtp.test', user: 'u', pass: '••••••••' },
       invoice_prefix: 'FAC-',
       bank_account: 'CM21 0000',
       status: 'active',
