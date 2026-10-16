@@ -1,3 +1,4 @@
+import { businessRole } from 'src/core/auth/business-role';
 // src/modules/dossiers/dossiers.service.ts
 import { plainToInstance } from 'class-transformer';
 import {
@@ -42,6 +43,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { addDossierVisibilityCondition } from './dossier-visibility';
+import { dossierClientScope, dossierRoleScope } from './dossier-role-scope';
 import { DossierAccessGrant } from './entities/dossier-access-grant.entity';
 import { Employee } from '../agencies/employee/entities/employee.entity';
 import { Cabinet } from '../cabinet/entities/cabinet.entity';
@@ -566,26 +568,16 @@ export class DossiersService extends BaseServiceV1<Dossier> {
 
   /**
    * Portée imposée par le rôle de l'appelant, à fusionner dans chaque
-   * branche du `where` (cf. buildWhereConditions).
+   * branche du `where` (cf. buildWhereConditions). Règle partagée avec
+   * l'export ZIP : cf. dossier-role-scope.ts.
    */
   private buildRoleScope(user: User): FindOptionsWhere<Dossier> {
-    const authUser = user as any;
-
-    // Avocat : ses propres dossiers (Employee partage la clé de User).
-    if (authUser?.role === UserRole.AVOCAT) {
-      return { lawyer: { id: authUser.id } };
-    }
-
-    return this.buildClientScope(user);
+    return dossierRoleScope(user as any);
   }
 
   /** Client : uniquement ses propres dossiers. */
   private buildClientScope(user: User): FindOptionsWhere<Dossier> {
-    const authUser = user as any;
-    if (authUser?.role !== UserRole.CLIENT) return {};
-
-    // Aucun résultat si le jeton ne porte pas de customerId.
-    return { client_id: authUser.customerId || -1 };
+    return dossierClientScope(user as any);
   }
 
   /**
@@ -939,7 +931,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       .groupBy('procedure_type.name');
 
     // Filtrage par utilisateur
-    if (user.role === 'avocat') {
+    if (businessRole(user) === 'avocat') {
       queryBuilder.where('dossier.lawyer_id = :lawyerId', {
         lawyerId: user.id,
       });
@@ -956,7 +948,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       .createQueryBuilder('dossier')
       .select('dossier.status', 'status')
       .addSelect('COUNT(dossier.id)', 'count')
-      .where(user.role === 'avocat' ? 'dossier.lawyer_id = :lawyerId' : '1=1', {
+      .where(businessRole(user) === 'avocat' ? 'dossier.lawyer_id = :lawyerId' : '1=1', {
         lawyerId: user.id,
       })
       .groupBy('dossier.status');
@@ -968,7 +960,7 @@ export class DossiersService extends BaseServiceV1<Dossier> {
       by_procedure_type: stats,
       by_status: statusStats,
       total: await this.dossierRepository.count({
-        where: user.role === 'avocat' ? { lawyer: { id: user.id } } : {},
+        where: businessRole(user) === 'avocat' ? { lawyer: { id: user.id } } : {},
       }),
     };
   }

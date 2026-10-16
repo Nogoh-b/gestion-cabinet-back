@@ -17,6 +17,15 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DocumentCustomer } from '../../modules/documents/document-customer/entities/document-customer.entity';
 import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
 import { isSharedEntity } from '../tenant/tenant.decorator';
+import {
+  buildCapabilityAnswer,
+  buildDomainRefusal,
+  buildTableRefusal,
+  isCapabilityQuestion,
+  matchRestrictedDomains,
+  RestrictedDomain,
+  stripSchemaColumns,
+} from './ai-access-policy';
 import { buildAiCacheKey } from './ai-cache-key.util';
 import {
   AiDatabasePermissionService,
@@ -71,6 +80,15 @@ import {
   withoutUploadedDocumentInserts,
 } from './uploaded-document-guard';
 import { AiContextConfigService } from './ai-context-config.service';
+import { ImageReaderService } from './image-reader.service';
+import { PARTIAL_READING_RATIO } from './ocr-text';
+import {
+  QuotedPassage,
+  formatQuotedPassage,
+  isDocumentFollowUp,
+  parseAttachedDocuments,
+  parseQuotedPassage,
+} from './chat-attachments';
 import {
   WriteHandlerRegistry,
   WriteResult,
@@ -87,15 +105,52 @@ interface DocumentContextItem {
   content: string;
   truncated: boolean;
   error?: string;
+  /** Lecture d'une image ou d'un scan : le texte peut contenir des erreurs. */
+  method?: ExtractionMethod;
+  pages?: number;
+  /** Texte déjà lu lors d'une question précédente, renvoyé par le chat. */
+  reused?: boolean;
+  /** OCR : mots lus avec doute et confiance moyenne. */
+  uncertain?: string[];
+  confidence?: number;
+  /** OCR : part du texte lue avec doute (0-1). */
+  illegible?: number;
+  /** Lecture partielle : texte complet pour l'affichage (`content`, masqué, va au modèle). */
+  displayContent?: string;
+}
+
+type ExtractionMethod = 'text' | 'ocr' | 'vision';
+
+interface ExtractedContent {
+  text: string;
+  method: ExtractionMethod;
+  pages?: number;
+  uncertain?: string[];
+  confidence?: number;
+  illegible?: number;
+  reliableText?: string;
 }
 
 interface RequestContext {
   enrichedQuestion: string;
-  /** enrichedQuestion sans le texte des documents : base de la classification. */
+  /** enrichedQuestion sans le texte des documents ni le passage cité : base de la classification. */
   intentQuestion: string;
   fileInfo?: any;
+  filesInfo?: Array<{ name: string; size: number; type: string; error?: string }>;
   documentContext: DocumentContextItem[];
   referenced: ReferencedEntityContext[];
+  quote?: QuotedPassage | null;
+}
+
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff'];
+
+/** `file` unique (historique) ou liste de fichiers lus ensemble. */
+function toUploadedFiles(files?: Express.Multer.File | Express.Multer.File[]): Express.Multer.File[] {
+  return (Array.isArray(files) ? files : files ? [files] : []).filter(Boolean);
+}
+
+function uploadedFileNames(files: Express.Multer.File[]): string {
+  return files.map((file) => file.originalname).join('», «');
 }
 
 interface AiRequestMetrics {
@@ -165,6 +220,25 @@ const ANSWER_FORMAT_RULES = `MISE EN FORME (Markdown léger) :
 - N'énumère pas les informations absentes une par une : regroupe-les en une seule ligne finale "Non renseigné : a, b, c".
 - Un code (statut numérique, valeur technique) n'est affiché qu'avec son libellé lisible ; sans libellé, omets-le.
 - Pas de tableau sauf pour comparer au moins 3 éléments sur plusieurs critères. Pas de HTML, pas d'emoji.`;
+
+/**
+ * Mots vides ignorés par la détection de tables : « d » (de « d'affaire »),
+ * « les », « moi »… donnaient des points à toute table dont le nom ou le
+ * libellé contient ces lettres, et noyaient les vraies correspondances.
+ */
+const KEYWORD_STOPWORDS = new Set([
+  'les', 'des', 'une', 'aux', 'moi', 'mon', 'mes', 'ton', 'tes', 'ses', 'son',
+  'sur', 'par', 'pour', 'avec', 'dans', 'sans', 'qui', 'que', 'quoi', 'quel',
+  'quels', 'quelle', 'quelles', 'est', 'sont', 'ont', 'tous', 'tout', 'toutes',
+  'cette', 'ces', 'cet', 'leur', 'leurs', 'nos', 'notre', 'vos', 'votre',
+  'donne', 'donner', 'liste', 'lister', 'affiche', 'afficher', 'montre',
+  'montrer', 'peux', 'peut', 'stp', 'svp', 'merci', 'cabinet',
+]);
+
+/** « aporteurs » ↔ « apporteurs », « cabinnet » ↔ « cabinet ». */
+function squashRepeatedLetters(word: string): string {
+  return word.replace(/(.)\1+/g, '$1');
+}
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -252,6 +326,7 @@ export class AiDatabaseService implements OnModuleInit {
     @Inject(AI_DATABASE_PROJECT_CONFIG)
     private readonly projectConfig?: AiDatabaseProjectConfig,
     @Optional() private readonly contextConfigs?: AiContextConfigService,
+    @Optional() private readonly imageReader?: ImageReaderService,
   ) {}
 
   private getUserId(
@@ -1633,21 +1708,61 @@ Contraintes obligatoires :
    * Extrait le contenu textuel d'un fichier uploadé
    */
   private async extractFileContent(file: Express.Multer.File): Promise<string> {
-    return this.extractBufferContent(
-      file.buffer,
-      file.mimetype,
-      file.originalname,
-    );
+    return (await this.extractFileReading(file)).text;
   }
 
-  // ── Endpoint de confirmation ──────────────────────────────
+  /** Lecture partagée avec l’assistant de configuration, sans accès métier. */
+  async readReferenceAttachment(file: Express.Multer.File): Promise<string> {
+    return this.extractFileContent(file);
+  }
+
+  private extractFileReading(file: Express.Multer.File): Promise<ExtractedContent> {
+    return this.extractBufferReading(file.buffer, file.mimetype, file.originalname);
+  }
+
   private async extractBufferContent(
     buffer: Buffer,
     mimetype = '',
     filename = '',
   ): Promise<string> {
+    return (await this.extractBufferReading(buffer, mimetype, filename)).text;
+  }
+
+  /**
+   * Texte d'un fichier. Les images et les PDF numérisés sont lus par le modèle
+   * vision configuré, sinon par l'OCR local (`method` l'indique). Une pièce
+   * sans texte lisible lève une erreur explicite, affichée telle quelle.
+   */
+  private async extractBufferReading(
+    buffer: Buffer,
+    mimetype = '',
+    filename = '',
+  ): Promise<ExtractedContent> {
+    const text = await this.extractBufferText(buffer, mimetype, filename);
+    return typeof text === 'string' ? { text, method: 'text' } : text;
+  }
+
+  private async extractBufferText(
+    buffer: Buffer,
+    mimetype = '',
+    filename = '',
+  ): Promise<string | ExtractedContent> {
     const mime = (mimetype || '').toLowerCase();
     const ext = path.extname(filename || '').toLowerCase();
+    const label = filename || 'sans nom';
+
+    if (mime.startsWith('image/') || IMAGE_EXTENSIONS.includes(ext)) {
+      if (!this.imageReader) throw new Error('La lecture des images est indisponible sur ce serveur.');
+      const reading = await this.imageReader.readImage(buffer, filename);
+      if (!reading.text) {
+        throw new Error(
+          reading.method === 'ocr'
+            ? `Aucun texte lisible n'a été détecté dans l'image « ${label} ». La lecture automatique (OCR) reconnaît le texte, pas le contenu visuel d'une photo.`
+            : `Aucun contenu lisible n'a été trouvé dans l'image « ${label} ».`,
+        );
+      }
+      return reading;
+    }
 
     if (
       mime.startsWith('text/') ||
@@ -1663,12 +1778,20 @@ Contraintes obligatoires :
       const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
       const text = (data.text || '').trim();
-      // PDF scanné (images sans couche texte) → pdf-parse ne renvoie (quasi) rien.
-      // On le signale honnêtement au lieu de laisser croire à un document vide :
-      // la réponse sera « ce document est un scan, OCR requis » plutôt qu'une
-      // hallucination ou un repli silencieux sur les seules métadonnées.
+      // PDF numérisé (pages en images, sans couche texte) : lecture des pages.
+      // Un échec est signalé honnêtement plutôt que de laisser croire à un
+      // document vide (hallucination ou repli silencieux sur les métadonnées).
       if (text.length < 20) {
-        return `[Document PDF "${filename || 'sans nom'}" sans texte extractible : il s'agit probablement d'un document scanné (images). Sa lecture nécessite un OCR, non activé sur le serveur.]`;
+        const scanned = await this.imageReader?.readScannedPdf(buffer, filename).catch((error: Error) => {
+          this.logger.warn(`Lecture du PDF numérisé « ${label} » impossible : ${error.message}`);
+          return null;
+        });
+        if (scanned?.text) return scanned;
+        throw new Error(
+          scanned
+            ? `Aucun texte lisible n'a été reconnu dans le PDF numérisé « ${label} » (${scanned.pages} page(s)).`
+            : `Le PDF « ${label} » n'a pas de texte et ses pages numérisées sont dans un format que la lecture automatique (OCR) ne prend pas en charge. Joignez les pages en images (JPEG, PNG) ou un PDF avec texte.`,
+        );
       }
       return text;
     }
@@ -1695,10 +1818,6 @@ Contraintes obligatoires :
       ext === '.docx'
     ) {
       return this.extractDocxText(buffer);
-    }
-
-    if (mime.startsWith('image/')) {
-      return `[Image ${filename || 'sans nom'}: analyse OCR non disponible cote serveur. Ajoutez une description ou joignez un PDF/texte si le contenu doit etre lu.]`;
     }
 
     throw new Error(
@@ -1934,22 +2053,40 @@ Contraintes obligatoires :
   async analyzeQuestion(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file?: Express.Multer.File,
+    uploaded?: Express.Multer.File | Express.Multer.File[],
     aiRequestLogId?: number,
   ): Promise<AnalysisResponseDto> {
-    const analyze = () => this.withAiMetrics('ask', aiRequestLogId, () =>
+    const files = toUploadedFiles(uploaded);
+    const metadata = this.userMessageMetadata(dto, files);
+    const run = () => this.withAiMetrics('ask', aiRequestLogId, () =>
       this.analyzeQuestionInternal(dto.temporary === true || dto.temporary === 'true'
-        ? { ...dto, conversationId: undefined } : dto, user, file),
+        ? { ...dto, conversationId: undefined } : dto, user, files),
     this.displayedRecordsKey(user));
+    const analyze = metadata ? () => this.conversationManager.withUserMessageMetadata(metadata, run) : run;
     return dto.temporary === true || dto.temporary === 'true'
       ? this.conversationManager.runTemporary(analyze) : analyze();
+  }
+
+  /**
+   * Pièces jointes et passage cité gardés avec le message utilisateur : le
+   * chat les réaffiche à la réouverture de la conversation.
+   */
+  private userMessageMetadata(dto: AskQuestionDto, files: Express.Multer.File[]): Record<string, any> | undefined {
+    const quote = parseQuotedPassage(dto.quote, dto.quoteSource);
+    const filesInfo = files.map((file) => ({ name: file.originalname, size: file.size, type: file.mimetype }));
+    if (!filesInfo.length && !quote) return undefined;
+    return {
+      ...(filesInfo.length && { filesInfo }),
+      ...(quote && { quote: { text: quote.text.slice(0, 1500), ...(quote.source && { source: quote.source }) } }),
+    };
   }
 
   private async analyzeQuestionInternal(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file?: Express.Multer.File,
+    uploaded?: Express.Multer.File | Express.Multer.File[],
   ): Promise<AnalysisResponseDto> {
+    const files = toUploadedFiles(uploaded);
     const startTime = Date.now();
     const userId = this.getUserId(user);
     const modelSelection = this.configureRequestModel(dto.reasoningLevel);
@@ -2067,7 +2204,7 @@ Contraintes obligatoires :
     let fileInfo: any;
 
     // ── 1. Contexte enrichi : mentions, fichiers et documents système ────────
-    const requestContext = await this.buildRequestContext(dto, file);
+    const requestContext = await this.buildRequestContext(dto, files);
     enrichedQuestion = requestContext.enrichedQuestion;
     fileInfo = requestContext.fileInfo ?? fileInfo;
     const historyOverride = parseVisibleHistory(dto.historyOverride);
@@ -2117,6 +2254,25 @@ Contraintes obligatoires :
       }
     }
 
+    // ── 1c. Questions sur les droits de l'utilisateur ────────────────────────
+    if (intentMode !== 'write') {
+      const capabilityAnswer = await this.answerCapabilityQuestion(
+        user,
+        dto.question,
+      );
+      if (capabilityAnswer) {
+        this.markMetric({ intent: 'HELP' });
+        return this.respondWithNotice(
+          capabilityAnswer,
+          dto,
+          user,
+          startTime,
+          requestContext.referenced,
+          fileInfo,
+        );
+      }
+    }
+
     // ── 2. Détection d'intention sur la question enrichie ────────────────────
     if (
       intentMode === 'auto' &&
@@ -2149,18 +2305,54 @@ Contraintes obligatoires :
       );
     }
 
-    const relevantTables = await this.detectRelevantTables(
+    // Un document joint est analysé pour lui-même : seuls les accès à la base
+    // passent par le contrôle des domaines sensibles.
+    if (!requestContext.documentContext.length) {
+      const refusal = await this.refuseRestrictedDomains(user, dto.question);
+      if (refusal) {
+        return this.respondWithNotice(
+          refusal,
+          dto,
+          user,
+          startTime,
+          requestContext.referenced,
+          fileInfo,
+        );
+      }
+    }
+
+    const detectedTables = await this.detectRelevantTables(
       enrichedQuestion,
       dto.specificTables,
       requestContext.referenced,
     );
     if (
       requestContext.documentContext.length &&
-      !relevantTables.includes('document_customer')
+      !detectedTables.includes('document_customer')
     ) {
-      relevantTables.push('document_customer');
+      detectedTables.push('document_customer');
     }
-    const schema = await this.getCompleteSchema(relevantTables);
+    const access = await this.restrictToReadableTables(
+      user,
+      detectedTables,
+      dto.question,
+    );
+    if (access.refusal) {
+      return this.respondWithNotice(
+        access.refusal,
+        dto,
+        user,
+        startTime,
+        requestContext.referenced,
+        fileInfo,
+      );
+    }
+    const relevantTables = access.tables;
+    const schema = await this.hideRestrictedColumns(
+      user,
+      relevantTables,
+      await this.getCompleteSchema(relevantTables),
+    );
     const historyForIntent = this.withDisplayedRecords(
       historyOverride.length
         ? this.formatVisibleHistoryForIntent(historyOverride)
@@ -2294,12 +2486,12 @@ Contraintes obligatoires :
 
     // ── 3b. BRANCHE ÉCRITURE ──────────────────────────────────────────────────
     if (intentResult.type === 'WRITE' && intentResult.writePlan) {
-      const { plan, removed } = file
+      const { plan, removed } = files.length
         ? withoutUploadedDocumentInserts(intentResult.writePlan)
         : { plan: intentResult.writePlan as WritePlan, removed: 0 };
       if (removed) {
         // Sans formulaire d'ajout côté client, on explique seulement la démarche.
-        const notice = `Le fichier « ${file!.originalname} » ne peut pas être joint par un plan d'écriture : ajoutez-le depuis la fiche du dossier.`;
+        const notice = `Le fichier « ${uploadedFileNames(files)} » ne peut pas être joint par un plan d'écriture : ajoutez-le depuis la fiche du dossier.`;
         if (!plan.operations.length) {
           return {
             success: true,
@@ -2450,6 +2642,11 @@ Contraintes obligatoires :
 
       if (validatedQuery && !dto.analyzeOnly) {
         results = await this.executeSafeQuery(validatedQuery);
+        results.data = await this.aiPermissionService.redactRows(
+          user as AiUserContext,
+          validatedQuery,
+          results.data,
+        );
         analysis = await this.generateBusinessAnalysis(
           dto.question,
           validatedQuery,
@@ -2504,6 +2701,28 @@ Contraintes obligatoires :
     references: ReferencedEntityContext[] = [],
     fileInfo?: any,
   ): Promise<AnalysisResponseDto> {
+    return this.respondWithNotice(
+      this.generateHelpResponse(question),
+      dto,
+      user,
+      startTime,
+      references,
+      fileInfo,
+    );
+  }
+
+  /**
+   * Réponse directe, sans SQL ni LLM (aide, droits de l'utilisateur, refus
+   * d'accès), enregistrée dans la conversation comme une réponse normale.
+   */
+  private async respondWithNotice(
+    analysis: string,
+    dto: AskQuestionDto,
+    user: AiUserContext | string,
+    startTime: number,
+    references: ReferencedEntityContext[] = [],
+    fileInfo?: any,
+  ): Promise<AnalysisResponseDto> {
     const userId = this.getUserId(user);
     let conversationId = dto.conversationId;
     if (!conversationId) {
@@ -2519,7 +2738,6 @@ Contraintes obligatoires :
       dto.question,
       references,
     );
-    const analysis = this.generateHelpResponse(question);
     await this.conversationManager.addAssistantMessage(
       conversationId,
       analysis,
@@ -3773,7 +3991,9 @@ ${lines.join('\n')}
     const blocks = items.map((item, index) => {
       const title = item.id
         ? `Document systeme #${item.id}`
-        : `Fichier joint #${index + 1}`;
+        : item.reused
+          ? `Fichier joint precedemment #${index + 1}`
+          : `Fichier joint #${index + 1}`;
       const meta = [
         `nom="${item.name}"`,
         item.type ? `type=${item.type}` : null,
@@ -3785,7 +4005,7 @@ ${lines.join('\n')}
 
       const content = item.error
         ? `[Erreur de lecture: ${item.error}]`
-        : this.selectRelevantDocumentText(question, item.content, 8000);
+        : this.readingNotice(item) + this.selectRelevantDocumentText(question, item.content, 8000);
 
       return `### ${title} (${meta})
 ${content}
@@ -3798,6 +4018,23 @@ Base tes reponses sur ces extraits quand la question parle de "ce document", "la
 
 ${blocks.join('\n\n')}
 --- FIN DOCUMENTS ---`;
+  }
+
+  /** Le modèle doit savoir qu'un texte vient d'une lecture d'image, faillible. */
+  private readingNotice(item: DocumentContextItem): string {
+    if (item.method === 'ocr' && (item.illegible ?? 0) >= PARTIAL_READING_RATIO) {
+      return `[Lecture OCR partielle : environ ${Math.round((item.illegible ?? 0) * 100)} % du texte n'a pas pu être reconnu, très probablement de l'écriture manuscrite (la lecture locale ne lit que le texte imprimé). Les passages non reconnus sont marqués [illisible]. Restitue uniquement ce qui est lisible, ne devine jamais le contenu d'un passage [illisible], ne cite aucun fragment incompréhensible, et dis en une phrase que la partie manuscrite n'a pas pu être lue.]\n`;
+    }
+    if (item.method === 'ocr') {
+      const doubtful = item.uncertain?.length
+        ? ` Mots lus avec doute : ${item.uncertain.slice(0, 15).join(', ')}. Si la réponse s'appuie sur l'un d'eux, signale-le.`
+        : '';
+      return `[Texte reconnu automatiquement (OCR) depuis une image ou un scan : des erreurs de reconnaissance sont possibles : ne le mentionne que si une valeur paraît douteuse, sans la corriger.${doubtful}]\n`;
+    }
+    if (item.method === 'vision') {
+      return "[Transcription d'une image (écriture manuscrite comprise) par un modèle de vision : [illisible] marque un mot non lu, [?] un mot douteux ; signale-les si la réponse s'appuie dessus.]\n";
+    }
+    return '';
   }
 
   private selectRelevantDocumentText(
@@ -3920,8 +4157,9 @@ ${blocks.join('\n\n')}
 
   private async buildRequestContext(
     dto: AskQuestionDto,
-    file?: Express.Multer.File,
+    uploaded?: Express.Multer.File | Express.Multer.File[],
   ): Promise<RequestContext> {
+    const files = toUploadedFiles(uploaded);
     if (this.contextConfigs && !(await this.contextConfigs.getSettings(getCurrentTenantId())).enabled) {
       throw new ForbiddenException('L’aide intelligente est désactivée pour ce cabinet');
     }
@@ -3937,47 +4175,59 @@ ${blocks.join('\n\n')}
         if (config?.instructions) enrichedQuestion += `\nConsignes du cabinet pour ce contexte : ${config.instructions}`;
       }
     }
-    let fileInfo: any;
-
-    if (file) {
+    // Plusieurs fichiers se partagent le budget de contexte d'un seul.
+    const fileBudget = files.length > 1
+      ? Math.max(4000, Math.floor((this.MAX_FILE_CONTEXT_CHARS * 2) / files.length))
+      : this.MAX_FILE_CONTEXT_CHARS;
+    const readings = await Promise.all(files.map(async (file): Promise<DocumentContextItem> => {
+      const base = { name: file.originalname, type: file.mimetype, size: file.size, source: 'upload' as const };
       try {
-        const content = await this.extractFileContent(file);
-        const truncated = this.truncateContextText(
-          content,
-          this.MAX_FILE_CONTEXT_CHARS,
-        );
-        documentContext.push({
-          name: file.originalname,
-          type: file.mimetype,
-          size: file.size,
-          source: 'upload',
+        const reading = await this.extractFileReading(file);
+        // Lecture partielle : le modèle ne reçoit que les passages lus avec assurance.
+        const truncated = this.truncateContextText(reading.reliableText ?? reading.text, fileBudget);
+        return {
+          ...base,
           content: truncated.content,
+          ...(reading.reliableText !== undefined && {
+            displayContent: this.truncateContextText(reading.text, fileBudget).content,
+          }),
+          illegible: reading.illegible,
           truncated: truncated.truncated,
-        });
-        fileInfo = {
-          name: file.originalname,
-          size: file.size,
-          type: file.mimetype,
+          method: reading.method,
+          pages: reading.pages,
+          uncertain: reading.uncertain,
+          confidence: reading.confidence,
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        documentContext.push({
-          name: file.originalname,
-          type: file.mimetype,
-          size: file.size,
-          source: 'upload',
-          content: '',
-          truncated: false,
-          error: message,
-        });
-        fileInfo = {
-          name: file.originalname,
-          size: file.size,
-          type: file.mimetype,
-          error: message,
-        };
+        return { ...base, content: '', truncated: false, error: error instanceof Error ? error.message : String(error) };
       }
+    }));
+    documentContext.push(...readings);
+    const filesInfo = readings.map((item) => ({
+      name: item.name,
+      size: item.size ?? 0,
+      type: item.type ?? '',
+      ...(item.error && { error: item.error }),
+    }));
+    const fileInfo = filesInfo[0];
+
+    // Texte déjà lu lors des questions précédentes : un document repris
+    // automatiquement ne sert que si la question porte sur un document.
+    const attached = parseAttachedDocuments(dto.attachedDocuments);
+    const followsDocument = isDocumentFollowUp(dto.question, attached);
+    for (const item of attached) {
+      if (item.carried && !followsDocument) continue;
+      const truncated = this.truncateContextText(item.content, this.MAX_FILE_CONTEXT_CHARS);
+      documentContext.push({
+        name: item.name,
+        type: item.type,
+        source: 'upload',
+        content: truncated.content,
+        truncated: truncated.truncated,
+        reused: true,
+      });
     }
+    const quote = parseQuotedPassage(dto.quote, dto.quoteSource);
 
     const documentIds = this.parseDocumentIds(dto, referenced);
     // Repli : aucune référence explicite (@ ou documentIds) mais la question évoque
@@ -3994,17 +4244,20 @@ ${blocks.join('\n\n')}
     }
 
     const intentQuestion = enrichedQuestion;
+    if (quote) enrichedQuestion += formatQuotedPassage(quote);
     enrichedQuestion += this.buildDocumentContextBlock(
       documentContext,
-      dto.question,
+      quote ? `${dto.question}\n${quote.text}` : dto.question,
     );
 
     return {
       enrichedQuestion,
       intentQuestion,
       fileInfo,
+      ...(filesInfo.length > 1 && { filesInfo }),
       documentContext,
       referenced,
+      quote,
     };
   }
 
@@ -4035,9 +4288,9 @@ ${blocks.join('\n\n')}
         `Document #${documentId}`;
       const type = document.file_mimetype || this.inferMimeFromName(name);
       const buffer = await this.readDocumentBuffer(document);
-      const extracted = await this.extractBufferContent(buffer, type, name);
+      const extracted = await this.extractBufferReading(buffer, type, name);
       const truncated = this.truncateContextText(
-        extracted,
+        extracted.reliableText ?? extracted.text,
         this.MAX_DOCUMENT_CONTEXT_CHARS,
       );
 
@@ -4066,6 +4319,11 @@ ${blocks.join('\n\n')}
         source: 'system',
         content: `${header}\n\n${truncated.content}`.trim(),
         truncated: truncated.truncated,
+        method: extracted.method,
+        pages: extracted.pages,
+        uncertain: extracted.uncertain,
+        confidence: extracted.confidence,
+        illegible: extracted.illegible,
       };
     } catch (error) {
       return {
@@ -4130,14 +4388,17 @@ ${blocks.join('\n\n')}
   async analyzeQuestionStream(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file: Express.Multer.File | undefined,
+    uploaded: Express.Multer.File | Express.Multer.File[] | undefined,
     sendEvent: (event: string, data: any) => void,
     aiRequestLogId?: number,
   ): Promise<void> {
-    const analyze = () => this.withAiMetrics('ask_stream', aiRequestLogId, () =>
+    const files = toUploadedFiles(uploaded);
+    const metadata = this.userMessageMetadata(dto, files);
+    const run = () => this.withAiMetrics('ask_stream', aiRequestLogId, () =>
       this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
-        ? { ...dto, conversationId: undefined } : dto, user, file, sendEvent),
+        ? { ...dto, conversationId: undefined } : dto, user, files, sendEvent),
     this.displayedRecordsKey(user));
+    const analyze = metadata ? () => this.conversationManager.withUserMessageMetadata(metadata, run) : run;
     return dto.temporary === true || dto.temporary === 'true'
       ? this.conversationManager.runTemporary(analyze) : analyze();
   }
@@ -4145,9 +4406,10 @@ ${blocks.join('\n\n')}
   private async analyzeQuestionStreamInternal(
     dto: AskQuestionDto,
     user: AiUserContext | string,
-    file: Express.Multer.File | undefined,
+    uploaded: Express.Multer.File | Express.Multer.File[] | undefined,
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
+    const files = toUploadedFiles(uploaded);
     const startTime = Date.now();
     const userId = this.getUserId(user);
     const tLog = (label: string) =>
@@ -4273,9 +4535,38 @@ ${blocks.join('\n\n')}
       tLog('avant status 🔍');
       await emit('status', { step: 'understand', message: '🔍 Analyse de la demande...' });
       tLog('après status — DeepSeek lightClassify démarre');
-      const requestContext = await this.buildRequestContext(dto, file);
+      if (files.length) {
+        const images = files.filter((item) => item.mimetype?.startsWith('image/')).length;
+        await emit('status', {
+          step: 'document',
+          message: images
+            ? `🖼️ Lecture ${images > 1 ? `des ${images} images` : "de l'image"} (reconnaissance du texte)...`
+            : `📄 Lecture ${files.length > 1 ? `des ${files.length} fichiers` : 'du fichier'}...`,
+        });
+      }
+      const requestContext = await this.buildRequestContext(dto, files);
       enrichedQuestion = requestContext.enrichedQuestion;
       fileInfo = requestContext.fileInfo ?? fileInfo;
+      // Ce que l'IA a lu de chaque pièce jointe : le chat l'affiche et permet
+      // d'y sélectionner un passage pour poser une question.
+      const readDocuments = requestContext.documentContext.filter((item) => item.source === 'upload' && !item.reused);
+      if (readDocuments.length) {
+        sendEvent('documents', {
+          items: readDocuments.map((item) => ({
+            name: item.name,
+            type: item.type,
+            size: item.size,
+            content: item.displayContent ?? item.content,
+            truncated: item.truncated,
+            method: item.method,
+            pages: item.pages,
+            uncertain: item.uncertain,
+            confidence: item.confidence,
+            illegible: item.illegible,
+            error: item.error,
+          })),
+        });
+      }
       const historyOverride = parseVisibleHistory(dto.historyOverride);
       const intentMode = this.normalizeIntentMode(dto.intentMode);
 
@@ -4287,7 +4578,7 @@ ${blocks.join('\n\n')}
       );
       // Les mots d'une pièce jointe (« recommandation », « code »…) ne doivent
       // pas décider de l'intention : la classification locale lit la demande seule.
-      const intentText = requestContext.documentContext.length
+      const intentText = requestContext.documentContext.length || requestContext.quote
         ? this.resolveFollowUpContext(
             requestContext.intentQuestion,
             historyOverride,
@@ -4308,6 +4599,30 @@ ${blocks.join('\n\n')}
           ...(fileInfo && { fileInfo }),
         });
         return;
+      }
+      const sendNotice = async (text: string) => {
+        sendEvent('intent', { type: 'HELP' });
+        const result = await this.respondWithNotice(
+          text,
+          dto,
+          user,
+          startTime,
+          requestContext.referenced,
+          fileInfo,
+        );
+        sendEvent('token', { text: result.analysis });
+        sendEvent('result', result);
+      };
+      if (intentMode !== 'write') {
+        const capabilityAnswer = await this.answerCapabilityQuestion(
+          user,
+          dto.question,
+        );
+        if (capabilityAnswer) {
+          this.markMetric({ intent: 'HELP' });
+          await sendNotice(capabilityAnswer);
+          return;
+        }
       }
       if (
         intentMode === 'auto' &&
@@ -4363,18 +4678,40 @@ ${blocks.join('\n\n')}
         });
       }
 
-      const relevantTables = await this.detectRelevantTables(
+      if (!requestContext.documentContext.length) {
+        const refusal = await this.refuseRestrictedDomains(user, dto.question);
+        if (refusal) {
+          await sendNotice(refusal);
+          return;
+        }
+      }
+
+      const detectedTables = await this.detectRelevantTables(
         enrichedQuestion,
         dto.specificTables,
         requestContext.referenced,
       );
       if (
         requestContext.documentContext.length &&
-        !relevantTables.includes('document_customer')
+        !detectedTables.includes('document_customer')
       ) {
-        relevantTables.push('document_customer');
+        detectedTables.push('document_customer');
       }
-      const schema = await this.getCompleteSchema(relevantTables);
+      const access = await this.restrictToReadableTables(
+        user,
+        detectedTables,
+        dto.question,
+      );
+      if (access.refusal) {
+        await sendNotice(access.refusal);
+        return;
+      }
+      const relevantTables = access.tables;
+      const schema = await this.hideRestrictedColumns(
+        user,
+        relevantTables,
+        await this.getCompleteSchema(relevantTables),
+      );
       tLog('schema prêt — appel detectIntent');
       const historyForIntent = this.withDisplayedRecords(
         historyOverride.length
@@ -4426,6 +4763,7 @@ ${blocks.join('\n\n')}
           requestContext.documentContext,
           sendEvent,
           requestContext.referenced,
+          requestContext.quote,
         );
         await this.conversationManager.addAssistantMessage(
           conversationId,
@@ -4498,8 +4836,8 @@ ${blocks.join('\n\n')}
           forceWriteDespiteReadMode ||
           writeWithDocument;
         intentResult = await this.intentDetectionService.detectIntent(
-          file && forceWrite
-            ? enrichedQuestion + uploadedFilePlannerNote(file.originalname)
+          files.length && forceWrite
+            ? enrichedQuestion + uploadedFilePlannerNote(uploadedFileNames(files))
             : enrichedQuestion,
           this.getRequestModel('fast', this.CLASSIFIER_MAX_TOKENS),
           schema,
@@ -4638,7 +4976,7 @@ ${blocks.join('\n\n')}
 
       // ── 3b. WRITE ────────────────────────────────────────────────────────────
       if (intentResult.type === 'WRITE' && intentResult.writePlan) {
-        const { plan, removed } = file
+        const { plan, removed } = files.length
           ? withoutUploadedDocumentInserts(intentResult.writePlan)
           : { plan: intentResult.writePlan as WritePlan, removed: 0 };
         if (plan.operations.length) {
@@ -4664,7 +5002,7 @@ ${blocks.join('\n\n')}
 
         if (removed) {
           const notice = uploadedDocumentMessage(
-            file!.originalname,
+            uploadedFileNames(files),
             plan.operations.length > 0,
           );
           if (!plan.operations.length) {
@@ -4913,6 +5251,11 @@ ${blocks.join('\n\n')}
       }
 
       const results = await this.executeSafeQuery(validatedQuery);
+      results.data = await this.aiPermissionService.redactRows(
+        user as AiUserContext,
+        validatedQuery,
+        results.data,
+      );
 
       // Le tableau part dès l'exécution : l'utilisateur voit les données
       // pendant que la réponse rédigée est générée.
@@ -5175,11 +5518,13 @@ ${blocks.join('\n\n')}
     documentContext: DocumentContextItem[],
     sendEvent: (event: string, data: any) => void,
     referenced: ReferencedEntityContext[] = [],
+    quote?: QuotedPassage | null,
   ): Promise<string> {
     const prompt = this.buildDocumentAnalysisPrompt(
       question,
       documentContext,
       referenced,
+      quote,
     );
 
     let fullText = '';
@@ -5265,16 +5610,20 @@ ${blocks.join('\n\n')}
     question: string,
     documentContext: DocumentContextItem[],
     referenced: ReferencedEntityContext[] = [],
+    quote?: QuotedPassage | null,
   ): string {
+    // Le passage cité oriente le choix des extraits d'un long document.
+    const focus = quote ? `${question}\n${quote.text}` : question;
     const docs = documentContext
       .filter((d) => !d.error && !!d.content && d.content.trim().length > 0)
       .map((d, i) => {
         const title = d.id
           ? `Document système #${d.id} — ${d.name}`
           : `Fichier joint — ${d.name || `#${i + 1}`}`;
-        return `### ${title}\n${this.selectRelevantDocumentText(question, d.content, 8000)}`;
+        return `### ${title}\n${this.readingNotice(d)}${this.selectRelevantDocumentText(focus, d.content, 8000)}`;
       })
       .join('\n\n');
+    const unreadable = documentContext.filter((d) => d.error);
 
     const role =
       this.projectConfig?.analysisSystemPrompt ??
@@ -5284,11 +5633,19 @@ ${blocks.join('\n\n')}
 
 Tu dois répondre à la demande de l'utilisateur en t'appuyant EXCLUSIVEMENT sur le contenu des documents ci-dessous.
 ⚠️ Si une information demandée ne figure pas dans les documents, dis-le explicitement. N'invente JAMAIS de contenu.
-⚠️ Tu n'exécutes aucune action : n'affirme jamais avoir créé, ajouté, classé, enregistré ou modifié quoi que ce soit. Si la demande réclame une action, précise en une phrase que rien n'a été enregistré, puis réponds à partir des documents.
+⚠️ Tu n'exécutes aucune action : n'affirme jamais avoir créé, ajouté, classé, enregistré ou modifié quoi que ce soit. Seulement si la demande réclame explicitement une action (créer, ajouter, classer, enregistrer, modifier), précise en une phrase que rien n'a été enregistré, puis réponds à partir des documents ; sinon, n'en parle pas.
 
 ## DEMANDE DE L'UTILISATEUR
 "${question}"
 ${
+  quote
+    ? `
+## PASSAGE SÉLECTIONNÉ PAR L'UTILISATEUR${quote.source ? ` (source : ${quote.source})` : ''}
+${quote.text}
+La demande porte sur ce passage : appuie-toi sur le reste du document pour l'expliquer ou y répondre.
+`
+    : ''
+}${
   referenced.length
     ? `
 ## CONTEXTE CHOISI PAR L'UTILISATEUR
@@ -5299,7 +5656,7 @@ Ces éléments situent la demande. Un document qui ne les cite pas reste exploit
 }
 ## CONTENU DES DOCUMENTS
 ${docs}
-
+${unreadable.length ? `\nFichiers illisibles (signale-le en une phrase) :\n${unreadable.map((d) => `- ${d.name} : ${d.error}`).join('\n')}\n` : ''}
 ## CONSIGNES DE RÉPONSE
 - Réponds en français, dans un langage clair et professionnel.
 - Structure la réponse (points clés, parties, dates, montants, obligations, échéances…).
@@ -5924,6 +6281,11 @@ RÉPONSE (en langage naturel):`;
         validated,
       );
       const res = await this.executeSafeQuery(validated);
+      res.data = await this.aiPermissionService.redactRows(
+        user as AiUserContext,
+        validated,
+        res.data,
+      );
       this.logger.log(
         `🧩 [DECOMP] "${sub.title}" → ${res.rowCount} résultat(s)`,
       );
@@ -6205,6 +6567,12 @@ RÉPONSE (en langage naturel):`;
           "Aucune etape trouvee pour ce dossier. Le dossier n'a peut-etre pas encore de parcours procedural actif, ou l'identifiant est incorrect.",
       },
       {
+        // Avant la règle « dossier » : « apporteurs d'affaires » contient « affaire ».
+        test: (q) => /\bapp?orteurs?\b/i.test(q),
+        message:
+          "Aucun apporteur d'affaires ne correspond a cette recherche. Verifiez l'orthographe du nom ou elargissez les criteres.",
+      },
+      {
         test: (q) => /dossier|affaire|litige/i.test(q),
         message:
           'Aucun dossier ne correspond a ces criteres. Verifiez le numero de dossier ou elargissez la recherche (periode, statut, client).',
@@ -6390,9 +6758,12 @@ RÉPONSE (en langage naturel):`;
 
     const referenceTables = this.getReferenceTableHints(references);
     const normalizedQuestion = this.normalizeForKeywordMatch(question);
-    const keywords = normalizedQuestion.split(/\s+/).filter(Boolean);
+    const keywords = normalizedQuestion
+      .split(/\s+/)
+      .filter((k) => k.length >= 3 && !KEYWORD_STOPWORDS.has(k));
     const visibleTables = this.schemaMetadata.getAllVisibleTables();
     const keywordStems = keywords.map((k) => this.stemKeyword(k));
+    const keywordSquashed = keywordStems.map(squashRepeatedLetters);
     const effectiveTablesConfig =
       this.projectConfig?.databaseTablesConfig ?? DatabaseTablesConfig;
     const tableSynonyms =
@@ -6434,11 +6805,15 @@ RÉPONSE (en langage naturel):`;
       for (let ki = 0; ki < keywords.length; ki++) {
         const keyword = keywords[ki];
         const stem = keywordStems[ki];
+        const squashed = keywordSquashed[ki];
+        // Tolère les lettres doublées oubliées ou en trop (« aporteurs »).
+        const sameStem = (s: string) =>
+          s === keyword || s === stem || squashRepeatedLetters(s) === squashed;
 
         // 2. Word-level matching avec stemming
         // Ex: "documents" (stem="document") match "document" dans "document_customer"
         const wordMatch = tableWords.some((w) => w === keyword || w === stem);
-        const stemMatch = tableStems.some((s) => s === keyword || s === stem);
+        const stemMatch = tableStems.some(sameStem);
 
         if (wordMatch || stemMatch) {
           score += 5;
@@ -6458,9 +6833,7 @@ RÉPONSE (en langage naturel):`;
         const labelWordMatch = businessWords.some(
           (w) => w === keyword || w === stem,
         );
-        const labelStemMatch = businessStems.some(
-          (s) => s === keyword || s === stem,
-        );
+        const labelStemMatch = businessStems.some(sameStem);
 
         if (labelWordMatch || labelStemMatch) {
           score += 7;
@@ -6520,6 +6893,160 @@ RÉPONSE (en langage naturel):`;
     }
 
     return remember(this.expandWithRelatedTables(detectedTables));
+  }
+
+  /**
+   * La détection de tables est volontairement large (tables voisines, scores
+   * bruités par le contexte des références) : on retire du schéma celles que
+   * l'utilisateur ne peut pas lire plutôt que de refuser toute la demande.
+   * Le SQL généré reste contrôlé avant exécution (assertCanReadSql). Refus
+   * clair (`refusal`) quand la question nomme une table hors des droits ;
+   * erreur quand aucune table candidate n'est lisible.
+   */
+  private async restrictToReadableTables(
+    user: AiUserContext | string,
+    tables: string[],
+    question = '',
+  ): Promise<{ tables: string[]; refusal?: string }> {
+    const { allowed, denied } =
+      await this.aiPermissionService.partitionReadableTables(
+        user as AiUserContext,
+        tables,
+      );
+    if (!denied.length) return { tables };
+
+    // « liste les apporteurs d'affaires » sans le droit correspondant : on le
+    // dit, au lieu de répondre (ou de demander une précision) sans la table.
+    const named = this.findTablesNamedInQuestion(question, denied);
+    if (named.length) {
+      this.logger.warn(
+        `🔒 Table demandée hors des droits: user=${this.getUserId(user)} | ${named.join(', ')}`,
+      );
+      const profile = await this.aiPermissionService.getAccessProfile(
+        user as AiUserContext,
+      );
+      return {
+        tables: allowed,
+        refusal: buildTableRefusal(
+          named.map((table) => ({
+            label:
+              this.schemaMetadata.getTableMetadataForPrompt(table)?.label ||
+              table,
+            permission: this.aiPermissionService.getReadPermission(table),
+          })),
+          profile.roleName,
+        ),
+      };
+    }
+
+    if (!allowed.length) {
+      await this.aiPermissionService.assertCanReadTables(
+        user as AiUserContext,
+        tables,
+      );
+    }
+    this.logger.log(
+      `🔒 Tables retirées du schéma (droits de lecture manquants): ${denied.join(', ')}`,
+    );
+    return { tables: allowed };
+  }
+
+  /**
+   * Tables que la question désigne explicitement : tous les mots significatifs
+   * du libellé métier y figurent (« Apporteurs d'affaires » ← « liste les
+   * aporteurs d'affaire »), ou l'un des synonymes configurés.
+   */
+  private findTablesNamedInQuestion(question: string, tables: string[]): string[] {
+    const normalizedQuestion = this.normalizeForKeywordMatch(question);
+    if (!normalizedQuestion) return [];
+    const significant = (text: string) =>
+      this.normalizeForKeywordMatch(text)
+        .split(' ')
+        .filter((w) => w.length >= 3 && !KEYWORD_STOPWORDS.has(w))
+        .map((w) => squashRepeatedLetters(this.stemKeyword(w)));
+    const questionWords = new Set(significant(question));
+    const squashedQuestion = squashRepeatedLetters(normalizedQuestion);
+    const tableSynonyms =
+      (
+        (this.projectConfig?.databaseTablesConfig ??
+          DatabaseTablesConfig) as AiDatabaseProjectConfig['databaseTablesConfig']
+      )?.tableSynonyms ?? {};
+
+    return tables.filter((table) => {
+      const labelWords = significant(
+        this.schemaMetadata.getTableMetadataForPrompt(table)?.label || '',
+      );
+      if (labelWords.length && labelWords.every((w) => questionWords.has(w))) {
+        return true;
+      }
+      return (tableSynonyms[table] ?? []).some((synonym) =>
+        this.containsNormalizedPhrase(
+          squashedQuestion,
+          squashRepeatedLetters(this.normalizeForKeywordMatch(synonym)),
+        ),
+      );
+    });
+  }
+
+  /**
+   * Question sur les droits (« que puis-je faire ? », « tu peux accéder aux
+   * opérations financières pour moi ? ») : réponse construite à partir du
+   * rôle réel de l'utilisateur, sans SQL ni LLM.
+   */
+  private async answerCapabilityQuestion(
+    user: AiUserContext | string,
+    question: string,
+  ): Promise<string | null> {
+    if (!isCapabilityQuestion(question)) return null;
+    const profile = await this.aiPermissionService.getAccessProfile(
+      user as AiUserContext,
+    );
+    return buildCapabilityAnswer(question, profile);
+  }
+
+  /**
+   * Demande qui vise explicitement un domaine sensible (factures, paie,
+   * comptabilité…) dont l'utilisateur ne peut lire aucune table : message de
+   * refus clair, plutôt qu'une réponse construite sans ces données.
+   */
+  private async refuseRestrictedDomains(
+    user: AiUserContext | string,
+    question: string,
+  ): Promise<string | null> {
+    const denied: RestrictedDomain[] = [];
+    for (const domain of matchRestrictedDomains(question)) {
+      const { allowed } =
+        await this.aiPermissionService.partitionReadableTables(
+          user as AiUserContext,
+          domain.tables,
+        );
+      if (!allowed.length) denied.push(domain);
+    }
+    if (!denied.length) return null;
+    this.logger.warn(
+      `🔒 Domaine IA refusé: user=${this.getUserId(user)} | ${denied.map((domain) => domain.key).join(', ')}`,
+    );
+    const profile = await this.aiPermissionService.getAccessProfile(
+      user as AiUserContext,
+    );
+    return buildDomainRefusal(denied, profile.roleName);
+  }
+
+  /** Retire du schéma les colonnes financières que l'utilisateur ne peut pas voir. */
+  private async hideRestrictedColumns(
+    user: AiUserContext | string,
+    tables: string[],
+    schema: string,
+  ): Promise<string> {
+    const hidden = await this.aiPermissionService.getHiddenColumns(
+      user as AiUserContext,
+      tables,
+    );
+    if (!hidden.size) return schema;
+    this.logger.log(
+      `🔒 Colonnes masquées: ${Array.from(hidden, ([table, columns]) => `${table}(${columns.join(', ')})`).join(' ')}`,
+    );
+    return stripSchemaColumns(schema, hidden);
   }
 
   private getReferenceTableHints(
@@ -7903,7 +8430,11 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     const result = await this.executeSafeQuery(sqlQuery);
     return {
       success: true,
-      data: result.data,
+      data: await this.aiPermissionService.redactRows(
+        user as AiUserContext,
+        sqlQuery,
+        result.data,
+      ),
       rowCount: result.rowCount,
     };
   }

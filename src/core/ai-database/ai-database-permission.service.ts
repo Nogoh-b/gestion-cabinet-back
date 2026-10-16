@@ -3,6 +3,12 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { UsersService } from 'src/modules/iam/user/user.service';
+import { getCurrentTenantId, hasActiveTenant } from '../tenant/tenant.context';
+import {
+  AccessProfile,
+  AI_RESTRICTED_COLUMNS,
+  buildPermissionRefusal,
+} from './ai-access-policy';
 import { WritePlan } from './dto/analysis-response.dto';
 
 type AiDatabaseOperation = 'READ' | 'INSERT' | 'UPDATE' | 'DELETE';
@@ -19,6 +25,7 @@ export interface AiUserContext {
 type AiUserLike = AiUserContext | string | number | undefined | null;
 
 const SUPER_ADMIN = 'SUPER_ADMIN';
+const PERMISSION_CACHE_TTL_MS = 10_000;
 
 const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
   // Dossiers
@@ -314,6 +321,12 @@ const AI_TABLE_PERMISSIONS: Record<string, AiPermissionMap> = {
     UPDATE: 'MANAGE_EXPENSES',
     DELETE: 'MANAGE_EXPENSES',
   },
+  expense_category: {
+    READ: 'view_expenses',
+    INSERT: 'create_expense_report',
+    UPDATE: 'edit_expense_report',
+    DELETE: 'edit_expense_report',
+  },
 
   // Paie
   payroll_period: {
@@ -445,6 +458,10 @@ const SQL_KEYWORDS = new Set([
 @Injectable()
 export class AiDatabasePermissionService {
   private readonly logger = new Logger(AiDatabasePermissionService.name);
+  private readonly permissionCache = new Map<
+    string,
+    { codes: Set<string>; at: number }
+  >();
 
   constructor(
     private readonly usersService: UsersService,
@@ -460,9 +477,145 @@ export class AiDatabasePermissionService {
     );
   }
 
+  /**
+   * Sépare les tables candidates (détection par mots-clés, volontairement
+   * large) entre celles que l'utilisateur peut lire et les autres. Sert à
+   * retirer du schéma envoyé à l'IA les tables hors de ses droits, au lieu de
+   * refuser toute la demande parce qu'une table voisine a été détectée.
+   */
+  async partitionReadableTables(
+    user: AiUserLike,
+    tables: string[],
+  ): Promise<{ allowed: string[]; denied: string[] }> {
+    const tableNames = this.normalizeTables(tables);
+    const missing = await this.findMissing(
+      user,
+      tableNames.map((table) => ({ table, operation: 'READ' as const })),
+    );
+    const denied = new Set(missing.map((item) => item.table));
+    return {
+      allowed: tables.filter(
+        (table) => !denied.has(this.normalizeTableName(table) ?? ''),
+      ),
+      denied: Array.from(denied),
+    };
+  }
+
+  /** Droit de lecture exigé pour une table (null : table fermée à l'IA). */
+  getReadPermission(table: string): string | null {
+    return this.resolvePermission(table, 'READ');
+  }
+
   async assertCanReadSql(user: AiUserLike, sqlQuery: string): Promise<void> {
     const tables = this.extractTablesFromSql(sqlQuery);
     await this.assertCanReadTables(user, tables);
+
+    // Colonnes financières de tables par ailleurs lisibles (budget d'un
+    // dossier, salaire d'un collaborateur…) citées explicitement.
+    const hidden = await this.getHiddenColumns(user, tables);
+    if (!hidden.size) return;
+    const cleaned = this.stripSqlLiterals(sqlQuery).toLowerCase();
+    const missing = new Set<string>();
+    for (const [table, columns] of hidden) {
+      for (const column of columns) {
+        if (new RegExp(`\\b${column}\\b`).test(cleaned)) {
+          for (const code of AI_RESTRICTED_COLUMNS[table]?.[column] ?? []) {
+            missing.add(code);
+          }
+        }
+      }
+    }
+    if (!missing.size) return;
+    this.logger.warn(
+      `Acces IA refuse (colonnes): user=${this.getUserDebugId(user)} | ${Array.from(missing).join(', ')}`,
+    );
+    throw new ForbiddenException(buildPermissionRefusal(Array.from(missing)));
+  }
+
+  /**
+   * Colonnes financières à masquer pour l'utilisateur, par table (voir
+   * AI_RESTRICTED_COLUMNS) : retirées du schéma envoyé au modèle et des
+   * lignes renvoyées par un `SELECT *`.
+   */
+  async getHiddenColumns(
+    user: AiUserLike,
+    tables: string[],
+  ): Promise<Map<string, string[]>> {
+    const hidden = new Map<string, string[]>();
+    const concerned = this.normalizeTables(tables).filter(
+      (table) => AI_RESTRICTED_COLUMNS[table],
+    );
+    if (!concerned.length || this.isAdmin(user)) return hidden;
+    const permissions = await this.getUserPermissionCodes(user);
+    if (permissions.has(SUPER_ADMIN)) return hidden;
+    for (const table of concerned) {
+      const columns = Object.entries(AI_RESTRICTED_COLUMNS[table])
+        .filter(([, codes]) => !codes.some((code) => permissions.has(code)))
+        .map(([column]) => column);
+      if (columns.length) hidden.set(table, columns);
+    }
+    return hidden;
+  }
+
+  /** Retire des résultats les colonnes masquées (cas `SELECT *` / `t.*`). */
+  async redactRows<T extends Record<string, any>>(
+    user: AiUserLike,
+    sqlQuery: string,
+    rows: T[],
+  ): Promise<T[]> {
+    if (!Array.isArray(rows) || !rows.length) return rows;
+    const hidden = await this.getHiddenColumns(
+      user,
+      this.extractTablesFromSql(sqlQuery),
+    );
+    if (!hidden.size) return rows;
+    const columns = new Set(Array.from(hidden.values()).flat());
+    return rows.map((row) => {
+      if (!row || typeof row !== 'object') return row;
+      const copy: Record<string, any> = { ...row };
+      for (const column of columns) delete copy[column];
+      return copy as T;
+    });
+  }
+
+  /**
+   * Droits réels de l'utilisateur (libellés du cabinet) et nom de son rôle,
+   * pour répondre aux questions « que puis-je faire ? ».
+   */
+  async getAccessProfile(user: AiUserLike): Promise<AccessProfile> {
+    const userId =
+      typeof user === 'string' || typeof user === 'number'
+        ? Number(user)
+        : Number(user?.userId ?? user?.id);
+    let roleName: string | null = null;
+    const permissions = new Map<string, string>();
+    if (Number.isFinite(userId)) {
+      try {
+        const profile: any = await this.usersService.findOne(userId);
+        roleName = profile?.role_name ?? profile?.role ?? null;
+        const list = await this.usersService.getUserPermissions(userId);
+        for (const permission of list ?? []) {
+          const code = permission?.code ?? permission;
+          if (typeof code === 'string') {
+            permissions.set(code, permission?.description ?? '');
+          }
+        }
+      } catch (error: any) {
+        this.logger.warn(
+          `Profil d'accès IA indisponible pour user=${userId}: ${error?.message ?? error}`,
+        );
+      }
+    }
+    if (!permissions.size) {
+      for (const code of await this.getUserPermissionCodes(user)) {
+        permissions.set(code, '');
+      }
+    }
+    return {
+      isAdmin: this.isAdmin(user) || permissions.has(SUPER_ADMIN),
+      roleName,
+      permissions,
+    };
   }
 
   async assertCanWritePlan(
@@ -479,31 +632,50 @@ export class AiDatabasePermissionService {
 
   extractTablesFromSql(sqlQuery: string): string[] {
     const tables = new Set<string>();
-    const cleaned = sqlQuery
-      .replace(/--.*$/gm, ' ')
-      .replace(/\/\*[\s\S]*?\*\//g, ' ');
+    const cleaned = this.stripSqlLiterals(sqlQuery);
 
-    const tableRegex =
-      /\b(?:FROM|JOIN)\s+`?([a-zA-Z_][\w]*)`?(?:\s+`?[a-zA-Z_][\w]*`?)?/gi;
+    // Segment qui suit FROM/JOIN jusqu'au mot-clé suivant : couvre les listes
+    // séparées par des virgules (« FROM dossiers d, factures f ») et les noms
+    // qualifiés (« kabysoft.factures »), qui échappaient au contrôle.
+    const segmentRegex =
+      /\b(?:FROM|JOIN)\s+([^;()]*?)(?=\b(?:WHERE|GROUP|ORDER|LIMIT|HAVING|UNION|ON|USING|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|STRAIGHT_JOIN|JOIN|WINDOW|FOR|LOCK|INTO)\b|[;()]|$)/gi;
     let match: RegExpExecArray | null;
-    while ((match = tableRegex.exec(cleaned)) !== null) {
-      const table = match[1]?.toLowerCase();
-      if (table && !SQL_KEYWORDS.has(table)) tables.add(table);
+    while ((match = segmentRegex.exec(cleaned)) !== null) {
+      for (const item of match[1].split(',')) {
+        const name =
+          /^\s*`?([a-zA-Z_]\w*)`?(?:\s*\.\s*`?([a-zA-Z_]\w*)`?)?/.exec(item);
+        const table = (name?.[2] ?? name?.[1])?.toLowerCase();
+        if (table && !SQL_KEYWORDS.has(table)) tables.add(table);
+      }
     }
 
     return Array.from(tables);
   }
 
-  private async assertAllowed(
+  private stripSqlLiterals(sqlQuery: string): string {
+    return String(sqlQuery ?? '')
+      .replace(/--.*$/gm, ' ')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/'(?:[^'\\]|\\.|'')*'/g, "''")
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""');
+  }
+
+  private async findMissing(
     user: AiUserLike,
     requirements: Array<{ table: string; operation: AiDatabaseOperation }>,
-  ): Promise<void> {
-    if (this.isAdmin(user)) return;
+  ): Promise<
+    Array<{
+      table: string;
+      operation: AiDatabaseOperation;
+      permission: string | null;
+    }>
+  > {
+    if (this.isAdmin(user)) return [];
 
     const permissions = await this.getUserPermissionCodes(user);
-    if (permissions.has(SUPER_ADMIN)) return;
+    if (permissions.has(SUPER_ADMIN)) return [];
 
-    const missing = this.normalizeRequirements(requirements)
+    return this.normalizeRequirements(requirements)
       .map((requirement) => {
         const permission = this.resolvePermission(
           requirement.table,
@@ -515,7 +687,13 @@ export class AiDatabasePermissionService {
         (requirement) =>
           !requirement.permission || !permissions.has(requirement.permission),
       );
+  }
 
+  private async assertAllowed(
+    user: AiUserLike,
+    requirements: Array<{ table: string; operation: AiDatabaseOperation }>,
+  ): Promise<void> {
+    const missing = await this.findMissing(user, requirements);
     if (missing.length === 0) return;
 
     const details = missing
@@ -530,7 +708,15 @@ export class AiDatabasePermissionService {
       `Acces IA refuse: user=${this.getUserDebugId(user)} | ${details}`,
     );
     throw new ForbiddenException(
-      "Vous n'avez pas la permission necessaire pour cette demande IA.",
+      buildPermissionRefusal(
+        Array.from(
+          new Set(
+            missing
+              .map((item) => item.permission)
+              .filter((code): code is string => !!code),
+          ),
+        ),
+      ),
     );
   }
 
@@ -597,12 +783,24 @@ export class AiDatabasePermissionService {
         ? Number(user)
         : Number(user?.userId ?? user?.id);
     if (Number.isFinite(userId)) {
+      // Une demande IA contrôle les droits à plusieurs étapes : cache très
+      // court pour ne pas recharger le rôle à chacune, sans retarder la prise
+      // en compte d'une modification faite dans Paramètres > Rôles.
+      const cacheKey = `${hasActiveTenant() ? getCurrentTenantId() : '-'}:${userId}`;
+      const cached = this.permissionCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < PERMISSION_CACHE_TTL_MS) {
+        return cached.codes;
+      }
       try {
         const permissions = await this.usersService.getUserPermissions(userId);
         const codes = (permissions ?? []).map(
           (permission: any) => permission.code ?? permission,
         );
-        if (codes.length > 0) return new Set(codes);
+        if (codes.length > 0) {
+          const set = new Set<string>(codes);
+          this.permissionCache.set(cacheKey, { codes: set, at: Date.now() });
+          return set;
+        }
         // Rôle sans permission en DB : ne pas retomber sur un JWT périmé.
         if (jwtPermissions) {
           this.logger.warn(

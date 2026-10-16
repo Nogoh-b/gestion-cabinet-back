@@ -1,3 +1,4 @@
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 // role-permission.service.ts
 import {
   Injectable,
@@ -124,11 +125,12 @@ export class RolePermissionService {
   async getRolePermissions(role_id: number): Promise<Permission[]> {
     // Seules les liaisons actives comptent : une liaison désactivée (status 0)
     // ne doit jamais accorder la permission.
-    const permissions = await this.rolePermissionRepository.find({
-      where: { role_id, status: 1 },
-      relations: ['permission'],
-    });
-    return permissions.map((p) => p.permission);
+    const tenant=getCurrentTenantId();
+    const records=await this.rolePermissionRepository.createQueryBuilder('rp')
+      .innerJoinAndSelect('rp.permission','permission','permission.tenant_id=:tenant',{tenant})
+      .where('rp.role_id=:role_id AND rp.tenant_id=:tenant AND rp.status=1',{role_id,tenant})
+      .andWhere('(permission.status IS NULL OR permission.status <> 0)').getMany();
+    return records.map(record=>record.permission);
   }
 
   async descativeRolePermission(id: number): Promise<void> {

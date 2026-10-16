@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { Response } from 'express';
 import { Archiver, ZipArchive } from 'archiver';
 import { createWriteStream, existsSync, mkdirSync, statSync } from 'fs';
@@ -11,6 +11,10 @@ import {
   UPLOAD_PATH,
 } from 'src/core/common/constants/constants';
 import { Dossier } from '../dossiers/entities/dossier.entity';
+import {
+  type DossierScopeUser,
+  dossierRoleScope,
+} from '../dossiers/dossier-role-scope';
 import { DocumentCustomer } from '../documents/document-customer/entities/document-customer.entity';
 import { Facture } from '../facture/entities/facture.entity';
 import { Paiement } from '../paiement/entities/paiement.entity';
@@ -25,6 +29,12 @@ import {
   DiligenceType,
 } from '../diligence/entities/diligence.entity';
 import { Step, StepStatus, StepType } from '../dossiers/entities/step.entity';
+import {
+  type HiddenFields,
+  type RestrictedFieldsUser,
+  hiddenResponseFields,
+  redactRestrictedFields,
+} from 'src/core/security/restricted-fields';
 
 /** Dossier de stockage des exports ZIP sur le serveur. */
 const EXPORT_PATH = join(UPLOAD_PATH, 'exports');
@@ -149,8 +159,18 @@ export class DossierExportService {
 
   /** Stream un ZIP contenant un ou plusieurs dossiers vers la réponse HTTP
    *  ET sauvegarde une copie sur le serveur dans uploads/exports/. */
-  async streamZip(res: Response, ids: number[]): Promise<void> {
+  async streamZip(
+    res: Response,
+    ids: number[],
+    user?: RestrictedFieldsUser & DossierScopeUser,
+  ): Promise<void> {
     this.ensureExportDir();
+    // Mêmes règles que les réponses JSON : sans droit sur les factures, ni
+    // factures, ni paiements, ni totaux ; salaires et taux masqués partout.
+    const hidden = hiddenResponseFields(user);
+    // Même portée que la liste des dossiers : un avocat n'exporte que ses
+    // dossiers ; les autres identifiants sont ignorés comme les absents.
+    const scope = dossierRoleScope(user);
 
     const archive: Archiver = new ZipArchive({ zlib: { level: 9 } });
     archive.on('warning', (e) => this.logger.warn(`[Export] ${e.message}`));
@@ -181,7 +201,7 @@ export class DossierExportService {
 
     let added = 0;
     for (const id of ids) {
-      added += (await this.addDossier(archive, id)) ? 1 : 0;
+      added += (await this.addDossier(archive, id, hidden, scope)) ? 1 : 0;
     }
     if (added === 0) {
       archive.append('Aucun dossier accessible pour cet export.', {
@@ -196,9 +216,18 @@ export class DossierExportService {
   }
 
   /** Ajoute un dossier complet (métadonnées + documents + factures + paiements + audiences + diligences). */
-  private async addDossier(archive: Archiver, id: number): Promise<boolean> {
+  private async addDossier(
+    archive: Archiver,
+    id: number,
+    hidden: HiddenFields,
+    scope: FindOptionsWhere<Dossier>,
+  ): Promise<boolean> {
+    const showInvoices = !hidden.everywhere.has('factures');
+    const toJson = (value: unknown) =>
+      JSON.stringify(redactRestrictedFields(value, hidden), null, 2);
+    // La portée du rôle vient en dernier : elle ne peut pas être écrasée.
     const dossier = await this.dossierRepo.findOne({
-      where: { id },
+      where: { id, ...scope },
       relations: ['client', 'lawyer', 'procedure_type'],
     });
     if (!dossier) return false;
@@ -207,9 +236,9 @@ export class DossierExportService {
 
     // ── Charger toutes les données liées ──
     const docs = await this.docRepo.find({ where: { dossier_id: id } as any });
-    const factures = await this.factureRepo.find({
-      where: { dossier_id: id } as any,
-    });
+    const factures = showInvoices
+      ? await this.factureRepo.find({ where: { dossier_id: id } as any })
+      : [];
     const factureIds = factures.map((f) => f.id);
     const paiements = factureIds.length
       ? await this.paiementRepo.find({
@@ -228,7 +257,9 @@ export class DossierExportService {
     });
     const steps = await this.stepRepo.find({
       where: { dossier_id: id } as any,
-      relations: ['documents', 'diligences', 'audiences', 'factures'],
+      relations: showInvoices
+        ? ['documents', 'diligences', 'audiences', 'factures']
+        : ['documents', 'diligences', 'audiences'],
       order: { id: 'ASC' } as any,
     });
 
@@ -252,13 +283,14 @@ export class DossierExportService {
       opposing_party_name: dossier.opposing_party_name,
       stats: {
         documents: docs.length,
-        factures: factures.length,
-        paiements: paiements.length,
+        ...(showInvoices
+          ? { factures: factures.length, paiements: paiements.length }
+          : {}),
         audiences: audiences.length,
         diligences: diligences.length,
       },
     };
-    archive.append(JSON.stringify(meta, null, 2), {
+    archive.append(toJson(meta), {
       name: `${folder}/dossier.json`,
     });
 
@@ -290,9 +322,13 @@ export class DossierExportService {
       '',
       '── STATISTIQUES ──',
       `  Documents      : ${docs.length}`,
-      `  Factures       : ${factures.length}  (total : ${fmtMoney(totalFacture)} FCFA)`,
-      `  Paiements      : ${paiements.length}  (total : ${fmtMoney(totalPaye)} FCFA)`,
-      `  Solde restant  : ${fmtMoney(totalFacture - totalPaye)} FCFA`,
+      ...(showInvoices
+        ? [
+            `  Factures       : ${factures.length}  (total : ${fmtMoney(totalFacture)} FCFA)`,
+            `  Paiements      : ${paiements.length}  (total : ${fmtMoney(totalPaye)} FCFA)`,
+            `  Solde restant  : ${fmtMoney(totalFacture - totalPaye)} FCFA`,
+          ]
+        : []),
       `  Audiences      : ${audiences.length}`,
       `  Diligences     : ${diligences.length}`,
     ];
@@ -475,17 +511,13 @@ export class DossierExportService {
       });
     }
 
-    // ── 4. Factures (CSV + JSON) ──
-    archive.append(toCsv(factures), { name: `${folder}/factures.csv` });
-    archive.append(JSON.stringify(factures, null, 2), {
-      name: `${folder}/factures.json`,
-    });
-
-    // ── 5. Paiements (CSV + JSON) ──
-    archive.append(toCsv(paiements), { name: `${folder}/paiements.csv` });
-    archive.append(JSON.stringify(paiements, null, 2), {
-      name: `${folder}/paiements.json`,
-    });
+    // ── 4-5. Factures et paiements (CSV + JSON) ──
+    if (showInvoices) {
+      archive.append(toCsv(factures), { name: `${folder}/factures.csv` });
+      archive.append(toJson(factures), { name: `${folder}/factures.json` });
+      archive.append(toCsv(paiements), { name: `${folder}/paiements.csv` });
+      archive.append(toJson(paiements), { name: `${folder}/paiements.json` });
+    }
 
     // ── 6. Audiences (CSV + JSON) ──
     archive.append(
@@ -504,7 +536,7 @@ export class DossierExportService {
       ),
       { name: `${folder}/audiences.csv` },
     );
-    archive.append(JSON.stringify(audiences, null, 2), {
+    archive.append(toJson(audiences), {
       name: `${folder}/audiences.json`,
     });
 
@@ -529,7 +561,7 @@ export class DossierExportService {
       ),
       { name: `${folder}/diligences.csv` },
     );
-    archive.append(JSON.stringify(diligences, null, 2), {
+    archive.append(toJson(diligences), {
       name: `${folder}/diligences.json`,
     });
 

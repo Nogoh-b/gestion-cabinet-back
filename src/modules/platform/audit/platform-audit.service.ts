@@ -1,3 +1,4 @@
+import { referenceJson } from '../../reference-data/reference-json';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -67,6 +68,11 @@ export class PlatformAuditService {
     private readonly repo: Repository<PlatformAuditLog>,
   ) {}
 
+  private compact(value:any,action:string){
+    const redacted=redactSensitive(value);
+    return action.startsWith('reference.')&&Buffer.byteLength(JSON.stringify(redacted??null))>100000
+      ? {reference_snapshot:referenceJson.to(redacted)} : redacted;
+  }
   /** Écrit une ligne d'audit. Ne lève jamais (l'audit ne bloque pas l'action). */
   async record(entry: PlatformAuditEntry): Promise<void> {
     try {
@@ -81,8 +87,8 @@ export class PlatformAuditService {
             : null,
         cabinet_id: entry.cabinetId ?? null,
         summary: entry.summary?.slice(0, 500) ?? null,
-        before: entry.before ? redactSensitive(entry.before) : null,
-        after: entry.after ? redactSensitive(entry.after) : null,
+        before: entry.before ? this.compact(entry.before,entry.action) : null,
+        after: entry.after ? this.compact(entry.after,entry.action) : null,
         method: entry.method?.slice(0, 10) ?? null,
         path: entry.path?.slice(0, 255) ?? null,
         status_code: entry.statusCode ?? null,
@@ -118,7 +124,10 @@ export class PlatformAuditService {
       take: limit,
     });
     return {
-      data,
+      data: data.map(row=>{
+        if(row.action.startsWith('reference.'))for(const field of ['before','after'] as const)if(typeof row[field]?.reference_snapshot==='string')row[field]=referenceJson.from(row[field]!.reference_snapshot);
+        return row;
+      }),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }

@@ -1,3 +1,6 @@
+import { ReferenceDataModule } from '../reference-data/reference-data.module';
+import { PlatformReferenceDataController } from './reference-data/platform-reference-data.controller';
+import { PlatformReferenceAiService } from './reference-data/platform-reference-ai.service';
 import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -49,6 +52,7 @@ import { PlatformAiController } from './ai/platform-ai.controller';
 @Module({
   imports: [
     PassportModule,
+    ReferenceDataModule,
     EmailsModule,
     AiDatabaseModule,
     BackupModule,
@@ -63,6 +67,7 @@ import { PlatformAiController } from './ai/platform-ai.controller';
   ],
   controllers: [
     PlatformAuthController,
+    PlatformReferenceDataController,
     PlatformAdminsController,
     PlatformAuditController,
     PlatformSettingsController,
@@ -93,6 +98,7 @@ import { PlatformAiController } from './ai/platform-ai.controller';
     PlatformRevenueService,
     PlatformImpersonationService,
     PlatformAiService,
+    PlatformReferenceAiService,
   ],
   exports: [
     PlatformAuditService,

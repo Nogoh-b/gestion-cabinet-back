@@ -1,3 +1,5 @@
+import { UserRole as BuiltinRole } from 'src/core/enums/user-role.enum';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 // user-roles.service.ts
 import {
   Injectable,
@@ -29,6 +31,9 @@ export class UserRolesService {
   }
 
   async create(dto: CreateUserRoleDto): Promise<RoleResponseDto> {
+    if (!/^[a-z][a-z0-9_]{0,63}$/.test(dto.code) || ['admin','client'].includes(dto.code)) throw new ConflictException('Code de rôle invalide ou réservé.');
+    dto.base_role ??= Object.values(BuiltinRole).includes(dto.code as BuiltinRole) ? dto.code : 'collaborateur';
+    dto.isSystemRole = false;
     const exists = await this.repository.findOne({ where: { code: dto.code } });
     if (exists) throw new ConflictException('Le role existe deja');
     validateDto(CreateUserRoleDto, dto);
@@ -48,12 +53,14 @@ export class UserRolesService {
     return plainToInstance(RoleResponseDto, this.findOne(userRole.id));
   }
 
+  findActiveByCode(code: string) { return this.repository.createQueryBuilder('r').where('r.code=:code AND r.status=1 AND r.tenant_id=:tenant',{code,tenant:getCurrentTenantId()}).getOne(); }
+
   findAll(): Promise<UserRole[]> {
     return this.repository.find({ relations: ['permissions'] });
   }
 
   async getPermissionsByCode(code: string) {
-    const role = await this.repository.findOneBy({ code });
+    const role = await this.findActiveByCode(code);
     // Rôle introuvable : aucune permission. Ne JAMAIS retomber sur un autre
     // rôle (l'ancien `role?.id || 1` donnait les droits du rôle d'id 1).
     if (!role) return [];
@@ -70,6 +77,10 @@ export class UserRolesService {
   }
 
   async remove(id: number): Promise<void> {
+    const role = await this.findOne(id);
+    if (['admin', 'client'].includes(role.code)) throw new ConflictException('Rôle système protégé.');
+    const [usage] = await this.repository.query('SELECT COUNT(*) AS count FROM \x60user\x60 WHERE tenant_id = ? AND role = ?', [getCurrentTenantId(), role.code]);
+    if (Number(usage.count)) throw new ConflictException('Réaffectez les utilisateurs avant de retirer ce rôle.');
     await this.repository.delete(id);
   }
 

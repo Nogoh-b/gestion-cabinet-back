@@ -52,6 +52,12 @@ export class Cabinet {
   @Column()
   name: string;
 
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  reference_profile_id: string | null;
+
+  @Column({ length: 150, default: 'Cabinet - Tous les collaborateurs' })
+  default_chat_group_name: string;
+
   @Column({ default: 'trial' })
   status: CabinetStatus;
 

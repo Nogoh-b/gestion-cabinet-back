@@ -34,7 +34,9 @@
     "migration:revert": "npm run typeorm migration:revert -- -d src/data-source.ts",
     "migration:run:prod": "NODE_ENV=production SYNCHRONIZE=false npm run migration:run",
     "migration:revert:prod": "NODE_ENV=production SYNCHRONIZE=false npm run migration:revert",
-    "migration:show:prod": "NODE_ENV=production SYNCHRONIZE=false npm run typeorm migration:show -- -d src/data-source.ts"
+    "migration:show:prod": "NODE_ENV=production SYNCHRONIZE=false npm run typeorm migration:show -- -d src/data-source.ts",
+    "reference-data:check": "ts-node -r tsconfig-paths/register scripts/check-reference-baseline.ts",
+    "reference-data:test": "ts-node -r tsconfig-paths/register scripts/test-reference-data.ts"
   },
   "dependencies": {
     "@bull-board/api": "^6.10.1",
@@ -64,6 +66,8 @@
     "@nestjs/throttler": "^6.4.0",
     "@nestjs/typeorm": "^11.0.0",
     "@nestjs/websockets": "^11.1.8",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/fra": "^1.0.0",
     "@tiptap/extension-table": "^3.24.0",
     "@tiptap/extension-table-cell": "^3.24.0",
     "@tiptap/extension-table-header": "^3.24.0",
@@ -114,6 +118,7 @@
     "sharp": "^0.34.1",
     "socket.io": "^4.8.1",
     "sqlite3": "^6.0.1",
+    "tesseract.js": "^7.0.0",
     "toml": "^3.0.0",
     "typeorm": "^0.3.25",
     "typeorm-extension": "^3.7.1",

@@ -141,15 +141,13 @@ export class EmployeeService extends BaseServiceV1<Employee> {
     const position = dto.position ?? EmployeePosition.COLLABORATEUR;
     const defaultRole = this.getUserRoleFromPosition(position);
     const requestedRoleCode = dto.role?.trim() || defaultRole;
+    if (requestedRoleCode === 'client') throw new BadRequestException('Le rôle client est réservé au portail client.');
+    if (requestedRoleCode === 'client') throw new BadRequestException('Le rôle client est réservé au portail client.');
     // Résolution stricte (tenant courant uniquement, sans repli tenant 1).
     // On ne bloque plus la création si le profil est absent en DB : l'employé
     // est créé avec `user.role` renseigné, sans ligne d'assignation.
     const accessProfile = await this.resolveAccessProfile(requestedRoleCode);
-    if (!accessProfile) {
-      console.warn(
-        `[Employee] Profil d'accès actif introuvable pour le code '${requestedRoleCode}' — création sans assignation de rôle.`,
-      );
-    }
+    if (!accessProfile) throw new BadRequestException('Profil d’accès inexistant ou inactif dans ce cabinet.');
 
     // Vérification des doublons d'email — uniquement si un email est fourni
     // (création minimale : l'email est facultatif, un `undefined` ne doit
@@ -434,9 +432,12 @@ export class EmployeeService extends BaseServiceV1<Employee> {
     const newPosition = dto.position ?? employee.position;
     if (dto.position !== undefined) employee.position = dto.position;
     const requestedRoleCode =
-      dto.role?.trim() || this.getUserRoleFromPosition(newPosition);
+      dto.role?.trim() || user.role;
+    if (requestedRoleCode === 'client') throw new BadRequestException('Le rôle client est réservé au portail client.');
+    if (requestedRoleCode === 'client') throw new BadRequestException('Le rôle client est réservé au portail client.');
     if (requestedRoleCode && requestedRoleCode !== user.role) {
       const accessProfile = await this.resolveAccessProfile(requestedRoleCode);
+      if (!accessProfile) throw new BadRequestException('Profil d’accès inexistant ou inactif dans ce cabinet.');
       user.role = requestedRoleCode as UserRole;
       if (!accessProfile) {
         console.warn(

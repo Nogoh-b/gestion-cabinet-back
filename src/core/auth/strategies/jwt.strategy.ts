@@ -65,6 +65,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // contexte du cabinet du jeton, à chaque requête authentifiée.
     // `sessionUser.role` (base) prime sur `payload.role` pour la même raison.
     const role = sessionUser.role ?? payload.role ?? null;
+    const accessRole = await this.tenantContext.run(jwtTenantId, () => this.usersService.getAccessRole(role));
+    if (!accessRole) throw new UnauthorizedException('Profil d’accès inexistant ou inactif.');
     const freshPermissions = await this.tenantContext.run(jwtTenantId, () =>
       this.usersService.getPermissionsByRoleCode(role),
     );
@@ -111,6 +113,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       username: payload.username,
       email: payload.email,
       role,
+      base_role: accessRole.base_role || role,
+      role_name: accessRole.name,
       permissions,
       customerId: payload.customerId ?? null,
       tenantId: jwtTenantId,

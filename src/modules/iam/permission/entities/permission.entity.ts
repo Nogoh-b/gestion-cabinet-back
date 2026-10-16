@@ -17,7 +17,7 @@ import { RolePermission } from '../../role-permission/entities/role-permission.e
 @Entity('permission')
 @Unique(['code', 'tenant_id'])
 export class Permission extends TenantEntity {
-  @PrimaryGeneratedColumn({ unsigned: true, type: 'smallint' })
+  @PrimaryGeneratedColumn({ unsigned: true, type: 'int' })
   id: number;
 
   @Column({ length: 50 })

@@ -1038,7 +1038,9 @@ export class ActionCatalogService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async ensureDefaults(): Promise<void> {
+  async ensureDefaults(captureOnly = false): Promise<void> {
+    // Live defaults are owned by published profiles; reads never recreate deleted entries.
+    if (!captureOnly) return;
     const tenantId = getCurrentTenantId();
     const families = new Map<string, ActionFamily>();
     for (let index = 0; index < FAMILY_DEFAULTS.length; index++) {

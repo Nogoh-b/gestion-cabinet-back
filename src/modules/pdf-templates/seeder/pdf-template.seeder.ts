@@ -797,6 +797,13 @@ const GENERAL_MISE_EN_DEMEURE = `
 </div>
 `;
 
+export const PDF_TEMPLATE_VARIABLES: Record<string, string[]> = {
+  facture: JSON.parse(FACTURE_VARS), dossier: JSON.parse(DOSSIER_VARS),
+  client: JSON.parse(CLIENT_VARS), audience: JSON.parse(AUDIENCE_VARS),
+  audience_list: JSON.parse(AUDIENCE_LIST_VARS), diligence: JSON.parse(DILIGENCE_VARS),
+  general: JSON.parse(GENERAL_VARS),
+};
+
 export default class PdfTemplateSeeder implements Seeder {
   public async run(
     dataSource: DataSource,

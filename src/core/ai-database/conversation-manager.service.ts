@@ -23,6 +23,13 @@ export class ConversationManagerService {
     return this.temporarySession.run({ conversation: null }, callback);
   }
 
+  /** Pièces jointes et passage cité de la question en cours, gardés avec le message utilisateur. */
+  private readonly userMessageExtras = new AsyncLocalStorage<Record<string, any>>();
+
+  withUserMessageMetadata<T>(metadata: Record<string, any> | undefined, callback: () => T): T {
+    return metadata ? this.userMessageExtras.run(metadata, callback) : callback();
+  }
+
   private readonly logger = new Logger(ConversationManagerService.name);
 
   constructor(
@@ -383,6 +390,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       undefined,
       undefined,
       references,
+      this.userMessageExtras.getStore(),
     );
     await this.updateTitleFromFirstUserMessage(conversationId, content);
     await this.attachConversationResource(conversationId, references);

@@ -118,16 +118,7 @@ async function bootstrap() {
 
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  // Toujours exécuté, même sans RUN_SEEDERS : certains cabinets historiques
-  // (notamment le tenant #1, ignoré par CabinetSubscriber) peuvent précéder le
-  // seeding par tenant. L'opération est additive et préserve les permissions
-  // retirées manuellement sur les rôles existants.
-  const { TenantSeederService } = await import(
-    './modules/cabinet/tenant-seeder.service'
-  );
-  const tenantSeederService = app.get(TenantSeederService);
-  await tenantSeederService.syncIamReferenceDataForAllTenants();
-
+  // Les référentiels cabinets sont gérés par les profils publiés.
   // ── Seeders globaux ──────────────────────────────────────────────────────
   // Permissions, rôles et données de référence métier sont désormais seedés
   // par TenantSeederService à la CRÉATION de chaque cabinet (multi-tenant).
@@ -141,13 +132,7 @@ async function bootstrap() {
       seeds: [PlanSeeder, LocationSeeder],
     });
 
-    // Re-synchronise les données de référence (permissions, rôles, templates…)
-    // de TOUS les cabinets déjà existants, y compris le #1. Comble l'écart
-    // laissé par les seeders ci-dessus (purement « à la création du cabinet ») :
-    // sans cet appel, un cabinet créé avant l'ajout d'une permission/d'un
-    // rôle/d'un template ne le reçoit jamais. Idempotent et sûr à chaque
-    // démarrage — ne crée que ce qui manque.
-    await tenantSeederService.syncReferenceDataForAllTenants();
+
   }
 
   // Swagger : dev uniquement

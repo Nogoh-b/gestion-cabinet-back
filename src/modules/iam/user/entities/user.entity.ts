@@ -101,8 +101,8 @@ export class User extends BaseEntity {
   roleAssignments: UserRoleAssignment[];
 
   @Column({
-    type: 'enum',
-    enum: UserRole,
+    type: 'varchar',
+    length: 64,
     default: UserRole.AVOCAT,
   })
   @BusinessColumn({
@@ -112,7 +112,12 @@ export class User extends BaseEntity {
     importance: 'critical',
     group: 'authentification',
   })
-  role: UserRole;
+  role: string;
+
+  get base_role(): string {
+    if (['admin', 'client'].includes(this.role)) return this.role;
+    return this.roleAssignments?.find(a => a.status === 1)?.role?.base_role || this.role;
+  }
 
   @OneToOne(() => Employee, (employee) => employee.user, {
     cascade: true,

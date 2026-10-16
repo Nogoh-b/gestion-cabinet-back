@@ -13,7 +13,6 @@ import {
   Param,
   Logger,
   UseInterceptors,
-  UploadedFile,
   UploadedFiles,
   Res,
   Patch,
@@ -37,13 +36,25 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { ConversationManagerService } from './conversation-manager.service';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { PrepareFormDto } from './dto/prepare-form.dto';
 import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor';
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
 import { toChatPayload } from './chat-visibility';
 import { normalizeConversationTitle } from './conversation-resource';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { MAX_ANALYZED_FILES, utf8FileName } from './chat-attachments';
+
+/** `file` (un fichier, historique) ou `files` (plusieurs fichiers lus ensemble). */
+const QUESTION_FILES = FileFieldsInterceptor(
+  [{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: MAX_ANALYZED_FILES }],
+  memoryStorageOptions,
+);
+type QuestionFiles = { file?: Express.Multer.File[]; files?: Express.Multer.File[] } | undefined;
+const questionFiles = (uploaded: QuestionFiles) =>
+  [...(uploaded?.file ?? []), ...(uploaded?.files ?? [])]
+    .slice(0, MAX_ANALYZED_FILES)
+    .map((file) => ({ ...file, originalname: utf8FileName(file.originalname) }));
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
@@ -75,7 +86,7 @@ export class AiDatabaseController {
   @Post('ask')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, AiQuotaGuard)
-  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
+  @UseInterceptors(QUESTION_FILES)
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -89,6 +100,7 @@ export class AiDatabaseController {
         },
         intentMode: { type: 'string', enum: ['auto', 'read', 'write', 'chat'] },
         file: { type: 'string', format: 'binary' },
+        files: { type: 'array', items: { type: 'string', format: 'binary' } },
       },
     },
   })
@@ -96,13 +108,13 @@ export class AiDatabaseController {
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
     @Req() req,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFiles() uploaded?: QuestionFiles,
   ): Promise<AnalysisResponseDto> {
     return toChatPayload(
       await this.aiDbService.analyzeQuestion(
         dto,
         user,
-        file,
+        questionFiles(uploaded),
         req?.aiRequestLogId,
       ),
     );
@@ -127,13 +139,13 @@ export class AiDatabaseController {
    */
   @Post('ask/stream')
   @UseGuards(JwtAuthGuard, AiQuotaGuard)
-  @UseInterceptors(FileInterceptor('file', memoryStorageOptions))
+  @UseInterceptors(QUESTION_FILES)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Version streaming (SSE) de /ask' })
   async askStream(
     @Body() dto: AskQuestionDto,
     @CurrentUser() user,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() uploaded: QuestionFiles,
     @Res() res: Response,
   ): Promise<void> {
     const t0 = Date.now();
@@ -185,7 +197,7 @@ export class AiDatabaseController {
         this.aiDbService.analyzeQuestionStream(
           dto,
           user,
-          file,
+          questionFiles(uploaded),
           sendEvent,
           (res.req as any)?.aiRequestLogId,
         ),

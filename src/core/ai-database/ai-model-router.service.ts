@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ChatOpenAI } from '@langchain/openai';
 import {
@@ -120,6 +120,9 @@ export const BUILTIN_AI_PROVIDERS: readonly AiProviderDefinition[] = [
     },
   },
 ] as const;
+
+/** Seul modèle DeepSeek qui lit les images (la gamme Pro les ignore). */
+export const DEEPSEEK_VISION_MODEL = 'deepseek-flash';
 
 /** Événement émis quand la config IA d'un cabinet change (invalidation du cache). */
 export const AI_CONFIG_CHANGED_EVENT = 'ai.config.changed';
@@ -481,12 +484,14 @@ export class AiModelRouterService {
     maxTokens?: number,
     modelKwargsOverride?: Record<string, unknown>,
     mode?: AiModelMode,
+    effectiveOverride?: TenantAiEffective | null,
   ): { model: ChatOpenAI; descriptor: AiModelDescriptor } {
     const { config, descriptor } = this.resolve(
       profile,
       maxTokens,
       modelKwargsOverride,
       mode,
+      effectiveOverride,
     );
     const cacheKey = [
       profile,
@@ -608,6 +613,104 @@ export class AiModelRouterService {
     this.tenantConfigCache.set(tenantId, { config: raw, ts: Date.now() });
     const effective = raw ? this.resolveTenantEffective(raw) : null;
     return { tenantConfig: raw, effective };
+  }
+
+  /** Explicit platform resolution: never inherits cabinet #1 or an impersonated tenant. */
+  async getPlatformAssistantModels() {
+    const raw = await this.loadPlatformConfig();
+    const ids = [...new Set([...BUILTIN_AI_PROVIDERS.map((p) => p.id), ...Object.keys(raw?.providers ?? {})])];
+    const groups = await Promise.all(ids.map(async (id) => {
+      const runtime = this.getProviderRuntimeConfig(id, raw?.providers?.[id]);
+      if (!runtime?.api_key || this.unsafeProviderUrlReason(runtime.base_url)) return [];
+      const models = await this.listAvailableModels(id, runtime);
+      return models.map((model) => ({ provider_id: id, model, label: `${this.getBuiltinProvider(id)?.label ?? raw?.providers?.[id]?.label ?? id} · ${model}` }));
+    }));
+    return groups.flat();
+  }
+
+  async getPlatformModel(maxTokens = 7000, choice: { provider_id?: string; model?: string; quality?: AiModelMode } = {}): Promise<ChatOpenAI> {
+    const raw = await this.loadPlatformConfig();
+    let effective = raw ? this.resolveTenantEffective(raw) : null;
+    if (choice.provider_id || choice.model) {
+      const available = await this.getPlatformAssistantModels();
+      if (!available.some((entry) => entry.provider_id === choice.provider_id && entry.model === choice.model))
+        throw new BadRequestException('Ce modèle n’est plus disponible. Choisissez un autre modèle.');
+      effective = this.resolveTenantEffective({ ...raw, active_provider: choice.provider_id });
+      if (!effective) throw new BadRequestException('Ce moteur n’est pas configuré.');
+      effective = { ...effective, model: choice.model, fastModel: choice.model, qualityModel: choice.model, streamingModel: choice.model };
+    }
+    return this.getModelWithDescriptor('quality', maxTokens, undefined, choice.quality ?? 'balanced', effective).model;
+  }
+
+  /**
+   * Modèle qui lit les images (pièces jointes, PDF numérisés), ou `null`.
+   *
+   * Le moteur du cabinet lit lui-même les images quand il en est capable :
+   * DeepSeek via `deepseek-flash` (seul modèle DeepSeek multimodal : la gamme
+   * Pro ignore l'image, quel que soit le niveau de réflexion choisi), Gemini
+   * via son propre modèle. `AI_VISION_MODEL` (+ `AI_VISION_PROVIDER`, ou
+   * `AI_VISION_BASE_URL` / `AI_VISION_API_KEY`) impose un autre modèle. Sinon,
+   * les images sont lues par l'OCR local du serveur.
+   */
+  getVisionModel(maxTokens = 4000): { model: ChatOpenAI; label: string } | null {
+    const envModel = process.env.AI_VISION_MODEL?.trim();
+    const engine = this.resolve('quality');
+    const engineProvider = engine.descriptor.provider;
+    let runtime: AiProviderRuntimeConfig | null = null;
+    let provider = '';
+    if (envModel && process.env.AI_VISION_BASE_URL?.trim()) {
+      provider = 'custom';
+      runtime = {
+        base_url: process.env.AI_VISION_BASE_URL.trim(),
+        api_key: process.env.AI_VISION_API_KEY?.trim() || undefined,
+        model: envModel,
+      };
+    } else if (envModel) {
+      provider = process.env.AI_VISION_PROVIDER?.trim() || engineProvider;
+      runtime = provider === engineProvider
+        ? { base_url: engine.config.baseURL, api_key: engine.config.apiKey, model: envModel }
+        : this.getProviderRuntimeConfig(provider, { model: envModel });
+    } else if (engineProvider === 'deepseek' || engineProvider === 'google') {
+      provider = engineProvider;
+      runtime = {
+        base_url: engine.config.baseURL,
+        api_key: engine.config.apiKey,
+        model: engineProvider === 'deepseek' ? DEEPSEEK_VISION_MODEL : engine.config.model,
+      };
+    }
+    if (!runtime?.api_key || !runtime.base_url || !runtime.model) return null;
+    const unsafeReason = this.unsafeProviderUrlReason(runtime.base_url);
+    if (unsafeReason) {
+      this.logger.warn(`Modèle vision ignoré : ${unsafeReason}`);
+      return null;
+    }
+
+    const cacheKey = [
+      'vision',
+      runtime.model,
+      runtime.base_url,
+      maxTokens,
+      createHash('sha256').update(runtime.api_key).digest('hex').slice(0, 16),
+    ].join(':');
+    let model = this.models.get(cacheKey);
+    if (!model) {
+      const chatConfig: ConstructorParameters<typeof ChatOpenAI>[0] = {
+        model: runtime.model,
+        apiKey: runtime.api_key,
+        temperature: 0,
+        maxTokens,
+        configuration: { baseURL: runtime.base_url },
+        timeout: 90_000,
+        maxRetries: 0,
+        useResponsesApi: this.usesResponsesApi(runtime.base_url),
+      };
+      // DeepSeek réfléchit par défaut : sur une transcription, la réflexion
+      // multiplie le temps par 10 et peut épuiser le budget sans réponse (mesuré).
+      if (provider === 'deepseek') (chatConfig as any).modelKwargs = { thinking: { type: 'disabled' } };
+      model = new ChatOpenAI(chatConfig);
+      this.models.set(cacheKey, model);
+    }
+    return { model, label: `${provider}/${runtime.model}` };
   }
 
   async testProviderConnection(provider: {
@@ -825,8 +928,9 @@ export class AiModelRouterService {
     maxTokens?: number,
     modelKwargsOverride?: Record<string, unknown>,
     mode?: AiModelMode,
+    effectiveOverride?: TenantAiEffective | null,
   ): { config: ModelProfileConfig; descriptor: AiModelDescriptor } {
-    const tenantEffective = this.getTenantEffectiveSync();
+    const tenantEffective = effectiveOverride === undefined ? this.getTenantEffectiveSync() : effectiveOverride;
     const model = this.getConfiguredModel(profile, mode, tenantEffective);
     const baseURL = this.getBaseUrl(profile, mode, tenantEffective);
     const apiKey = this.getApiKey(profile, mode, tenantEffective);

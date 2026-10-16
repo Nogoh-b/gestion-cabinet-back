@@ -15,6 +15,7 @@ import { JwtAuthGuard } from 'src/core/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/core/auth/guards/roles.guard';
 import { PermissionsGuard } from 'src/core/common/guards/permissions.guard';
 import { CurrentUser } from 'src/core/decorators/current-user.decorator';
+import { stripRestrictedInput } from 'src/core/security/restricted-fields';
 import { RequirePermissions } from 'src/core/decorators/permissions.decorator';
 import { User } from 'src/modules/iam/user/entities/user.entity';
 import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
@@ -109,8 +110,13 @@ export class ActionCatalogController {
   reviseDefinition(
     @Param('id') id: string,
     @Body() dto: ReviseActionDefinitionDto,
+    @CurrentUser() user: User,
   ) {
-    return this.catalogService.reviseDefinition(id, dto);
+    // Tarif par défaut : non modifiable sans droit sur les éléments facturables.
+    return this.catalogService.reviseDefinition(
+      id,
+      stripRestrictedInput('case_action_definitions', dto, user as any),
+    );
   }
 
   @Get('recommendation-rules/manage')

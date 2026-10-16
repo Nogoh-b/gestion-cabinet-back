@@ -1,5 +1,7 @@
+import { User } from '../user/entities/user.entity';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 // user-role-assignment.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateUserRoleAssignmentDto } from './dto/create-user-role-assignment.dto';
@@ -17,34 +19,24 @@ export class UserRoleAssignmentService {
     private readonly userRolesService: UserRolesService,
   ) {}
 
-  async create(
-    createDto: CreateUserRoleAssignmentDto,
-  ): Promise<UserRoleAssignment> {
-    // Vérifier l'existence de l'utilisateur et du rôle
+  async create(createDto: CreateUserRoleAssignmentDto): Promise<UserRoleAssignment> {
     await this.usersService.findOne(createDto.user_id);
-    await this.userRolesService.findOne(createDto.role_id);
-
-    // Vérifier si l'association existe déjà
-    await this.userRoleAssignmentRepository.update(
-      {
-        user_id: createDto.user_id,
-        role_id: createDto.role_id,
-      },
-      { status: 0 },
-    );
-
-    // Créer la nouvelle association
-    const assignment = this.userRoleAssignmentRepository.create({
-      user_id: createDto.user_id,
-      role_id: createDto.role_id,
-      // assigned_by: createDto.assigned_by,
-      status: 1,
+    const role=await this.userRolesService.findOne(createDto.role_id);
+    if(role.status!==1)throw new NotFoundException('Profil d’accès inactif.');
+    const tenantId=getCurrentTenantId();
+    return this.userRoleAssignmentRepository.manager.transaction(async em=>{
+      await em.update(UserRoleAssignment,{user_id:createDto.user_id,tenant_id:tenantId},{status:0});
+      const existing=await em.findOneBy(UserRoleAssignment,{user_id:createDto.user_id,role_id:role.id,tenant_id:tenantId});
+      const assignment=await em.save(UserRoleAssignment,{...existing,user_id:createDto.user_id,role_id:role.id,tenant_id:tenantId,status:1});
+      await em.update(User,{id:createDto.user_id,tenant_id:tenantId},{role:role.code});
+      return assignment;
     });
-
-    return this.userRoleAssignmentRepository.save(assignment);
   }
 
   async remove(user_id: number, role_id: number): Promise<void> {
+    const user=await this.usersService.findOne(user_id);
+    const role=await this.userRolesService.findOne(role_id);
+    if(user.role===role.code)throw new ConflictException('Choisissez un autre profil avant de retirer le profil actif.');
     const result = await this.userRoleAssignmentRepository.delete({
       user_id,
       role_id,

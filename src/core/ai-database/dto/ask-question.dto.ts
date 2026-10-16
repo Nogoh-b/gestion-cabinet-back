@@ -138,6 +138,32 @@ export class AskQuestionDto {
   @IsOptional()
   @IsString()
   historyOverride?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "Passage sélectionné par l'utilisateur (réponse de l'IA ou texte d'un document) sur lequel porte la question.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(8000)
+  quote?: string;
+
+  @ApiProperty({ required: false, description: 'Origine du passage cité (ex. nom du document).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  quoteSource?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Texte déjà lu de pièces jointes précédentes (JSON : [{ name, type, content, carried }]). ' +
+      '`carried` : repris automatiquement, utilisé seulement si la question porte sur un document.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(110000)
+  attachedDocuments?: string;
 }
 
 /** Une entité référencée via `@` côté front, après parsing du JSON. */

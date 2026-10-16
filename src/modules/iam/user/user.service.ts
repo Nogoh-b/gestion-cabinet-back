@@ -45,6 +45,7 @@ export class UsersService {
     if (!customer &&  is_strict) {
       throw new NotFoundException('Le compte client est inexistant');
     }*/
+    if (createUserDto.role && !await this.getAccessRole(createUserDto.role)) throw new NotFoundException('Profil d’accès inexistant ou inactif dans ce cabinet.');
     const existingUser = await this.userRepository.findOne({
       where: { email: createUserDto.email },
     });
@@ -194,6 +195,8 @@ export class UsersService {
     user.roleAssignments = activeRoleAssignment ? [activeRoleAssignment] : [];
     return user;
   }
+
+  getAccessRole(code: string | null) { return code ? this.roleService.findActiveByCode(code) : Promise.resolve(null); }
 
   async getUserPermissions(userId: number): Promise<any> {
     const role = (await this.findOne(userId))?.role;

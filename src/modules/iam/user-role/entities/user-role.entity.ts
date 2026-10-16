@@ -17,13 +17,16 @@ import { RolePermission } from '../../role-permission/entities/role-permission.e
 @Entity('user_role')
 @Unique(['code', 'tenant_id'])
 export class UserRole extends TenantEntity {
-  @PrimaryGeneratedColumn({ unsigned: true, type: 'tinyint' })
+  @PrimaryGeneratedColumn({ unsigned: true, type: 'int' })
   id: number;
 
-  @Column({ length: 20 })
+  @Column({ length: 64 })
   code: string;
 
-  @Column({ length: 45 })
+  @Column({ length: 30, default: 'collaborateur' })
+  base_role: string;
+
+  @Column({ length: 150 })
   name: string;
 
   @Column('text', { nullable: true })

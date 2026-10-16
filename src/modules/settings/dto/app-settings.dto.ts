@@ -13,6 +13,7 @@ import {
   FONT_SIZES,
   SIDEBAR_STYLES,
   THEME_NAMES,
+  THEME_PATTERN,
   type FontSize,
   type SidebarStyle,
   type ThemeName,
@@ -77,7 +78,7 @@ export class AppSettingsDto {
   // ── Apparence par défaut des nouveaux membres ───────────────────────────
   @ApiPropertyOptional({ enum: THEME_NAMES, example: 'midnight' })
   @IsOptional()
-  @IsIn(THEME_NAMES as unknown as string[])
+  @Matches(THEME_PATTERN)
   theme_name?: ThemeName;
 
   @ApiPropertyOptional({ example: 'outfit' })

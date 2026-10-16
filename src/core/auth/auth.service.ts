@@ -385,7 +385,9 @@ export class AuthService {
     // Écraser user.role (position de l'Employee = "avocat") avec le rôle RBAC réel
     // (User.role = "admin"|"secretaire"|…) pour que le frontend n'affiche pas
     // le mauvais mode pendant les quelques secondes avant le retour de /auth/profile.
-    const userWithRole = role ? { ...user, role } : user;
+    const accessRole = await inSessionTenant(() => this.usersService.getAccessRole(role));
+    if (!accessRole) throw new UnauthorizedException('Profil d’accès inexistant ou inactif.');
+    const userWithRole = role ? { ...user, role, base_role: accessRole.base_role || role, role_name: accessRole.name } : user;
 
     return {
       access_token: this.jwtService.sign(payload),

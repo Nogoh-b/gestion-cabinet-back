@@ -9,7 +9,7 @@ export class UserRoleAssignment extends TenantEntity {
   @PrimaryColumn({ type: 'int' })
   user_id: number;
 
-  @PrimaryColumn({ unsigned: true, type: 'tinyint' })
+  @PrimaryColumn({ unsigned: true, type: 'int' })
   role_id: number;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })

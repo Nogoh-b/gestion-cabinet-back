@@ -9,10 +9,10 @@ import { UserRole } from '../../user-role/entities/user-role.entity';
 // Pas de @SharedAcrossTenants — sinon doublons via IN (1, X).
 @Entity('role_permission')
 export class RolePermission extends TenantEntity {
-  @PrimaryColumn({ unsigned: true, type: 'tinyint' })
+  @PrimaryColumn({ unsigned: true, type: 'int' })
   role_id: number;
 
-  @PrimaryColumn({ unsigned: true, type: 'smallint' })
+  @PrimaryColumn({ unsigned: true, type: 'int' })
   permission_id: number;
 
   @ManyToOne(() => UserRole, (role) => role.permissions, {
