@@ -2,11 +2,14 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 // conversation-manager.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from './entities/conversation.entity';
 import { ConversationMessage } from './entities/conversation-message.entity';
 import type { ReferencedEntityContext } from './dto/ask-question.dto';
+import { pickConversationResource } from './conversation-resource';
+import { addTenantCondition } from '../tenant/tenant-repository.patch';
 
 @Injectable()
 export class ConversationManagerService {
@@ -166,13 +169,108 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
   }
 
   /**
-   * Liste les conversations d'un utilisateur
+   * Liste les conversations d'un utilisateur : épinglées d'abord, puis les plus
+   * récentes. `search` porte sur le titre et le texte des échanges.
    */
-  async getUserConversations(userId: string): Promise<Conversation[]> {
-    return this.conversationRepo.find({
-      where: { userId, status: 'active' },
-      order: { updated_at: 'DESC' },
-    });
+  async listConversations(
+    userId: string,
+    filters: { search?: string; resourceType?: string; resourceId?: string } = {},
+  ): Promise<Conversation[]> {
+    let qb = this.conversationRepo
+      .createQueryBuilder('c')
+      .where('c.user_id = :userId', { userId })
+      .andWhere("c.status = 'active'");
+    qb = addTenantCondition(qb, 'c');
+
+    const search = String(filters.search ?? '').trim().slice(0, 100);
+    if (search) {
+      const pattern = `%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+      qb = qb.andWhere(
+        new Brackets((where) => {
+          where.where('c.title LIKE :pattern', { pattern }).orWhere(
+            `EXISTS (SELECT 1 FROM conversation_messages m
+                      WHERE m.conversation_id = c.id
+                        AND m.role IN ('user', 'assistant')
+                        AND m.deleted_at IS NULL
+                        AND m.content LIKE :pattern)`,
+            { pattern },
+          );
+        }),
+      );
+    }
+    if (filters.resourceType && filters.resourceId) {
+      qb = qb
+        .andWhere('c.resource_type = :resourceType', { resourceType: filters.resourceType })
+        .andWhere('c.resource_id = :resourceId', { resourceId: String(filters.resourceId) });
+    }
+
+    return qb
+      .orderBy('c.pinned_at IS NULL', 'ASC')
+      .addOrderBy('c.pinned_at', 'DESC')
+      .addOrderBy('c.updated_at', 'DESC')
+      .limit(200)
+      .getMany();
+  }
+
+  /**
+   * Organiser l'historique (renommer, épingler, supprimer, restaurer) ne
+   * change pas la date d'activité : `updated_at = updated_at` neutralise
+   * ON UPDATE CURRENT_TIMESTAMP, la conversation garde sa place et son groupe.
+   */
+  private async updateKeepingActivity(
+    conversationId: string,
+    values: QueryDeepPartialEntity<Conversation>,
+  ): Promise<void> {
+    await this.conversationRepo
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({ ...values, updated_at: () => 'updated_at' })
+      .where('id = :conversationId', { conversationId })
+      .execute();
+  }
+
+  /** Renomme une conversation (titre déjà normalisé par l'appelant). */
+  async renameConversation(conversationId: string, title: string): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { title });
+  }
+
+  async setPinned(conversationId: string, pinned: boolean): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { pinnedAt: pinned ? new Date() : null });
+  }
+
+  /** Suppression logique : la conversation peut être restaurée (« Annuler »). */
+  async softDeleteConversation(conversationId: string): Promise<void> {
+    await this.updateKeepingActivity(conversationId, { deleted_at: () => 'CURRENT_TIMESTAMP(6)' });
+  }
+
+  async restoreConversation(conversationId: string): Promise<void> {
+    // Requête directe : un UPDATE TypeORM ajoute « deleted_at IS NULL » et ne
+    // trouverait jamais la conversation supprimée (propriété vérifiée en amont).
+    await this.conversationRepo.query(
+      'UPDATE conversations_bot SET deleted_at = NULL, updated_at = updated_at WHERE id = ?',
+      [conversationId],
+    );
+  }
+
+  /** Rattache la conversation à la première fiche citée, une seule fois. */
+  private async attachConversationResource(
+    conversationId: string,
+    references?: ReferencedEntityContext[],
+  ): Promise<void> {
+    if (this.temporarySession.getStore()) return;
+    const resource = pickConversationResource(references);
+    if (!resource) return;
+    await this.conversationRepo
+      .createQueryBuilder()
+      .update(Conversation)
+      .set({
+        resourceType: resource.type,
+        resourceId: resource.id,
+        resourceLabel: resource.label,
+      })
+      .where('id = :conversationId', { conversationId })
+      .andWhere('resource_type IS NULL')
+      .execute();
   }
 
   /**
@@ -287,6 +385,7 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
       references,
     );
     await this.updateTitleFromFirstUserMessage(conversationId, content);
+    await this.attachConversationResource(conversationId, references);
   }
 
   /**
@@ -572,11 +671,13 @@ Ne réponds PAS avec du texte explicatif. Juste le bloc SQL.`;
    */
   async getConversationAny(
     conversationId: string,
+    options: { withDeleted?: boolean } = {},
   ): Promise<Conversation | null> {
     const temporary = this.temporarySession.getStore();
     if (temporary) return temporary.conversation;
     return this.conversationRepo.findOne({
       where: { id: conversationId },
+      withDeleted: options.withDeleted ?? false,
     });
   }
 

@@ -58,8 +58,15 @@ export const CABINET_JURIDIQUE_READ_RULES = `
 - Une regle applicable appartient au meme dossier, est active, a le bon trigger (ACTION_COMPLETED pour une action terminee) et cible action_definition_code = dossier_actions.definition_code ou une valeur NULL pour la regle generale. Preferer la regle specifique a la regle generale, puis la version la plus recente. Ne pas appliquer indistinctement toutes les regles du dossier ni additionner leurs tarifs.
 - Sans element calcule, distinguer le tarif configure d'un montant final et ne pas inventer de quantite, de duree ou de validation. Ne demander au responsable que les donnees effectivement manquantes apres consultation. Une absence de droit ou de resultat signifie information inaccessible ou non trouvee, pas preuve d'absence de configuration.
 
+### Point / synthese / etat d'un dossier
+- Pour "fais le point", "synthese", "resume", "etat" ou "bilan" d'un dossier (ou d'une reference dossier de la page), ne te limite jamais a la table dossiers : la facturation fait partie du point.
+- Retourne UNE requete qui couvre : identite (dossier_number, client, juridiction, avocat referent, dates), statut lisible, facturation, activite (actions par statut, prochaine audience).
+- Statut : dossiers.status est un code numerique, 0=Ouvert, 1=Analyse preliminaire, 2=Amiable, 3=Contentieux, 4=Jugement, 5=Appel, 6=Cassation, 7=Execution, 8=Cloture, 9=Archive, 10=Abandonne. Affiche toujours le libelle (CASE sur d.status), jamais le code seul ni "libelle non disponible".
+- Facturation : joindre en LEFT JOIN dossier_billing_profiles (mode, fixed_fee, hourly_rate, opening_fee, default_vacation_rate, percentage_rate, vat_rate, currency, is_confirmed) et agreger billable_items du dossier par statut avec des sous-requetes correlees (COUNT, SUM(net_amount), SUM(gross_amount)) plutot que des JOIN qui multiplient les lignes.
+- Sans profil ni element facturable retournes par cette requete, dis qu'aucune configuration de facturation n'a ete trouvee ; ne la declare jamais absente si la requete ne l'a pas consultee.
+
 ### Présentation des résultats à l'utilisateur
-- Les colonnes techniques id, uuid, tenant_id et celles terminant par _id servent uniquement aux jointures et aux filtres. Ne les sélectionne jamais comme informations à afficher.
+- Les colonnes techniques id, uuid, tenant_id et celles terminant par _id servent uniquement aux jointures et aux filtres. Ne les sélectionne jamais comme informations à afficher (seule exception : la clé primaire sous l'alias ref__<table>, retirée avant affichage).
 - Retourne des numéros métier, noms, libellés et titres : dossier_number, numero, reference, title, label, first_name et last_name.
 - Pour une action de dossier, utilise dossier_actions.title ou dossier_actions.definition_label. N'affiche jamais definition_id ni l'UUID de l'action.
 - Pour afficher le responsable d'une action, fais un LEFT JOIN avec user u ON u.id = dossier_actions.responsible_user_id et sélectionne CONCAT(u.first_name, ' ', u.last_name) AS responsable. Ne sélectionne jamais responsible_user_id seul.

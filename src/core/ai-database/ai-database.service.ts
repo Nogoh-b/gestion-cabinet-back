@@ -55,11 +55,16 @@ import {
 import { AiDatabaseProjectConfig } from './interfaces/ai-database-project-config.interface';
 import { SchemaMetadataService } from './schema-metadata.service';
 import { SqlValidatorService } from './sql-validator.service';
-import { AmbiguityException } from './write/ambiguity.exception';
+import { AmbiguityException, UPDATE_TARGET_FIELD } from './write/ambiguity.exception';
 import { EntityIdRequiredException } from './write/entity-id-required.exception';
 import { PrepareFormDto } from './dto/prepare-form.dto';
 import { buildFormPrompt, normalizeFormDraft, parseFormFields } from './form-preparation';
 import { formatPageContext } from './page-context';
+import {
+  DisplayedRecord,
+  extractDisplayedRecords,
+  formatDisplayedRecordsForPlanner,
+} from './displayed-records';
 import {
   uploadedDocumentMessage,
   uploadedFilePlannerNote,
@@ -113,6 +118,10 @@ interface AiRequestMetrics {
    *  CETTE requête. Porté par l'AsyncLocalStorage des métriques (actif pendant
    *  toute la requête), lu par invokeModel/streamModel. */
   reasoningKwargs?: Record<string, unknown>;
+  /** Cabinet + utilisateur : clé de la mémoire des enregistrements affichés. */
+  memoryKey?: string;
+  /** Enregistrements lus pendant CETTE requête (remplacent les précédents). */
+  displayedRecords?: DisplayedRecord[];
 }
 
 /**
@@ -144,6 +153,18 @@ interface MultiResourceDraft {
   parts: Promise<Array<SubQuestionResult | null>>;
   abort: () => void;
 }
+
+/**
+ * Mise en forme des réponses rédigées : le chat rend ce Markdown léger
+ * (titres, listes, gras). Une réponse plus courte est aussi plus rapide.
+ */
+const ANSWER_FORMAT_RULES = `MISE EN FORME (Markdown léger) :
+- Commence par une phrase qui répond directement à la question, sans titre avant.
+- Plusieurs thèmes : une section courte par thème, introduite par "### Titre". Un seul thème : pas de titre.
+- Détails en listes "- **Libellé** : valeur". Le gras est réservé aux libellés et aux chiffres clés.
+- N'énumère pas les informations absentes une par une : regroupe-les en une seule ligne finale "Non renseigné : a, b, c".
+- Un code (statut numérique, valeur technique) n'est affiché qu'avec son libellé lisible ; sans libellé, omets-le.
+- Pas de tableau sauf pour comparer au moins 3 éléments sur plusieurs critères. Pas de HTML, pas d'emoji.`;
 
 @Injectable()
 export class AiDatabaseService implements OnModuleInit {
@@ -182,6 +203,12 @@ export class AiDatabaseService implements OnModuleInit {
     }
   > = new Map();
   private readonly PENDING_CLARIFICATION_TTL = 10 * 60 * 1000; // 10 minutes
+  /** Derniers enregistrements montrés par une lecture, par cabinet + utilisateur. */
+  private readonly lastDisplayedRecords = new Map<
+    string,
+    { records: DisplayedRecord[]; at: number }
+  >();
+  private readonly DISPLAYED_RECORDS_TTL = 30 * 60 * 1000; // 30 minutes
   private readonly CACHE_TTL = 3600000; // 1 heure
   private readonly MAX_RESULTS = 50;
   private readonly MAX_TOKENS = 4000;
@@ -235,10 +262,53 @@ export class AiDatabaseService implements OnModuleInit {
     return String(user?.id ?? user?.userId ?? 'anonymous');
   }
 
+  private displayedRecordsKey(user: AiUserContext | string): string {
+    const tenant = hasActiveTenant() ? getCurrentTenantId() : 0;
+    return `${tenant}:${this.getUserId(user)}`;
+  }
+
+  /** Mémorise les enregistrements lus par la requête courante (tous les SELECT cumulés). */
+  private rememberDisplayedRecords(records: DisplayedRecord[]): void {
+    const metrics = this.metricsStorage.getStore();
+    if (!metrics?.memoryKey || !records.length) return;
+    metrics.displayedRecords = [...(metrics.displayedRecords ?? []), ...records].slice(0, 30);
+    this.lastDisplayedRecords.set(metrics.memoryKey, {
+      records: metrics.displayedRecords,
+      at: Date.now(),
+    });
+  }
+
+  /** Bloc « enregistrements affichés » de la dernière lecture de cet utilisateur. */
+  private displayedRecordsForPlanner(user: AiUserContext | string): string {
+    const key = this.displayedRecordsKey(user);
+    const entry = this.lastDisplayedRecords.get(key);
+    if (!entry) return '';
+    if (Date.now() - entry.at > this.DISPLAYED_RECORDS_TTL) {
+      this.lastDisplayedRecords.delete(key);
+      return '';
+    }
+    return formatDisplayedRecordsForPlanner(entry.records);
+  }
+
+  /**
+   * Ajoute à l'historique du planner les enregistrements de la dernière lecture,
+   * seulement pour une question de suivi (un fil existe) : une nouvelle
+   * conversation ne doit pas hériter des résultats d'une autre.
+   */
+  private withDisplayedRecords(
+    history: string,
+    user: AiUserContext | string,
+  ): string {
+    if (!history) return history;
+    const records = this.displayedRecordsForPlanner(user);
+    return records ? `${history}\n\n${records}` : history;
+  }
+
   private async withAiMetrics<T>(
     requestType: string,
     logId: number | undefined,
     fn: () => Promise<T>,
+    memoryKey?: string,
   ): Promise<T> {
     // La config IA du cabinet est chargée AVANT la moindre résolution de
     // modèle : sans ça, `getTenantEffectiveSync()` (synchrone) retomberait sur
@@ -264,6 +334,7 @@ export class AiDatabaseService implements OnModuleInit {
       cacheHit: false,
       status: 'started',
       modelMode: 'fast',
+      memoryKey,
     };
 
     // Origine de la config (cabinet ou ENV) : le mode (rapide/équilibré/précis)
@@ -1000,7 +1071,8 @@ REGLES ABSOLUES :
 11. 🚫 INTERDICTION ABSOLUE D'INVENTER : tu ne peux utiliser QUE les tables et les colonnes EXACTEMENT présentes dans le SCHEMA UTILE. Si une table ou une colonne dont tu aurais besoin n'y figure PAS, tu n'as PAS le droit de la deviner — ni un nom voisin "plausible" (ex: ne JAMAIS écrire "ecriture_lignes" si seul "lignes_ecriture_comptable" existe), ni des colonnes inventées (ex: ne JAMAIS inventer "sens"/"montant" si les colonnes réelles sont "debit"/"credit"). Recopie les noms caractère par caractère depuis le schéma.
 12. Si les données demandées ne peuvent PAS être obtenues avec les seules tables/colonnes du SCHEMA UTILE, NE devine PAS : réponds par une requête vide \`SELECT NULL AS message WHERE 1=0\` plutôt que de référencer un objet inexistant.
 13. Un identifiant LISIBLE contenant des lettres/chiffres/tirets/slashs (ex: \`F-2025-001\`, \`FAC2-202606-0001\`, \`DOS-2024-12\`) correspond TOUJOURS à une colonne d'identifiant métier (\`numero\`, \`reference\`, ou une colonne se terminant par \`_number\`/\`_reference\`), JAMAIS à la colonne \`id\` (qui est numérique ou UUID). Pour filtrer par un tel identifiant, utilise la colonne \`numero\`/\`reference\` correspondante (ex: \`WHERE f.numero = 'FAC2-202606-0001'\`), pas \`id\`. Réserve \`id\` aux valeurs purement numériques/UUID. La mention "ex:" du schéma indique le format réel de chaque colonne.
-14. Les colonnes \`id\`, \`uuid\`, \`tenant_id\` et \`*_id\` peuvent servir aux JOIN et aux filtres, mais ne doivent JAMAIS figurer dans le SELECT destiné à l'utilisateur. Sélectionne à leur place un nom, un titre, un libellé, un numéro métier ou une référence lisible. N'utilise \`SELECT *\` que dans l'exemple de syntaxe ci-dessous, jamais dans la requête finale.
+14. Les colonnes \`id\`, \`uuid\`, \`tenant_id\` et \`*_id\` peuvent servir aux JOIN et aux filtres, mais ne doivent JAMAIS figurer dans le SELECT destiné à l'utilisateur. Sélectionne à leur place un nom, un titre, un libellé, un numéro métier ou une référence lisible. N'utilise \`SELECT *\` que dans l'exemple de syntaxe ci-dessous, jamais dans la requête finale. Seule exception : l'alias \`ref__\` de la règle 15.
+15. Pour une requête qui LISTE des enregistrements (une ligne par enregistrement, sans GROUP BY ni agrégat COUNT/SUM/AVG), ajoute la clé primaire de la table principale sous l'alias \`ref__<nom_exact_de_la_table>\` (ex: \`pp.id AS ref__payroll_period\`, \`d.id AS ref__dossiers\`). Cette colonne est retirée avant l'affichage : elle permet seulement d'agir ensuite sur ces enregistrements. N'en ajoute jamais dans une requête agrégée.
 
 ${readDomainRules}
 
@@ -1688,9 +1760,22 @@ Contraintes obligatoires :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
+          executionTimeMs: Date.now() - startTime,
+        };
+      }
+      if (error instanceof EntityIdRequiredException) {
+        // Cible introuvable ou ambiguë : message lisible plutôt qu'une erreur 500.
+        // Le plan reste proposé tel quel pour pouvoir être relancé après précision.
+        const target = error.entity.replace(/_/g, ' ');
+        return {
+          success: false,
+          question: 'Confirmation opération',
+          analysis: error.detail
+            ? `❓ ${error.detail}`
+            : `❓ Je n'ai pas pu identifier précisément quel(le) ${target} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`,
           executionTimeMs: Date.now() - startTime,
         };
       }
@@ -1715,6 +1800,18 @@ Contraintes obligatoires :
   private buildAmbiguityMessage(
     error: import('./write/ambiguity.exception').AmbiguityException,
   ): string {
+    if (error.fieldName === UPDATE_TARGET_FIELD) {
+      const label = (
+        this.schemaMetadata.getTableLabel(error.entity) || error.entity.replace(/_/g, ' ')
+      ).toLowerCase();
+      const exact = error.candidates.some((c) => c.score === 100);
+      const recentOnly = error.candidates.every((c) => c.score === 0);
+      return exact
+        ? `🔍 Plusieurs éléments « ${label} » correspondent à **${error.searchTerm}**. Choisissez celui à modifier :`
+        : recentOnly
+          ? `🔍 Je ne retrouve pas l'élément « ${label} » décrit (**${error.searchTerm}**). Voici les plus récents, choisissez celui à modifier :`
+          : `🔍 Aucun élément « ${label} » ne correspond exactement à **${error.searchTerm}**. Voici les plus proches, choisissez celui à modifier :`;
+    }
     const parentLabel = error.parentEntity
       ? this.schemaMetadata.getTableLabel(error.parentEntity) ||
         error.parentEntity
@@ -1843,7 +1940,7 @@ Contraintes obligatoires :
     const analyze = () => this.withAiMetrics('ask', aiRequestLogId, () =>
       this.analyzeQuestionInternal(dto.temporary === true || dto.temporary === 'true'
         ? { ...dto, conversationId: undefined } : dto, user, file),
-    );
+    this.displayedRecordsKey(user));
     return dto.temporary === true || dto.temporary === 'true'
       ? this.conversationManager.runTemporary(analyze) : analyze();
   }
@@ -1919,7 +2016,7 @@ Contraintes obligatoires :
               candidates: error.candidates,
               operationIndex: error.operationIndex,
               parentEntity: error.parentEntity,
-              allowOther: true,
+              allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
               otherLabel: this.getFieldLabel(error.fieldName),
             },
             conversationId,
@@ -1934,7 +2031,7 @@ Contraintes obligatoires :
             error.entity,
             userId,
           );
-          const message = `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
+          const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
           await this.conversationManager.addAssistantMessage(
             conversationId,
             message,
@@ -2064,9 +2161,12 @@ Contraintes obligatoires :
       relevantTables.push('document_customer');
     }
     const schema = await this.getCompleteSchema(relevantTables);
-    const historyForIntent = historyOverride.length
-      ? this.formatVisibleHistoryForIntent(historyOverride)
-      : await this.getHistorySnippetForIntent(dto.conversationId);
+    const historyForIntent = this.withDisplayedRecords(
+      historyOverride.length
+        ? this.formatVisibleHistoryForIntent(historyOverride)
+        : await this.getHistorySnippetForIntent(dto.conversationId),
+      user,
+    );
     const forceWriteDespiteReadMode = this.shouldForceWriteDespiteReadMode(
       intentMode,
       dto.question,
@@ -2806,7 +2906,7 @@ Règles :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
@@ -2825,7 +2925,7 @@ Règles :
           error.entity,
           userId,
         );
-        const message = `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
+        const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
         await this.conversationManager.addAssistantMessage(
           conversationId,
           message,
@@ -2939,7 +3039,13 @@ Règles :
     }
 
     // ── Option classique : resolvedId fourni ────────────────────────────────
-    op.fields[fieldName] = resolvedId;
+    if (fieldName === UPDATE_TARGET_FIELD) {
+      // Choix de l'enregistrement à modifier : il devient la cible de l'UPDATE.
+      op.entityId = resolvedId;
+      delete op.match;
+    } else {
+      op.fields[fieldName] = resolvedId;
+    }
     op.resolveConfig = { mode: 'best_effort', ambiguityGap: 0 };
 
     this.logger.log(
@@ -3076,7 +3182,7 @@ Règles :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
@@ -3261,7 +3367,7 @@ Règles :
             candidates: error.candidates,
             operationIndex: error.operationIndex,
             parentEntity: error.parentEntity,
-            allowOther: true,
+            allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
             otherLabel: this.getFieldLabel(error.fieldName),
           },
           conversationId,
@@ -3489,11 +3595,11 @@ ${lines.join('\n')}
       .map((m) =>
         `${m.role === 'user' ? 'UTILISATEUR' : 'ASSISTANT'}: ${m.content}`.substring(
           0,
-          600,
+          1200,
         ),
       )
       .join('\n---\n')
-      .substring(0, 1800);
+      .substring(0, 3000);
   }
 
   private enrichWritePlanWithReferencedEntities(
@@ -4031,7 +4137,7 @@ ${blocks.join('\n\n')}
     const analyze = () => this.withAiMetrics('ask_stream', aiRequestLogId, () =>
       this.analyzeQuestionStreamInternal(dto.temporary === true || dto.temporary === 'true'
         ? { ...dto, conversationId: undefined } : dto, user, file, sendEvent),
-    );
+    this.displayedRecordsKey(user));
     return dto.temporary === true || dto.temporary === 'true'
       ? this.conversationManager.runTemporary(analyze) : analyze();
   }
@@ -4049,9 +4155,10 @@ ${blocks.join('\n\n')}
 
     /** sendEvent avec petit délai de rythme : chaque status reste lisible sans
      *  peser sur la latence (le front a déjà son propre typewriter). */
-    const emit = async (event: string, data: any, delayMs = 60) => {
+    // Les étapes (`step`) sont horodatées et affichées côté chat : aucune pause
+    // n'est nécessaire pour qu'elles soient visibles, la réponse n'attend pas.
+    const emit = async (event: string, data: any, _delayMs?: number) => {
       sendEvent(event, data);
-      if (event === 'status') await this.sleep(delayMs);
     };
 
     // Génération SQL anticipée pendant la classification (voir startSqlDraft).
@@ -4083,6 +4190,7 @@ ${blocks.join('\n\n')}
       if (resumed) {
         sendEvent('intent', { type: 'WRITE', plan: resumed.plan });
         await emit('status', {
+          step: 'execute',
           message: `⚙️ Exécution de ${resumed.plan.operations.length} opération(s)...`,
         });
         const conversationId = dto.conversationId!;
@@ -4126,7 +4234,7 @@ ${blocks.join('\n\n')}
               message: this.buildAmbiguityMessage(error),
               pendingWritePlan: resumed.plan,
               conversationId,
-              allowOther: true,
+              allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
               otherLabel: this.getFieldLabel(error.fieldName),
             });
           } else if (error instanceof EntityIdRequiredException) {
@@ -4137,7 +4245,7 @@ ${blocks.join('\n\n')}
               error.entity,
               userId,
             );
-            const message = `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
+            const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai toujours pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer.`;
             await this.conversationManager.addAssistantMessage(
               conversationId,
               message,
@@ -4163,8 +4271,8 @@ ${blocks.join('\n\n')}
 
       // ── 2. Détection d'intention ────────────────────────────────────────────
       tLog('avant status 🔍');
-      await emit('status', { message: '🔍 Analyse de la demande...' });
-      tLog('après status sleep(200ms) — DeepSeek lightClassify démarre');
+      await emit('status', { step: 'understand', message: '🔍 Analyse de la demande...' });
+      tLog('après status — DeepSeek lightClassify démarre');
       const requestContext = await this.buildRequestContext(dto, file);
       enrichedQuestion = requestContext.enrichedQuestion;
       fileInfo = requestContext.fileInfo ?? fileInfo;
@@ -4239,22 +4347,20 @@ ${blocks.join('\n\n')}
       }
 
       if (requestContext.documentContext.length) {
-        await emit(
-          'status',
-          {
-            message: `📄 ${requestContext.documentContext.length} document(s) pris en compte`,
-          },
-          80,
-        );
+        await emit('status', {
+          step: 'context',
+          message: `📄 ${requestContext.documentContext.length} document(s) pris en compte`,
+        });
       }
       if (requestContext.referenced.length) {
-        await emit(
-          'status',
-          {
-            message: `🔗 ${requestContext.referenced.length} référence(s) prise(s) en compte`,
-          },
-          80,
-        );
+        await emit('status', {
+          step: 'context',
+          message: `🔗 ${requestContext.referenced.length} référence(s) prise(s) en compte`,
+          references: requestContext.referenced
+            .map((item: any) => item?.label)
+            .filter(Boolean)
+            .slice(0, 3),
+        });
       }
 
       const relevantTables = await this.detectRelevantTables(
@@ -4270,9 +4376,12 @@ ${blocks.join('\n\n')}
       }
       const schema = await this.getCompleteSchema(relevantTables);
       tLog('schema prêt — appel detectIntent');
-      const historyForIntent = historyOverride.length
-        ? this.formatVisibleHistoryForIntent(historyOverride)
-        : await this.getHistorySnippetForIntent(dto.conversationId);
+      const historyForIntent = this.withDisplayedRecords(
+        historyOverride.length
+          ? this.formatVisibleHistoryForIntent(historyOverride)
+          : await this.getHistorySnippetForIntent(dto.conversationId),
+        user,
+      );
 
       // ── 2bis. Analyse directe de documents (bypass SQL) ─────────────────────
       // Si l'utilisateur a joint OU mentionné (@) un document dont le CONTENU a
@@ -4293,11 +4402,10 @@ ${blocks.join('\n\n')}
           relevantTables,
         );
         sendEvent('intent', { type: 'READ' });
-        await emit(
-          'status',
-          { message: '📄 Lecture et analyse du contenu du document...' },
-          80,
-        );
+        await emit('status', {
+          step: 'document',
+          message: '📄 Lecture et analyse du contenu du document...',
+        });
 
         let conversationId = dto.conversationId;
         if (!conversationId) {
@@ -4603,6 +4711,7 @@ ${blocks.join('\n\n')}
         }
 
         await emit('status', {
+          step: 'execute',
           message: `⚙️ Exécution de ${plan.operations.length} opération(s)...`,
         });
 
@@ -4619,7 +4728,7 @@ ${blocks.join('\n\n')}
       }
 
       // ── 3c. READ ─────────────────────────────────────────────────────────────
-      await emit('status', { message: '🗄️ Génération de la requête SQL...' });
+      await emit('status', { step: 'search', message: '🗄️ Recherche des informations...' });
 
       let conversationId = dto.conversationId;
       if (!conversationId) {
@@ -4669,7 +4778,8 @@ ${blocks.join('\n\n')}
         await sqlDraft,
       );
       await emit('status', {
-        message: '✅ Requête générée, exécution en cours...',
+        step: 'fetch',
+        message: '✅ Consultation des données...',
       });
 
       // validateAndFixQuery valide déjà via EXPLAIN et s'auto-corrige (jusqu'à 2 passes
@@ -4771,6 +4881,7 @@ ${blocks.join('\n\n')}
             requestContext.referenced,
           );
           await emit('status', {
+            step: 'execute',
             message: `⚙️ Exécution de ${reroutedPlan.operations.length} opération(s)...`,
           });
           await this.executeWritePlanStream(
@@ -4810,7 +4921,7 @@ ${blocks.join('\n\n')}
         results: results.data,
         rowCount: results.rowCount,
       });
-      await emit('status', { message: '📊 Analyse des résultats...' });
+      await emit('status', { step: 'answer', message: '📊 Analyse des résultats...' });
 
       // Streaming token-by-token de l'analyse métier
       const analysis = await this.generateBusinessAnalysisStream(
@@ -4877,7 +4988,9 @@ ${blocks.join('\n\n')}
     draftParts?: Promise<Array<SubQuestionResult | null>> | null,
   ): Promise<void> {
     await emit('status', {
-      message: `🧩 Question multi-ressources — ${subQuestions.length} recherches...`,
+      step: 'search',
+      message: `🧩 ${subQuestions.length} recherches en parallèle...`,
+      sources: subQuestions.map((sub) => sub.title),
     });
     await this.conversationManager.addUserMessage(
       conversationId,
@@ -4932,7 +5045,7 @@ ${blocks.join('\n\n')}
       rowCount: parts.reduce((sum, p) => sum + p.rowCount, 0),
       resultSets: parts,
     });
-    await emit('status', { message: '📊 Analyse combinée des résultats...' });
+    await emit('status', { step: 'answer', message: '📊 Analyse combinée des résultats...' });
     const analysis = await this.generateCombinedAnalysisStream(
       dto.question,
       parts,
@@ -5467,11 +5580,11 @@ INSTRUCTIONS IMPORTANTES:
 3. Utilise des termes métier comme "dossier", "client", "étape", "procédure", "statut", "date"
 4. Pour les champs, utilise des noms lisibles comme "Numéro de dossier", "Nom de l'étape" au lieu de "id", "name"
 5. Si la réponse contient des dates, formate-les de façon lisible
-6. Sois concis mais précis (max 500 mots)
-7. Termine par une phrase d'action ou de recommandation si pertinent
+6. Sois concis mais précis (max 350 mots)
+7. Termine par une phrase d'action ou de recommandation seulement si elle apporte quelque chose
 8. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise uniquement les noms, numéros métier, titres et libellés fournis. Si aucun nom lisible n'est disponible, omets l'information au lieu d'afficher l'identifiant.
 9. Pour une personne (responsable, avocat, collaborateur, client), affiche son nom complet. Pour une action, affiche son titre ou son libellé. Pour un dossier ou une facture, utilise son numéro métier.
-10. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
+${ANSWER_FORMAT_RULES}
 
 RÉPONSE (en français courant, langage métier):`;
 
@@ -5600,11 +5713,11 @@ INSTRUCTIONS IMPORTANTES:
 2. N'utilise JAMAIS de termes techniques comme "SQL", "requête", "base de données", "colonne", "table"
 3. Utilise des termes métier adaptés au contexte
 4. Si la réponse contient des dates, formate-les de façon lisible
-5. Sois concis mais précis (max 500 mots)
-6. Termine par une phrase d'action ou de recommandation si pertinent
+5. Sois concis mais précis (max 350 mots)
+6. Termine par une phrase d'action ou de recommandation seulement si elle apporte quelque chose
 7. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise les noms complets, numéros métier, titres et libellés fournis. Si aucun libellé lisible n'est disponible, omets l'information.
 8. Pour une personne, affiche son nom complet ; pour une action son titre ; pour un dossier ou une facture son numéro métier.
-9. Format d'affichage: texte simple uniquement. N'utilise pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes de type "- Libellé : valeur".
+${ANSWER_FORMAT_RULES}
 
 RÉPONSE (en langage naturel):`;
 
@@ -5859,8 +5972,8 @@ INSTRUCTIONS IMPORTANTES:
 4. N'affiche JAMAIS d'identifiant interne : ni ID numérique, ni UUID, ni clé se terminant par "_id", ni formule comme "utilisateur 32". Utilise uniquement les noms, numéros métier, titres et libellés fournis.
 5. Pour une personne, affiche son nom complet ; pour une action son titre ; pour un dossier ou une facture son numéro métier. Si aucun libellé lisible n'est disponible, omets l'information.
 6. Formate les dates de façon lisible. Si un ensemble est vide, indique-le brièvement.
-7. Format d'affichage: texte simple uniquement. Pas de gras Markdown (**...**), pas de tableau Markdown, pas de HTML. Utilise des lignes courtes "- Libellé : valeur".
-8. Sois complet mais concis (max ~700 mots).
+7. Sois complet mais concis (max ~500 mots).
+${ANSWER_FORMAT_RULES}
 
 RÉPONSE (en langage naturel):`;
   }
@@ -7639,7 +7752,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
           message: this.buildAmbiguityMessage(error),
           pendingWritePlan: plan,
           conversationId,
-          allowOther: true,
+          allowOther: error.fieldName !== UPDATE_TARGET_FIELD,
           otherLabel: this.getFieldLabel(error.fieldName),
         });
       } else if (error instanceof EntityIdRequiredException) {
@@ -7652,7 +7765,7 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
           error.entity,
           userId,
         );
-        const message = `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
+        const message = error.detail ? `❓ ${error.detail}` : `❓ Je n'ai pas pu reconnaître précisément quel(le) ${error.entity.replace(/s$/, '')} modifier. Indiquez un nom, un numéro métier ou une date permettant de le distinguer et je continuerai.`;
         await this.conversationManager.addAssistantMessage(
           conversationId,
           message,
@@ -7709,7 +7822,12 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     try {
       // Exécuter execQuery (nettoyée + tenant injecté), pas sqlQuery (l'original brut)
       const results = await this.dataSource.query(execQuery);
-      const limitedResults = results.slice(0, this.MAX_RESULTS);
+      // Dates rendues en heure locale + colonnes ref__* retirées de l'affichage
+      // et mémorisées pour les actions de suivi.
+      const { rows: limitedResults, records } = extractDisplayedRecords(
+        results.slice(0, this.MAX_RESULTS),
+      );
+      this.rememberDisplayedRecords(records);
 
       return {
         data: limitedResults,

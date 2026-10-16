@@ -12,6 +12,12 @@
  *  4. Frontend affiche les choix → POST /write/resolve-ambiguity
  *  5. AiDatabaseService.resumeAfterAmbiguity() → injecte l'ID choisi → relance executePlan
  */
+/**
+ * `fieldName` réservé : l'ambiguïté porte sur l'enregistrement à MODIFIER (UPDATE
+ * sans identifiant), pas sur une clé étrangère. Le choix renseigne `entityId`.
+ */
+export const UPDATE_TARGET_FIELD = '__target__';
+
 export interface AmbiguityCandidate {
   /** ID de l'entité en base */
   id: string | number;

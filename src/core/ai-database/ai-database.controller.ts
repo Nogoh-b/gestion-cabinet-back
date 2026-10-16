@@ -16,6 +16,9 @@ import {
   UploadedFile,
   UploadedFiles,
   Res,
+  Patch,
+  Delete,
+  BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -38,6 +41,9 @@ import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { PrepareFormDto } from './dto/prepare-form.dto';
 import { memoryStorageOptions } from '../shared/interceptors/upload.interceptor';
 import { TenantContext, getCurrentTenantId } from '../tenant/tenant.context';
+import { toChatPayload } from './chat-visibility';
+import { normalizeConversationTitle } from './conversation-resource';
+import { UpdateConversationDto } from './dto/update-conversation.dto';
 
 @ApiTags('AI Database Analysis')
 @Controller('api/ai-database')
@@ -92,11 +98,13 @@ export class AiDatabaseController {
     @Req() req,
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<AnalysisResponseDto> {
-    return this.aiDbService.analyzeQuestion(
-      dto,
-      user,
-      file,
-      req?.aiRequestLogId,
+    return toChatPayload(
+      await this.aiDbService.analyzeQuestion(
+        dto,
+        user,
+        file,
+        req?.aiRequestLogId,
+      ),
     );
   }
 
@@ -140,8 +148,10 @@ export class AiDatabaseController {
     res.flushHeaders(); // flush immédiat vers le client
 
     let tokenEmitCount = 0;
-    const sendEvent = (event: string, data: any) => {
+    const sendEvent = (event: string, rawData: any) => {
       if (res.writableEnded) return; // connexion déjà fermée
+      const data =
+        event === 'rows' || event === 'result' ? toChatPayload(rawData) : rawData;
 
       if (event === 'token') {
         tokenEmitCount++;
@@ -306,13 +316,78 @@ export class AiDatabaseController {
   @Post('analyze')
   async analyze(@Body() dto: AskQuestionDto, @Req() req) {
     const userId = req.user?.id || 'anonymous'; // Ton système d'auth
-    return this.aiDbService.analyzeQuestion(dto, userId);
+    return toChatPayload(await this.aiDbService.analyzeQuestion(dto, userId));
   }
 
   @Get('conversations')
-  async getConversations(@Req() req) {
+  async getConversations(
+    @Req() req,
+    @Query('search') search?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+  ) {
     const userId = req.user?.id || 'anonymous';
-    return this.conversationManager.getUserConversations(userId);
+    return this.conversationManager.listConversations(String(userId), {
+      search,
+      resourceType,
+      resourceId,
+    });
+  }
+
+  @Patch('conversations/:id')
+  @ApiOperation({ summary: 'Renomme et/ou épingle une conversation' })
+  async updateConversation(
+    @Param('id') conversationId: string,
+    @Body() dto: UpdateConversationDto,
+    @Req() req,
+  ) {
+    await this.assertOwnConversation(conversationId, req.user?.id);
+    if (dto.title !== undefined) {
+      const title = normalizeConversationTitle(dto.title);
+      if (!title) throw new BadRequestException('Le titre ne peut pas être vide.');
+      await this.conversationManager.renameConversation(conversationId, title);
+    }
+    if (dto.pinned !== undefined) {
+      await this.conversationManager.setPinned(conversationId, dto.pinned);
+    }
+    return this.conversationManager.getConversationAny(conversationId);
+  }
+
+  @Delete('conversations/:id')
+  @ApiOperation({ summary: 'Supprime une conversation (restaurable)' })
+  async deleteConversation(@Param('id') conversationId: string, @Req() req) {
+    await this.assertOwnConversation(conversationId, req.user?.id);
+    await this.conversationManager.softDeleteConversation(conversationId);
+    return { id: conversationId, deleted: true };
+  }
+
+  @Post('conversations/:id/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Restaure une conversation supprimée' })
+  async restoreConversation(@Param('id') conversationId: string, @Req() req) {
+    await this.assertOwnConversation(conversationId, req.user?.id, true);
+    await this.conversationManager.restoreConversation(conversationId);
+    return this.conversationManager.getConversationAny(conversationId);
+  }
+
+  /** La conversation existe et appartient à l'utilisateur connecté. */
+  private async assertOwnConversation(
+    conversationId: string,
+    rawUserId: unknown,
+    withDeleted = false,
+  ) {
+    const userId = String(rawUserId ?? 'anonymous');
+    const conversation = await this.conversationManager.getConversationAny(
+      conversationId,
+      { withDeleted },
+    );
+    if (!conversation) {
+      throw new NotFoundException(`Conversation ${conversationId} introuvable`);
+    }
+    if (String(conversation.userId) !== userId) {
+      throw new UnauthorizedException('Cette conversation ne vous appartient pas.');
+    }
+    return conversation;
   }
 
   @Post('conversations')
@@ -353,7 +428,8 @@ export class AiDatabaseController {
       );
     }
 
-    return this.conversationManager.getFullHistory(conversationId);
+    const history = await this.conversationManager.getFullHistory(conversationId);
+    return history.map((message) => toChatPayload(message));
   }
 
   @Get('prompt-schema')

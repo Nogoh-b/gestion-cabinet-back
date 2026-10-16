@@ -89,6 +89,12 @@ export interface WriteOperation {
   operation: 'INSERT' | 'UPDATE' | 'DELETE';
   entity: string;
   entityId?: string | number;
+  /**
+   * UPDATE sans identifiant connu : valeurs ACTUELLES des colonnes qui désignent
+   * l'enregistrement (ex: { start_date, end_date, label }). Résolu en entityId à
+   * l'exécution ; 0 ou plusieurs correspondances → précision demandée à l'utilisateur.
+   */
+  match?: Record<string, any>;
   fields: Record<string, any>;
   tempId?: string;
   dependsOn?: string[];
