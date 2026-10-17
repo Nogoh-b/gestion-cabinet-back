@@ -15,6 +15,7 @@ import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler'
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
+import { generateEntityCode } from 'src/core/shared/utils/code.util';
 import {
   WriteableFieldSchema,
   ValidationResult,
@@ -24,7 +25,8 @@ import {
  * Handler custom pour les factures fournisseurs.
  * Logique métier :
  *   - Fournisseur obligatoire (FK)
- *   - invoice_number reste celui du fournisseur (non auto-généré) → conservé
+ *   - invoice_number : celui du fournisseur s'il est connu, sinon référence
+ *     interne générée (FF-…), comme la saisie manuelle
  *   - Calcul automatique TVA / TTC à partir de HT + tax_rate
  *   - Status par défaut : RECEIVED
  *   - Date d'échéance par défaut : J+30
@@ -53,9 +55,10 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
         required: true,
       },
       invoice_number: {
-        description: 'Numéro de facture du fournisseur (tel quel, pas généré)',
+        description:
+          'Numéro de facture du fournisseur (tel quel). Facultatif : une référence interne est générée s’il est absent.',
         example: 'FAC-2026-0452',
-        required: true,
+        required: false,
       },
       amount_ht: {
         description: 'Montant hors taxes (obligatoire pour calcul TVA/TTC)',
@@ -94,18 +97,15 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
     if (operation === 'INSERT') {
       if (!fields.supplier_id)
         errors.push('Le fournisseur est requis (supplier_id ou supplier)');
-      if (!fields.invoice_number)
-        errors.push(
-          'Le numéro de facture fournisseur est requis (invoice_number)',
-        );
+      // Numéro facultatif : généré dans doInsert, comme SupplierInvoicesService.
       if (fields.amount_ht === undefined || fields.amount_ht === null) {
         errors.push('Le montant HT est requis (amount_ht)');
-      } else if (Number(fields.amount_ht) <= 0) {
-        errors.push('Le montant HT doit être strictement positif');
+      } else if (Number(fields.amount_ht) < 0) {
+        errors.push('Le montant HT ne peut pas être négatif');
       }
     } else if (operation === 'UPDATE') {
-      if (fields.amount_ht !== undefined && Number(fields.amount_ht) <= 0) {
-        errors.push('Le montant HT doit être strictement positif');
+      if (fields.amount_ht !== undefined && Number(fields.amount_ht) < 0) {
+        errors.push('Le montant HT ne peut pas être négatif');
       }
     }
 
@@ -121,6 +121,10 @@ export class SupplierInvoiceWriteHandler extends BaseWriteHandler {
     // NB: invoice_number est dans AUTO_GENERATED_FIELDS via "code" / "reference" ? Non,
     // c'est invoice_number — pas générique. On ne le strip PAS pour cette entité.
     const safeFields = this.filterKnownColumns(fields);
+    // Pas de numéro communiqué par le fournisseur : référence interne générée.
+    if (!String(safeFields.invoice_number ?? '').trim()) {
+      safeFields.invoice_number = generateEntityCode('FF');
+    }
 
     // Dédup spécifique : même (supplier_id, invoice_number) → doublon
     if (safeFields.supplier_id && safeFields.invoice_number) {

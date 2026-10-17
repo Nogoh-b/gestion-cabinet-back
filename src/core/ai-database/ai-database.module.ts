@@ -20,6 +20,7 @@ import { AiRequestLog } from './entities/ai-request-log.entity';
 import { AiQuotaGuard } from './guards/ai-quota.guard';
 import { AiModelRouterService } from './ai-model-router.service';
 import { ImageReaderService } from './image-reader.service';
+import { PlanFieldsService } from './plan-fields.service';
 import { AiAdminController } from './ai-admin.controller';
 import { SettingsModule } from 'src/modules/settings/settings.module';
 import { AiContextConfig, AiContextSuggestion } from './entities/ai-context-config.entity';
@@ -54,6 +55,7 @@ import { AiContextConfigController } from './ai-context-config.controller';
     AiDatabasePermissionService,
     AiModelRouterService,
     ImageReaderService,
+    PlanFieldsService,
     AiQuotaGuard,
     AiContextConfigService,
   ],

@@ -521,14 +521,13 @@ export const CABINET_JURIDIQUE_READ_CLARIFICATION_PRESETS = [
 
 export const CABINET_JURIDIQUE_PROMPT_RULES = `
 ### 10. 👤 Règle ABSOLUE pour les COLLABORATEURS (employee)
-Les collaborateurs NE PEUVENT PAS être créés via ce système.
-Un collaborateur (employee) est obligatoirement lié à un compte utilisateur (User) existant
-avec authentification, mot de passe et rôles — ce qui ne peut pas être géré par l'IA.
-Si l'utilisateur demande de "créer un collaborateur", "ajouter un avocat", "enregistrer un employé"
-ou toute variante, réponds UNIQUEMENT :
-{ "type": "READ" }
-Et explique que la création se fait via l'interface RH dédiée.
-En revanche, la MODIFICATION de champs métier d'un collaborateur existant est autorisée
+Pour "créer un collaborateur", "ajouter un avocat", "enregistrer un employé" ou toute variante,
+fais un INSERT sur "employee" avec au minimum "full_name" (prénom et nom), comme le formulaire RH.
+Ajoute seulement ce que l'utilisateur précise : position (ex: "avocat"; défaut collaborateur),
+email, phone_number, branch, specialization, hourly_rate, hire_date…
+Ne fournis JAMAIS password, role, username, tenant_id ni status : le système crée lui-même le compte,
+le mot de passe temporaire (envoyé par email si un email est fourni) et le profil d'accès déduit de la fonction.
+La MODIFICATION de champs métier d'un collaborateur existant est aussi autorisée
 (spécialisation, taux horaire, disponibilité, statut, etc.).
 
 ### 11. 👤 Règle CRITIQUE pour les NOMS des COLLABORATEURS (employee vs user)

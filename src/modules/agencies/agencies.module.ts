@@ -48,6 +48,6 @@ export class AgenciesModule {
   ) {}
 
   onModuleInit() {
-    // this.registry.register(this.handler);
+    this.registry.register(this.handler);
   }
 }

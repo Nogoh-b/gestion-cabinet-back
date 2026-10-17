@@ -44,6 +44,8 @@ import { toChatPayload } from './chat-visibility';
 import { normalizeConversationTitle } from './conversation-resource';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { MAX_ANALYZED_FILES, utf8FileName } from './chat-attachments';
+import { PlanFieldsService } from './plan-fields.service';
+import { FieldOptionsRequest, FieldOptionsResponse, PlanFieldsResponse } from './dto/plan-fields.dto';
 
 /** `file` (un fichier, historique) ou `files` (plusieurs fichiers lus ensemble). */
 const QUESTION_FILES = FileFieldsInterceptor(
@@ -68,6 +70,7 @@ export class AiDatabaseController {
     private readonly schemaMetadata: SchemaMetadataService,
     private readonly conversationManager: ConversationManagerService,
     private readonly tenantContext: TenantContext,
+    private readonly planFields: PlanFieldsService,
   ) {}
   @Post('form/prepare')
   @HttpCode(HttpStatus.OK)
@@ -223,6 +226,31 @@ export class AiDatabaseController {
     @CurrentUser() user,
   ): Promise<AnalysisResponseDto> {
     return this.aiDbService.confirmWrite(pendingIntent, user);
+  }
+
+  /**
+   * Champs d'un plan pour la carte de confirmation : libellés, valeur reconnue
+   * et listes de choix (clés étrangères, énumérations). Rien n'est écrit.
+   */
+  @Post('write/plan-fields')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Décrit les champs modifiables d'un plan d'écriture" })
+  async describePlanFields(
+    @Body('plan') plan: WritePlan,
+    @CurrentUser() user,
+  ): Promise<PlanFieldsResponse> {
+    return this.planFields.describePlan(user, plan);
+  }
+
+  /** Options d'un champ : recherche (`q`) ou liste filtrée (champ dépendant). */
+  @Post('write/field-options')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Options d'un champ de plan d'écriture" })
+  async fieldOptions(
+    @Body() request: FieldOptionsRequest,
+    @CurrentUser() user,
+  ): Promise<FieldOptionsResponse> {
+    return this.planFields.fieldOptions(user, request);
   }
 
   // ── Résolution d'ambiguïté ───────────────────────────────────────────────────

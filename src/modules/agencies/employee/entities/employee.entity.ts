@@ -56,7 +56,7 @@ export enum MaritalStatus {
 @BusinessTable({
   label: 'Collaborateurs',
   description:
-    '⚠️ LECTURE ET MODIFICATION UNIQUEMENT — la création est impossible via l\'IA (nécessite un compte User avec authentification). Modification autorisée : position, spécialisation, taux horaire, disponibilité, statut. ⚠️ ATTENTION COLONNES : La table employee ne contient PAS les colonnes "last_name" ni "first_name". Pour obtenir le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec la table "user" sur user.id = employee.id, puis sélectionner user.last_name et user.first_name.',
+    'Collaborateurs du cabinet (avocats, juristes, secrétaires…), chacun lié à un compte utilisateur. Création : seul full_name est requis — le compte, le mot de passe temporaire, le profil d\'accès (déduit de la fonction) et l\'agence par défaut sont gérés par le système, jamais par l\'IA. Modification autorisée : fonction, spécialisation, taux horaire, disponibilité, statut, coordonnées. ⚠️ ATTENTION COLONNES : La table employee ne contient PAS les colonnes "last_name" ni "first_name". Pour obtenir le nom/prénom d\'un collaborateur, tu DOIS faire un LEFT JOIN avec la table "user" sur user.id = employee.id, puis sélectionner user.last_name et user.first_name.',
   icon: '👥',
   category: 'ressources',
 })

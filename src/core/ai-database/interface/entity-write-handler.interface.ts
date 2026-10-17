@@ -23,6 +23,13 @@ export interface EntityWriteHandler<T = any> {
 
   /** Résolution des dépendances (ex: trouver l'ID d'un client par son nom) */
   resolveDependencies?(fields: Partial<T>, userId: string): Promise<Partial<T>>;
+
+  /**
+   * Annulation d'une création quand une opération suivante du plan échoue
+   * (ex: le collaborateur et son compte User). Sans lui, le nettoyage
+   * générique soft-delete la seule ligne de la table du handler.
+   */
+  rollbackInsert?(entityId: string | number): Promise<void>;
 }
 
 export interface WriteableFieldSchema {

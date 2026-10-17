@@ -7,6 +7,9 @@ import {
   CustomerStatus,
   CustomerCreatedFrom,
 } from './entities/customer.entity';
+import { Branch } from 'src/modules/agencies/branch/entities/branch.entity';
+import { LocationCity } from 'src/modules/geography/location_city/entities/location_city.entity';
+import { TypeCustomer } from '../type-customer/entities/type_customer.entity';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
 import { EntityResolverService } from 'src/core/ai-database/write/entity-resolver.service';
@@ -19,7 +22,8 @@ import {
 /**
  * Handler custom pour les clients.
  * Logique métier :
- *   - (first_name + last_name) OU company_name obligatoires
+ *   - un nom suffit (full_name, prénom, nom ou raison sociale), comme la
+ *     création manuelle ; agence/type/ville par défaut si absents
  *   - customer_code généré par @BeforeInsert (déjà stripped via AUTO_GENERATED_FIELDS)
  *   - Dédup par email > téléphone > (first_name + last_name) > company_name (via BaseWriteHandler)
  *   - status par défaut : ACTIVE
@@ -41,15 +45,22 @@ export class CustomerWriteHandler extends BaseWriteHandler {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       first_name: {
-        description: 'Prénom (obligatoire pour particulier)',
+        description: 'Prénom (facultatif)',
         example: 'Jean',
+        required: false,
       },
       last_name: {
-        description: 'Nom (obligatoire pour particulier)',
+        description: 'Nom (un nom, un prénom ou une raison sociale suffit)',
         example: 'Dupont',
+        required: false,
+      },
+      full_name: {
+        description:
+          'Nom complet en un seul champ (alternative à prénom + nom)',
+        required: false,
       },
       company_name: {
-        description: 'Raison sociale (obligatoire pour pro/entreprise)',
+        description: 'Raison sociale (clients professionnels)',
         example: 'SARL Dupont',
       },
       email: {
@@ -90,23 +101,43 @@ export class CustomerWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
+    const transformed = { ...fields };
+    const text = (v: any) => (typeof v === 'string' ? v.trim() : '');
     if (operation === 'INSERT') {
-      const hasPerson = fields.first_name && fields.last_name;
-      const hasCompany = fields.company_name;
-      if (!hasPerson && !hasCompany) {
-        errors.push(
-          'Fournir soit (first_name + last_name) pour un particulier, soit company_name pour une entreprise',
-        );
+      // Comme CustomerService.create : un nom suffit (full_name, prénom OU
+      // nom). Un client professionnel peut n'avoir que sa raison sociale.
+      const first = text(fields.first_name);
+      const last = text(fields.last_name);
+      const full = text(fields.full_name);
+      const company = text(fields.company_name);
+      if (!full && !(first && last)) {
+        if (first || last) {
+          // Un seul des deux : Customer.syncNameFields() le range en « nom ».
+          transformed.full_name = first || last;
+          delete transformed.first_name;
+          delete transformed.last_name;
+        } else if (company) {
+          transformed.full_name = company.slice(0, 45).trim();
+        } else {
+          errors.push(
+            'Le nom du client est obligatoire (nom, prénom ou raison sociale).',
+          );
+        }
       }
     }
-    // Validation format email basique
-    if (
-      fields.email &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(fields.email))
-    ) {
-      errors.push("Format d'email invalide");
+    // Email : vide = non renseigné (comme le formulaire) ; sinon format vérifié.
+    if (fields.email !== undefined && fields.email !== null) {
+      const email = String(fields.email).replace(/\s+/g, '');
+      if (!email) delete transformed.email;
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        errors.push(`Format d'email invalide : « ${fields.email} »`);
+      else transformed.email = email;
     }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return {
+      valid: errors.length === 0,
+      errors,
+      transformedFields: transformed,
+    };
   }
 
   protected async doInsert(
@@ -115,7 +146,7 @@ export class CustomerWriteHandler extends BaseWriteHandler {
   ): Promise<WriteResult> {
     // Le strip AUTO_GENERATED_FIELDS + findDuplicateBy se font dans super.doInsert
     // donc on délègue après avoir injecté les défauts métier.
-    const enriched = {
+    const enriched: Record<string, any> = {
       ...fields,
       status:
         fields.status !== undefined
@@ -126,8 +157,38 @@ export class CustomerWriteHandler extends BaseWriteHandler {
           ? Number(fields.created_from)
           : CustomerCreatedFrom.AGENCY,
     };
+    // Agence, type et ville facultatifs : mêmes valeurs par défaut que la
+    // création manuelle minimale (« + Créer » avec seulement le nom).
+    // branch_id est une vraie colonne ; type et ville ne sont que des relations.
+    if (!enriched.branch && !enriched.branch_id) {
+      const branch = await this.firstRow(Branch, { status: 1 });
+      if (branch) enriched.branch_id = branch.id;
+    }
+    if (!enriched.type_customer && !enriched.type_customer_id) {
+      const type = await this.firstRow(TypeCustomer, { status: 1 });
+      if (type) enriched.type_customer = { id: type.id };
+    }
+    if (!enriched.location_city && !enriched.location_city_id) {
+      const city = await this.firstRow(LocationCity, {});
+      if (city) enriched.location_city = { id: city.id };
+    }
     // Appel direct au flow standard avec les enrichissements
     return super.doInsert(enriched, userId);
+  }
+
+  private async firstRow(
+    entity: any,
+    where: Record<string, any>,
+  ): Promise<{ id: number } | null> {
+    try {
+      return (await this.dataSource
+        .getRepository(entity)
+        .findOne({ where, order: { id: 'ASC' } as any })) as {
+        id: number;
+      } | null;
+    } catch {
+      return null;
+    }
   }
 
   protected async doUpdate(

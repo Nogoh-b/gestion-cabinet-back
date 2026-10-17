@@ -17,6 +17,10 @@ import { EntityResolverService } from 'src/core/ai-database/write/entity-resolve
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
 import { WriteIntent } from 'src/core/ai-database/interface/write-intent.interface';
 import {
+  parseLenientDate,
+  parseLenientNumber,
+} from 'src/core/ai-database/write/lenient-values';
+import {
   WriteableFieldSchema,
   ValidationResult,
 } from 'src/core/ai-database/interface/entity-write-handler.interface';
@@ -62,9 +66,9 @@ export class EcritureWriteHandler extends BaseWriteHandler {
     const fields = await super.getWriteableFieldsSchema();
     const enrichments: Record<string, Partial<WriteableFieldSchema>> = {
       dateEcriture: {
-        description: "Date de l'écriture (YYYY-MM-DD), obligatoire",
+        description: "Date de l'écriture (YYYY-MM-DD), aujourd'hui par défaut",
         example: '2026-06-16',
-        required: true,
+        required: false,
       },
       libelle: {
         description: "Libellé général de l'écriture, obligatoire",
@@ -73,8 +77,8 @@ export class EcritureWriteHandler extends BaseWriteHandler {
       },
       journal: {
         description:
-          'Code ou nom du journal (VTE/VENTES, ACH/ACHATS, CAI/CAISSE, BAN/BANQUE, OD), obligatoire',
-        required: true,
+          'Code ou nom du journal (VTE/VENTES, ACH/ACHATS, CAI/CAISSE, BAN/BANQUE, OD), OD par défaut',
+        required: false,
       },
     };
     for (const f of fields) {
@@ -104,12 +108,9 @@ export class EcritureWriteHandler extends BaseWriteHandler {
     // L'équilibre comptable, l'existence du journal/des comptes et l'exercice
     // sont validés par EcrituresService — on ne duplique pas ces règles ici.
     const errors: string[] = [];
+    // Date absente → aujourd'hui ; journal absent → OD (cf. toCreateDto).
     if (operation === 'INSERT') {
-      if (!fields.dateEcriture)
-        errors.push("La date de l'écriture est requise");
       if (!fields.libelle) errors.push("Le libellé de l'écriture est requis");
-      if (!fields.journal && !fields.journal_id)
-        errors.push('Le journal est requis');
       const lignes = this.parseLignes(fields.lignes);
       if (!lignes || lignes.length < 2) {
         errors.push('Au moins 2 lignes (un débit et un crédit) sont requises');
@@ -191,8 +192,8 @@ export class EcritureWriteHandler extends BaseWriteHandler {
     for (const l of lignesInput) {
       lignes.push({
         numeroCompte: await this.toNumeroCompte(l),
-        debit: Number(l.debit ?? 0),
-        credit: Number(l.credit ?? 0),
+        debit: parseLenientNumber(l.debit) ?? 0,
+        credit: parseLenientNumber(l.credit) ?? 0,
         libelle: l.libelle,
       });
     }
@@ -287,11 +288,12 @@ export class EcritureWriteHandler extends BaseWriteHandler {
   }
 
   private toDateString(value: any): string {
-    if (!value) return new Date().toISOString().slice(0, 10);
-    const d = new Date(value);
-    return Number.isNaN(d.getTime())
-      ? String(value)
-      : d.toISOString().slice(0, 10);
+    // « 15/06/2026 », « 15 juin 2026 », « aujourd'hui »… comme un sélecteur de date.
+    const parsed = parseLenientDate(value);
+    if (!parsed) return new Date().toISOString().slice(0, 10);
+    return parsed instanceof Date
+      ? parsed.toISOString().slice(0, 10)
+      : parsed.slice(0, 10);
   }
 
   /** Normalise un code/nom de journal fourni par l'IA vers l'enum TypeJournal. */

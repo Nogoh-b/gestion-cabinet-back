@@ -16,7 +16,7 @@ import {
 /**
  * Handler custom pour les comptes comptables (plan comptable SYSCOHADA).
  * Logique métier :
- *   - numero + libelle obligatoires à la création
+ *   - numero obligatoire à la création (libellé par défaut « Compte <numéro> »)
  *   - classe déduite automatiquement du 1er chiffre du numéro si absente
  *   - dédup par "numero" (un compte ne peut exister 2x pour un même tenant)
  *   - actif par défaut : true
@@ -42,9 +42,9 @@ export class CompteWriteHandler extends BaseWriteHandler {
         required: true,
       },
       libelle: {
-        description: 'Libellé du compte (obligatoire)',
+        description: 'Libellé du compte (par défaut « Compte <numéro> »)',
         example: 'Clients',
-        required: true,
+        required: false,
       },
       typeCompte: { description: 'ACTIF, PASSIF, CHARGE ou PRODUIT' },
       classe: {
@@ -63,14 +63,22 @@ export class CompteWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
+    const transformed = { ...fields };
+    // « 411 000 » / « 411.000 » → « 411000 ». Pas de contrôle de format en plus :
+    // la saisie manuelle (ComptesService.create) n'en impose aucun.
+    if (fields.numero !== undefined && fields.numero !== null) {
+      transformed.numero = String(fields.numero).replace(/[\s.]/g, '');
+    }
     if (operation === 'INSERT') {
-      if (!fields.numero) errors.push('Le numéro de compte est requis');
-      if (!fields.libelle) errors.push('Le libellé du compte est requis');
+      if (!transformed.numero) errors.push('Le numéro de compte est requis');
+      else if (!String(fields.libelle ?? '').trim())
+        transformed.libelle = `Compte ${transformed.numero}`;
     }
-    if (fields.numero && !/^\d{1,10}$/.test(String(fields.numero))) {
-      errors.push('Le numéro de compte doit être numérique (ex: 411000)');
-    }
-    return { valid: errors.length === 0, errors, transformedFields: fields };
+    return {
+      valid: errors.length === 0,
+      errors,
+      transformedFields: transformed,
+    };
   }
 
   protected async doInsert(

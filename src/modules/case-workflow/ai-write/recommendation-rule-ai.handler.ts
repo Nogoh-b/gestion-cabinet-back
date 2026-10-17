@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
+import { matchEnumValue } from 'src/core/ai-database/write/lenient-values';
+import { RecommendationTrigger } from '../case-workflow.enums';
 import { DataSource } from 'typeorm';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
@@ -28,9 +31,9 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         name: 'code',
         label: 'Code de la règle',
         type: 'string',
-        required: true,
+        required: false,
         description:
-          'OBLIGATOIRE. Code métier unique de la règle (MAJUSCULES, chiffres, underscores). Clé JSON exacte : "code". Contrairement aux familles et définitions, le code N’EST PAS généré automatiquement — tu dois le déduire du libellé (ex: "Audience proche" → "AUDIENCE_PROCHE").',
+          'Code métier unique de la règle (MAJUSCULES, chiffres, underscores). Clé JSON exacte : "code". Facultatif : déduit du libellé si absent (ex: "Audience proche" → "AUDIENCE_PROCHE").',
         example: 'AUDIENCE_DUE_SOON',
       },
       {
@@ -46,7 +49,7 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         name: 'trigger',
         label: 'Déclencheur',
         type: 'enum',
-        required: true,
+        required: false,
         enumValues: [
           'OPENING_VALIDATED',
           'ACTION_COMPLETED',
@@ -58,7 +61,7 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
           'NO_OPEN_ACTION',
           'MANUAL',
         ],
-        description: 'Événement déclencheur',
+        description: 'Événement déclencheur (MANUAL par défaut)',
         example: 'AUDIENCE_DUE',
       },
       {
@@ -94,9 +97,9 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         name: 'reason_template',
         label: 'Motif affiché',
         type: 'string',
-        required: true,
+        required: false,
         description:
-          'OBLIGATOIRE. Phrase affichée à l’utilisateur quand la règle s’applique. Clé JSON exacte : "reason_template".',
+          'Facultatif (reprend le libellé par défaut). Phrase affichée à l’utilisateur quand la règle s’applique. Clé JSON exacte : "reason_template".',
         example: 'Une audience est prévue dans les 7 jours.',
       },
       {
@@ -140,27 +143,35 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
   ): Promise<ValidationResult> {
     const normalized = this.normalizeKeys(fields);
     const errors: string[] = [];
+    if (this.nonEmpty(normalized.trigger)) {
+      normalized.trigger =
+        matchEnumValue(
+          normalized.trigger,
+          Object.values(RecommendationTrigger),
+        ) ?? normalized.trigger;
+    }
     if (operation === 'INSERT') {
-      if (!this.nonEmpty(normalized.code))
-        errors.push(
-          'Le code est requis : fournis "code" en MAJUSCULES (ex: {"code": "AUDIENCE_PROCHE"}).',
-        );
       if (!this.nonEmpty(normalized.label))
         errors.push(
           'Le libellé est requis : fournis "label" avec le nom lisible (ex: {"label": "Audience proche"}). Clé exacte "label", pas "Libellé" ni "nom".',
         );
+      else {
+        // Code, motif et déclencheur se déduisent du libellé si absents.
+        if (!this.nonEmpty(normalized.code)) {
+          normalized.code = this.codeFromLabel(String(normalized.label));
+          normalized.code_generated = true;
+        }
+        if (!this.nonEmpty(normalized.reason_template))
+          normalized.reason_template = String(normalized.label).trim();
+      }
       if (!this.nonEmpty(normalized.trigger))
-        errors.push('Le déclencheur (trigger) est requis');
+        normalized.trigger = RecommendationTrigger.MANUAL;
       if (
         !this.nonEmpty(normalized.condition_json) &&
         !this.nonEmpty(normalized.conditionJson)
       )
         errors.push(
           'La condition (condition_json) est requise : fournis un objet json-logic (ex: {"condition_json": {"<=": [{"var": "audiences.nextInDays"}, 7]}}).',
-        );
-      if (!this.nonEmpty(normalized.reason_template))
-        errors.push(
-          'Le motif (reason_template) est requis : phrase affichée à l’utilisateur.',
         );
       if (
         !this.nonEmpty(normalized.action_definition_id) &&
@@ -349,7 +360,7 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         'La définition d’action est requise : fournis action_definition_id (UUID) ou action_definition avec le code/libellé.',
       );
     }
-    const rule = await this.catalogService.createRecommendationRule({
+    const dto = {
       code: String(normalized.code).trim(),
       label: String(normalized.label).trim(),
       trigger: normalized.trigger,
@@ -372,7 +383,39 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
         normalized.is_active !== undefined
           ? this.toBoolean(normalized.is_active)
           : undefined,
-    } as any);
+    } as any;
+    let rule: any;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        rule = await this.catalogService.createRecommendationRule(dto);
+        break;
+      } catch (error) {
+        if (!(error instanceof ConflictException) || attempt >= 5) throw error;
+        if (!normalized.code_generated) {
+          // Code choisi déjà pris : la règle existe déjà → on la renvoie.
+          const existing = await this.dataSource
+            .getRepository('case_recommendation_rules')
+            .findOne({
+              where: {
+                tenant_id: getCurrentTenantId(),
+                code: this.codeFromLabel(dto.code),
+              },
+              order: { version: 'DESC' },
+            } as any);
+          if (!existing) throw error;
+          return {
+            success: true,
+            operation: 'INSERT',
+            entityId: existing.id,
+            affected: 0,
+            data: existing,
+            message: `Règle "${existing.label}" (${existing.code}) déjà existante — aucun doublon créé`,
+          };
+        }
+        // Code déduit du libellé déjà pris : suffixe _2, _3…
+        dto.code = `${this.codeFromLabel(String(normalized.label)).slice(0, 95)}_${attempt + 1}`;
+      }
+    }
     return {
       success: true,
       operation: 'INSERT',
@@ -427,6 +470,18 @@ export class RecommendationRuleAiWriteHandler extends BaseWriteHandler {
       data: rule,
       message: `Règle "${rule.label}" révisée → v${rule.version}`,
     };
+  }
+
+  /** Même normalisation que ActionCatalogService.normalizeRuleCode. */
+  private codeFromLabel(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 100);
   }
 
   /**

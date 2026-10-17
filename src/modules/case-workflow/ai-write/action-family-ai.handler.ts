@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { DataSource } from 'typeorm';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
@@ -205,10 +210,11 @@ export class ActionFamilyAiWriteHandler extends BaseWriteHandler {
         'Le champ "Famille" (label) est requis : fournis "label" avec le nom de la famille (ex: {"label": "Recouvrement amiable"}).',
       );
     }
-    const family = await this.catalogService.createFamily({
-      code: this.nonEmpty(normalized.code)
-        ? String(normalized.code).trim()
-        : undefined,
+    const code = this.nonEmpty(normalized.code)
+      ? String(normalized.code).trim()
+      : undefined;
+    const dto = {
+      code,
       label: String(normalized.label).trim(),
       description: this.nonEmpty(normalized.description)
         ? String(normalized.description).trim()
@@ -221,7 +227,34 @@ export class ActionFamilyAiWriteHandler extends BaseWriteHandler {
         normalized.is_active !== undefined
           ? Boolean(normalized.is_active)
           : undefined,
-    });
+    };
+    let family: any;
+    try {
+      family = await this.catalogService.createFamily(dto);
+    } catch (error) {
+      // Code proposé déjà pris : la famille existe → on la renvoie.
+      if (!(error instanceof ConflictException) || !code) throw error;
+      const existing = await this.dataSource
+        .getRepository('case_action_families')
+        .findOne({
+          where: {
+            tenant_id: getCurrentTenantId(),
+            code: code
+              .toUpperCase()
+              .replace(/[^A-Z0-9_]+/g, '_')
+              .replace(/^_+|_+$/g, ''),
+          },
+        } as any);
+      if (!existing) throw error;
+      return {
+        success: true,
+        operation: 'INSERT',
+        entityId: existing.id,
+        affected: 0,
+        data: existing,
+        message: `Famille "${existing.label}" (${existing.code}) déjà existante — aucun doublon créé`,
+      };
+    }
     return {
       success: true,
       operation: 'INSERT',

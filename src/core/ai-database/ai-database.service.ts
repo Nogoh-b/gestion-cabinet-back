@@ -80,6 +80,16 @@ import {
   withoutUploadedDocumentInserts,
 } from './uploaded-document-guard';
 import { AiContextConfigService } from './ai-context-config.service';
+import {
+  NearbyRecord,
+  NoResultsSuggestion,
+  RankedRecord,
+  buildNoResultsMessage,
+  buildNoResultsSuggestions,
+  detectNoResultsTarget,
+  extractSearchedReferences,
+  rankNearbyRecords,
+} from './no-results-answer';
 import { ImageReaderService } from './image-reader.service';
 import { PARTIAL_READING_RATIO } from './ocr-text';
 import {
@@ -3371,6 +3381,11 @@ Règles :
       this.logger.log(
         `✅ Entité créée dans "${entityTable}" → ID ${writeResult.entityId}`,
       );
+      // Création hors plan, jamais annulée : ses actions différées (ex:
+      // identifiants d'un collaborateur) partent tout de suite.
+      await writeResult.afterCommit?.().catch((err: Error) =>
+        this.logger.warn(`⚠️ Action après création échouée: ${err.message}`),
+      );
 
       // 4. Injecter l'ID dans le plan et reprendre
       op.fields[fieldName] = writeResult.entityId;
@@ -4469,6 +4484,12 @@ ${blocks.join('\n\n')}
           const results = await this.genericWriteService.executePlan(
             resumed.plan,
             userId,
+            ({ index, total, label }) =>
+              sendEvent('status', {
+                step: 'execute',
+                message: `⚙️ ${label}`,
+                detail: total > 1 ? `${index}/${total} · ${label}` : label,
+              }),
           );
           const analysis = this.formatPlanResults(results);
           await this.conversationManager.addAssistantMessage(
@@ -5360,15 +5381,21 @@ ${blocks.join('\n\n')}
       if (part) parts.push(part);
     }
 
-    // Aucune sous-requête exploitable → message clair plutôt qu'une clarification générique.
-    if (parts.length === 0) {
-      const msg = this.getNoResultsMessage(dto.question, relevantTables);
+    // Aucune sous-requête exploitable, ou toutes vides → réponse « rien
+    // trouvé » courte avec pistes, plutôt qu'une analyse rédigée sur du vide.
+    if (parts.every((part) => part.rowCount === 0)) {
+      const { message: msg, suggestions } = await this.buildNoResultsAnswer(
+        dto.question,
+        relevantTables,
+      );
       await this.conversationManager.addAssistantMessage(
         conversationId,
         msg,
         undefined,
+        suggestions.length ? { suggestions } : undefined,
       );
       sendEvent('token', { text: msg });
+      if (suggestions.length) sendEvent('suggestions', { suggestions });
       sendEvent('result', {
         success: true,
         question: dto.question,
@@ -5914,7 +5941,7 @@ RÉPONSE :`;
     tables: string[],
   ): Promise<string> {
     if (!results.data || results.data.length === 0) {
-      return this.getNoResultsMessage(question, tables);
+      return (await this.buildNoResultsAnswer(question, tables)).message;
     }
 
     // Transformer les résultats avec des libellés métier
@@ -6041,9 +6068,13 @@ RÉPONSE (en français courant, langage métier):`;
     sendEvent: (event: string, data: any) => void,
   ): Promise<string> {
     if (!results.data || results.data.length === 0) {
-      const msg = this.getNoResultsMessage(question, tables);
+      const { message: msg, suggestions } = await this.buildNoResultsAnswer(
+        question,
+        tables,
+      );
       this.logger.debug(`📤 token (no-results): "${msg.substring(0, 60)}"`);
       sendEvent('token', { text: msg });
+      if (suggestions.length) sendEvent('suggestions', { suggestions });
       return msg;
     }
 
@@ -6555,98 +6586,102 @@ RÉPONSE (en langage naturel):`;
   }
 
   /**
-   * Message personnalisé quand aucun résultat n'est trouvé
+   * Réponse quand rien n'est trouvé : nomme ce qui a été cherché et propose
+   * les enregistrements aux numéros proches (cf. no-results-answer.ts), avec
+   * des relances cliquables qui reprennent la question avec le bon numéro.
    */
-  private getNoResultsMessage(question: string, tables: string[]): string {
-    const lower = question.toLowerCase();
-
-    const rules: Array<{ test: (q: string) => boolean; message: string }> = [
-      {
-        test: (q) => /\b[eé]tape|step|procedure|parcours/i.test(q),
-        message:
-          "Aucune etape trouvee pour ce dossier. Le dossier n'a peut-etre pas encore de parcours procedural actif, ou l'identifiant est incorrect.",
-      },
-      {
-        // Avant la règle « dossier » : « apporteurs d'affaires » contient « affaire ».
-        test: (q) => /\bapp?orteurs?\b/i.test(q),
-        message:
-          "Aucun apporteur d'affaires ne correspond a cette recherche. Verifiez l'orthographe du nom ou elargissez les criteres.",
-      },
-      {
-        test: (q) => /dossier|affaire|litige/i.test(q),
-        message:
-          'Aucun dossier ne correspond a ces criteres. Verifiez le numero de dossier ou elargissez la recherche (periode, statut, client).',
-      },
-      {
-        test: (q) => /client|customer|partie/i.test(q),
-        message:
-          "Aucun client ne correspond a cette recherche. Verifiez l'orthographe du nom ou essayez avec moins de criteres.",
-      },
-      {
-        test: (q) => /audience/i.test(q),
-        message:
-          'Aucune audience trouvee pour ces criteres. Verifiez la periode ou le dossier concerne.',
-      },
-      {
-        test: (q) => /facture|honoraire/i.test(q),
-        message:
-          'Aucune facture trouvee pour ces criteres. Verifiez le client, la periode ou le statut de facturation.',
-      },
-      {
-        test: (q) => /paiement|reglement|encaissement/i.test(q),
-        message:
-          'Aucun paiement enregistre pour ces criteres. Verifiez le client ou la periode.',
-      },
-      {
-        test: (q) => /chiffre d.affaire|ca |revenu|recette/i.test(q),
-        message:
-          "Aucune donnee financiere trouvee pour cette periode. Il n'y a peut-etre pas encore de factures ou de paiements enregistres.",
-      },
-      {
-        test: (q) => /diligence|tache|echeance/i.test(q),
-        message:
-          'Aucune diligence trouvee pour ces criteres. Verifiez le dossier ou la periode concernee.',
-      },
-      {
-        test: (q) => /document|piece|fichier|contrat/i.test(q),
-        message:
-          'Aucun document ne correspond a cette recherche. Verifiez le nom du document ou le dossier associe.',
-      },
-      {
-        test: (q) => /avocat|collaborateur|employe/i.test(q),
-        message:
-          'Aucun collaborateur ne correspond a cette recherche. Verifiez le nom ou les criteres saisis.',
-      },
-      {
-        test: (q) => /comptab|ecriture|journal|compte/i.test(q),
-        message:
-          'Aucune ecriture comptable trouvee pour ces criteres. Verifiez le journal, la periode ou le compte concerne.',
-      },
-    ];
-
-    for (const rule of rules) {
-      if (rule.test(lower)) {
-        return rule.message;
+  private async buildNoResultsAnswer(
+    question: string,
+    tables: string[],
+  ): Promise<{ message: string; suggestions: NoResultsSuggestion[] }> {
+    const references = extractSearchedReferences(question);
+    const reference = references[0];
+    const target = detectNoResultsTarget(question, tables, reference);
+    let nearby: RankedRecord[] = [];
+    let example: string | undefined;
+    let empty = false;
+    // Seulement sur une table déjà autorisée pour cette question.
+    if (reference && target?.table && tables.includes(target.table)) {
+      try {
+        const records = await this.loadNearbyCandidates(target.table, tables);
+        empty = records.length === 0;
+        example = records[0]?.code;
+        nearby = rankNearbyRecords(reference, records);
+      } catch (error) {
+        this.logger.warn(
+          `Suggestions « rien trouvé » indisponibles: ${(error as Error).message}`,
+        );
       }
     }
-
-    // Dernier recours : construire un message à partir des tables détectées
-    const tableLabels: Record<string, string> = {
-      dossiers: 'dossier',
-      customer: 'client',
-      employee: 'collaborateur',
-      audiences: 'audience',
-      factures: 'facture',
-      paiements: 'paiement',
-      diligences: 'diligence',
-      document_customer: 'document',
+    return {
+      message: buildNoResultsMessage({
+        target,
+        references,
+        nearby,
+        example,
+        empty,
+      }),
+      suggestions: buildNoResultsSuggestions(question, reference, nearby),
     };
-    const primaryTable = tables.find((t) => tableLabels[t]);
-    if (primaryTable) {
-      return `Aucun(e) ${tableLabels[primaryTable]} ne correspond a votre recherche. Essayez avec des criteres differents (periode, statut, nom).`;
-    }
+  }
 
-    return `Aucun resultat pour cette recherche. Essayez de reformuler avec des criteres plus precis (nom, date, statut).`;
+  /** Identifiants récents du cabinet, comparés à la valeur cherchée. */
+  private async loadNearbyCandidates(
+    table: string,
+    tables: string[],
+  ): Promise<NearbyRecord[]> {
+    const tenantId = hasActiveTenant() ? getCurrentTenantId() : null;
+    const scope = (alias: string) =>
+      tenantId ? ` AND ${alias}.tenant_id = ?` : '';
+    const params = tenantId ? [tenantId] : [];
+    const shorten = (text: unknown) => {
+      const value = String(text ?? '').replace(/\s+/g, ' ').trim();
+      return value.length > 70 ? `${value.slice(0, 69)}…` : value;
+    };
+    if (table === 'dossiers') {
+      const withClient = tables.includes('customer');
+      const rows: any[] = await this.dataSource.query(
+        `SELECT d.dossier_number AS code, d.case_number, d.object${
+          withClient ? ', c.full_name, c.company_name' : ''
+        } FROM dossiers d${
+          withClient ? ' LEFT JOIN customer c ON c.id = d.client_id' : ''
+        } WHERE d.deleted_at IS NULL${scope('d')} ORDER BY d.id DESC LIMIT 500`,
+        params,
+      );
+      return rows.map((row) => ({
+        code: row.code,
+        label: [shorten(row.object), shorten(row.company_name || row.full_name)]
+          .filter(Boolean)
+          .join(' · '),
+        aliases: row.case_number
+          ? [{ value: String(row.case_number), label: 'n° RG' }]
+          : [],
+      }));
+    }
+    if (table === 'factures') {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT f.numero AS code, f.libelle FROM factures f WHERE f.deleted_at IS NULL${scope('f')} ORDER BY f.numero DESC LIMIT 500`,
+        params,
+      );
+      return rows.map((row) => ({
+        code: row.code,
+        label: row.libelle && row.libelle !== row.code ? shorten(row.libelle) : '',
+      }));
+    }
+    if (table === 'customer') {
+      const rows: any[] = await this.dataSource.query(
+        `SELECT c.customer_code AS code, c.full_name, c.company_name FROM customer c WHERE c.deleted_at IS NULL${scope('c')} ORDER BY c.id DESC LIMIT 500`,
+        params,
+      );
+      return rows.map((row) => ({
+        code: row.code,
+        label: shorten(row.company_name || row.full_name),
+        aliases: [row.full_name, row.company_name]
+          .filter(Boolean)
+          .map((name) => ({ value: String(name), label: 'nom' })),
+      }));
+    }
+    return [];
   }
 
   /**
@@ -8251,7 +8286,16 @@ Retourne UNIQUEMENT la requête SQL corrigée dans un bloc \`\`\`sql.`;
     sendEvent: (event: string, data: any) => void,
   ): Promise<void> {
     try {
-      const results = await this.genericWriteService.executePlan(plan, userId);
+      const results = await this.genericWriteService.executePlan(
+        plan,
+        userId,
+        ({ index, total, label }) =>
+          sendEvent('status', {
+            step: 'execute',
+            message: `⚙️ ${label}`,
+            detail: total > 1 ? `${index}/${total} · ${label}` : label,
+          }),
+      );
       const analysis = this.formatPlanResults(results);
       await this.conversationManager.addAssistantMessage(
         conversationId,

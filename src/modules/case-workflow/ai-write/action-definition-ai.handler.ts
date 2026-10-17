@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { getCurrentTenantId } from 'src/core/tenant/tenant.context';
 import { DataSource } from 'typeorm';
 import { BaseWriteHandler } from 'src/core/ai-database/write/base-write-handler';
 import { SchemaMetadataService } from 'src/core/ai-database/schema-metadata.service';
@@ -343,7 +344,7 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
         'La famille est requise : fournis "family" avec le code ou le libellé (ex: {"family": "Recouvrement amiable"}).',
       );
     }
-    const def = await this.catalogService.createDefinition({
+    const dto = {
       family_id: String(normalized.family_id).trim(),
       code: this.nonEmpty(normalized.code)
         ? String(normalized.code).trim()
@@ -380,7 +381,33 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
       allowed_results: this.parseJson(normalized.allowed_results),
       specific_fields_schema: this.parseJson(normalized.specific_fields_schema),
       required_relations: this.parseJson(normalized.required_relations),
-    } as any);
+    } as any;
+    let def: any;
+    try {
+      def = await this.catalogService.createDefinition(dto);
+    } catch (error) {
+      // Code proposé déjà pris : la définition existe déjà → on la renvoie
+      // (pas de doublon) au lieu d'échouer ; sinon code généré.
+      if (!(error instanceof ConflictException) || !dto.code) throw error;
+      const existing = await this.findLatestByCode(
+        'case_action_definitions',
+        dto.code,
+      );
+      if (existing) {
+        return {
+          success: true,
+          operation: 'INSERT',
+          entityId: existing.id,
+          affected: 0,
+          data: existing,
+          message: `Définition "${existing.label}" (${existing.code}) déjà existante — aucun doublon créé`,
+        };
+      }
+      def = await this.catalogService.createDefinition({
+        ...dto,
+        code: undefined,
+      });
+    }
     return {
       success: true,
       operation: 'INSERT',
@@ -389,6 +416,16 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
       data: def,
       message: `Définition "${def.label}" (${def.code} v${def.version}) créée`,
     };
+  }
+
+  private async findLatestByCode(table: string, code: string): Promise<any> {
+    return this.dataSource.getRepository(table).findOne({
+      where: {
+        tenant_id: getCurrentTenantId(),
+        code: code.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_'),
+      },
+      order: { version: 'DESC' },
+    } as any);
   }
 
   protected async doUpdate(
@@ -408,28 +445,30 @@ export class ActionDefinitionAiWriteHandler extends BaseWriteHandler {
         fields.default_professional_treatment || undefined,
       billable_by_default:
         fields.billable_by_default !== undefined
-          ? Boolean(fields.billable_by_default)
+          ? this.toBoolean(fields.billable_by_default)
           : undefined,
       billing_mode: fields.billing_mode || undefined,
       default_rate:
         fields.default_rate !== undefined ? Number(fields.default_rate) : undefined,
       may_have_expenses:
         fields.may_have_expenses !== undefined
-          ? Boolean(fields.may_have_expenses)
+          ? this.toBoolean(fields.may_have_expenses)
           : undefined,
       may_have_disbursements:
         fields.may_have_disbursements !== undefined
-          ? Boolean(fields.may_have_disbursements)
+          ? this.toBoolean(fields.may_have_disbursements)
           : undefined,
       is_required:
         fields.is_required !== undefined
-          ? Boolean(fields.is_required)
+          ? this.toBoolean(fields.is_required)
           : undefined,
       allowed_results: this.parseJson(fields.allowed_results),
       specific_fields_schema: this.parseJson(fields.specific_fields_schema),
       required_relations: this.parseJson(fields.required_relations),
       is_active:
-        fields.is_active !== undefined ? Boolean(fields.is_active) : undefined,
+        fields.is_active !== undefined
+          ? this.toBoolean(fields.is_active)
+          : undefined,
     } as any);
     return {
       success: true,

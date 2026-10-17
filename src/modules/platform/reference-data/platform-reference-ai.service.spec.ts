@@ -1,5 +1,8 @@
 import { PlatformReferenceAiService } from './platform-reference-ai.service';
-import { ReferenceAiProposal } from '../../reference-data/entities/reference-data.entity';
+import {
+  ReferenceAiMessage,
+  ReferenceAiProposal,
+} from '../../reference-data/entities/reference-data.entity';
 const role = {
   kind: 'roles',
   key: 'secretaire',
@@ -81,6 +84,102 @@ const parsed = {
   suggestions: ['Comparer avec avocat'],
 };
 describe('Contextual reference assistant safeguards', () => {
+  it('requests JSON mode and accepts a fenced response without asking the user to reformulate', async () => {
+    const ctx = setup(parsed);
+    ctx.model.invoke.mockResolvedValueOnce({
+      content:
+        'Voici la proposition :\n```JSON\n' + JSON.stringify(parsed) + '\n```',
+    });
+    const result = await ctx.service.ask('profile', 'Modifie ce rôle', owner);
+    expect(ctx.model.invoke).toHaveBeenCalledTimes(1);
+    expect(ctx.model.invoke).toHaveBeenCalledWith(expect.any(Array), {
+      response_format: { type: 'json_object' },
+    });
+    expect(result.proposal).not.toBeNull();
+  });
+  it('automatically regenerates an unreadable clarification once with the original question and saves the exchange once', async () => {
+    const ctx = setup(parsed);
+    const question =
+      'Faut-il aligner le format de date et l’affichage de la devise sur cette nouvelle langue, ou les conserver en configuration Cameroun ?';
+    ctx.model.invoke
+      .mockResolvedValueOnce({
+        content: 'Il faut préciser la langue souhaitée.',
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          answer: 'Le cabinet peut conserver ses formats actuels.',
+          clarifying_question: 'Quelle langue souhaitez-vous utiliser ?',
+        }),
+      });
+    const result = await ctx.service.ask(
+      'profile',
+      question,
+      owner,
+      undefined,
+      undefined,
+      { mode: 'propose' },
+    );
+    expect(ctx.model.invoke).toHaveBeenCalledTimes(2);
+    expect(ctx.model.invoke.mock.calls[1][0].at(-1).content).toBe(question);
+    expect(result.clarifying_question).toBe(
+      'Quelle langue souhaitez-vous utiliser ?',
+    );
+    expect(result.proposal).toBeNull();
+    expect(
+      ctx.db.manager.save.mock.calls.filter(
+        ([entity, value]) =>
+          entity === ReferenceAiMessage && value.role === 'user',
+      ),
+    ).toHaveLength(1);
+    expect(
+      ctx.db.manager.save.mock.calls.filter(
+        ([entity, value]) =>
+          entity === ReferenceAiMessage && value.role === 'assistant',
+      ),
+    ).toHaveLength(1);
+    expect(
+      ctx.db.manager.save.mock.calls.some(
+        ([entity]) => entity === ReferenceAiProposal,
+      ),
+    ).toBe(false);
+  });
+  it('never prepares an incomplete change when both generations are malformed or truncated', async () => {
+    const ctx = setup(parsed);
+    ctx.model.invoke.mockResolvedValue({
+      content: '{"answer":"Incomplet","changes":[',
+      response_metadata: { finish_reason: 'length' },
+    });
+    await expect(
+      ctx.service.ask('profile', 'Modifie ce rôle', owner),
+    ).rejects.toThrow('L’assistant n’a pas pu terminer sa réponse');
+    expect(ctx.model.invoke).toHaveBeenCalledTimes(2);
+    expect(
+      ctx.db.manager.save.mock.calls.some(
+        ([entity]) => entity === ReferenceAiProposal,
+      ),
+    ).toBe(false);
+  });
+  it('supports a gateway that explicitly refuses JSON mode without changing the selected model', async () => {
+    const ctx = setup(parsed);
+    ctx.model.invoke.mockRejectedValueOnce({
+      status: 400,
+      message: 'response_format json_object is not supported',
+    });
+    const result = await ctx.service.ask('profile', 'Modifie ce rôle', owner);
+    expect(result.proposal).not.toBeNull();
+    expect(ctx.model.invoke).toHaveBeenCalledTimes(2);
+    expect(ctx.model.invoke.mock.calls[1]).toHaveLength(1);
+    expect(ctx.router.getPlatformModel).toHaveBeenCalledTimes(1);
+  });
+  it('does not hide authentication failures or retry them as formatting issues', async () => {
+    const ctx = setup(parsed);
+    const error = { status: 401, message: 'Authentication failed' };
+    ctx.model.invoke.mockRejectedValueOnce(error);
+    await expect(
+      ctx.service.ask('profile', 'Explique ce rôle', owner),
+    ).rejects.toBe(error);
+    expect(ctx.model.invoke).toHaveBeenCalledTimes(1);
+  });
   it('routes the model and quality and treats attachments as untrusted document content', async () => {
     const ctx = setup({ ...parsed, changes: [] });
     const file = {

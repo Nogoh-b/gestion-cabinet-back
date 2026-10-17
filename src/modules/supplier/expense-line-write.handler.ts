@@ -62,7 +62,7 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
         required: true,
       },
       amount_ht: {
-        description: 'Montant HT (> 0)',
+        description: 'Montant HT (≥ 0)',
         example: '120.00',
         required: true,
       },
@@ -106,12 +106,12 @@ export class ExpenseLineWriteHandler extends BaseWriteHandler {
       if (!fields.category) errors.push('La catégorie est requise');
       if (fields.amount_ht === undefined || fields.amount_ht === null) {
         errors.push('Le montant HT est requis');
-      } else if (Number(fields.amount_ht) <= 0) {
-        errors.push('Le montant HT doit être strictement positif');
+      } else if (Number(fields.amount_ht) < 0) {
+        errors.push('Le montant HT ne peut pas être négatif');
       }
     } else if (operation === 'UPDATE') {
-      if (fields.amount_ht !== undefined && Number(fields.amount_ht) <= 0) {
-        errors.push('Le montant HT doit être strictement positif');
+      if (fields.amount_ht !== undefined && Number(fields.amount_ht) < 0) {
+        errors.push('Le montant HT ne peut pas être négatif');
       }
     }
     return { valid: errors.length === 0, errors, transformedFields: fields };

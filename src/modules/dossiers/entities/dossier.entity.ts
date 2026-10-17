@@ -142,7 +142,7 @@ export class Dossier extends BaseEntity {
   @BusinessColumn({
     label: "Niveau d'urgence",
     description:
-      'BD: 0=Faible, 1=Normal, 2=Eleve, 3=Critique. En SQL utiliser le nombre.',
+      'BD: 0=Faible, 1=Normal, 2=Élevé, 3=Critique. En SQL utiliser le nombre.',
     example: '2 = Élevé',
     importance: 'high',
     group: 'priorité',
@@ -246,7 +246,7 @@ export class Dossier extends BaseEntity {
   @BusinessColumn({
     label: 'Statut du dossier',
     description:
-      'BD: 0=OPEN/ouvert, 1=PRELIMINARY_ANALYSIS/analyse, 2=AMICABLE/amiable, 3=LITIGATION/contentieux, 4=JUDGMENT/jugement, 5=APPEAL/appel, 6=CASSATION, 7=EXECUTION, 8=CLOSED/clôturé, 9=ARCHIVED/archivé, 10=ABANDONED/abandonné.',
+      'BD: 0=OPEN/ouvert, 1=PRELIMINARY_ANALYSIS/analyse, 2=AMICABLE/amiable, 3=LITIGATION/contentieux, 4=JUDGMENT/jugement, 5=APPEAL/appel, 6=CASSATION/cassation, 7=EXECUTION/exécution, 8=CLOSED/clôturé, 9=ARCHIVED/archivé, 10=ABANDONED/abandonné.',
     example: 'status = 8 pour les dossiers clôturés',
     importance: 'critical',
     group: 'état',

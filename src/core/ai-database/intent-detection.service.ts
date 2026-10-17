@@ -39,6 +39,14 @@ export class IntentDetectionService {
   private readonly CORRECTIVE_REQUEST =
     /^\s*(?:(?:s'il (?:te|vous) plait|stp|svp|peux-tu|pouvez-vous|merci de|veuillez)[ ,]+)?(?:corrige|corrigez|corriger|rectifie|rectifiez|rectifier|repare|reparez|reparer|regularise|regularisez|regulariser|renomme|renommez|renommer|fusionne|fusionnez|fusionner|dedoublonne|dedoublonnez|dedoublonner|harmonise|harmonisez|harmoniser|nettoie|nettoyez|nettoyer|resous|resolvez|resoudre|applique|appliquez|appliquer)\b/;
 
+  /**
+   * Synthèse, résumé ou point de situation sur un enregistrement : une
+   * lecture des données, même quand la demande cite « prochaines étapes »
+   * (sinon classée conseil, la réponse n'interrogeait pas la base).
+   */
+  private readonly RECORD_SUMMARY_REQUEST =
+    /\b(?:synthese|resume|resumer|recapitulatif|recap|point\s+sur|faire\s+le\s+point|fais\s+le\s+point|etat\s+(?:du|de\s+la|des|d)|situation\s+(?:du|de\s+la|des|d))\b/;
+
   constructor(
     private readonly writeHandlerRegistry: WriteHandlerRegistry,
     @Optional()
@@ -337,6 +345,14 @@ export class IntentDetectionService {
     // simple conseil, même si le fil précédent parle de recommandations.
     if (this.CORRECTIVE_REQUEST.test(normalized)) {
       return 'WRITE';
+    }
+
+    if (
+      this.RECORD_SUMMARY_REQUEST.test(normalized) &&
+      this.domainKeywordsRegex.test(normalized) &&
+      !this.isWriteIntent(question)
+    ) {
+      return 'READ';
     }
 
     if (this.isAdviceIntent(question)) {

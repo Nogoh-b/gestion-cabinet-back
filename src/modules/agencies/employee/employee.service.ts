@@ -109,6 +109,25 @@ export class EmployeeService extends BaseServiceV1<Employee> {
     dto: CreateUserDto,
     is_strict = true,
   ): Promise<EmployeeResponseDto> {
+    const { employee, sendCredentials } =
+      await this.createEmployeeDeferringCredentials(dto, is_strict);
+    await sendCredentials();
+    return employee;
+  }
+
+  /**
+   * Comme `createEmployee`, sans envoyer l'email d'identifiants : l'appelant
+   * lance `sendCredentials` quand la création est définitive (plan IA validé
+   * en entier). Sinon le mail partirait vers un compte que l'annulation du
+   * plan désactive.
+   */
+  async createEmployeeDeferringCredentials(
+    dto: CreateUserDto,
+    is_strict = true,
+  ): Promise<{
+    employee: EmployeeResponseDto;
+    sendCredentials: () => Promise<void>;
+  }> {
     // ── Vérification quota plan ────────────────────────────────────────────
     const tenantId = getCurrentTenantId();
     if (tenantId) {
@@ -251,61 +270,72 @@ export class EmployeeService extends BaseServiceV1<Employee> {
       this.employeeRepository.create(employeeData),
     );
 
-    // Envoi des identifiants de connexion au nouveau collaborateur avec son
-    // mot de passe temporaire RÉEL (à changer à la première connexion).
-    // Template DB `employee_credentials` en priorité, repli sur le template fichier.
-    // Un échec d'envoi ne doit pas bloquer la création du collaborateur.
-    // Création minimale (sans email) : rien à envoyer — l'email reste un
-    // champ « à compléter » sur la fiche employé, et la connexion se fait
-    // par email (cf. `AuthService.validateUser`), donc impossible tant qu'il
-    // n'est pas renseigné.
+    return {
+      employee: plainToInstance(EmployeeResponseDto, employee),
+      sendCredentials: () =>
+        this.sendCredentialsEmail(employee, savedUser, plain_password),
+    };
+  }
+
+  /**
+   * Envoi des identifiants de connexion au nouveau collaborateur avec son
+   * mot de passe temporaire RÉEL (à changer à la première connexion).
+   * Template DB `employee_credentials` en priorité, repli sur le template fichier.
+   * Un échec d'envoi ne doit pas bloquer la création du collaborateur.
+   * Création minimale (sans email) : rien à envoyer — l'email reste un
+   * champ « à compléter » sur la fiche employé, et la connexion se fait
+   * par email (cf. `AuthService.validateUser`), donc impossible tant qu'il
+   * n'est pas renseigné.
+   */
+  private async sendCredentialsEmail(
+    employee: Employee,
+    savedUser: User,
+    plain_password: string,
+  ): Promise<void> {
     const recipientEmail = savedUser.email;
-    if (recipientEmail) {
-      const frontendUrl = (process.env.APP_FRONTEND_URL ?? '').replace(
-        /\/$/,
-        '',
-      );
-      const loginUrl = frontendUrl ? `${frontendUrl}/auth/login` : '';
-      const firstName = savedUser.first_name ?? '';
+    if (!recipientEmail) return;
+    const frontendUrl = (process.env.APP_FRONTEND_URL ?? '').replace(
+      /\/$/,
+      '',
+    );
+    const loginUrl = frontendUrl ? `${frontendUrl}/auth/login` : '';
+    const firstName = savedUser.first_name ?? '';
+    try {
+      const rendered =
+        await this.mailTemplateService.renderOrCreateSystemDefault(
+          'employee_credentials',
+          {
+            firstName,
+            email: recipientEmail,
+            tempPassword: plain_password,
+            loginUrl,
+          },
+        );
+      await this.mailService.sendDirect({
+        to: recipientEmail,
+        subject: rendered.subject,
+        html: rendered.html,
+      });
+    } catch (mailErr) {
+      // Repli : template fichier existant (welcome-password)
       try {
-        const rendered =
-          await this.mailTemplateService.renderOrCreateSystemDefault(
-            'employee_credentials',
-            {
-              firstName,
-              email: recipientEmail,
-              tempPassword: plain_password,
-              loginUrl,
-            },
-          );
-        await this.mailService.sendDirect({
-          to: recipientEmail,
-          subject: rendered.subject,
-          html: rendered.html,
-        });
-      } catch (mailErr) {
-        // Repli : template fichier existant (welcome-password)
-        try {
-          await this.mailService.sendWelcomeWithPasswordEmail(
-            {
-              ...employee,
-              user: savedUser,
-              email: recipientEmail,
-              first_name: firstName,
-              last_name: savedUser.last_name ?? '',
-            },
-            plain_password,
-          );
-        } catch (fallbackErr) {
-          console.error(
-            `Échec envoi email identifiants employé ${employee.id} (${recipientEmail}):`,
-            (fallbackErr as Error)?.message ?? fallbackErr,
-          );
-        }
+        await this.mailService.sendWelcomeWithPasswordEmail(
+          {
+            ...employee,
+            user: savedUser,
+            email: recipientEmail,
+            first_name: firstName,
+            last_name: savedUser.last_name ?? '',
+          },
+          plain_password,
+        );
+      } catch (fallbackErr) {
+        console.error(
+          `Échec envoi email identifiants employé ${employee.id} (${recipientEmail}):`,
+          (fallbackErr as Error)?.message ?? fallbackErr,
+        );
       }
     }
-
-    return plainToInstance(EmployeeResponseDto, employee);
   }
 
   /**

@@ -73,6 +73,12 @@ export interface EntityWriteHandler<T = any> {
   ): Promise<ValidationResult>;
   execute(intent: WriteIntent, userId: string): Promise<WriteResult>;
   resolveDependencies?(fields: Partial<T>, userId: string): Promise<Partial<T>>;
+  /**
+   * Annule une création de ce handler quand une opération suivante du plan
+   * échoue. Facultatif : sans lui, le nettoyage générique soft-delete (ou
+   * supprime) la seule ligne de la table du handler.
+   */
+  rollbackInsert?(entityId: string | number): Promise<void>;
 }
 
 export interface WritableFieldSchema {
@@ -98,6 +104,12 @@ export interface WriteResult {
     entity: any;
     searchTerm: string;
   }>;
+  /**
+   * Action à lancer seulement quand le plan entier est validé (ex: email
+   * d'identifiants d'un collaborateur créé). Abandonnée si le plan échoue,
+   * et retirée du résultat avant qu'il soit renvoyé.
+   */
+  afterCommit?: () => Promise<void>;
 }
 
 export interface IntentDetectionResult {

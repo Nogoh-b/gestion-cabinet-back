@@ -110,6 +110,33 @@ describe('IntentDetectionService local classifier', () => {
     expect(service.classifyLocal('Bonjour')).toBe('CHAT');
   });
 
+  it('lit les données pour une synthèse de dossier, même avec « prochaines étapes »', () => {
+    const domainService = new IntentDetectionService(
+      {
+        getAllHandlers: jest.fn(() => []),
+        generateGlobalWriteSchema: jest.fn(async () => ''),
+      } as any,
+      { domainKeywords: ['dossier', 'client', 'facture'] } as any,
+    );
+
+    expect(
+      domainService.classifyLocal(
+        'Fais une synthèse du dossier CD-2026-002 : objet, parties, état de la procédure, dernières actions réalisées et prochaines étapes.',
+      ),
+    ).toBe('READ');
+    expect(domainService.classifyLocal('Fais le point sur le client Ndi')).toBe(
+      'READ',
+    );
+    // Sans enregistrement visé, « prochaines étapes » reste un conseil.
+    expect(
+      domainService.classifyLocal('quelles sont les prochaines étapes conseillées ?'),
+    ).toBe('ADVICE');
+    // Une fiche de synthèse à produire reste une écriture.
+    expect(
+      domainService.classifyLocal('rédige une fiche de synthèse du dossier'),
+    ).toBe('WRITE');
+  });
+
   it('retire les tables ignorées du schéma d’écriture', async () => {
     const generateGlobalWriteSchema = jest.fn(async () => 'schema');
     const scopedService = new IntentDetectionService(

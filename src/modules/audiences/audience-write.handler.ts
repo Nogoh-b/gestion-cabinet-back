@@ -18,6 +18,7 @@ import {
   ResolveConfig,
 } from 'src/core/ai-database/write/entity-resolver.service';
 import { WriteResult } from 'src/core/ai-database/write/write-handler.registry';
+import { parseLenientTime } from 'src/core/ai-database/write/lenient-values';
 import {
   WriteableFieldSchema,
   ValidationResult,
@@ -116,46 +117,27 @@ export class AudienceWriteHandler extends BaseWriteHandler {
     operation: 'INSERT' | 'UPDATE',
   ): Promise<ValidationResult> {
     const errors: string[] = [];
-    const derivedReason =
-      !fields.reason && fields.report_content
-        ? String(fields.report_content).trim()
-        : fields.reason;
+    const transformed = { ...fields };
     if (operation === 'INSERT') {
       if (!fields.dossier_id)
         errors.push('Le dossier est requis (dossier_id ou dossier)');
       if (!fields.audience_date)
         errors.push("La date d'audience est requise (audience_date)");
     }
-    if (
-      fields.audience_time &&
-      !/^\d{1,2}:\d{2}$/.test(String(fields.audience_time))
-    ) {
-      errors.push("Le format de l'heure doit être HH:MM (ex: 14:30)");
+    // Heure : « 14h30 », « 14:30:00 »… sont acceptés comme dans le formulaire
+    // (HH:MM[:SS]) ; une heure illisible est ignorée (09:00 par défaut).
+    if (fields.audience_time !== undefined && fields.audience_time !== null) {
+      const time = parseLenientTime(fields.audience_time);
+      if (time) transformed.audience_time = time;
+      else delete transformed.audience_time;
     }
-    if (Number(fields.status) === AudienceStatus.POSTPONED) {
-      if (
-        !fields.report_content ||
-        String(fields.report_content).trim().length === 0
-      ) {
-        errors.push(
-          "Le rapport d'audience est obligatoire pour reporter une audience (report_content)",
-        );
-      }
-      if (!derivedReason || String(derivedReason).trim().length === 0) {
-        errors.push('Le motif du report est obligatoire (reason)');
-      }
-      // ⚠️ La nouvelle date du renvoi n'est PLUS obligatoire : un renvoi peut être
-      // « à une date ultérieure (à fixer) ». Si elle est fournie (postponed_to ou
-      // audience_date + audience_time), doUpdate crée l'audience de remplacement ;
-      // sinon l'audience est simplement marquée « Reportée » avec son motif.
-    }
+    // Report : comme le report manuel, seul le rapport d'audience est exigé
+    // (contrôlé dans doUpdate, car il peut déjà exister sur l'audience) ; le
+    // motif est facultatif et la nouvelle date peut rester « à fixer ».
     return {
       valid: errors.length === 0,
       errors,
-      transformedFields: {
-        ...fields,
-        ...(derivedReason ? { reason: String(derivedReason).trim() } : {}),
-      },
+      transformedFields: transformed,
     };
   }
 
@@ -281,14 +263,19 @@ export class AudienceWriteHandler extends BaseWriteHandler {
         throw new BadRequestException(`Audience ${entityId} deja reportee`);
       }
 
-      const reportContent =
-        typeof safeFields.report_content === 'string'
-          ? safeFields.report_content.trim()
-          : '';
       const reason =
-        typeof safeFields.reason === 'string'
-          ? safeFields.reason.trim()
-          : reportContent;
+        typeof safeFields.reason === 'string' ? safeFields.reason.trim() : '';
+      // Rapport exigé comme dans le report manuel, mais il peut déjà figurer
+      // sur l'audience ; à défaut, le motif fourni tient lieu de rapport.
+      const reportContent =
+        (typeof safeFields.report_content === 'string'
+          ? safeFields.report_content.trim()
+          : '') || (audience.report_content?.trim() ? '' : reason);
+      if (!reportContent && !audience.report_content?.trim()) {
+        throw new BadRequestException(
+          "Le rapport d'audience doit être rédigé avant de reporter cette audience : précisez ce qui s'est passé ou le motif du renvoi.",
+        );
+      }
       const postponedDate = safeFields.postponed_to
         ? new Date(safeFields.postponed_to)
         : safeFields.audience_date
